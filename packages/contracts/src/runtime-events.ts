@@ -504,10 +504,12 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
    * asked for. `unresolved` (station#1558) asserts the opposite — that no
    * verdict will ever arrive. It is published for a tool call still open
    * when its SESSION ended, where the call's fate is genuinely unknown:
-   * Station never saw a result, and cannot tell whether the tool ran (every
-   * adapter that tracks its open calls settles them this way at session end
-   * — station#1569 item 4 extended it past Claude to ACP, Codex and
-   * station-agent). It is
+   * Station never saw a result, and cannot tell whether the tool ran. Every
+   * adapter that tracks its open calls settles them this way when a session
+   * IT STILL OWNS ends (station#1569 item 4 extended this past Claude to
+   * ACP, Codex and station-agent); a record already superseded by a restart
+   * on the same thread deliberately publishes nothing, since its terminals
+   * would land on the live session. It is
    * NOT a failure (nothing observed the tool fail) and NOT a cancellation
    * (nobody asked for it to stop); folding it into either would be a claim
    * Station cannot support. Without it, the row simply stayed "running"

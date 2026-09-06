@@ -4711,5 +4711,114 @@ describe('ClaudeAdapter — unresolved tool calls at session end (station#1558)'
       expect(methods).toContain('session.exited');
       expect(await adapter.hasSession('thread-stop-no-restart')).toBe(false);
     });
+
+    /**
+     * station#1573 (station#1569 M1): the same window, and the part of it
+     * that destroys data. Both cleanup leaves are keyed by threadId —
+     * `skillOverlayDirFor(sessionId)` is `<root>/<sessionId>` and the
+     * manifest is written under that same `sessionId` — so a restarted
+     * session materializes into exactly the paths the old stop is about to
+     * remove.
+     *
+     * Driven through the real `stopSession` with the two leaves injected
+     * (`skillsCleanup`), because the decision under test is whether
+     * stopSession CALLS them; the adapter test harness cannot materialize
+     * real skills, and a test of a pure predicate would not prove the caller
+     * consults it.
+     */
+    describe('skills cleanup (station#1573)', () => {
+      function cleanupSpies() {
+        return {
+          cleanupMaterializedSkills: vi.fn().mockResolvedValue(undefined),
+          removeSkillOverlayDir: vi.fn().mockResolvedValue(undefined),
+        };
+      }
+
+      test('is skipped for a thread the restart now owns', async () => {
+        const skillsCleanup = cleanupSpies();
+        const query = createEndableMockQuery({ endOnClose: false });
+        const { adapter } = await openCallOn('thread-cleanup-restart', query, {
+          skillsCleanup,
+        });
+        // The overlay branch is the destructive one (an unconditional
+        // recursive remove), so make this session own an overlay.
+        (
+          adapter as unknown as {
+            sessions: Map<string, { skillsOverlayDir?: string }>;
+          }
+        ).sessions.get('thread-cleanup-restart')!.skillsOverlayDir =
+          '/tmp/station-overlay/thread-cleanup-restart';
+
+        const stop = adapter.stopSession('thread-cleanup-restart');
+        mockQuery.mockReturnValue(createEndableMockQuery());
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-cleanup-restart',
+        });
+        query.end();
+        await stop;
+
+        expect(skillsCleanup.removeSkillOverlayDir).not.toHaveBeenCalled();
+        expect(skillsCleanup.cleanupMaterializedSkills).not.toHaveBeenCalled();
+      });
+
+      test('runs for an ordinary stop — the skip is conditional, not the new default', async () => {
+        const skillsCleanup = cleanupSpies();
+        const query = createEndableMockQuery({ endOnClose: false });
+        const { adapter } = await openCallOn(
+          'thread-cleanup-no-restart',
+          query,
+          { skillsCleanup },
+        );
+        (
+          adapter as unknown as {
+            sessions: Map<string, { skillsOverlayDir?: string }>;
+          }
+        ).sessions.get('thread-cleanup-no-restart')!.skillsOverlayDir =
+          '/tmp/station-overlay/thread-cleanup-no-restart';
+
+        const stop = adapter.stopSession('thread-cleanup-no-restart');
+        query.end();
+        await stop;
+
+        expect(skillsCleanup.cleanupMaterializedSkills).toHaveBeenCalledWith(
+          expect.objectContaining({
+            cwd: '/tmp/station-overlay/thread-cleanup-no-restart',
+            sessionId: 'thread-cleanup-no-restart',
+          }),
+        );
+        expect(skillsCleanup.removeSkillOverlayDir).toHaveBeenCalledWith(
+          'thread-cleanup-no-restart',
+          expect.anything(),
+        );
+      });
+
+      test('the real-cwd manifest path is skipped by the same guard', async () => {
+        // The other branch: no overlay, so cleanup is scoped to the session's
+        // own manifest inside the user's real workspace — written under the
+        // same threadId, and therefore the restarted session's manifest too.
+        const skillsCleanup = cleanupSpies();
+        const query = createEndableMockQuery({ endOnClose: false });
+        const { adapter } = await openCallOn('thread-cleanup-cwd', query, {
+          skillsCleanup,
+        });
+        (
+          adapter as unknown as {
+            sessions: Map<string, { session: { cwd?: string } }>;
+          }
+        ).sessions.get('thread-cleanup-cwd')!.session.cwd = '/repo/project';
+
+        const stop = adapter.stopSession('thread-cleanup-cwd');
+        mockQuery.mockReturnValue(createEndableMockQuery());
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-cleanup-cwd',
+        });
+        query.end();
+        await stop;
+
+        expect(skillsCleanup.cleanupMaterializedSkills).not.toHaveBeenCalled();
+      });
+    });
   });
 });

@@ -666,6 +666,20 @@ export interface ClaudeAdapterOptions {
   /** Testable bound for the in-process PreToolUse callback. */
   preToolPolicyTimeoutMs?: number;
   /**
+   * The two filesystem leaves `stopSession` calls to clean up this session's
+   * materialized skills, injected so a test can observe WHETHER they ran.
+   * That decision is the whole of station#1573 (#1569 M1) — both are keyed by
+   * threadId, so running them for a thread that has been retaken deletes the
+   * LIVE session's files — and it is not observable any other way without a
+   * real skills materialization, which the adapter test harness cannot set
+   * up. Same reason `findBinary` is injected: a branch that can only be
+   * reached on a particular host is a branch nothing checks.
+   */
+  skillsCleanup?: {
+    cleanupMaterializedSkills: typeof cleanupMaterializedSkills;
+    removeSkillOverlayDir: typeof removeSkillOverlayDir;
+  };
+  /**
    * Testable bound for `CLAUDE_STREAM_STOP_GRACE_MS` — see that constant.
    * Injected for the same reason `preToolPolicyTimeoutMs` is: the
    * grace-elapsed branch is only reachable by letting the grace elapse, and
@@ -695,6 +709,14 @@ const DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS = 5_000;
  * holding publishes the real terminal when it drains, instead of being
  * dropped by the replay guard. Both branches are tested — see
  * `claude-adapter.test.ts`'s "grace" cases.
+ *
+ * "No longer final" is a claim about what a READER ends up with, so it is
+ * only true because both folds honour it (station#1569 H1): the durable
+ * projection's `unresolvedToolsByCallId` and the live handler's
+ * `toolPartSettleableBy` let the real terminal supersede that row in place.
+ * Publishing a correction nothing consumes is a correction only the log
+ * knows about — which is exactly what the first cut of this shipped, leaving
+ * the reader with two rows for one call.
  *
  * The alternative — do not settle here at all and let `consumeMessages`'
  * `finally` be the only settle — was rejected: on the engine this exists for
@@ -1527,6 +1549,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // costs the caller nothing it did not just get from `session.started`.
     // (Mirrors `acp-adapter.ts`'s `if (this.sessions.get(threadId) !== record)
     // return;` in `stopRecord`.)
+    //
+    // What it does NOT cost the caller is the exit event; the same window
+    // also governs the filesystem cleanup below, which is a real loss if it
+    // runs (station#1573).
     const restarted = this.sessions.has(threadId);
     if (restarted) {
       (this.options.logger ?? console).warn?.(
@@ -1543,13 +1569,36 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         reason: 'stopped',
       });
     }
-    if (record.skillsOverlayDir) {
+    // station#1573 (station#1569 M1): both cleanup paths below are keyed by
+    // THREAD ID, not by session record — `skillOverlayDirFor(sessionId)`
+    // resolves to `<overlays root>/<threadId>` and `cleanupMaterializedSkills`
+    // deletes the manifest written under that same `sessionId`. A session
+    // started for this thread during the grace above materialized into
+    // exactly those paths, so running either now deletes the LIVE session's
+    // skills: `removeSkillOverlayDir` is an unconditional recursive remove,
+    // and the manifest path's own "concurrent sessions never touch each
+    // other's files" reasoning holds only across DIFFERENT thread ids, which
+    // a restart is not. Skipping leaks the old session's files — but they are
+    // the same files the new session is using, so there is nothing here to
+    // leak that is not still in use.
+    const {
+      cleanupMaterializedSkills: cleanupSkills,
+      removeSkillOverlayDir: removeOverlayDir,
+    } = this.options.skillsCleanup ?? {
+      cleanupMaterializedSkills,
+      removeSkillOverlayDir,
+    };
+    if (restarted) {
+      (this.options.logger ?? console).warn?.(
+        `Claude session '${threadId}' was restarted while its stop was still draining; skipping this session's skills cleanup, whose paths the restarted session now owns.`,
+      );
+    } else if (record.skillsOverlayDir) {
       // archive#1174: the overlay is fully Station-owned (see
       // claude-skills-overlay.ts), so cleanup goes further than the
       // real-cwd path below — after the hash-verified per-file cleanup,
       // the whole per-session overlay directory is removed unconditionally.
       const overlayDir = record.skillsOverlayDir;
-      await cleanupMaterializedSkills({
+      await cleanupSkills({
         cwd: overlayDir,
         sessionId: threadId,
         globalConfigDirs: defaultClaudeGlobalConfigDirs(
@@ -1565,14 +1614,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           );
         })
         .finally(() =>
-          removeSkillOverlayDir(threadId, { logger: this.options.logger }),
+          removeOverlayDir(threadId, { logger: this.options.logger }),
         );
     } else if (record.session.cwd) {
       // Best-effort — a cleanup failure must never surface as a stopSession
       // failure (mirrors the never-reject posture at session start). Scoped
-      // to THIS session's own manifest only (per-session manifests —
-      // concurrent sessions in the same cwd never touch each other's files).
-      await cleanupMaterializedSkills({
+      // to THIS session's own manifest only: per-session manifests, so two
+      // sessions with DIFFERENT thread ids in the same cwd never touch each
+      // other's files. A restart on the SAME thread id is the exception, and
+      // the guard above is why this line is not reached for one.
+      await cleanupSkills({
         cwd: record.session.cwd,
         sessionId: threadId,
         globalConfigDirs: defaultClaudeGlobalConfigDirs(

@@ -3762,6 +3762,89 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
     );
   });
 
+  /**
+   * station#1569 (L3): the credential-refusal recovery is the ACP session-end
+   * path that settled NOTHING before — unlike the stop path it never reaches
+   * `prepareRecordForStop`/`dispose`, so a call open when the child was
+   * replaced was abandoned mid-flight and left running forever.
+   */
+  test('the credential-refusal recovery exit settles an open tool call exactly once', async () => {
+    const { adapter, processes } = createAdapter({
+      loadSessionCapability: true,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-recovery-open-tool',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-recovery-open-tool',
+      input: 'Continue safely',
+    });
+    await nextEvent(iterator, 'turn.started');
+
+    await processes[0]!.client.sessionUpdate({
+      sessionId: 'native-kiro-cli',
+      update: {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'acp-recovery-call',
+        title: 'Run the build',
+        name: 'shell',
+        status: 'in_progress',
+      },
+    } as any);
+    await nextEvent(iterator, 'tool.started');
+
+    await expect(
+      processes[0]!.client.extMethod!('_kiro/auth/getAccessToken', {}),
+    ).rejects.toMatchObject({ code: -32601 });
+    await vi.waitFor(() => expect(processes).toHaveLength(2));
+
+    await expect(nextEvent(iterator, 'turn.aborted')).resolves.toMatchObject({
+      turnId: turn.turnId,
+    });
+    // The honest terminal, and it precedes the exit that would otherwise
+    // close the card as "Stopped".
+    await expect(nextEvent(iterator, 'tool.completed')).resolves.toMatchObject({
+      method: 'tool.completed',
+      toolCallId: 'acp-recovery-call',
+      toolName: 'shell',
+      status: 'unresolved',
+      output:
+        'No result was reported before the session ended; whether the tool ran is unknown.',
+    });
+    await expect(nextEvent(iterator, 'session.exited')).resolves.toMatchObject({
+      reason: 'credential-refusal-recovery',
+    });
+
+    // Exactly once: the replacement session's own lifecycle follows, and the
+    // later stop must not publish a second terminal for the same call.
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const settled: unknown[] = [];
+    const drain = (async () => {
+      for (let step = 0; step < 8; step += 1) {
+        const next = await Promise.race([
+          iterator.next().then((result) => result.value),
+          new Promise((resolve) => setTimeout(() => resolve(null), 60)),
+        ]);
+        // `stopAll` closes the queue, so an exhausted iterator yields
+        // `undefined` — as much an end of the stream as the timeout is.
+        if (next === null || next === undefined) return;
+        if ((next as { method?: string }).method === 'tool.completed') {
+          settled.push(next);
+        }
+      }
+    })();
+    await adapter.stopAll();
+    await drain;
+    expect(settled).toEqual([]);
+  });
+
   test('#1850: stopAll invalidates a blocked credential recovery before it can replace the child or token', async () => {
     const liveTokens = new Map<string, string>();
     const revokedTokens: string[] = [];

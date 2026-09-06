@@ -673,6 +673,55 @@ describe('CodexAdapterTransport', () => {
       });
     });
 
+    test('an exit whose process-tree cleanup was not confirmed settles them too', async () => {
+      // station#1569 (L1): this handler runs ON the app-server's exit, so no
+      // notification can arrive for an open call whatever happened to the
+      // rest of its tree. Returning on the unconfirmed reap left those rows
+      // running forever and made the contract's claim false for this path.
+      const terminateProcess = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('cleanup not confirmed'));
+      const transport = new CodexAdapterTransport(
+        () => new Date('2026-04-11T00:00:00Z'),
+        terminateProcess,
+      );
+      const processHandle = new FakeCodexProcess();
+      const record = createCodexSessionRecord({
+        externalThreadId: 'thread-unconfirmed-open-tool',
+        process: processHandle,
+        provider: 'codex',
+        threadId: 'thread-unconfirmed-open-tool',
+        model: 'gpt-5-codex',
+        nowIso: () => '2026-04-11T00:00:00Z',
+      });
+      transport.registerSession(record);
+      transport.handleProcess(record);
+      record.activeTurnId = 'turn-open';
+      record.toolNames.set('item-open', 'shell');
+      record.openToolCalls.set('item-open', {
+        toolName: 'shell',
+        turnId: 'turn-open',
+      });
+      const iterator = transport.streamEvents()[Symbol.asyncIterator]();
+
+      processHandle.exitCode = 1;
+      processHandle.emit('exit', 1);
+
+      const events = await drainEvents(iterator);
+      expect(events.map((event) => event.method)).toEqual([
+        'runtime.warning',
+        'tool.completed',
+      ]);
+      expect(events[1]).toMatchObject({
+        toolCallId: 'item-open',
+        status: 'unresolved',
+        turnId: 'turn-open',
+      });
+      // The session is deliberately retained for a termination retry, so no
+      // exit event here — the row is settled, not the session closed.
+      expect(transport.hasSession('thread-unconfirmed-open-tool')).toBe(true);
+    });
+
     test('a call that already completed is not settled again', async () => {
       // The discriminating control: the settle iterates observed open calls,
       // not every tool the session ever ran.

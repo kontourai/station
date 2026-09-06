@@ -472,7 +472,8 @@ export function mapStationAgentStreamEvent(options: {
     return {};
   }
   if (event.type === 'tool-call') {
-    const toolCallId = stringField(event.toolCallId) ?? crypto.randomUUID();
+    const reportedCallId = stringField(event.toolCallId);
+    const toolCallId = reportedCallId ?? crypto.randomUUID();
     publish({
       ...base,
       itemId: toolCallId,
@@ -481,10 +482,27 @@ export function mapStationAgentStreamEvent(options: {
       toolName: safeToolName(event),
       arguments: event.input,
     });
-    return { toolOpened: { toolCallId, toolName: safeToolName(event) } };
+    // station#1569 (M2): tracked ONLY when the chunk carried a real id. The
+    // fallback above is minted per chunk, so an id-less `tool-call` and its
+    // id-less `tool-result` mint DIFFERENT ids — the result would delete
+    // nothing, and the session-end settle would then publish `unresolved`
+    // for a call whose success it had already published under the other id.
+    // A false "no result was reported" is worse than the un-paired rows this
+    // fallback already produces (a pre-existing relay gap, unchanged here):
+    // Station cannot honestly say a call went unanswered when it cannot say
+    // which call it was.
+    return reportedCallId
+      ? {
+          toolOpened: {
+            toolCallId: reportedCallId,
+            toolName: safeToolName(event),
+          },
+        }
+      : {};
   }
   if (event.type === 'tool-result') {
-    const toolCallId = stringField(event.toolCallId) ?? crypto.randomUUID();
+    const reportedCallId = stringField(event.toolCallId);
+    const toolCallId = reportedCallId ?? crypto.randomUUID();
     const error = stringField(event.error);
     // archive#3113/#3117: `event.error` reaching this relay is ALREADY the
     // safe text — both engine adapters (voltagent-adapter.ts's
@@ -519,7 +537,11 @@ export function mapStationAgentStreamEvent(options: {
                 : event.output,
           }),
     });
-    return { toolSettled: { toolCallId } };
+    // Symmetric with the open report above: a minted id can only ever
+    // settle a call nothing tracked.
+    return reportedCallId
+      ? { toolSettled: { toolCallId: reportedCallId } }
+      : {};
   }
   if (event.type === 'tool-approval-request') {
     const requestId = stringField(event.approvalId);

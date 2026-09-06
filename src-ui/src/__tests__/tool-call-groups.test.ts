@@ -1,3 +1,4 @@
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { describe, expect, test } from 'vitest';
 import {
   classifyToolName,
@@ -307,6 +308,75 @@ describe('groupToolCallParts', () => {
       ]) as ToolCallGroup[];
       expect(group.summary).toBe('Ran 2 commands');
       expect(group.unresolvedCount).toBe(0);
+    });
+
+    /**
+     * station#1569 (H1): the composition the reviewer caught. The header
+     * counts what the FOLD produced, so a fold that left the stale
+     * `unresolved` row standing beside the real result made this read
+     * "Run 2 commands · 1 with no result" for one call that succeeded.
+     * Driven through the real projection rather than a hand-written part —
+     * a literal `state: 'completed'` would only assert the classifier's own
+     * `===`, and could not have caught this.
+     */
+    test('does not count a row the real result superseded', () => {
+      const base = {
+        provider: 'claude',
+        threadId: 't1',
+        createdAt: '2026-09-05T00:00:00.000Z',
+      };
+      const messages = projectRuntimeEventsToMessages([
+        { ...base, eventId: 'e1', method: 'turn.started', turnId: 'turn-a' },
+        {
+          ...base,
+          eventId: 'e2',
+          method: 'tool.started',
+          turnId: 'turn-a',
+          itemId: 'i1',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+          arguments: { command: 'npm test' },
+        },
+        {
+          ...base,
+          eventId: 'e3',
+          method: 'tool.completed',
+          turnId: 'turn-a',
+          itemId: 'i1',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+          status: 'unresolved',
+          output:
+            'No result was reported before the session ended; whether the tool ran is unknown.',
+        },
+        {
+          ...base,
+          eventId: 'e4',
+          method: 'tool.completed',
+          turnId: 'turn-a',
+          itemId: 'i1',
+          toolCallId: 'call-1',
+          toolName: 'Bash',
+          status: 'success',
+          output: 'real output',
+        },
+        {
+          ...base,
+          eventId: 'e5',
+          method: 'turn.completed',
+          turnId: 'turn-a',
+          finishReason: 'stop',
+        },
+      ] as never);
+
+      const assistant = messages.find(
+        (message) => message.role === 'assistant',
+      )!;
+      const [group] = groupToolCallParts(
+        assistant.parts as unknown as ToolCallLike[],
+      ) as ToolCallGroup[];
+      expect(group.unresolvedCount).toBe(0);
+      expect(group.summary).toBe('Ran npm test');
     });
 
     test('a mixed-kind batch takes the bare verb in every segment', () => {

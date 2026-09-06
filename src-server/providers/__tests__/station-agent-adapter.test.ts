@@ -975,6 +975,63 @@ describe('StationAgentAdapter', () => {
       expect(exited).toMatchObject({ method: 'session.exited' });
     });
 
+    test('an id-less chunk pair is never settled as unresolved', async () => {
+      // station#1569 (M2): the relay mints a fallback id per chunk, so an
+      // id-less start and its id-less result carry DIFFERENT ids. Tracking
+      // the start would leave an entry its own result can never delete, and
+      // the settle would then publish "no result was reported" for a call
+      // whose success it had already published.
+      const encoder = new TextEncoder();
+      let streamController!: ReadableStreamDefaultController<Uint8Array>;
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              streamController = controller;
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+        ),
+      );
+      const adapter = new StationAgentAdapter({
+        apiBase: 'http://127.0.0.1:3141',
+        hasAgent: () => true,
+        ...approvalDeps(),
+        fetch: fetchMock,
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        threadId: 'task-idless-tool',
+        provider: 'station-agent',
+        metadata: { agentId: 'reviewer' },
+      });
+      await adapter.sendTurn({
+        threadId: 'task-idless-tool',
+        input: 'Use the repository tool',
+      });
+      for (const chunk of [
+        { type: 'tool-call', toolName: 'repo_write', input: {} },
+        { type: 'tool-result', toolName: 'repo_write', output: 'written' },
+      ]) {
+        streamController.enqueue(
+          encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
+        );
+      }
+      // session.started, session.configured, session.state-changed,
+      // turn.started, tool.started, tool.completed
+      const seen = await nextEvents(iterator, 6);
+      expect(seen.at(-1)).toMatchObject({
+        method: 'tool.completed',
+        status: 'success',
+      });
+
+      await adapter.stopSession('task-idless-tool');
+
+      // Straight to the exit: no fabricated `unresolved` in between.
+      const [next] = await nextEvents(iterator, 1);
+      expect(next).toMatchObject({ method: 'session.exited' });
+    });
+
     test('a call that already reported is not settled again', async () => {
       // The discriminating control: the settle publishes for calls still
       // open, not for every call the session ran.

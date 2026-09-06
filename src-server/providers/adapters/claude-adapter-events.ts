@@ -240,7 +240,11 @@ export interface ClaudeMessageState {
    * did not end at `close()`. That second case is the whole reason this map
    * exists: the SDK can still be holding a queued `tool_result`, and the
    * `unresolved` Station just published is an admitted non-answer, not an
-   * observed outcome. A real result that arrives after it CORRECTS it.
+   * observed outcome. A real result that arrives after it CORRECTS it — and
+   * is consumed as a correction rather than as a second result, because both
+   * folds supersede an `unresolved` row in place (station#1569 H1:
+   * `runtime-event-projection.ts`'s `unresolvedToolsByCallId`,
+   * `messageParts.ts`'s `toolPartSettleableBy`).
    *
    * Entries whose terminal a settled Task already published
    * (`terminalPublished`) are recorded here too: their own docblock says the
@@ -907,7 +911,8 @@ export function mapClaudeSdkMessage({
       // — the only authoritative outcome Station ever receives for it.
       // Dropping it (the `continue` below) left `unresolved` standing over a
       // result that exists. See the field's docblock for when this is
-      // reachable at all.
+      // reachable at all, and station#1569 H1 for the fold rule that makes
+      // this event REPLACE that row rather than add a second one.
       const settled = tracked
         ? undefined
         : record.settledToolCalls?.get(toolCallId);
@@ -922,9 +927,10 @@ export function mapClaudeSdkMessage({
           threadId: record.session.threadId,
           toolCallId,
           toolName,
-          // Which claim this terminal supersedes: `unresolved` for an
-          // ordinary settled entry, or nothing at all for one whose Task
-          // terminal the settle deliberately left alone.
+          // Read off the settle record, not asserted: `terminalPublished`
+          // is why the settle skipped publishing `unresolved` for this id
+          // (a Task terminal already stood), and its absence is why it did.
+          // So this names the claim this event actually replaces.
           supersedes: entry.terminalPublished ? 'task-terminal' : 'unresolved',
         });
       }

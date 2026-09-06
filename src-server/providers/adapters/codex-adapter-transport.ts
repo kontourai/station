@@ -641,12 +641,32 @@ export class CodexAdapterTransport {
           'Codex process tree cleanup was not confirmed after the app-server exited.',
         code: 'codex-process-cleanup-unconfirmed',
       });
+      // station#1569 (L1): still settle. This handler runs ON the
+      // app-server's exit, so its stdio is gone and no notification can ever
+      // arrive for a call still open — whatever happened to the rest of its
+      // process tree. What went unconfirmed is the REAP, which says nothing
+      // about whether a result is still coming: it is not. Returning here
+      // without settling left those rows running forever and made the
+      // contract's "settled at session end" claim false for this path.
+      //
+      // Same identity guard as the ordinary path below, for the same reason:
+      // a record this thread no longer owns must not publish terminals over
+      // its successor, and a deliberate stop has `stopSession`'s own settle.
+      if (
+        !record.stopped &&
+        this.sessions.get(record.externalThreadId) === record
+      ) {
+        this.settleUnresolvedToolCalls(record, nowIso);
+      }
       return;
     }
     if (
       record.stopped ||
       this.sessions.get(record.externalThreadId) !== record
     ) {
+      // Deliberately no settle: `stopSession` owns the settle for a stop
+      // already in flight, and a superseded record's terminals would land on
+      // the thread its successor now owns.
       return;
     }
     this.unregisterSession(record);

@@ -176,6 +176,29 @@ export function projectRuntimeEventsToMessages(
     { part: MessagePart; turnKey: string | undefined }
   >();
   /**
+   * station#1569 (H1): rows settled `unresolved`, kept settleable.
+   *
+   * `unresolved` is the one terminal that says NO OUTCOME WILL ARRIVE while
+   * an outcome still can: the adapter publishes it when a session ends with
+   * the call open, and `claude-adapter.ts`'s stop grace can elapse while the
+   * SDK is still holding the real `tool_result`, which then drains and is
+   * published for the same call id (`claude-adapter-events.ts`'s
+   * `settledToolCalls`). Retiring the slot the way a `success`/`error`/
+   * `cancelled` terminal does left the reader with TWO rows for one call —
+   * the standing `unresolved` and the real result — and the batch header
+   * then counted the stale one as "with no result" for a call that
+   * succeeded.
+   *
+   * Same `{ part, turnKey }` shape and same turn rule as the carried map
+   * above: the part is the SAME object already inside an emitted message, so
+   * superseding mutates the row in place, and a completion naming a
+   * DIFFERENT turn never lands on it.
+   */
+  const unresolvedToolsByCallId = new Map<
+    string,
+    { part: MessagePart; turnKey: string | undefined }
+  >();
+  /**
    * station#1558: `turnKey` → index in `messages` of the assistant message
    * emitted for that turn, so a late completion with no matching start can
    * still be appended to the turn its own `turnId` names rather than to the
@@ -489,15 +512,31 @@ export function projectRuntimeEventsToMessages(
         // mismatch: there is no competing claim to honour, and rejecting it
         // would strand every row projected from events that carry no turn id
         // at all.
+        const settleableTurn = (rowTurnKey: string | undefined) =>
+          namedTurnKey === undefined ||
+          rowTurnKey === undefined ||
+          rowTurnKey === namedTurnKey;
         const carried =
-          carriedEntry &&
-          (namedTurnKey === undefined ||
-            carriedEntry.turnKey === undefined ||
-            carriedEntry.turnKey === namedTurnKey)
+          carriedEntry && settleableTurn(carriedEntry.turnKey)
             ? carriedEntry.part
             : undefined;
+        // station#1569 (H1): consulted after both live maps — a call still
+        // open anywhere outranks one already settled `unresolved`, which is
+        // only reachable at all because that terminal is explicitly not
+        // final (see `unresolvedToolsByCallId`).
+        const supersededEntry =
+          toolsByCallId.has(ev.toolCallId) || carried
+            ? undefined
+            : unresolvedToolsByCallId.get(ev.toolCallId);
+        const superseded =
+          supersededEntry && settleableTurn(supersededEntry.turnKey)
+            ? supersededEntry.part
+            : undefined;
         const existing =
-          completed ?? toolsByCallId.get(ev.toolCallId) ?? carried;
+          completed ??
+          toolsByCallId.get(ev.toolCallId) ??
+          carried ??
+          superseded;
         if (existing) {
           if (ev.toolName !== undefined) existing.toolName = ev.toolName;
           existing.state = derivedState;
@@ -517,6 +556,19 @@ export function projectRuntimeEventsToMessages(
           // A terminal settles this call slot. A later terminal reusing the
           // same call id must become a distinct durable result, not overwrite
           // this sourceEventId.
+          //
+          // station#1569 (H1): with ONE exception, recorded below.
+          // `unresolved` is not a result — it is the admission that no result
+          // arrived — so the real one, when it turns up for the same call, is
+          // that row's outcome rather than a second durable result. The rule
+          // above keeps holding for `success`/`error`/`cancelled`, which are
+          // outcomes and which a later terminal must never overwrite.
+          const rowTurnKey =
+            existing === carried
+              ? carriedEntry?.turnKey
+              : existing === superseded
+                ? supersededEntry?.turnKey
+                : turnKey(turnSessionId, turnIdentity);
           if (!completed) {
             // Fix round (M3/L12): retire only the slot this terminal actually
             // settled. Clearing both used to evict an earlier turn's carried
@@ -525,9 +577,17 @@ export function projectRuntimeEventsToMessages(
             // and left the first row reading "running" forever.
             if (existing === carried) {
               carriedToolsByCallId.delete(ev.toolCallId);
+            } else if (existing === superseded) {
+              unresolvedToolsByCallId.delete(ev.toolCallId);
             } else {
               toolsByCallId.delete(ev.toolCallId);
             }
+          }
+          if (isUnresolved) {
+            unresolvedToolsByCallId.set(ev.toolCallId, {
+              part: existing,
+              turnKey: rowTurnKey,
+            });
           }
         } else {
           // Completion without a captured start (replay gap) — still surface it.
@@ -567,6 +627,18 @@ export function projectRuntimeEventsToMessages(
             flushText();
             flushReasoning();
             parts.push(part);
+          }
+          // station#1569 (H1): a start-less `unresolved` row is settleable
+          // too. The row is on the turn the event named when there was one,
+          // otherwise on the open turn this fold just pushed it into.
+          if (isUnresolved) {
+            unresolvedToolsByCallId.set(ev.toolCallId, {
+              part,
+              turnKey:
+                namedTurnIndex !== undefined
+                  ? namedTurnKey
+                  : turnKey(turnSessionId, turnIdentity),
+            });
           }
         }
         break;

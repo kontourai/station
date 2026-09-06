@@ -489,6 +489,171 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
       });
     });
 
+    /**
+     * station#1569 (H1): the live twin of the projection's rule. An
+     * `unresolved` row is pinned to its own settle event, so the real result
+     * that follows used to match nothing and append a SECOND row beside it.
+     */
+    describe('a real result supersedes an unresolved row (station#1569 H1)', () => {
+      const unresolvedPart = {
+        type: 'tool-invocation' as const,
+        toolCallId: 'tool-1',
+        toolName: 'write_file',
+        args: { path: 'a.txt' },
+        state: 'unresolved' as const,
+        sourceEventId: 'evt-settle',
+        result:
+          'No result was reported before the session ended; whether the tool ran is unknown.',
+      };
+
+      test('supersedes it in place on the streaming message', () => {
+        activeChatsStore.updateChat(threadId, {
+          streamingMessage: {
+            role: 'assistant',
+            content: 'Working.',
+            contentParts: [
+              { type: 'text', content: 'Working.' },
+              { ...unresolvedPart },
+            ],
+          },
+        });
+
+        handleToolCompletedEvent(
+          toolCompleted({
+            eventId: 'evt-real',
+            status: 'success',
+            output: 'real output',
+          }),
+        );
+
+        const tools = streamingParts().filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(tools).toHaveLength(1);
+        expect(tools[0]).toMatchObject({
+          toolCallId: 'tool-1',
+          state: 'completed',
+          result: 'real output',
+          sourceEventId: 'evt-real',
+          isError: false,
+        });
+      });
+
+      test('supersedes it in place on the committed message it lives on', () => {
+        activeChatsStore.updateChat(threadId, {
+          messages: [
+            {
+              role: 'assistant',
+              content: 'A is working.',
+              turnId: 'turn-a',
+              contentParts: [
+                { type: 'text', content: 'A is working.' },
+                { ...unresolvedPart },
+              ],
+            },
+          ],
+          streamingMessage: {
+            role: 'assistant',
+            content: 'B answers.',
+            contentParts: [{ type: 'text', content: 'B answers.' }],
+          },
+        });
+
+        handleToolCompletedEvent(
+          toolCompleted({
+            eventId: 'evt-real',
+            turnId: 'turn-a',
+            status: 'success',
+            output: 'real output',
+          }),
+        );
+
+        const tools = historyParts(0).filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(tools).toHaveLength(1);
+        expect(tools[0]).toMatchObject({
+          state: 'completed',
+          result: 'real output',
+          sourceEventId: 'evt-real',
+        });
+        // Not a standalone second row on whatever turn is streaming.
+        expect(
+          streamingParts().filter((part) => part.type === 'tool-invocation'),
+        ).toHaveLength(0);
+      });
+
+      test('leaves a settled SUCCESS alone — only unresolved is overtakeable', () => {
+        // The discriminating control: this is the "distinct durable result"
+        // rule the change carves one exception into, not a repeal of it.
+        activeChatsStore.updateChat(threadId, {
+          streamingMessage: {
+            role: 'assistant',
+            content: 'Working.',
+            contentParts: [
+              {
+                ...unresolvedPart,
+                state: 'completed',
+                result: 'first output',
+              },
+            ],
+          },
+        });
+
+        handleToolCompletedEvent(
+          toolCompleted({
+            eventId: 'evt-real',
+            status: 'success',
+            output: 'second output',
+          }),
+        );
+
+        const tools = streamingParts().filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(tools).toHaveLength(2);
+        expect(tools.map((part) => part.sourceEventId)).toEqual([
+          'evt-settle',
+          'evt-real',
+        ]);
+      });
+
+      test('a tool.started for a reused id does not resurrect an unresolved row', () => {
+        // Only a TERMINAL may supersede. A start carries no terminal event
+        // id, and erasing a settled outcome with a new call's start would be
+        // the same two-rows-into-one defect pointed the wrong way.
+        activeChatsStore.updateChat(threadId, {
+          streamingMessage: {
+            role: 'assistant',
+            content: 'Working.',
+            contentParts: [{ ...unresolvedPart }],
+          },
+        });
+
+        handleToolStartedEvent({
+          eventId: 'evt-start',
+          provider: 'station-agent',
+          threadId,
+          createdAt: '2026-08-15T00:00:01.000Z',
+          method: 'tool.started',
+          itemId: 'tool-1',
+          toolCallId: 'tool-1',
+          toolName: 'write_file',
+          arguments: { path: 'b.txt' },
+        } as unknown as Parameters<typeof handleToolStartedEvent>[0]);
+
+        const tools = streamingParts().filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(tools).toHaveLength(2);
+        expect(tools[0]).toMatchObject({
+          state: 'unresolved',
+          sourceEventId: 'evt-settle',
+        });
+        expect(tools[1]).toMatchObject({ state: 'running' });
+      });
+    });
+
     // station#1569 (item 2): the OTHER half of the M2 rule — a committed row
     // with no turn identity of its own is deliberately NOT a mismatch. Only
     // prose said so; these execute the branch (`candidate.turnId !==
