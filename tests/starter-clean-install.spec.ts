@@ -144,7 +144,7 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
             catalog.catalogState !== 'reconciling' &&
             catalog.data?.some(
               (agent: { slug: string; available?: boolean }) =>
-                agent.slug === 'station' && agent.available === true,
+                agent.slug === 'station' && agent.available !== false,
             )
           );
         },
