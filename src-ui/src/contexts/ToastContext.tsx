@@ -46,6 +46,15 @@ type Toast = {
   // exact shape next, not invent a second one.
   type?: ToastTone | 'tool-approval' | 'tool-activity' | 'pairing-request';
   toolName?: string;
+  /**
+   * #1545: a bounded, single-line, redacted preview naming which command, or
+   * which file, the tool call will touch — derived by
+   * `@kontourai/station-shared/tool-request-preview`, never composed here. The
+   * tool name alone cannot tell an operator whether they are approving
+   * `git status` or `rm -rf /`. It is not the whole call: for a write it names
+   * the file and never the content (see that module's docblock).
+   */
+  toolPreview?: string;
   agentName?: string;
   conversationTitle?: string;
   actions?: ToastAction[];
@@ -170,6 +179,8 @@ class ToastStore {
   showToolApproval(options: {
     sessionId: string;
     toolName: string;
+    /** See `Toast.toolPreview`. */
+    toolPreview?: string;
     server?: string;
     tool?: string;
     agentName: string;
@@ -193,6 +204,7 @@ class ToastStore {
       sessionId: options.sessionId,
       type: 'tool-approval',
       toolName: toolDisplay,
+      ...(options.toolPreview ? { toolPreview: options.toolPreview } : {}),
       agentName: options.agentName,
       conversationTitle: conversationInfo,
       actions: options.actions,
@@ -334,6 +346,8 @@ const ToastContext = createContext<{
   showToolApproval: (options: {
     sessionId: string;
     toolName: string;
+    /** See `Toast.toolPreview`. */
+    toolPreview?: string;
     server?: string;
     tool?: string;
     agentName: string;

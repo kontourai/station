@@ -671,6 +671,52 @@ describe('ClaudeAdapter', () => {
     await adapter.stopSession('thread-invalid-utf8');
   });
 
+  describe("#1545: a session loads the engine's own settings cascade (accepted gap)", () => {
+    // The option is UNSET on purpose, which means the SDK loads all sources —
+    // including a workspace's checked-in `.claude/settings.json`, whose
+    // `permissions.allow` rules can then run a tool with no Station approval
+    // request. That gap is accepted (same-user threat model; narrowing to
+    // `['user']` would cost the workspace's CLAUDE.md and its `.mcp.json`
+    // servers — see the comment at the call site). These assert ABSENCE rather
+    // than a value so that setting it later is a deliberate, visible change
+    // rather than something that lands unnoticed: `toBeUndefined()` alone would
+    // pass for a key explicitly present as `undefined`, so pin the key too.
+    const cases: Array<[string, Record<string, unknown> | undefined]> = [
+      ['a plain session', undefined],
+      ['an Ask-mode session', { approvalMode: 'ask' }],
+      ['a full-access session', { approvalMode: 'never' }],
+      ['a plan-mode session', { permissionMode: 'plan' }],
+    ];
+    for (const [label, modelOptions] of cases) {
+      test(`sets no settingSources for ${label}`, async () => {
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const adapter = new ClaudeAdapter();
+
+        await adapter.startSession({
+          provider: 'claude',
+          threadId: 'thread-setting-sources',
+          cwd: '/workspace/project',
+          ...(modelOptions ? { modelOptions } : {}),
+        });
+
+        const options = mockQuery.mock.calls[0][0].options as Record<
+          string,
+          unknown
+        >;
+        expect('settingSources' in options).toBe(false);
+      });
+    }
+
+    test('the model-catalog probe still pins settingSources to none at all', async () => {
+      // The one Station-owned Claude spawn that DOES narrow: it runs no tools,
+      // so its isolation is not the same decision as a session's.
+      mockQuery.mockReturnValue(createMockQuery([], []));
+      await new ClaudeAdapter().listModelCatalog?.();
+
+      expect(mockQuery.mock.calls[0][0].options.settingSources).toEqual([]);
+    });
+  });
+
   test('carries the SDK subagent id on approval requests raised from a child agent', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     const adapter = new ClaudeAdapter();

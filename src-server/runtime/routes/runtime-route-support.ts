@@ -25,9 +25,13 @@ import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-sch
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { DevicePairingNotificationProvider } from '../../services/ssh/device-pairing-notifications.js';
+import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
 import { runWithScheduledPrincipal } from '../agents/scheduled-principal-context.js';
 import { isHostedTenantExecutionRequired } from '../bootstrap/runtime-tenant-context.js';
-import { resolveManagedChatBinding } from '../plugins/runtime-provider-resolution.js';
+import {
+  createStationEngineAvailabilityReader,
+  resolveManagedChatBinding,
+} from '../plugins/runtime-provider-resolution.js';
 import type { ConfigureRuntimeRoutesContext } from './runtime-routes.js';
 
 const WEB_PUSH_FALLBACK_SUBJECT = 'mailto:push@station.local';
@@ -191,6 +195,95 @@ export function createRuntimeSystemRouteDeps(
     // readiness record that carries chat/runtime/acp.
     probeTerminalCapability: () => context.terminalService.probeCapability(),
   };
+}
+
+/**
+ * Ceiling on how long a setup-requirement observation is reused across
+ * `/api/attention` reads. The inbox polls every 10s, and each read costs an
+ * agent-directory listing plus a spec read for every candidate up to the first
+ * Station-engine one — N spec reads, not one, since an external-engine binding
+ * is only visible in the spec — plus the provider-connection list. The
+ * projection bounds `readSessionFlowRun` the same way and for the same reason.
+ * Short enough that configuring a connection clears the item within one poll.
+ */
+const STATION_SETUP_REQUIREMENT_CACHE_TTL_MS = 5_000;
+
+/**
+ * Reuses a setup-requirement observation for {@link
+ * STATION_SETUP_REQUIREMENT_CACHE_TTL_MS}. Concurrent reads share one
+ * in-flight read rather than each starting their own.
+ */
+export function memoizeStationSetupRequirement<T>(
+  read: () => Promise<T>,
+  ttlMs: number = STATION_SETUP_REQUIREMENT_CACHE_TTL_MS,
+  now: () => number = Date.now,
+): () => Promise<T> {
+  let cached: { at: number; value: Promise<T> } | undefined;
+  return () => {
+    const observedAt = now();
+    if (cached && observedAt - cached.at < ttlMs) return cached.value;
+    const value = read();
+    cached = { at: observedAt, value };
+    // A read that rejected must not be cached as an answer.
+    void value.catch(() => {
+      if (cached?.value === value) cached = undefined;
+    });
+    return value;
+  };
+}
+
+/**
+ * #1536 D8: the one thing standing between this Station and a working chat on
+ * its own engine, or `null` when nothing is.
+ *
+ * `createStationEngineAvailabilityReader` is the authority — the same function
+ * with the same inputs the agents route reads for
+ * `available: false`/`unavailableReason` — so the attention item's body is the
+ * picker's sentence rather than a second wording of the same requirement, and
+ * the two cannot disagree about which app config they read. An agent
+ * bound to an EXTERNAL engine has no managed-model concept, so it is skipped:
+ * asking a model-resolution probe about Claude Code reports a working Agent as
+ * broken (the `deriveAgentCatalog` lesson).
+ */
+export async function readStationSetupRequirement(
+  context: ConfigureRuntimeRoutesContext,
+): Promise<{ agentSlug: string; agentName: string; reason: string } | null> {
+  try {
+    const agents = await context.agentService.listAgents();
+    // Review L4: the subject has to be DETERMINISTIC — the item's id embeds
+    // this slug, and its first-observed timestamp is keyed by it, so a subject
+    // that varied with store order would re-mint the row. And taking
+    // `agents[0]` unconditionally silenced the notice whenever the agent that
+    // happened to sort first was external-engine bound, even with a blocked
+    // Station-engine agent right behind it. Station's own Agent first; then the
+    // first Station-engine candidate by slug.
+    const candidates = [...agents].sort((left, right) =>
+      left.slug.localeCompare(right.slug),
+    );
+    const station = candidates.find((agent) => agent.slug === 'station');
+    const readAvailability = createStationEngineAvailabilityReader(context);
+    const ordered = station
+      ? [station, ...candidates.filter((agent) => agent.slug !== 'station')]
+      : candidates;
+    for (const metadata of ordered) {
+      const spec = await context.agentService.getAgent(metadata.slug);
+      if (isExternalEngineBoundAgent(spec)) continue;
+      const reason = readAvailability(spec);
+      if (!reason) return null;
+      return {
+        agentSlug: metadata.slug,
+        agentName: metadata.name ?? spec.name ?? metadata.slug,
+        reason,
+      };
+    }
+    return null;
+  } catch (error) {
+    // A read that could not answer is not a claim that setup is incomplete.
+    context.logger.warn('Station setup requirement probe failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 export function configureRuntimeSupportServices(
@@ -439,6 +532,14 @@ export function configureRuntimeSupportServices(
     // #765 D5: pending pairing requests project as needs-attention items,
     // from the same resolver the notification provider polls.
     resolveDevicePairing,
+    // #1536 D8: whether Station's own Agent can run, through
+    // `createStationEngineAvailabilityReader` — the same function with the
+    // same inputs the New Chat picker's Station row and `/api/boot`'s catalog
+    // now read. An inbox that reads "Nothing needs you right now" while that
+    // row says "Needs: No enabled LLM provider connection is configured" is
+    // reading a fact nobody projected, not a quiet Station; the two reading
+    // different app configs (review H2) is that same disagreement inverted.
+    memoizeStationSetupRequirement(() => readStationSetupRequirement(context)),
   );
   return {
     schedulerService,
