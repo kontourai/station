@@ -226,6 +226,25 @@ async function mockMobileAdoption(page: Page) {
 
   await installMockOrchestrationSse(page);
   await seedOrchestrationRoutes(page);
+  // This fixture exercises the already-bound starter's ordinary adoption
+  // path. An unbound real starter cannot resolve this authored source.
+  await page.route('**/api/starter-work/continue-session', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          state: 'bound',
+          binding: {
+            schemaVersion: 1,
+            starterId: 'continue-session',
+            targetRef: { kind: 'session', id: ATTACHED_MOBILE_THREAD_ID },
+            operationId: 'starter-session:mobile-fixture',
+            boundAt: '2026-07-22T12:00:00.000Z',
+          },
+        },
+      },
+    }),
+  );
   await page.route('**/api/projects/dev/workflow/tasks', (route) =>
     route.fulfill({
       json: { success: true, data: [] },
