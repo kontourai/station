@@ -32,7 +32,13 @@ const mockConfigLoader = {
   // install record back (origin, legacyIds) exercise the same bytes production
   // does rather than a stub that records a call and persists nothing.
   saveSkill: vi.fn(async (name: string, config: unknown) => {
-    const dir = join(testDir, 'skills', name);
+    // The record goes where the writer said it goes. `projectLocalSkillPublication`
+    // puts the resolved package directory on `config.path`, which is
+    // `<home>/projects/<slug>/skills/<name>` for a project-scoped write — a stub
+    // that always wrote `<home>/skills/<name>` could not exercise that root at
+    // all (#1582 D6). Unscoped writes land in exactly the same place as before.
+    const dir =
+      (config as { path?: string }).path ?? join(testDir, 'skills', name);
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       join(dir, 'skill.json'),
@@ -934,6 +940,65 @@ describe('SkillService', () => {
     expect(service.resolveSkillName('author-skill')).toBe('author-skill');
     expect(service.resolveSkillName('nothing-like-this')).toBeUndefined();
     expect(service.listSkills()[0].origin).toBe('migrated-playbook');
+  });
+
+  // #1582 D6. Before `project` existed both roots reported `user`, so the
+  // Guidance list could not tell a workspace skill from a machine-wide one and
+  // called every one of them "workspace". Both halves are proved here: what
+  // discovery derives from the root, and what the writer records.
+  test('a project-scoped skill is distinguishable from a machine-wide one', async () => {
+    // No `origin` in either record: this is exactly what a hand-authored or
+    // pre-`project` package looks like, so the derivation is what answers.
+    for (const [root, name] of [
+      [join(testDir, 'skills'), 'machine-wide'],
+      [join(testDir, 'projects', 'demo', 'skills'), 'workspace-only'],
+    ] as const) {
+      const dir = join(root, name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, 'SKILL.md'),
+        `---\nname: ${name}\ndescription: Authored by hand\n---\nBody`,
+      );
+      writeFileSync(
+        join(dir, 'skill.json'),
+        JSON.stringify({ name, source: 'local' }),
+        'utf-8',
+      );
+    }
+    await service.discoverSkills(testDir, 'demo');
+
+    const byName = new Map(
+      service.listSkills().map((skill) => [skill.name, skill.origin]),
+    );
+    expect(byName.get('workspace-only')).toBe('project');
+    expect(byName.get('machine-wide')).toBe('user');
+  });
+
+  test('creating a skill under a project records the scope it was written into', async () => {
+    await service.createLocalSkill(
+      { name: 'scoped-skill', description: 'Ours', body: 'Body' },
+      testDir,
+      'demo',
+    );
+
+    // The record on disk, not just the listing: `skill.json`'s `origin`
+    // outranks the path derivation on every later read, so a `user` stamped
+    // here would survive being discovered from the project root.
+    const record = JSON.parse(
+      readFileSync(
+        join(
+          testDir,
+          'projects',
+          'demo',
+          'skills',
+          'scoped-skill',
+          'skill.json',
+        ),
+        'utf-8',
+      ),
+    );
+    expect(record.origin).toBe('project');
+    expect(service.listSkills()[0].origin).toBe('project');
   });
 
   test('isSkillWritable is false for a skill served from a plugin root', async () => {

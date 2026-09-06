@@ -17,7 +17,7 @@ import {
   rename,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, extname, join } from 'node:path';
+import { dirname, extname, join, sep } from 'node:path';
 import type {
   GuidanceAsset,
   SkillCommand,
@@ -666,8 +666,17 @@ export class SkillService {
   ): SkillOrigin | undefined {
     if (location && this.canonicalSourceFor(location)) return 'package';
     if (location) {
-      const pluginsRoot = join(this.projectHomeDir(), 'plugins');
+      const home = this.projectHomeDir();
+      const pluginsRoot = join(home, 'plugins');
       if (location.startsWith(pluginsRoot)) return 'plugin';
+      // `discoverSkills` scans exactly one project-scoped root,
+      // `<home>/projects/<slug>/skills`, so a location under `<home>/projects`
+      // IS workspace-scoped — no slug needed to read that off the path. This
+      // sits before the `source` fallthrough because a project skill's
+      // `skill.json` records `source: 'local'` just like a machine one, and
+      // that is what used to collapse the two into `user` (#1582 D6).
+      if (home && location.startsWith(join(home, 'projects') + sep))
+        return 'project';
     }
     if (source === 'registry') return 'registry';
     if (source === 'plugin') return 'plugin';
@@ -1175,7 +1184,11 @@ export class SkillService {
       command: stableInput.command,
       variables: stableInput.variables,
       legacyIds: stableInput.legacyIds,
-      origin: stableInput.origin ?? 'user',
+      // The writer knows the scope it is writing into — `skillDir` above is
+      // `<home>/projects/<slug>/skills/<name>` when a slug was passed. Stamping
+      // `user` there made the recorded origin (which outranks the path
+      // derivation on read) contradict the path (#1582 D6).
+      origin: stableInput.origin ?? (projectSlug ? 'project' : 'user'),
     };
     const skillMarkdown = serializeSkillMarkdown(stableInput);
     return {
