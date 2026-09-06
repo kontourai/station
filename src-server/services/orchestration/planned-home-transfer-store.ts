@@ -32,7 +32,7 @@ export interface PlannedHomeTransfer {
 export type TransferStoreResult<T> =
   | { kind: 'stored'; value: T }
   | { kind: 'conflict' | 'not-found' | 'unavailable' | 'denied' };
-interface Database {
+export interface HomeTransferDurableDatabase {
   exec(sql: string): void;
   prepare(sql: string): {
     run(...values: Array<string | number>): unknown;
@@ -187,7 +187,9 @@ function sameIntent(
   );
 }
 
-function requireDurableDatabase(db: Database): void {
+export function assertDurableHomeTransferDatabase(
+  db: HomeTransferDurableDatabase,
+): void {
   const synchronous = db.prepare('PRAGMA synchronous').get() as {
     synchronous?: unknown;
   };
@@ -216,13 +218,15 @@ function requireDurableDatabase(db: Database): void {
 
 class TransferAuthorizationDenied extends Error {}
 
-export function createSqlitePlannedHomeTransferStore(db: Database) {
+export function createSqlitePlannedHomeTransferStore(
+  db: HomeTransferDurableDatabase,
+) {
   return createSqliteStore(db);
 }
 
 /** The authority service must use this entry, with its caller-bound guard. */
 export function createAuthorizedSqlitePlannedHomeTransferStore(
-  db: Database,
+  db: HomeTransferDurableDatabase,
   authorize: () => boolean,
 ) {
   if (typeof authorize !== 'function')
@@ -230,7 +234,10 @@ export function createAuthorizedSqlitePlannedHomeTransferStore(
   return createSqliteStore(db, authorize);
 }
 
-function createSqliteStore(db: Database, authorize?: () => boolean) {
+function createSqliteStore(
+  db: HomeTransferDurableDatabase,
+  authorize?: () => boolean,
+) {
   // The captured guard revalidates authority synchronously while this DB is locked.
   function checkAuthorization(): void {
     if (!authorize) return;
@@ -242,7 +249,7 @@ function createSqliteStore(db: Database, authorize?: () => boolean) {
       throw new TransferAuthorizationDenied();
     }
   }
-  requireDurableDatabase(db);
+  assertDurableHomeTransferDatabase(db);
   db.exec(`CREATE TABLE IF NOT EXISTS planned_home_owners (
     tenant_id TEXT NOT NULL, channel_id TEXT NOT NULL, record_json TEXT NOT NULL,
     PRIMARY KEY(tenant_id,channel_id));
@@ -318,7 +325,7 @@ function createSqliteStore(db: Database, authorize?: () => boolean) {
       checkAuthorization();
       db.exec('BEGIN IMMEDIATE');
       began = true;
-      requireDurableDatabase(db);
+      assertDurableHomeTransferDatabase(db);
       checkAuthorization();
       const result = run();
       checkAuthorization();

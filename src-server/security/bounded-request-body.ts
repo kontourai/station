@@ -3,9 +3,9 @@ export type BoundedBodyResult =
   | { status: 'too-large' }
   | { status: 'invalid' };
 
-/** Reads an unauthenticated request body without ever buffering past maxBytes. */
+/** Reads a bounded HTTP body without replacing middleware-owned request identity. */
 export async function readBoundedRequestBody(
-  request: Request,
+  request: Pick<Request, 'headers' | 'body'>,
   maxBytes: number,
 ): Promise<BoundedBodyResult> {
   const declared = request.headers.get('content-length');

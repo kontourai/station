@@ -1,22 +1,26 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type {
+  HomeTransferRoomBindingObservation,
   PairedHomeIdentityObservation,
   PersonalHomeDecisionObservation,
 } from '@kontourai/station-contracts/cloud-move';
-import {
-  PAIRING_SCOPE_HOME_TRANSFER,
-  pairingScopeIncludes,
-} from '@kontourai/station-contracts/environment-security';
 import { Hono } from 'hono';
 import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import { currentHomeTransferDevice } from '../../security/home-transfer-request.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import {
+  createHomeTransferRoomBindingService,
+  type HomeTransferRoomBindingServiceOptions,
+} from '../../services/orchestration/home-transfer-room-binding.js';
+import { probeHomeTransferRoom } from '../../services/orchestration/home-transfer-room-probe.js';
 import { createPairedHomeTransferAuthority } from '../../services/orchestration/paired-home-transfer-authority.js';
 import type {
   PlannedHomeOwner,
   PlannedHomeTransfer,
   TransferStoreResult,
 } from '../../services/orchestration/planned-home-transfer-store.js';
+import type { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 
 /** Observe a separately paired transfer participant on this controller.
@@ -30,6 +34,10 @@ export function createHomeAuthorityRoutes(
     | 'devicePairing'
   >,
   openDatabase?: () => DatabaseSync,
+  roomBindings?: {
+    peers: Pick<PeerCredentialStore, 'get'>;
+    probe?: HomeTransferRoomBindingServiceOptions['probe'];
+  },
 ) {
   function projectDecision(
     result: TransferStoreResult<PlannedHomeOwner | PlannedHomeTransfer>,
@@ -92,15 +100,10 @@ export function createHomeAuthorityRoutes(
     if (principal?.authority !== 'device-credential' || !principal.deviceId) {
       return c.json({ error: { code: 'home_transfer_pairing_required' } }, 403);
     }
-    const current = () => {
-      const device = security.identifyDevice(principal.credential);
-      return (
-        personal(c.req.raw) &&
-        device !== null &&
-        device.id === principal.deviceId &&
-        pairingScopeIncludes(device.scope, PAIRING_SCOPE_HOME_TRANSFER)
-      );
-    };
+    const current = () =>
+      personal(c.req.raw) &&
+      currentHomeTransferDevice(c.req.raw, security)?.id === principal.deviceId;
+
     try {
       if (!current()) {
         return c.json(
@@ -137,38 +140,38 @@ export function createHomeAuthorityRoutes(
       principal: NonNullable<
         ReturnType<typeof getRuntimeAuthenticatedRequestPrincipal>
       >,
-    ) => TransferStoreResult<T>,
+      database: DatabaseSync,
+      controllerEnvironmentId: string,
+    ) => TransferStoreResult<T> | Promise<TransferStoreResult<T>>,
   ): Promise<TransferStoreResult<T>> {
     const principal = getRuntimeAuthenticatedRequestPrincipal(request);
     if (!principal || !personal(request)) return { kind: 'denied' };
     if (!openDatabase) return { kind: 'unavailable' };
     try {
       const controller = await security.getPublicHandshake();
-      if (!personal(request)) return { kind: 'denied' };
-      const paired = security.identifyDevice(principal.credential);
-      const operator =
-        principal.authority === 'operator-credential' &&
-        security.verifyOperatorCredential(principal.credential);
-      if (
-        !operator &&
-        !(
-          principal.authority === 'device-credential' &&
-          paired?.id === principal.deviceId &&
-          paired &&
-          pairingScopeIncludes(paired.scope, PAIRING_SCOPE_HOME_TRANSFER)
-        )
-      )
-        return { kind: 'denied' };
+      const current = () =>
+        personal(request) &&
+        security.devicePairing.environmentId() === controller.environmentId &&
+        (principal.authority === 'operator-credential'
+          ? security.verifyOperatorCredential(principal.credential)
+          : principal.authority === 'device-credential' &&
+            typeof principal.deviceId === 'string' &&
+            currentHomeTransferDevice(request, security)?.id ===
+              principal.deviceId);
+      if (!current()) return { kind: 'denied' };
       const db = openDatabase();
       try {
-        return run(
+        const result = await run(
           createPairedHomeTransferAuthority({
             database: db,
             security,
             controllerEnvironmentId: controller.environmentId,
           }),
           principal,
+          db,
+          controller.environmentId,
         );
+        return current() ? result : { kind: 'denied' };
       } finally {
         db.close();
       }
@@ -263,6 +266,108 @@ export function createHomeAuthorityRoutes(
       authority.resolve(principal, c.req.param('operationId')),
     );
     return c.json(projectDecision(result), status(result));
+  });
+  async function bindingDecision(
+    request: Request,
+    mode: 'enroll' | 'resolve' | 'inspect',
+    input: {
+      channelId: string;
+      controllerDeviceId: string;
+      remoteEnvironmentId?: string;
+      remoteTaskId?: string;
+    },
+  ): Promise<TransferStoreResult<HomeTransferRoomBindingObservation>> {
+    return decision(
+      request,
+      async (_authority, principal, database, controllerEnvironmentId) => {
+        if (
+          mode !== 'resolve' &&
+          !(
+            principal.authority === 'operator-credential' &&
+            security.verifyOperatorCredential(principal.credential)
+          )
+        )
+          return { kind: 'denied' };
+        if (!roomBindings) return { kind: 'unavailable' };
+        const service = createHomeTransferRoomBindingService({
+          database,
+          security,
+          controllerEnvironmentId,
+          peers: roomBindings.peers,
+          probe: roomBindings.probe ?? probeHomeTransferRoom,
+        });
+        const result =
+          mode === 'enroll'
+            ? await service.enroll(principal, {
+                channelId: input.channelId,
+                controllerDeviceId: input.controllerDeviceId,
+                remoteEnvironmentId: input.remoteEnvironmentId!,
+                remoteTaskId: input.remoteTaskId!,
+              })
+            : await service.resolve(principal, {
+                channelId: input.channelId,
+                controllerDeviceId: input.controllerDeviceId,
+              });
+        if (result.kind !== 'bound') return result;
+        const b = result.binding;
+        return {
+          kind: 'stored',
+          value: {
+            schemaVersion: 'station.home-transfer-room-binding/v1',
+            channelId: b.channelId,
+            controllerEnvironmentId: b.controllerEnvironmentId,
+            controllerDeviceId: b.controllerDeviceId,
+            remoteEnvironmentId: b.remoteEnvironmentId,
+            remoteTaskId: b.remoteTaskId,
+            remotePairedDeviceId: b.remotePairedDeviceId,
+            executionAuthorityTransferred: false,
+            executionResumeAvailable: false,
+          },
+        };
+      },
+    );
+  }
+  app.post('/channels/:channelId/bindings', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    const input = await body(c.req.raw, [
+      'controllerDeviceId',
+      'remoteEnvironmentId',
+      'remoteTaskId',
+    ]);
+    if (input === 'too-large') return c.json({ kind: 'invalid-request' }, 413);
+    if (!input) return c.json({ kind: 'invalid-request' }, 400);
+    const result = await bindingDecision(c.req.raw, 'enroll', {
+      channelId: c.req.param('channelId'),
+      controllerDeviceId: input.controllerDeviceId as string,
+      remoteEnvironmentId: input.remoteEnvironmentId as string,
+      remoteTaskId: input.remoteTaskId as string,
+    });
+    return c.json(result, status(result));
+  });
+  app.post(
+    '/channels/:channelId/bindings/:controllerDeviceId/inspect',
+    async (c) => {
+      c.header('Cache-Control', 'no-store');
+      const input = await body(c.req.raw, []);
+      if (input === 'too-large')
+        return c.json({ kind: 'invalid-request' }, 413);
+      if (!input) return c.json({ kind: 'invalid-request' }, 400);
+      const result = await bindingDecision(c.req.raw, 'inspect', {
+        channelId: c.req.param('channelId'),
+        controllerDeviceId: c.req.param('controllerDeviceId'),
+      });
+      return c.json(result, status(result));
+    },
+  );
+  app.get('/channels/:channelId/binding', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    const participant = currentHomeTransferDevice(c.req.raw, security);
+    if (!participant) return c.json({ kind: 'denied' }, 403);
+    const result = await bindingDecision(c.req.raw, 'resolve', {
+      channelId: c.req.param('channelId'),
+      controllerDeviceId: participant.id,
+    });
+    return c.json(result, status(result));
   });
   return app;
 }
