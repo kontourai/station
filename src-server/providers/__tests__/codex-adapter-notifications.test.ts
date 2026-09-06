@@ -61,7 +61,7 @@ function buildRecord(
     lastSessionState: 'idle',
     turnOutput: new Map(),
     toolNames: new Map(),
-    toolStarted: new Set(),
+    openToolCalls: new Map(),
     stopped: false,
     ...overrides,
   };
@@ -302,7 +302,7 @@ describe('codex-adapter-notifications', () => {
       publish: (event) => events.push(event),
     });
 
-    expect(record.toolStarted.has('tool-1')).toBe(false);
+    expect(record.openToolCalls.has('tool-1')).toBe(false);
     expect(record.activeTurnId).toBeUndefined();
     expect(record.session.status).toBe('ready');
     expect(record.session.resumeCursor).toEqual({

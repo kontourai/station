@@ -179,4 +179,59 @@ describe('ToolCallBatch failure disclosure (station#2652 redesign)', () => {
 
     expect(screen.queryByText(/failed/)).toBe(null);
   });
+
+  // station#1569 (item 3): a call the session ended on is not a failure and
+  // not a success, and the header's verb can only decline to claim
+  // completion — it cannot say how many.
+  test('a collapsed batch discloses how many calls never reported', () => {
+    const run = runFor([
+      {
+        type: 'tool-invocation',
+        toolCallId: 'a',
+        toolName: 'Bash',
+        args: { command: 'npm test' },
+        result: 'ok',
+      },
+      {
+        type: 'tool-invocation',
+        toolCallId: 'b',
+        toolName: 'Bash',
+        args: { command: 'npm run build' },
+        state: 'unresolved',
+      },
+    ]);
+
+    render(<ToolCallBatch run={run} renderCall={renderCall} />);
+
+    const flag = screen.getByText('1 with no result');
+    expect(flag.className).toContain('tool-call-batch__unresolved');
+    // Never as a failure: nothing observed the tool fail.
+    expect(screen.queryByText(/failed/)).toBe(null);
+    // And the summary itself refuses the past tense.
+    expect(screen.getByRole('button').textContent).toContain('Run 2 commands');
+  });
+
+  test('a batch with nothing unresolved renders no such flag', () => {
+    const run = runFor([
+      {
+        type: 'tool-invocation',
+        toolCallId: 'a',
+        toolName: 'Bash',
+        args: { command: 'npm test' },
+        result: 'ok',
+      },
+      {
+        type: 'tool-invocation',
+        toolCallId: 'b',
+        toolName: 'Bash',
+        args: { command: 'npm run build' },
+        result: 'ok',
+      },
+    ]);
+
+    render(<ToolCallBatch run={run} renderCall={renderCall} />);
+
+    expect(screen.queryByText(/with no result/)).toBe(null);
+    expect(screen.getByRole('button').textContent).toContain('Ran 2 commands');
+  });
 });

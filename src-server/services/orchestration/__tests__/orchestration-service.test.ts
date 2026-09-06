@@ -93,6 +93,7 @@ import type { CwdShadowSample } from '../../projects/project-resource-shadow.js'
 import { composeTaskDispatcher } from '../../projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import type { AdoptionLedger } from '../adoption-ledger.js';
+import { recoverCompletedTaskDispatches } from '../completed-task-dispatch-recovery.js';
 import { canResolveConversationContinuation } from '../conversation-lineage.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
@@ -106,6 +107,7 @@ import {
   anyPersonalOrchestrationStreamPresenceSubject,
   OrchestrationStreamPresence,
 } from '../orchestration-stream-presence.js';
+import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import {
   ACTIVE_TURN_FOLD_METHODS,
@@ -799,6 +801,183 @@ describe('OrchestrationService', () => {
       }),
     ).toEqual({ kind: 'bound' });
   });
+
+  test.each([false, true])(
+    'boot recovers only completed dispatch finalization (provider start uncertain: %s)',
+    async (uncertain) => {
+      const root = join(tmp, 'completed-dispatch-recovery');
+      mkdirSync(root, { recursive: true });
+      const graph = new TaskGraphService(root, {
+        projectService: {
+          getProject: (slug) => ({
+            id: slug,
+            slug,
+            name: slug,
+            workingDirectory: tmp,
+            createdAt: '2026-09-05T00:00:00.000Z',
+            updatedAt: '2026-09-05T00:00:00.000Z',
+          }),
+        },
+      });
+      const task = await graph.createTask({
+        projectId: 'recovery-project',
+        title: 'Recover finalization',
+        agentId: 'codex',
+      });
+      if (uncertain)
+        claude.startSession.mockRejectedValueOnce(
+          new Error('lost provider response'),
+        );
+      const dispatcher = composeTaskDispatcher(
+        graph,
+        { orchestrationService: service },
+        {
+          prepareAgentStarted: async () => {
+            throw new Error('crash before publication acknowledgement');
+          },
+          publishAgentStarted: async () => {},
+        },
+      );
+      const dispatched = await dispatcher.dispatch(task.id, {
+        runtimeConfig: { provider: 'claude', cwd: tmp },
+      });
+      expect(dispatched.kind).toBe(uncertain ? 'indeterminate' : 'dispatched');
+      const sessionId = graph.readTaskView(task.id)!.sessionId!;
+      expect(
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(sessionId),
+      ).toEqual({ kind: 'available', active: true });
+      const livePrepare = vi.fn();
+      expect(
+        await recoverCompletedTaskDispatches({
+          eventStore,
+          taskGraph: graph,
+          room: {
+            prepareAgentStarted: livePrepare,
+            publishAgentStarted: async () => {},
+          },
+        }),
+      ).toEqual({ recovered: 0, unresolved: 0 });
+      expect(livePrepare).not.toHaveBeenCalled();
+      const dbPath = join(tmp, 'orchestration.sqlite');
+      eventStore.close();
+      const restarted = new EventStore(dbPath);
+      const room = new ProjectTaskRoomRuntime({
+        taskGraph: graph,
+        projectForId: (id) =>
+          id === task.projectId ? { id, slug: id } : undefined,
+        history: (authority) =>
+          restarted.createProjectTaskRoomHistory(authority),
+        working: restarted.createProjectTaskRoomWorkingState(),
+        requestAuthority: {
+          resolve: async () => ({
+            kind: 'granted',
+            operatorId: 'user',
+            deviceId: 'device',
+            policyRevision: 'test',
+          }),
+        },
+      });
+      try {
+        if (!uncertain) {
+          const binding =
+            restarted.readProjectTaskRoomExecutionBinding(sessionId)!;
+          const association =
+            graph.readCompletedDispatchForRecovery(sessionId)!;
+          const session = restarted.readSessionByThread(sessionId)!;
+          const prepare = vi.spyOn(room, 'prepareAgentStarted');
+          const faults = [
+            () =>
+              vi
+                .spyOn(restarted, 'readProjectTaskRoomExecutionBinding')
+                .mockReturnValueOnce({
+                  ...binding,
+                  projectId: 'wrong-project',
+                }),
+            () =>
+              vi
+                .spyOn(graph, 'readCompletedDispatchForRecovery')
+                .mockReturnValueOnce({
+                  ...association,
+                  dispatch: { ...association.dispatch, taskId: 'wrong-task' },
+                }),
+            () =>
+              vi
+                .spyOn(restarted, 'readSessionByThread')
+                .mockReturnValueOnce({ ...session, provider: 'codex' }),
+          ];
+          for (const inject of faults) {
+            const fault = inject();
+            try {
+              expect(
+                await recoverCompletedTaskDispatches({
+                  eventStore: restarted,
+                  taskGraph: graph,
+                  room,
+                }),
+              ).toEqual({ recovered: 0, unresolved: 1 });
+              expect(prepare).not.toHaveBeenCalled();
+              expect(
+                restarted
+                  .sessionTurnBoundaryAuthority()
+                  .hasPossibleEffect(sessionId),
+              ).toEqual({ kind: 'available', active: true });
+            } finally {
+              fault.mockRestore();
+            }
+          }
+          prepare.mockRestore();
+          const unavailable = await recoverCompletedTaskDispatches({
+            eventStore: restarted,
+            taskGraph: graph,
+            room: {
+              prepareAgentStarted: async () => {
+                throw new Error('disk unavailable');
+              },
+              publishAgentStarted: async () => {},
+            },
+          });
+          expect(unavailable).toEqual({ recovered: 0, unresolved: 1 });
+          expect(
+            restarted
+              .sessionTurnBoundaryAuthority()
+              .hasPossibleEffect(sessionId),
+          ).toEqual({ kind: 'available', active: true });
+        }
+        const recovered = await recoverCompletedTaskDispatches({
+          eventStore: restarted,
+          taskGraph: graph,
+          room,
+        });
+        expect(recovered).toEqual(
+          uncertain
+            ? { recovered: 0, unresolved: 1 }
+            : { recovered: 1, unresolved: 0 },
+        );
+        expect(
+          restarted.sessionTurnBoundaryAuthority().hasPossibleEffect(sessionId),
+        ).toEqual({ kind: 'available', active: uncertain });
+        expect(claude.startSession).toHaveBeenCalledTimes(1);
+        if (!uncertain) {
+          expect(
+            await recoverCompletedTaskDispatches({
+              eventStore: restarted,
+              taskGraph: graph,
+              room,
+            }),
+          ).toEqual({ recovered: 0, unresolved: 0 });
+          const history = await room.history({
+            taskId: task.id,
+            request: new Request('http://station'),
+            project: true,
+          });
+          expect(JSON.stringify(history)).toContain('live-work-started');
+        }
+      } finally {
+        await room.close();
+        restarted.close();
+      }
+    },
+  );
 
   test('source closure waits through real Task claim, provider creation and dispatch finalization', async () => {
     mkdirSync(join(tmp, 'transfer-task-graph'), { recursive: true });

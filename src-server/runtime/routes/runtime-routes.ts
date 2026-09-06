@@ -306,6 +306,7 @@ import type { WebPushService } from '../../services/notifications/web-push-servi
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import type { ActionOperationService } from '../../services/operations/action-operation-service.js';
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
+import { recoverCompletedTaskDispatches } from '../../services/orchestration/completed-task-dispatch-recovery.js';
 import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
@@ -2286,10 +2287,18 @@ export function configureRuntimeRoutes(
     const roomTaskIds = context.taskGraphService
       .listTasks()
       .map((task) => task.id);
-    projectTaskRoomLifecycleReady = Promise.all([
-      roomRuntime.reconcileAgentLifecycles(roomTaskIds),
-      roomRuntime.reconcileRevisionPublications(roomTaskIds),
-    ]).then(() => undefined);
+    projectTaskRoomLifecycleReady = recoverCompletedTaskDispatches({
+      eventStore: context.orchestrationEventStore,
+      taskGraph: context.taskGraphService,
+      room: roomRuntime,
+    })
+      .then(() =>
+        Promise.all([
+          roomRuntime.reconcileAgentLifecycles(roomTaskIds),
+          roomRuntime.reconcileRevisionPublications(roomTaskIds),
+        ]),
+      )
+      .then(() => undefined);
     // station#4075 stage 3 slice 1: resolve the calling principal once, here,
     // where the real Hono `c` (env + headers) is available, and cache it on
     // `c.req.raw` for `requestAuthority.resolve` above — see the

@@ -199,6 +199,65 @@ describe('SessionTurnBoundaryAuthority', () => {
     }
   });
 
+  test('dispatch recovery cannot release a live owner or a replacement that wins during proof', async () => {
+    const path = databasePath();
+    const first = new EventStore(path);
+    const claimed = first
+      .sessionTurnBoundaryAuthority()
+      .claimTaskDispatch('recover-race', new Date().toISOString());
+    if (claimed.kind !== 'owner')
+      throw new Error('Expected dispatch admission');
+    claimed.claim.beginEffects(new Date().toISOString());
+    let verified = false;
+    expect(
+      await first
+        .sessionTurnBoundaryAuthority()
+        .recoverCompletedDispatch('recover-race', async () => {
+          verified = true;
+          return true;
+        }),
+    ).toEqual({ kind: 'busy' });
+    expect(verified).toBe(false);
+    first.close();
+    const recovering = new EventStore(path);
+    try {
+      const authority = recovering.sessionTurnBoundaryAuthority();
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const slow = authority.recoverCompletedDispatch(
+        'recover-race',
+        async () => {
+          await held;
+          return true;
+        },
+      );
+      expect(
+        await authority.recoverCompletedDispatch(
+          'recover-race',
+          async () => true,
+        ),
+      ).toEqual({ kind: 'applied' });
+      const replacement = authority.claimTaskDispatch(
+        'recover-race',
+        new Date().toISOString(),
+      );
+      if (replacement.kind !== 'owner')
+        throw new Error('Expected replacement admission');
+      replacement.claim.beginEffects(new Date().toISOString());
+      release();
+      expect(await slow).toEqual({ kind: 'stale' });
+      expect(authority.hasPossibleEffect('recover-race')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+      replacement.claim.settled();
+    } finally {
+      recovering.close();
+    }
+  });
+
   test('a crashed dispatch guard is not cleared by replaying provider terminal evidence', () => {
     const path = databasePath();
     const first = new EventStore(path);

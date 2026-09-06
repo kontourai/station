@@ -17,6 +17,56 @@ import {
 } from './codex-adapter-events.js';
 import type { CodexSessionRecord } from './codex-adapter-types.js';
 import { projectCodexToolOutput } from './codex-tool-output.js';
+import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
+
+/**
+ * station#1569 (item 4): settle every tool item still open when the SESSION
+ * ends as `tool.completed` status `'unresolved'` — the terminal the Claude
+ * adapter publishes for the same moment
+ * (`settleUnresolvedClaudeToolCalls`).
+ *
+ * Until this existed, a `tool.started` whose completion never arrived got no
+ * terminal at all: `publishOrphanedTurnFailure` closes the orphaned TURN with
+ * a `runtime.error`, which tells a reader the turn ended badly but leaves
+ * every individual tool row of that turn running forever.
+ *
+ * Called ONLY at session end (`codex-adapter-transport.ts`, all four
+ * `session.exited` sites), never at a turn boundary, and always BEFORE the
+ * exit event — `session.exited` closes a still-running card client-side
+ * (`background-tasks-store.ts`), and a card closed as "Stopped" no longer
+ * accepts the honest terminal. The map is cleared before publishing, so a
+ * session that reaches two of those sites settles each call exactly once.
+ *
+ * Each entry lands on the turn that ISSUED it, read from the entry itself.
+ */
+export function settleUnresolvedCodexToolCalls({
+  record,
+  nowIso,
+  publish,
+}: {
+  record: CodexSessionRecord;
+  nowIso: string;
+  publish: (event: CanonicalRuntimeEvent) => void;
+}): void {
+  if (record.openToolCalls.size === 0) return;
+  const entries = [...record.openToolCalls];
+  record.openToolCalls.clear();
+  for (const [itemId, { toolName, turnId }] of entries) {
+    publish({
+      eventId: crypto.randomUUID(),
+      provider: 'codex',
+      threadId: record.externalThreadId,
+      createdAt: nowIso,
+      method: 'tool.completed',
+      turnId,
+      itemId,
+      toolCallId: itemId,
+      toolName,
+      status: 'unresolved',
+      output: UNRESOLVED_TOOL_OUTPUT,
+    });
+  }
+}
 
 interface CodexAdapterNotification {
   method: string;
@@ -350,7 +400,7 @@ function handleCodexItemStarted(
   const toolName = deriveToolName(params.item);
   if (!toolName) return;
   record.toolNames.set(itemId, toolName);
-  record.toolStarted.add(itemId);
+  record.openToolCalls.set(itemId, { toolName, turnId });
   publish({
     eventId: crypto.randomUUID(),
     provider: 'codex',
@@ -376,9 +426,9 @@ function handleCodexItemCompleted(
   const itemId = extractString(params.item.id);
   if (!turnId || !itemId) return;
   const toolName = record.toolNames.get(itemId);
-  if (!toolName || !record.toolStarted.has(itemId)) return;
+  if (!toolName || !record.openToolCalls.has(itemId)) return;
   const preview = projectCodexToolOutput(deriveToolOutput(params.item));
-  record.toolStarted.delete(itemId);
+  record.openToolCalls.delete(itemId);
   publish({
     eventId: crypto.randomUUID(),
     provider: 'codex',
