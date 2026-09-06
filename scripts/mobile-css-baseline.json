@@ -187,7 +187,11 @@
     },
     "src-ui/src/views/ProjectPage.css": {
       "count": 3,
-      "reason": "Three blocks at three breakpoints: task grids single-column at 760px, the live-work row's touch floor at 768px, and the page's own gutters, card grid, git-commit rows and chat CTA stack."
+      "reason": "Three blocks at three breakpoints: task grids single-column at 760px, the live-work row's touch floor at 768px, and the touch floors, card grid, git-commit rows and namespace config bar of the page's own content. The narrow gutters this reason used to name moved to project-page-frame.css with the frame itself (#1636); this file no longer declares them."
+    },
+    "src-ui/src/views/project-page-frame.css": {
+      "count": 1,
+      "reason": "One narrow-gutter override on the shared project-surface frame: `.project-page__inner` drops from 2.5rem/2rem to 1.5rem/1rem so content does not overflow a phone. It moved out of ProjectPage.css with the frame (#1636) because two lazily loaded routes render that frame \u2014 the project page and the workspace pane route \u2014 and both import this file, so the gutter is declared once and both surfaces narrow together."
     },
     "src-ui/src/views/ProjectSettingsView.css": {
       "count": 2,

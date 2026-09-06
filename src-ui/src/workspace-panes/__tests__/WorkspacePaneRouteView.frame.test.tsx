@@ -37,6 +37,14 @@
  * would make the measurement pass by re-borrowing the chunk this issue is
  * about, rather than by owning the frame).
  *
+ * COVERAGE BOUNDARY. The route has FOUR returns that render this frame. The
+ * browser measurement is expensive and lands on one of them (the builtin-pane
+ * branch), so the cheap DOM sweep above it renders all four and asserts each
+ * still emits the frame root and its measure column — dropping the classes
+ * from any single return reds. What no test covers is a per-branch geometry
+ * DIFFERENCE, which nothing in the component can produce: all four return the
+ * same two elements.
+ *
  * WHAT THIS FIXTURE DOES NOT REPRODUCE: `setContent` has no base URL, so
  * `@font-face` files never load. Nothing asserted below depends on glyph
  * metrics.
@@ -72,6 +80,13 @@ const ROUTE_MODULE_PATH = resolve(HERE, '../WorkspacePaneRouteView.tsx');
  * the width the live measurements above were taken in.
  */
 const CONTENT_COLUMN = { width: 1200, height: 762 };
+
+/**
+ * Flipped per branch: `getBuiltinWorkspacePaneRenderer` returning `null` is
+ * what sends an available occurrence past the builtin branch to the
+ * contributed-renderer one.
+ */
+const harness = vi.hoisted(() => ({ builtinRendererPresent: true }));
 
 const catalogMock = vi.hoisted(() => ({
   projectId: 'project-uuid',
@@ -139,9 +154,21 @@ vi.mock('../../contexts/ConfigContext', () => ({
 vi.mock('../builtinWorkspacePaneRegistry', () => ({
   builtinWorkspacePaneRendererPresence: () => 'present',
   isCanonicalBuiltinCodingOccurrence: () => false,
-  getBuiltinWorkspacePaneRenderer: () => () => (
-    <div data-testid="mounted-pane">Pane content</div>
-  ),
+  getBuiltinWorkspacePaneRenderer: () =>
+    harness.builtinRendererPresent
+      ? () => <div data-testid="mounted-pane">Pane content</div>
+      : null,
+}));
+
+// The two occupants the frame wraps in the branches this file does not
+// measure in a browser. Mocked so the structural sweep below is about the
+// FRAME, not about a data view's or an availability list's own markup.
+vi.mock('../WorkspacePaneStandardDataView', () => ({
+  WorkspacePaneStandardDataView: () => <div data-testid="standard-data" />,
+}));
+
+vi.mock('../WorkspacePaneAvailabilityList', () => ({
+  WorkspacePaneAvailabilityList: () => <div data-testid="availability-list" />,
 }));
 
 import { WorkspacePaneRouteView } from '../WorkspacePaneRouteView';
@@ -199,21 +226,152 @@ function assertModelsARouteWithoutTheProjectPageChunk(): void {
   }
 }
 
-/** The route's real markup, exactly as a direct load mounts it. */
-function routeMarkup(): string {
-  const { container, unmount } = render(
+/**
+ * The four returns that render the frame, and the catalog shape that reaches
+ * each. Their ORDER in the component is the selection rule: standard-data
+ * first, then a builtin renderer, then a contributed one, and the unavailable
+ * page last — so each fixture below has to defeat the branches above it, not
+ * merely satisfy its own.
+ */
+const FRAMED_BRANCHES = [
+  {
+    name: 'standard-data renderer',
+    occupant: 'standard-data',
+    apply() {
+      catalogMock.entries[0].availability = {
+        state: 'available',
+        reason: { code: 'ready', source: 'resolver' },
+      };
+      catalogMock.entries[0].selectedRenderer = {
+        source: 'declared',
+        renderer: { kind: 'standard-data' },
+      };
+      harness.builtinRendererPresent = true;
+    },
+  },
+  {
+    name: 'builtin pane',
+    occupant: 'mounted-pane',
+    apply() {
+      catalogMock.entries[0].availability = {
+        state: 'available',
+        reason: { code: 'ready', source: 'resolver' },
+      };
+      catalogMock.entries[0].selectedRenderer = undefined;
+      harness.builtinRendererPresent = true;
+    },
+  },
+  {
+    name: 'contributed renderer',
+    occupant: 'contributed-pane',
+    apply() {
+      catalogMock.entries[0].availability = {
+        state: 'available',
+        reason: { code: 'ready', source: 'resolver' },
+      };
+      catalogMock.entries[0].selectedRenderer = {
+        source: 'declared',
+        renderer: { kind: 'mcp-tool-ui', ref: 'ui://pane/flow' },
+      };
+      harness.builtinRendererPresent = false;
+    },
+  },
+  {
+    name: 'unavailable page',
+    occupant: 'availability-list',
+    apply() {
+      catalogMock.entries[0].availability = {
+        state: 'coming-soon',
+        reason: { code: 'not-distributed', source: 'resolver' },
+      };
+      catalogMock.entries[0].selectedRenderer = undefined;
+      harness.builtinRendererPresent = false;
+    },
+  },
+] as const;
+
+type FramedBranchName = (typeof FRAMED_BRANCHES)[number]['name'];
+
+function selectBranch(name: FramedBranchName): void {
+  const branch = FRAMED_BRANCHES.find((candidate) => candidate.name === name);
+  if (!branch) throw new Error(`unknown branch ${name}`);
+  branch.apply();
+}
+
+function renderRoute() {
+  return render(
     <WorkspacePaneRouteView
       projectSlug="demo"
       descriptorId="builtin:flow-run-console"
       instanceId="flow-console-1"
     />,
   );
+}
+
+/** The route's real markup, exactly as a direct load mounts it. */
+function routeMarkup(): string {
+  const { container, unmount } = renderRoute();
   const frame = container.firstElementChild;
   if (!frame) throw new Error('the workspace pane route rendered nothing');
   const html = frame.outerHTML;
   unmount();
   return html;
 }
+
+/**
+ * The ownership rule, and the frame markup in every branch that renders it.
+ * Both are source/DOM questions — no browser — so they run everywhere,
+ * including where Chromium is not installed and the measurement below skips.
+ */
+describe('the workspace pane route owns the frame it renders (#1636)', () => {
+  afterEach(() => {
+    cleanup();
+    selectBranch('builtin pane');
+  });
+
+  test('the route composes stylesheets it owns, not another route’s chunk', () => {
+    // Scope honesty: with an empty list the measurement below composes
+    // `index.css` alone and could only ever report the pre-fix geometry — a
+    // state in which its assertions stop being able to distinguish anything.
+    const sheets = routeOwnStylesheets();
+    expect(
+      sheets.length,
+      'WorkspacePaneRouteView.tsx declares no stylesheet of its own, so the ' +
+        'page frame it renders can only come from whichever chunk happened ' +
+        'to load first (#1636)',
+    ).toBeGreaterThan(0);
+    const owned = sheets.map((sheet) => readFileSync(sheet, 'utf8')).join('\n');
+    expect(
+      owned,
+      'none of the stylesheets this route imports defines the frame it renders',
+    ).toContain('.project-page__inner');
+    assertModelsARouteWithoutTheProjectPageChunk();
+  });
+
+  // The browser measurement below lands on ONE of the four returns that
+  // render the frame. This is what keeps the other three from quietly losing
+  // it: dropping the classes from any single return reds here.
+  test.each(FRAMED_BRANCHES.map((branch) => [branch.name, branch.occupant]))(
+    'the %s branch renders the frame root and its measure column',
+    (name, occupant) => {
+      selectBranch(name as FramedBranchName);
+      const { container } = renderRoute();
+      // Branch honesty: without this a fixture that silently fell through to
+      // a different return would still find a frame and pass.
+      expect(
+        container.querySelector(`[data-testid="${occupant}"]`),
+        `the ${name} fixture did not reach that branch`,
+      ).not.toBeNull();
+      const root = container.querySelector('[data-workspace-pane-route]');
+      expect(root, `the ${name} branch renders no frame root`).not.toBeNull();
+      expect(root?.classList.contains('project-page')).toBe(true);
+      expect(
+        root?.querySelector(':scope > .project-page__inner'),
+        `the ${name} branch renders no measure column inside its frame`,
+      ).not.toBeNull();
+    },
+  );
+});
 
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 
@@ -276,27 +434,6 @@ describe.skipIf(!chromiumAvailable)(
         await page.close();
       }
     }
-
-    test('the route composes stylesheets it owns, not another route’s chunk', () => {
-      // Scope honesty: with an empty list the whole file measures `index.css`
-      // alone and could only ever report the pre-fix geometry — a state in
-      // which the assertions below stop being able to distinguish anything.
-      const sheets = routeOwnStylesheets();
-      expect(
-        sheets.length,
-        'WorkspacePaneRouteView.tsx declares no stylesheet of its own, so the ' +
-          'page frame it renders can only come from whichever chunk happened ' +
-          'to load first (#1636)',
-      ).toBeGreaterThan(0);
-      const owned = sheets
-        .map((sheet) => readFileSync(sheet, 'utf8'))
-        .join('\n');
-      expect(
-        owned,
-        'none of the stylesheets this route imports defines the frame it renders',
-      ).toContain('.project-page__inner');
-      assertModelsARouteWithoutTheProjectPageChunk();
-    });
 
     test('the content sits in a centred measure column, not edge to edge', async () => {
       const measured = await measure();

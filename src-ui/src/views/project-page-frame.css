@@ -14,18 +14,23 @@
  * x=240 w=1200 on a direct `goto` of the same URL.
  *
  * THE RULE THIS FILE EXISTS TO MAKE STRUCTURAL, and the one archive#3306
- * already wrote for `page-layout.css`: a module that applies `.project-page`
- * or `.project-page__inner` must import THIS stylesheet in that same module,
- * so the frame travels into whatever chunk renders it and can never be
- * load-order-dependent. The declarations are unchanged and were MOVED, not
- * copied — `ProjectPage.css` keeps only what the project page's own content
- * uses, and there is still exactly one place that decides this measure.
+ * already wrote for `page-layout.css`: a module that applies ANY class this
+ * file defines — `.project-page`, `.project-page__inner`,
+ * `.project-page__modal-description` — must import THIS stylesheet in that
+ * same module, so the frame travels into whatever chunk renders it and can
+ * never be load-order-dependent. `src-ui/src/__tests__/page-layout-import.test.ts`
+ * enforces exactly that over the four directories those classes appear in,
+ * and records the two modules that do not satisfy it yet, with why. The
+ * declarations are unchanged and were MOVED, not copied — `ProjectPage.css`
+ * keeps only what the project page's own content uses, and there is still
+ * exactly one place that decides this measure.
  *
  * `.project-page__modal-description` moves with them: the pane route uses it
  * for the description under its page heading, so it is part of what a framed
- * project surface needs rather than part of the project page. The `modal`
- * in the name is inherited from its two dialog call sites and no longer
- * describes every user; renaming it is a follow-up, not this fix.
+ * project surface needs rather than part of the project page. The `modal` in
+ * the name is inherited from the dialogs that first used it and does not
+ * describe every applier; the guard above is the live list of who applies it,
+ * and renaming it is a follow-up, not this fix.
  */
 
 .project-page {
