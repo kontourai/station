@@ -146,7 +146,15 @@ test('phone first run recovers from no provider to a real streamed reply', async
   page,
   authenticatedRequest,
 }) => {
-  test.setTimeout(90_000);
+  // Measured, not guessed (#1617). On a host under sibling load this journey
+  // spent 62.3 s reaching its last step — the streamed reply — with that step's
+  // own 30 s budget still ahead, so 90 s could not cover a slow reply even
+  // before the two waits below were widened to this file's 20 s (readiness
+  // +10 s, the chat dock +15 s). 62 + 30 + 25 ≈ 117 s. 150 s leaves that some
+  // room: the point is that a genuine failure arrives as the failing
+  // assertion's own sentence rather than as a test timeout, which names
+  // nothing. No individual budget is relaxed by this.
+  test.setTimeout(150_000);
 
   let ollamaServer: Server | null = null;
   const chatRequests: unknown[] = [];
