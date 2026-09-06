@@ -298,9 +298,9 @@ describe('navigationStore dock maximize memory', () => {
 
     test('a location carrying maximize without dock=open still equals itself, and equals the restore that drops the param', () => {
       // A `?maximize=true` link with no `dock=open` is the one route into that
-      // pair that no writer normalizes (#1613), and `restoreLocation` sends its
-      // destination back through a writer — so the param is gone on the way
-      // back. `canonicalSearch` drops it on BOTH sides of the comparison; the
+      // pair that no writer normalizes (#1613). A return trip that also closes
+      // the dock goes back through a writer, so the param is gone on the way
+      // home. `canonicalSearch` drops it on BOTH sides of the comparison; the
       // capture itself records the URL verbatim.
       window.history.replaceState({}, '', '/?maximize=true&fontSize=16');
       navigationStore.navigate('/', {});

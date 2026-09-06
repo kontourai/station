@@ -248,23 +248,49 @@ describe('New Chat repair and return', () => {
   });
   // station#1613: the origin carries `?maximize=true` with no `dock=open` —
   // the one route into the closed-and-maximized pair that no param write
-  // normalizes. `restoreLocation` sends its destination back through a writer,
-  // so the param is dropped on the way home; the origin and the restored URL
-  // must still compare equal or this Back cancels the journey and drops the
-  // user's retained draft. `canonicalSearch` is what makes them equal.
-  test('browser route Back resumes from an origin whose maximize param the restore normalizes away', async () => {
+  // normalizes. If the detour opens the dock, `restoreLocation` clears it on
+  // the way home, that write goes through `closedDockNeverMaximized`, and the
+  // param is dropped with it. The origin and the restored URL must still
+  // compare equal or the journey cancels and the user's retained draft goes
+  // with it. `canonicalSearch` is what makes them equal.
+  function stageMaximizedOrigin() {
     act(() => {
       window.history.replaceState({}, '', '/?maximize=true');
       navigationStore.navigate('/', {});
     });
     expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+  }
 
+  test('the real restore from a maximize-carrying origin lands somewhere the journey still recognises', async () => {
+    stageMaximizedOrigin();
     const view = harness();
     await openSetup();
 
-    // Back to the origin, then the write that closes the dock — the shape the
-    // restore lands in once `closedDockNeverMaximized` has run.
+    // The detour opens the dock, so the restore's clear set names it and the
+    // normalization fires on the way home — the case the rule exists for.
+    act(() => navigationStore.setDockState(true));
+    await returnToChat();
+
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().pathname).toBe('/'),
+    );
+    expect(
+      new URLSearchParams(window.location.search).has('maximize'),
+    ).toBe(false);
+    expect(
+      navigationStore.isCurrentLocation({ pathname: '/', search: '?maximize=true' }),
+    ).toBe(true);
+    expect(view.onClose).not.toHaveBeenCalled();
+  });
+
+  test('a passive route Back to a maximize-carrying origin resumes rather than cancelling', async () => {
+    stageMaximizedOrigin();
+    const view = harness();
+    await openSetup();
+
+    // No restore: the user walks back themselves, through a write that closes
+    // the dock. The comparison is all that decides between resume and cancel.
     act(() => navigationStore.navigate('/', { dock: null }));
     await screen.findByRole('dialog', { name: 'New Chat' });
     expect(view.onClose).not.toHaveBeenCalled();

@@ -25,12 +25,14 @@ function canonicalSearch(search: string): string {
   // A closed dock is never maximized (archive#795, station#1613). Every param
   // WRITE normalizes that away (`closedDockNeverMaximized`), but a URL loaded
   // directly or restored by `popstate` can still carry `maximize=true` with no
-  // `dock=open`, and `restoreLocation` sends its destination back through a
-  // writer — so a location captured in that state comes back WITHOUT the param
-  // and would not compare equal to itself. Dropping it here, where both sides
-  // of the comparison pass, is what keeps a capture/restore round trip exact;
-  // canonicalizing only the captured record would make `isCurrentLocation`
-  // false for a location nobody navigated away from.
+  // `dock=open`. When the return trip also closes the dock — `restoreLocation`
+  // emits `dock: null` for any `dock` key the origin lacks, so a detour that
+  // opened the dock produces one — the destination goes back through a writer
+  // and comes home WITHOUT the param, and an origin captured in that state
+  // would not compare equal to where the user now is. Dropping it here, where
+  // both sides of the comparison pass, is what keeps that round trip exact;
+  // canonicalizing only the captured record would instead make
+  // `isCurrentLocation` false for a location nobody navigated away from.
   if (params.get('dock') !== 'open') params.delete('maximize');
   params.sort();
   return params.toString();
@@ -585,6 +587,12 @@ class NavigationStore {
     };
   }
 
+  /**
+   * Compares through `canonicalSearch`, which ignores param order and a
+   * `maximize` that a closed dock cannot mean (archive#795, station#1613) — so
+   * two URLs differing only by that param, with the dock closed in both, are
+   * the same place here.
+   */
   isCurrentLocation(location: NavigationLocation): boolean {
     return (
       window.location.pathname === location.pathname &&
