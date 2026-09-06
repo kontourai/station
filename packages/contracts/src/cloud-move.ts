@@ -181,6 +181,7 @@ export type HomeTransferDecisionAdvanceObservation = {
         | 'source-not-closed'
         | 'publication-pending'
         | 'execution-pending'
-        | 'target-unavailable';
+        | 'target-unavailable'
+        | 'admission-pending';
     }
 );

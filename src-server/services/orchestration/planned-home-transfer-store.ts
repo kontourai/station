@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import { isProjectTaskRoomCheckpoint } from '@kontourai/station-contracts/project-task-room';
 import { plainDataObject } from './bounded-json.js';
+import {
+  checkChannelAdmissions,
+  PLANNED_HOME_ADMISSION_SCHEMA_SQL,
+} from './planned-home-admission-schema.js';
 import type { ProjectTaskRoomSourceSeal } from './project-task-room-source-seal.js';
 
 /** Storage decisions only. This adapter issues no leases or execution grants.
@@ -32,11 +36,15 @@ export interface PlannedHomeTransfer {
 export type TransferStoreResult<T> =
   | { kind: 'stored'; value: T }
   | { kind: 'conflict' | 'not-found' | 'unavailable' | 'denied' };
+export type TransferCommitResult =
+  | TransferStoreResult<PlannedHomeTransfer>
+  | { kind: 'admission-pending' };
 export interface HomeTransferDurableDatabase {
   exec(sql: string): void;
   prepare(sql: string): {
-    run(...values: Array<string | number>): unknown;
-    get(...values: Array<string | number>): unknown;
+    run(...values: Array<string | number | null>): unknown;
+    get(...values: Array<string | number | null>): unknown;
+    all(...values: Array<string | number | null>): unknown[];
   };
 }
 const LIMIT = 8192;
@@ -216,6 +224,29 @@ export function assertDurableHomeTransferDatabase(
     );
 }
 
+/** Canonical bounded reader for the private current-owner authority record. */
+export function readPlannedHomeOwner(
+  db: HomeTransferDurableDatabase,
+  tenant: string,
+  channel: string,
+): PlannedHomeOwner | undefined {
+  const row = db
+    .prepare(`SELECT CASE WHEN length(CAST(record_json AS BLOB))<=${LIMIT}
+      THEN record_json END AS record_json FROM planned_home_owners WHERE tenant_id=? AND channel_id=?`)
+    .get(tenant, channel);
+  if (row === undefined) return undefined;
+  const json = (row as { record_json?: unknown }).record_json;
+  if (typeof json !== 'string') throw new Error('Invalid transfer record');
+  const value = JSON.parse(json) as PlannedHomeOwner;
+  if (
+    !ownerValid(value) ||
+    value.tenantId !== tenant ||
+    value.channelId !== channel
+  )
+    throw new Error('Invalid transfer record');
+  return value;
+}
+
 class TransferAuthorizationDenied extends Error {}
 
 export function createSqlitePlannedHomeTransferStore(
@@ -259,6 +290,7 @@ function createSqliteStore(
     PRIMARY KEY(tenant_id,operation_id));
     CREATE UNIQUE INDEX IF NOT EXISTS idx_planned_home_pending
     ON planned_home_transfers(tenant_id,channel_id) WHERE pending=1;`);
+  db.exec(PLANNED_HOME_ADMISSION_SCHEMA_SQL);
   function parse<T>(
     row: unknown,
     validate: (value: T) => boolean,
@@ -274,16 +306,7 @@ function createSqliteStore(
     tenant: string,
     channel: string,
   ): PlannedHomeOwner | undefined {
-    return parse(
-      db
-        .prepare(`SELECT CASE WHEN length(CAST(record_json AS BLOB))<=${LIMIT}
-      THEN record_json END AS record_json FROM planned_home_owners WHERE tenant_id=? AND channel_id=?`)
-        .get(tenant, channel),
-      (value: PlannedHomeOwner) =>
-        ownerValid(value) &&
-        value.tenantId === tenant &&
-        value.channelId === channel,
-    );
+    return readPlannedHomeOwner(db, tenant, channel);
   }
   function readTransfer(
     tenant: string,
@@ -317,9 +340,9 @@ function createSqliteStore(
       json,
     );
   }
-  function transaction<T>(
-    run: () => TransferStoreResult<T>,
-  ): TransferStoreResult<T> {
+  function transaction<T, Extra = never>(
+    run: () => TransferStoreResult<T> | Extra,
+  ): TransferStoreResult<T> | Extra {
     let began = false;
     try {
       checkAuthorization();
@@ -476,35 +499,39 @@ function createSqliteStore(
         return { kind: 'stored', value };
       });
     },
-    commit(
-      tenant: string,
-      operation: string,
-    ): TransferStoreResult<PlannedHomeTransfer> {
-      return transaction<PlannedHomeTransfer>(() => {
-        const value = readTransfer(tenant, operation);
-        if (!value) return { kind: 'not-found' };
-        if (value.phase === 'committed') return { kind: 'stored', value };
-        if (
-          value.phase !== 'target-ready' ||
-          !matches(readOwner(tenant, value.intent.channelId), value.intent)
-        )
-          return { kind: 'conflict' };
-        const owner: PlannedHomeOwner = {
-          tenantId: tenant,
-          channelId: value.intent.channelId,
-          homeRef: value.intent.targetHomeRef,
-          policyRevision: value.intent.policyRevision,
-          revision: value.intent.expectedRevision + 1,
-        };
-        if (!ownerValid(owner)) return { kind: 'conflict' };
-        db.prepare(
-          'UPDATE planned_home_owners SET record_json=? WHERE tenant_id=? AND channel_id=?',
-        ).run(JSON.stringify(owner), tenant, owner.channelId);
-        value.phase = 'committed';
-        value.committedRevision = owner.revision;
-        saveTransfer(value);
-        return { kind: 'stored', value };
-      });
+    commit(tenant: string, operation: string): TransferCommitResult {
+      return transaction<PlannedHomeTransfer, { kind: 'admission-pending' }>(
+        () => {
+          const value = readTransfer(tenant, operation);
+          if (!value) return { kind: 'not-found' };
+          if (value.phase === 'committed') return { kind: 'stored', value };
+          if (
+            value.phase !== 'target-ready' ||
+            !matches(readOwner(tenant, value.intent.channelId), value.intent)
+          )
+            return { kind: 'conflict' };
+          if (
+            checkChannelAdmissions(db, tenant, value.intent.channelId) ===
+            'pending'
+          )
+            return { kind: 'admission-pending' };
+          const owner: PlannedHomeOwner = {
+            tenantId: tenant,
+            channelId: value.intent.channelId,
+            homeRef: value.intent.targetHomeRef,
+            policyRevision: value.intent.policyRevision,
+            revision: value.intent.expectedRevision + 1,
+          };
+          if (!ownerValid(owner)) return { kind: 'conflict' };
+          db.prepare(
+            'UPDATE planned_home_owners SET record_json=? WHERE tenant_id=? AND channel_id=?',
+          ).run(JSON.stringify(owner), tenant, owner.channelId);
+          value.phase = 'committed';
+          value.committedRevision = owner.revision;
+          saveTransfer(value);
+          return { kind: 'stored', value };
+        },
+      );
     },
   };
 }
@@ -552,7 +579,5 @@ export interface PlannedHomeTransferStore {
   commit(
     tenant: string,
     operation: string,
-  ):
-    | TransferStoreResult<PlannedHomeTransfer>
-    | Promise<TransferStoreResult<PlannedHomeTransfer>>;
+  ): TransferCommitResult | Promise<TransferCommitResult>;
 }

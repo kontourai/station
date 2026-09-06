@@ -12,18 +12,11 @@ import {
 } from './planned-home-transfer-coordinator.js';
 import {
   createAuthorizedSqlitePlannedHomeTransferStore,
+  type HomeTransferDurableDatabase,
   type PlannedHomeOwner,
   type PlannedHomeTransfer,
   type TransferStoreResult,
 } from './planned-home-transfer-store.js';
-
-interface Database {
-  exec(sql: string): void;
-  prepare(sql: string): {
-    run(...values: Array<string | number>): unknown;
-    get(...values: Array<string | number>): unknown;
-  };
-}
 
 export type PairedHomeTransferPrincipal = Readonly<
   Pick<
@@ -75,7 +68,7 @@ export interface PairedHomeTransferAuthority {
 
 export interface PairedHomeTransferAuthorityOptions {
   /** Centrally owned, file-backed SQLite outside every portable Station home. */
-  readonly database: Database;
+  readonly database: HomeTransferDurableDatabase;
   readonly security: Pick<
     EnvironmentSecurityService,
     'identifyDevice' | 'verifyOperatorCredential' | 'devicePairing'

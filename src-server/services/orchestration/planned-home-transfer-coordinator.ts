@@ -106,7 +106,8 @@ export type PlannedHomeTransferCoordinatorResult =
         | 'publication-pending'
         | 'execution-pending'
         | 'source-not-closed'
-        | 'target-unavailable';
+        | 'target-unavailable'
+        | 'admission-pending';
       readonly decision: PlannedHomeTransfer;
     })
   | (typeof NO_EXECUTION_AUTHORITY & {
@@ -247,9 +248,15 @@ export function createPlannedHomeTransferCoordinator(
         // and an idempotent closure/readiness acknowledgement.
         if (decision.phase === 'committed') return committedOutcome(decision);
         if (decision.phase !== 'target-ready') return blocked('conflict');
-        const committed = storedDecision(
-          await commit(tenantId, intent.operationId),
-        );
+        const commitResult = await commit(tenantId, intent.operationId);
+        if (commitResult.kind === 'admission-pending')
+          return {
+            ...NO_EXECUTION_AUTHORITY,
+            kind: 'pending',
+            reason: 'admission-pending',
+            decision,
+          };
+        const committed = storedDecision(commitResult);
         if (isBlocked(committed)) return committed;
         if (committed.phase !== 'committed') return blocked('conflict');
         return committedOutcome(committed);
