@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { LOCAL_UI_SESSION_ATTEMPT_LIMIT } from '../../src-ui/src/lib/local-ui-session-retry.js';
 import {
   LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS,
   type LocalUiAccessObservation,
@@ -70,7 +71,15 @@ describe('local UI access readiness wait', () => {
     // it used to be DEGRADED_QUERY_TIMEOUT_MS (8_000) + 2_000, and a loaded
     // host answered the gate's one bootstrap request in 6.6s, leaving no room
     // for the reload the recovery screen asks for and a second request.
-    expect(LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS).toBeGreaterThanOrEqual(20_000);
+    //
+    // The floor is now higher than that 20_000: since #1639 the gate makes up to
+    // `LOCAL_UI_SESSION_ATTEMPT_LIMIT` identity requests before it settles into
+    // the recovery screen, so a budget that only covered one of them would
+    // report "never settled" for a gate that was about to answer. The literal is
+    // deliberate alongside the derivation — a floor computed from the same
+    // constants the budget uses could not notice them shrinking.
+    expect(LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS).toBeGreaterThanOrEqual(30_000);
+    expect(LOCAL_UI_SESSION_ATTEMPT_LIMIT).toBeGreaterThan(1);
   });
 
   test('follows the recovery screen to the shell when the host was momentarily away', async () => {
@@ -146,7 +155,11 @@ describe('local UI access readiness wait', () => {
     await expect(waitForLocalUiAccessReadinessThrough(port)).resolves.toEqual({
       hostRecoveryReloads: 0,
     });
-    expect(state.waits).toEqual([20_000, 19_000, 18_000]);
+    expect(state.waits).toEqual([
+      LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS,
+      LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS - 1_000,
+      LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS - 2_000,
+    ]);
   });
 
   test('a timeout after recovery reloads does not claim the gate never settled', async () => {

@@ -1,4 +1,5 @@
 import { PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH } from '@kontourai/station-contracts/environment-security';
+import { LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS } from './local-ui-session-retry';
 import { isStationUiProxyUnavailableResponse } from './station-ui-proxy';
 
 const FRAGMENT_KEY = 'station-ui-bootstrap';
@@ -9,6 +10,44 @@ export type LocalUiSessionResolution =
   | { kind: 'authenticated' }
   | { kind: 'host-unavailable' }
   | { kind: 'access-required'; message?: string };
+
+/**
+ * Which attempt of `LOCAL_UI_SESSION_ATTEMPT_LIMIT` is in flight, as a
+ * subscribable snapshot.
+ *
+ * A retry that is invisible is a page that looks stuck for longer than it used
+ * to, so the gate renders this in the pending output it already owns. It lives
+ * here rather than in the gate because the resolution is memoized for the page:
+ * whichever caller triggers it first drives the ladder (`main.tsx` seeds boot
+ * data through the same promise), so the gate cannot be the one counting.
+ */
+let identityAttempt = 1;
+const attemptListeners = new Set<() => void>();
+
+export function getLocalUiSessionAttempt(): number {
+  return identityAttempt;
+}
+
+export function subscribeLocalUiSessionAttempt(
+  listener: () => void,
+): () => void {
+  attemptListeners.add(listener);
+  return () => {
+    attemptListeners.delete(listener);
+  };
+}
+
+function setIdentityAttempt(next: number): void {
+  if (identityAttempt === next) return;
+  identityAttempt = next;
+  for (const listener of attemptListeners) listener();
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 export function captureLocalUiBootstrapToken(): string | undefined {
   if (captured) return undefined;
@@ -48,33 +87,70 @@ export async function bootstrapLocalUiSession(
   return true;
 }
 
+async function readLocalUiIdentity(
+  apiBase: string,
+): Promise<LocalUiSessionResolution> {
+  const response = await fetch(`${apiBase}/api/system/identity`, {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  });
+  if (await isStationUiProxyUnavailableResponse(response)) {
+    // The Station-owned UI proxy answered, but its sibling host could not.
+    // That says nothing about whether this browser's existing HttpOnly
+    // session is valid, so preserve the access context rather than
+    // demoting the browser to first-run pairing.
+    return { kind: 'host-unavailable' };
+  }
+  return response.ok ? { kind: 'authenticated' } : { kind: 'access-required' };
+}
+
 /**
  * Resolve the local browser's session once per page lifetime. React StrictMode
  * may mount a gate twice during Vite development, but a missing session must
  * not turn that into repeated protected requests or auth-rate-limit traffic.
+ *
+ * `host-unavailable` is the ONE outcome retried here (#1639), because it is the
+ * one that can answer differently with nothing about this browser changed: the
+ * UI proxy answered its documented readiness envelope, which says its sibling
+ * host was away or starved — measured live at 503 after a 6.6 s wait on a loaded
+ * host, where the only way forward was a user-initiated reload. Every other
+ * outcome is a decision ABOUT this browser or this request:
+ *
+ *  - `access-required` from a non-OK answer is a refusal (401/403). Repeating it
+ *    cannot change the answer and spends this browser's auth rate limit, which
+ *    is the traffic this function's memoization exists to prevent.
+ *  - `access-required` from a thrown fetch keeps the same single attempt. The
+ *    throw is not one class: `bootstrapLocalUiSession` refusing a launcher token
+ *    arrives here too, and that IS a refusal. It also lands on the pairing
+ *    screen rather than the reload-only recovery screen, so the user is not
+ *    stranded the way #1639 describes. Splitting a retryable transport failure
+ *    out of that class is #1654.
+ *
+ * Only the identity read is inside the ladder. The launcher-token exchange must
+ * stay outside it: `captureLocalUiBootstrapToken` latches `captured` and strips
+ * the fragment on first read, so a second pass through the exchange would find
+ * no token and resolve an unauthenticated browser instead.
  */
 export function resolveLocalUiSession(
   apiBase: string,
 ): Promise<LocalUiSessionResolution> {
   sessionResolution ??= (async () => {
+    setIdentityAttempt(1);
     try {
       if (await bootstrapLocalUiSession(apiBase)) {
         return { kind: 'authenticated' };
       }
-      const response = await fetch(`${apiBase}/api/system/identity`, {
-        credentials: 'include',
-        headers: { Accept: 'application/json' },
-      });
-      if (await isStationUiProxyUnavailableResponse(response)) {
-        // The Station-owned UI proxy answered, but its sibling host could not.
-        // That says nothing about whether this browser's existing HttpOnly
-        // session is valid, so preserve the access context rather than
-        // demoting the browser to first-run pairing.
-        return { kind: 'host-unavailable' };
+      for (let retry = 0; ; retry += 1) {
+        const resolution = await readLocalUiIdentity(apiBase);
+        if (resolution.kind !== 'host-unavailable') return resolution;
+        const retryIn = LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS[retry];
+        // The bound: the ladder is out of delays, so this answer is the one the
+        // gate renders. Reaching it means the host answered `unavailable`
+        // LOCAL_UI_SESSION_ATTEMPT_LIMIT times in a row.
+        if (retryIn === undefined) return resolution;
+        setIdentityAttempt(retry + 2);
+        await delay(retryIn);
       }
-      return response.ok
-        ? { kind: 'authenticated' }
-        : { kind: 'access-required' };
     } catch (error) {
       return {
         kind: 'access-required',
@@ -100,4 +176,5 @@ export function recheckLocalUiSessionAfterPairing(
 export function resetLocalUiBootstrapForTests(): void {
   captured = false;
   sessionResolution = undefined;
+  setIdentityAttempt(1);
 }

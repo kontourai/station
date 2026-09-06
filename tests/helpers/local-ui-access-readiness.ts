@@ -1,29 +1,52 @@
 import type { Page } from '@playwright/test';
+import {
+  LOCAL_UI_SESSION_ATTEMPT_LIMIT,
+  LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS,
+} from '../../src-ui/src/lib/local-ui-session-retry';
+
+/**
+ * On a loaded host, one `/api/system/identity` request has been observed waiting
+ * this long before the Station-owned UI proxy answered
+ * `{"ready":false,"status":"unavailable"}` (station#1617). It is the slowest real
+ * dependency of everything below.
+ */
+const OBSERVED_SLOW_IDENTITY_ANSWER_MS = 6_600;
+/** The navigation's module graph and the gate's first render. */
+const NAVIGATION_AND_RENDER_ALLOWANCE_MS = 4_000;
+/** Tearing the document down and back up for a gate-directed reload. */
+const GATE_DIRECTED_RELOAD_ALLOWANCE_MS = 2_000;
 
 /**
  * A post-navigation budget for the access gate to SETTLE, plus the reload the
  * gate itself asks for when this browser's host was momentarily away.
  *
- * Derived from the slowest real dependency, not from the UI's degraded window.
- * `LocalUiSessionGate` resolves this browser's device session with exactly one
- * `/api/system/identity` request per page lifetime, and on a loaded host that
- * request has been observed waiting 6.6 s before the Station-owned UI proxy
- * answered `{"ready":false,"status":"unavailable"}` (station#1617). This budget
- * covers the navigation's module graph, that request, the gate-directed reload
- * when it answers `unavailable`, and a second request — which is also this
- * journey's established budget for "a UI surface appears after a goto".
- *
- * The previous budget was `DEGRADED_QUERY_TIMEOUT_MS + 2_000`, which measured
+ * Derived from the slowest real dependency, not from the UI's degraded window
+ * (the previous budget was `DEGRADED_QUERY_TIMEOUT_MS + 2_000`, which measured
  * the wrong thing: the degraded window is when the UI starts EXPLAINING a slow
- * resolution, not a deadline by which the resolution must have arrived.
+ * resolution, not a deadline by which the resolution must have arrived).
+ *
+ * `LocalUiSessionGate` no longer makes exactly one identity request per page
+ * lifetime: since #1639 a resolution retries an `unavailable` answer up to
+ * `LOCAL_UI_SESSION_ATTEMPT_LIMIT` attempts with backoff between them, both
+ * imported here so the two cannot drift. That makes the recovery screen RARER —
+ * a host that comes back during the ladder never renders it — and makes the
+ * worst case, a host that stays away, take longer to reach it. Budget for the
+ * worst case: a full ladder on the first page, the reload, and one more answer
+ * on the reloaded page.
  */
-export const LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS = 20_000;
+export const LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS =
+  NAVIGATION_AND_RENDER_ALLOWANCE_MS +
+  OBSERVED_SLOW_IDENTITY_ANSWER_MS * LOCAL_UI_SESSION_ATTEMPT_LIMIT +
+  LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS +
+  GATE_DIRECTED_RELOAD_ALLOWANCE_MS +
+  OBSERVED_SLOW_IDENTITY_ANSWER_MS;
 
 /**
  * A bound on the loop itself, not a second budget — the deadline above is what
- * actually stops this wait. Two reloads means three consecutive `unavailable`
- * answers are needed before this wait gives up, and a host answering that way
- * three times inside the deadline is not merely restarting.
+ * actually stops this wait. Each reload costs a fresh in-page ladder of
+ * `LOCAL_UI_SESSION_ATTEMPT_LIMIT` attempts, so two reloads means the host
+ * answered `unavailable` three ladders running before this wait gives up. A host
+ * doing that inside the deadline is not merely restarting.
  */
 export const MAX_HOST_RECOVERY_RELOADS = 2;
 
@@ -76,9 +99,11 @@ export type SettledLocalUiAccessScreen =
   | 'access-required'
   /**
    * The gate's "Reconnecting to this Station" screen: the UI proxy answered
-   * but its sibling host could not. This browser keeps its access, and the
-   * gate caches the resolution for the page's lifetime, so the reload the
-   * screen offers is the only way forward.
+   * but its sibling host could not, `LOCAL_UI_SESSION_ATTEMPT_LIMIT` times in a
+   * row — the gate's own bounded retry (#1639) is already spent by the time
+   * this screen renders. This browser keeps its access, and the gate caches the
+   * resolution for the page's lifetime, so the reload the screen offers is the
+   * only way forward.
    */
   | 'host-unavailable'
   /** Nothing has settled: the gate's loading sentence, or its degraded alert. */
