@@ -82,7 +82,6 @@
     "./knowledge-root-identity": "./src/knowledge-root-identity.ts",
     "./cloud-move": "./src/cloud-move.ts",
     "./workspace-package": "./src/workspace-package.ts",
-    "./plugin-tree-digest": "./src/plugin-tree-digest.ts",
     "./plugin-registry-signature": "./src/plugin-registry-signature.ts"
   },
   "publishConfig": {
