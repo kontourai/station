@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, type Page, type Route } from '@playwright/test';
@@ -154,7 +154,7 @@ test.describe
 
     test('shows an actual server refusal before an explicit successful Join', async ({
       page,
-    }) => {
+    }, testInfo) => {
       await page.goto(`${live.ui}/#station-ui-bootstrap=${bootstrapToken}`);
       await page.evaluate(() =>
         localStorage.setItem('station:onboarding-setup-dismissed', '1'),
@@ -225,9 +225,13 @@ test.describe
           await page.setViewportSize({ width, height: 900 });
           await expect(alert).toBeVisible();
           await page.screenshot({
-            path: join(visualRoot, `live-refusal-${width}.png`),
+            path: testInfo.outputPath(`live-refusal-${width}.png`),
             fullPage: true,
           });
+          copyFileSync(
+            testInfo.outputPath(`live-refusal-${width}.png`),
+            join(visualRoot, `live-refusal-${width}.png`),
+          );
         }
         await clickLiveCommand(page, 'Join room', ['joined', 'refreshed']);
         await expect(alert).toHaveCount(0);
