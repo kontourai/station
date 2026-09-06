@@ -95,6 +95,19 @@ expiry, replay refusal and revocation. Automatic bootstrap remains outside this
 initial path; [#1513](https://github.com/kontourai/station/issues/1513) tracks the
 remaining identity integration and browser acceptance requirements.
 
+## Target identity checks
+
+The existing [SSH worker probe](../../src-server/services/ssh/openssh-worker-probe.ts)
+reads discovery and boot identity from the selected remote loopback port through
+an authenticated SSH connection. Both requests reject HTTP redirects and share
+a ten-second request deadline. An operator must configure the actual Station
+listener; a redirecting web frontend is not accepted as that listener.
+
+The worker's boot identity identifies an answering process. It does not prove
+persistent home ownership or grant transfer authority. The move coordinator must
+still bind a verified target to the transfer operation and recheck it before
+activation; these checks do not implement that coordinator.
+
 ## Remaining implementation sequence
 
 The [channel home authority design](channel-home-authority.md) specifies the

@@ -611,7 +611,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // waits are `until`-loops on process-table state with generous budgets, not
   // wall-clock bounds chosen on a quiet host.
   'src-server/services/ssh/__tests__/openssh-reachability.process.test.ts',
+  'src-server/services/orchestration/__tests__/planned-home-transfer-store.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts',
+  'src-server/services/ssh/__tests__/openssh-worker-probe.test.ts',
   'src-server/services/terminal/__tests__/terminal-subprocess-state.test.ts',
   'src-ui/src/contexts/__tests__/ApiBaseContext.test.tsx',
   'src-ui/src/contexts/__tests__/ApiBaseContext.no-duplicate-connection.test.tsx',
