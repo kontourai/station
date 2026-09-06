@@ -40,7 +40,9 @@ function successResponse(): Response {
  * envelope, and the conversations route emits that shape for a 500
  * (`conversationRouteFailure`), a 400 (reserved agent identity) and a 401 too —
  * so a transient blip during a reload silently discarded a real conversation's
- * pointer. `null` now means 404 and nothing else.
+ * pointer. `null` now means one thing: a 404 carrying THIS ROUTE's own
+ * `{success:false}` envelope. A 404 from anything else -- a proxy, a stale
+ * service worker, a misrouted base URL -- is an unresolved lookup and throws.
  */
 describe('fetchConversationById distinguishes a miss from a failure', () => {
   function jsonResponse(body: unknown, status: number): Response {
@@ -50,7 +52,7 @@ describe('fetchConversationById distinguishes a miss from a failure', () => {
     });
   }
 
-  test('a 404 is a miss', async () => {
+  test('a 404 carrying the route’s own envelope is a miss', async () => {
     _setApiBase('https://station.example.test');
     vi.stubGlobal(
       'fetch',
@@ -66,8 +68,11 @@ describe('fetchConversationById distinguishes a miss from a failure', () => {
     await expect(fetchConversationById('missing')).resolves.toBeNull();
   });
 
-  test('a 404 with a body that is not JSON is still a miss', async () => {
-    // The status is the authority for absence, not the envelope.
+  test('a 404 that is not this route answering is unresolved, not a miss', async () => {
+    // A reverse proxy, a stale service worker or a misrouted API base can
+    // answer 404 for a conversation that exists, and none of them speak the
+    // conversations route's envelope. Treating the status alone as absence
+    // would clear a real conversation's `?chat=` pointer on their say-so.
     _setApiBase('https://station.example.test');
     vi.stubGlobal(
       'fetch',
@@ -77,7 +82,21 @@ describe('fetchConversationById distinguishes a miss from a failure', () => {
           new Response('<html>not found</html>', { status: 404 }),
         ),
     );
-    await expect(fetchConversationById('missing')).resolves.toBeNull();
+    await expect(
+      fetchConversationById('real-conversation'),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  test('a 404 whose JSON is some other shape is unresolved too', async () => {
+    // Same class, one step subtler: valid JSON, but not this route's answer.
+    _setApiBase('https://station.example.test');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ message: 'Not Found' }, 404)),
+    );
+    await expect(
+      fetchConversationById('real-conversation'),
+    ).rejects.toMatchObject({ status: 404 });
   });
 
   test.each([
