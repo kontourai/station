@@ -263,6 +263,33 @@ describe('navigationStore dock maximize memory', () => {
       );
     });
 
+    test('navigate applies the same invariant: dock and maximize are both shell-scoped, so a close carries neither across a route change', () => {
+      // `dock` and `maximize` are both in SHELL_SCOPED_QUERY_PARAMS, so a
+      // route change preserves them together — a navigation that closes the
+      // dock would leave `maximize` behind exactly as the direct write did.
+      navigationStore.setDockState(true, true);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+
+      navigationStore.navigate('/projects', { dock: null });
+
+      const after = navigationStore.getSnapshot();
+      expect(after.isDockOpen).toBe(false);
+      expect(after.isDockMaximized).toBe(false);
+      expect(new URLSearchParams(window.location.search).has('maximize')).toBe(
+        false,
+      );
+      expect(navigationStore.lastDockMaximized).toBe(true);
+    });
+
+    test('navigate carrying an open dock across a route change keeps maximize', () => {
+      navigationStore.setDockState(true, true);
+
+      navigationStore.navigate('/projects');
+
+      expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+    });
+
     test('a clearDeadChatPointer-shaped write leaves params it did not name alone', () => {
       window.history.replaceState(
         {},

@@ -142,6 +142,33 @@ export function parseNavigationTarget(target: string, base: string): URL {
   return new URL(target, base);
 }
 
+/**
+ * A closed dock is never maximized (archive#795): a param write that sets
+ * `dock` to `null` also deletes `maximize`, whatever the caller passed for it.
+ * `is-collapsed` and `is-maximized` are independent CSS classes and the
+ * maximized rule wins on height with `!important`, so the pair renders as a
+ * full-height dock with an emptied body — a blank shell covering the app.
+ *
+ * `setDockState` used to carry this alone, and a second writer
+ * (`useChatDockActiveChatSync`'s `clearDeadChatPointer`, which closes the dock
+ * with a direct `updateParams({ chat: null, dock: null })`) skipped it —
+ * station#1613. Both URL-writing entry points now apply it: `updateParams` and
+ * `navigate`, the latter because `dock` and `maximize` are both
+ * `SHELL_SCOPED_QUERY_PARAMS`, so a route change carries them across together
+ * and a navigation that closes the dock would otherwise leave `maximize`
+ * behind exactly as the direct write did.
+ *
+ * `lastDockMaximized` is not touched here: `commitState` only ever moves it to
+ * `true`, and `setDockState` is the only path that moves it to `false`, so a
+ * close routed through this normalization keeps whatever memory the earlier
+ * maximized commit set (archive#945).
+ */
+function closedDockNeverMaximized(
+  params: Record<string, string | null>,
+): Record<string, string | null> {
+  return params.dock === null ? { ...params, maximize: null } : params;
+}
+
 class NavigationStore {
   private state!: NavigationState;
   private listeners = new Set<() => void>();
@@ -682,13 +709,15 @@ class NavigationStore {
     }
 
     if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value === null) {
-          url.searchParams.delete(key);
-        } else {
-          url.searchParams.set(key, value);
-        }
-      });
+      Object.entries(closedDockNeverMaximized(params)).forEach(
+        ([key, value]) => {
+          if (value === null) {
+            url.searchParams.delete(key);
+          } else {
+            url.searchParams.set(key, value);
+          }
+        },
+      );
     }
 
     url.hash = currentHash;
@@ -710,26 +739,12 @@ class NavigationStore {
     this.isNavigating = false;
   }
 
-  /**
-   * A closed dock is never maximized (archive#795): a write that sets `dock`
-   * to `null` also deletes `maximize`, whatever the caller passed for it.
-   * This is the one place every URL writer passes (`setDockState`,
-   * `collapseMaximizedDock`, and direct callers such as
-   * `useChatDockActiveChatSync`'s `clearDeadChatPointer`, station#1613), so
-   * the invariant is applied here rather than remembered per call site.
-   * `lastDockMaximized` is not touched by this normalization: `commitState`
-   * only ever moves it to `true`, and `setDockState` is the only path that
-   * moves it to `false`, so a close routed through here keeps whatever
-   * memory the earlier maximized commit set.
-   */
   updateParams(params: Record<string, string | null>) {
     const url = new URL(window.location.href);
     const prev = url.search;
     const currentHash = url.hash;
-    const normalizedParams =
-      params.dock === null ? { ...params, maximize: null } : params;
 
-    Object.entries(normalizedParams).forEach(([key, value]) => {
+    Object.entries(closedDockNeverMaximized(params)).forEach(([key, value]) => {
       if (value === null) {
         url.searchParams.delete(key);
       } else {
