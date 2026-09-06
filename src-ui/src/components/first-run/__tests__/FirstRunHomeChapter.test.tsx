@@ -26,6 +26,11 @@ import { renderWithIsolatedConnections as render } from '../../../__tests__/rend
 const updateConfig = vi.fn();
 const recordFirstRunDecision = vi.fn();
 const materializeEngineAgent = vi.fn();
+// A DISTINCT spy, not a second reference to the one above: #1559 gave the
+// detected-but-unconnected rows their own server path, and sharing one spy
+// would make "connected then materialized" and "materialized" indistinguishable
+// to any assertion here.
+const connectAndMaterializeEngine = vi.fn();
 const configValue: {
   firstRun?: FirstRunState;
   userProfile?: unknown;
@@ -69,6 +74,14 @@ vi.mock('../../../contexts/AgentsContext', () => ({
 vi.mock('@kontourai/station-sdk', () => ({
   useMaterializeEngineAgentMutation: () => ({
     mutateAsync: materializeEngineAgent,
+  }),
+  // #1559 added a second enable path (connect an ACP engine that is detected but
+  // not yet a connection, then materialize it) and taught its own
+  // `EnginesStep.test.tsx` about it, but not this suite — which renders the same
+  // `FirstRunEnginesChapter` and so calls the same hook. Unmocked, the chapter
+  // threw on render and took 36 of this file's 47 tests with it.
+  useConnectAndMaterializeEngineMutation: () => ({
+    mutateAsync: connectAndMaterializeEngine,
   }),
   useDevicePresentation: () => undefined,
 }));
