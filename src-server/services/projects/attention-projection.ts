@@ -1,9 +1,11 @@
 import type { FlowConsoleGateProjection } from '@kontourai/flow';
-import type {
-  AttentionItem,
-  AttentionProjection,
-  DevicePairingAttentionItem,
-  SessionFailedAttentionItem,
+import {
+  type AttentionItem,
+  type AttentionProjection,
+  type DevicePairingAttentionItem,
+  isStandingAttentionKind,
+  type SessionFailedAttentionItem,
+  type SetupIncompleteAttentionItem,
 } from '@kontourai/station-contracts/attention';
 import type { DevicePairingRequest } from '@kontourai/station-contracts/environment-security';
 import type { Notification } from '@kontourai/station-contracts/notification';
@@ -86,6 +88,13 @@ export class AttentionProjectionService {
     { requests: Map<string, RequestOpenedEvent>; expiresAt: number }
   >();
 
+  /**
+   * When the CURRENT setup requirement was first observed (#1536 review M2).
+   * Reset when the requirement resolves or changes, so "since when" is a fact
+   * about this requirement and not about this process's uptime.
+   */
+  private setupRequirementFirstObserved?: { identity: string; at: string };
+
   constructor(
     private readonly notificationService: Pick<NotificationService, 'list'>,
     private readonly orchestrationService: Pick<
@@ -141,6 +150,25 @@ export class AttentionProjectionService {
     private readonly resolvePairingRequests?: () => {
       listRequests(): DevicePairingRequest[];
     } | null,
+    /**
+     * #1536 D8: whether Station's own Agent can run right now, and why not.
+     *
+     * Deliberately injected rather than derived here: the answer comes from
+     * `createStationEngineAvailabilityReader`, the one reader the New Chat
+     * picker's Station row, `/api/boot`'s catalog and `/chat`'s 409 all go
+     * through, on live app config and live provider connections. A projection
+     * that re-derived it from its own read of the connections would be a
+     * second rule with a delay on it. The caller hands back `null` when the
+     * Agent resolves, or the requirement's own sentence when it does not.
+     * Optional so every existing caller/test keeps compiling with setup
+     * attention simply unavailable.
+     */
+    private readonly readStationSetupRequirement?: () => Promise<{
+      agentSlug: string;
+      /** The Agent's own display name, so the row is not a slug (#3139). */
+      agentName: string;
+      reason: string;
+    } | null>,
   ) {}
 
   /**
@@ -264,11 +292,14 @@ export class AttentionProjectionService {
       viewer?.mayDecidePairingRequests ?? false,
     );
 
+    const setupItems = await this.projectSetupRequirement(readAuthority);
+
     const undecorated = [
       ...approvals,
       ...lifecycle,
       ...gateItems,
       ...pairingItems,
+      ...setupItems,
     ];
     const acknowledgements = this.acknowledgementStore?.getMany(
       readAuthority.userId,
@@ -307,6 +338,9 @@ export class AttentionProjectionService {
     const { items } = await this.list(readAuthority);
     const item = items.find((candidate) => candidate.id === itemId);
     if (!item) return false;
+    // A standing notice is still true after the dismissal, so there is nothing
+    // an acknowledgement could honestly record — see `isStandingAttentionKind`.
+    if (isStandingAttentionKind(item.kind)) return false;
     this.acknowledgementStore.acknowledge({
       userId: readAuthority.userId,
       conversationId: item.id,
@@ -741,6 +775,56 @@ export class AttentionProjectionService {
    * with the host — the same posture the session-less-notification filter in
    * `list()` takes for hosted reads.
    */
+  /**
+   * #1536 D8: Station's own Agent cannot run — no model connection resolves
+   * for it, so every chat that would use the managed engine refuses. The
+   * inbox used to read "Nothing needs you right now" in exactly that state.
+   *
+   * The fact is the injected resolver's, not this projection's; all that
+   * happens here is turning it into an item. Hosted reads project nothing,
+   * the same posture device pairing takes: host model configuration is not a
+   * tenant-scoped fact, and a tenant read has no standing to be told to go
+   * fix it.
+   */
+  private async projectSetupRequirement(
+    authority: SessionReadAuthority,
+  ): Promise<SetupIncompleteAttentionItem[]> {
+    if (!this.readStationSetupRequirement) return [];
+    if (isHostedSessionReadAuthority(authority)) return [];
+    const requirement = await this.readStationSetupRequirement();
+    if (!requirement) {
+      this.setupRequirementFirstObserved = undefined;
+      return [];
+    }
+    // Review M2: SINCE WHEN this requirement has been true, not when the
+    // projection last looked. A read-time stamp moved on every poll, which
+    // both defeated acknowledgement versioning and — before the ordering band
+    // above — floated the row over every live approval forever.
+    const identity = `${requirement.agentSlug}:${requirement.reason}`;
+    if (this.setupRequirementFirstObserved?.identity !== identity) {
+      this.setupRequirementFirstObserved = {
+        identity,
+        at: new Date().toISOString(),
+      };
+    }
+    const observedAt = this.setupRequirementFirstObserved.at;
+    return [
+      {
+        id: `setup-incomplete:model-connection:${requirement.agentSlug}`,
+        kind: 'setup-incomplete',
+        title: `${requirement.agentName} cannot run yet`,
+        body: requirement.reason,
+        createdAt: observedAt,
+        updatedAt: observedAt,
+        source: {
+          requirement: 'model-connection',
+          agentSlug: requirement.agentSlug,
+        },
+        openHref: '/connections/models',
+      },
+    ];
+  }
+
   private projectDevicePairingItems(
     authority: SessionReadAuthority,
     activeNotifications: Notification[],
@@ -1069,11 +1153,22 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
 }
 
+/**
+ * 0 = live, per-event attention; 1 = a standing notice. The membership is the
+ * CONTRACT's (`isStandingAttentionKind`), shared with the client's own dismiss
+ * predicate — see its docblock for why one declaration governs both the
+ * ordering band here and the acknowledgement refusal below.
+ */
+function attentionOrderBand(item: AttentionItem): number {
+  return isStandingAttentionKind(item.kind) ? 1 : 0;
+}
+
 function compareAttentionItems(
   left: AttentionItem,
   right: AttentionItem,
 ): number {
   return (
+    attentionOrderBand(left) - attentionOrderBand(right) ||
     Date.parse(right.updatedAt) - Date.parse(left.updatedAt) ||
     left.id.localeCompare(right.id)
   );

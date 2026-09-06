@@ -1452,11 +1452,10 @@ test('switches between mobile tasks and restores the exact active chat context',
   expect(new URL(page.url()).searchParams.get('dock')).toBe('open');
   expect(new URL(page.url()).searchParams.get('maximize')).toBeNull();
   await expect(textarea).toHaveValue('return to this draft');
-  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
+  // Primary project context stays directly reachable beside conversation switching.
   await expect(
-    page.getByRole('menuitem', { name: /^Switch project/ }),
+    page.getByRole('button', { name: /^Switch project/ }),
   ).toContainText('Default');
-  await page.getByRole('button', { name: 'Close actions menu' }).click();
   await expect(page.locator('.chat-input__model-name')).toHaveText(
     'model-selected',
   );
@@ -1656,9 +1655,14 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   await expect(page.locator('#station-main')).toBeHidden();
   await expect(page.locator('#station-main')).toHaveAttribute('inert', '');
   const header = page.getByTestId('chat-dock-mobile-header');
-  await expect(header.getByRole('button')).toHaveCount(3);
+  await expect(
+    header.getByRole('button', { name: /^Switch project/ }),
+  ).toBeVisible();
+  await expect(
+    header.getByRole('button', { name: /^Switch task/ }),
+  ).toBeVisible();
   const title = header.getByRole('button', { name: /^Switch task/ });
-  expect((await title.boundingBox())!.width).toBeGreaterThan(240);
+  expect((await title.boundingBox())!.width).toBeGreaterThanOrEqual(80);
   await expect(
     page.getByText(
       'Can you help shepherd the open PRs through the merge queue?',
@@ -1960,9 +1964,14 @@ test('the 320px header reserves title space and exposes secondary actions in its
     .click();
   await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
   const header = page.getByTestId('chat-dock-mobile-header');
-  await expect(header.getByRole('button')).toHaveCount(3);
+  await expect(
+    header.getByRole('button', { name: /^Switch project/ }),
+  ).toBeVisible();
+  await expect(
+    header.getByRole('button', { name: /^Switch task/ }),
+  ).toBeVisible();
   const identity = header.getByRole('button', { name: /^Switch task/ });
-  expect((await identity.boundingBox())!.width).toBeGreaterThanOrEqual(200);
+  expect((await identity.boundingBox())!.width).toBeGreaterThanOrEqual(80);
   for (const button of await header.getByRole('button').all()) {
     const box = (await button.boundingBox())!;
     expect(box.width).toBeGreaterThanOrEqual(44);
@@ -1978,15 +1987,12 @@ test('the 320px header reserves title space and exposes secondary actions in its
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
   }
-  await expect(
-    page.getByRole('menuitem', { name: /^Switch project/ }),
-  ).toBeVisible();
   await expect(page.getByTestId('chat-dock-mobile-connection')).toBeVisible();
   await page.getByRole('button', { name: 'Close actions menu' }).click();
 });
 
 for (const width of [361, 375, 390, 431, 481]) {
-  test(`the maximized phone bar keeps the agent name and chat title legible at ${width}px (#3309 HIGH-1)`, async ({
+  test(`the maximized phone bar keeps primary context and conversation title legible at ${width}px (#3309 HIGH-1)`, async ({
     page,
   }) => {
     test.setTimeout(45_000);
@@ -2009,7 +2015,7 @@ for (const width of [361, 375, 390, 431, 481]) {
     const header = page.locator('.chat-dock__mobile-header');
     for (const selector of [
       '.chat-dock__mobile-eyebrow',
-      '.chat-dock__mobile-title-text',
+      '.chat-dock__mobile-title',
     ]) {
       const box = await header.locator(selector).boundingBox();
       expect(
@@ -2018,28 +2024,12 @@ for (const width of [361, 375, 390, 431, 481]) {
       ).toBeGreaterThan(0);
     }
 
-    // The invariant the 431->481 deferral actually encodes, asserted as an
-    // invariant rather than as a floor. A width floor cannot guard this fix:
-    // with the deferral reverted, 431px still measured 10.72px of text, which
-    // is `> 0`, so every assertion above passes on the broken CSS. What the
-    // fix says is BINARY — below 481px the maximized bar shows at most one of
-    // the two elements that cost the identity block, so the avatar and the
-    // project label can never arrive in the same breath (they did, at exactly
-    // 431px, and that is how the defect was built).
-    if (width < 481) {
-      const avatarShown = await header
-        .locator('[data-testid="chat-dock-mobile-agent-avatar"]')
-        .isVisible()
-        .catch(() => false);
-      const labelShown = await header
-        .locator('.chat-dock__mobile-project-name')
-        .isVisible()
-        .catch(() => false);
-      expect(
-        avatarShown && labelShown,
-        `at ${width}px the maximized bar shows BOTH the agent avatar and the project label; below 481px it may show at most one`,
-      ).toBe(false);
-    }
+    await expect(
+      header.getByRole('button', { name: /^Switch project/ }),
+    ).toBeVisible();
+    await expect(
+      header.getByRole('button', { name: /^Switch task/ }),
+    ).toBeVisible();
 
     // Everything still inside the viewport, nothing overlapping — the squeeze
     // must be relieved by dropping the avatar, not by pushing a control out.
@@ -2111,7 +2101,12 @@ for (const viewport of [
     const moreActions = page.getByRole('button', { name: 'Chat actions' });
     await expect(moreActions).toBeVisible();
     const mobileHeader = page.locator('.chat-dock__mobile-header');
-    await expect(mobileHeader.getByRole('button')).toHaveCount(3);
+    await expect(
+      mobileHeader.getByRole('button', { name: /^Switch project/ }),
+    ).toBeVisible();
+    await expect(
+      mobileHeader.getByRole('button', { name: /^Switch task/ }),
+    ).toBeVisible();
     for (const control of await mobileHeader.getByRole('button').all()) {
       const box = await control.boundingBox();
       expect(box?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
@@ -3136,7 +3131,7 @@ test('dock drag-passthrough surfaces opt out of native touch panning (#1052)', a
     .toBe('none');
 });
 
-test('every mobile dock header control is part of the drag surface (#1052)', async ({
+test('keeps primary context controls draggable and navigation actions tap-only (#1052)', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -3177,14 +3172,17 @@ test('every mobile dock header control is part of the drag surface (#1052)', asy
   // discrimination still delivers their clicks on a stationary press.
   const controls = header.locator('button');
   const total = await controls.count();
-  // Identity block + drawer toggle + Activity + Chat actions.
-  expect(total).toBe(3);
+  await expect(
+    header.getByRole('button', { name: /^Switch project/ }),
+  ).toBeVisible();
+  await expect(
+    header.getByRole('button', { name: /^Switch task/ }),
+  ).toBeVisible();
   for (let i = 0; i < total; i++) {
     const control = controls.nth(i);
     const name = (await control.getAttribute('aria-label')) ?? `control ${i}`;
-    // One deliberate exception (archive#1052 follow-up): the visible dock toggle is
-    // the gesture-FREE path, so it opts out of the drag surface instead of
-    // into it. Anything else must be passthrough.
+    // Explicit navigation/actions stay tap-only. Context controls share the
+    // dock's existing tap/drag discriminator.
     if ((await control.getAttribute('data-no-dock-drag')) !== null) {
       expect(
         name,

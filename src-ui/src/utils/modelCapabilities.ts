@@ -87,7 +87,7 @@ export function modelDisplayLabel(
  */
 export function resolvedModelLabel(
   entry: SelectableModel | undefined,
-  models: SelectableModel[],
+  models: readonly SelectableModel[],
 ): string | undefined {
   const resolved = entry?.resolvedModel;
   if (!resolved) return undefined;
@@ -99,6 +99,60 @@ export function resolvedModelLabel(
   );
   if (match) return match.name;
   return prettifyModelId(resolved);
+}
+
+/**
+ * The alias id every engine catalog publishes for "whatever this engine ships
+ * by default". Its catalog NAME is picker copy — Claude Code publishes
+ * "Default (recommended)" — which is the right label on an option and the
+ * wrong one on a row that is naming what a session is running.
+ */
+const ENGINE_DEFAULT_MODEL_ID = 'default';
+
+/** What an identity surface calls a session running the engine's default. */
+export const ENGINE_DEFAULT_MODEL_LABEL = 'Default';
+
+/**
+ * What to CALL the model a chat is running, on any surface that NAMES it
+ * rather than offers it for selection — the ONE derivation (#1536 B5).
+ *
+ * One session was labelled four ways at once: "Opus 5" on Home and the
+ * sidebar (through `modelDisplayLabel`, which this now wraps), "claude-opus-5"
+ * in the transcript's
+ * provenance strip (the raw observed id), "Default (recommended)" on the dock
+ * header and composer chip (the engine catalog's own option copy for the
+ * alias), and "Requested default · Reported claude-opus-5" on the turn row.
+ * Four surfaces, four derivations, one fact.
+ *
+ * The rule, in order:
+ *
+ *  - an alias the engine has RESOLVED renders as the concrete model it
+ *    resolved to (`resolvedModelLabel`, archive#1012) — the most specific
+ *    truth available;
+ *  - the engine's default with nothing resolved yet is "Default", not the
+ *    catalog's option copy: an identity row is not a recommendation;
+ *  - anything else is `modelDisplayLabel` — the catalog's name, else the
+ *    prettified id, never the bare internal id where we can do better.
+ *
+ * A picker keeps the catalog's own `name`: it has to describe an OPTION, and
+ * "(recommended)" is real information there. The raw id belongs in a title or
+ * an accessible label, never in the primary text.
+ */
+export function modelIdentityLabel(
+  modelId: string | null | undefined,
+  catalog: readonly SelectableModel[] = [],
+): string {
+  const id = modelId?.trim();
+  if (!id) return 'Model not reported';
+  const entry = catalog.find(
+    (model) => model.id === id || model.originalId === id,
+  );
+  const resolved = resolvedModelLabel(entry, catalog);
+  if (resolved) return resolved;
+  if (id.toLowerCase() === ENGINE_DEFAULT_MODEL_ID) {
+    return ENGINE_DEFAULT_MODEL_LABEL;
+  }
+  return modelDisplayLabel(id, catalog);
 }
 
 export type NewChatModelChoice = {

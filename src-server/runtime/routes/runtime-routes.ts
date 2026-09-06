@@ -441,8 +441,8 @@ import {
   tenantExecutionContextForRequest,
 } from '../bootstrap/runtime-tenant-context.js';
 import {
+  createStationEngineAvailabilityReader,
   resolveBedrockConnectionAuth,
-  resolveManagedAvailabilityReason,
 } from '../plugins/runtime-provider-resolution.js';
 import type {
   AgentConfigurationMutationRunner,
@@ -1581,17 +1581,10 @@ export function configureRuntimeRoutes(
       context.skillService,
       context.applyAgentConfigurationMutation,
       context.getVoltAgent,
-      (spec) =>
-        resolveManagedAvailabilityReason(spec, {
-          appConfig: context.appConfig,
-          listProviderConnections: () =>
-            context.providerService.listProviderConnections(),
-          // Review H1: the same receipts the Connections hub reads, so an
-          // agent bound to a faulted connection is not reported runnable
-          // beside a card saying its check failed.
-          gatedConnectionIds:
-            context.connectionService.checkGatedModelConnectionIds(),
-        }),
+      // #1536 D8 review H2: one reader for every surface that asks, reading
+      // LIVE config. These three sites each built the call separately and had
+      // already drifted onto the boot snapshot.
+      createStationEngineAvailabilityReader(context),
       // Station#975 (unification slice 5) D-3: save-response validation
       // findings need the same runtime-connection lookup the enriched-agents
       // route below already performs — same shape, same fail-open contract
@@ -2054,13 +2047,7 @@ export function configureRuntimeRoutes(
       };
     try {
       const spec = await context.agentService.getAgent(agentId);
-      const managed = resolveManagedAvailabilityReason(spec, {
-        appConfig: context.getLiveAppConfig(),
-        listProviderConnections: () =>
-          context.providerService.listProviderConnections(),
-        gatedConnectionIds:
-          context.connectionService.checkGatedModelConnectionIds(),
-      });
+      const managed = createStationEngineAvailabilityReader(context)(spec);
       if (managed) return { state: 'unavailable' as const, reason: managed };
       if (!spec.execution?.agentConnectionId)
         return { state: 'ready' as const, agentId };
@@ -2650,16 +2637,8 @@ export function configureRuntimeRoutes(
         ),
       getAgentConfigurationRevision: context.getAgentConfigurationRevision,
       logger: context.logger,
-      resolveAvailability: (spec) =>
-        resolveManagedAvailabilityReason(spec, {
-          appConfig: context.appConfig,
-          listProviderConnections: () =>
-            context.providerService.listProviderConnections(),
-          // Review H1: see the sibling call above — Home's recommendation and
-          // the Agents list read this reason.
-          gatedConnectionIds:
-            context.connectionService.checkGatedModelConnectionIds(),
-        }),
+      // Home's recommendation and the Agents list read this reason.
+      resolveAvailability: createStationEngineAvailabilityReader(context),
       // §3.3 orphan visibility (station#1004, unification slice 7): known
       // project slugs, used to mark a persisted agent's `project` as an
       // orphan finding when it names a project that no longer exists.
@@ -2684,6 +2663,13 @@ export function configureRuntimeRoutes(
       // instead of falsely reporting a persisted, ready external-engine
       // agent "not currently launchable".
       connectionService: context.connectionService,
+      // #1536 D8 delta review DM1: the live inputs the shared availability
+      // reader needs. Without them `/chat` answered its 409 from the boot
+      // snapshot, so fixing the default model connection at runtime cleared
+      // the picker and the inbox while chat went on refusing until restart.
+      getLiveAppConfig: () => context.getLiveAppConfig(),
+      checkGatedModelConnectionIds: () =>
+        context.connectionService.checkGatedModelConnectionIds(),
       listAgents: () => context.agentService.listAgents(),
       getDefaultAgentIds: async () =>
         new Set(
@@ -3379,12 +3365,10 @@ export function configureRuntimeRoutes(
           data: await deriveAgentCatalog(
             context.agentService,
             enrichedAgents,
-            (spec) =>
-              resolveManagedAvailabilityReason(spec, {
-                appConfig: context.appConfig,
-                listProviderConnections: () =>
-                  context.providerService.listProviderConnections(),
-              }),
+            // This site also omitted `gatedConnectionIds` entirely, so
+            // `/api/boot`'s catalog reported an agent bound to a faulted
+            // connection as runnable.
+            createStationEngineAvailabilityReader(context),
           ),
         };
       },

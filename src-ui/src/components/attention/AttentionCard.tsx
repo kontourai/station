@@ -30,6 +30,7 @@ import {
 } from '../../contexts/ApiBaseContext';
 import {
   attentionKindLabel,
+  isAcknowledgeableAttentionItem,
   isApprovalLivePending,
   sessionFailedIdentity,
   sessionFailureCause,
@@ -88,7 +89,13 @@ export function AttentionCard({
         </time>
       </header>
       <AttentionAction item={item} />
-      {item.kind !== 'approval' && <DismissAttentionItem item={item} />}
+      {/* #1536 D8: a standing notice is not dismissible — acknowledging the
+          only row that says why chat cannot start would leave the inbox
+          claiming nothing needs you while it still does. One predicate, shared
+          with "Dismiss all" and with the server's own refusal. */}
+      {item.kind !== 'approval' && isAcknowledgeableAttentionItem(item) && (
+        <DismissAttentionItem item={item} />
+      )}
     </article>
   );
 }
@@ -153,6 +160,10 @@ function AttentionAction({ item }: { item: AttentionItem }) {
       return <GateExceptionAction item={item} />;
     case 'device-pairing':
       return <DevicePairingActions item={item} />;
+    // #1536 D8: the requirement's own route out. No secondary action —
+    // the item resolves by configuring a connection, not by answering here.
+    case 'setup-incomplete':
+      return <OpenModelConnectionsLink href={item.openHref} />;
   }
 }
 
@@ -743,6 +754,14 @@ function OpenFlowConsoleLink({ href }: { href: string }) {
   return (
     <a className="attention-open-link" href={href}>
       Open flow console
+    </a>
+  );
+}
+
+function OpenModelConnectionsLink({ href }: { href: string }) {
+  return (
+    <a className="attention-open-link" href={href}>
+      Open model connections
     </a>
   );
 }

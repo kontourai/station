@@ -717,6 +717,46 @@ describe('ClaudeAdapter', () => {
     });
   });
 
+  test('carries the SDK subagent id on approval requests raised from a child agent', async () => {
+    mockQuery.mockReturnValue(createMockQuery([]));
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-subagent',
+    });
+    await iterator.next();
+    await iterator.next();
+
+    const queryArgs = mockQuery.mock.calls[0][0];
+    const permissionPromise = queryArgs.options.canUseTool(
+      'Bash',
+      { command: 'echo hi > out.txt' },
+      {
+        signal: new AbortController().signal,
+        toolUseID: 'tool-use-child',
+        agentID: 'a40e65cb620cd452b',
+        suggestions: [],
+      },
+    );
+
+    const opened = await iterator.next();
+    expect(opened.value).toMatchObject({
+      method: 'request.opened',
+      payload: { toolName: 'Bash', agentId: 'a40e65cb620cd452b' },
+    });
+    await adapter.respondToRequest(
+      'thread-subagent',
+      opened.value.requestId,
+      'decline',
+    );
+    await expect(permissionPromise).resolves.toMatchObject({
+      behavior: 'deny',
+    });
+    await adapter.stopSession('thread-subagent');
+  });
+
   test('opens and resolves permission requests through canUseTool', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     const adapter = new ClaudeAdapter();

@@ -60,6 +60,18 @@ export interface PullRequestAvailability {
   effectiveMergeMethods: PullRequestMergeMethod[];
   mergeMethodsSource: PullRequestMergeMethodsSource;
 }
+/**
+ * Machine-readable cause behind an unavailable pull-request context (#1536 G5).
+ *
+ * `reason` is a sentence for a reader; a surface deciding HOW to present the
+ * state cannot classify by prose. `no-remote` is the ordinary local repository
+ * — nothing is broken and nothing is missing that the operator asked for — and
+ * the panel rendered it as a warning-triangle error card, indistinguishable
+ * from a forge that refused. Absent means "no cause was reported", never
+ * "some other cause".
+ */
+export type PullRequestUnavailableCause = 'no-remote';
+
 export type PullRequestClientContext =
   | {
       available: true;
@@ -69,7 +81,11 @@ export type PullRequestClientContext =
       /** Branch observed from this request's recorded checkout/session worktree. */
       branch: string;
     }
-  | { available: false; reason: string };
+  | {
+      available: false;
+      reason: string;
+      cause?: PullRequestUnavailableCause;
+    };
 export interface PullRequest {
   provider: string;
   /**

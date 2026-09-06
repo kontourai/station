@@ -80,6 +80,10 @@ Detection only says that Station observed a possible local engine; it does not c
 read its secrets, or guarantee that it is ready. The UI names the concrete engine, such as
 OpenCode or Kiro, rather than exposing its transport as a user category.
 
+The first-run Engines chapter shows the detected, not-yet-connected local Engine subset. Selecting
+one there explicitly connects the Engine and creates its External agent together; detection itself
+remains read-only until that action.
+
 ---
 
 ## OpenAI-compatible endpoints

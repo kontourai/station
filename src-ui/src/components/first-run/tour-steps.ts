@@ -76,6 +76,8 @@ export const FIRST_RUN_TOUR_STEPS = [
     id: 'command-palette',
     title: 'Everything is one keystroke away',
     body: 'The command palette reaches every surface here, including this tour — press it whenever you want to come back and look at the evidence again.',
+    // `/` and whatever occupies `main`: a return to the outlet, since the
+    // anchor is the palette, not Home (#1523; `FirstRunFlow` navigates).
     view: { type: 'home' },
     anchor: 'command-palette',
   },

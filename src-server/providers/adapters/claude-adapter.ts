@@ -1511,6 +1511,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             blockedPath: options.blockedPath,
             displayName: options.displayName,
             suggestions: options.suggestions,
+            // Subagent tool calls (Agent tool workers) come through this same
+            // callback, so their approvals already propagate to Station; the
+            // SDK's agent id is the only signal that the request belongs to
+            // a child rather than the main thread.
+            ...(options.agentID ? { agentId: options.agentID } : {}),
           },
         });
 
