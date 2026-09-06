@@ -664,6 +664,49 @@ describe('Station Control canonical Environment + Agent execution', () => {
     });
   });
 
+  test.each(['shared', 'worktree'] as const)(
+    'persists the resolved %s Project isolation at delegated creation',
+    async (mode) => {
+      installCurrentStationFetch();
+      const original = fetchMock.getMockImplementation()!;
+      fetchMock.mockImplementation(async (input, init) =>
+        String(input) === `${CURRENT_API}/api/projects/workspace`
+          ? json({
+              success: true,
+              data: {
+                workingDirectory: '/tmp/workspace',
+                defaultWorkspaceIsolation: mode,
+              },
+            })
+          : original(input, init),
+      );
+      const service = localService();
+      const { delegateTask } = await import('../station-control-delegation.js');
+      await delegateTask(
+        {
+          prompt: 'Retain the resolved Project policy',
+          target: {
+            ...currentTarget(),
+            workspace: { kind: 'project', projectSlug: 'workspace' },
+          },
+        },
+        service as never,
+      );
+      expect(service.sessionCommands.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            workspaceIsolation: expect.objectContaining({ mode }),
+            metadata: expect.objectContaining({
+              projectSlug: 'workspace',
+              workspaceIsolation: expect.objectContaining({ mode }),
+            }),
+          }),
+        }),
+        expect.anything(),
+      );
+    },
+  );
+
   test('executes a local delegation through the injected canonical service', async () => {
     installCurrentStationFetch();
     const service = localService();

@@ -3192,6 +3192,11 @@ export async function delegateTask(
             environmentName: target.environmentName,
             taskId: sessionId,
             ...(project?.slug ? { projectSlug: project.slug } : {}),
+            // Preserve the resolved creation policy for continuation. The
+            // current Project default cannot certify an earlier launch.
+            ...(resolved.workspace?.kind === 'project'
+              ? { workspaceIsolation: resolved.workspace.workspaceIsolation }
+              : {}),
             // archive#1463: record the resolved project join on every Agent.
             ...(project?.slugJoin ? { projectSlugJoin: project.slugJoin } : {}),
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),

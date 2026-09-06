@@ -87,7 +87,7 @@ async function api<T>(
 async function completed(
   live: LiveStation,
   handle:
-    | ForegroundMessageReceipt
+    | Pick<ForegroundMessageReceipt, 'sessionId' | 'providerTurnId'>
     | DelegatedTaskFollowUpHandle
     | DelegatedTaskHandle
     | Pick<OrchestrationConversationEventWindow, 'currentSessionId'>,
@@ -113,6 +113,7 @@ async function completed(
           'providerTurnId' in handle ? handle.providerTurnId : started?.turnId;
         return (
           Boolean(turnId) &&
+          started?.turnId === turnId &&
           events.some(
             (event) =>
               event.method === 'turn.completed' && event.turnId === turnId,
@@ -433,11 +434,13 @@ for (const { runtimeFramework, origin } of restartProfiles) {
         const result = JSON.parse(stdout) as {
           conversationId: string;
           sessionId: string;
+          providerTurnId: string;
           finishReason?: string;
           text?: string;
         };
         expect(result.conversationId).toBe(first.conversationId);
-        expect(result.sessionId).toBe(first.conversationId);
+        expect(result.sessionId).toBeTruthy();
+        expect(result.providerTurnId).toBeTruthy();
         expect(result.text).toBe(REPLY);
         const snapshot = await api<{
           data: OrchestrationConversationEventWindow;
@@ -446,7 +449,8 @@ for (const { runtimeFramework, origin } of restartProfiles) {
           `/api/orchestration/conversations/${encodeURIComponent(first.conversationId)}/event-window?turnLimit=3`,
         );
         expect(snapshot.data.conversationId).toBe(first.conversationId);
-        thirdEvents = await completed(live, snapshot.data, PROMPTS[2]);
+        expect(result.sessionId).toBe(snapshot.data.currentSessionId);
+        thirdEvents = await completed(live, result, PROMPTS[2]);
         third = {
           ...result,
           currentSessionId: snapshot.data.currentSessionId,
