@@ -6849,12 +6849,47 @@ export class OrchestrationService {
         persistSession: session.persistSession,
       };
     };
-    const readIdentity = async (id: string) =>
-      projectIdentity(await this.readSession(id, authority));
-    const initialDetail = await this.readSession(threadId, authority);
-    const current = projectIdentity(initialDetail);
+    // Refresh adapter-owned state once at this request seam. Revalidating
+    // each lineage leg must not enumerate every host Session or its full
+    // transcript again; fresh point reads below still certify every check.
+    await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
+    const readIdentity = async (id: string) => {
+      const persisted = store.readSessionByThread(id);
+      if (persisted)
+        this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
+      const loaded = this.sessionReadModel.get(id);
+      if (
+        (!persisted && !loaded) ||
+        !generationIsCurrent() ||
+        !this.sessionAuthz.canReadSession(id, authority)
+      )
+        return null;
+      const events = store
+        .listSessionProjectionEvents(id)
+        .map((event) => event.payload);
+      const session = buildOrchestrationSessionSummary({
+        persisted,
+        loaded,
+        events,
+        turnProgress: this.turnProgress.read(id),
+        answerability: this.observeAnswerability(
+          id,
+          (loaded ?? persisted)?.provider,
+          new Date().toISOString(),
+        ),
+      });
+      if (
+        !generationIsCurrent() ||
+        !this.sessionAuthz.canReadSession(id, authority)
+      )
+        return null;
+      return projectIdentity({ session, events });
+    };
+    const current = await readIdentity(threadId);
     if (current?.provider !== 'station-agent' || !current.agentId)
       throw new NativeMemoryContinuityUnavailableError();
+    const allowMissingCurrentRecord =
+      store.latestEventByMethod(threadId, 'turn.started') === undefined;
     const binding = await captureNativeMemoryContinuity(
       {
         currentSessionId: threadId,
@@ -6877,10 +6912,7 @@ export class OrchestrationService {
     );
     return createNativeMemoryHistoryCompanion({
       binding,
-      allowMissingCurrentRecord:
-        initialDetail?.events.every(
-          (event) => event.method !== 'turn.started',
-        ) === true,
+      allowMissingCurrentRecord,
       readCanonicalSession: async (id) => {
         if (!this.sessionAuthz.canReadSession(id, authority))
           throw new NativeMemoryContinuityUnavailableError();

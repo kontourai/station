@@ -10144,6 +10144,159 @@ describe('OrchestrationService', () => {
     expect(JSON.stringify(headers)).not.toContain('private prompt');
   });
 
+  test('native history capture uses fresh point reads without host-wide work per lineage leg', async () => {
+    const measure = async (count: number, unrelated: number) => {
+      const store = new EventStore(join(tmp, `native-cost-${count}.sqlite`));
+      const native = new FakeAdapter('station-agent');
+      const owned = new OrchestrationService({
+        adapterRegistry: createRegistry([native]),
+        eventBus: new EventBus(),
+        eventStore: store,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      const root = `native-cost-${count}-0`;
+      const current = `native-cost-${count}-${count - 1}`;
+      const createdAt = '2026-09-06T00:00:00.000Z';
+      for (let index = 0; index < count; index++) {
+        const id = `native-cost-${count}-${index}`;
+        if (index)
+          store.reserveNextConversationSession({
+            conversationId: root,
+            predecessorSessionId: `native-cost-${count}-${index - 1}`,
+            proposedSessionId: id,
+            createdAt,
+          });
+        store.upsertSession({
+          threadId: id,
+          provider: 'station-agent',
+          status: 'ready',
+          cwd: tmp,
+          persistSession: true,
+          createdAt,
+          updatedAt: createdAt,
+        });
+        store.appendEvent({
+          eventId: `${id}-start`,
+          threadId: id,
+          sessionId: id,
+          provider: 'station-agent',
+          method: 'session.started',
+          createdAt,
+          metadata: {
+            agentSlug: 'reviewer',
+            userId: 'account-a',
+            projectSlug: 'project-a',
+          },
+        });
+        // Old streaming history must not be read just to recertify identity.
+        for (let delta = 0; delta < 20; delta++)
+          store.appendEvent({
+            eventId: `${id}-delta-${delta}`,
+            threadId: id,
+            provider: 'station-agent',
+            method: 'content.text-delta',
+            createdAt,
+            turnId: 'historical',
+            itemId: 'text',
+            delta: 'retained transcript',
+          });
+      }
+      for (let index = 0; index < unrelated; index++)
+        store.upsertSession({
+          threadId: `unrelated-${count}-${index}`,
+          provider: 'claude',
+          status: 'closed',
+          createdAt,
+          updatedAt: createdAt,
+        });
+      await owned.listSessions(
+        sessionReadAuthorityFromRequest('account-a', undefined, undefined),
+      );
+      // listSessions starts boot recovery asynchronously. Measure the
+      // request owner after that existing one-time startup pass settles.
+      await waitFor(
+        () =>
+          (owned as unknown as { sessionAttachmentSettled: boolean })
+            .sessionAttachmentSettled,
+        (settled) => settled,
+      );
+      const adapterLists = vi.spyOn(native, 'listSessions');
+      const allRows = vi.spyOn(store, 'readSessions');
+      const fullEvents = vi.spyOn(store, 'listEvents');
+      const pointFacts = vi.spyOn(store, 'listSessionProjectionEvents');
+      const authority = sessionReadAuthorityFromRequest(
+        'account-a',
+        undefined,
+        undefined,
+      );
+      // Exercise the real OrchestrationService owner used by dispatch, with
+      // SQLite and its actual authorization/projection paths, not a fake
+      // readSession callback supplied to the continuity helper.
+      const capture = owned as unknown as {
+        captureNativeMemoryHistory(
+          id: string,
+          scope: SessionReadAuthority,
+          current: () => boolean,
+        ): Promise<
+          import('../../../runtime/conversation/native-memory-history.js').NativeMemoryHistoryCompanion
+        >;
+      };
+      try {
+        const history = await capture.captureNativeMemoryHistory(
+          current,
+          authority,
+          () => true,
+        );
+        expect(await history.isCurrent()).toBe(true);
+        const facts = pointFacts.mock.calls.length;
+        expect(adapterLists).toHaveBeenCalledTimes(1);
+        expect(allRows).not.toHaveBeenCalled();
+        expect(fullEvents).not.toHaveBeenCalled();
+        expect(new Set(pointFacts.mock.calls.map(([id]) => id)).size).toBe(
+          count,
+        );
+        // A new durable identity observation must invalidate the retained
+        // binding without another host-wide enumeration.
+        store.appendEvent({
+          eventId: `${current}-project-change`,
+          threadId: current,
+          sessionId: current,
+          provider: 'station-agent',
+          method: 'session.configured',
+          createdAt: '2026-09-06T00:01:00.000Z',
+          metadata: {
+            agentSlug: 'reviewer',
+            userId: 'account-a',
+            projectSlug: 'project-b',
+          },
+        });
+        expect(await history.isCurrent()).toBe(false);
+        expect(adapterLists).toHaveBeenCalledTimes(1);
+        await expect(
+          capture.captureNativeMemoryHistory(
+            current,
+            sessionReadAuthorityFromRequest(
+              'other-account',
+              undefined,
+              undefined,
+            ),
+            () => true,
+          ),
+        ).rejects.toMatchObject({
+          code: 'native_memory_continuity_unavailable',
+        });
+        return facts;
+      } finally {
+        await owned.shutdown();
+        store.close();
+      }
+    };
+    const small = await measure(4, 32);
+    const large = await measure(8, 256);
+    expect(small).toBeGreaterThan(0);
+    expect(large).toBeLessThanOrEqual(small * 2);
+  });
+
   test('sendTurn composes ambient context into the model-facing input at the dispatch choke point (#685)', async () => {
     await service.dispatch({
       type: 'startSession',
