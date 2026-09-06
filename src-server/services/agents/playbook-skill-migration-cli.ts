@@ -18,8 +18,10 @@ import {
   mutateAgentConfig,
 } from '../../domain/config-loader-agents.js';
 import {
+  deleteSkillPackageAt,
   loadSkillConfig,
   saveSkillConfig,
+  saveSkillConfigIn,
 } from '../../domain/config-loader-storage.js';
 import {
   migratePlaybooksToSkills,
@@ -41,6 +43,14 @@ export async function runPlaybookSkillMigrationForHome(
     loadSkill: (name: string) => loadSkillConfig(homeDir, name),
     saveSkill: (name: string, config: never) =>
       saveSkillConfig(homeDir, name, config),
+    // The directory-addressed pair the write path uses since #1619. This
+    // loader is hand-built rather than a `ConfigLoader`, so it has to carry
+    // every method the service calls — a missing one is a runtime failure the
+    // types cast away (`as never` below).
+    saveSkillIn: (directory: string, config: never) =>
+      saveSkillConfigIn(homeDir, directory, config),
+    deleteSkillAt: (name: string, directory: string) =>
+      deleteSkillPackageAt(homeDir, name, directory),
   };
   const skillService = new SkillService(configLoader as never, logger);
   // The pass reserves names against what is already installed, so discovery

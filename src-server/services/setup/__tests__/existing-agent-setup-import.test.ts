@@ -91,6 +91,17 @@ async function fixture() {
       JSON.parse(
         readFileSync(join(project, 'skills', name, 'skill.json'), 'utf8'),
       ),
+    // The directory-addressed pair the write path uses (#1619): it writes where
+    // it is told, which for a workspace package is its own root.
+    saveSkillIn: async (directory: string, value: unknown) => {
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(
+        join(directory, 'skill.json'),
+        JSON.stringify(value, null, 2),
+      );
+    },
+    deleteSkillAt: async (_name: string, directory: string) =>
+      rmSync(directory, { recursive: true, force: true }),
     deleteSkill: async (name: string) =>
       rmSync(join(project, 'skills', name), { recursive: true, force: true }),
     listSkills: async () => [],
@@ -148,6 +159,18 @@ function serviceFor(
         throw error;
       }
       return JSON.parse(readFileSync(path, 'utf8'));
+    },
+    saveSkillIn: async (directory: string, value: unknown) => {
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(
+        join(directory, 'skill.json'),
+        JSON.stringify(value, null, 2),
+      );
+      if (faults.saveAfterWrite) throw new Error('injected after skill.json');
+    },
+    deleteSkillAt: async (_name: string, directory: string) => {
+      if (faults.deleteFails) throw new Error('injected compensation failure');
+      rmSync(directory, { recursive: true, force: true });
     },
     deleteSkill: async (name: string) => {
       if (faults.deleteFails) throw new Error('injected compensation failure');

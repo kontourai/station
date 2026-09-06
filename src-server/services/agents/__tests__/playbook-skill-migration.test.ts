@@ -81,6 +81,19 @@ const configLoader = {
       'utf-8',
     );
   }),
+  // The directory-addressed pair the write path uses (#1619), writing where it
+  // is told rather than where a name would have resolved.
+  saveSkillIn: vi.fn(async (directory: string, config: unknown) => {
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      join(directory, 'skill.json'),
+      JSON.stringify(config, null, 2),
+      'utf-8',
+    );
+  }),
+  deleteSkillAt: vi.fn(async (_name: string, directory: string) => {
+    rmSync(directory, { recursive: true, force: true });
+  }),
   deleteSkill: vi.fn(),
   listSkills: vi.fn().mockResolvedValue([]),
   skillExists: vi.fn().mockResolvedValue(false),
