@@ -1305,10 +1305,17 @@ export class SkillService {
     //
     // The half-written state is already a modelled one: `getSkill` answers
     // from the install record and says why (`declarationsDiagnostic`).
-    const publication = this.projectLocalSkillPublication(
+    // The directory this create resolved and LOCKED, not a second derivation of
+    // it. They agree by construction today, so this is benign — but the
+    // parameter's own docblock says the directory is never re-derived here, and
+    // that sentence has to be true: a future caller handing in a rename
+    // destination or a discovered directory would write the body to one place
+    // while the record's `path` and `origin` describe another, which is the
+    // split-package shape #1619 exists to close (delta review F1).
+    const publication = this.projectLocalSkillPublicationAt(
       input,
       projectHomeDir,
-      projectSlug,
+      skillDir,
     );
     try {
       // These are the exact two canonical byte sequences projected above.

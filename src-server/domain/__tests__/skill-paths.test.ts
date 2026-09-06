@@ -14,6 +14,7 @@ import {
   isDirectoryPhysicallyWithin,
   isDirectoryWithin,
   resolveSkillDirectory,
+  skillsRootDir,
 } from '../skill-paths.js';
 
 let home: string;
@@ -230,6 +231,36 @@ describe('assertSkillPackageDirectory', () => {
     ).not.toThrow();
   });
 
+  // Delta review F3. `existsSync` follows symlinks, so a DANGLING root reported
+  // false, the ancestor walk climbed straight past the link, and the shape read
+  // as an ordinary skills root — accept, with the redirect invisible. The
+  // containment check compounded it by treating "cannot be resolved" as "does
+  // not exist yet". Nothing could exploit it (Node's recursive mkdir refuses to
+  // traverse a dangling link), but the code looked like it refused and did not.
+  test('refuses a skills root that is a dangling symlink', () => {
+    const gone = join(outside, 'never-created');
+    symlinkSync(gone, join(home, 'skills'), 'dir');
+    // The probe the old walk used: the link exists, and `existsSync` says no.
+    expect(existsSync(join(home, 'skills'))).toBe(false);
+
+    expect(() =>
+      assertSkillPackageDirectory(home, 'alpha', join(home, 'skills', 'alpha')),
+    ).toThrow();
+  });
+
+  test('refuses a dangling symlink at the package directory itself', () => {
+    mkdirSync(join(home, 'skills'), { recursive: true });
+    symlinkSync(
+      join(outside, 'never-created'),
+      join(home, 'skills', 'alpha'),
+      'dir',
+    );
+
+    expect(() =>
+      assertSkillPackageDirectory(home, 'alpha', join(home, 'skills', 'alpha')),
+    ).toThrow();
+  });
+
   test('refuses a package directory symlinked elsewhere inside the home', () => {
     const elsewhere = join(home, 'not-a-skills-root');
     mkdirSync(elsewhere, { recursive: true });
@@ -244,5 +275,41 @@ describe('assertSkillPackageDirectory', () => {
         join(home, 'skills', 'aliased'),
       ),
     ).toThrow(/resolves outside/);
+  });
+});
+
+/**
+ * Delta review F5. `skillsRootDir` joins the slug straight into a path, so an
+ * unvalidated one either threw (a separator, deep in a later check) or — worse
+ * — silently redirected: `..` collapsed the root back to `<home>/skills`, and a
+ * write labelled project-scoped landed in the machine root with nothing said.
+ */
+describe('project slugs are one path segment', () => {
+  test('a traversal slug redirects nowhere: it is refused', () => {
+    expect(() => resolveSkillDirectory(home, 'alpha', '..')).toThrow(
+      /Invalid project slug/,
+    );
+    expect(() => skillsRootDir(home, '..')).toThrow(/Invalid project slug/);
+  });
+
+  test('a separator slug is refused with the same reason', () => {
+    expect(() => resolveSkillDirectory(home, 'alpha', 'a/b')).toThrow(
+      /Invalid project slug/,
+    );
+    expect(() => skillsRootDir(home, '../../etc')).toThrow(
+      /Invalid project slug/,
+    );
+    expect(() => skillsRootDir(home, '__proto__')).toThrow(
+      /Invalid project slug/,
+    );
+  });
+
+  test('an ordinary slug still builds its root, and no slug means no scope', () => {
+    expect(skillsRootDir(home, 'demo')).toBe(
+      join(home, 'projects', 'demo', 'skills'),
+    );
+    expect(skillsRootDir(home)).toBe(join(home, 'skills'));
+    // Empty is not a slug: it is what every unscoped caller passes.
+    expect(skillsRootDir(home, '')).toBe(join(home, 'skills'));
   });
 });

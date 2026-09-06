@@ -135,7 +135,14 @@ describe('SkillService', () => {
   // through the registry hands back whatever OTHER package owns the name. The
   // repair then reads a directory it did not write and reports "identity or
   // contents are unavailable", leaving the half-written package permanently
-  // unrepairable. Reproduced scoped: unscoped repaired, scoped failed.
+  // unrepairable.
+  //
+  // The call below is UNSCOPED, which is the production one and the one that
+  // reds when the seam resolves through the registry. A scoped call resolves
+  // into the project root instead, so a first attempt at this test — seeding at
+  // the machine root and repairing with a slug — failed against the correct fix
+  // and proved nothing; the dead end is recorded because the shape looks
+  // plausible.
   test('repairs an interrupted package even when another package owns its name', async () => {
     const seeded = seedInterruptedPackage(
       'contested',

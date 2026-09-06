@@ -10,7 +10,7 @@
  * Deliberately dependency-free apart from `node:fs`/`node:path`, so nothing
  * here can create an import cycle between the domain and service layers.
  */
-import { existsSync, realpathSync } from 'node:fs';
+import { lstatSync, realpathSync } from 'node:fs';
 import {
   basename,
   dirname,
@@ -76,14 +76,34 @@ export function assertSafeSkillName(name: string): void {
   }
 }
 
+/**
+ * A project slug is ONE path segment, refused here rather than joined.
+ *
+ * The same rule a skill name follows, for the same reason: `skillsRootDir`
+ * joins this straight into a path, so `..` collapsed the root back to
+ * `<home>/skills` and a write labelled project-scoped landed in the machine
+ * root — silently, which is worse than the throw a separator produced (delta
+ * review F5). Both now refuse for the same stated reason.
+ *
+ * An absent or empty slug is not a slug: it means "no project scope", which is
+ * what every unscoped caller passes.
+ */
+export function assertSafeProjectSlug(projectSlug: string): void {
+  if (!isSafeSkillName(projectSlug)) {
+    throw new Error(
+      `Invalid project slug ${JSON.stringify(projectSlug)}: it must be a single path segment and must not be '__proto__', 'constructor' or 'prototype'`,
+    );
+  }
+}
+
 /** The directory that holds this Station's (or project's) skill packages. */
 export function skillsRootDir(
   projectHomeDir: string,
   projectSlug?: string,
 ): string {
-  return projectSlug
-    ? join(projectHomeDir, 'projects', projectSlug, 'skills')
-    : join(projectHomeDir, 'skills');
+  if (!projectSlug) return join(projectHomeDir, 'skills');
+  assertSafeProjectSlug(projectSlug);
+  return join(projectHomeDir, 'projects', projectSlug, 'skills');
 }
 
 /**
@@ -107,6 +127,23 @@ export function isDirectoryWithin(root: string, candidate: string): boolean {
 }
 
 /**
+ * Does this path component exist AS A COMPONENT — link-aware?
+ *
+ * `existsSync` follows symlinks, so a DANGLING one reports false and the walk
+ * below climbs straight past it, resolving as if the redirect were not there
+ * (delta review F3). `lstatSync` answers about the entry itself, which is what
+ * "is there something here" has to mean when the something may be a link.
+ */
+function componentExists(candidate: string): boolean {
+  try {
+    lstatSync(candidate);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The deepest ancestor of `target` that exists on disk, `target` itself
  * included. A skill directory usually does NOT exist yet at create time, so
  * there is nothing to resolve links through — the nearest existing ancestor is
@@ -114,7 +151,7 @@ export function isDirectoryWithin(root: string, candidate: string): boolean {
  */
 function nearestExistingAncestor(target: string): string {
   let candidate = resolve(target);
-  while (!existsSync(candidate)) {
+  while (!componentExists(candidate)) {
     const parent = dirname(candidate);
     if (parent === candidate) return candidate;
     candidate = parent;
@@ -130,15 +167,28 @@ function nearestExistingAncestor(target: string): string {
  * which is every package a create is about to make, and comparing an
  * unresolved path against a resolved one is how a redirect hides (see
  * `assertSkillPackageDirectory`).
+ *
+ * A component that exists but CANNOT be resolved — a dangling symlink — is not
+ * the same as one that is absent, and returning the lexical path for it is a
+ * fail-open: the redirect vanishes and the shape reads as an ordinary root
+ * (delta review F3). `null` says "this cannot be answered", and every caller
+ * treats that as a refusal rather than as an answer.
+ *
+ * `resolve()` normalises `..` LEXICALLY, while a real traversal would resolve
+ * each component in turn — the two diverge across a symlink. Every case that
+ * can be constructed here fails closed (the normalised path is what is then
+ * checked for containment and shape, and a redirected component is caught by
+ * the resolution above), and no production caller supplies such a string; this
+ * is recorded as a property rather than defended against twice.
  */
-function physicalPath(target: string): string {
+function physicalPath(target: string): string | null {
   const resolved = resolve(target);
   const existing = nearestExistingAncestor(resolved);
   let real: string;
   try {
     real = realpathSync(existing);
   } catch {
-    return resolved;
+    return null;
   }
   const remainder = relative(existing, resolved);
   return remainder ? join(real, remainder) : real;
@@ -161,21 +211,27 @@ function physicalPath(target: string): string {
  * another checkout. In those cases Station would silently write into a tree it
  * does not own and report success; refusing is the honest answer.
  *
- * An unresolvable root (it does not exist yet) is not a failure: nothing has
- * been aliased if nothing is there, and the lexical check still applies.
+ * A root that does not exist YET is not a failure: nothing has been aliased if
+ * nothing is there, and the lexical check is the whole answer. A root that
+ * exists and cannot be RESOLVED is a different fact — a dangling symlink — and
+ * conflating the two accepted it, with the redirect invisible because the walk
+ * had already climbed past the link (delta review F3). "Absent" is answered by
+ * a link-aware probe; anything else is refused.
  */
 export function isDirectoryPhysicallyWithin(
   root: string,
   candidate: string,
 ): boolean {
   if (!isDirectoryWithin(root, candidate)) return false;
+  const resolvedRoot = resolve(root);
   let realRoot: string;
   try {
-    realRoot = realpathSync(resolve(root));
+    realRoot = realpathSync(resolvedRoot);
   } catch {
-    // The root does not exist yet — there is no link to follow, and the
-    // lexical containment above is the whole answer.
-    return true;
+    // Absent is an answer; unreadable is not. A dangling link at the root, or
+    // a component that cannot be traversed, leaves this unable to say where a
+    // write would land — and "I could not tell" must never read as "yes".
+    return !componentExists(resolvedRoot);
   }
   try {
     const realTarget = realpathSync(nearestExistingAncestor(candidate));
@@ -239,11 +295,15 @@ export function assertSkillPackageDirectory(
   // extends to any redirect that stays inside the home, which is every
   // read-only root Station serves.
   const root = dirname(resolved);
-  const parent = relative(physicalPath(projectHomeDir), physicalPath(root))
-    .split(sep)
-    .join('/');
+  const physicalHome = physicalPath(projectHomeDir);
+  const physicalRoot = physicalPath(root);
+  const parent =
+    physicalHome === null || physicalRoot === null
+      ? null
+      : relative(physicalHome, physicalRoot).split(sep).join('/');
   const inWritableRoot =
-    parent === 'skills' || /^projects\/[^/]+\/skills$/.test(parent);
+    parent !== null &&
+    (parent === 'skills' || /^projects\/[^/]+\/skills$/.test(parent));
   if (!inWritableRoot) {
     throw new Error(
       `Skill directory ${JSON.stringify(directory)} does not sit in a skills root Station writes (${projectHomeDir}/skills or ${projectHomeDir}/projects/<project>/skills)`,
