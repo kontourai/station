@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-cli",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Command-line client for Station hosts: chat, agents, sessions, and fleet management",
   "type": "module",
   "engines": {
@@ -37,10 +37,10 @@
     }
   },
   "devDependencies": {
-    "@kontourai/station-connect": "^0.5.1",
-    "@kontourai/station-contracts": "^0.7.0",
-    "@kontourai/station-sdk": "^0.7.0",
-    "@kontourai/station-shared": "^0.7.0",
+    "@kontourai/station-connect": "^0.5.2",
+    "@kontourai/station-contracts": "^0.8.0",
+    "@kontourai/station-sdk": "^0.8.0",
+    "@kontourai/station-shared": "^0.8.0",
     "commander": "^11.1.0",
     "esbuild": "^0.28.1",
     "tsx": "^4.23.13"

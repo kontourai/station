@@ -1,5 +1,19 @@
 # @kontourai/station-contracts
 
+## 0.8.0
+
+### Minor Changes
+
+- e172b3d: Add private source-room write sealing and bind Task execution to its exact room before provider startup. Keep dispatch admission durable through external claims, startup and final association, and prevent uncertain session creation from being retried without reconciliation. Introduce the dedicated home-transfer grant; public cloud handoff and target activation remain unavailable.
+- 4aca094: Add read-only cloud setup preview and AWS EC2 template preparation. Report credential enrollment, workspace review, and unavailable execution handoff explicitly; do not provision resources or transfer authority.
+- 7ef36cc: Add enrolled cloud target verification with stable boot observation, redirect refusal, bounded responses and no execution authority transfer.
+- 1344781: Record recovery-from-copy provenance atomically with an offline home restore. Show the snapshot time and explicit absence of transferred execution authority in CLI and JSON output, and expose a bounded read-only recovery-record reader.
+  
+  Expose a host-scoped system-status disclosure and show a persistent browser recovery notice with snapshot time and explicit authority limits.
+- ce6ec59: Add encrypted, bounded Git workspace packages with shared capture, inspection, and fresh-directory import APIs and cloud CLI commands. Preserve supported staged and uncommitted work without transferring credentials or execution authority. Document self-hosted use, resource limits, and recovery.
+- 0d75052: Add the `project` skill origin, so a workspace-scoped skill is distinguishable from a machine-wide one. Both are writable roots and previously reported `user`, which left no reader able to name the difference. Command-claim precedence places `project` in the same tier as `user`, matching the order discovery already resolves a name collision by.
+- 0c3d60e: Verify restored Git workspace contents through the bounded package codecs and emit a package-bound verification receipt. Check fresh local imports before target Project creation, preserving failed imports for explicit recovery and reporting platform limitations.
+
 ## 0.7.0
 
 ### Minor Changes

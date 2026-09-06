@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-connect",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Environment identity, access, pairing, and reconnect contracts for Station",
   "private": true,
   "main": "dist/index.js",
@@ -50,8 +50,8 @@
     "url": "https://github.com/kontourai/station/issues"
   },
   "dependencies": {
-    "@kontourai/station-contracts": "^0.7.0",
-    "@kontourai/station-shared": "^0.7.0",
+    "@kontourai/station-contracts": "^0.8.0",
+    "@kontourai/station-shared": "^0.8.0",
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4"
   },

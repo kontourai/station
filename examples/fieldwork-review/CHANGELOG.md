@@ -1,5 +1,13 @@
 # @kontourai/station-fieldwork-review
 
+## 0.1.4
+
+### Patch Changes
+
+- Updated dependencies [7ef36cc]
+- Updated dependencies [1344781]
+  - @kontourai/station-sdk@0.8.0
+
 ## 0.1.3
 
 ### Patch Changes
