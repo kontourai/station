@@ -59,10 +59,7 @@ test('the cap crosses the dock beside the critical card, one tier below it', () 
   expect(cap).toMatch(/z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/);
 
   const [card] = ruleBodiesFor(BANNER_CSS, CRITICAL_CARD_RULE);
-  expect(
-    card,
-    `missing rule: ${CRITICAL_CARD_RULE}`,
-  ).toBeDefined();
+  expect(card, `missing rule: ${CRITICAL_CARD_RULE}`).toBeDefined();
   // Strictly above the cap: the cap is tucked 8px under the card and is a
   // later sibling, so an equal tier paints its border over the card's edge.
   expect(card).toMatch(/z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*2\)/);
@@ -75,9 +72,7 @@ test('an expanded critical stack crosses the dock whole', () => {
     expanded,
     `missing rule: ${EXPANDED_HOST_RULE} — without it, expanding the stack renders its ordinary cards visible and un-clickable over a maximized dock (#1132)`,
   ).toBeDefined();
-  expect(expanded).toMatch(
-    /z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/,
-  );
+  expect(expanded).toMatch(/z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/);
   // The expanded escalation must outrank the `z-index: auto` the same host
   // carries while collapsed, which it does on specificity (0,6,0 vs 0,5,0) —
   // asserted as the presence of the extra class, since jsdom will not
@@ -87,9 +82,11 @@ test('an expanded critical stack crosses the dock whole', () => {
     `${MAXIMIZED} > .banner-host.banner-host--critical-chrome`,
   );
   expect(collapsedHost).toMatch(/z-index:\s*auto/);
-  expect(EXPANDED_HOST_RULE.startsWith(
-    `${MAXIMIZED} > .banner-host.banner-host--critical-chrome`,
-  )).toBe(true);
+  expect(
+    EXPANDED_HOST_RULE.startsWith(
+      `${MAXIMIZED} > .banner-host.banner-host--critical-chrome`,
+    ),
+  ).toBe(true);
 });
 
 vi.mock('../views/SessionsView', () => ({

@@ -549,7 +549,9 @@ describe.skipIf(!chromiumAvailable)(
      */
     test('the connection chip drops its label below the width the row can hold, keeping its accessible name (#1132)', async () => {
       const measure = async (width: number) => {
-        const page = await browser.newPage({ viewport: { width, height: 200 } });
+        const page = await browser.newPage({
+          viewport: { width, height: 200 },
+        });
         try {
           await page.setContent(
             buildFixtureHtml(await renderMarkupForState('error')),

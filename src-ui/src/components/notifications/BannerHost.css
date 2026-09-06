@@ -683,7 +683,7 @@
  * reorder them and do not lengthen this selector — either would silently
  * demote a stand-in cap under the ordinary card it is standing in for. */
 .app__main:has(> .chat-dock.is-maximized)
-  > .banner-host.banner-host--critical-chrome.banner-host--expanded,
+> .banner-host.banner-host--critical-chrome.banner-host--expanded,
 .app__main:has(> .chat-dock.is-maximized)
   > .banner-host--critical-chrome
   .banner-host__cap {

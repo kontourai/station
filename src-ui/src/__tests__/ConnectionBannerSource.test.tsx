@@ -835,7 +835,9 @@ describe('ConnectionBannerSource → BannerHost — blocked credential', () => {
       if (!node) throw new Error('ordinary banner never rendered');
       return node;
     });
-    expect(ordinary.className).not.toMatch(/banner-host__item--critical-chrome/);
+    expect(ordinary.className).not.toMatch(
+      /banner-host__item--critical-chrome/,
+    );
   });
 
   /**
