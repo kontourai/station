@@ -1548,6 +1548,14 @@ export class SkillService {
     // `isSkillWritable` is the predicate, not a second copy of it: the route
     // already refuses a command declaration on the same rule, and one rule that
     // two callers share cannot drift into two answers.
+    //
+    // It also covers the root that predicate was written for — a canonical
+    // package's or a plugin's — so an edit to one of those now refuses for
+    // EVERY field rather than only when the request declares a command. That is
+    // what `isSkillWritable`'s own docblock has always said ("those must be
+    // installed into the workspace before they can be edited"); until now a
+    // description edit quietly published a shadow package into the workspace
+    // instead.
     if (!this.isSkillWritable(name, projectHomeDir, projectSlug)) {
       const location = this.registry.get(name)?.location;
       return {
