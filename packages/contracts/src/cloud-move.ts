@@ -67,3 +67,16 @@ export interface WorkspacePackageVerification extends WorkspacePackageReceipt {
   gitObjectValidation: 'performed-in-isolated-import';
   executableModeVerification: 'passed' | 'unavailable-on-windows';
 }
+
+/** Observation of an enrolled process, never a transferable ownership grant. */
+export interface CloudMoveTargetObservation {
+  schemaVersion: 'station.cloud-target-observation/v1';
+  targetOrigin: string;
+  environmentId: string;
+  instanceId: string;
+  bootId: string;
+  sha: string;
+  observedAt: string;
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+}

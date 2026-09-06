@@ -857,6 +857,12 @@ Turn deduplication, adoption, recovery, and private credential application are c
 
 ## Cloud move preparation
 
+The private [planned home transfer store](../../src-server/services/orchestration/planned-home-transfer-store.ts)
+owns conditional decision persistence for a future centrally served authority.
+It does not authenticate homes, issue leases or activate execution; the
+[channel home authority design](../design/channel-home-authority.md) owns those
+remaining integration requirements.
+
 `@kontourai/station-contracts/cloud-move` owns the public preview shape.
 `@kontourai/station-shared/cloud-move` owns bounded read-only setup inventory and
 explicit provider selection. The AWS adapter in `packages/shared/src/cloud-aws-ec2.ts`

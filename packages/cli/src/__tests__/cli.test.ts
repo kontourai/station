@@ -138,6 +138,11 @@ async function loadCliWithLifecycleMocks() {
     })),
     homeRestore: vi.fn(() => ({
       homeDir: '/home',
+      recovery: {
+        kind: 'recovered-from-copy',
+        snapshotCreatedAt: '2026-09-05T00:00:00.000Z',
+        authorityTransferred: false,
+      },
       manifest: { files: [], totalBytes: 0 },
     })),
     link: vi.fn(),
@@ -268,6 +273,24 @@ describe('runCli', () => {
     expect(
       output.mock.calls.every(([value]) => !String(value).includes('"files"')),
     ).toBe(true);
+  });
+
+  test('home restore discloses recovery from a copy and its snapshot time', async () => {
+    const { runCli } = await loadCliWithLifecycleMocks();
+    const output = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runCli([
+      'home',
+      'restore',
+      '--base=/station-home',
+      '--from=/backup-dir',
+      '--confirm',
+    ]);
+    const text = output.mock.calls.flat().join('\n');
+    expect(text).toContain(
+      'Recovered from a copy captured at 2026-09-05T00:00:00.000Z',
+    );
+    expect(text).toContain('Work after that snapshot may be missing');
+    expect(text).toContain('did not transfer execution authority');
   });
 
   test('home verify reports a corrupt store and exits non-zero', async () => {

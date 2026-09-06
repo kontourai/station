@@ -35,6 +35,7 @@ type ErrorReason =
   | 'worker-unavailable'
   | 'worker-incompatible'
   | 'station-unavailable'
+  | 'station-authentication-required'
   | 'project-unavailable'
   | 'identity-mismatch'
   | 'host-mismatch'
@@ -133,6 +134,8 @@ const ACTIONS: Record<ErrorReason, string> = {
     'Install Node.js 24 or newer on the remote host and retry.',
   'worker-incompatible':
     'Update Station and Node.js on the remote host before reconnecting.',
+  'station-authentication-required':
+    'Station answered but requires application authentication. Use an enrolled Station connection; SSH worker credential enrollment is not supported yet.',
   'station-unavailable':
     'Start Station on the configured remote port and retry.',
   'project-unavailable':
@@ -218,6 +221,8 @@ function mapTunnelState(state: OpenSshTunnelState): SshEnvironmentState {
 
 function classifyWorkerFailure(error: unknown): ErrorReason {
   const message = error instanceof Error ? error.message : String(error);
+  if (/station-authentication-required/.test(message))
+    return 'station-authentication-required';
   if (/identity-mismatch/.test(message)) return 'identity-mismatch';
   if (/host-mismatch/.test(message)) return 'host-mismatch';
   if (/project-mismatch/.test(message)) return 'project-mismatch';

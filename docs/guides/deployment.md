@@ -190,6 +190,11 @@ npm run test:focused -- src-server/services/orchestration/__tests__/home-referen
 ```
 
 Offline restore does not fence another host or grant it execution authority.
+Each restore records a new recovery identity and the backup snapshot time in
+`station-home-recovery.json`; the CLI, JSON restore receipt and connected
+browser banner disclose recovery from a copy. The browser uses the current
+Station's status query and clears a prior host's notice when switching hosts. Retain that record when operating the recovered environment. It is
+provenance metadata, not proof of source shutdown or a transfer certificate.
 Keep one active writer by operational control; automatic cross-host handoff,
 witness-less fork presentation, and per-tenant recovery require separate
 verification before offering those guarantees to customers.

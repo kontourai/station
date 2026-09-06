@@ -55,6 +55,43 @@ transition and uncertainty semantics. For example, etcd documents atomic
 comparison/transaction operations in its [v3 API](https://etcd.io/docs/v3.6/learning/api/).
 Backend choice does not replace the write-path integration below.
 
+## Planned-transfer decision storage
+
+The private [planned transfer store](../../src-server/services/orchestration/planned-home-transfer-store.ts)
+provides a SQLite implementation of `PlannedHomeTransferStore`. Consumers await
+its operations; asynchronous database or remote-service adapters can implement
+the same interface. A composing
+service supplies a centrally owned database outside portable home archives.
+The adapter requires a file-backed SQLite database with durable journaling and
+`synchronous=FULL` or `EXTRA`, checked at initialization and in every transaction.
+A later durability downgrade makes operations unavailable. These settings do
+not certify the underlying filesystem or storage hardware.
+The adapter itself performs no home authentication, membership authorization,
+lease issuance, renewal or target activation. No runtime write path currently
+uses its decisions as execution authority.
+
+The store reserves an exact tenant/channel/source/target/policy intent against
+an owner revision. One pending transfer per tenant/channel prevents competing
+preparations. Source closure binds the real room checkpoint and working-state
+digest; target readiness must name that exact closure digest and target home.
+Commit updates the owner decision and operation record in one transaction.
+Repeating a committed operation returns its original result, including after
+reopening the database. A missing response is resolved by operation ID, never
+by assuming that the commit failed. There is no timeout-driven reassignment or
+unseal operation.
+
+Tenant-qualified keys prevent storage lookups from mixing identically named
+channels and operations. This is storage partitioning, not tenant authorization:
+the future service must derive the tenant and authenticate both homes before
+calling it. Identifiers, exact record shapes and stored JSON reads are bounded;
+corrupt records are unavailable rather than treated as missing enrollment.
+
+Tests exercise independent processes that both observe the same source revision
+before racing preparation, transaction rollback after an injected commit-write
+failure, duplicate decisions after reopening, and tenant-qualified lookups.
+They do not prove network partitions, a deployed witness, accepted-writer
+fencing, or live session continuation. Those remain integration requirements.
+
 ## Fence the operation, not only admission
 
 1. **Admission:** source closure durably prevents new room mutations and new

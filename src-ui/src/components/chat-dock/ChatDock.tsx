@@ -68,6 +68,11 @@ import {
 } from '../../hooks/useDockShellChrome';
 import { useExitTransition } from '../../hooks/useExitTransition';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import {
+  OPEN_PROJECT_CHATS_EVENT,
+  type OpenProjectChatsDetail,
+  UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
+} from '../../lib/projectChatEvents';
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
 import {
   type EffectiveModelSource,
@@ -112,6 +117,7 @@ import {
   projectDisplayName,
   resolveDirectNewChatProjectSlug,
   resolveDockBadgeProjectName,
+  resolveDockProjectContextDirectory,
   resolveNewChatModalDefaultProjectSlug,
   resolveSessionProjectMismatchLabel,
   routeToOpenChatsCollection,
@@ -343,11 +349,6 @@ type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
     | { placement: 'dock'; shellChrome: DockShellChrome }
     | { placement: 'fullscreen'; shellChrome?: never }
   );
-
-type ProjectChatsEventDetail = {
-  projectSlug?: string;
-  projectName?: string;
-};
 
 export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { placement, projectSlug, layoutSlug, onRequestAuth } = props;
@@ -874,9 +875,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // station#4525 review HIGH-2/MED-1: the badge names the BOUND project
   // (`resolveDockBadgeProjectName`, shared by the desktop and mobile
   // triggers so the two can never disagree) — but the session's own
-  // directory/git/coding-layout facts are NOT gated on it (see the JSX
-  // below: they read straight off `sessionDisplayCwd`/`gitStatus`/
-  // `sessionCodingLayout`, exactly as pre-station#4525, unconditionally).
+  // git/coding-layout facts are NOT gated on it (see the JSX below: they read
+  // straight off `gitStatus`/`sessionCodingLayout`, exactly as
+  // pre-station#4525, unconditionally).
+  //
+  // #1536 G6 NARROWED that for the DIRECTORY alone: it now goes through
+  // `resolveDockProjectContextDirectory`, which still prefers the session's own
+  // `sessionDisplayCwd` unconditionally and still refuses to caption a FOREIGN
+  // session with the badge's path — the ruling's actual subject. What it adds is
+  // a fallback for the case the ruling never faced: no session at all (a
+  // collapsed dock with nothing open), where the row printed "Home folder"
+  // beside a project whose directory is set.
   // `sessionSourceProjectSlug`/`sessionSourceProjectName` are threaded
   // through to both derivations rather than reading `activeSession` inline
   // twice, so the badge name and the mismatch label can never read two
@@ -899,6 +908,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     dockProjectSlug,
     sessionProjectSlug: sessionSourceProjectSlug,
     sessionProjectName,
+  });
+  const dockProjectContextDirectory = resolveDockProjectContextDirectory({
+    scopedProjectSlug,
+    sessionDisplayCwd,
+    sessionProjectSlug: sessionSourceProjectSlug,
+    dockProjectSlug,
+    dockProjectWorkingDirectory: dockProjectSlug
+      ? (projects.find((project) => project.slug === dockProjectSlug)
+          ?.workingDirectory ?? null)
+      : null,
   });
   const attachmentCapabilities = useMemo(
     () => ({
@@ -1789,7 +1808,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   useEffect(() => {
     const openProjectChats = (event: Event) => {
-      const detail = (event as CustomEvent<ProjectChatsEventDetail>).detail;
+      const detail = (event as CustomEvent<OpenProjectChatsDetail>).detail;
       if (!detail?.projectSlug) return;
       if (routeToScopedChatProject(detail.projectSlug)) return;
 
@@ -1820,7 +1839,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       });
       if (outcome === 'focused') {
         telemetry.track('ui.chat.entry', {
-          source: 'project-sidebar',
+          // #1536 M6/D4: the DISPATCHER names itself. This used to hardcode
+          // `project-sidebar`, a pill deleted in archive#1629 — a listener
+          // cannot know who called it, and outlived the only caller that made
+          // the name true.
+          source: detail.source ?? UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
           outcome: 'focused',
           projectScoped: 1,
         });
@@ -1835,17 +1858,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       });
       setShowNewChatModal(true);
       telemetry.track('ui.chat.entry', {
-        source: 'project-sidebar',
+        source: detail.source ?? UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
         outcome: 'new-chat',
         projectScoped: 1,
       });
     };
-    window.addEventListener('station:open-project-chats', openProjectChats);
+    window.addEventListener(OPEN_PROJECT_CHATS_EVENT, openProjectChats);
     return () => {
-      window.removeEventListener(
-        'station:open-project-chats',
-        openProjectChats,
-      );
+      window.removeEventListener(OPEN_PROJECT_CHATS_EVENT, openProjectChats);
     };
   }, [
     applyDockSnap,
@@ -2134,9 +2154,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     // pre-station#4525, other than the pre-existing
                     // `scopedProjectSlug` guard (a project chat-scope filter
                     // has never shown session-specific facts).
-                    workingDirectory={
-                      scopedProjectSlug ? null : sessionDisplayCwd
-                    }
+                    // #1536 G6: one derivation for the directory, so the
+                    // badge and the path can never name different projects.
+                    // With the dock collapsed and nothing open there is no
+                    // session to report on, and this row used to print "Home
+                    // folder" beside a project whose directory IS set. The
+                    // toolbar branch deleted the visible path SEGMENT, but the
+                    // prop survives as `directoryTitle`'s subject — so the
+                    // derivation still has a reader, and a wrong one would now
+                    // be a wrong tooltip rather than a wrong line of text.
+                    workingDirectory={dockProjectContextDirectory}
                     gitStatus={scopedProjectSlug ? undefined : gitStatus}
                     sessionProjectMismatchLabel={sessionProjectMismatchLabel}
                     projects={projects}

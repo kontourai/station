@@ -1,4 +1,12 @@
+import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
 import { describe, expect, test, vi } from 'vitest';
+import {
+  executeOwnedProcess,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from '../../../../scripts/lib/owned-process.mjs';
 import {
   buildOpenSshWorkerProbeArgs,
   createSystemOpenSshWorkerProbeRunner,
@@ -54,7 +62,9 @@ describe('OpenSSH remote worker probe', () => {
   test('streams a static worker over stdin and validates its response', async () => {
     const runProcess = vi.fn(async ({ args, stdin }) => {
       expect(args).toEqual(buildOpenSshWorkerProbeArgs(INPUT));
-      expect(stdin).toContain("fetch(base + '/.well-known/station/v1')");
+      expect(stdin).toContain(
+        "fetch(base + '/.well-known/station/v1', options)",
+      );
       expect(stdin).toContain('remoteHome: os.homedir()');
       expect(stdin).not.toContain("fetch(base + '/.well-known/station')\n");
       expect(stdin).not.toContain(INPUT.remoteProjectPath);
@@ -104,4 +114,121 @@ describe('OpenSSH remote worker probe', () => {
     ).rejects.toThrow('Remote project path is invalid');
     expect(runProcess).not.toHaveBeenCalled();
   });
+});
+
+describe('remote worker listener identity', () => {
+  test.each([
+    'direct',
+    '/.well-known/station/v1',
+    '/api/system/identity',
+    'unauthorized',
+    'forbidden',
+  ])(
+    'executes the shipped worker against %s responses',
+    async (redirectPath) => {
+      let redirectedRequests = 0;
+      const server = createServer((request, response) => {
+        const url = new URL(request.url ?? '/', 'http://localhost');
+        if (
+          url.pathname === '/api/system/identity' &&
+          ['unauthorized', 'forbidden'].includes(redirectPath)
+        ) {
+          response.writeHead(redirectPath === 'unauthorized' ? 401 : 403);
+          response.end();
+          return;
+        }
+        if (url.searchParams.has('redirected')) redirectedRequests += 1;
+        if (
+          url.pathname === redirectPath &&
+          !url.searchParams.has('redirected')
+        ) {
+          response.writeHead(302, { location: `${url.pathname}?redirected=1` });
+          response.end();
+          return;
+        }
+        response.setHeader('content-type', 'application/json');
+        response.end(
+          JSON.stringify(
+            url.pathname === '/.well-known/station/v1'
+              ? { environmentId: RESULT.environmentId }
+              : {
+                  instanceId: RESULT.instanceId,
+                  sha: RESULT.sha,
+                  bootId: RESULT.bootId,
+                },
+          ),
+        );
+      });
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', resolve);
+      });
+      try {
+        const address = server.address();
+        if (!address || typeof address === 'string')
+          throw new Error('Missing fixture listener');
+        const run = createSystemOpenSshWorkerProbeRunner(
+          async ({ args, stdin }) => {
+            // Execute exactly the program and payload sent through SSH, replacing
+            // only the SSH transport with a local child for this listener test.
+            const execution = executeOwnedProcess(
+              process.execPath,
+              ['-', args.at(-1) ?? ''],
+              spawn,
+              'Station identity worker fixture',
+              { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true },
+            );
+            let stdout = '';
+            let stderr = '';
+            execution.child.stdout?.on('data', (chunk) => {
+              stdout += chunk.toString();
+            });
+            execution.child.stderr?.on('data', (chunk) => {
+              stderr += chunk.toString();
+            });
+            execution.child.stdin?.end(stdin);
+            try {
+              if (!(await waitForSuiteSettlement(execution, 5000)))
+                throw new Error('Worker fixture timed out');
+              const result = await execution.completion;
+              return { stdout, stderr, exitCode: result.status ?? 1 };
+            } finally {
+              const cleanup = await terminateSuiteExecution(execution, {
+                processLabel: 'Station identity worker fixture',
+                waitForSuiteSettlement,
+                terminationGraceMs: 1000,
+                terminationForceMs: 1000,
+              });
+              expect(cleanup).toMatchObject({ settled: true, errors: [] });
+            }
+          },
+        );
+        const result = run({
+          ...INPUT,
+          remoteProjectPath: tmpdir(),
+          remotePort: address.port,
+        });
+        if (redirectPath === 'direct') {
+          await expect(result).resolves.toMatchObject({
+            environmentId: RESULT.environmentId,
+            instanceId: RESULT.instanceId,
+            sha: RESULT.sha,
+            bootId: RESULT.bootId,
+          });
+        } else if (['unauthorized', 'forbidden'].includes(redirectPath)) {
+          await expect(result).rejects.toThrow(
+            'station-authentication-required',
+          );
+        } else {
+          await expect(result).rejects.toThrow('station-unavailable');
+        }
+        expect(redirectedRequests).toBe(0);
+      } finally {
+        server.closeAllConnections();
+        await new Promise<void>((resolve, reject) =>
+          server.close((error) => (error ? reject(error) : resolve())),
+        );
+      }
+    },
+  );
 });

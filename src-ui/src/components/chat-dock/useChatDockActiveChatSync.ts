@@ -114,16 +114,34 @@ export function useChatDockActiveChatSync({
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const catalogWasLoadedForThisAttempt = agentsLoaded;
-    // station#1284 (D2c): the definitive-miss fallback — never a silent
-    // setActiveChat(null). Mirrors the working pattern ChatDock's own inbox
-    // panel already uses (an Activity-region session intent),
-    // plus explicitly clearing the `chat` param before revealing Activity —
-    // leaving it would re-seed `activeChat` from the URL on the very next
-    // render (parseUrl() reads `chat` regardless of pathname) and loop this
-    // effect right back into the dead conversation it just gave up on.
-    // Clearing `dock` prevents a stale open Chat dock alongside Activity.
-    const fallbackToActivityRoute = () => {
+    /**
+     * Drop the URL pointer at a chat this dock could not open. Clearing `chat`
+     * is mandatory, not cosmetic: leaving it would re-seed `activeChat` from
+     * the URL on the very next render (parseUrl() reads `chat` regardless of
+     * pathname) and loop this effect right back into the dead conversation it
+     * just gave up on. Clearing `dock` prevents a stale open Chat dock.
+     */
+    const clearDeadChatPointer = () => {
       updateParamsRef.current({ chat: null, dock: null });
+    };
+    /**
+     * station#1284 (D2c): the clear is not silent — Activity is revealed with
+     * the session, mirroring the pattern ChatDock's own inbox panel uses, so
+     * the user keeps a way back to the conversation.
+     *
+     * Reachable only where the lookup PRODUCED a conversation record. That
+     * record is the evidence there is a session to go and see; without it the
+     * reveal is a claim with no source, and #1582 measured what that costs: a
+     * chat that was never promoted to a conversation leaves `?chat=<sessionId>`
+     * in the URL (`activeChatDurableId`), the reload's lookup 404s because
+     * nothing was ever persisted, and the fallback opened the Activity region
+     * — a region the user never opened, filled with skeletons for a session id
+     * that resolves to nothing. A definitive miss now clears the pointer and
+     * places no surface, so what is on screen after a load stays a derivation
+     * of the persisted arrangement.
+     */
+    const revealActivityForSession = () => {
+      clearDeadChatPointer();
       showSurfaceRef.current('activity', { session: activeChat });
     };
     /**
@@ -159,7 +177,8 @@ export function useChatDockActiveChatSync({
         // on the now-stale lookup result.
         if (hydratedLocally()) return;
         if (!conversation) {
-          fallbackToActivityRoute();
+          // No record: this Station does not know the id at all (#1582).
+          clearDeadChatPointer();
           return;
         }
         const opened =
@@ -196,7 +215,10 @@ export function useChatDockActiveChatSync({
         const retryStillAvailable = attempt.attemptKeys.length < 2;
         const inconclusive = !catalogWasLoadedForThisAttempt;
         if (opened === false && !(inconclusive && retryStillAvailable)) {
-          fallbackToActivityRoute();
+          // The lookup returned this conversation; only its owning agent is
+          // gone. There is a real session behind the id, so Activity has
+          // something to show (archive#801, station#1284).
+          revealActivityForSession();
         }
       } catch {
         if (cancelled || requestGeneration !== requestGenerationRef.current)
@@ -213,7 +235,10 @@ export function useChatDockActiveChatSync({
           }, 250);
           return;
         }
-        fallbackToActivityRoute();
+        // The lookup never answered, so whether the conversation exists is
+        // unknown rather than settled. An unresolved pointer keeps
+        // station#1284's reveal; only a definitive miss loses it.
+        revealActivityForSession();
       }
     })();
 

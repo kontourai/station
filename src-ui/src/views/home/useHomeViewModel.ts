@@ -10,7 +10,10 @@ import {
 import { useMemo, useReducer } from 'react';
 import { useAgents, useAgentsLoaded } from '../../contexts/AgentsContext';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { openChatsStore, useOpenChats } from '../../contexts/open-chats-store';
+import {
+  openChatsStore,
+  useOpenWorkChats,
+} from '../../contexts/open-chats-store';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
@@ -87,7 +90,9 @@ function useHomeWorkData(): HomeWorkData {
     return (modelId: string | null | undefined) =>
       modelIdentityLabel(modelId, catalog);
   }, [pickerCatalog?.agentConnections, pickerCatalog?.modelConnections]);
-  const openChatItems = useOpenChats(
+  // #1582 B9: Home names WORK, so a chat nothing has been put into is not one
+  // of its items. The inboxes keep `useOpenChats` — see `useOpenWorkChats`.
+  const openChatItems = useOpenWorkChats(
     agents,
     sessions.data ?? [],
     resolveModelLabel,
