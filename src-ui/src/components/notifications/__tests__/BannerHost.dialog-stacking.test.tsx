@@ -1,57 +1,49 @@
 /**
  * @vitest-environment jsdom
  *
- * #1638: the banner host painted over an open modal surface and its own
- * controls took the clicks.
+ * #1638 / #1662: a surface mounted inside the dock renders OUTSIDE the dock's
+ * stacking context, so the layer its overlay declares is the layer it gets.
  *
- * MEASURED LIVE before the fix, on a temp-home instance at 390x844 with two
- * real product notices up (the Board-unavailable redirect notice and the
- * update-available notice) and the New Chat sheet open:
+ * THE TRAP THIS PINS THE REMOVAL OF. A dock is a stacking context in both its
+ * forms — `position: fixed` with `z-index: var(--layer-dock)` on mobile,
+ * `position: relative` in the desktop region grid keeping the same z-index —
+ * and `ChatDock.tsx` renders `ChatDockModalStack` inside it. A dialog mounted
+ * there could never honour `--layer-dialog`; it painted at whatever the dock's
+ * own z-index happened to be. Measured live at 390x844 with two real notices
+ * up and the New Chat sheet open: host `z-index: 9201`, overlay `z-index:
+ * 10000` with `section.chat-dock` (fixed, 9200) as its nearest
+ * stacking-context ancestor, and `document.elementFromPoint(195, 160)` — the
+ * centre of the sheet's search input — returning `button.banner-host__cap`.
+ * Playwright refused the click with `banner-host ... intercepts pointer
+ * events`, which is #1638.
  *
- *   .banner-host             z-index 9201, pointer-events: none
- *   .new-chat-modal__overlay z-index 10000, nearest stacking-context ancestor
- *                            section.chat-dock (position: fixed, z-index 9200)
- *   document.elementFromPoint(195, 160)  // centre of the sheet's search input
- *     -> button.banner-host__cap "1 more notice, 1 informational"
+ * `ResponsiveDialogSurface` now portals to `document.body`, so there is no
+ * z-index rule to test: the property is structural, and these shapes assert
+ * it three ways — the surface is outside every dock, a dialog control is
+ * reachable where the notice host paints, and the chrome that must stay
+ * reachable does.
  *
- * and Playwright refused the click with the issue's own sentence:
- * `<button ... class="banner-host__cap banner-host__cap--info">1 more notice,
- * 1 informational</button> from <section ... class="banner-host ...">…</section>
- * subtree intercepts pointer events`.
+ * WHAT THIS FIXTURE COMPOSES. The subject is a hit test, which no source scan
+ * can see (`src-ui/AGENTS.md`: "DOM/source-string assertions do not establish
+ * CSS layout, hit testing"). So: the REAL `BannerHost`, the REAL
+ * `ResponsiveDialogSurface` (through real consumers' own class names, read
+ * from those components rather than retyped), the REAL `PortableDraftsMenu`
+ * and a REAL `NotificationCard`, rendered through `@testing-library/react`
+ * and injected into a real Chromium page carrying `index.css` +
+ * `BannerHost.css` + `chat.css` + `NotificationContainer.css` with every
+ * `@import` resolved — the same harness as `BannerHost.touch-target.test.tsx`.
+ * Because the surface portals, the fixture serializes `document.body` rather
+ * than a render container: the portaled overlay lands beside the shell there,
+ * which IS the shape under test.
  *
- * WHY IT HAPPENS. `.chat-dock` is `position: fixed` with a z-index, so it is a
- * stacking context, and `ChatDock.tsx` renders `ChatDockModalStack` INSIDE it.
- * Every dock dialog therefore paints at whatever the DOCK's z-index is, not at
- * the `--layer-dialog` its overlay declares. Two pieces of shell chrome sat
- * above that, and BOTH are reachable on a phone: `BannerHost.css` raises the
- * notice to `--layer-dock + 1` wherever the dock leaves no column to inset
- * into, and the mobile `.app__main > .chat-dock.is-maximized` rule drops a
- * maximized dock to `--layer-sticky + 1` (101), under even the plain
- * `--layer-notice`. The reported journey was in the SECOND state — the phone
- * dock maximizes itself — which is why both shapes are measured below and why
- * lowering the notice alone was not the fix.
- *
- * The interceptor is a REAL control, not a transparent container: the host and
- * its items are `pointer-events: none` and only the cap / dismiss / collapse /
- * action rectangles opt back in. So `pointer-events` was already right, and
- * the fix is the ordering: `index.css` promotes a dock that HOSTS a
- * `.responsive-surface-overlay` to `--layer-dialog`, which is the layer the
- * dialog declared and could not reach.
- *
- * WHAT THIS FIXTURE COMPOSES, AND WHY IT NEEDS THE DOCK. The subject is a hit
- * test, which no source scan can see (`src-ui/AGENTS.md`: "DOM/source-string
- * assertions do not establish CSS layout, hit testing"). So: the REAL
- * `BannerHost` and the REAL `ResponsiveDialogSurface`, rendered through
- * `@testing-library/react`, injected into a real Chromium page carrying
- * `index.css` + `BannerHost.css` with every `@import` resolved — the same
- * harness as `BannerHost.touch-target.test.tsx`. The shell containers around
- * them (`.app__main`, `.chat-dock`) are the load-bearing part: put the dialog
- * anywhere else and it reaches `--layer-dialog` on its own and the fixture
- * measures nothing. `assertTheDockStillTrapsItsDialogs` keeps that honest.
+ * The shell containers (`.app__main`, `.chat-dock`, `.notification-container`)
+ * are written as their product class names because their CSS is what decides
+ * geometry and stacking; `assertTheDockWouldStillTrapASurface` keeps that
+ * honest — if a dock ever stops being a stacking context these shapes prove
+ * nothing and the file says so instead of passing.
  *
  * PRECONDITION: launches a real Chromium. Per this repo's browser-test
- * doctrine, a missing browser FAILS loudly rather than skipping — see the
- * tail of this file and `docs/guides/testing.md`.
+ * doctrine, a missing browser FAILS loudly rather than skipping.
  *
  * RESOURCE CLASSIFICATION: listed in `scripts/vitest-resource-manifest.mjs`'s
  * `PROCESS_HEAVY_VITEST_FILES`, same shape as the touch-target files.
@@ -62,7 +54,6 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { act, render } from '@testing-library/react';
-import { useEffect, useRef, useState } from 'react';
 import {
   afterAll,
   afterEach,
@@ -79,20 +70,21 @@ import {
 } from '../../../../../tests/helpers/css-cascade-fixture';
 import { bannerStore } from '../../../contexts/banner-store';
 import { Button } from '../../Button';
+import { PortableDraftsMenu } from '../../chat/PortableDraftsMenu';
 import { ResponsiveDialogSurface } from '../../ResponsiveDialogSurface';
 import { BannerHost } from '../BannerHost';
+import { NotificationCard } from '../NotificationCard';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../../../../');
 const INDEX_CSS_PATH = resolve(HERE, '../../../index.css');
 const BANNER_CSS_PATH = resolve(HERE, '../BannerHost.css');
+const CHAT_CSS_PATH = resolve(HERE, '../../chat/chat.css');
+const NOTIFICATION_CSS_PATH = resolve(HERE, '../NotificationContainer.css');
 const NEW_CHAT_MODAL_PATH = resolve(HERE, '../../modals/NewChatModal.tsx');
-const COMPOSER_ACTIONS_MENU_PATH = resolve(
-  HERE,
-  '../../chat-dock/ComposerActionsMenu.tsx',
-);
 
-const VIEWPORT = { width: 390, height: 844 };
+const PHONE = { width: 390, height: 844 };
+const DESKTOP = { width: 1440, height: 900 };
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
@@ -107,7 +99,12 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 function buildFixtureCss(): string {
-  const css = `${resolveCssImports(INDEX_CSS_PATH)}\n${resolveCssImports(BANNER_CSS_PATH)}`;
+  const css = [
+    resolveCssImports(INDEX_CSS_PATH),
+    resolveCssImports(BANNER_CSS_PATH),
+    resolveCssImports(CHAT_CSS_PATH),
+    resolveCssImports(NOTIFICATION_CSS_PATH),
+  ].join('\n');
   assertNoImportsSurvive(css);
   return css;
 }
@@ -144,8 +141,9 @@ function presentFixtureBanners(critical: boolean): void {
  * The overlay and panel class names a real consumer passes to
  * `ResponsiveDialogSurface`. Read from the component rather than retyped, so a
  * rename there cannot leave this fixture measuring geometry no surface has:
- * the shared `.responsive-surface-*` rules alone supply no `position`
- * (station#1616), and the feature classes that do live in `index.css`.
+ * the shared `.responsive-surface-*` rules supply no `position` and no
+ * background of their own (station#1616, and `FirstRunHomeChapter.css` says so
+ * in its own docblock), and the feature classes that do live in `index.css`.
  */
 function surfaceClassesOf(path: string): {
   overlayClassName: string;
@@ -165,16 +163,13 @@ function surfaceClassesOf(path: string): {
   return { overlayClassName: overlay, panelClassName: panel };
 }
 
-/**
- * A modal surface with a column of ordinary controls. `Button` is the repo's
- * standard action primitive (`src-ui/AGENTS.md`), and the claim under test is
- * about ANY control inside an open surface — the live report happened to be
- * the New Chat sheet's agent card and its search input.
- */
-function renderDialogMarkup(): string {
+type DockSurface = 'modal' | 'bare-modal' | 'drafts' | 'none';
+
+/** A modal dialog with a feature overlay class — the reported case. */
+function ClassedModal() {
   const { overlayClassName, panelClassName } =
     surfaceClassesOf(NEW_CHAT_MODAL_PATH);
-  const { container, unmount } = render(
+  return (
     <ResponsiveDialogSurface
       ariaLabel="New Chat"
       overlayClassName={overlayClassName}
@@ -184,137 +179,90 @@ function renderDialogMarkup(): string {
       {Array.from({ length: 8 }, (_, index) => (
         <Button key={index}>{`Choose agent ${index + 1}`}</Button>
       ))}
-    </ResponsiveDialogSurface>,
+    </ResponsiveDialogSurface>
   );
-  const markup = container.innerHTML;
-  unmount();
-  return markup;
 }
 
 /**
- * The OTHER shape `ResponsiveDialogSurface` renders: a desktop anchored
- * popover. It is fixed-inset for stacking escape and click-away and carries no
- * scrim (`.composer-popover-overlay[data-anchored]` in `chat.css`), which is
- * why it must not take the dialog layer — a promoted dock would paint over the
- * toasts `NotificationContainer.css` promises stay reachable above it.
- *
- * Driven through the real component rather than by writing `data-anchored`
- * into markup: the attribute is what the rule keys on, and the surface only
- * writes it once it has measured a mounted anchor, so the trigger renders
- * first and the surface mounts on the next commit.
+ * A dialog that passes NO overlay class at all — the shape
+ * `ConversationContextResetDialog`, `ConnectedStationBasisPane` and
+ * `SessionOutputInspector` render. They paint no scrim, which is why the
+ * discarded scrim-derived promotion would have left them broken; the portal
+ * does not care what they paint.
  */
-function AnchoredPopoverFixture() {
-  const anchorRef = useRef<HTMLButtonElement>(null);
-  const [anchorMounted, setAnchorMounted] = useState(false);
-  useEffect(() => setAnchorMounted(true), []);
-  const { overlayClassName, panelClassName } = surfaceClassesOf(
-    COMPOSER_ACTIONS_MENU_PATH,
-  );
+function BareModal() {
   return (
-    <>
-      <button type="button" ref={anchorRef}>
-        Actions
-      </button>
-      {anchorMounted ? (
-        <ResponsiveDialogSurface
-          ariaLabel="Chat actions"
-          anchorRef={anchorRef}
-          overlayClassName={overlayClassName}
-          panelClassName={panelClassName}
-          onClose={() => {}}
-        >
-          <Button>Delegate</Button>
-        </ResponsiveDialogSurface>
-      ) : null}
-    </>
+    <ResponsiveDialogSurface
+      ariaLabel="Replace engine context"
+      onClose={() => {}}
+    >
+      {Array.from({ length: 8 }, (_, index) => (
+        <Button key={index}>{`Bare dialog control ${index + 1}`}</Button>
+      ))}
+    </ResponsiveDialogSurface>
   );
 }
 
-function renderAnchoredPopoverMarkup(): string {
-  const { container, unmount } = render(<AnchoredPopoverFixture />);
-  const markup = container.innerHTML;
-  unmount();
-  if (!markup.includes('data-anchored')) {
-    throw new Error(
-      'the anchored fixture rendered no `data-anchored` overlay, so it no ' +
-        'longer models the popover shape the promotion must skip. ' +
-        'ResponsiveDialogSurface changed how it flags an anchored surface — ' +
-        'follow it rather than deleting the case.',
-    );
-  }
-  return markup;
+/** The real scrim-less, anchor-less popover whose promotion was a regression. */
+function DraftsPopover() {
+  return (
+    <PortableDraftsMenu
+      input="a draft"
+      attachments={[]}
+      open
+      onOpenChange={() => {}}
+      onRestore={() => {}}
+    />
+  );
 }
 
-function renderDockContents(surface: DockSurface): string {
-  if (surface === 'modal') return renderDialogMarkup();
-  if (surface === 'anchored') return renderAnchoredPopoverMarkup();
-  return '<div class="chat-dock__body">Dock contents</div>';
+function dockContents(surface: DockSurface) {
+  if (surface === 'modal') return <ClassedModal />;
+  if (surface === 'bare-modal') return <BareModal />;
+  if (surface === 'drafts') return <DraftsPopover />;
+  return <div className="chat-dock__body">Dock contents</div>;
 }
 
-function renderBannerHostMarkup(critical: boolean): string {
-  presentFixtureBanners(critical);
-  const { container, unmount } = render(<BannerHost connectionSlot={false} />);
-  const markup = container.innerHTML;
-  unmount();
-  return markup;
-}
-
-/**
- * The shell ancestry the defect lives in: `.app__main` is the positioned
- * container the host and every region shell sit in, and each `.chat-dock` is a
- * stacking context that traps the surfaces it mounts. `RegionShells` mounts
- * ONE shell per occupied region, all direct children of `.app__main`, so the
- * two-dock shape below is a real layout, not a stress case.
- */
-function buildFixtureHtml(shape: Shape): string {
-  const docks = shape.docks
-    .map(
-      (dock) =>
-        `<section class="${dock.className}">${renderDockContents(dock.surface)}</section>`,
-    )
-    .join('\n        ');
-  return `<!doctype html>
-<html>
-  <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <style>${buildFixtureCss()}</style>
-  </head>
-  <body>
-    <div class="app app--with-sidebar">
-      <div class="app__main">
-        ${renderBannerHostMarkup(shape.critical)}
-        ${docks}
-      </div>
+/** A real notification card in the real container that decides its layer. */
+function Chrome() {
+  return (
+    <div className="notification-container">
+      <NotificationCard
+        notification={{
+          id: 'fixture-approval',
+          source: 'fixture',
+          category: 'approval',
+          title: 'Approval requested',
+          priority: 'high',
+          status: 'delivered',
+          createdAt: new Date(0).toISOString(),
+        }}
+        onDismiss={() => {}}
+      />
     </div>
-  </body>
-</html>`;
+  );
 }
-
-type DockSurface = 'modal' | 'anchored' | 'none';
 
 interface DockSpec {
-  /** The classes `RegionShells`/`ChatDock` render for this dock state. */
   readonly className: string;
   readonly surface: DockSurface;
-  /**
-   * The z-index this dock must resolve to. `10000` is `--layer-dialog`, `9200`
-   * `--layer-dock`, `101` the mobile maximized rule's `--layer-sticky + 1`.
-   * Literals, not the tokens, so widening a token cannot move the expectation
-   * with the code it is meant to pin.
-   */
-  readonly expectedZIndex: string;
 }
 
 interface Shape {
   readonly name: string;
+  readonly viewport: { width: number; height: number };
   readonly critical: boolean;
   readonly docks: readonly DockSpec[];
+  /** A dialog control must be reachable where the notice host paints. */
+  readonly expectsDialogOverNotice: boolean;
   /**
-   * Whether a modal surface is open somewhere, so the hit-test assertion has a
-   * subject. The shapes without one exist to prove the promotion does NOT
-   * fire — the direction the first version of this file could not see.
+   * Whether the notification card's own control must hit-test to itself.
+   * Recorded PER SHAPE rather than asserted universally, because the answer
+   * differs by surface kind and the difference is the point: a dialog is
+   * meant to supersede a toast (`NotificationContainer.css` says so), a
+   * scrim-less popover is not.
    */
-  readonly hasModalSurface: boolean;
+  readonly expectsChromeReachable: boolean;
 }
 
 const BOTTOM_DOCK = 'chat-dock chat-dock--bottom';
@@ -322,64 +270,109 @@ const MAXIMIZED_DOCK = 'chat-dock is-maximized chat-dock--bottom';
 
 const SHAPES: readonly Shape[] = [
   {
-    name: 'an ordinary notice over a bottom dock hosting a modal',
+    name: 'the reported case: a sheet in a bottom dock under a notice',
+    viewport: PHONE,
     critical: false,
-    hasModalSurface: true,
-    docks: [
-      { className: BOTTOM_DOCK, surface: 'modal', expectedZIndex: '10000' },
-    ],
+    docks: [{ className: BOTTOM_DOCK, surface: 'modal' }],
+    expectsDialogOverNotice: true,
+    expectsChromeReachable: false,
   },
   {
-    name: "#920's critical card over a maximized dock hosting a modal",
+    name: "a maximized dock's sheet under #920's critical card",
+    viewport: PHONE,
     critical: true,
-    hasModalSurface: true,
-    docks: [
-      { className: MAXIMIZED_DOCK, surface: 'modal', expectedZIndex: '10000' },
-    ],
+    docks: [{ className: MAXIMIZED_DOCK, surface: 'modal' }],
+    expectsDialogOverNotice: true,
+    expectsChromeReachable: false,
   },
   {
-    name: 'a bottom dock with nothing open stays on the dock layer',
+    name: 'a dialog that paints no scrim and passes no overlay class',
+    viewport: PHONE,
     critical: false,
-    hasModalSurface: false,
-    docks: [
-      { className: BOTTOM_DOCK, surface: 'none', expectedZIndex: '9200' },
-    ],
+    docks: [{ className: BOTTOM_DOCK, surface: 'bare-modal' }],
+    expectsDialogOverNotice: true,
+    expectsChromeReachable: false,
   },
   {
-    name: 'a maximized dock with nothing open keeps its own sticky rank',
+    name: 'two region docks, the dialog in one of them',
+    viewport: DESKTOP,
     critical: false,
-    hasModalSurface: false,
     docks: [
-      { className: MAXIMIZED_DOCK, surface: 'none', expectedZIndex: '101' },
+      { className: BOTTOM_DOCK, surface: 'modal' },
+      { className: BOTTOM_DOCK, surface: 'none' },
     ],
+    expectsDialogOverNotice: true,
+    expectsChromeReachable: false,
   },
   {
-    name: 'a sibling region dock hosting nothing is not promoted with it',
+    name: 'a desktop region-grid dock, the dialog inside it',
+    viewport: DESKTOP,
     critical: false,
-    hasModalSurface: true,
-    docks: [
-      { className: BOTTOM_DOCK, surface: 'modal', expectedZIndex: '10000' },
-      { className: BOTTOM_DOCK, surface: 'none', expectedZIndex: '9200' },
-    ],
+    docks: [{ className: BOTTOM_DOCK, surface: 'modal' }],
+    expectsDialogOverNotice: true,
+    expectsChromeReachable: false,
   },
   {
-    name: 'a scrim-less anchored popover does not take the dialog layer',
+    name: 'only a scrim-less popover open: the toast stays reachable',
+    viewport: DESKTOP,
     critical: false,
-    hasModalSurface: false,
-    docks: [
-      { className: BOTTOM_DOCK, surface: 'anchored', expectedZIndex: '9200' },
-    ],
+    docks: [{ className: BOTTOM_DOCK, surface: 'drafts' }],
+    expectsDialogOverNotice: false,
+    expectsChromeReachable: true,
   },
 ];
 
+function buildFixtureHtml(shape: Shape): string {
+  presentFixtureBanners(shape.critical);
+  const { unmount } = render(
+    <>
+      <div className="app app--with-sidebar">
+        <div className="app__main">
+          <BannerHost connectionSlot={false} />
+          {shape.docks.map((dock, index) => (
+            <section
+              // biome-ignore lint/suspicious/noArrayIndexKey: fixture order is the identity
+              key={index}
+              className={dock.className}
+              data-region="bottom"
+            >
+              {dockContents(dock.surface)}
+            </section>
+          ))}
+        </div>
+      </div>
+      <Chrome />
+    </>,
+  );
+  // The surface portals to `document.body`, so the body IS the shape under
+  // test: the shell, plus the overlay beside it rather than inside the dock.
+  const markup = document.body.innerHTML;
+  unmount();
+  return `<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <style>${buildFixtureCss()}</style>
+  </head>
+  <body>${markup}</body>
+</html>`;
+}
+
 interface Measured {
-  dockTrapsDialogs: boolean;
+  dockWouldTrap: boolean;
   dockZIndexes: string[];
-  hostZIndex: string;
+  overlayInsideADock: boolean;
+  overlayParent: string;
   overlayZIndex: string | null;
-  overlapping: {
+  hostZIndex: string;
+  dialogOverlaps: {
     control: string;
-    banner: string;
+    point: { x: number; y: number };
+    hit: string;
+    hitsItself: boolean;
+  }[];
+  chromeControls: {
+    control: string;
     point: { x: number; y: number };
     hit: string;
     hitsItself: boolean;
@@ -389,7 +382,7 @@ interface Measured {
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 
 describe.skipIf(!chromiumAvailable)(
-  'a notice never takes a click from an open modal surface (#1638)',
+  'a dock surface renders outside the dock, so its declared layer is real (#1638, #1662)',
   () => {
     let browser: Awaited<ReturnType<typeof chromium.launch>>;
 
@@ -404,15 +397,30 @@ describe.skipIf(!chromiumAvailable)(
     });
 
     async function measure(shape: Shape): Promise<Measured> {
-      const page = await browser.newPage({ viewport: VIEWPORT });
+      const page = await browser.newPage({ viewport: shape.viewport });
       try {
         await page.setContent(buildFixtureHtml(shape));
         return await page.evaluate(() => {
           const describe_ = (element: Element | null) =>
             element
-              ? `${element.tagName.toLowerCase()}.${String(element.className).trim().split(/\s+/).join('.')}`
+              ? `${element.tagName.toLowerCase()}${String(element.className).trim() ? `.${String(element.className).trim().split(/\s+/).join('.')}` : ''}`
               : 'null';
-          const boxes = (element: Element) => element.getBoundingClientRect();
+          const hitFor = (control: Element) => {
+            const rect = control.getBoundingClientRect();
+            const point = {
+              x: Math.round(rect.left + rect.width / 2),
+              y: Math.round(rect.top + rect.height / 2),
+            };
+            const hit = document.elementFromPoint(point.x, point.y);
+            return {
+              control: describe_(control),
+              point,
+              hit: describe_(hit),
+              hitsItself: Boolean(
+                hit && (hit === control || control.contains(hit)),
+              ),
+            };
+          };
 
           const docks = Array.from(document.querySelectorAll('.chat-dock'));
           const host = document.querySelector('.banner-host');
@@ -421,27 +429,20 @@ describe.skipIf(!chromiumAvailable)(
               `fixture did not render: docks=${docks.length} host=${Boolean(host)}`,
             );
           }
-          // The MODAL surface, if any. An anchored popover carries the same
-          // overlay class, so the panel this measures is the one the rule is
-          // supposed to protect, never the popover it is supposed to ignore.
-          const overlay = document.querySelector(
-            '.responsive-surface-overlay:not([data-anchored])',
-          );
+          const overlay = document.querySelector('.responsive-surface-overlay');
           const panel = overlay?.querySelector('.responsive-surface-panel');
 
-          // Only the rectangles that actually take pointer events can
-          // intercept: the host and its items are `pointer-events: none`.
           const bannerControls = Array.from(host.querySelectorAll('*')).filter(
             (element) => getComputedStyle(element).pointerEvents === 'auto',
           );
 
-          const overlapping: Measured['overlapping'] = [];
+          // Points where a dialog control and a banner control overlap: the
+          // dialog must own them.
+          const dialogOverlaps: Measured['dialogOverlaps'] = [];
           for (const control of panel?.querySelectorAll('button') ?? []) {
-            const controlBox = boxes(control);
+            const controlBox = control.getBoundingClientRect();
             for (const banner of bannerControls) {
-              const bannerBox = boxes(banner);
-              // The centre of the OVERLAP, so the point is inside both boxes
-              // by construction rather than by luck.
+              const bannerBox = banner.getBoundingClientRect();
               const left = Math.max(controlBox.left, bannerBox.left);
               const right = Math.min(controlBox.right, bannerBox.right);
               const top = Math.max(controlBox.top, bannerBox.top);
@@ -452,9 +453,8 @@ describe.skipIf(!chromiumAvailable)(
                 y: Math.round((top + bottom) / 2),
               };
               const hit = document.elementFromPoint(point.x, point.y);
-              overlapping.push({
+              dialogOverlaps.push({
                 control: describe_(control),
-                banner: describe_(banner),
                 point,
                 hit: describe_(hit),
                 hitsItself: Boolean(
@@ -464,15 +464,22 @@ describe.skipIf(!chromiumAvailable)(
             }
           }
 
+          const chromeControls = Array.from(
+            document.querySelectorAll('.notification-container button'),
+          ).map(hitFor);
+
           return {
-            dockTrapsDialogs: docks.every((dock) => {
+            dockWouldTrap: docks.every((dock) => {
               const style = getComputedStyle(dock);
               return style.position !== 'static' && style.zIndex !== 'auto';
             }),
             dockZIndexes: docks.map((dock) => getComputedStyle(dock).zIndex),
-            hostZIndex: getComputedStyle(host).zIndex,
+            overlayInsideADock: Boolean(overlay?.closest('.chat-dock')),
+            overlayParent: describe_(overlay?.parentElement ?? null),
             overlayZIndex: overlay ? getComputedStyle(overlay).zIndex : null,
-            overlapping,
+            hostZIndex: getComputedStyle(host).zIndex,
+            dialogOverlaps,
+            chromeControls,
           };
         });
       } finally {
@@ -481,81 +488,105 @@ describe.skipIf(!chromiumAvailable)(
     }
 
     /**
-     * The fixture only measures the defect while a dock still traps the
-     * surfaces it mounts. If one stops doing that, the assertions below would
-     * pass because the dialog reached `--layer-dialog` on its own — a green
+     * These shapes only mean anything while a dock would still trap what it
+     * mounts. If one stops being a stacking context, the portal is no longer
+     * what keeps the surface reachable and every assertion below would pass
      * for the wrong reason.
      */
-    function assertTheDockStillTrapsItsDialogs(measured: Measured): void {
-      if (!measured.dockTrapsDialogs) {
+    function assertTheDockWouldStillTrapASurface(measured: Measured): void {
+      if (!measured.dockWouldTrap) {
         throw new Error(
           '`.chat-dock` no longer creates a stacking context (computed ' +
-            `z-index ${measured.dockZIndexes.join(', ')}), so a dialog ` +
-            'mounted inside it now reaches --layer-dialog by itself and this ' +
-            'fixture no longer models #1638. Re-point it at whatever ancestor ' +
-            'traps a dialog now, or retire it with the reason.',
+            `z-index ${measured.dockZIndexes.join(', ')}), so a surface ` +
+            'mounted inside it would reach --layer-dialog by itself and this ' +
+            'file no longer models #1638. Re-point it at whatever ancestor ' +
+            'traps a surface now, or retire it with the reason.',
         );
       }
     }
 
-    test.each(SHAPES.filter((shape) => shape.hasModalSurface))(
-      'a control inside the open surface hit-tests to itself where the banner paints over it: $name',
+    test.each(SHAPES)(
+      'the surface renders outside every dock: $name',
       async (shape) => {
         const measured = await measure(shape);
-        assertTheDockStillTrapsItsDialogs(measured);
-
-        // Power guard: without a real overlap this assertion is vacuous. The
-        // live report was the cap over the sheet's search input; here it is
-        // the cap and the dismiss/collapse row over the surface's controls.
+        assertTheDockWouldStillTrapASurface(measured);
         expect(
-          measured.overlapping.length,
-          'no control inside the modal surface overlaps a banner control, so ' +
-            'this measurement proves nothing. The banner stack or the surface ' +
-            'geometry moved — restore an overlap rather than deleting the test.',
+          measured.overlayInsideADock,
+          'the surface is inside a dock again, so its declared --layer-dialog ' +
+            `is clamped to the dock's own z-index (${measured.dockZIndexes.join(', ')}). ` +
+            `Its parent is ${measured.overlayParent}.`,
+        ).toBe(false);
+        expect(measured.overlayParent).toBe('body');
+      },
+    );
+
+    test.each(SHAPES.filter((shape) => shape.expectsDialogOverNotice))(
+      'a dialog control is reachable where the notice host paints: $name',
+      async (shape) => {
+        const measured = await measure(shape);
+        assertTheDockWouldStillTrapASurface(measured);
+
+        // Power guard: with no overlap this proves nothing. The live report
+        // was the notice's collapsed-stack cap over the sheet's search input.
+        expect(
+          measured.dialogOverlaps.length,
+          'no dialog control overlaps a banner control, so this measurement ' +
+            'proves nothing. The banner stack or the surface geometry moved — ' +
+            'restore an overlap rather than deleting the test.',
         ).toBeGreaterThan(0);
 
-        const stolen = measured.overlapping.filter(
+        const stolen = measured.dialogOverlaps.filter(
           (entry) => !entry.hitsItself,
         );
         expect(
           stolen,
-          'the banner host took a click from a control inside an open modal ' +
-            `surface (host z-index ${measured.hostZIndex}, overlay z-index ` +
-            `${measured.overlayZIndex}, docks at ` +
-            `${measured.dockZIndexes.join(', ')}):\n${stolen
+          `the notice host took a click from a dialog control (host z-index ${measured.hostZIndex}, ` +
+            `overlay z-index ${measured.overlayZIndex}, docks at ${measured.dockZIndexes.join(', ')}):\n${stolen
               .map(
                 (entry) =>
-                  `  ${entry.control} at (${entry.point.x}, ${entry.point.y}) hit ${entry.hit} (${entry.banner})`,
+                  `  ${entry.control} at (${entry.point.x}, ${entry.point.y}) hit ${entry.hit}`,
               )
               .join('\n')}`,
         ).toEqual([]);
       },
     );
 
-    test.each(SHAPES)(
-      'each dock resolves to the layer its own contents earn: $name',
+    test.each(SHAPES.filter((shape) => shape.expectsChromeReachable))(
+      'the chrome stays reachable when only a popover is open: $name',
       async (shape) => {
         const measured = await measure(shape);
-        // Both directions in one assertion, per dock: a dock hosting a modal
-        // reaches `--layer-dialog`, and one hosting nothing — or hosting only
-        // a scrim-less anchored popover — stays exactly where it was. The
-        // hit test above cannot see either half: it passes for an
-        // unconditional promotion, which is how the first version of this fix
-        // shipped a rule whose entire `:has()` clause was unverified.
-        expect(measured.dockZIndexes).toEqual(
-          shape.docks.map((dock) => dock.expectedZIndex),
+        assertTheDockWouldStillTrapASurface(measured);
+
+        expect(
+          measured.chromeControls.length,
+          'the notification container rendered no control, so this shape ' +
+            'cannot observe whether the chrome stays reachable.',
+        ).toBeGreaterThan(0);
+
+        const swallowed = measured.chromeControls.filter(
+          (entry) => !entry.hitsItself,
         );
+        expect(
+          swallowed,
+          'a scrim-less popover swallowed a click meant for the notification ' +
+            `chrome (overlay z-index ${measured.overlayZIndex}):\n${swallowed
+              .map(
+                (entry) =>
+                  `  ${entry.control} at (${entry.point.x}, ${entry.point.y}) hit ${entry.hit}`,
+              )
+              .join('\n')}`,
+        ).toEqual([]);
       },
     );
   },
 );
 
 test.skipIf(chromiumAvailable)(
-  'notice-vs-dialog stacking — Chromium not installed, cannot verify (#1638)',
+  'dock-surface stacking — Chromium not installed, cannot verify (#1638)',
   () => {
     throw new Error(
       'Playwright Chromium is not installed in this worktree, so the ' +
-        'notice-vs-dialog hit test (#1638) could not be checked — this is a ' +
+        'dock-surface stacking checks (#1638) could not be run — this is a ' +
         'missing precondition, not a passing check. Install it with ' +
         '`npm run install:playwright` and re-run.',
     );

@@ -14,6 +14,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
 import { registerDialogHistory } from './dialog-history';
@@ -318,7 +319,32 @@ export function ResponsiveDialogSurface({
     onKeyDown: containFocus,
   };
 
-  return (
+  // #1638/#1662: rendered at `document.body`, never where the consumer sits.
+  //
+  // A dock is a stacking context in both its forms — `position: fixed` with
+  // `z-index: var(--layer-dock)` on mobile, `position: relative` in the
+  // desktop region grid keeping the same z-index — and `ChatDock` renders its
+  // modal stack INSIDE it, so a surface mounted there could never honour the
+  // `--layer-dialog` its own overlay declares; it painted at whatever the
+  // dock's z-index happened to be, under the notice host and under a toast.
+  // #1638 was one instance of that (a notice's collapsed-stack cap taking the
+  // click meant for the New Chat sheet's agent card). Portalling removes the
+  // trap instead of compensating for it with a z-index rule, which is what
+  // `ConfirmModal`, `PluginModalStack`, `MobileTaskSwitcher` and
+  // `DelegationLauncher` (#1180 — a hand-rolled overlay, not a consumer of
+  // this component) already do; this is the same escape at the shared seam,
+  // so a surface written later is correct without knowing any of this.
+  //
+  // Nothing about geometry changes: no ancestor between these overlays and
+  // the viewport sets `transform`, `filter`, `backdrop-filter`, `perspective`,
+  // `will-change`, `contain` or `content-visibility`, so `position: fixed` was
+  // already resolving against the viewport (measured at 1440x900 and 390x844:
+  // the in-dock overlay's rect was exactly the viewport rect). The viewport
+  // and anchor custom properties are written inline on the overlay below, and
+  // every other value the panels read is root- or theme-scoped, so none of it
+  // depends on where the node sits. React events still bubble through the
+  // component tree, and no listener in the dock is bound to a dock ELEMENT.
+  return createPortal(
     <div
       className={`${overlayClassName} responsive-surface-overlay`.trim()}
       style={{ ...visualViewport.style, ...anchorVars, ...overlayStyle }}
@@ -338,6 +364,7 @@ export function ResponsiveDialogSurface({
           {children}
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
