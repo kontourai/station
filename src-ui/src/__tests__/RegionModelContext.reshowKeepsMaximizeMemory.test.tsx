@@ -124,7 +124,7 @@ describe('re-showing a hidden Chat region keeps lastDockMaximized (#1563)', () =
     expect(navigationStore.lastDockMaximized).toBe(false);
   });
 
-  test('a maximize param that lingers past a close is re-seeded on the show, so Chat opens at Full', () => {
+  test('a maximize param present without dock=open is re-seeded on the show, so Chat opens at Full', () => {
     // A hand-typed or shared `?maximize=true` link with no `dock=open`:
     // `parseUrl` reads the param independently of `dock`, so the state
     // arrives already formed rather than through a write. #1613 closed the

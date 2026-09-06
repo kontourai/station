@@ -162,6 +162,13 @@ export function parseNavigationTarget(target: string, base: string): URL {
  * `true`, and `setDockState` is the only path that moves it to `false`, so a
  * close routed through this normalization keeps whatever memory the earlier
  * maximized commit set (archive#945).
+ *
+ * What this does NOT cover: a URL loaded or restored by `popstate` carrying
+ * `maximize=true` without `dock=open` reaches `parseUrl` without passing a
+ * writer, and `parseUrl` reads the two params independently. Only writes are
+ * normalized. A `dock` value other than `null` is left alone too — no caller
+ * writes a non-`open` dock value, and `parseUrl` treats any such value as
+ * closed.
  */
 function closedDockNeverMaximized(
   params: Record<string, string | null>,
@@ -189,10 +196,14 @@ class NavigationStore {
   lastProjectLayout: string | null;
   /**
    * The most recently observed `true` value of `isDockMaximized`, kept
-   * independent of the URL's `maximize` param itself. A closed dock always
-   * has `maximize` cleared from the URL (`updateParams` deletes it on every
-   * `dock: null` write — the archive#795 invariant, moved there from
-   * `setDockState` by station#1613) — a closed-and-still-maximized dock renders as a blank
+   * independent of the URL's `maximize` param itself. A dock closed by a PARAM
+   * WRITE has `maximize` cleared from the URL (`closedDockNeverMaximized`,
+   * applied by both `updateParams` and `navigate` — the archive#795 invariant,
+   * moved out of `setDockState` by station#1613). A `?maximize=true` URL loaded
+   * directly, or restored by `popstate`, is NOT normalized: `parseUrl` reads
+   * the param independently of `dock`, and
+   * `RegionModelContext.reshowKeepsMaximizeMemory.test.tsx` pins what the shell
+   * does with that state. A closed-and-still-maximized dock renders as a blank
    * full-height shell both in the desktop right-side-panel layout AND on
    * mobile (index.css's `@media (max-width: 768px)` `.chat-dock.is-maximized`
    * rule matches on `is-maximized` alone and forces `height` with
@@ -550,7 +561,25 @@ class NavigationStore {
     this.listeners.forEach((listener) => listener());
   };
 
+  /**
+   * A captured origin never holds the closed-and-maximized pair (archive#795,
+   * station#1613): `restoreLocation` clears params the origin lacks, so a
+   * captured `?maximize=true` with no `dock=open` would be restored through
+   * `closedDockNeverMaximized` and come back WITHOUT `maximize` — leaving
+   * `isCurrentLocation` false for the location just restored, and callers that
+   * key on it (`useNewChatSetupReturn`) cancelling rather than resuming.
+   * Canonicalizing at capture keeps the round trip exact.
+   */
   captureLocation(): NavigationLocation {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('dock') !== 'open' && params.has('maximize')) {
+      params.delete('maximize');
+      const search = params.toString();
+      return {
+        pathname: window.location.pathname,
+        search: search ? `?${search}` : '',
+      };
+    }
     return {
       pathname: window.location.pathname,
       search: window.location.search,
@@ -879,10 +908,11 @@ class NavigationStore {
    * remember this individually and one of them didn't, so the invariant was
    * moved here; a second caller then wrote `dock: null` through
    * `updateParams` directly and skipped it (station#1613), so it now lives in
-   * `updateParams` itself, which every close passes through. This method
-   * still computes `params.maximize = null` for a close so its own intent
-   * reads locally, and `updateParams` deletes `maximize` on any `dock: null`
-   * write regardless. Reopening still restores the previous size: that is
+   * `closedDockNeverMaximized`, which both URL writers — `updateParams` and
+   * `navigate` — apply (`navigate` has its own push path and does not call
+   * `updateParams`). This method still computes `params.maximize = null` for a
+   * close so its own intent reads locally; the helper deletes `maximize` on
+   * any `dock: null` write regardless. Reopening still restores the previous size: that is
    * carried by the persisted `station.chatDock.snap`, not by this flag.
    */
   setDockState(open: boolean, maximized?: boolean) {

@@ -281,6 +281,45 @@ describe('navigationStore dock maximize memory', () => {
       expect(navigationStore.lastDockMaximized).toBe(true);
     });
 
+    test("a destination's own maximize=true does not survive a navigate that closes the dock", () => {
+      // `navigate` copies the destination route's query first and applies the
+      // structured `params` argument after, so the normalization is what the
+      // URL ends on.
+      navigationStore.setDockState(true, true);
+
+      navigationStore.navigate('/projects?maximize=true', { dock: null });
+
+      expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
+      expect(new URLSearchParams(window.location.search).has('maximize')).toBe(
+        false,
+      );
+    });
+
+    test('captureLocation never records the closed-and-maximized pair, so a restore round trip is exact', () => {
+      // A `?maximize=true` link with no `dock=open` is the one route into that
+      // pair that no writer normalizes (#1613). Capturing it verbatim would
+      // make `restoreLocation` clear `maximize` on the way back and leave
+      // `isCurrentLocation` false for the location it just restored.
+      window.history.replaceState({}, '', '/?maximize=true&fontSize=16');
+      navigationStore.navigate('/', {});
+
+      const captured = navigationStore.captureLocation();
+
+      expect(captured.search).not.toContain('maximize');
+      expect(captured.search).toContain('fontSize=16');
+      expect(navigationStore.isCurrentLocation(captured)).toBe(false);
+    });
+
+    test('captureLocation keeps maximize when the dock is open', () => {
+      navigationStore.setDockState(true, true);
+
+      const captured = navigationStore.captureLocation();
+
+      expect(captured.search).toContain('maximize=true');
+      expect(navigationStore.isCurrentLocation(captured)).toBe(true);
+    });
+
     test('navigate carrying an open dock across a route change keeps maximize', () => {
       navigationStore.setDockState(true, true);
 
