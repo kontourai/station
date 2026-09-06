@@ -232,12 +232,20 @@ describe('Config Routes', () => {
     const loader = createMockConfigLoader({ terminalShell: '/usr/bin/nu' });
     const app = createConfigRoutes(loader as any, mockLogger);
     const body = await json(await app.request('/app'));
-    const expected = defaultTerminalShell({
-      platform: process.platform,
-      env: process.env,
-    });
-    expect(expected).toBeDefined();
-    expect(body.data.defaultTerminalShell).toBe(expected?.shell);
+    // Pinned independently of the derivation, or the assertion moves with it:
+    // on a host that sets SHELL that is the answer, and on one that does not
+    // it is the platform's own first fallback.
+    const expected =
+      process.env.SHELL ??
+      (process.platform === 'win32'
+        ? (process.env.COMSPEC ?? 'C:\\Program Files\\Git\\bin\\bash.exe')
+        : '/bin/zsh');
+    expect(body.data.defaultTerminalShell).toBe(expected);
+    // ...and it agrees with the resolver a spawn walks, which is the point.
+    expect(body.data.defaultTerminalShell).toBe(
+      defaultTerminalShell({ platform: process.platform, env: process.env })
+        ?.shell,
+    );
     // The configured value is reported separately and must not become the
     // default it is an override of.
     expect(body.data.terminalShell).toBe('/usr/bin/nu');
