@@ -115,3 +115,28 @@ export type PersonalHomeDecisionObservation = {
       phase: 'prepared' | 'source-closed' | 'target-ready' | 'committed';
     }
 );
+
+/** Authenticated personal room observation. Not a lease or hardware attestation. */
+export interface HomeTransferRoomIdentityObservation {
+  schemaVersion: 'station.home-transfer-room-identity/v1';
+  environmentId: string;
+  pairedDeviceId: string;
+  taskId: string;
+  channelId: string;
+  nonce: string;
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+}
+
+/** Operator-approved personal mapping, revalidated against a live remote probe. */
+export interface HomeTransferRoomBindingObservation {
+  schemaVersion: 'station.home-transfer-room-binding/v1';
+  channelId: string;
+  controllerEnvironmentId: string;
+  controllerDeviceId: string;
+  remoteEnvironmentId: string;
+  remoteTaskId: string;
+  remotePairedDeviceId: string;
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+}

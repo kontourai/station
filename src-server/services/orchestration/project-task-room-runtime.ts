@@ -56,6 +56,7 @@ import type {
   ProjectTaskRoomHistory,
   ProjectTaskRoomLinkAuthority,
 } from './project-task-room-history.js';
+import { projectTaskRoomChannelId } from './project-task-room-history.js';
 import type { ProjectTaskRoomRevisionEvidencePort } from './project-task-room-revision-evidence-bridge.js';
 import type { ProjectTaskRoomWorkingState } from './project-task-room-working-state.js';
 import { createOrchestrationRunId } from './run-projection.js';
@@ -246,6 +247,14 @@ interface PendingAgentLifecycle {
 export type ProjectTaskRoomRuntimeOutcome<T> =
   | T
   | { readonly kind: 'not-found' | 'unavailable' };
+
+export type ProjectTaskRoomInspectionOutcome =
+  | {
+      readonly kind: 'available';
+      readonly taskId: string;
+      readonly channelId: string;
+    }
+  | { readonly kind: 'not-found' | 'denied' | 'unavailable' };
 
 export class ProjectTaskRoomRuntime {
   readonly #deps: ProjectTaskRoomRuntimeDeps;
@@ -658,6 +667,50 @@ export class ProjectTaskRoomRuntime {
       ...opened,
       revisionLinksAvailable: this.#deps.revisionEvidence?.available() === true,
     } as typeof opened & { readonly revisionLinksAvailable: boolean };
+  }
+
+  /**
+   * Resolve the exact current room identity for transfer coordination without
+   * opening the room or touching its history, publication, or live state.
+   */
+  async inspectTransferRoom(input: {
+    taskId: string;
+    request: Request;
+  }): Promise<ProjectTaskRoomInspectionOutcome> {
+    if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+    if (!this.#scope(input.taskId)) return { kind: 'not-found' };
+    const grant = await this.#issue(
+      input.taskId,
+      input.request,
+      'home-transfer',
+    );
+    if (!grant) {
+      if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+      return this.#scope(input.taskId)
+        ? { kind: 'denied' }
+        : { kind: 'not-found' };
+    }
+    try {
+      const resolved = await this.#resolveGrant(grant, 'home-transfer');
+      if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+      if (resolved.kind !== 'granted') {
+        return this.#scope(input.taskId)
+          ? { kind: resolved.kind === 'unavailable' ? 'unavailable' : 'denied' }
+          : { kind: 'not-found' };
+      }
+      const currentScope = this.#scope(input.taskId);
+      if (!currentScope || !sameScope(currentScope, resolved.receipt.scope))
+        return { kind: 'not-found' };
+      return {
+        kind: 'available',
+        taskId: resolved.receipt.scope.taskId,
+        channelId: projectTaskRoomChannelId(resolved.receipt.scope),
+      };
+    } catch {
+      return { kind: 'unavailable' };
+    } finally {
+      this.#issued.delete(grant.opaqueToken);
+    }
   }
 
   async history(input: {

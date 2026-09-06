@@ -20,8 +20,10 @@ import {
   LiveWorkSession,
 } from '../../../domain/live-work-session.js';
 import { SharedWorkingState } from '../../../domain/shared-working-state.js';
+import { TaskGraphService } from '../../projects/task-graph-service.js';
 import { EventStore } from '../event-store.js';
 import { projectTaskRoomDocumentId } from '../project-task-room-document-id.js';
+import { projectTaskRoomChannelId } from '../project-task-room-history.js';
 import {
   canCollectLiveActivityRoom,
   LIVE_ACTIVITY_MAX_ROOM_SCAN,
@@ -488,6 +490,184 @@ function fixture(
 }
 
 describe('ProjectTaskRoomRuntime', () => {
+  test('inspects exact transfer room identity without opening or publishing the room', async () => {
+    const inspectionFixture = async (
+      mode:
+        | 'granted'
+        | 'revoked'
+        | 'absent'
+        | 'changed-principal'
+        | 'moved-scope' = 'granted',
+      hosted = false,
+    ) => {
+      const root = mkdtempSync(join(tmpdir(), 'station-room-inspection-'));
+      directories.push(root);
+      const graph = new TaskGraphService(root, {
+        projectService: {
+          getProject: (slug) => ({
+            id: slug,
+            slug,
+            name: slug,
+            workingDirectory: root,
+            createdAt: '2026-09-06T00:00:00.000Z',
+            updatedAt: '2026-09-06T00:00:00.000Z',
+          }),
+        },
+      });
+      const record = await graph.createTask(
+        { projectId: 'project-1', title: 'Transfer room' },
+        undefined,
+        '11111111-1111-4111-8111-111111111111',
+      );
+      let projectSlug = 'project';
+      let resolutions = 0;
+      const seenRequests: Request[] = [];
+      const historyEffects = {
+        open: vi.fn(async () => ({ kind: 'unavailable' as const })),
+        read: vi.fn(async () => ({ kind: 'unavailable' as const })),
+        append: vi.fn(async () => ({ kind: 'unavailable' as const })),
+        sealSource: vi.fn(async () => ({ kind: 'unavailable' as const })),
+        close: vi.fn(async () => ({ kind: 'closed' as const })),
+      };
+      const publicationEffects = {
+        settle: vi.fn(async () => ({ kind: 'unavailable' as const })),
+        recovery: vi.fn(async () => 'unavailable' as const),
+        markRevisionPublication: vi.fn(async () => 'unavailable' as const),
+        removeRevisionPublication: vi.fn(async () => 'unavailable' as const),
+        agentLifecycle: vi.fn(async () => 'unavailable' as const),
+        removeAgentLifecycle: vi.fn(async () => 'unavailable' as const),
+      };
+      const runtime = new ProjectTaskRoomRuntime({
+        taskGraph: graph,
+        projectForId: (id) =>
+          id === record.projectId
+            ? { id: record.projectId, slug: projectSlug }
+            : undefined,
+        history: () => historyEffects,
+        working: {
+          read: vi.fn(async () => ({ kind: 'unavailable' as const })),
+          settle: publicationEffects.settle,
+          receipt: vi.fn(async () => ({ kind: 'missing' as const })),
+          readRevisionPublication: vi.fn(async () => ({
+            kind: 'missing' as const,
+          })),
+          markRevisionPublication: publicationEffects.markRevisionPublication,
+          removeRevisionPublication:
+            publicationEffects.removeRevisionPublication,
+          recovery: publicationEffects.recovery,
+          readRecovery: vi.fn(async () => ({ kind: 'unavailable' as const })),
+          privateSnapshot: vi.fn(async () => undefined),
+          agentLifecycle: publicationEffects.agentLifecycle,
+          readAgentLifecycles: vi.fn(async () => []),
+          removeAgentLifecycle: publicationEffects.removeAgentLifecycle,
+          watch: vi.fn(() => () => {}),
+          close: vi.fn(async () => {}),
+        },
+        hosted: () => hosted,
+        requestAuthority: {
+          resolve: async (request) => {
+            seenRequests.push(request);
+            resolutions += 1;
+            if (mode === 'revoked') return { kind: 'revoked' as const };
+            if (mode === 'absent') return { kind: 'unavailable' as const };
+            if (mode === 'moved-scope' && resolutions === 2)
+              projectSlug = 'moved-project';
+            return {
+              kind: 'granted' as const,
+              operatorId: 'operator-1',
+              deviceId:
+                mode === 'changed-principal' && resolutions === 2
+                  ? 'device-2'
+                  : 'device-1',
+              policyRevision: 'pairing-v1',
+            };
+          },
+        },
+      });
+      return {
+        historyEffects,
+        publicationEffects,
+        record,
+        request: new Request('http://station.test/transfer-room'),
+        runtime,
+        seenRequests,
+      };
+    };
+
+    const granted = await inspectionFixture();
+    await expect(
+      granted.runtime.inspectTransferRoom({
+        taskId: granted.record.id,
+        request: granted.request,
+      }),
+    ).resolves.toEqual({
+      kind: 'available',
+      taskId: granted.record.id,
+      channelId: projectTaskRoomChannelId({
+        projectId: granted.record.projectId,
+        projectSlug: 'project',
+        taskId: granted.record.id,
+      }),
+    });
+    expect(granted.seenRequests).toEqual([granted.request, granted.request]);
+    await expect(
+      granted.runtime.inspectTransferRoom({
+        taskId: 'unknown-task',
+        request: granted.request,
+      }),
+    ).resolves.toEqual({ kind: 'not-found' });
+
+    const moved = await inspectionFixture('moved-scope');
+    await expect(
+      moved.runtime.inspectTransferRoom({
+        taskId: moved.record.id,
+        request: moved.request,
+      }),
+    ).resolves.toEqual({ kind: 'not-found' });
+
+    const inspected = [granted, moved];
+    for (const mode of ['revoked', 'absent', 'changed-principal'] as const) {
+      const denied = await inspectionFixture(mode);
+      inspected.push(denied);
+      await expect(
+        denied.runtime.inspectTransferRoom({
+          taskId: denied.record.id,
+          request: denied.request,
+        }),
+      ).resolves.toEqual({ kind: 'denied' });
+    }
+
+    const hosted = await inspectionFixture('granted', true);
+    await expect(
+      hosted.runtime.inspectTransferRoom({
+        taskId: hosted.record.id,
+        request: hosted.request,
+      }),
+    ).resolves.toEqual({ kind: 'unavailable' });
+    expect(hosted.seenRequests).toEqual([]);
+    inspected.push(hosted);
+
+    const closed = await inspectionFixture();
+    await closed.runtime.close();
+    await expect(
+      closed.runtime.inspectTransferRoom({
+        taskId: closed.record.id,
+        request: closed.request,
+      }),
+    ).resolves.toEqual({ kind: 'unavailable' });
+    expect(closed.seenRequests).toEqual([]);
+    inspected.push(closed);
+
+    for (const item of inspected) {
+      expect(item.historyEffects.open).not.toHaveBeenCalled();
+      expect(item.historyEffects.read).not.toHaveBeenCalled();
+      expect(item.historyEffects.append).not.toHaveBeenCalled();
+      expect(item.historyEffects.sealSource).not.toHaveBeenCalled();
+      for (const effect of Object.values(item.publicationEffects))
+        expect(effect).not.toHaveBeenCalled();
+    }
+  });
+
   test.each(['stored', 'unavailable'] as const)(
     'agent publication preparation requires the actual %s persistence result',
     async (outcome) => {

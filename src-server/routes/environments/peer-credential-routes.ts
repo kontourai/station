@@ -1,5 +1,8 @@
 import { Hono } from 'hono';
-import type { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
+import {
+  PeerCredentialMutationAuthorizationError,
+  type PeerCredentialStore,
+} from '../../services/peers/peer-credential-store.js';
 import {
   INTERNAL_API_TOKEN_HEADER,
   isTrustedInternalApiToken,
@@ -14,11 +17,12 @@ import {
 
 /**
  * Outbound peer-credential admin routes (archive#1123). Mounted at
- * `/api/environments/peers`, gated to `access:manage` in
- * `src-server/security/pairing-route-scopes.ts` — the same tier
- * `/api/pairing/**` uses, so only the operator's own local/full credential
- * (or Station's exact internal-token attestation) can reach it. Direct
- * loopback and SSH callers must present a credential too. `GET`/`POST`/`DELETE` never return the raw credential —
+ * `/api/environments/peers`. The runtime credential boundary keeps mutations
+ * operator-only; public mutations additionally require the request-principal
+ * currentness predicate supplied at composition and recheck it under the
+ * store's file-mutation lock. Metadata reads remain governed by global scope
+ * authorization. Direct loopback and SSH callers must present a credential
+ * too. `GET`/`POST`/`DELETE` never return the raw credential —
  * only `GET /:environmentId/credential` does, and that leaf has an
  * additional, unconditional in-handler check: it 403s any request that
  * isn't carrying this Station's own internal API token, regardless of
@@ -57,12 +61,28 @@ export function createPeerCredentialRoutes(
    * true nuance rather than retracted outright.
    */
   hasSshProfile?: (environmentId: string) => boolean,
+  authorize?: (request: Request) => boolean,
 ) {
   const app = new Hono();
+
+  const mutationAuthorized = (request: Request): boolean => {
+    try {
+      const decision: unknown = authorize?.(request);
+      if (decision === true) return true;
+      void Promise.resolve(decision).catch(() => {});
+      return false;
+    } catch {
+      return false;
+    }
+  };
 
   app.get('/', (c) => c.json({ success: true, data: store.list() }));
 
   app.post('/', validate(peerCredentialUpsertSchema), async (c) => {
+    const request = c.req.raw;
+    if (!mutationAuthorized(request)) {
+      return c.json({ success: false, error: 'Forbidden' }, 403);
+    }
     try {
       const body = getBody(c) as {
         environmentId: string;
@@ -71,7 +91,7 @@ export function createPeerCredentialRoutes(
         scope: string;
         label?: string;
       };
-      const data = await store.upsert(body);
+      const data = await store.upsert(body, () => mutationAuthorized(request));
       const warning = hasSshProfile?.(body.environmentId)
         ? `Environment '${body.environmentId}' already has a saved SSH profile. delegate_task connects via the SSH tunnel, not this credential's apiBase — but the credential IS attached to and scope-enforced on that SSH-tunneled connection (station#1123 slice 3). Only the apiBase you set here is ignored while the SSH profile exists.`
         : undefined;
@@ -80,15 +100,31 @@ export function createPeerCredentialRoutes(
         201,
       );
     } catch (error) {
+      if (error instanceof PeerCredentialMutationAuthorizationError) {
+        return c.json({ success: false, error: 'Forbidden' }, 403);
+      }
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
   });
 
   app.delete('/:environmentId', async (c) => {
-    const removed = await store.remove(param(c, 'environmentId'));
-    return removed
-      ? c.json({ success: true })
-      : c.json({ success: false, error: 'Peer credential not found' }, 404);
+    const request = c.req.raw;
+    if (!mutationAuthorized(request)) {
+      return c.json({ success: false, error: 'Forbidden' }, 403);
+    }
+    try {
+      const removed = await store.remove(param(c, 'environmentId'), () =>
+        mutationAuthorized(request),
+      );
+      return removed
+        ? c.json({ success: true })
+        : c.json({ success: false, error: 'Peer credential not found' }, 404);
+    } catch (error) {
+      if (error instanceof PeerCredentialMutationAuthorizationError) {
+        return c.json({ success: false, error: 'Forbidden' }, 403);
+      }
+      throw error;
+    }
   });
 
   // Internal-only: the raw credential this Station presents to the peer.
