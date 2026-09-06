@@ -275,11 +275,14 @@ describe('New Chat repair and return', () => {
     await waitFor(() =>
       expect(navigationStore.getSnapshot().pathname).toBe('/'),
     );
+    expect(new URLSearchParams(window.location.search).has('maximize')).toBe(
+      false,
+    );
     expect(
-      new URLSearchParams(window.location.search).has('maximize'),
-    ).toBe(false);
-    expect(
-      navigationStore.isCurrentLocation({ pathname: '/', search: '?maximize=true' }),
+      navigationStore.isCurrentLocation({
+        pathname: '/',
+        search: '?maximize=true',
+      }),
     ).toBe(true);
     expect(view.onClose).not.toHaveBeenCalled();
   });
