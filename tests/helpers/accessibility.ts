@@ -9,6 +9,20 @@ export async function getBlockingAccessibilityViolations(
   surface: string,
   include?: string,
 ) {
+  // Sample settled paint: a dialog's entrance opacity is intentionally below
+  // its final text contrast. Do not wait for looping activity indicators.
+  await page.evaluate(async () => {
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter(
+          (animation) =>
+            animation.playState === 'running' &&
+            animation.effect?.getTiming().iterations !== Infinity,
+        )
+        .map((animation) => animation.finished.catch(() => {})),
+    );
+  });
   const builder = new AxeBuilder({ page }).withTags([
     'wcag2a',
     'wcag2aa',
@@ -58,7 +72,10 @@ export async function expectNoBlockingAccessibilityViolations(
       id: violation.id,
       impact: violation.impact,
       help: violation.help,
-      targets: violation.nodes.map((node) => node.target.join(' ')),
+      nodes: violation.nodes.map((node) => ({
+        target: node.target.join(' '),
+        reason: node.failureSummary,
+      })),
     })),
     `${surface} has unaccepted serious/critical accessibility violations`,
   ).toEqual([]);

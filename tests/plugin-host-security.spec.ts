@@ -340,6 +340,7 @@ function paneCatalog() {
   };
   return {
     projectId: 'hostile',
+    projectSlug: 'hostile',
     descriptors: [
       {
         id: 'hostile-pane',
