@@ -683,6 +683,22 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Injects a fixed command adapter at the protected provider boundary and
   // asserts exact child-process argv/options without using a real credential.
   'scripts/__tests__/verify-release-cohort.test.ts',
+  // #1536 F: same shape again — launches a real Chromium via `@playwright/test`
+  // to measure real cascade-resolved flex geometry (which of the dock identity
+  // row's parts truncates first, and whether any two of them overlap).
+  'src-ui/src/__tests__/ChatDockActiveIdentity.overflow.test.tsx',
+  // #1536 F (review round): same shape again — launches a real Chromium to
+  // hit-test the dock header's portalled More menu against the dock it now
+  // paints over. `verification:policy:gate` keys on a `child_process` import
+  // and cannot see either of these: `chromium.launch()` spawns through
+  // `playwright-core`, so the classification is the only thing that keeps a
+  // browser launch out of the ordinary four-worker lane.
+  'src-ui/src/__tests__/ChatDockHeaderMoreMenu.layering.test.tsx',
+  // #1536 F (round 3): same shape again — launches a real Chromium to read the
+  // Layout menu's RESOLVED row/group borders. A text scan could not: the first
+  // fix tied on specificity with a rule 90 lines below it and lost on source
+  // order while the declaration read correct.
+  'src-ui/src/__tests__/RegionLayoutMenu.dividers.test.tsx',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =

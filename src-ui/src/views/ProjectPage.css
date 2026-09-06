@@ -183,8 +183,11 @@
 }
 
 /* Middle/parent truncates; the leaf never does. rtl puts the ellipsis at the
-   START of the parent; the inner ltr isolate keeps character order (#304 —
-   same treatment as .chat-dock__project-dir-parent). */
+   START of the parent; the inner ltr isolate keeps character order (#304).
+   This is the last surface using that treatment: the dock header's own
+   `.chat-dock__project-dir-parent` was retired with the path segment it
+   truncated (#1536 F — it left the conversation title beside it about one
+   character), so #304's bidi guard lives here alone now. */
 .project-page__dir-parent {
   overflow: hidden;
   text-overflow: ellipsis;

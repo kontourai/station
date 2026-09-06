@@ -40,11 +40,7 @@ const PROJECTS = [
  */
 describe('ChatDockProjectContext', () => {
   function renderRow(overrides: {
-    codingLayoutSlug?: string | null;
     onSelectProject?: ReturnType<typeof vi.fn<(projectSlug: string) => void>>;
-    onOpenLayout?: ReturnType<
-      typeof vi.fn<(projectSlug: string, layoutSlug: string) => void>
-    >;
     onSwitchProject?: ReturnType<
       typeof vi.fn<(projectSlug: string, projectName: string) => void>
     >;
@@ -52,9 +48,6 @@ describe('ChatDockProjectContext', () => {
   }) {
     const onSelectProject =
       overrides.onSelectProject ?? vi.fn<(projectSlug: string) => void>();
-    const onOpenLayout =
-      overrides.onOpenLayout ??
-      vi.fn<(projectSlug: string, layoutSlug: string) => void>();
     const onSwitchProject =
       overrides.onSwitchProject ??
       vi.fn<(projectSlug: string, projectName: string) => void>();
@@ -68,17 +61,14 @@ describe('ChatDockProjectContext', () => {
           projectSlug="alpha"
           projectName="Alpha"
           workingDirectory="/repos/alpha"
-          codingLayoutSlug={overrides.codingLayoutSlug ?? null}
           projects={PROJECTS}
           onSelectProject={onSelectProject}
-          onOpenLayout={onOpenLayout}
           onSwitchProject={onSwitchProject}
         />
       </div>,
     );
     return {
       onSelectProject,
-      onOpenLayout,
       onSwitchProject,
       onHeaderToggle,
     };
@@ -128,18 +118,69 @@ describe('ChatDockProjectContext', () => {
     expect(onSwitchProject).toHaveBeenCalledWith('beta', 'Beta');
   });
 
-  test('the directory path links to the coding layout only when one exists', () => {
-    const withLayout = renderRow({ codingLayoutSlug: 'code' });
-    const dir = screen.getByText('alpha', {
-      selector: '.chat-dock__project-dir *, .chat-dock__project-dir',
-      exact: false,
-    });
-    const dirEl = dir.closest('.chat-dock__project-dir') as HTMLElement;
-    expect(dirEl.getAttribute('role')).toBe('link');
+  /**
+   * #1536 F: the row is the project's NAME and its branch. The path — a
+   * 110-character worktree path on the reporter's own machine — is the badge's
+   * tooltip, and "Copy project path" in the dock header's More menu is how you
+   * get at it. The coding-layout link the path's leaf used to carry is that
+   * menu's "Open code layout" row.
+   */
+  test('names the project and keeps the full path as the badge tooltip, not as a visible segment', () => {
+    renderRow({});
 
-    fireEvent.keyDown(dirEl, { key: 'Enter' });
-    expect(withLayout.onOpenLayout).toHaveBeenCalledWith('alpha', 'code');
-    expect(withLayout.onHeaderToggle).not.toHaveBeenCalled();
+    const badge = screen.getByRole('button', { name: 'Alpha' });
+    expect(badge.getAttribute('title')).toBe('Alpha — /repos/alpha');
+    const row = document.querySelector(
+      '.chat-dock__project-context',
+    ) as HTMLElement;
+    expect(row.textContent).toBe('Alpha');
+  });
+
+  /**
+   * L2: the "no project folder set" sentence is a claim about the PROJECT, and
+   * a project chat-scope filter passes `workingDirectory: null` deliberately (a
+   * scope filter has never shown session-specific facts — station#1146/#4525).
+   * So an unknown directory beside a named project must not assert that the
+   * project has no folder.
+   */
+  test('an unknown directory beside a named project claims nothing about its folder', () => {
+    render(
+      <ChatDockProjectContext
+        projectSlug="alpha"
+        projectName="Alpha"
+        workingDirectory={null}
+        projects={PROJECTS}
+        onSelectProject={vi.fn()}
+        onSwitchProject={vi.fn()}
+        onClearProjectScope={vi.fn()}
+      />,
+    );
+
+    const title = screen
+      .getByRole('button', { name: 'Alpha' })
+      .getAttribute('title');
+    expect(title).toBe('Alpha');
+    expect(title).not.toContain('no project folder set');
+  });
+
+  test('a chat with NO project says so in the tooltip rather than in the row', () => {
+    render(
+      <ChatDockProjectContext
+        projectSlug={null}
+        projectName={null}
+        workingDirectory={null}
+        projects={PROJECTS}
+        onSelectProject={vi.fn()}
+        onSwitchProject={vi.fn()}
+      />,
+    );
+
+    // #765 F8's sentence, kept — it was `HomeFolderLabel`'s own tooltip before —
+    // and now scoped to the state it is actually true of: nothing is bound, so
+    // a chat here really does start in the home folder.
+    expect(
+      screen.getByRole('button', { name: 'No project' }).getAttribute('title'),
+    ).toBe('~ (no project folder set — chats start in your home folder)');
   });
 });
 
@@ -157,10 +198,8 @@ describe('ChatDockProjectContext — no bound project (station#1803 part 3)', ()
         projectSlug={null}
         projectName={null}
         workingDirectory={null}
-        codingLayoutSlug={null}
         projects={PROJECTS}
         onSelectProject={onSelectProject}
-        onOpenLayout={vi.fn()}
         onSwitchProject={vi.fn()}
       />,
     );
@@ -180,10 +219,8 @@ describe('ChatDockProjectContext — no bound project (station#1803 part 3)', ()
         projectSlug={null}
         projectName={null}
         workingDirectory={null}
-        codingLayoutSlug={null}
         projects={PROJECTS}
         onSelectProject={vi.fn()}
-        onOpenLayout={vi.fn()}
         onSwitchProject={vi.fn()}
       />,
     );
@@ -201,10 +238,8 @@ describe('ChatDockProjectContext — clearable badge (chat-dock-maximize-readine
         projectSlug="ops"
         projectName="Operations"
         workingDirectory={null}
-        codingLayoutSlug={null}
         projects={PROJECTS}
         onSelectProject={vi.fn()}
-        onOpenLayout={vi.fn()}
         onSwitchProject={vi.fn()}
       />,
     );
@@ -220,10 +255,8 @@ describe('ChatDockProjectContext — clearable badge (chat-dock-maximize-readine
         projectSlug="ops"
         projectName="Operations"
         workingDirectory={null}
-        codingLayoutSlug={null}
         projects={PROJECTS}
         onSelectProject={vi.fn()}
-        onOpenLayout={vi.fn()}
         onSwitchProject={vi.fn()}
         onClearProjectScope={onClear}
       />,
@@ -242,8 +275,8 @@ describe('ChatDockProjectContext — clearable badge (chat-dock-maximize-readine
 // shows when the active session's own project diverges from it, so the
 // header never implies the visible transcript belongs to the badge's
 // project. own ruling (session facts never gate on the badge) is
-// pinned by the `workingDirectory`/`gitStatus`/`codingLayoutSlug` props
-// always being present here regardless of `sessionProjectMismatchLabel`.
+// pinned by the `workingDirectory`/`gitStatus` props always being present here
+// regardless of `sessionProjectMismatchLabel`.
 describe('ChatDockProjectContext — session/badge mismatch label (station#4525 review MED-1)', () => {
   test('renders the muted lead-in before the directory when a mismatch label is provided', () => {
     render(
@@ -251,11 +284,9 @@ describe('ChatDockProjectContext — session/badge mismatch label (station#4525 
         projectSlug="alpha"
         projectName="Alpha"
         workingDirectory="/repos/beta-checkout"
-        codingLayoutSlug={null}
         sessionProjectMismatchLabel="Beta"
         projects={PROJECTS}
         onSelectProject={vi.fn()}
-        onOpenLayout={vi.fn()}
         onSwitchProject={vi.fn()}
       />,
     );
@@ -264,9 +295,12 @@ describe('ChatDockProjectContext — session/badge mismatch label (station#4525 
     expect(screen.getByRole('button', { name: 'Alpha' })).toBeTruthy();
     const label = screen.getByText('Beta ·');
     expect(label.className).toContain('chat-dock__project-session-name');
-    // the session's own facts (here, its directory) still render —
-    // never suppressed by the mismatch.
-    expect(screen.getByText('beta-checkout')).toBeTruthy();
+    // the session's own facts still reach the row — the directory is the
+    // badge's tooltip since #1536 F, and it is the SESSION's, not the badge
+    // project's.
+    expect(
+      screen.getByRole('button', { name: 'Alpha' }).getAttribute('title'),
+    ).toContain('/repos/beta-checkout');
   });
 
   test('renders nothing extra when there is no mismatch (sessionProjectMismatchLabel absent or null)', () => {
@@ -275,11 +309,9 @@ describe('ChatDockProjectContext — session/badge mismatch label (station#4525 
         projectSlug="alpha"
         projectName="Alpha"
         workingDirectory="/repos/alpha"
-        codingLayoutSlug={null}
         sessionProjectMismatchLabel={null}
         projects={PROJECTS}
         onSelectProject={vi.fn()}
-        onOpenLayout={vi.fn()}
         onSwitchProject={vi.fn()}
       />,
     );
