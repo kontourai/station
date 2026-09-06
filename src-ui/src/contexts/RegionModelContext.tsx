@@ -469,19 +469,28 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     if (placement) setDockMode(placement);
     // Chat's maximize is the region's (#928 slice iii); navigation's
     // `maximize` param and `lastDockMaximized` are its mirror, written here
-    // through the one setter that owns both. A visibility change forwards the
-    // maximize the region is closing FROM or opening at (a close from Full
-    // keeps the memory, archive#945; an open is never maximized). A maximize
-    // change navigation already shows — the collapse-on-navigate seam clears
-    // the URL param first (`useDockShellChrome.restoreDockToDocked`) precisely
-    // so `lastDockMaximized` is left alone (archive#1298) — is not re-written,
+    // through the one setter that owns both. A close forwards the maximize
+    // the region is closing FROM, so a close from Full keeps the memory
+    // (archive#945). A show forwards only a maximize the diff carries (a show
+    // that is also a maximize): a hidden region's `maximized` is always false
+    // (`updateRegion` clears it with the hide), so forwarding it would set
+    // `lastDockMaximized` to false on the very next show and `focusSession`'s
+    // `setDockState(true, lastDockMaximized)` would reopen docked (#1563).
+    // `setDockState(true, undefined)` leaves the memory alone; the URL's
+    // `maximize` param was already cleared by the close. A maximize change
+    // navigation already shows — the collapse-on-navigate seam clears the URL
+    // param first (`useDockShellChrome.restoreDockToDocked`) precisely so
+    // `lastDockMaximized` is left alone (archive#1298) — is not re-written,
     // because `setDockState(open, false)` would overwrite that memory.
     if (diff.visible !== undefined) {
       const previousChat = chatRegion(previous);
       setDockState(
         diff.visible,
-        diff.maximized ??
-          (previousChat ? previous[previousChat].maximized : false),
+        diff.visible
+          ? diff.maximized
+          : previousChat
+            ? previous[previousChat].maximized
+            : false,
       );
     } else if (
       diff.maximized !== undefined &&
