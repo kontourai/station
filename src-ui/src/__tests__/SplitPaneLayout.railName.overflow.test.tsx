@@ -14,8 +14,15 @@
  * jsdom lays out nothing, so this is unobservable there. Following
  * `ChatDockActiveIdentity.overflow.test.tsx`: render the real
  * `SplitPaneLayout` with the real Agents row content, put its markup into a
- * real Chromium page carrying the real cascade-resolved `index.css`, and
- * measure.
+ * real Chromium page carrying the real cascade-resolved `index.css` plus the
+ * three co-located stylesheets that own this row's geometry, and measure.
+ *
+ * WHAT THIS FIXTURE DOES NOT REPRODUCE: `setContent` has no base URL, so the
+ * `@font-face` files never load and text is measured in a fallback face. The
+ * structural assertions below (which line a box lands on, whether the row
+ * contains it) are unaffected; a claim that a specific string fits by a pixel
+ * or two is not, and the live rail was exactly one pixel over when this
+ * fixture said it fit. Read the rendered page for that class of question.
  */
 
 import { dirname, resolve } from 'node:path';
