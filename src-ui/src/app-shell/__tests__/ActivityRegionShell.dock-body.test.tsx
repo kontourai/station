@@ -100,6 +100,10 @@ test('a non-chat dock occupant renders inside the height-bearing scroll containe
   await waitFor(() => expect(model).not.toBeNull());
 
   act(() => model?.showSurface('activity'));
+  // This pin verifies host composition, not the chunk-loading deadline.
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
   await waitFor(() => expect(model?.regions.right.occupant).toBe('activity'));
   const occupant = await screen.findByTestId('sessions-view');
 
