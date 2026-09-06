@@ -1,14 +1,17 @@
 import { expect, test } from '@playwright/test';
-import { dismissSetupLauncher } from './helpers/orchestration';
+import {
+  dismissSetupLauncher,
+  openHeaderSettings,
+} from './helpers/orchestration';
 
 async function goToSettings(page: import('@playwright/test').Page) {
   await page.goto('/');
   await dismissSetupLauncher(page);
-  // archive#1009: the header gear is an SVG glyph now — target the accessible name.
-  await page.waitForSelector('button[aria-label="Open settings"]', {
-    timeout: 10_000,
-  });
-  await page.locator('button[aria-label="Open settings"]').first().click();
+  // archive#1009 targeted the gear's accessible name directly. #1552 D1 moved
+  // that command into the avatar's menu on a fine pointer, and this suite runs
+  // at the default desktop viewport where the gear is `display: none` — so the
+  // route, not the control, is what this asks for.
+  await openHeaderSettings(page);
   await page.waitForSelector('.settings__section-nav', { timeout: 10_000 });
 }
 
