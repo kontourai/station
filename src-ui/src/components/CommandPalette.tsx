@@ -554,7 +554,11 @@ export function CommandPalette() {
     // all other commands. An unavailable pane reveals its resolver-backed
     // state and bounded action without trying to mount a renderer.
     for (const entry of paneCatalog.entries) {
-      const presentation = presentWorkspacePaneAvailability(entry.availability);
+      const presentation = presentWorkspacePaneAvailability(
+        entry.availability,
+        entry.rendererGate,
+        entry.rendererResolution,
+      );
       const route =
         entry.instance && selectedProject
           ? workspacePaneDirectRoute(

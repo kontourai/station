@@ -31,8 +31,12 @@ export type HostActionReach = 'remote-safe' | 'host-hands';
 export type HostActionId =
   /** archive#3843 — the SSH creator's trust command (archive#3733's creator). */
   | 'ssh-trust-command'
-  /** archive#3843 — the first-run engines chapter's scan lede. */
+  /** archive#3843 — the first-run engines chapter's scan lede, where a row can be ticked. */
   | 'engine-scan'
+  /** #1536 A4 — the same list where every engine is ALREADY set up. */
+  | 'engine-scan-all-set'
+  /** #1536 A4 — the same list where no row can be ticked, and not all are set up. */
+  | 'engine-scan-none-selectable'
   /** archive#3843 — the first-run engines chapter's still-scanning line. */
   | 'engine-scan-pending'
   /** archive#3843 — an engine the scan did not find. */
@@ -64,6 +68,25 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     host: 'Station found these on this machine. Pick the ones you use and Station sets up an agent for each — you can change them later.',
     paired: (hostName) =>
       `Station found these on ${hostName}, the computer it runs on. Pick the ones you use and Station sets up an agent for each — you can change them later.`,
+  },
+  'engine-scan-all-set': {
+    // #1536 A4: the "pick" lede stood above three rows that all read
+    // "Ready — Already set up as …", with nothing to tick — a verb with no
+    // control under it. This says what happened instead of asking for an act
+    // that is already done.
+    reach: 'host-hands',
+    host: 'Station found these on this machine and set each one up. Nothing to pick here — you can change them later.',
+    paired: (hostName) =>
+      `Station found these on ${hostName}, the computer it runs on, and set each one up. Nothing to pick here — you can change them later.`,
+  },
+  'engine-scan-none-selectable': {
+    // Not all set up, but none tickable either. Deliberately claims nothing
+    // about WHY — each row carries its own reason, and this lede must not
+    // summarise a mix of them into one sentence that is wrong for some.
+    reach: 'host-hands',
+    host: 'Station found these on this machine. None can be set up from here right now — each row says why.',
+    paired: (hostName) =>
+      `Station found these on ${hostName}, the computer it runs on. None can be set up from here right now — each row says why.`,
   },
   'engine-scan-pending': {
     reach: 'host-hands',

@@ -83,23 +83,47 @@ const loadFirstRunEnginePicker = () =>
  * same disclosure, the same acknowledgement and the same "Not now" live
  * instead.
  */
-type ChapterStep = 'disclosure' | 'engines' | 'about-you';
+type ChapterStep = 'disclosure' | 'engines' | 'engine-role' | 'about-you';
 
 /**
- * The run WITHOUT the disclosure, for a home that has already acknowledged it
- * (or whose host cannot answer for it). The step counter reads from whichever
- * of these two the run actually opened with, so "Step 1 of 3" is never a
- * promise of a step that will not happen.
+ * The steps this run will actually show, in order — the counter's ONLY source,
+ * so it can never promise a step that will not happen or omit one that will.
+ *
+ * Both optional steps are conditions the chapter can read before it opens: an
+ * outstanding usage-telemetry disclosure, and an unanswered "which engine powers
+ * Station?" role. #1536 A8: the role screen was NOT in this list, so a run that
+ * showed it printed "Step 1 of 3", "Step 2 of 3", an unnumbered "Choose what
+ * powers Station", then "Step 3 of 3" — four screens for three steps, and the
+ * one with no number reading as something that had escaped the run.
  */
-const CHAPTER_STEPS: ChapterStep[] = ['engines', 'about-you'];
-const CHAPTER_STEPS_WITH_DISCLOSURE: ChapterStep[] = [
-  'disclosure',
-  ...CHAPTER_STEPS,
-];
+export function planFirstRunChapterSteps(input: {
+  disclosureOutstanding: boolean;
+  engineRoleUnanswered: boolean;
+}): ChapterStep[] {
+  return [
+    ...(input.disclosureOutstanding ? (['disclosure'] as const) : []),
+    'engines' as const,
+    ...(input.engineRoleUnanswered ? (['engine-role'] as const) : []),
+    'about-you' as const,
+  ];
+}
+
+/**
+ * `undefined` for a step this run is not showing, so a stale target can never
+ * be rendered as "Step 0 of 3".
+ */
+export function firstRunStepCounterLabel(
+  steps: readonly ChapterStep[],
+  target: ChapterStep,
+): string | undefined {
+  const index = steps.indexOf(target);
+  return index === -1 ? undefined : `Step ${index + 1} of ${steps.length}`;
+}
 
 const STEP_TITLES: Record<ChapterStep, string> = {
   disclosure: 'What Station sends',
   engines: 'Which agents do you use?',
+  'engine-role': 'Choose what powers Station',
   'about-you': 'Two questions, and the next answer is tuned to you',
 };
 
@@ -175,7 +199,12 @@ export function FirstRunHomeChapter() {
 
   const [open, setOpen] = useState(false);
   const [enginePickerOpen, setEnginePickerOpen] = useState(false);
-  const [steps, setSteps] = useState<ChapterStep[]>(CHAPTER_STEPS);
+  const [steps, setSteps] = useState<ChapterStep[]>(() =>
+    planFirstRunChapterSteps({
+      disclosureOutstanding: false,
+      engineRoleUnanswered: false,
+    }),
+  );
   const [step, setStep] = useState<ChapterStep>('engines');
   const [saving, setSaving] = useState(false);
   const completionInFlight = useRef(false);
@@ -193,9 +222,11 @@ export function FirstRunHomeChapter() {
   // deciding it from an unanswered query would either skip a disclosure that
   // was outstanding or promise a step that is not coming.
   const openChapter = useCallback(() => {
-    const plan = disclosureOutstanding
-      ? CHAPTER_STEPS_WITH_DISCLOSURE
-      : CHAPTER_STEPS;
+    const plan = planFirstRunChapterSteps({
+      disclosureOutstanding,
+      engineRoleUnanswered:
+        config?.builtinAgentEngineConnectionId === undefined,
+    });
     const resumedStep =
       progress.chapter === 'about-you'
         ? 'about-you'
@@ -206,7 +237,11 @@ export function FirstRunHomeChapter() {
     setStep(resumedStep);
     setSaveError(null);
     setOpen(true);
-  }, [disclosureOutstanding, progress.chapter]);
+  }, [
+    config?.builtinAgentEngineConnectionId,
+    disclosureOutstanding,
+    progress.chapter,
+  ]);
 
   // Auto-open is a ONE-SHOT per mount, latched on a ref rather than driven by
   // `offer.autoOpen` every render. Without the latch, closing the dialog while
@@ -395,10 +430,28 @@ export function FirstRunHomeChapter() {
     // been recorded. EnginePicker is shared with Settings so capability
     // filtering and persistence stay single-sourced.
     if (config?.builtinAgentEngineConnectionId === undefined) {
+      // Self-correcting in both directions: the plan is decided at open, and
+      // this fact can move under a run that is already up (Settings in another
+      // tab). Re-admitting the step here keeps the counter describing the
+      // screens actually shown rather than the ones predicted.
+      setSteps((current) =>
+        current.includes('engine-role')
+          ? current
+          : [
+              ...current.slice(0, current.indexOf('engines') + 1),
+              'engine-role',
+              ...current.slice(current.indexOf('engines') + 1),
+            ],
+      );
+      setStep('engine-role');
       setOpen(false);
       setEnginePickerOpen(true);
       return;
     }
+    // The role was answered while this run was open, so a step the plan
+    // promised is not going to happen. Drop it rather than let every later
+    // screen keep counting one nobody will see.
+    setSteps((current) => current.filter((entry) => entry !== 'engine-role'));
     continueToAboutYou();
   }, [config?.builtinAgentEngineConnectionId, continueToAboutYou]);
 
@@ -418,7 +471,7 @@ export function FirstRunHomeChapter() {
             title={
               <span id="first-run-chapter-title">{STEP_TITLES[step]}</span>
             }
-            subtitle={`Step ${steps.indexOf(step) + 1} of ${steps.length}`}
+            subtitle={firstRunStepCounterLabel(steps, step)}
             closeLabel="Close setup"
             onClose={defer}
           />
@@ -485,8 +538,13 @@ export function FirstRunHomeChapter() {
         <LazyBoundary
           load={loadFirstRunEnginePicker}
           componentProps={{
-            eyebrow: 'Set up Station',
-            title: 'Choose what powers Station',
+            // The role screen is a step of this run, so it carries the run's
+            // own counter instead of a decorative eyebrow that left it looking
+            // like a fourth screen in a three-step wizard.
+            eyebrow:
+              firstRunStepCounterLabel(steps, 'engine-role') ??
+              'Set up Station',
+            title: STEP_TITLES['engine-role'],
             description:
               'Choose the engine that runs the Station agent. Station Control and Station Docs stay attached to the role.',
             onChosen: continueToAboutYou,

@@ -72,6 +72,40 @@ export function useAgentsSettled(): boolean {
   return isSuccess || isError;
 }
 
+/**
+ * The catalog READ's own state, for a surface that must distinguish "still
+ * arriving" from "answered, and the answer was a failure" — and offer the
+ * retry in the second case.
+ *
+ * #1536 H1-2: `useAgents()` returns `[]` for both, so the scheduler's Add Job
+ * form derived "No Agent named 'station'." from an empty list and refused to
+ * submit — permanently, once `/api/agents` had failed, because the app's query
+ * defaults are `retry: 1` with no refetch on mount or focus (`main.tsx`). A
+ * message that blames a missing Agent for a failed read sends the reader to fix
+ * the wrong thing.
+ *
+ * Composed from the two predicates above rather than a third reading of the
+ * query: `loaded` is `isSuccess`, `settled` is success OR error, so
+ * `settled && !loaded` is exactly "the read failed".
+ */
+export function useAgentCatalogRead(): {
+  loaded: boolean;
+  settled: boolean;
+  failed: boolean;
+  /** A retry is in flight; a caller offering one must say so (#1536 D7). */
+  retrying: boolean;
+  retry: () => void;
+} {
+  const { isSuccess, isError, isFetching, refetch } = useAgentsQuery();
+  return {
+    loaded: isSuccess,
+    settled: isSuccess || isError,
+    failed: isError,
+    retrying: isError && isFetching,
+    retry: () => void refetch(),
+  };
+}
+
 export function useAgent(slug: string): AgentData | null {
   const agents = useAgents();
   return agents.find((a) => a.slug === slug) || null;

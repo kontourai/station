@@ -723,6 +723,7 @@ function BuiltinCodingLayoutHost({
       ? presentWorkspacePaneAvailability(
           codingOccurrence.availability,
           codingOccurrence.rendererGate,
+          codingOccurrence.rendererResolution,
         )
       : undefined;
     return (
@@ -1069,6 +1070,8 @@ function BuiltinCodingLayoutHost({
           if (paneEntry && paneEntry.availability.state !== 'available') {
             const presentation = presentWorkspacePaneAvailability(
               paneEntry.availability,
+              paneEntry.rendererGate,
+              paneEntry.rendererResolution,
             );
             return (
               <Empty
