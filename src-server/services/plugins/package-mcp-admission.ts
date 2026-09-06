@@ -158,9 +158,7 @@ export interface PackageMcpAdmissionJournal {
   ): ReturnType<PackageMcpAdmissionJournal['reserve']>;
   installationRecorded(installation: PackageMcpInstallation): boolean;
   admissionOpen(installation: PackageMcpInstallation): boolean;
-  registryAcquisition(
-    installation: PackageMcpInstallation,
-  ):
+  registryAcquisition(installation: PackageMcpInstallation):
     | {
         state: 'observed';
         receipt:
