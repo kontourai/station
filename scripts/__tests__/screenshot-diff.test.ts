@@ -16,6 +16,7 @@ import { join, resolve } from 'node:path';
 import { PNG } from 'pngjs';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  baselineImageFileName,
   baselineImagesDir,
   buildDiffImage,
   DEFAULT_BASELINE_PATH,
@@ -24,6 +25,7 @@ import {
   parseScreenshotDiffArgs,
   runBaseline,
   runDiff,
+  VOLATILE_REFERENCE_SUFFIX,
 } from '../screenshot-diff.mjs';
 
 const SCRIPT_PATH = resolve(import.meta.dirname, '../screenshot-diff.mjs');
@@ -176,18 +178,26 @@ describe('runBaseline and runDiff (in-process)', () => {
     if (dir) rmSync(dir, { recursive: true, force: true });
   });
 
+  /**
+   * `variant` shifts every screen's pixels so a SECOND capture of the same
+   * screens is distinguishable from the first. Without it an assertion that a
+   * reference image was re-stored cannot fail: the bytes are identical whether
+   * the file was rewritten or merely left in place. Default 0 keeps the original
+   * fixture colors for every existing caller.
+   */
   function writeCapture(
     galleryDir: string,
     screens: { name: string; ok: boolean; error?: string }[],
     selection: string[] | null,
+    variant = 0,
   ) {
     for (const screen of screens) {
       if (screen.ok) {
         writeFileSync(
           join(galleryDir, `${screen.name}.png`),
           screen.name === 'b'
-            ? solidPng(120, 80, [200, 40, 40])
-            : solidPng(120, 80, [50, 100, 150]),
+            ? solidPng(120, 80, [200, 40 + variant, 40])
+            : solidPng(120, 80, [50, 100 + variant, 150]),
         );
       }
     }
@@ -349,19 +359,12 @@ describe('runBaseline and runDiff (in-process)', () => {
   });
 
   /**
-   * #1652: a volatile entry's reason may point a human at a hand-curated
-   * reference image, and the REPLACE path used to delete it by construction —
-   * its keep set was derived from non-volatile entries only. Nothing covered
-   * the deletion loop at all, in either direction.
-   *
-   * The reference here is deliberately given DIFFERENT pixels and different
-   * dimensions from what a capture of that screen would produce, so surviving
-   * byte-identical is only possible if the loop neither deleted nor rewrote
-   * it — "the file still exists" would also pass if REPLACE had removed it and
-   * something re-stored a fresh capture under the same name.
+   * The shape every #1652 case starts from: one full REPLACE run, then 'b'
+   * marked volatile by hand. Leaves the auto-generated `b.png` the first run
+   * stored still on disk, which is exactly the state that makes the
+   * present-but-stale hazard reachable.
    */
-  it('a REPLACE run leaves a hand-added reference image for a volatile entry byte-identical, and still rewrites the non-volatile ones', () => {
-    dir = mkdtempSync(join(tmpdir(), 'screenshot-diff-'));
+  function seedWithVolatileB() {
     const baselinePath = join(dir, 'baseline.json');
     const imagesDir = baselineImagesDir(baselinePath);
     writeCapture(
@@ -383,12 +386,39 @@ describe('runBaseline and runDiff (in-process)', () => {
         : entry,
     );
     writeFileSync(baselinePath, JSON.stringify(manifest));
+    return { baselinePath, imagesDir };
+  }
 
-    // Stand in for the human: replace whatever the first run stored for 'b'
-    // with a hand-curated image no capture of 'b' could produce.
+  it('names a volatile entry a reference file no capture can write, and a non-volatile one the capture file', () => {
+    // Literals, not the exported suffix: the point is to pin the name, and an
+    // assertion built from the constant would move with it.
+    expect(baselineImageFileName({ name: 'x', volatile: true })).toBe(
+      'x.reference.png',
+    );
+    expect(baselineImageFileName({ name: 'x' })).toBe('x.png');
+    expect(VOLATILE_REFERENCE_SUFFIX).toBe('.reference.png');
+  });
+
+  /**
+   * #1652: a volatile entry's reason may point a human at a hand-curated
+   * reference image, and the REPLACE path used to delete it by construction —
+   * its keep set was derived from non-volatile entries only. Nothing covered
+   * the deletion loop at all, in either direction.
+   *
+   * The reference is deliberately given different pixels AND different
+   * dimensions from anything a capture of that screen produces, so surviving
+   * byte-identical is only possible if the loop neither deleted nor rewrote it.
+   */
+  it('a REPLACE run leaves a hand-added reference image for a volatile entry byte-identical, and still re-stores the non-volatile ones', () => {
+    dir = mkdtempSync(join(tmpdir(), 'screenshot-diff-'));
+    const { baselinePath, imagesDir } = seedWithVolatileB();
+
+    // Stand in for the human, at the name a capture can never write.
     const curated = solidPng(31, 17, [7, 8, 9]);
-    writeFileSync(join(imagesDir, 'b.png'), curated);
+    writeFileSync(join(imagesDir, 'b.reference.png'), curated);
 
+    // variant: 1 — this second capture's pixels differ from the first run's, so
+    // the "re-stored" assertion below fails if the file were merely left alone.
     writeCapture(
       dir,
       [
@@ -396,6 +426,7 @@ describe('runBaseline and runDiff (in-process)', () => {
         { name: 'b', ok: true },
       ],
       null,
+      1,
     );
     const result = runBaseline(
       { gallery: dir, baseline: baselinePath, allowPartial: false },
@@ -408,18 +439,29 @@ describe('runBaseline and runDiff (in-process)', () => {
       total: 2,
       replaced: true,
     });
-    expect(readFileSync(join(imagesDir, 'b.png'))).toEqual(curated);
-    // The non-volatile entry is still stored from this capture, so keeping the
-    // volatile name has not turned the keep set into "leave everything alone".
+    expect(readFileSync(join(imagesDir, 'b.reference.png'))).toEqual(curated);
+    // The non-volatile entry is re-stored from THIS capture, so preserving the
+    // reference has not turned the keep set into "leave everything alone".
     expect(readFileSync(join(imagesDir, 'a.png'))).toEqual(
       readFileSync(join(dir, 'a.png')),
     );
   });
 
-  it('a REPLACE run still deletes a reference image no current manifest entry claims', () => {
+  /**
+   * The half that keeps the fix from being the original defect with its polarity
+   * flipped. A volatile entry carries no hash, so nothing ever refreshes or
+   * enforces an image sitting at its capture name — if REPLACE preserved
+   * `<name>.png` for a volatile entry, a screen marked volatile while its
+   * auto-generated capture was still on disk would keep that capture forever
+   * while the manifest asserted no reference is committed.
+   */
+  it('a REPLACE run prunes the auto-generated capture left behind when a screen becomes volatile', () => {
     dir = mkdtempSync(join(tmpdir(), 'screenshot-diff-'));
-    const baselinePath = join(dir, 'baseline.json');
-    const imagesDir = baselineImagesDir(baselinePath);
+    const { baselinePath, imagesDir } = seedWithVolatileB();
+
+    // The first run stored this while 'b' was still non-volatile.
+    expect(existsSync(join(imagesDir, 'b.png'))).toBe(true);
+
     writeCapture(
       dir,
       [
@@ -432,18 +474,25 @@ describe('runBaseline and runDiff (in-process)', () => {
       { gallery: dir, baseline: baselinePath, allowPartial: false },
       { log: () => {} },
     );
-    const manifest = JSON.parse(readFileSync(baselinePath, 'utf8'));
-    manifest.screens = manifest.screens.map((entry: { name: string }) =>
-      entry.name === 'b'
-        ? { name: 'b', volatile: true, reason: 'test reason' }
-        : entry,
-    );
-    writeFileSync(baselinePath, JSON.stringify(manifest));
+
+    // Pruned, because no current entry claims that name any more.
+    expect(existsSync(join(imagesDir, 'b.png'))).toBe(false);
+    // And nothing was silently written in its place at the reference name.
+    expect(existsSync(join(imagesDir, 'b.reference.png'))).toBe(false);
+    expect(existsSync(join(imagesDir, 'a.png'))).toBe(true);
+  });
+
+  it('a REPLACE run still deletes a reference image no current manifest entry claims', () => {
+    dir = mkdtempSync(join(tmpdir(), 'screenshot-diff-'));
+    const { baselinePath, imagesDir } = seedWithVolatileB();
 
     // A genuine orphan: a screen this baseline no longer has any entry for,
     // alongside the volatile entry's own reference so the two dispositions are
     // decided in the same run.
-    writeFileSync(join(imagesDir, 'b.png'), solidPng(31, 17, [7, 8, 9]));
+    writeFileSync(
+      join(imagesDir, 'b.reference.png'),
+      solidPng(31, 17, [7, 8, 9]),
+    );
     writeFileSync(
       join(imagesDir, 'retired-screen.png'),
       solidPng(12, 9, [3, 2, 1]),
@@ -463,7 +512,7 @@ describe('runBaseline and runDiff (in-process)', () => {
     );
 
     expect(existsSync(join(imagesDir, 'retired-screen.png'))).toBe(false);
-    expect(existsSync(join(imagesDir, 'b.png'))).toBe(true);
+    expect(existsSync(join(imagesDir, 'b.reference.png'))).toBe(true);
     expect(existsSync(join(imagesDir, 'a.png'))).toBe(true);
   });
 

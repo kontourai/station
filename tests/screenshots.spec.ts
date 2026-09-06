@@ -265,41 +265,6 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  * Must be called AFTER `page.goto` (a fresh navigation drops any
  * previously injected style tag) and as close to the shot as practical.
  */
-/**
- * Await every web font the document currently needs.
- *
- * archive#4464: a web-font swap (FOUT/FOIT) landing mid-shot is a well-known
- * source of exactly the kind of tiny, isolated text/border-edge pixel noise
- * this feature's own two-consecutive-runs acceptance check was still catching
- * after every other identified source was fixed — one capture can race the
- * fallback-to-real-font swap and the next can miss it entirely.
- *
- * What one call guarantees: at the moment it resolves, every `FontFace` the
- * document has requested SO FAR has finished loading or failed, so no
- * fallback-to-real-font swap is still pending for the text in the DOM as it
- * stands.
- *
- * What it does NOT guarantee: anything about text that is not in the DOM yet.
- * `FontFaceSet.ready` resolves for the loads pending when it is read; a DOM
- * mutation afterwards can request a face that has not loaded and start a fresh
- * swap. That is why the capture sequence calls this twice rather than once
- * (#1650) — see `runScreenshotCaptureSequence`.
- *
- * What it is NOT: evidence about any particular screen's measured
- * run-to-run variance. `overlay-connection-banner` opens a disclosure in its
- * own `afterGoto` and has been measured varying between two runs of an
- * unchanged tree, and its reported difference is a sub-pixel border edge —
- * the signature described above. That makes an unsettled font a PLAUSIBLE
- * contributor, not a diagnosed cause, and nothing here has been shown to fix
- * it: the determinism measurements available were taken on a single local
- * renderer, and the renderer CI photographs with is not that one. The second
- * call is here because awaiting a set that has already settled costs
- * approximately nothing and the ordering was wrong on its own terms.
- */
-async function settleWebFonts(page: Page) {
-  await page.evaluate(() => document.fonts.ready);
-}
-
 async function hideVolatileChrome(page: Page) {
   await page.addStyleTag({
     content: `
@@ -2583,13 +2548,14 @@ test('build gallery — capture key screens', async ({ page }) => {
         if (screen.beforeGoto) {
           await screen.beforeGoto(page);
         }
-        const afterGoto = screen.afterGoto;
         // #1650: the ORDER of everything below lives in
         // `runScreenshotCaptureSequence` so it is a unit a test can execute —
         // a passing gallery run compares pixels and can never report a step
         // having moved to the wrong side of another one. Each step's own
-        // reason stays here, next to the mechanic it performs.
-        await runScreenshotCaptureSequence({
+        // reason stays here, next to the mechanic it performs. The web-font
+        // settle is the one step that module performs itself, against the page
+        // passed here, so no caller can wire in a settle that reads nothing.
+        await runScreenshotCaptureSequence(page, {
           reachScreen: async () => {
             await page.goto(screen.path, { waitUntil: 'domcontentloaded' });
             // Wait past the "Warming up" splash for the real app shell.
@@ -2606,11 +2572,17 @@ test('build gallery — capture key screens', async ({ page }) => {
             // Let async panels settle so the shot reflects loaded data.
             await page.waitForTimeout(1200);
           },
-          settleWebFonts: () => settleWebFonts(page),
           assertNoLoadingSkeleton: screen.expectSkeleton
             ? null
             : () => assertNoLoadingSkeleton(page),
-          afterGoto: afterGoto ? () => afterGoto(page) : null,
+          // Called as a method on `screen`, not as a bare extracted function:
+          // no declared hook uses `this` today, and this keeps that from being
+          // a precondition of the refactor rather than a property of the file.
+          afterGoto: screen.afterGoto
+            ? async () => {
+                await screen.afterGoto?.(page);
+              }
+            : null,
           // The identity-mismatch tile deliberately overrides the global
           // healthy handshake and waits for its own deterministic blocked
           // state. Every other screen must prove the gallery-wide route has
