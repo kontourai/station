@@ -5636,6 +5636,27 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   margin-bottom: 20px;
 }
 
+/*
+ * #1600: the standalone disclosure holds the inventory behind the same
+ * collapsed summary the first-run step does, and offers the same two named
+ * decisions. Its rules live here rather than in `FirstRunHomeChapter.css`
+ * because this surface is mounted by `OnboardingGate` and by Settings, neither
+ * of which loads the chapter's stylesheet.
+ */
+.usage-telemetry-disclosure__inventory > summary {
+  cursor: pointer;
+  padding: 8px 0;
+  color: var(--text-secondary);
+}
+
+.usage-telemetry-disclosure__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 16px;
+}
+
 .usage-telemetry-disclosure__event + .usage-telemetry-disclosure__event {
   margin-top: 18px;
   padding-top: 18px;
