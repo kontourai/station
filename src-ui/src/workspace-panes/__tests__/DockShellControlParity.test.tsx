@@ -436,12 +436,22 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
     await waitFor(() =>
       expect(document.querySelector('.chat-dock')).not.toBeNull(),
     );
+    // Hide from Full so the close leaves a memory worth keeping: a docked
+    // close forwards `false`, which any show would then preserve trivially.
+    const maximize = (shortcutRegistry?.getAllShortcuts() ?? []).find(
+      (shortcut) => shortcut.id === 'dock.maximize',
+    );
+    if (!maximize) throw new Error('dock.maximize is not registered');
+    act(() => maximize.handler());
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull(),
+    );
     act(() => dockToggle()());
     await waitFor(() =>
       expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull(),
     );
+    expect(navigationStore.lastDockMaximized).toBe(true);
     const dockStateWrite = vi.spyOn(navigationStore, 'setDockState');
-    const memoryBefore = navigationStore.lastDockMaximized;
 
     chooseChatForEmptyRight();
     await waitFor(() =>
@@ -451,12 +461,14 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
     expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
     expect(dockParam()).toBe('open');
     expect(dockStateWrite).toHaveBeenCalledTimes(1);
-    // A placement-show is a plain show: it forwards no maximize, so
-    // `lastDockMaximized` is whatever the last close left (#1563). The
-    // hide-from-Full round trip itself is pinned in
+    // A placement into a hidden empty region is placement + show in one diff
+    // with `maximized` cleared (#1385): a plain show, so it forwards no
+    // maximize and the memory the close kept survives (#1563). The
+    // `setRegion({ visible: true })` re-show is pinned in
     // `RegionModelContext.reshowKeepsMaximizeMemory.test.tsx`.
     expect(dockStateWrite).toHaveBeenCalledWith(true, undefined);
-    expect(navigationStore.lastDockMaximized).toBe(memoryBefore);
+    expect(document.querySelector('.chat-dock.is-maximized')).toBeNull();
+    expect(navigationStore.lastDockMaximized).toBe(true);
   });
 
   test('a placement arriving through the device setting is not replayed as a choice', async () => {

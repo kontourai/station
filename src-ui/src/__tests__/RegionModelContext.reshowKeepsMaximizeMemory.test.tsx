@@ -124,6 +124,25 @@ describe('re-showing a hidden Chat region keeps lastDockMaximized (#1563)', () =
     expect(navigationStore.lastDockMaximized).toBe(false);
   });
 
+  test('a maximize param that lingers past a close is re-seeded on the show, so Chat opens at Full', () => {
+    // `updateParams` does no normalization, so a `?maximize=true` link
+    // without `dock=open` (or a dead-chat pointer clear, #1613) leaves the
+    // param beside a closed dock. The show forwards nothing, the param
+    // stays, and the inbound effect re-seeds the region from it.
+    navigationStore.navigate('/', { dock: null, maximize: 'true' });
+    expect(snapshot().isDockOpen).toBe(false);
+    expect(snapshot().isDockMaximized).toBe(true);
+    const { result } = mount();
+    expect(result.current.regions.bottom.visible).toBe(false);
+    expect(result.current.regions.bottom.maximized).toBe(false);
+
+    act(() => result.current.setRegion('bottom', { visible: true }));
+    expect(snapshot().isDockOpen).toBe(true);
+    expect(snapshot().isDockMaximized).toBe(true);
+    expect(result.current.regions.bottom.maximized).toBe(true);
+    expect(navigationStore.lastDockMaximized).toBe(true);
+  });
+
   test('a show that is also a maximize forwards it', () => {
     const { result } = mount();
     act(() => result.current.setRegion('bottom', { visible: false }));
