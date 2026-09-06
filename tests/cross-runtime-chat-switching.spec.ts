@@ -1,5 +1,9 @@
 import { writeFileSync } from 'node:fs';
-import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
+import type { ConversationOpenExecution } from '@kontourai/station-contracts/orchestration';
 import { expect, type Page, type TestInfo, test } from '@playwright/test';
 import { createDailyDriverUiObservation } from '../scripts/lib/daily-driver-ui-observation.mjs';
 import { monitorBrowserHealth } from './helpers/browser-health';
@@ -474,6 +478,30 @@ async function seedCrossRuntimeRoutes(
     'conv-codex-beta': ['conv-codex-beta'],
     'conv-acp-alpha': ['session-acp-alpha'],
   } as const;
+  // Same authorized current-child facts that the real /open route returns.
+  // Inventory/Agent defaults do not authorize the next execution binding.
+  const executionBySession: Record<string, ConversationOpenExecution> = {
+    'conv-claude-alpha': {
+      sessionId: 'conv-claude-alpha',
+      agentId: agentId('claude'),
+      provider: 'claude',
+      engineConnectionId: 'claude',
+      model: 'claude-sonnet-4-20250514',
+    },
+    'conv-codex-beta': {
+      sessionId: 'conv-codex-beta',
+      agentId: agentId('codex'),
+      provider: 'codex',
+      engineConnectionId: 'codex',
+      model: 'gpt-5-codex',
+    },
+    'session-acp-alpha': {
+      sessionId: 'session-acp-alpha',
+      agentId: agentId('kiro'),
+      provider: 'acp',
+      engineConnectionId: 'kiro',
+    },
+  };
   const historicalBySession = Object.fromEntries(
     Object.entries(MESSAGES).map(([conversationId, messages]) => [
       sessionIdsByConversation[
@@ -779,7 +807,7 @@ async function seedCrossRuntimeRoutes(
           resolution: {
             engine: {
               kind: 'connection',
-              connectionId: engineConnectionId(`${agent}-runtime`),
+              connectionId: engineConnectionId(agent),
             },
             workspace: {
               kind: 'project',
@@ -898,7 +926,12 @@ async function seedCrossRuntimeRoutes(
               mutable: false,
               answerability: { answerable: true },
             },
-            ...(currentSessionId ? { currentSessionId } : {}),
+            ...(currentSessionId
+              ? {
+                  currentSessionId,
+                  execution: executionBySession[currentSessionId],
+                }
+              : {}),
             transcript: {
               available: Boolean(currentSessionId),
               owner: 'runtime',
