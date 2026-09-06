@@ -1,14 +1,20 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import type {
+  ProjectTaskRoomGrant,
+  ProjectTaskRoomGrantKind,
+} from '@kontourai/station-contracts/project-task-room';
 import { afterEach, expect, test, vi } from 'vitest';
 import type { RuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
+import { EventStore } from '../event-store.js';
 import {
   createPairedHomeTransferAuthority,
   type PairedHomeTransferAuthority,
 } from '../paired-home-transfer-authority.js';
+import type { ProjectTaskRoomCapabilityAuthority } from '../project-task-room-history.js';
 
 const roots: string[] = [];
 const databases: DatabaseSync[] = [];
@@ -312,4 +318,213 @@ test('a wrapper cannot be reused for another controller identity', async () => {
   expect(initialize(mismatched, f.operator, source.device.id).kind).toBe(
     'denied',
   );
+});
+
+function roomGrant<K extends ProjectTaskRoomGrantKind>(
+  capability: K,
+): ProjectTaskRoomGrant<K> {
+  return Object.freeze({
+    schemaVersion: 'station.project-task-room-grant/v1',
+    capability,
+    opaqueToken: 'owned-test-grant',
+  }) as ProjectTaskRoomGrant<K>;
+}
+const roomCapabilities: ProjectTaskRoomCapabilityAuthority = {
+  async resolve({ grant, required }) {
+    if (
+      grant.opaqueToken !== 'owned-test-grant' ||
+      grant.capability !== required
+    )
+      return { kind: 'denied' };
+    return {
+      kind: 'granted',
+      receipt: {
+        receiptId: `receipt-${required}`,
+        capability: required,
+        scope: {
+          projectId: '7188ca57-2ddc-4b70-9792-bb7f9a5f76a1',
+          projectSlug: 'transfer-project',
+          taskId: 'task-1',
+        },
+        principal: {
+          kind: 'operator',
+          operatorId: 'operator',
+          deviceId: 'local-owner',
+        },
+        policyRevision: 'policy-1',
+      },
+    };
+  },
+};
+
+test('paired source advances actual room owners through a copied checkpoint without activating execution', async () => {
+  const f = await fixture();
+  const source = f.pair('Source');
+  const target = f.pair('Target');
+  const sourcePath = join(f.root, 'source.sqlite');
+  const targetPath = join(f.root, 'target.sqlite');
+  const sourceEvents = new EventStore(sourcePath);
+  const sourceHistory = sourceEvents.createProjectTaskRoomHistory({
+    capabilities: roomCapabilities,
+  });
+  let targetEvents: EventStore | undefined;
+  try {
+    const opened = await sourceHistory.open({ grant: roomGrant('discover') });
+    expect(opened).toMatchObject({ kind: 'opened' });
+    if (opened.kind !== 'opened' && opened.kind !== 'existing')
+      throw new Error('Expected real source room');
+    expect(
+      f.authority.initializeOwner(f.operator, {
+        channelId: opened.channelId,
+        sourceDeviceId: source.device.id,
+        policyRevision: 'policy-1',
+      }).kind,
+    ).toBe('stored');
+    expect(
+      f.authority.prepare(source.principal, {
+        channelId: opened.channelId,
+        operationId: 'real-move',
+        targetDeviceId: target.device.id,
+        policyRevision: 'policy-1',
+        expectedRevision: 0,
+      }).kind,
+    ).toBe('stored');
+    const sourceOwner = {
+      history: sourceHistory,
+      grant: roomGrant('home-transfer'),
+    };
+    const absentTarget = {
+      history: {
+        readSourceSeal: async () => ({ kind: 'unsealed' as const }),
+      },
+      grant: roomGrant('history-read'),
+    };
+    expect(
+      await f.authority.advance(target.principal, 'real-move', {
+        source: sourceOwner,
+        target: absentTarget,
+      }),
+    ).toMatchObject({ kind: 'denied' });
+    expect(
+      await sourceHistory.readSourceSeal({ grant: roomGrant('history-read') }),
+    ).toEqual({ kind: 'unsealed' });
+    expect(
+      await f.authority.advance(source.principal, 'real-move', {
+        source: sourceOwner,
+        target: absentTarget,
+      }),
+    ).toMatchObject({
+      kind: 'pending',
+      reason: 'target-unavailable',
+      executionAuthorityTransferred: false,
+    });
+    await sourceHistory.close();
+    expect(sourceEvents.close()).toEqual({ kind: 'closed' });
+    copyFileSync(sourcePath, targetPath);
+    targetEvents = new EventStore(targetPath);
+    const targetHistory = targetEvents.createProjectTaskRoomHistory({
+      capabilities: roomCapabilities,
+    });
+    const owners = {
+      source: sourceOwner,
+      target: { history: targetHistory, grant: roomGrant('history-read') },
+    };
+    const committed = await f.authority.advance(
+      source.principal,
+      'real-move',
+      owners,
+    );
+    expect(committed).toMatchObject({
+      kind: 'decision-committed',
+      executionAuthorityTransferred: false,
+      executionResumeAvailable: false,
+    });
+    expect(
+      await f.authority.advance(source.principal, 'real-move', owners),
+    ).toEqual(committed);
+    expect(
+      f.authority.inspect(target.principal, opened.channelId),
+    ).toMatchObject({
+      kind: 'stored',
+      value: { homeRef: `paired:${target.device.id}`, revision: 1 },
+    });
+    expect(f.authority.inspect(source.principal, opened.channelId).kind).toBe(
+      'denied',
+    );
+    expect(
+      await targetHistory.readSourceSeal({ grant: roomGrant('history-read') }),
+    ).toMatchObject({ kind: 'sealed' });
+    await targetHistory.close();
+  } finally {
+    await sourceHistory.close();
+    sourceEvents.close();
+    targetEvents?.close();
+  }
+});
+
+test('revocation during real source closure leaves the sealed source frozen and the controller decision unadvanced', async () => {
+  const f = await fixture();
+  const source = f.pair('Source');
+  const target = f.pair('Target');
+  const events = new EventStore(join(f.root, 'revoked-source.sqlite'));
+  const history = events.createProjectTaskRoomHistory({
+    capabilities: roomCapabilities,
+  });
+  try {
+    const opened = await history.open({ grant: roomGrant('discover') });
+    expect(opened).toMatchObject({ kind: 'opened' });
+    if (opened.kind !== 'opened' && opened.kind !== 'existing')
+      throw new Error('Expected source');
+    f.authority.initializeOwner(f.operator, {
+      channelId: opened.channelId,
+      sourceDeviceId: source.device.id,
+      policyRevision: 'policy-1',
+    });
+    f.authority.prepare(source.principal, {
+      channelId: opened.channelId,
+      operationId: 'revoked-close',
+      targetDeviceId: target.device.id,
+      policyRevision: 'policy-1',
+      expectedRevision: 0,
+    });
+    const result = await f.authority.advance(
+      source.principal,
+      'revoked-close',
+      {
+        source: {
+          grant: roomGrant('home-transfer'),
+          history: {
+            sealSource: async (input) => {
+              const seal = await history.sealSource(input);
+              f.security.devicePairing.revokeDevice(
+                target.device.id,
+                'operator-credential',
+              );
+              return seal;
+            },
+          },
+        },
+        target: {
+          grant: roomGrant('history-read'),
+          history: { readSourceSeal: async () => ({ kind: 'unavailable' }) },
+        },
+      },
+    );
+    expect(result).toMatchObject({
+      kind: 'denied',
+      executionAuthorityTransferred: false,
+    });
+    expect(
+      await history.readSourceSeal({ grant: roomGrant('history-read') }),
+    ).toMatchObject({ kind: 'sealed' });
+    const stored = f.database
+      .prepare(
+        'SELECT record_json FROM planned_home_transfers WHERE operation_id=?',
+      )
+      .get('revoked-close') as { record_json: string };
+    expect(JSON.parse(stored.record_json).phase).toBe('prepared');
+  } finally {
+    await history.close();
+    events.close();
+  }
 });

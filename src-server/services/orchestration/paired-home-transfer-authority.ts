@@ -6,6 +6,11 @@ import {
 import type { RuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
 import {
+  createPlannedHomeTransferCoordinator,
+  type PlannedHomeTransferCoordinatorOptions,
+  type PlannedHomeTransferCoordinatorResult,
+} from './planned-home-transfer-coordinator.js';
+import {
   createAuthorizedSqlitePlannedHomeTransferStore,
   type PlannedHomeOwner,
   type PlannedHomeTransfer,
@@ -41,7 +46,18 @@ export interface PairedHomeTransferPreparation {
   readonly expectedRevision: number;
 }
 
+/** Private trusted owner adapters, never decoded from HTTP or a copied manifest. */
+export type PairedHomeTransferOwners = Pick<
+  PlannedHomeTransferCoordinatorOptions,
+  'source' | 'target'
+>;
+
 export interface PairedHomeTransferAuthority {
+  advance(
+    principal: PairedHomeTransferPrincipal,
+    operationId: string,
+    owners: PairedHomeTransferOwners,
+  ): Promise<PlannedHomeTransferCoordinatorResult>;
   initializeOwner(
     principal: PairedHomeTransferPrincipal,
     input: PairedHomeOwnerInitialization,
@@ -91,9 +107,9 @@ function homeRef(deviceId: string): string {
 }
 
 /**
- * Personal-controller binding for durable transfer preparation only. It does
- * not expose source closure, target readiness, ownership commit, leases, or
- * execution admission.
+ * Personal-controller decisions. The private advance method composes trusted
+ * source/target owners; public routes expose preparation and reads only.
+ * This service issues no leases and never enables execution admission.
  */
 export function createPairedHomeTransferAuthority(
   options: PairedHomeTransferAuthorityOptions,
@@ -158,6 +174,54 @@ export function createPairedHomeTransferAuthority(
   }
 
   return {
+    async advance(principal, operationId, owners) {
+      const flags = {
+        executionAuthorityTransferred: false as const,
+        executionResumeAvailable: false as const,
+      };
+      try {
+        const actor = capturedPrincipal(principal);
+        const source = {
+          history: owners.source.history,
+          grant: { ...owners.source.grant },
+        };
+        const target = {
+          history: owners.target.history,
+          grant: { ...owners.target.grant },
+        };
+        const callerAuthorized = () =>
+          controllerIsCurrent() && currentTransferDevice(actor) !== undefined;
+        const found = guardedStore(callerAuthorized).resolve(
+          tenantId,
+          operationId,
+        );
+        if (found.kind !== 'stored') return { kind: found.kind, ...flags };
+        const intent = Object.freeze({ ...found.value.intent });
+        const authorize = () => {
+          const caller = currentTransferDevice(actor);
+          return (
+            controllerIsCurrent() &&
+            caller !== undefined &&
+            homeRef(caller.id) === intent.sourceHomeRef &&
+            activeTransferDevice(
+              intent.targetHomeRef.slice(HOME_REF_PREFIX.length),
+            ) !== undefined
+          );
+        };
+        if (!authorize()) return { kind: 'denied', ...flags };
+        const coordinator = createPlannedHomeTransferCoordinator({
+          store: guardedStore(authorize),
+          tenantId,
+          source,
+          target,
+        });
+        const result = await coordinator.advance(operationId);
+        return authorize() ? result : { kind: 'denied', ...flags };
+      } catch {
+        return { kind: 'unavailable', ...flags };
+      }
+    },
+
     initializeOwner(principal, input) {
       try {
         const actor = capturedPrincipal(principal);
