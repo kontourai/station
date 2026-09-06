@@ -367,11 +367,16 @@ export function ChatDockBody({
    * whose `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS` is 30_000, so a resolution that
    * never lands settles into the read-only verdict in at most ~30s rather than
    * hanging. That is long enough that the composer being disabled with no way
-   * out would be its own defect, so "Start new chat" stays reachable for the
-   * whole window (review L1). Retry deliberately does not: retrying a read
-   * that is still in flight is what the resolver is already doing.
+   * out would be its own defect, so the control row below keeps "Start new
+   * chat" reachable for the whole window (review L1). Retry deliberately does
+   * not appear: retrying a read that is still in flight is what the resolver is
+   * already doing.
+   *
+   * The ROW is what scopes that control to the wait, so the button carries no
+   * second copy of the condition. It had one, and an injection that made it
+   * unconditional stayed green — a guard nothing can reach reads as a
+   * guarantee and is not one.
    */
-  const canStartNewWhileWaiting = conversationLoading && Boolean(onNewChat);
   const forkFromTurn = onForkFromTurn;
   const renderedSession = useMemo(
     () =>
@@ -1127,7 +1132,7 @@ export function ChatDockBody({
           {transcript.messages.length > 0 ? (
             <SkeletonBlock count={1} label="Loading conversation" />
           ) : null}
-          {canStartNewWhileWaiting ? (
+          {onNewChat ? (
             <button
               type="button"
               className="button button--secondary"

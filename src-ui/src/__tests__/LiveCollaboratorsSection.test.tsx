@@ -102,6 +102,20 @@ test('says "just you" for one client publishing nothing, in one line', () => {
   expect(screen.getByText('Published work across this host')).toBeTruthy();
 });
 
+// Review L2. The details block explains what each number COUNTS, which is a
+// claim about the producer: the route sums `sessionCount` over
+// `connectedClientPresence.snapshot(activePairedDeviceIds())`, so it counts
+// paired devices — not "browsers and CLIs attached", which would include
+// anything that had opened a socket.
+test('the details block says what connectedClients actually counts', () => {
+  mocks.data = { connectedClients: 2, participants: [] };
+  render(<LiveCollaboratorsSection />);
+  expect(
+    screen.getByText(/paired devices connected to this Station/),
+  ).toBeTruthy();
+  expect(screen.queryByText(/browsers and CLIs/)).toBeNull();
+});
+
 test('the sentence is derived from both counts, not from "no participants"', () => {
   // Only the exact pair (one client, nothing published) is "just you". Two
   // clients with nothing published is a different fact and must not claim it.
