@@ -13,10 +13,15 @@ import {
  * A SAMPLE, not a bound, and the name says so on purpose: the UI proxy's own
  * upstream timeout is 30 s (`proxyToBackend` in
  * `packages/cli/src/commands/lifecycle.ts`), so one request can legitimately take
- * far longer and the budget below would then under-cover by roughly 4x. #1654
- * masks that today — a proxy timeout answers 504, which the ladder classifies as
- * a refusal and exits on the first attempt — so a 30 s attempt is not reachable
- * until #1654 is fixed. #1661 owns the choice this then forces.
+ * that long. A SINGLE such attempt is reachable today and already grazes the
+ * budget below — 30 s leaves 3.4 s of this 4 s render allowance, so on exactly
+ * the loaded host the allowance exists for, the wait expires before the gate
+ * settles and reports "never settled" instead of the accurate refusal. What
+ * #1654 masks is a long attempt being RETRIED (a proxy timeout answers 504,
+ * which the ladder classifies as a refusal and exits on the first attempt);
+ * fixing it caps the long attempts at one, which does NOT bring a single one
+ * inside the budget. #1661 owns the choice, and the residual either way is a
+ * possible misdiagnosis on a loaded host.
  */
 const OBSERVED_SLOW_IDENTITY_ANSWER_MS = 6_600;
 /** The navigation's module graph and the gate's first render. */
@@ -42,11 +47,12 @@ const GATE_DIRECTED_RELOAD_ALLOWANCE_MS = 2_000;
  * worst case: a full ladder on the first page, the reload, and one more answer
  * on the reloaded page.
  *
- * NOTE FOR CALLERS: this now EXCEEDS `playwright.config.ts`'s 30 s default
- * per-test timeout, so a test that spends the whole budget dies as a bare test
+ * This EXCEEDS `playwright.config.ts`'s 30 s default per-test timeout, so a
+ * caller that has not raised its own `test.setTimeout` dies as a bare test
  * timeout — naming nothing, which is the exact failure this helper exists to
- * replace with a sentence. Any caller must raise its own `test.setTimeout` above
- * this value plus whatever the rest of its journey needs.
+ * replace with a sentence. That obligation is not left to this comment:
+ * `readinessTestTimeoutRefusal` below derives it from the running test's own
+ * timeout and refuses with a sentence of this helper's own.
  */
 export const LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS =
   NAVIGATION_AND_RENDER_ALLOWANCE_MS +
@@ -63,6 +69,49 @@ export const LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS =
  * doing that inside the deadline is not merely restarting.
  */
 export const MAX_HOST_RECOVERY_RELOADS = 2;
+
+/**
+ * Why this wait cannot run under the test timeout it has been given, or
+ * `undefined` when it can.
+ *
+ * A caller whose per-test timeout is at or below this wait's own budget cannot
+ * reach the wait's failure sentences at all: the test dies first, as a bare
+ * `Test timeout of Nms exceeded`, which names neither the gate nor the host.
+ * Refusing up front converts that into a sentence that says what to change.
+ *
+ * `0` is Playwright's "no timeout" and passes. The comparison is `<=`, not `<`:
+ * a test whose ENTIRE timeout is this wait's budget has nothing left for the
+ * navigation that precedes it or the assertions that follow, so equality is
+ * already doomed rather than borderline.
+ */
+export function readinessTestTimeoutRefusal(
+  perTestTimeoutMs: number,
+  budgetMs: number,
+): string | undefined {
+  if (perTestTimeoutMs === 0 || perTestTimeoutMs > budgetMs) return undefined;
+  return (
+    `Local UI access readiness cannot run under this test's ${perTestTimeoutMs}ms timeout: ` +
+    `the access gate is allowed ${budgetMs}ms to settle, so the test would expire before ` +
+    'this wait could report what the gate did. Raise `test.setTimeout` above ' +
+    `${budgetMs}ms plus the rest of the journey (see LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS).`
+  );
+}
+
+/**
+ * The running test's own timeout, or `undefined` outside a Playwright worker —
+ * which is how the pure-function tests in
+ * `scripts/__tests__/local-ui-access-readiness.test.ts` import this module. The
+ * import is lazy for the same reason: nothing in a vitest run should pull the
+ * Playwright runner in.
+ */
+async function currentTestTimeoutMs(): Promise<number | undefined> {
+  try {
+    const { test } = await import('@playwright/test');
+    return test.info().timeout;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Every screen `LocalUiSessionGate` can put on this page, as hooks that do not
@@ -241,6 +290,11 @@ export async function waitForLocalUiAccessReadiness(
   page: Page,
   timeoutMs = LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS,
 ): Promise<{ hostRecoveryReloads: number }> {
+  const perTestTimeoutMs = await currentTestTimeoutMs();
+  if (perTestTimeoutMs !== undefined) {
+    const refusal = readinessTestTimeoutRefusal(perTestTimeoutMs, timeoutMs);
+    if (refusal) throw new Error(refusal);
+  }
   const authenticatedShell = page.locator(AUTHENTICATED_SHELL_SELECTOR);
   const accessRequired = page.getByRole('region', {
     name: ACCESS_REQUIRED_REGION_NAME,

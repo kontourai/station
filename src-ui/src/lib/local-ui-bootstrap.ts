@@ -133,26 +133,52 @@ async function readLocalUiIdentity(
  *    stranded the way #1639 describes. Splitting a retryable transport failure
  *    out of that class is #1654.
  *
- * Only the identity read is inside the ladder, and the launcher-token exchange
- * must stay outside it. Two independent mechanisms hold that today — the loop's
- * shape here, and `captureLocalUiBootstrapToken` latching `captured` and
- * stripping the fragment on first read — so a ladder that DID re-enter the
- * exchange would find no token, fall through to the identity read, and behave
- * exactly as it does now. What it must never do is re-POST a token this page has
- * already spent. Because either mechanism alone is sufficient, no single change
- * to one of them is observable; `LocalUiSessionGate.hostRetry.test.tsx` pins the
- * reachable end of it (a consumed token, an unavailable host, the ladder
- * running, the exchange POSTed once) and records the mutation that does red it.
+ * Only the identity read is inside the ladder. There are TWO separate properties
+ * about the launcher-token exchange here, they are held by different mechanisms,
+ * and only one of them is observable — an earlier revision of this comment
+ * conflated them and named the wrong guard, so both are spelled out:
+ *
+ * WITHIN one resolution, the exchange cannot run twice, and that holds because
+ * `bootstrapLocalUiSession` is TERMINAL whenever a token exists: it returns true
+ * or it throws, never false. So the identity read below is reachable only when
+ * the capture found no valid token — which also means the latch was never set
+ * and the fragment was never stripped. Moving the exchange INSIDE the ladder
+ * therefore changes nothing: a second iteration is reachable only on a page that
+ * had no token to spend, and the re-entered capture reads the same empty
+ * fragment. Neither the latch nor the strip is engaged on that path, and this
+ * invariant has no observable mutation through the gate — the capture reads only
+ * the URL fragment, is called from exactly one production place (the exchange),
+ * and nothing writes the `station-ui-bootstrap` key after boot (`ChatDock.tsx`
+ * and `views/share/share-token.ts` write a fragment, but their own keys, and the
+ * capture reads its key by name). The readiness wait
+ * (`tests/helpers/local-ui-access-readiness.ts`) reasons from this same terminal
+ * property to conclude its reload is unreachable on a token-bearing entry, so it
+ * is the second consumer of it; keep the two in step.
+ *
+ * ACROSS resolutions, a SPENT token must never be re-POSTed — a pairing recheck
+ * resolves again on a page whose token is already gone. THAT is what the latch
+ * and the fragment strip hold, and it is observable:
+ * `LocalUiSessionGate.hostRetry.test.tsx` drives a spent token into an
+ * unavailable host and pins one POST against a full ladder of identity reads,
+ * red under a repeatable capture.
  */
 export function resolveLocalUiSession(
   apiBase: string,
 ): Promise<LocalUiSessionResolution> {
   sessionResolution ??= (async () => {
     // A pairing recheck or a test reset replaces the memoized promise while this
-    // ladder may still be mid-backoff. Nobody awaits a superseded resolution, so
-    // its remaining attempts would spend requests for no reader and its
-    // `setIdentityAttempt` writes would clobber the live ladder's counter — the
-    // gate reads ONE module-level attempt, not one per resolution.
+    // ladder may still be mid-backoff. A superseded resolution DOES still have an
+    // awaiter — `main.tsx`'s boot-payload seed holds the promise object it got at
+    // call time, not whatever is memoized now — so the early return below is a
+    // contract, not a discard: answer the last real observation rather than climb
+    // rungs whose result nobody can act on. What it protects is the attempt
+    // counter, which is module-level and shared: the abandoned ladder's
+    // `setIdentityAttempt` writes would otherwise clobber the live one the gate
+    // is rendering from.
+    //
+    // The product cannot reach this today — the gate renders no pairing control
+    // while a resolution is pending, so nothing can supersede one mid-ladder. It
+    // is defence in depth plus test isolation, and that is its present value.
     const generation = resolutionGeneration;
     setIdentityAttempt(1);
     try {

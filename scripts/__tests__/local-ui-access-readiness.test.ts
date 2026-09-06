@@ -4,6 +4,7 @@ import {
   LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS,
   type LocalUiAccessObservation,
   MAX_HOST_RECOVERY_RELOADS,
+  readinessTestTimeoutRefusal,
   type SettledLocalUiAccessScreen,
   waitForLocalUiAccessReadinessThrough,
 } from '../../tests/helpers/local-ui-access-readiness.js';
@@ -50,6 +51,68 @@ function observation(
     } satisfies LocalUiAccessObservation,
   };
 }
+
+/**
+ * The budget exceeds `playwright.config.ts`'s 30 s default per-test timeout, so a
+ * caller that has not raised its own `test.setTimeout` cannot reach any of the
+ * sentences above — the test dies first, as a bare `Test timeout of Nms
+ * exceeded`, which is the unnamed failure this whole helper exists to abolish.
+ * The obligation is therefore derived rather than documented.
+ *
+ * WHAT THIS DOES NOT COVER: that the browser adapter calls this. The call is one
+ * `if` at the top of `waitForLocalUiAccessReadiness`, which needs a real
+ * Playwright `Page` and worker to execute, so it is verified by reading.
+ */
+describe('readiness refuses a test timeout it cannot fit inside', () => {
+  test('a caller under the default 30 s timeout is refused, naming both numbers', () => {
+    const refusal = readinessTestTimeoutRefusal(
+      30_000,
+      LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS,
+    );
+    expect(refusal).toBeDefined();
+    expect(refusal).toContain('30000ms timeout');
+    expect(refusal).toContain(
+      `${LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS}ms to settle`,
+    );
+    expect(refusal).toContain('test.setTimeout');
+  });
+
+  test('the live default IS the refused case, so this is not a hypothetical', () => {
+    // Pins the premise the guard exists for: `playwright.config.ts` ships
+    // `timeout: 30_000`, and the budget is above it. If the budget ever drops
+    // below the config default the guard becomes dead code, and this reds.
+    expect(LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS).toBeGreaterThan(30_000);
+  });
+
+  test('a timeout with room to spare passes', () => {
+    expect(
+      readinessTestTimeoutRefusal(
+        LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS + 1,
+        LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS,
+      ),
+    ).toBeUndefined();
+    expect(
+      readinessTestTimeoutRefusal(
+        150_000,
+        LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS,
+      ),
+    ).toBeUndefined();
+  });
+
+  test('exactly the budget is refused, and 0 — Playwright for "no timeout" — is not', () => {
+    // Equality is doomed rather than borderline: a test whose entire timeout is
+    // this wait's budget has nothing left for the goto before it.
+    expect(
+      readinessTestTimeoutRefusal(
+        LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS,
+        LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS,
+      ),
+    ).toBeDefined();
+    expect(
+      readinessTestTimeoutRefusal(0, LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS),
+    ).toBeUndefined();
+  });
+});
 
 describe('local UI access readiness wait', () => {
   test('returns as soon as the protected shell mounts', async () => {

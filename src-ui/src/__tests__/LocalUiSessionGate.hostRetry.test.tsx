@@ -100,9 +100,11 @@ afterEach(() => {
   window.history.replaceState(null, '', '/');
   vi.restoreAllMocks();
   // `restoreAllMocks` does not undo `stubGlobal`, so without this the `location`
-  // snapshot one test installs stays frozen for every later test in the file —
-  // which would silently make the `replaceState` above invisible, and a test that
-  // sets a `#station-ui-bootstrap` fragment read no token at all.
+  // snapshot one test installs stays frozen for every later test in the file, and
+  // the `replaceState` above becomes invisible: the real URL moves on while the
+  // stub keeps the hash it was spread from. The spent-token test's closing
+  // `expect(window.location.hash).toBe('')` is what breaks — the token IS still
+  // found, because the spread copies the hash as an ordinary writable string.
   vi.unstubAllGlobals();
 });
 
