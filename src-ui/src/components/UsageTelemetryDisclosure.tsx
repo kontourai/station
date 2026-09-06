@@ -4,7 +4,13 @@ import {
   useUpdateConfigMutation,
 } from '@kontourai/station-sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type ReactNode, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  type ReactNode,
+  type Ref,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
@@ -533,7 +539,7 @@ function DisclosureDecisionActions({
   keepRef,
 }: {
   decision: UsageTelemetryDecision;
-  keepRef?: React.Ref<HTMLButtonElement>;
+  keepRef?: Ref<HTMLButtonElement>;
 }) {
   return (
     <>
