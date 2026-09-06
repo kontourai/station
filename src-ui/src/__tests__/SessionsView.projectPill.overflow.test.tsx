@@ -224,11 +224,19 @@ describe.skipIf(!chromiumAvailable)(
      *
      * `--font-mono` at 0.6rem with 0.45rem of padding each side: 9 glyphs is
      * about 58px of text plus 14px of padding. The floor below is deliberately
-     * under that measured figure rather than equal to it, so a font-metric
-     * difference between this fixture's fallback face and the shipped one
-     * cannot make the test the thing that fails.
+     * under the post-fix measurements (82 / 104.8 / 153.3) rather than equal to
+     * them, so a font-metric difference between this fixture's fallback face
+     * and the shipped one cannot make the test the thing that fails.
+     *
+     * It is deliberately ABOVE `.session-project-pill`'s own `min-width: 4rem`
+     * (64px), and stated as a literal rather than derived from it. A floor
+     * equal to that constant is satisfied by the constant alone: with
+     * `flex-wrap` removed from the trailing slot the pill measures exactly
+     * 64px, and a 64px floor passed that injection — a test bound to the
+     * constant it is meant to check. 78 measures the WRAP's contribution,
+     * which is the half of the fix the floor cannot supply.
      */
-    const MIN_READABLE_PILL_PX = 64;
+    const MIN_READABLE_PILL_PX = 78;
 
     test.each([220, 280, 420])(
       'the project chip gets a readable width at a %ipx rail',
