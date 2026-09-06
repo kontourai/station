@@ -191,11 +191,6 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'embedded WebDriver application identity boundary',
   },
   {
-    pattern: 'src-desktop/src/lib.rs',
-    tests: ['scripts/__tests__/tauri-webdriver-boundary.test.ts'],
-    reason: 'embedded WebDriver release and mock-credential boundary',
-  },
-  {
     pattern: 'tests/tauri-shell/direct-webdriver.ts',
     tests: ['scripts/__tests__/tauri-webdriver-boundary.test.ts'],
     reason: 'embedded WebDriver test harness boundary',
@@ -565,7 +560,10 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   },
   {
     pattern: 'src-desktop/src/lib.rs',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
+    tests: [
+      'scripts/__tests__/native-recovery-docs.test.ts',
+      'scripts/__tests__/tauri-webdriver-boundary.test.ts',
+    ],
     reason: 'native window, logging, and activation documentation source seam',
   },
   {
