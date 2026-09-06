@@ -60,8 +60,14 @@ async function regionControlTrigger(page: Page) {
  * is read after REOPENING the panel, because selecting closes it, so the
  * assertion sees freshly derived state rather than the DOM it just clicked.
  *
- * Returns false when no region control is on screen, leaving the caller's
- * remaining fallbacks to run.
+ * Three popups, one trigger. The picker is what #1552 D2 renders on a fine
+ * pointer; the grouped verb menu is what the toolbar branch renders on one
+ * (a7936006e's path, absorbed here so there is a single place that decides);
+ * the flat "Region surfaces" menu is the coarse branch on both.
+ *
+ * Returns false when no region control is on screen, or when the one that is
+ * opened a surface it could not act on, leaving the caller's remaining
+ * fallbacks to run.
  */
 async function openChatThroughRegionControl(page: Page): Promise<boolean> {
   const trigger = await regionControlTrigger(page);
@@ -103,6 +109,66 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
     return true;
   }
 
+  // The GROUPED VERB MENU (a7936006e, the toolbar branch's own chrome): rows
+  // grouped by region, Chat's row in its own region a Show/Hide checkbox, or
+  // "Place Chat here" while another surface holds the region. Kept whole
+  // because the two branches can diverge again, and a helper that only knows
+  // the newer surface would then fail on the older one with a selector error
+  // rather than a statement about Chat.
+  const layoutMenu = page.getByRole('menu', { name: 'Layout regions' });
+  if (await layoutMenu.isVisible().catch(() => false)) {
+    const reopen = async () => {
+      const again = await regionControlTrigger(page);
+      if (!again) {
+        throw new Error('The region control disappeared while opening Chat.');
+      }
+      await again.click();
+      const menu = page.getByRole('menu', { name: 'Layout regions' });
+      await expect(menu).toBeVisible();
+      return menu;
+    };
+    const expectHideRow = async () => {
+      const menu = await reopen();
+      await expect(
+        menu.getByRole('menuitemcheckbox', { name: 'Hide Chat', exact: true }),
+      ).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
+    };
+
+    const hide = layoutMenu.getByRole('menuitemcheckbox', {
+      name: 'Hide Chat',
+      exact: true,
+    });
+    if (await hide.isVisible().catch(() => false)) {
+      await page.keyboard.press('Escape');
+      await expect(layoutMenu).toBeHidden();
+      return true;
+    }
+    const show = layoutMenu.getByRole('menuitemcheckbox', {
+      name: 'Show Chat',
+      exact: true,
+    });
+    if (await show.isVisible().catch(() => false)) {
+      await show.click();
+      await expectHideRow();
+      return true;
+    }
+    const activeRegion = await activeChatRegion(page);
+    if (activeRegion) {
+      const place = layoutMenu
+        .getByRole('group', { name: activeRegion, exact: true })
+        .getByRole('menuitem', { name: 'Place Chat here', exact: true });
+      if (await place.isVisible().catch(() => false)) {
+        await place.click();
+        await expectHideRow();
+        return true;
+      }
+    }
+    await page.keyboard.press('Escape');
+    return false;
+  }
+
   const menu = page.getByRole('menu', { name: 'Region surfaces' });
   if (await menu.isVisible().catch(() => false)) {
     const hide = menu.getByRole('menuitemcheckbox', { name: 'Hide Chat' });
@@ -127,12 +193,12 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
     return true;
   }
 
-  // A control that opened neither surface is a chrome change this helper has
-  // not been taught; say so rather than falling through to the mobile
-  // expander and reporting a phone journey for a desktop run.
-  throw new Error(
-    'The region control opened neither the placement picker nor the folded region menu.',
-  );
+  // A trigger that opened none of the three is a chrome this helper has not
+  // been taught. Close whatever it did open and let the caller's remaining
+  // fallbacks run; `openChatRegion`'s own error names the failure if they
+  // cannot either.
+  await page.keyboard.press('Escape');
+  return false;
 }
 
 /**
@@ -198,64 +264,6 @@ export async function openChatRegion(page: Page): Promise<void> {
       ).toBeVisible();
       return;
     }
-  }
-
-  // Since #1552 the desktop toolbar carries one "Layout regions" menu instead
-  // of per-region Show/Hide/Place buttons: rows are grouped by region (the
-  // group's accessible name is the region label) and Chat's row in its own
-  // region is a Show/Hide checkbox, or "Place Chat here" while another surface
-  // holds the region. The complementary Hide row is the post-condition here
-  // too; the menu is reopened to read it because selecting a row closes it.
-  const layout = page.getByRole('button', {
-    name: 'Layout regions',
-    exact: true,
-  });
-  if (await layout.isVisible().catch(() => false)) {
-    const openLayoutMenu = async () => {
-      await layout.click();
-      const menu = page.getByRole('menu', { name: 'Layout regions' });
-      await expect(menu).toBeVisible();
-      return menu;
-    };
-    const expectHideRow = async () => {
-      const menu = await openLayoutMenu();
-      await expect(
-        menu.getByRole('menuitemcheckbox', { name: 'Hide Chat', exact: true }),
-      ).toBeVisible();
-      await page.keyboard.press('Escape');
-      await expect(menu).toBeHidden();
-    };
-
-    const menu = await openLayoutMenu();
-    const hide = menu.getByRole('menuitemcheckbox', {
-      name: 'Hide Chat',
-      exact: true,
-    });
-    if (await hide.isVisible().catch(() => false)) {
-      await page.keyboard.press('Escape');
-      await expect(menu).toBeHidden();
-      return;
-    }
-    const show = menu.getByRole('menuitemcheckbox', {
-      name: 'Show Chat',
-      exact: true,
-    });
-    if (await show.isVisible().catch(() => false)) {
-      await show.click();
-      await expectHideRow();
-      return;
-    }
-    if (activeRegion) {
-      const place = menu
-        .getByRole('group', { name: activeRegion, exact: true })
-        .getByRole('menuitem', { name: 'Place Chat here', exact: true });
-      if (await place.isVisible().catch(() => false)) {
-        await place.click();
-        await expectHideRow();
-        return;
-      }
-    }
-    await page.keyboard.press('Escape');
   }
 
   const expand = page.getByRole('button', {
