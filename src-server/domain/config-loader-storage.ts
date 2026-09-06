@@ -396,13 +396,39 @@ export async function listSkillConfigs(
   return results;
 }
 
+/**
+ * Does this install record answer for `name`?
+ *
+ * A package copied into a new directory carries the record it was copied with,
+ * and that record's `legacyIds`, `provenance` and `installedAt` belong to the
+ * skill it was written for. Answering the new name with them hands a caller
+ * another skill's identity — `resolveSkillName` would route that skill's legacy
+ * ids to it, and an update reads `name` back off the record, so a record
+ * claiming `foo` under `<home>/skills/bar` renamed `bar` to `foo` on a request
+ * that asked for no rename at all (review round 2, L3).
+ *
+ * THE rule, exported so both readers share it rather than restate it: this
+ * loader, and `SkillService`'s read of the record beside a discovered body.
+ */
+export function skillRecordClaimsName(
+  record: Pick<SkillConfigRecord, 'name'>,
+  name: string,
+): boolean {
+  return record.name === name;
+}
+
 export async function loadSkillConfig(
   projectHomeDir: string,
   name: string,
 ): Promise<SkillConfigRecord> {
   const path = join(resolveSkillDirectory(projectHomeDir, name), 'skill.json');
   if (!existsSync(path)) throw new Error(`Skill '${name}' not found`);
-  return JSON.parse(await readFile(path, 'utf-8'));
+  const record = JSON.parse(await readFile(path, 'utf-8')) as SkillConfigRecord;
+  // A record that names another skill is not this skill's record; a name with
+  // no record of its own is the same answer either way.
+  if (!skillRecordClaimsName(record, name))
+    throw new Error(`Skill '${name}' not found`);
+  return record;
 }
 
 export async function saveSkillConfig(

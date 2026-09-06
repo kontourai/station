@@ -63,7 +63,7 @@ vi.mock('../components/UsageTelemetryDisclosure', () => ({
       data-testid="first-run-disclosure"
       onClick={onAdvance}
     >
-      I understand
+      Keep usage telemetry on
     </button>
   ),
   useUsageTelemetryDisclosureState: () => disclosureState,

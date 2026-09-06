@@ -26,6 +26,7 @@ import {
   saveIntegrationConfig,
   saveSkillConfig,
   skillConfigExists,
+  skillRecordClaimsName,
   wasIntegrationEnabledExplicit,
 } from '../config-loader-storage.js';
 
@@ -55,6 +56,38 @@ describe('skill config storage resolves names through the shared seam', () => {
       }
       // Nothing was written anywhere under the home.
       expect(existsSync(join(root, 'skills'))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  // Review round 2, L3. A package copied into a new directory carries the
+  // record it was copied with. Answering `bar` with a record that says `foo`
+  // hands the caller `foo`'s identity — and `SkillService.updateLocalSkill`
+  // reads `name` back off this record, so a PUT on `bar` that requested no
+  // rename renamed it to `foo`.
+  test("a record that claims another name is not this name's record", async () => {
+    const root = createTempDir();
+    try {
+      const dir = join(root, 'skills', 'bar');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, 'skill.json'),
+        JSON.stringify({
+          name: 'foo',
+          source: 'local',
+          installedAt: '2020-01-01',
+          path: join(root, 'skills', 'foo'),
+        }),
+        'utf-8',
+      );
+
+      await expect(loadSkillConfig(root, 'bar')).rejects.toThrow(
+        "Skill 'bar' not found",
+      );
+      // Same answer as no record at all, which is what it is.
+      expect(skillRecordClaimsName({ name: 'bar' }, 'bar')).toBe(true);
+      expect(skillRecordClaimsName({ name: 'foo' }, 'bar')).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
