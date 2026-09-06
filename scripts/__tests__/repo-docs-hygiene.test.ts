@@ -32,34 +32,6 @@ describe('repo docs hygiene', () => {
     expect(byFile.size).toBe(0);
   });
 
-  it('distinguishes a quoted relative JSON filename from private hostnames', () => {
-    const byFile = findingsFor(
-      ['docs/new.md'],
-      read({
-        'docs/new.md': [
-          'Read `.claude/settings.local.json` or `./config/tool.local.json`.',
-          'Do not disclose `settings.local`, `https://settings.local/path`,',
-          'or `settings.local.json` presented as a bare hostname.',
-          'Keep `./server.local` and `.settings.local/config.json` visible.',
-        ].join('\n'),
-      }),
-    );
-    const findings = byFile.get('docs/new.md') ?? [];
-    expect(findings).toHaveLength(5);
-    expect(findings.every((finding: string) => !finding.includes(':1 '))).toBe(
-      true,
-    );
-    expect(
-      findings.filter((finding: string) => finding.includes(':2 ')),
-    ).toHaveLength(2);
-    expect(
-      findings.filter((finding: string) => finding.includes(':3 ')),
-    ).toHaveLength(1);
-    expect(
-      findings.filter((finding: string) => finding.includes(':4 ')),
-    ).toHaveLength(2);
-  });
-
   it('a grandfathered file holds exactly its pinned findings without failing', () => {
     const byFile = findingsFor(
       ['docs/old.md'],

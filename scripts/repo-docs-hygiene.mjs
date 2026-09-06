@@ -84,30 +84,10 @@ export function findingsFor(
   for (const file of files) {
     const text = read(file);
     const findings = [];
-    // A private suffix in an explicitly relative JSON filename is not a
-    // hostname. Bare names, URLs and hostname-shaped directory components
-    // remain subject to the ordinary privacy rule.
-    const relativeJsonBasenames = [
-      ...text.matchAll(
-        /`((?:\.\.?\/|\.[A-Za-z0-9_-]+\/)(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.json)`/g,
-      ),
-    ].map((entry) => ({
-      start: entry.index + 1 + entry[1].lastIndexOf('/') + 1,
-      end: entry.index + entry[0].length - 1,
-    }));
     for (const [code, pattern] of PRIVACY_PATTERNS) {
       pattern.lastIndex = 0;
       for (const match of text.matchAll(pattern)) {
         if (benignForRepoDocs(code, match[0])) continue;
-        if (
-          code === 'private-hostname' &&
-          relativeJsonBasenames.some(
-            (range) =>
-              match.index >= range.start &&
-              match.index + match[0].length <= range.end,
-          )
-        )
-          continue;
         const lineNumber = text.slice(0, match.index).split('\n').length;
         findings.push(`${file}:${lineNumber} ${code}: ${match[0].trim()}`);
       }
