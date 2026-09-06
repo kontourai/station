@@ -1,9 +1,15 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
+import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
 import { readPluginManifestFileSync } from '../../services/plugins/plugin-manifest-loader.js';
 import { hasGrant } from '../../services/plugins/plugin-permissions.js';
+import {
+  capturePluginRuntimeArtifact,
+  type PluginRuntimeArtifact,
+} from '../../services/plugins/plugin-runtime-artifact.js';
 
 interface RuntimeLogger {
   debug: (message: string, meta?: Record<string, unknown>) => void;
@@ -16,6 +22,7 @@ interface RuntimePluginLoaderContext {
   logger: RuntimeLogger;
   projectHomeDir: string;
   loadPluginOverrides: () => Promise<any>;
+  packageMcpJournal?: PackageMcpAdmissionJournal;
 }
 
 export async function loadRuntimePluginPrompts(
@@ -76,25 +83,44 @@ export async function loadRuntimePluginProviders(
   let prepared: Awaited<ReturnType<typeof preparePluginProviderGeneration>>;
   try {
     const overrides = await context.loadPluginOverrides();
+    const artifacts = new Map<string, PluginRuntimeArtifact>();
     const {
       basis,
       candidates: { resolved, conflicts },
-    } = await capturePluginProviderGeneration(context.projectHomeDir, () =>
-      existsSync(pluginsDir)
-        ? resolvePluginProviders(
-            pluginsDir,
-            overrides,
-            (pluginName) =>
-              hasGrant(
-                context.projectHomeDir,
-                pluginName,
-                'providers.register',
-                context.logger,
-              ),
+    } = await capturePluginProviderGeneration(context.projectHomeDir, () => {
+      const names = new Set(
+        scanInstalledPluginInventory(pluginsDir, context.logger).flatMap(
+          (entry) => (entry.state === 'valid' ? [entry.manifest.name] : []),
+        ),
+      );
+      const selected = context.packageMcpJournal?.selectedInstallations();
+      if (selected?.state === 'unavailable')
+        throw new Error('Plugin installation inventory unavailable.');
+      for (const installed of selected?.installations ?? [])
+        names.add(installed.pluginId);
+      for (const name of [...names].sort()) {
+        const artifact = capturePluginRuntimeArtifact(
+          pluginsDir,
+          name,
+          context.packageMcpJournal,
+        );
+        if (artifact) artifacts.set(name, artifact);
+      }
+      return resolvePluginProviders(
+        pluginsDir,
+        overrides,
+        (name) =>
+          hasGrant(
+            context.projectHomeDir,
+            name,
+            'providers.register',
             context.logger,
-          )
-        : { resolved: [], conflicts: [] },
-    );
+            artifacts.get(name),
+          ),
+        context.logger,
+        [...artifacts.values()].map((artifact) => artifact.manifest),
+      );
+    });
     for (const conflict of conflicts) {
       context.logger.warn(
         'Provider conflict — multiple plugins provide singleton type',
@@ -109,6 +135,39 @@ export async function loadRuntimePluginProviders(
       pluginsDir,
       resolved.map((entry) => ({
         pluginName: entry.pluginName,
+        packageRoot: artifacts.get(entry.pluginName)!.packageRoot,
+        visibility: {
+          ready: () => {
+            const artifact = artifacts.get(entry.pluginName)!;
+            return (
+              artifact.isCurrent() &&
+              hasGrant(
+                context.projectHomeDir,
+                entry.pluginName,
+                'providers.register',
+                context.logger,
+                artifact,
+              )
+            );
+          },
+          permits: () => false,
+        },
+        artifact: {
+          ...artifacts.get(entry.pluginName)!,
+          isCurrent: () => {
+            const artifact = artifacts.get(entry.pluginName)!;
+            return (
+              artifact.isCurrent() &&
+              hasGrant(
+                context.projectHomeDir,
+                entry.pluginName,
+                'providers.register',
+                context.logger,
+                artifact,
+              )
+            );
+          },
+        },
         manifest: {
           name: entry.pluginName,
           version: '0.0.0',
@@ -124,7 +183,11 @@ export async function loadRuntimePluginProviders(
       })),
       context.logger,
     );
-    prepared = await publishPluginProviderGeneration(basis, prepared);
+    prepared = await publishPluginProviderGeneration(
+      basis,
+      prepared,
+      artifacts,
+    );
   } catch (error) {
     const failure = error as {
       pluginName?: unknown;

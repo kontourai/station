@@ -21,6 +21,14 @@ import {
   INTERNAL_TURN_CORRELATION_HEADER,
   issueAuthorizedTurnCorrelationHandoff,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import {
+  INTERNAL_NATIVE_WORKSPACE_HEADER,
+  NativeExecutionWorkspaceUnavailableError,
+} from '../../runtime/conversation/native-execution-workspace.js';
+import {
+  currentNativeForegroundRelay,
+  INTERNAL_NATIVE_FOREGROUND_HEADER,
+} from '../../runtime/conversation/native-foreground-invocation.js';
 import { stripOutputDeclarationHandle } from '../../runtime/native-output-declaration.js';
 import { currentNativeOutputRelayCompanion } from '../../runtime/native-output-turn-grant.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
@@ -28,6 +36,7 @@ import type {
   EventBus,
   ServerEvent,
 } from '../../services/orchestration/event-bus.js';
+import { ForegroundInvocationUnavailableError } from '../../services/orchestration/foreground-invocation-admission.js';
 import {
   tenantExecutionContextAttributes,
   tenantExecutionContextOutcomes,
@@ -103,6 +112,7 @@ interface StationAgentResumeCursor {
 }
 
 interface StationAgentSessionRecord {
+  workspaceRequired: boolean;
   session: ProviderSession;
   agentId: string;
   projectSlug?: string;
@@ -677,6 +687,10 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       updatedAt: now,
     };
     this.sessions.set(input.threadId, {
+      workspaceRequired:
+        input.workspaceIsolation?.mode === 'worktree' ||
+        (input.metadata?.workspaceIsolation as { mode?: unknown } | undefined)
+          ?.mode === 'worktree',
       session,
       agentId,
       ...(projectSlug ? { projectSlug } : {}),
@@ -746,6 +760,14 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     // retain the adapter's ordinary random id.
     const turnCorrelation = currentAuthorizedTurnCorrelation();
     const nativeOutputRelay = currentNativeOutputRelayCompanion();
+    const nativeForeground = currentNativeForegroundRelay();
+    if (
+      record.workspaceRequired &&
+      (!nativeOutputRelay?.workspaceRequired || !turnCorrelation)
+    )
+      throw new NativeExecutionWorkspaceUnavailableError();
+    if (nativeForeground && !turnCorrelation)
+      throw new ForegroundInvocationUnavailableError();
     const turnId = turnCorrelation?.turnId ?? crypto.randomUUID();
     const controller = new AbortController();
     record.activeTurnId = turnId;
@@ -819,6 +841,13 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       ),
     );
     try {
+      const relayHandoff = turnCorrelation
+        ? issueAuthorizedTurnCorrelationHandoff(
+            turnCorrelation,
+            nativeOutputRelay,
+            nativeForeground,
+          )
+        : undefined;
       response = await (this.options.fetch ?? fetch)(
         `${this.options.apiBase}/api/agents/${encodeURIComponent(record.agentId)}/chat`,
         {
@@ -827,13 +856,15 @@ export class StationAgentAdapter implements ProviderAdapterShape {
             'Content-Type': 'application/json',
             [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
             [INTERNAL_PROXY_CALLER_HEADER]: 'local',
-            ...(turnCorrelation
+            ...(relayHandoff
               ? {
-                  [INTERNAL_TURN_CORRELATION_HEADER]:
-                    issueAuthorizedTurnCorrelationHandoff(
-                      turnCorrelation,
-                      nativeOutputRelay,
-                    ),
+                  [INTERNAL_TURN_CORRELATION_HEADER]: relayHandoff,
+                  ...(nativeOutputRelay?.workspaceRequired
+                    ? { [INTERNAL_NATIVE_WORKSPACE_HEADER]: relayHandoff }
+                    : {}),
+                  ...(nativeForeground
+                    ? { [INTERNAL_NATIVE_FOREGROUND_HEADER]: relayHandoff }
+                    : {}),
                 }
               : {}),
             ...(record.tenantExecutionContext
@@ -921,6 +952,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         throw new Error(turnRejectionMessage(rejectionReason));
       }
     } catch (error) {
+      nativeForeground?.refuse();
       this.failTurn(record, turnId, controller, rejectionReason);
       throw error;
     }
@@ -931,16 +963,32 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       controller,
       response,
       modelMetadata,
-    ).catch((error) => {
-      this.failTurn(
-        record,
-        turnId,
-        controller,
-        error instanceof StationAgentStreamStallError
-          ? error.message
-          : undefined,
-      );
-    });
+    )
+      .catch((error) => {
+        this.failTurn(
+          record,
+          turnId,
+          controller,
+          error instanceof StationAgentStreamStallError
+            ? error.message
+            : undefined,
+        );
+      })
+      .finally(() => nativeForeground?.refuse());
+    if (nativeForeground) {
+      try {
+        await nativeForeground.waitForInvocation(controller.signal);
+      } catch (error) {
+        controller.abort();
+        this.failTurn(
+          record,
+          turnId,
+          controller,
+          'The captured native action was not admitted.',
+        );
+        throw error;
+      }
+    }
     return {
       threadId: input.threadId,
       turnId,

@@ -1,12 +1,17 @@
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
+import { AGENT_PLUGIN_MANIFEST_SCHEMA_1_0 } from '@kontourai/station-contracts/agent-plugin';
 import { validateOperationalEventScopes } from '@kontourai/station-contracts/operational-event';
 import {
   isCanonicalPluginId,
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
 import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
+import {
+  type AgentPluginManifestReport,
+  parseAgentPluginManifest,
+} from '@kontourai/station-shared/agent-plugin-manifest';
 import { isReservedObjectKey } from '../../utils/reserved-object-keys.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
 import { parseWorkspacePaneHostContribution } from './workspace-pane-host-contributions.js';
@@ -49,15 +54,193 @@ function invalidManifest(
 export async function readPluginManifestFile(
   manifestPath: string,
 ): Promise<PluginManifest> {
+  return (await readPluginManifestFileWithFormat(manifestPath)).manifest;
+}
+
+export type PluginManifestFormat = 'legacy' | 'agent-plugin-1.0';
+
+export interface PluginManifestWithFormat {
+  manifest: PluginManifest;
+  format: PluginManifestFormat;
+  stationExtension?: { status: 'validated' | 'disabled'; reason?: string };
+}
+
+export async function readPluginManifestFileWithFormat(
+  manifestPath: string,
+): Promise<PluginManifestWithFormat> {
   const raw = await readFile(manifestPath, 'utf-8');
-  return parsePluginManifest(raw, manifestPath);
+  return parsePluginManifestDocumentWithFormat(raw, manifestPath);
 }
 
 export function readPluginManifestFileSync(
   manifestPath: string,
 ): PluginManifest {
+  return readPluginManifestFileSyncWithFormat(manifestPath).manifest;
+}
+
+export function readPluginManifestFileSyncWithFormat(
+  manifestPath: string,
+): PluginManifestWithFormat {
   const raw = readFileSync(manifestPath, 'utf-8');
-  return parsePluginManifest(raw, manifestPath);
+  return parsePluginManifestDocumentWithFormat(raw, manifestPath);
+}
+
+/** Dispatches recognized Agent Plugins documents without weakening legacy reads. */
+export function parsePluginManifestDocument(
+  raw: string,
+  manifestPath: string,
+): PluginManifest {
+  return parsePluginManifestDocumentWithFormat(raw, manifestPath).manifest;
+}
+
+export function parsePluginManifestDocumentWithFormat(
+  raw: string,
+  manifestPath: string,
+): PluginManifestWithFormat {
+  // Both manifest families enter the same hidden-content boundary. Agent
+  // Plugins dispatch must not become a way around legacy manifest safety.
+  assertSafeContextText(raw, {
+    profile: 'hidden-only',
+    source: `plugin manifest '${dirname(manifestPath)}/${basename(manifestPath)}'`,
+  });
+  const agentPlugin = readAgentPluginManifest(raw, manifestPath);
+  return agentPlugin
+    ? { ...agentPlugin, format: 'agent-plugin-1.0' }
+    : { manifest: parsePluginManifest(raw, manifestPath), format: 'legacy' };
+}
+
+function readAgentPluginManifest(
+  raw: string,
+  manifestPath: string,
+): Omit<PluginManifestWithFormat, 'format'> | null {
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (
+    !candidate ||
+    typeof candidate !== 'object' ||
+    Array.isArray(candidate) ||
+    typeof (candidate as Record<string, unknown>).$schema !== 'string'
+  ) {
+    return null;
+  }
+  const schema = (candidate as Record<string, unknown>).$schema as string;
+  if (!schema.startsWith('https://agent-plugins.org/schemas/')) return null;
+
+  const reports: AgentPluginManifestReport[] = [];
+  const loaded = parseAgentPluginManifest(candidate, (report) =>
+    reports.push(report),
+  );
+  if (!loaded) {
+    const reason = reports[0]?.message ?? 'unknown validation failure';
+    throw new Error(
+      schema === AGENT_PLUGIN_MANIFEST_SCHEMA_1_0
+        ? `Agent Plugin manifest is invalid: ${reason}`
+        : `Unsupported Agent Plugins manifest schema '${schema}'`,
+    );
+  }
+  const base: PluginManifest = {
+    name: loaded.manifest.name,
+    version: loaded.manifest.version ?? '0.0.0-agent-plugin-unversioned',
+    description: loaded.manifest.description,
+  };
+  const extension = loaded.stationExtension;
+  if (!extension)
+    return {
+      manifest: base,
+      ...(reports.some((report) => report.code === 'station-extension-invalid')
+        ? {
+            stationExtension: {
+              status: 'disabled' as const,
+              reason: 'Station extension does not satisfy its schema',
+            },
+          }
+        : {}),
+    };
+  try {
+    const settings = (extension.settings ?? []).map((field) => ({
+      key: field.key,
+      label: field.title,
+      type: field.type,
+      ...(field.description !== undefined
+        ? { description: field.description }
+        : {}),
+      ...(field.default !== undefined ? { default: field.default } : {}),
+      ...(field.required !== undefined ? { required: field.required } : {}),
+      ...(field.type === 'select'
+        ? {
+            options: field.options.map((option) => ({
+              label: option.title,
+              value: option.value,
+            })),
+          }
+        : {}),
+    }));
+    const settingKeys = new Set(settings.map((field) => field.key));
+    if (settingKeys.size !== settings.length)
+      throw new Error('Duplicate Station setting keys');
+    const secrets = (extension.secretReferences ?? []).map((field) => {
+      if (settingKeys.has(field.key))
+        throw new Error('Duplicate Station setting or secret-reference key');
+      settingKeys.add(field.key);
+      return {
+        key: field.key,
+        label: field.title,
+        type: 'string' as const,
+        secret: true,
+        ...(field.description ? { description: field.description } : {}),
+        ...(field.required !== undefined ? { required: field.required } : {}),
+      };
+    });
+    const normalized: Record<string, unknown> = { ...base };
+    const fields = [
+      'sdkVersion',
+      'entrypoint',
+      'serverModule',
+      'build',
+      'capabilities',
+      'permissions',
+      'commands',
+      'links',
+      'agents',
+      'workspacePanes',
+      'workspacePaneHost',
+      'operationalEventSubscriptions',
+      'providers',
+      'integrations',
+      'tools',
+      'knowledge',
+      'prompts',
+    ] as const;
+    for (const field of fields)
+      if (extension[field] !== undefined) normalized[field] = extension[field];
+    if (extension.title !== undefined) normalized.displayName = extension.title;
+    if (settings.length || secrets.length)
+      normalized.settings = [...settings, ...secrets];
+    if (extension.dependencies)
+      normalized.dependencies = extension.dependencies.map((dependency) => ({
+        id: dependency.name,
+        version: dependency.version,
+      }));
+    return {
+      manifest: parsePluginManifest(JSON.stringify(normalized), manifestPath),
+      stationExtension: { status: 'validated' },
+    };
+  } catch (error) {
+    return {
+      manifest: base,
+      stationExtension: {
+        status: 'disabled',
+        reason:
+          error instanceof PluginManifestValidationError
+            ? error.message
+            : 'Station extension could not be normalized into the host contract',
+      },
+    };
+  }
 }
 
 export function parsePluginManifest(

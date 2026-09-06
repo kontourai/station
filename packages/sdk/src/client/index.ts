@@ -82,3 +82,8 @@ export * from './task-outputs';
 export * from './task-tool-results';
 export * from './task-user-input-references';
 export * from './unified-search';
+export {
+  executeWorkspacePaneHostAction,
+  getWorkspacePaneHostActions,
+  prepareWorkspacePaneHostAction,
+} from './workspace-pane-host-actions';

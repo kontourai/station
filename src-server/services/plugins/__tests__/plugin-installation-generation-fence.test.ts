@@ -27,7 +27,6 @@ import {
   getPluginGrants,
   grantPermissions,
   rebindGrantsAfterContentChange,
-  restorePluginGrantEntry,
   revokeGrants,
   withPluginProviderGrantPublication,
 } from '../plugin-permissions.js';
@@ -245,10 +244,12 @@ test.each(['revoke', 'rebind', 'reconsent'] as const)(
     } else if (mutation === 'rebind') {
       await rebindGrantsAfterContentChange(root, name, {});
     } else {
-      await restorePluginGrantEntry(root, name, {
-        permissions: ['providers.register'],
-        contentDigest: 'sha256:prior-content',
-      });
+      // An independently edited legacy package needs fresh consent. Exercise
+      // the real content mismatch rather than rewriting permission storage.
+      writeFileSync(
+        join(root, 'plugins', name, 'plugin.json'),
+        JSON.stringify({ name, version: '1.0.1' }),
+      );
       const outcome = await grantPermissions(root, name, ['ui.confirm']);
       expect(outcome.withdrawn).toContain('providers.register');
     }

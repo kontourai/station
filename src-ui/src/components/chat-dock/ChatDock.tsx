@@ -1509,6 +1509,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         | 'providerType'
         | 'hydrateMessages'
         | 'signal'
+        | 'beforeFocus'
       >,
     ) => {
       // #3724 review (BLOCKING): classify BEFORE navigating. Routing first
@@ -1516,7 +1517,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       // 'catalog-pending' whose "nothing was navigated" claim was false —
       // the user had already been teleported to the other project. An
       // unanswered catalog refuses here, before any navigation.
-      if (!agentsLoaded || execution?.signal?.aborted) return false;
+      if (
+        !agentsLoaded ||
+        execution?.signal?.aborted ||
+        execution?.beforeFocus?.() === false
+      )
+        return false;
       // station#3687 seam 2: routing to the row's project used to RETURN
       // here (`undefined`), so a cross-project click navigated the whole app
       // and then opened nothing — and `undefined` also skipped the #801
@@ -1554,7 +1560,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [openConversationInScopedPane, setActiveProjectSlug],
   );
   const openConversationForDock = useCallback(
-    async (conversation: ConversationOpenRecovery['conversation']) => {
+    async (
+      conversation: ConversationOpenRecovery['conversation'] | string,
+      isCurrent?: () => boolean,
+    ) => {
       const controller = await loadConversationOpenController();
       return controller.openConversationForDock(conversation, {
         apiBase,
@@ -1567,6 +1576,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           )?.[0],
         updateChat,
         setRecovery: setConversationOpenRecovery,
+        isCurrent,
       });
     },
     [apiBase, openUserSelectedConversationInScopedPane, projects, updateChat],
@@ -1731,6 +1741,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     };
     const unregisterOpenChatsNavigation = openChatsStore.registerNavigation({
       focus: focusChat,
+      openConversation: openConversationForDock,
       // Remote transcript rendering has no safe cross-Station reader in this
       // slice. Route selection to its named connection instead of treating an
       // opaque remote conversation ID as a local one.
@@ -1775,6 +1786,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     focusSessionInPane,
     navigate,
     openWorkItemConversationInScopedPane,
+    openConversationForDock,
     allSessions,
     routeToScopedChatProject,
     scopedProjectSlug,

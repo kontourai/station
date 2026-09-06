@@ -505,7 +505,12 @@ export function createWorkspacePaneHostContribution(input: {
   if (
     !declaration ||
     !isCanonicalPluginId(input.owner.pluginId) ||
-    !/^sha256:[a-f0-9]{64}$/.test(input.owner.installationGeneration) ||
+    !input.owner.installationGeneration ||
+    input.owner.installationGeneration.length > 256 ||
+    [...input.owner.installationGeneration].some((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code <= 31 || code === 127;
+    }) ||
     !text(input.projectId, 256)
   ) {
     throw new Error('Invalid Workspace Pane host contribution composition');
@@ -617,6 +622,7 @@ export function createWorkspacePaneHostContribution(input: {
           label: action.label,
           ...(action.icon ? { icon: action.icon } : {}),
           presentation: action.presentation,
+          ...(action.intent.agent ? { agent: action.intent.agent } : {}),
           availability:
             index >= 0
               ? availableAgents[index]!.state

@@ -137,7 +137,12 @@ export function usePluginManagementViewModel() {
     (plugin) => pluginSelectionId(plugin) === selectedPlugin,
   );
   const selectedReady =
-    selected && !isRejectedPlugin(selected) ? selected : undefined;
+    selected &&
+    !isRejectedPlugin(selected) &&
+    (!selected.installationReadiness ||
+      selected.installationReadiness.state === 'ready')
+      ? selected
+      : undefined;
 
   const { data: settingsData } = usePluginSettingsQuery(selectedReady?.name, {
     enabled: !!selectedReady?.hasSettings,
@@ -147,7 +152,9 @@ export function usePluginManagementViewModel() {
     enabled: !!selectedReady?.git,
   });
 
-  const saveSettingsMutation = usePluginSettingsMutation();
+  const saveSettingsMutation = usePluginSettingsMutation({
+    onError: (error) => setMessage({ type: 'error', text: error.message }),
+  });
   const previewMutation = usePluginPreviewMutation();
   const installMutation = usePluginInstallMutation();
   const createProjectMutation = useCreateProjectMutation();
@@ -288,6 +295,7 @@ export function usePluginManagementViewModel() {
     toggleProviderMutation.mutate(
       { pluginName, disabled },
       {
+        onError: (error) => setMessage({ type: 'error', text: error.message }),
         onSuccess: () =>
           queryClient.invalidateQueries({
             queryKey: ['plugin-providers', pluginName],
@@ -296,7 +304,10 @@ export function usePluginManagementViewModel() {
     );
   }
 
-  async function install(skipList?: string[]) {
+  async function install(
+    skipList?: string[],
+    dataPolicy: 'preserve' | 'retain-and-reset' = 'preserve',
+  ) {
     const source = installSource.trim();
     if (!source) return;
 
@@ -376,7 +387,12 @@ export function usePluginManagementViewModel() {
       {
         source,
         skip: skipList || Array.from(previewSkips),
+        dataPolicy,
+        expectedInstallation: basis.installationRevision,
         consent: {
+          ...(basis.grantRevision !== undefined
+            ? { grantRevision: basis.grantRevision }
+            : {}),
           permissions: basis.permissions.required,
           contentDigest: basis.contentDigest,
           dependencies: (basis.dependencies ?? []).map(
@@ -392,6 +408,12 @@ export function usePluginManagementViewModel() {
                       ? [
                           {
                             id: dependency.id,
+                            ...(dependency.consent.grantRevision !== undefined
+                              ? {
+                                  grantRevision:
+                                    dependency.consent.grantRevision,
+                                }
+                              : {}),
                             permissions: dependency.consent.permissions,
                             contentDigest: dependency.consent.contentDigest,
                             dependencies: dependency.consent.dependencies,
@@ -531,8 +553,14 @@ export function usePluginManagementViewModel() {
   function remove(name: string) {
     setRemoveConfirm(null);
     removeMutation.mutate(name, {
-      onSuccess: async () => {
-        setMessage({ type: 'success', text: `Removed ${name}.` });
+      onSuccess: async (result) => {
+        setMessage({
+          type: 'success',
+          text:
+            result.lifecycle?.reclamation === 'not-proven'
+              ? `Removed ${name} from Station. Its stored data and code are retained.`
+              : `Removed ${name}.`,
+        });
         deselectPlugin();
         await reloadClientPluginRegistry();
       },
@@ -629,12 +657,12 @@ export function usePluginManagementViewModel() {
         name: quickProjectName,
         slug,
       });
-      await addLayoutFromPluginMutation.mutateAsync({
+      const createdLayout = await addLayoutFromPluginMutation.mutateAsync({
         projectSlug: slug,
         plugin: layoutAssignment.pluginName,
       });
       setLayoutAssignment(null);
-      setLayout(slug, layoutAssignment.layoutSlug);
+      setLayout(slug, createdLayout.slug);
     } catch (error) {
       console.warn('Quick project creation failed', error);
       setMessage({
@@ -675,11 +703,11 @@ export function usePluginManagementViewModel() {
     }
     setAssigningLayout(true);
     try {
-      await addLayoutFromPluginMutation.mutateAsync({
+      const createdLayout = await addLayoutFromPluginMutation.mutateAsync({
         projectSlug: sole.slug,
         plugin: plugin.name,
       });
-      setLayout(sole.slug, layoutSlug);
+      setLayout(sole.slug, createdLayout.slug);
     } catch (error) {
       console.warn('Layout assignment failed', error);
       setMessage({
@@ -695,14 +723,17 @@ export function usePluginManagementViewModel() {
     if (!layoutAssignment) return;
     setAssigningLayout(true);
     try {
+      let firstCreated: { projectSlug: string; layoutSlug: string } | undefined;
       for (const slug of selectedProjects) {
-        await addLayoutFromPluginMutation.mutateAsync({
+        const createdLayout = await addLayoutFromPluginMutation.mutateAsync({
           projectSlug: slug,
           plugin: layoutAssignment.pluginName,
         });
+        firstCreated ??= { projectSlug: slug, layoutSlug: createdLayout.slug };
       }
       setLayoutAssignment(null);
-      setLayout([...selectedProjects][0], layoutAssignment.layoutSlug);
+      if (firstCreated)
+        setLayout(firstCreated.projectSlug, firstCreated.layoutSlug);
     } catch (error) {
       console.warn('Layout assignment failed', error);
       setMessage({

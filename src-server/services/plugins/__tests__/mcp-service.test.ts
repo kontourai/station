@@ -52,7 +52,7 @@ const { connectMCP } = await import('@kontourai/station-shared/mcp');
 const connectMCPMock = vi.mocked(connectMCP);
 
 function createMockConfigLoader() {
-  return withAtomicUpdate({
+  const loader = withAtomicUpdate({
     listIntegrations: vi
       .fn()
       .mockResolvedValue([{ id: 'mcp-1', name: 'Test' }]),
@@ -66,6 +66,12 @@ function createMockConfigLoader() {
       tools: { mcpServers: ['mcp-1'], available: ['*'] },
     }),
     updateAgent: vi.fn().mockResolvedValue(undefined),
+  });
+  return Object.assign(loader, {
+    loadIntegrationWithOwnership: vi.fn(async (id: string) => ({
+      definition: await loader.loadIntegration(id),
+      contributed: false,
+    })),
   });
 }
 
@@ -94,6 +100,167 @@ const mockLogger = {
 };
 
 describe('MCPService', () => {
+  test('probes live package integrations without snapshotting and refuses definition mutations', async () => {
+    connectMCPMock.mockReset();
+    connectMCPMock.mockResolvedValue({ tools: [], disconnect: vi.fn() } as any);
+    const loader = createMockConfigLoader();
+    loader.loadIntegration.mockResolvedValue({
+      id: 'agent-plugin-live',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'node',
+    });
+    Object.assign(loader, {
+      isLiveContributedIntegration: vi.fn(() => true),
+      loadIntegrationWithOwnership: vi.fn(async () => ({
+        definition: await loader.loadIntegration('agent-plugin-live'),
+        contributed: true,
+      })),
+    });
+    const svc = new MCPService(
+      loader as any,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      mockLogger,
+    );
+
+    await expect(svc.probeIntegration('agent-plugin-live')).resolves.toEqual(
+      expect.objectContaining({ probe: expect.objectContaining({ ok: true }) }),
+    );
+    expect(loader.saveIntegration).not.toHaveBeenCalled();
+    await expect(svc.setEnabled('agent-plugin-live', false)).rejects.toThrow(
+      /Package-supplied integration definitions are read-only/,
+    );
+    await expect(
+      svc.applyDisabledTools('agent-plugin-live', ['tool']),
+    ).rejects.toThrow(/Package-supplied integration definitions are read-only/);
+    await expect(svc.startOAuth('agent-plugin-live', 'remote')).rejects.toThrow(
+      /Package-supplied integration definitions are read-only/,
+    );
+    expect(loader.saveIntegration).not.toHaveBeenCalled();
+    expect(connectMCPMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('never persists a probed package definition after its owner disappears', async () => {
+    connectMCPMock.mockReset();
+    connectMCPMock.mockResolvedValue({ tools: [], disconnect: vi.fn() } as any);
+    const loader = createMockConfigLoader();
+    loader.loadIntegration.mockResolvedValue({
+      id: 'removed-package-tool',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'removed-package-command',
+    });
+    loader.loadIntegrationWithOwnership.mockImplementationOnce(async () => ({
+      definition: await loader.loadIntegration('removed-package-tool'),
+      contributed: true,
+    }));
+    Object.assign(loader, {
+      // The package disappears after its definition was returned.
+      isLiveContributedIntegration: vi.fn(() => false),
+    });
+    const svc = new MCPService(
+      loader as any,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      mockLogger,
+    );
+
+    await expect(svc.probeIntegration('removed-package-tool')).resolves.toEqual(
+      expect.objectContaining({ probe: expect.objectContaining({ ok: true }) }),
+    );
+    expect(loader.saveIntegration).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    [
+      'setEnabled',
+      (svc: InstanceType<typeof MCPService>) =>
+        svc.setEnabled('removed-package-tool', false),
+    ],
+    [
+      'applyDisabledTools',
+      (svc: InstanceType<typeof MCPService>) =>
+        svc.applyDisabledTools('removed-package-tool', ['write']),
+    ],
+  ] as const)(
+    'never persists a package definition through %s after its owner disappears',
+    async (_operation, mutate) => {
+      const loader = createMockConfigLoader();
+      loader.loadIntegration.mockResolvedValue({
+        id: 'removed-package-tool',
+        kind: 'mcp',
+        transport: 'stdio',
+        command: 'removed-package-command',
+      });
+      loader.loadIntegrationWithOwnership.mockImplementationOnce(async () => ({
+        definition: await loader.loadIntegration('removed-package-tool'),
+        contributed: true,
+      }));
+      Object.assign(loader, {
+        // The initial live check has already raced with uninstall. Provenance
+        // from the definition read must still forbid persisting its snapshot.
+        isLiveContributedIntegration: vi.fn(() => false),
+      });
+      const svc = new MCPService(
+        loader as any,
+        new Map(),
+        new Map(),
+        new Map(),
+        new Map(),
+        new Map(),
+        mockLogger,
+      );
+
+      await expect(mutate(svc)).rejects.toThrow(
+        /Package-supplied integration definitions are read-only/,
+      );
+      expect(loader.saveIntegration).not.toHaveBeenCalled();
+    },
+  );
+
+  test('generic edits retain package ownership after uninstall wins the read-to-save race', async () => {
+    const loader = createMockConfigLoader();
+    loader.loadIntegration.mockResolvedValue({
+      id: 'removed-package-tool',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'removed-package-command',
+    });
+    loader.loadIntegrationWithOwnership.mockImplementationOnce(async () => ({
+      definition: await loader.loadIntegration('removed-package-tool'),
+      contributed: true,
+    }));
+    Object.assign(loader, {
+      isLiveContributedIntegration: vi.fn(() => false),
+    });
+    const svc = new MCPService(
+      loader as any,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      mockLogger,
+    );
+    const packageDefinition = await svc.getIntegration('removed-package-tool');
+    const genericPutMerge = { ...packageDefinition, enabled: false };
+
+    await expect(svc.saveIntegration(genericPutMerge)).rejects.toThrow(
+      /Package-supplied integration definitions are read-only/,
+    );
+    expect(loader.saveIntegration).not.toHaveBeenCalled();
+    expect(JSON.stringify(genericPutMerge)).not.toContain(
+      'contributed-integration-definition',
+    );
+  });
+
   test('migrates stored env only after a fresh bound child succeeds and retries a safe partial grant', async () => {
     let current: any = {
       id: 'github',

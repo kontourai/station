@@ -104,9 +104,18 @@ export {
   toWorkspacePaneAvailabilityTelemetry,
 } from '@kontourai/station-contracts/workspace-pane-availability';
 export type {
+  WorkspacePaneHostActionCatalog,
+  WorkspacePaneHostActionExecution,
+  WorkspacePaneHostActionPrepareRequest,
+} from '@kontourai/station-contracts/workspace-pane-host-contribution';
+export type {
   ProjectWorkspacePaneAvailabilityProjection,
   ProjectWorkspacePaneCatalog,
 } from './client/projects';
+export {
+  useWorkspacePaneHostActionMutation,
+  useWorkspacePaneHostActionsQuery,
+} from './query-domains/workspacePaneHostActions';
 // Catalog data is opt-in with the Pane contract so the root SDK namespace
 // bridge does not pull this query into every Station UI bundle.
 export { useProjectWorkspacePanesQuery } from './query-domains/workspaceProjects';

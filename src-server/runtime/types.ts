@@ -26,6 +26,7 @@ import type {
 import type { FleetCandidateResolution } from '../services/inference/fleet-candidate-service.js';
 import type { EventStore } from '../services/orchestration/event-store.js';
 import type { MCPToolLoaderProvenance } from '../services/orchestration/mcp-tool-provenance.js';
+import type { PluginActivationSession } from '../services/plugins/plugin-activation-composition.js';
 import type { Logger } from '../utils/logger.js';
 import type { UnsealedFleetRoutingEnvelope } from './conversation/fleet-routing-envelope.js';
 
@@ -516,6 +517,16 @@ export interface AgentConfigurationActivation {
 }
 
 export interface AgentConfigurationMutationOptions<T> {
+  /** Private installer session. The runtime owns composition, final ready CAS,
+   * and invalidation on failure/deadline; request data cannot construct it. */
+  pluginActivation?: PluginActivationSession;
+  /**
+   * The mutation changed installed plugin bytes, so the live Skill registry
+   * must be rediscovered before the rebuilt Agent generation is published.
+   * The runtime retains this obligation across failed or timed-out activation
+   * and its reconciliation rail retries it.
+   */
+  rediscoverSkills?: boolean;
   /**
    * A persisted agent can be activated without rebuilding the unrelated
    * provider and connection graph. Connection/provider writes omit this and

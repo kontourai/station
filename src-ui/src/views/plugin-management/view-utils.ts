@@ -33,7 +33,7 @@ export function buildPluginListItems(plugins: Plugin[]) {
       : {
           id: pluginSelectionId(plugin),
           name: plugin.displayName || plugin.name,
-          subtitle: `v${plugin.version}${plugin.description ? ` · ${plugin.description}` : ''}`,
+          subtitle: `${plugin.installationReadiness?.state === 'pending' ? 'Activation pending · ' : plugin.installationReadiness?.state === 'unavailable' ? 'Unavailable · ' : ''}v${plugin.version}${plugin.description ? ` · ${plugin.description}` : ''}`,
         },
   );
 }

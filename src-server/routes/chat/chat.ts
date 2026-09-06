@@ -11,14 +11,22 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
+import { WORKSPACE_PANE_HOST_ACTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { Hono } from 'hono';
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { resolveMaxSteps } from '../../constants.js';
 import {
   INTERNAL_TURN_CORRELATION_HEADER,
   readAuthorizedTurnCorrelationHandoff,
+  readNativeForegroundRelayCompanion,
   readNativeOutputRelayCompanion,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import {
+  INTERNAL_NATIVE_WORKSPACE_HEADER,
+  type NativeExecutionWorkspace,
+  NativeExecutionWorkspaceUnavailableError,
+} from '../../runtime/conversation/native-execution-workspace.js';
+import { INTERNAL_NATIVE_FOREGROUND_HEADER } from '../../runtime/conversation/native-foreground-invocation.js';
 import {
   captureRuntimeConfigurationLease,
   RuntimeConfigurationConflictError,
@@ -33,6 +41,7 @@ import {
 } from '../../runtime/plugins/runtime-provider-resolution.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
+import { ForegroundInvocationUnavailableError } from '../../services/orchestration/foreground-invocation-admission.js';
 import { chatErrors } from '../../telemetry/metrics.js';
 import {
   INTERNAL_API_TOKEN_HEADER,
@@ -138,6 +147,39 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
     const nativeOutputRelay = trustedRelay
       ? readNativeOutputRelayCompanion(relayHandoff)
       : undefined;
+    const workspaceHeader = c.req.header(INTERNAL_NATIVE_WORKSPACE_HEADER);
+    if (
+      (workspaceHeader || nativeOutputRelay?.workspaceRequired) &&
+      (!nativeOutputRelay ||
+        !turnCorrelation ||
+        workspaceHeader !== relayHandoff)
+    )
+      return c.json(
+        {
+          success: false,
+          error: 'The native execution workspace is unavailable.',
+        },
+        409,
+      );
+    let nativeWorkspace: NativeExecutionWorkspace | undefined;
+    const nativeForegroundHeader = c.req.header(
+      INTERNAL_NATIVE_FOREGROUND_HEADER,
+    );
+    const nativeForeground = trustedRelay
+      ? readNativeForegroundRelayCompanion(relayHandoff)
+      : undefined;
+    if (
+      (nativeForegroundHeader || nativeForeground) &&
+      (!nativeForeground ||
+        !turnCorrelation ||
+        nativeForegroundHeader !== relayHandoff)
+    ) {
+      nativeForeground?.refuse();
+      return c.json(
+        { success: false, error: 'The captured native action is unavailable.' },
+        409,
+      );
+    }
 
     try {
       const {
@@ -146,8 +188,22 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         options: rawOptions = {},
         projectSlug,
       } = getBody(c);
+      nativeForeground?.assertRequest({
+        agentId: slug,
+        projectSlug,
+        input,
+        options: rawOptions,
+        ambientContext,
+      });
+      const optionsForPreparation = { ...rawOptions };
+      delete optionsForPreparation[WORKSPACE_PANE_HOST_ACTION_METADATA_KEY];
       const configurationLease = captureRuntimeConfigurationLease(ctx);
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
+      nativeWorkspace = nativeOutputRelay?.readExecutionWorkspace?.(
+        rawOptions.conversationId,
+      );
+      if (nativeOutputRelay?.workspaceRequired && !nativeWorkspace)
+        throw new NativeExecutionWorkspaceUnavailableError();
       const nativeOutputGrant = nativeOutputRelay?.issueForRuntimeConfiguration(
         configurationLease,
         () => runtimeConfigurationLeaseIsCurrent(ctx, configurationLease),
@@ -163,8 +219,10 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         ctx,
         slug,
         input,
-        options: rawOptions,
+        options: optionsForPreparation,
         projectSlug,
+        capturedProject: nativeForeground?.project,
+        capturedWorkspaceRoot: nativeWorkspace?.workspaceRoot,
       });
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       const ragContext = preparedRagContext;
@@ -179,6 +237,8 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         slug,
       });
       let agent = runtimeAgent.agent;
+      if (nativeForeground && !agent)
+        throw new ForegroundInvocationUnavailableError();
       let overrideAlreadyHandled = false;
       if (!agent) {
         if (modelOverride) {
@@ -268,8 +328,22 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         dedupStore: getChatTurnDedupStore(ctx.orchestrationEventStore),
         turnCorrelation,
         ...(nativeOutputGrant ? { nativeOutputGrant } : {}),
+        ...(nativeWorkspace ? { nativeWorkspace } : {}),
+        ...(nativeForeground
+          ? { nativeForeground, nativeRuntimeAgent: runtimeAgent.agent }
+          : {}),
       });
     } catch (error: unknown) {
+      nativeWorkspace?.close();
+      nativeForeground?.refuse();
+      if (nativeForeground)
+        return c.json(
+          {
+            success: false,
+            error: 'The captured native action is unavailable.',
+          },
+          409,
+        );
       ctx.logger.error('Chat error', { error });
       chatErrors.add(1, { agent: slug, plugin });
       const errMsg = errorMessage(error);

@@ -2005,6 +2005,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // delegation: both can resolve a target Environment and run an Agent.
     // POST therefore inherits the orchestration family's operate scope.
     { method: 'POST', path: '/api/orchestration/chat' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/pane-host/:projectSlug/catalog',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/pane-host/:projectSlug/prepare',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/pane-host/:projectSlug/execute',
+    },
     { method: 'POST', path: '/api/orchestration/chat/delegated' },
     { method: 'POST', path: '/api/orchestration/chat/background' },
     {

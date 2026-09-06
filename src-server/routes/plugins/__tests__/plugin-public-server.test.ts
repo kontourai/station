@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -66,6 +66,14 @@ describe('plugin-public-server helpers', () => {
     const pluginsDir = join(root, 'plugins');
     mkdirSync(join(pluginsDir, 'demo-plugin'), { recursive: true });
     writeFileSync(join(root, 'outside.mjs'), 'export default {};');
+    writeFileSync(
+      join(pluginsDir, 'demo-plugin', 'plugin.json'),
+      JSON.stringify({
+        name: 'demo-plugin',
+        version: '1.0.0',
+        serverModule: '../outside.mjs',
+      }),
+    );
 
     await expect(
       loadPluginPublicServerModule(
@@ -88,6 +96,14 @@ describe('plugin-public-server helpers', () => {
     const pluginDir = join(pluginsDir, 'demo-plugin');
     const disposedFile = join(root, 'disposed');
     mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        name: basename(pluginDir),
+        version: '1.0.0',
+        serverModule: 'server.mjs',
+      }),
+    );
     writeFileSync(
       join(pluginDir, 'server.mjs'),
       [
@@ -126,6 +142,14 @@ describe('plugin-public-server helpers', () => {
     const pluginsDir = join(root, 'plugins');
     const pluginDir = join(pluginsDir, 'demo-plugin');
     mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        name: basename(pluginDir),
+        version: '1.0.0',
+        serverModule: 'server.mjs',
+      }),
+    );
     writeFileSync(
       join(pluginDir, 'server.mjs'),
       [
@@ -172,6 +196,14 @@ describe('plugin-public-server helpers', () => {
     const pluginsDir = join(root, 'plugins');
     const pluginDir = join(pluginsDir, 'demo-plugin');
     mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        name: basename(pluginDir),
+        version: '1.0.0',
+        serverModule: 'server.mjs',
+      }),
+    );
     writeFileSync(
       join(pluginDir, 'server.mjs'),
       'export function register() {}\nexport function dispose() {}',
@@ -226,6 +258,14 @@ describe('plugin-public-server helpers', () => {
     const pluginDir = join(pluginsDir, 'late-plugin');
     mkdirSync(pluginDir, { recursive: true });
     writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        name: basename(pluginDir),
+        version: '1.0.0',
+        serverModule: 'server.mjs',
+      }),
+    );
+    writeFileSync(
       join(pluginDir, 'server.mjs'),
       'export function register() {}',
     );
@@ -259,6 +299,14 @@ describe('plugin-public-server helpers', () => {
     const pluginsDir = join(root, 'plugins');
     const pluginDir = join(pluginsDir, 'slow-plugin');
     mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        name: basename(pluginDir),
+        version: '1.0.0',
+        serverModule: 'server.mjs',
+      }),
+    );
     writeFileSync(
       join(pluginDir, 'server.mjs'),
       [
@@ -301,6 +349,14 @@ describe('plugin-public-server helpers', () => {
     const pluginsDir = join(root, 'plugins');
     const pluginDir = join(pluginsDir, 'late-plugin');
     mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        name: basename(pluginDir),
+        version: '1.0.0',
+        serverModule: 'server.mjs',
+      }),
+    );
     writeFileSync(
       join(pluginDir, 'server.mjs'),
       'export function register() {}',
@@ -387,6 +443,14 @@ describe('readPluginServerSettings prototype pollution (station#4307 review)', (
     cleanupDirs.push(root);
     const pluginDir = join(root, 'plugins', 'demo');
     mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        name: basename(pluginDir),
+        version: '1.0.0',
+        serverModule: 'server.mjs',
+      }),
+    );
     writeFileSync(
       join(pluginDir, 'plugin.json'),
       JSON.stringify({

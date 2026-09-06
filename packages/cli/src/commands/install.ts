@@ -97,12 +97,14 @@ interface PluginPreviewResult {
     status?: string;
     consent?: {
       contentDigest: string;
+      grantRevision?: string;
       permissions: string[];
       dependencies: string[];
       pendingConsent: Array<{ permission: string; tier: string }>;
     };
   }>;
   contentDigest?: string;
+  grantRevision?: string;
   permissions?: {
     required: string[];
     autoGranted: string[];
@@ -229,6 +231,20 @@ export async function install(
     );
   }
 
+  const revisionPresent = (value: unknown) =>
+    typeof value === 'string' && value.length > 0;
+  if (
+    !revisionPresent(previewed.grantRevision) ||
+    (previewed.dependencies ?? []).some(
+      (dependency) =>
+        dependency.consent &&
+        !revisionPresent(dependency.consent.grantRevision),
+    )
+  )
+    throw new Error(
+      'Station preview omitted a current permission revision. Upgrade Station and preview again; no installation was sent.',
+    );
+
   for (const line of describeInstall(source, previewed)) console.log(line);
   // `--yes` is an approval the operator typed, with the source in the same
   // command line. Everything else has to be answered interactively — and a
@@ -269,6 +285,7 @@ export async function install(
         consent: {
           permissions: previewed.permissions.required,
           contentDigest: previewed.contentDigest,
+          grantRevision: previewed.grantRevision,
           dependencies: (previewed.dependencies ?? []).map(
             (dependency) => dependency.id,
           ),
@@ -284,6 +301,7 @@ export async function install(
                             id: dependency.id,
                             permissions: dependency.consent.permissions,
                             contentDigest: dependency.consent.contentDigest,
+                            grantRevision: dependency.consent.grantRevision,
                             dependencies: dependency.consent.dependencies,
                           },
                         ]

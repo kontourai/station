@@ -1,7 +1,7 @@
 {
   "name": "Coding",
   "slug": "coding",
-  "icon": "💻",
+  "icon": "\ud83d\udcbb",
   "description": "A starter workspace for code review, command output, and implementation chat.",
   "tabs": [
     {
@@ -13,13 +13,6 @@
       "id": "diff",
       "label": "Diff",
       "component": "coding-diff-review"
-    }
-  ],
-  "actions": [
-    {
-      "type": "prompt",
-      "label": "Review current diff",
-      "data": "Review the current diff for correctness, missing tests, and risky assumptions."
     }
   ]
 }

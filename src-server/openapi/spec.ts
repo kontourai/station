@@ -11,6 +11,7 @@ import {
   pluginInstallSchema,
   pluginOverridesSchema,
   pluginPreviewSchema,
+  pluginRecoverySchema,
   registryInstallSchema,
   skillImportSchema,
   skillOutcomeSchema,
@@ -273,6 +274,32 @@ const FIRST_PASS_PATHS: Record<
       tags: ['plugins'],
     },
   },
+  '/api/plugins/{name}/recovery-preview': {
+    get: {
+      operationId: 'previewPluginRecovery',
+      summary:
+        'Inspect retained plugin recovery and fresh permission requirements',
+      tags: ['plugins'],
+      responses: {
+        409: 'Installation cannot be recovered in its current state',
+        503: 'Permission storage is unavailable',
+      },
+    },
+  },
+  '/api/plugins/{name}/recover': {
+    post: {
+      operationId: 'recoverPlugin',
+      requestBodySchema: pluginRecoverySchema,
+      summary:
+        'Recover a retained plugin with freshly reviewed permission revisions',
+      tags: ['plugins'],
+      responses: {
+        202: 'Recovery accepted; runtime activation is still pending',
+        409: 'Recovery or permission revision changed; review again',
+        503: 'Permission storage is unavailable',
+      },
+    },
+  },
   '/api/plugins/{name}/update': {
     post: {
       operationId: 'updatePlugin',
@@ -428,6 +455,7 @@ function collectSchemas() {
     PluginInstall: pluginInstallSchema,
     PluginOverrides: pluginOverridesSchema,
     PluginPreview: pluginPreviewSchema,
+    PluginRecovery: pluginRecoverySchema,
     RegistryInstall: registryInstallSchema,
     SkillCreate: localSkillCreateSchema,
     SkillImport: skillImportSchema,
@@ -441,7 +469,9 @@ function collectSchemas() {
       // The catalog response is a passthrough projection. Keep the registry
       // heterogeneous at this OpenAPI boundary rather than forcing every
       // registered schema through the narrower object-union inference.
-      zodToJsonSchema(schema as unknown as ZodV3TypeAny, name),
+      zodToJsonSchema(schema as unknown as ZodV3TypeAny, {
+        basePath: ['#', 'components', 'schemas', name],
+      }),
     ]),
   );
 }
@@ -457,6 +487,7 @@ function schemaRef(schema: unknown) {
     [pluginInstallSchema, 'PluginInstall'],
     [pluginOverridesSchema, 'PluginOverrides'],
     [pluginPreviewSchema, 'PluginPreview'],
+    [pluginRecoverySchema, 'PluginRecovery'],
     [registryInstallSchema, 'RegistryInstall'],
     [localSkillCreateSchema, 'SkillCreate'],
     [skillImportSchema, 'SkillImport'],

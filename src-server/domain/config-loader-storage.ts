@@ -48,7 +48,12 @@ function assertSafeIntegrationId(id: string): void {
 export interface SkillConfigRecord {
   name: string;
   description?: string;
-  source: 'local' | 'registry' | 'plugin' | 'flow-agents';
+  source:
+    | 'local'
+    | 'registry'
+    | 'plugin'
+    | 'flow-agents'
+    | `agent-plugin:${string}`;
   installedAt: string;
   version?: string;
   path: string;

@@ -158,6 +158,8 @@ export const SESSION_AGENT_ICON_MAX_LENGTH = AGENT_ICON_TOKEN_MAX_LENGTH;
  */
 export const FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY =
   'firstTurnInstructionsComposed';
+export const WORKSPACE_PANE_HOST_ACTION_METADATA_KEY =
+  'workspacePaneHostAction';
 
 /**
  * Complete set of orchestration evidence fields a public caller may never
@@ -180,6 +182,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
 ] as const;
 
 /**

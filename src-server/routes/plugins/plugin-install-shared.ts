@@ -1,17 +1,22 @@
 import { execFile as execFileCb } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
-import { promisify } from 'node:util';
+import { isDeepStrictEqual, promisify } from 'node:util';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { PluginInstallationRevision } from '@kontourai/station-contracts/plugin';
 import {
   type PermissionTier,
   type PluginInstallResult,
@@ -30,12 +35,14 @@ import { owningProjectExists } from '../../domain/config-loader-agents.js';
 import { saveIntegrationConfig } from '../../domain/config-loader-storage.js';
 import {
   PLUGIN_AGENT_OWNER_FILE,
+  pluginAgentInstallationBinding,
   pluginAgentOwner,
 } from '../../domain/plugin-agent-ownership.js';
 import {
   type IPluginRegistryProvider,
   PROVIDER_TYPE_META,
 } from '../../providers/provider-interfaces.js';
+import type { PluginProviderReadView } from '../../providers/registries/registry.js';
 import {
   getIntegrationRegistryProvider,
   getPluginRegistryProviders,
@@ -47,6 +54,27 @@ import {
   writeRegistryInstallAliases,
 } from '../../providers/registries/registry-install-aliases.js';
 import { ContextSafetyError } from '../../services/orchestration/context-safety.js';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import {
+  closePluginActivationSession,
+  completePluginActivationComposition,
+  createPluginActivationSession,
+  deferPluginActivationNotification,
+  deliverPluginActivationNotifications,
+  type PluginActivationSession,
+  pluginActivationProviderReadView,
+  pluginActivationProviderReadViewCurrent,
+  pluginActivationProviderViewPermit,
+  pluginActivationSessionPermit,
+  preparePluginActivationComposition,
+  registerPluginActivation,
+  retirePluginActivation,
+} from '../../services/plugins/plugin-activation-composition.js';
+import {
+  type PluginActivationPlan,
+  pluginActivationDescriptorDigest,
+} from '../../services/plugins/plugin-activation-plan.js';
+import { captureLocalPluginArtifact } from '../../services/plugins/plugin-artifact-local.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
 import {
   computePluginContentDigest,
@@ -56,30 +84,62 @@ import {
   withPluginContentLock,
 } from '../../services/plugins/plugin-content-integrity.js';
 import {
+  PluginIncarnationError,
+  resolveInstalledPluginRoot,
+  resolvePluginMaterialization,
+} from '../../services/plugins/plugin-incarnation.js';
+import {
   assertPluginInstallConsent,
+  assertPluginOperatorDecision,
   derivePluginConsentBasis,
   findPluginConsentRefusedError,
   type PluginInstallConsent,
 } from '../../services/plugins/plugin-install-consent.js';
 import {
+  acquirePluginPublicationLease,
+  assertPluginDependencyAcyclic,
+  enterPluginInstallationGraph,
+  pluginRetiringInPublication,
+  publicationGrantRevisions,
+  withPluginPublicationContext,
+  withPluginRetirementScope,
+} from '../../services/plugins/plugin-install-publication.js';
+import {
+  captureLocalPluginActivation,
+  captureLocalPluginInstallation,
+  createLocalPluginInstallationHost,
+} from '../../services/plugins/plugin-installation-local.js';
+import {
+  type PluginInstallationHost,
+  PluginInstallationPending,
+  type PluginInstallationService,
+} from '../../services/plugins/plugin-installation-service.js';
+import {
   readPluginManifestFile,
   readPluginManifestFileSync,
+  readPluginManifestFileWithFormat,
 } from '../../services/plugins/plugin-manifest-loader.js';
 import {
+  type CapturedPluginPermissionArtifact,
   copyPluginDependencyOwnership,
+  createPluginGrantMutationScope,
   getPermissionTier,
   hasGrant,
   isPluginInstallAuthorityRecord,
+  observePluginGrantRevisions,
   type PluginDependencyOwnershipEntry,
   type PluginDependencyOwnershipHandoff,
+  type PluginGrantMutationScope,
+  PluginGrantMutationSupersededError,
+  type PluginGrantRevisionSnapshot,
   type PluginInstallAuthorityRecord,
   processInstallPermissions,
   readPluginDependencyOwnership,
+  readPluginGrantRevision,
   rebindGrantsAfterContentChange,
   recordPluginDependencyOwnership,
   removePluginHostRecord,
   requiredPermissionsForManifest,
-  restorePluginGrantEntry,
   revokeAllGrants,
   snapshotPluginGrantEntry,
 } from '../../services/plugins/plugin-permissions.js';
@@ -102,6 +162,7 @@ import {
   fetchPluginSource,
   installPluginDependency,
   type PluginDependencyLifecycle,
+  resolvePluginDependencies,
   resolvePluginDependencySource,
 } from './plugin-source.js';
 
@@ -310,22 +371,48 @@ export interface PluginLifecycleEventBus {
 }
 
 export interface PluginInstallSharedDeps {
+  /** Explicit private installer owner, never request data or ambient state. */
+  activationSession?: PluginActivationSession;
+  installationHost?: PluginInstallationHost;
+  packageMcpJournal?: PackageMcpAdmissionJournal;
   agentsDir: string;
   eventBus?: PluginLifecycleEventBus;
   logger: Logger;
   pluginsDir: string;
   projectHomeDir: string;
-  buildPlugin: (pluginDir: string, name: string) => Promise<void>;
+  buildPlugin: (
+    pluginDir: string,
+    name: string,
+    manifest?: PluginManifest,
+  ) => Promise<void>;
   beginConfigurationMutation?: () => void;
   settleProviderAdapterRetirements?: () => Promise<void>;
-  reconcileEngineConnections?: (plugin: string) => Promise<void>;
+  reconcileEngineConnections?: (
+    plugin: string,
+    view?: PluginProviderReadView,
+  ) => Promise<void>;
   removeEngineConnections?: (plugin: string) => Promise<void>;
   quiesceEventSubscriptions?: (
     pluginName: string,
   ) => Promise<{ release(): void }>;
 }
 
+export function installationHostFor(
+  deps: PluginInstallSharedDeps,
+): PluginInstallationHost {
+  if (deps.installationHost) return deps.installationHost;
+  if (!deps.packageMcpJournal)
+    throw new Error(
+      'Package installation authority is unavailable; use a running Station instance.',
+    );
+  return createLocalPluginInstallationHost(
+    deps.pluginsDir,
+    deps.packageMcpJournal,
+  );
+}
+
 export interface InstalledPluginResult extends PluginInstallResult {
+  lifecycle?: Awaited<ReturnType<PluginInstallationService['install']>>;
   success: true;
   plugin: {
     name: string;
@@ -371,7 +458,6 @@ export interface InstalledPluginResult extends PluginInstallResult {
 }
 
 const REGISTRY_INSTALLS_PATH = ['config', 'registry-installs.json'] as const;
-const AGENT_REGISTRY_PATH = ['config', 'agent-registry.json'] as const;
 // Plugin grants are deliberately NOT in the raw-copy backup set (archive#1835
 // finding 2): a whole-file cpSync restore bypasses the grants store's lock and
 // atomic writer (it can tear), and a stale snapshot reverts consent recorded
@@ -385,8 +471,269 @@ const PLUGIN_GRANTS_ENTRY_SNAPSHOT = [
 interface RemovedDependencyBackup {
   entry: PluginDependencyOwnershipEntry;
   backupDir: string;
+  restoreManaged?: (
+    parent?: NonNullable<PluginActivationPlan['parent']>,
+  ) => Promise<PluginInstallationRevision | null>;
+  restoredInstallation?: PluginInstallationRevision;
+  grantScope?: PluginGrantMutationScope;
+  commit?: () => void;
   manifest: PluginManifest;
   grantSnapshot: ReturnType<typeof snapshotPluginGrantEntry>;
+}
+
+const completedGrantRollbacks = new WeakSet<PluginGrantMutationScope>();
+async function rollbackOwnedGrants(
+  scope: PluginGrantMutationScope | undefined,
+): Promise<void> {
+  if (!scope || completedGrantRollbacks.has(scope)) return;
+  const outcome = await scope.rollback();
+  if (outcome.state === 'unavailable')
+    throw new Error(
+      'Plugin permission rollback is unavailable; recovery is required',
+    );
+  completedGrantRollbacks.add(scope);
+}
+function commitRemovedDependencies(
+  backups: readonly RemovedDependencyBackup[],
+): void {
+  for (const backup of backups) backup.commit?.();
+}
+
+function captureManagedPluginPermission(
+  deps: PluginInstallSharedDeps,
+  id: string,
+):
+  | {
+      packageRoot: string;
+      artifact: CapturedPluginPermissionArtifact;
+      visibility: {
+        ready(): boolean;
+        permits(view: PluginProviderReadView): boolean;
+      };
+    }
+  | undefined {
+  if (!deps.packageMcpJournal) return undefined;
+  const selection = deps.packageMcpJournal.currentInstallation(id);
+  if (selection.state === 'not-observed') return undefined;
+  if (selection.state === 'unavailable')
+    throw new Error(`Plugin '${id}' installation authority is unavailable`);
+  const permit = pluginActivationSessionPermit(
+    deps.activationSession,
+    deps.packageMcpJournal,
+    id,
+  );
+  const captured = permit
+    ? captureLocalPluginActivation(
+        deps.pluginsDir,
+        deps.packageMcpJournal,
+        permit,
+      )
+    : captureLocalPluginInstallation(
+        deps.pluginsDir,
+        deps.packageMcpJournal,
+        id,
+      );
+  if (!captured?.installation) return undefined;
+  const digest = captured.installation.contentDigest;
+  const packageRoot = captured.root.packageRoot;
+  const artifact: CapturedPluginPermissionArtifact = {
+    pluginId: id,
+    generation: captured.installation.incarnation,
+    digest,
+    isCurrent: () =>
+      captured.isCurrent() &&
+      computePluginContentDigest(
+        dirname(packageRoot),
+        basename(packageRoot),
+      ) === digest,
+  };
+  const granted = () =>
+    hasGrant(
+      deps.projectHomeDir,
+      id,
+      'providers.register',
+      undefined,
+      artifact,
+    );
+  const ready = () => {
+    try {
+      return (
+        deps.packageMcpJournal!.admissionOpen(captured.installation!) &&
+        artifact.isCurrent() &&
+        granted()
+      );
+    } catch {
+      return false;
+    }
+  };
+  return {
+    packageRoot,
+    artifact,
+    visibility: {
+      ready,
+      permits(view) {
+        try {
+          return (
+            pluginActivationProviderReadViewCurrent(view) &&
+            (ready() ||
+              (!!permit &&
+                pluginActivationProviderViewPermit(
+                  view,
+                  deps.packageMcpJournal!,
+                  id,
+                ) === permit &&
+                artifact.isCurrent() &&
+                granted()))
+          );
+        } catch {
+          return false;
+        }
+      },
+    },
+  };
+}
+
+function registerInstalledPluginActivation(
+  deps: PluginInstallSharedDeps,
+  pluginDir: string,
+  manifest: PluginManifest,
+  selectedRevision: PluginInstallationRevision,
+  intent: 'install' | 'compensation' = 'install',
+) {
+  const pluginName = selectedRevision.installation;
+  const journal = deps.packageMcpJournal;
+  const observed = journal?.currentInstallation(pluginName);
+  if (
+    !journal ||
+    !deps.activationSession ||
+    observed?.state !== 'observed' ||
+    observed.installation.incarnation !== selectedRevision.generation ||
+    observed.installation.journalId !== selectedRevision.scope
+  )
+    throw new Error('Plugin activation selection is unavailable');
+  return registerPluginActivation(
+    deps.activationSession,
+    journal,
+    observed.installation,
+    async (recordedPlan) => {
+      if (
+        computePluginContentDigest(dirname(pluginDir), basename(pluginDir)) !==
+        selectedRevision.artifact.digest
+      )
+        throw new Error('Plugin activation artifact changed');
+      if (
+        manifest.entrypoint &&
+        !existsSync(join(pluginDir, 'dist', 'bundle.js'))
+      )
+        throw new Error('Plugin activation bundle is missing');
+      for (const agent of recordedPlan.agents) {
+        const directory = join(deps.agentsDir, agent.slug);
+        if (pluginAgentOwner(directory) !== pluginName)
+          throw new Error(
+            `Plugin activation Agent '${agent.slug}' ownership is unavailable`,
+          );
+        const marker = JSON.parse(
+          readFileSync(join(directory, PLUGIN_AGENT_OWNER_FILE), 'utf8'),
+        );
+        if (marker.generation !== selectedRevision.generation)
+          throw new Error(
+            `Plugin activation Agent '${agent.slug}' generation changed`,
+          );
+        const spec = JSON.parse(
+          readFileSync(join(directory, 'agent.json'), 'utf8'),
+        );
+        if (typeof spec.name !== 'string' || typeof spec.prompt !== 'string')
+          throw new Error(
+            `Plugin activation Agent '${agent.slug}' definition is unavailable`,
+          );
+        const declaration = manifest.agents?.find(
+          (candidate) => candidate.slug === agent.slug,
+        );
+        if (!declaration)
+          throw new Error('Plugin activation Agent declaration changed');
+        const sourceDefinition = resolvePluginAgentDefinitionSource(
+          pluginDir,
+          declaration,
+        );
+        const expectedSpec = JSON.parse(
+          readFileSync(sourceDefinition.manifest, 'utf8'),
+        );
+        // Project association has a separate owner; all other
+        // definition fields must still match the selected artifact.
+        delete expectedSpec.project;
+        delete spec.project;
+        if (!isDeepStrictEqual(expectedSpec, spec))
+          throw new Error(
+            `Plugin activation Agent '${agent.slug}' content changed`,
+          );
+      }
+    },
+    intent,
+  );
+}
+
+function ownershipPackageRoot(
+  pluginsDir: string,
+  id: string,
+  journal?: PackageMcpAdmissionJournal,
+  activationSession?: PluginActivationSession,
+): string | null {
+  if (journal) {
+    const permit = pluginActivationSessionPermit(
+      activationSession,
+      journal,
+      id,
+    );
+    const captured = permit
+      ? captureLocalPluginActivation(pluginsDir, journal, permit)
+      : captureLocalPluginInstallation(pluginsDir, journal, id);
+    if (!captured) return null;
+    if (!captured.isCurrent())
+      throw new Error(`Plugin '${id}' installation is unavailable`);
+    return captured.root.packageRoot;
+  }
+  const path = join(pluginsDir, id);
+  if (!existsSync(path)) return null;
+  const status = lstatSync(path);
+  if (!status.isDirectory() || status.isSymbolicLink())
+    throw new Error(
+      'Managed plugin ownership requires its installation journal',
+    );
+  return path;
+}
+
+function ownershipContentDigest(
+  pluginsDir: string,
+  id: string,
+  journal?: PackageMcpAdmissionJournal,
+  activationSession?: PluginActivationSession,
+): string | null {
+  const root = ownershipPackageRoot(pluginsDir, id, journal, activationSession);
+  return root
+    ? computePluginContentDigest(dirname(root), basename(root))
+    : null;
+}
+
+function ownershipPluginNames(
+  pluginsDir: string,
+  journal?: PackageMcpAdmissionJournal,
+): string[] {
+  const names = new Set(
+    readdirSync(pluginsDir, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          !entry.name.startsWith('.') &&
+          (entry.isDirectory() || entry.isSymbolicLink()),
+      )
+      .map((entry) => entry.name),
+  );
+  if (journal) {
+    const selected = journal.selectedInstallations();
+    if (selected.state !== 'observed')
+      throw new Error('Plugin ownership inventory is unavailable');
+    for (const item of selected.installations) names.add(item.pluginId);
+  }
+  return [...names];
 }
 
 function pluginHasDependencyLifecycle(manifest: PluginManifest): boolean {
@@ -398,6 +745,7 @@ function assertDependencyProviderSlotsAvailable(
   dependencyId: string,
   manifest: PluginManifest,
   stagedParent: PluginManifest,
+  journal?: PackageMcpAdmissionJournal,
 ): void {
   for (const provider of manifest.providers ?? []) {
     if (PROVIDER_TYPE_META[provider.type] === 'additive') continue;
@@ -412,16 +760,19 @@ function assertDependencyProviderSlotsAvailable(
         `Plugin dependency '${dependencyId}' provider '${provider.type}' collides with staged plugin '${stagedParent.name}'`,
       );
     }
-    for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
+    for (const name of ownershipPluginNames(pluginsDir, journal)) {
       if (
-        !entry.isDirectory() ||
-        entry.name === dependencyId ||
-        entry.name === stagedParent.name ||
-        entry.name.startsWith('.preview-')
+        name === dependencyId ||
+        name === stagedParent.name ||
+        name.startsWith('.preview-')
       ) {
         continue;
       }
-      const manifestPath = join(pluginsDir, entry.name, 'plugin.json');
+      const manifestPath = join(
+        ownershipPackageRoot(pluginsDir, name, journal) ??
+          join(pluginsDir, name),
+        'plugin.json',
+      );
       if (!existsSync(manifestPath)) continue;
       try {
         const installed = readPluginManifestFileSync(manifestPath);
@@ -442,7 +793,7 @@ function assertDependencyProviderSlotsAvailable(
           throw error;
         }
         throw new Error(
-          `Plugin dependency '${dependencyId}' provider collision check could not read installed plugin '${entry.name}'`,
+          `Plugin dependency '${dependencyId}' provider collision check could not read installed plugin '${name}'`,
           { cause: error },
         );
       }
@@ -455,6 +806,9 @@ function deriveDependencyOwnership(
   createdPluginTrees: ReadonlySet<string>,
   retained: readonly PluginDependencyOwnershipEntry[] = [],
   declaredDependencyIds?: ReadonlySet<string>,
+  journal?: PackageMcpAdmissionJournal,
+  createdGenerations?: ReadonlyMap<string, string>,
+  activationSession?: PluginActivationSession,
 ): PluginDependencyOwnershipEntry[] {
   const entries = new Map(
     retained
@@ -465,13 +819,33 @@ function deriveDependencyOwnership(
       .map((entry) => [entry.id, entry]),
   );
   for (const id of createdPluginTrees) {
-    const contentDigest = computePluginContentDigest(pluginsDir, id);
+    const contentDigest = ownershipContentDigest(
+      pluginsDir,
+      id,
+      journal,
+      activationSession,
+    );
     if (!contentDigest) {
       throw new Error(
         `Plugin dependency '${id}' could not be recorded after installation`,
       );
     }
-    entries.set(id, { id, contentDigest });
+    const generation = createdGenerations?.get(id);
+    if (generation) {
+      const current = journal?.currentInstallation(id);
+      if (
+        current?.state !== 'observed' ||
+        current.installation.incarnation !== generation
+      )
+        throw new Error(
+          `Plugin dependency '${id}' changed before creator custody was recorded`,
+        );
+    }
+    entries.set(id, {
+      id,
+      contentDigest,
+      ...(generation ? { generation } : {}),
+    });
   }
   return [...entries.values()];
 }
@@ -480,6 +854,7 @@ function installedDependencyConsumers(
   pluginsDir: string,
   removedPluginName: string,
   dependencyId: string,
+  journal?: PackageMcpAdmissionJournal,
 ): { verified: string[]; uncertain: boolean } {
   const transitivelyDependsOn = (
     manifest: PluginManifest,
@@ -492,7 +867,11 @@ function installedDependencyConsumers(
       visiting.add(dependency.id);
       try {
         assertPluginNameSegment(dependency.id);
-        const manifestPath = join(pluginsDir, dependency.id, 'plugin.json');
+        const manifestPath = join(
+          ownershipPackageRoot(pluginsDir, dependency.id, journal) ??
+            join(pluginsDir, dependency.id),
+          'plugin.json',
+        );
         if (!existsSync(manifestPath)) {
           unknown = true;
           continue;
@@ -511,26 +890,30 @@ function installedDependencyConsumers(
   };
   const verified: string[] = [];
   let uncertain = false;
-  for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
+  for (const name of ownershipPluginNames(pluginsDir, journal)) {
     if (
-      !entry.isDirectory() ||
-      entry.name === removedPluginName ||
-      entry.name === dependencyId ||
-      entry.name.startsWith('.preview-')
+      pluginRetiringInPublication(name) ||
+      name === removedPluginName ||
+      name === dependencyId ||
+      name.startsWith('.preview-')
     ) {
       continue;
     }
     try {
-      const manifestPath = join(pluginsDir, entry.name, 'plugin.json');
+      const manifestPath = join(
+        ownershipPackageRoot(pluginsDir, name, journal) ??
+          join(pluginsDir, name),
+        'plugin.json',
+      );
       if (!existsSync(manifestPath)) continue;
-      assertPluginNameSegment(entry.name);
+      assertPluginNameSegment(name);
       const manifest = readPluginManifestFileSync(manifestPath);
-      if (manifest.name !== entry.name) {
+      if (manifest.name !== name) {
         uncertain = true;
         continue;
       }
       const result = transitivelyDependsOn(manifest, new Set([manifest.name]));
-      if (result === true) verified.push(entry.name);
+      if (result === true) verified.push(name);
       else if (result === 'unknown') uncertain = true;
     } catch {
       // If another installed plugin cannot be inspected, deleting a dependency
@@ -545,6 +928,7 @@ function installedDependencyConsumers(
 function ownedDependencyRetirementOrder(
   pluginsDir: string,
   dependencies: readonly PluginDependencyOwnershipEntry[],
+  journal?: PackageMcpAdmissionJournal,
 ): PluginDependencyOwnershipEntry[] {
   const byId = new Map(dependencies.map((entry) => [entry.id, entry]));
   const visiting = new Set<string>();
@@ -556,10 +940,15 @@ function ownedDependencyRetirementOrder(
       throw new Error('Owned dependency graph has a cycle; removal refused');
     visiting.add(entry.id);
     if (
-      computePluginContentDigest(pluginsDir, entry.id) === entry.contentDigest
+      ownershipContentDigest(pluginsDir, entry.id, journal) ===
+      entry.contentDigest
     ) {
       const manifest = readPluginManifestFileSync(
-        join(pluginsDir, entry.id, 'plugin.json'),
+        join(
+          ownershipPackageRoot(pluginsDir, entry.id, journal) ??
+            join(pluginsDir, entry.id),
+          'plugin.json',
+        ),
       );
       for (const dependency of manifest.dependencies ?? []) {
         const owned = byId.get(dependency.id);
@@ -590,12 +979,17 @@ async function rollbackOwnershipHandoffs(
 }
 
 function createDependencyLifecycle(options: {
+  grantRevisions: PluginGrantRevisionSnapshot;
+  packageMcpJournal?: PackageMcpAdmissionJournal;
   consent: PluginInstallConsent;
   stagedParent: PluginManifest;
   pluginsDir: string;
   projectHomeDir: string;
   logger: Logger;
-  reconcileEngineConnections?: (plugin: string) => Promise<void>;
+  reconcileEngineConnections?: (
+    plugin: string,
+    view?: PluginProviderReadView,
+  ) => Promise<void>;
   settleProviderAdapterRetirements?: () => Promise<void>;
 }): PluginDependencyLifecycle {
   const approvals = new Map<
@@ -621,6 +1015,7 @@ function createDependencyLifecycle(options: {
     string,
     ReturnType<typeof snapshotPluginGrantEntry>
   >();
+  const grantScopes = new Map<string, PluginGrantMutationScope>();
   const activated = new Set<string>();
 
   const rollbackDependency = async (dependencyId: string): Promise<void> => {
@@ -639,13 +1034,11 @@ function createDependencyLifecycle(options: {
       );
       await replacePluginProvidersForSource(dependencyId, []);
     });
-    await attempt(() =>
-      restorePluginGrantEntry(
-        options.projectHomeDir,
-        dependencyId,
-        grantSnapshots.get(dependencyId) ?? null,
-      ),
-    );
+    await attempt(async () => {
+      // A prior cleanup pass may already have restored this receipt while
+      // another resource failed. Do not replay a closed grant rollback.
+      await rollbackOwnedGrants(grantScopes.get(dependencyId));
+    });
     await attempt(async () => {
       await options.reconcileEngineConnections?.(dependencyId);
     });
@@ -670,6 +1063,7 @@ function createDependencyLifecycle(options: {
         dependencyId,
         manifest,
         options.stagedParent,
+        options.packageMcpJournal,
       );
     },
     validate({ dependencyId, dependencyDir, manifest }) {
@@ -715,6 +1109,7 @@ function createDependencyLifecycle(options: {
         dependencyId,
         manifest,
         options.stagedParent,
+        options.packageMcpJournal,
       );
       if (!grantSnapshots.has(dependencyId)) {
         grantSnapshots.set(
@@ -739,13 +1134,25 @@ function createDependencyLifecycle(options: {
       // Activation ownership begins before the first effect. If any later
       // step fails, compensation retains this claim until all derived state
       // (providers, grants, engine connections, and retirements) is settled.
+      const scope = createPluginGrantMutationScope(
+        options.projectHomeDir,
+        dependencyId,
+        {
+          expectedRevision:
+            approval.grantRevision ??
+            options.grantRevisions.revisionFor(dependencyId),
+        },
+      );
+      grantScopes.set(dependencyId, scope);
       activated.add(dependencyId);
       try {
-        await processInstallPermissions(
-          options.projectHomeDir,
-          dependencyId,
-          requiredPermissionsForManifest(manifest),
-          { consented: approval.permissions },
+        await scope.run(() =>
+          processInstallPermissions(
+            options.projectHomeDir,
+            dependencyId,
+            requiredPermissionsForManifest(manifest),
+            { consented: approval.permissions },
+          ),
         );
         const activeProviders = hasGrant(
           options.projectHomeDir,
@@ -776,17 +1183,25 @@ function createDependencyLifecycle(options: {
       }
     },
     rollback: rollbackDependency,
+    commit: () => {
+      for (const [id, scope] of grantScopes)
+        if (activated.has(id)) scope.commit();
+    },
   };
 }
 
 async function removeOwnedDependencyLifecycles(options: {
+  managedDeps?: PluginInstallSharedDeps;
   dependencies: readonly PluginDependencyOwnershipEntry[];
   removedPluginName: string;
   pluginsDir: string;
   projectHomeDir: string;
   backupRoot: string;
   logger: Logger;
-  reconcileEngineConnections?: (plugin: string) => Promise<void>;
+  reconcileEngineConnections?: (
+    plugin: string,
+    view?: PluginProviderReadView,
+  ) => Promise<void>;
   settleProviderAdapterRetirements?: () => Promise<void>;
   ownershipHandoffs: PluginDependencyOwnershipHandoff[];
 }): Promise<RemovedDependencyBackup[]> {
@@ -795,11 +1210,18 @@ async function removeOwnedDependencyLifecycles(options: {
     for (const dependency of ownedDependencyRetirementOrder(
       options.pluginsDir,
       options.dependencies,
+      options.managedDeps?.packageMcpJournal,
     )) {
-      const dependencyDir = join(options.pluginsDir, dependency.id);
+      const dependencyDir =
+        ownershipPackageRoot(
+          options.pluginsDir,
+          dependency.id,
+          options.managedDeps?.packageMcpJournal,
+        ) ?? join(options.pluginsDir, dependency.id);
+      if (!existsSync(dependencyDir)) continue;
       assertPathInside(
-        options.pluginsDir,
-        dependencyDir,
+        realpathSync.native(options.pluginsDir),
+        realpathSync.native(dependencyDir),
         'Owned plugin dependency target',
       );
       await withPluginContentLock(
@@ -808,11 +1230,32 @@ async function removeOwnedDependencyLifecycles(options: {
         async () => {
           if (!existsSync(dependencyDir)) return;
           if (
-            computePluginContentDigest(options.pluginsDir, dependency.id) !==
-            dependency.contentDigest
+            ownershipContentDigest(
+              options.pluginsDir,
+              dependency.id,
+              options.managedDeps?.packageMcpJournal,
+            ) !== dependency.contentDigest
           ) {
             options.logger.warn(
               'Preserved plugin dependency because its installed content no longer matches the creating install',
+              { plugin: dependency.id },
+            );
+            return;
+          }
+          const managed = options.managedDeps?.packageMcpJournal
+            ? captureLocalPluginInstallation(
+                options.pluginsDir,
+                options.managedDeps.packageMcpJournal,
+                dependency.id,
+              )
+            : null;
+          if (
+            managed?.installation
+              ? dependency.generation !== managed.installation.incarnation
+              : dependency.generation !== undefined
+          ) {
+            options.logger.warn(
+              'Preserved dependency because its admission generation no longer belongs to this creator',
               { plugin: dependency.id },
             );
             return;
@@ -821,6 +1264,7 @@ async function removeOwnedDependencyLifecycles(options: {
             options.pluginsDir,
             options.removedPluginName,
             dependency.id,
+            options.managedDeps?.packageMcpJournal,
           );
           if (consumers.verified.length > 0 || consumers.uncertain) {
             for (const recipient of consumers.verified) {
@@ -828,10 +1272,12 @@ async function removeOwnedDependencyLifecycles(options: {
                 options.pluginsDir,
                 recipient,
                 async () => {
-                  const recipientDirectory = join(
+                  const recipientDirectory = ownershipPackageRoot(
                     options.pluginsDir,
                     recipient,
+                    options.managedDeps?.packageMcpJournal,
                   );
+                  if (!recipientDirectory) return false;
                   const recipientStatus = lstatSync(recipientDirectory);
                   if (
                     !recipientStatus.isDirectory() ||
@@ -840,9 +1286,9 @@ async function removeOwnedDependencyLifecycles(options: {
                     throw new Error(
                       'Dependency cleanup recipient must be an installed directory',
                     );
-                  assertExistingPathInside(
-                    options.pluginsDir,
-                    recipientDirectory,
+                  assertPathInside(
+                    realpathSync.native(options.pluginsDir),
+                    realpathSync.native(recipientDirectory),
                     'Dependency cleanup recipient',
                   );
                   // Revalidate while the recipient's update/removal guard is
@@ -852,20 +1298,40 @@ async function removeOwnedDependencyLifecycles(options: {
                       options.pluginsDir,
                       options.removedPluginName,
                       dependency.id,
+                      options.managedDeps?.packageMcpJournal,
                     ).verified.includes(recipient)
                   )
                     return false;
-                  const recipientDigest = computePluginContentDigest(
+                  const recipientDigest = ownershipContentDigest(
                     options.pluginsDir,
                     recipient,
+                    options.managedDeps?.packageMcpJournal,
                   );
                   if (!recipientDigest) return false;
+                  const dependencyArtifact = options.managedDeps
+                    ? captureManagedPluginPermission(
+                        options.managedDeps,
+                        dependency.id,
+                      )?.artifact
+                    : undefined;
+                  const recipientArtifact = options.managedDeps
+                    ? captureManagedPluginPermission(
+                        options.managedDeps,
+                        recipient,
+                      )?.artifact
+                    : undefined;
                   const outcome = await copyPluginDependencyOwnership(
                     options.projectHomeDir,
                     options.removedPluginName,
                     recipient,
                     dependency,
                     recipientDigest,
+                    dependencyArtifact || recipientArtifact
+                      ? {
+                          dependency: dependencyArtifact,
+                          recipient: recipientArtifact,
+                        }
+                      : undefined,
                   );
                   if (outcome.kind === 'ineligible') return false;
                   if (outcome.kind === 'copied')
@@ -884,6 +1350,48 @@ async function removeOwnedDependencyLifecycles(options: {
             throw new Error(
               `Plugin dependency '${dependency.id}' has no verifiable surviving cleanup owner; removal refused`,
             );
+          }
+          if (managed?.installation) {
+            const manifest = readPluginManifestFileSync(
+              join(managed.root.packageRoot, 'plugin.json'),
+            );
+            const backupDir = join(
+              options.backupRoot,
+              'managed-dependencies',
+              dependency.id,
+            );
+            let commit: (() => void) | undefined;
+            let restoreManaged:
+              | (() => Promise<PluginInstallationRevision | null>)
+              | undefined;
+            const grantSnapshot = snapshotPluginGrantEntry(
+              options.projectHomeDir,
+              dependency.id,
+            );
+            await uninstallInstalledPlugin(
+              dependency.id,
+              options.managedDeps!,
+              {
+                root: backupDir,
+                capture: (compensate, finish) => {
+                  restoreManaged = compensate;
+                  commit = finish;
+                },
+              },
+            );
+            if (!restoreManaged)
+              throw new Error(
+                'Managed dependency withdrawal did not retain transaction recovery',
+              );
+            removed.push({
+              entry: dependency,
+              backupDir,
+              manifest,
+              grantSnapshot,
+              restoreManaged,
+              commit,
+            });
+            return;
           }
           if (
             readPluginDependencyOwnership(options.projectHomeDir, dependency.id)
@@ -912,18 +1420,31 @@ async function removeOwnedDependencyLifecycles(options: {
           );
           mkdirSync(dirname(backupDir), { recursive: true });
           cpSync(dependencyDir, backupDir, PLUGIN_TREE_COPY);
+          const grantScope = createPluginGrantMutationScope(
+            options.projectHomeDir,
+            dependency.id,
+            {
+              expectedRevision: publicationGrantRevisions(() =>
+                observePluginGrantRevisions(options.projectHomeDir),
+              ).revisionFor(dependency.id),
+            },
+          );
           const backup: RemovedDependencyBackup = {
             entry: dependency,
             backupDir,
             manifest,
             grantSnapshot,
+            grantScope,
+            commit: () => grantScope.commit(),
           };
           const { replacePluginProvidersForSource } = await import(
             '../../providers/registries/registry.js'
           );
           try {
             await replacePluginProvidersForSource(dependency.id, []);
-            await revokeAllGrants(options.projectHomeDir, dependency.id);
+            await grantScope.run(() =>
+              revokeAllGrants(options.projectHomeDir, dependency.id),
+            );
             rmSync(dependencyDir, { recursive: true, force: true });
             forgetPluginContentDigest(options.pluginsDir, dependency.id);
             await removePluginHostRecord(options.projectHomeDir, dependency.id);
@@ -939,10 +1460,11 @@ async function removeOwnedDependencyLifecycles(options: {
               if (!existsSync(dependencyDir)) {
                 cpSync(backupDir, dependencyDir, PLUGIN_TREE_COPY);
               }
-              await restorePluginGrantEntry(
+              await rollbackOwnedGrants(grantScope);
+              await recordPluginDependencyOwnership(
                 options.projectHomeDir,
                 dependency.id,
-                grantSnapshot,
+                grantSnapshot?.installAuthority?.ownedDependencies ?? [],
               );
               await loadPluginProviders(
                 options.pluginsDir,
@@ -994,10 +1516,14 @@ async function removeOwnedDependencyLifecycles(options: {
 
 async function restoreRemovedDependencyLifecycles(options: {
   backups: readonly RemovedDependencyBackup[];
+  activationParent?: NonNullable<PluginActivationPlan['parent']>;
   pluginsDir: string;
   projectHomeDir: string;
   logger: Logger;
-  reconcileEngineConnections?: (plugin: string) => Promise<void>;
+  reconcileEngineConnections?: (
+    plugin: string,
+    view?: PluginProviderReadView,
+  ) => Promise<void>;
   settleProviderAdapterRetirements?: () => Promise<void>;
 }): Promise<void> {
   for (const backup of [...options.backups].reverse()) {
@@ -1005,6 +1531,12 @@ async function restoreRemovedDependencyLifecycles(options: {
       options.pluginsDir,
       backup.entry.id,
       async () => {
+        if (backup.restoreManaged) {
+          backup.restoredInstallation =
+            (await backup.restoreManaged(options.activationParent)) ??
+            undefined;
+          return;
+        }
         const dependencyDir = join(options.pluginsDir, backup.entry.id);
         if (existsSync(dependencyDir)) {
           const digest = computePluginContentDigest(
@@ -1020,10 +1552,11 @@ async function restoreRemovedDependencyLifecycles(options: {
           cpSync(backup.backupDir, dependencyDir, PLUGIN_TREE_COPY);
         }
         forgetPluginContentDigest(options.pluginsDir, backup.entry.id);
-        await restorePluginGrantEntry(
+        await rollbackOwnedGrants(backup.grantScope);
+        await recordPluginDependencyOwnership(
           options.projectHomeDir,
           backup.entry.id,
-          backup.grantSnapshot,
+          backup.grantSnapshot?.installAuthority?.ownedDependencies ?? [],
         );
         await loadPluginProviders(
           options.pluginsDir,
@@ -1043,6 +1576,43 @@ async function restoreRemovedDependencyLifecycles(options: {
       },
     );
   }
+}
+
+async function rebindCompensatedDependencyOwnership(
+  deps: PluginInstallSharedDeps,
+  plugin: string,
+  backups: readonly RemovedDependencyBackup[],
+): Promise<void> {
+  const prior = readPluginDependencyOwnership(deps.projectHomeDir, plugin);
+  let changed = false;
+  const rebound = prior.map((entry) => {
+    const backup = backups.find(
+      (item) =>
+        item.entry.id === entry.id &&
+        item.entry.contentDigest === entry.contentDigest &&
+        item.entry.generation === entry.generation,
+    );
+    const restored = backup?.restoredInstallation;
+    if (!restored) return entry;
+    const current = deps.packageMcpJournal?.currentInstallation(entry.id);
+    if (
+      current?.state !== 'observed' ||
+      current.installation.incarnation !== restored.generation ||
+      current.installation.contentDigest !== entry.contentDigest
+    )
+      throw new Error(
+        `Compensated dependency '${entry.id}' changed before creator custody could be restored`,
+      );
+    changed = true;
+    return { ...entry, generation: restored.generation };
+  });
+  if (changed)
+    await recordPluginDependencyOwnership(
+      deps.projectHomeDir,
+      plugin,
+      rebound,
+      captureManagedPluginPermission(deps, plugin)?.artifact,
+    );
 }
 
 function backupProjectFile(
@@ -1086,7 +1656,6 @@ export function backupPluginDurableState(
   pluginName: string,
 ): void {
   backupProjectFile(projectHomeDir, REGISTRY_INSTALLS_PATH, backupRoot);
-  backupProjectFile(projectHomeDir, AGENT_REGISTRY_PATH, backupRoot);
   // Throws the typed grants-unavailable error when the store is corrupt: an
   // install/uninstall must not begin against a consent store it cannot read.
   const entry = snapshotPluginGrantEntry(projectHomeDir, pluginName);
@@ -1099,9 +1668,9 @@ export function backupPluginDurableState(
 export async function restorePluginDurableState(
   projectHomeDir: string,
   backupRoot: string,
+  artifact?: CapturedPluginPermissionArtifact,
 ): Promise<void> {
   restoreProjectFile(projectHomeDir, REGISTRY_INSTALLS_PATH, backupRoot);
-  restoreProjectFile(projectHomeDir, AGENT_REGISTRY_PATH, backupRoot);
   const snapshotPath = join(backupRoot, ...PLUGIN_GRANTS_ENTRY_SNAPSHOT);
   assertPathInside(backupRoot, snapshotPath, 'Plugin grants snapshot source');
   if (!existsSync(snapshotPath)) return;
@@ -1153,21 +1722,12 @@ export async function restorePluginDurableState(
     // Loud into the rollback error aggregation — never a raw-copy fallback.
     throw new Error('Plugin grants rollback snapshot is malformed');
   }
-  await restorePluginGrantEntry(
+  await recordPluginDependencyOwnership(
     projectHomeDir,
     snapshot.pluginName,
-    entry === null || entry === undefined
-      ? null
-      : {
-          permissions: entry.permissions as string[],
-          contentDigest: entry.contentDigest as string | null,
-          ...(installAuthority
-            ? {
-                installAuthority:
-                  installAuthority as PluginInstallAuthorityRecord,
-              }
-            : {}),
-        },
+    (installAuthority as PluginInstallAuthorityRecord | undefined)
+      ?.ownedDependencies ?? [],
+    artifact,
   );
 }
 
@@ -1198,6 +1758,7 @@ async function removePluginAgentDefinitions(
   projectHomeDir: string,
   pluginName: string,
   manifest: PluginManifest,
+  ownedGenerations?: readonly string[],
 ): Promise<void> {
   for (const agent of manifest.agents ?? []) {
     let agentDir: string;
@@ -1214,6 +1775,14 @@ async function removePluginAgentDefinitions(
       await acquireAgentIdentityMutationLockAtHome(projectHomeDir);
     try {
       if (existsSync(agentDir)) {
+        if (ownedGenerations) {
+          const binding = pluginAgentInstallationBinding(agentDir);
+          if (
+            binding?.plugin !== pluginName ||
+            !ownedGenerations.includes(binding.generation ?? '')
+          )
+            continue;
+        }
         assertPluginAgentOwned(agentDir, pluginName);
         rmSync(agentDir, { recursive: true, force: true });
       }
@@ -1250,6 +1819,7 @@ export function capturePersistedAgentOwnership(
     } catch {
       continue;
     }
+    if (pluginAgentOwner(targetDir) !== pluginName) continue;
     const existingManifestPath = join(targetDir, 'agent.json');
     if (!existsSync(existingManifestPath)) continue;
     try {
@@ -1344,6 +1914,34 @@ function reconcilePluginAgentOwnership(options: {
   writeFileSync(agentManifestPath, JSON.stringify(spec, null, 2), 'utf-8');
 }
 
+function resolvePluginAgentDefinitionSource(
+  pluginDir: string,
+  agent: NonNullable<PluginManifest['agents']>[number],
+): { directory: string; manifest: string } {
+  assertPluginNameSegment(agent.slug);
+  const source =
+    !agent.source || agent.source === 'agent.json'
+      ? join(pluginDir, 'agents', agent.slug)
+      : resolve(pluginDir, agent.source);
+  assertPathInside(pluginDir, source, 'Plugin agent source');
+  if (!existsSync(source))
+    throw new Error(`Declared Agent '${agent.slug}' source is missing`);
+  assertPathInside(
+    realpathSync.native(pluginDir),
+    realpathSync.native(source),
+    'Plugin agent source',
+  );
+  const sourceStatus = lstatSync(source);
+  const directory = sourceStatus.isDirectory() ? source : dirname(source);
+  const manifest = sourceStatus.isDirectory()
+    ? join(source, 'agent.json')
+    : source;
+  assertNoSymlinkTree(pluginDir, directory, 'Plugin agent source');
+  if (!lstatSync(manifest).isFile())
+    throw new Error('Plugin agent source manifest must be a regular file');
+  return { directory, manifest };
+}
+
 export async function synchronizePluginAgentDefinitions(options: {
   agentsDir: string;
   pluginDir: string;
@@ -1365,6 +1963,8 @@ export async function synchronizePluginAgentDefinitions(options: {
    * has been deleted yet).
    */
   persistedOwnership?: ReadonlyMap<string, string | undefined>;
+  installationGeneration?: string;
+  cleanupGenerations?: readonly string[];
 }): Promise<void> {
   const persistedOwnership =
     options.persistedOwnership ??
@@ -1373,12 +1973,25 @@ export async function synchronizePluginAgentDefinitions(options: {
       options.pluginName,
       options.manifest,
     );
+  // Validate every selected source before deleting any prior Agent. Legacy
+  // manifests omitted source or used agent.json relative to agents/<slug>;
+  // namespaced declarations carry explicit package-relative ./ paths.
+  const sources = new Map<string, { directory: string; manifest: string }>();
+  for (const agent of options.manifest.agents ?? []) {
+    assertPluginNameSegment(agent.slug);
+    if (options.include && !options.include(agentId(agent.slug))) continue;
+    sources.set(
+      agent.slug,
+      resolvePluginAgentDefinitionSource(options.pluginDir, agent),
+    );
+  }
   if (options.previousManifest) {
     await removePluginAgentDefinitions(
       options.agentsDir,
       options.projectHomeDir,
       options.previousManifest.name || options.pluginName,
       options.previousManifest,
+      options.cleanupGenerations,
     );
   }
   if (!options.manifest.agents?.length) return;
@@ -1388,12 +2001,13 @@ export async function synchronizePluginAgentDefinitions(options: {
     assertPluginNameSegment(agent.slug);
     const slug = agentId(agent.slug);
     if (options.include && !options.include(slug)) continue;
-    const sourceDir = join(options.pluginDir, 'agents', agent.slug);
+    const source = sources.get(agent.slug)!;
+    const sourceDir = source.directory;
     const targetDir = join(options.agentsDir, slug);
     assertPathInside(options.agentsDir, targetDir, 'Plugin agent target');
     if (existsSync(sourceDir)) {
       assertNoSymlinkTree(options.pluginDir, sourceDir, 'Plugin agent source');
-      const agentManifestPath = join(sourceDir, 'agent.json');
+      const agentManifestPath = source.manifest;
       const agentManifestStatus = lstatSync(agentManifestPath);
       if (!agentManifestStatus.isFile()) {
         throw new Error('Plugin agent source manifest must be a regular file');
@@ -1410,20 +2024,46 @@ export async function synchronizePluginAgentDefinitions(options: {
             `Agent '${slug}' already exists; plugin '${options.pluginName}' must contribute a globally unique clean Agent ID.`,
           );
         }
-        cpSync(sourceDir, targetDir, { recursive: true });
-        writeFileSync(
-          join(targetDir, PLUGIN_AGENT_OWNER_FILE),
-          JSON.stringify({ plugin: options.pluginName }, null, 2),
-          { encoding: 'utf-8', mode: 0o600 },
+        mkdirSync(options.agentsDir, { recursive: true });
+        const stagedDir = mkdtempSync(
+          join(options.agentsDir, `.plugin-agent-${slug}-`),
         );
-        reconcilePluginAgentOwnership({
-          targetDir,
-          projectHomeDir: options.projectHomeDir,
-          pluginName: options.pluginName,
-          agentSlug: agent.slug,
-          persistedProject: persistedOwnership.get(agent.slug),
-          logger: options.logger,
-        });
+        try {
+          cpSync(sourceDir, stagedDir, { recursive: true });
+          if (basename(source.manifest) !== 'agent.json')
+            cpSync(source.manifest, join(stagedDir, 'agent.json'));
+          writeFileSync(
+            join(stagedDir, PLUGIN_AGENT_OWNER_FILE),
+            JSON.stringify(
+              {
+                plugin: options.pluginName,
+                ...(options.installationGeneration
+                  ? { generation: options.installationGeneration }
+                  : {}),
+              },
+              null,
+              2,
+            ),
+            { encoding: 'utf-8', mode: 0o600 },
+          );
+          reconcilePluginAgentOwnership({
+            targetDir: stagedDir,
+            projectHomeDir: options.projectHomeDir,
+            pluginName: options.pluginName,
+            agentSlug: agent.slug,
+            persistedProject: persistedOwnership.get(agent.slug),
+            logger: options.logger,
+          });
+          // Publish the definition and its ownership marker together. A crash
+          // before rename leaves an ignored staging directory, never an
+          // apparently foreign half-copied Agent at its canonical identity.
+          if (existsSync(targetDir))
+            throw new Error(`Agent '${slug}' changed during publication`);
+          renameSync(stagedDir, targetDir);
+        } finally {
+          if (existsSync(stagedDir))
+            rmSync(stagedDir, { recursive: true, force: true });
+        }
       } finally {
         await releaseIdentity();
       }
@@ -1479,7 +2119,11 @@ function assertRegistryInstallTargetAvailable(
   const ownsExistingTarget =
     existingAlias?.pluginName === pluginName &&
     existingAlias.registryKey === registryKey;
-  if (existsSync(pluginDir) && !ownsExistingTarget) {
+  if (
+    (existsSync(pluginDir) ||
+      resolveInstalledPluginRoot(pluginsDir, pluginName)) &&
+    !ownsExistingTarget
+  ) {
     throw new Error(
       `Plugin '${pluginName}' is already installed outside registry item '${registryId}'`,
     );
@@ -1604,8 +2248,12 @@ export async function removeDependencyTreesCreatedByThisInstall(
   // Injectable so the timeout path is EXECUTABLE in a test. A rejection path
   // that never runs is not a guarantee, and a 10s wait is not a test.
   lockTimeoutMs: number = ROLLBACK_LOCK_TIMEOUT_MS,
-  rollbackLifecycle?: (dependencyId: string) => Promise<void>,
+  rollbackLifecycle?:
+    | ((dependencyId: string) => Promise<void>)
+    | ((dependencyId: string) => Promise<boolean | undefined>),
   createdPluginDigests?: ReadonlyMap<string, string>,
+  journal?: PackageMcpAdmissionJournal,
+  activationSession?: PluginActivationSession,
 ): Promise<unknown[]> {
   const failures: unknown[] = [];
   // Recursive creation records postorder (leaf before its dependent). Undo in
@@ -1642,15 +2290,22 @@ export async function removeDependencyTreesCreatedByThisInstall(
           );
           return;
         }
-        if (computePluginContentDigest(pluginsDir, name) !== expectedDigest) {
+        if (
+          ownershipContentDigest(
+            pluginsDir,
+            name,
+            journal,
+            activationSession,
+          ) !== expectedDigest
+        ) {
           logger.warn(
             'Preserved a dependency because its installed content changed after this install created it',
             { dep: name },
           );
           return;
         }
-        await rollbackLifecycle?.(name);
-        rmSync(target, { recursive: true, force: true });
+        const handled = await rollbackLifecycle?.(name);
+        if (handled !== true) rmSync(target, { recursive: true, force: true });
       });
       try {
         await Promise.race([
@@ -1911,13 +2566,361 @@ async function readManifestForRemoval(
   }
 }
 
-export async function installPluginFromSource(
+interface RetainedRecoveryAuthorization {
+  readonly __retainedRecoveryAuthorization: unique symbol;
+}
+const retainedRecoveryAuthorizations = new WeakMap<
+  RetainedRecoveryAuthorization,
+  {
+    source: string;
+    origin: string;
+    current(): boolean;
+    dependencies: Map<string, PluginInstallationRevision>;
+  }
+>();
+
+async function inspectRetainedPluginRecovery(
+  name: string,
+  deps: PluginInstallSharedDeps,
+) {
+  assertPluginNameSegment(name);
+  const journal = deps.packageMcpJournal;
+  if (!journal)
+    throw new Error(
+      'Retained recovery is unavailable for this execution adapter',
+    );
+  const observed = journal.currentInstallation(name);
+  if (
+    observed.state !== 'observed' ||
+    journal.activationState(observed.installation) !== 'pending'
+  )
+    throw new Error('This plugin has no pending installation to recover');
+  const origin = observed.installation.origin;
+  const plan = journal.activationPlan(observed.installation);
+  if (!origin || !plan)
+    throw new Error(
+      'Recovery provenance is unavailable; retained data needs reviewed migration',
+    );
+  const revision = (
+    entry: typeof observed.installation,
+  ): PluginInstallationRevision => {
+    if (!entry.materialization || !entry.dataScope)
+      throw new Error('Retained execution materialization is unavailable');
+    return {
+      scope: entry.journalId,
+      installation: entry.pluginId,
+      generation: entry.incarnation,
+      artifact: { digest: entry.contentDigest },
+      materialization: entry.materialization,
+      dataScope: entry.dataScope,
+      ...(entry.origin ? { origin: entry.origin } : {}),
+    };
+  };
+  const grantRevisions = observePluginGrantRevisions(deps.projectHomeDir);
+  const root = resolvePluginMaterialization(
+    deps.pluginsDir,
+    name,
+    observed.installation.materialization!,
+  );
+  const manifest = await readPluginManifestFile(
+    join(root.packageRoot, 'plugin.json'),
+  );
+  const basis = derivePluginConsentBasis(root.packageRoot, manifest);
+  if (
+    manifest.name !== name ||
+    !basis ||
+    basis.contentDigest !== observed.installation.contentDigest ||
+    root.dataScope !== observed.installation.dataScope
+  )
+    throw new Error(
+      'Retained plugin bytes changed; recover from a verified original source',
+    );
+  const dependencies = new Map<string, PluginInstallationRevision>();
+  const captures: Array<
+    NonNullable<ReturnType<typeof captureLocalPluginInstallation>>
+  > = [];
+  const approvals: Array<{
+    id: string;
+    expectedInstallation: PluginInstallationRevision;
+    consent: {
+      contentDigest: string;
+      permissions: string[];
+      dependencies: string[];
+      grantRevision: string;
+    };
+  }> = [];
+  const versions = new Map<string, string>();
+  const checkVersion = (
+    dependency: NonNullable<PluginManifest['dependencies']>[number],
+    version: string,
+  ) => {
+    if (
+      dependency.version &&
+      dependency.version !== '*' &&
+      dependency.version !== version
+    )
+      throw new Error(
+        `Dependency '${dependency.id}' does not match required version '${dependency.version}'`,
+      );
+  };
+  const visiting = new Set([name]);
+  const walk = async (parent: PluginManifest): Promise<void> => {
+    for (const dependency of parent.dependencies ?? []) {
+      if (visiting.has(dependency.id))
+        throw new Error(`Retained dependency cycle detected: ${dependency.id}`);
+      const seenVersion = versions.get(dependency.id);
+      if (seenVersion !== undefined) {
+        checkVersion(dependency, seenVersion);
+        continue;
+      }
+      const captured = captureLocalPluginInstallation(
+        deps.pluginsDir,
+        journal,
+        dependency.id,
+      );
+      if (!captured?.installation)
+        throw new Error(
+          `Install managed dependency '${dependency.id}' before recovering '${name}'`,
+        );
+      if (!captured.isCurrent())
+        throw new Error(
+          `Recover dependency '${dependency.id}' before recovering '${name}'`,
+        );
+      const child = await readPluginManifestFile(
+        join(captured.root.packageRoot, 'plugin.json'),
+      );
+      const childBasis = derivePluginConsentBasis(
+        captured.root.packageRoot,
+        child,
+      );
+      if (
+        child.name !== dependency.id ||
+        !childBasis ||
+        childBasis.contentDigest !== captured.installation.contentDigest
+      )
+        throw new Error(`Dependency '${dependency.id}' bytes changed`);
+      checkVersion(dependency, child.version);
+      versions.set(dependency.id, child.version);
+      const expectedInstallation = revision(captured.installation);
+      dependencies.set(dependency.id, expectedInstallation);
+      captures.push(captured);
+      approvals.push({
+        id: dependency.id,
+        expectedInstallation,
+        consent: {
+          contentDigest: childBasis.contentDigest,
+          permissions: childBasis.required,
+          dependencies: childBasis.dependencies,
+          grantRevision: grantRevisions.revisionFor(dependency.id),
+        },
+      });
+      visiting.add(dependency.id);
+      await walk(child);
+      visiting.delete(dependency.id);
+    }
+  };
+  await walk(manifest);
+  const expectedInstallation = revision(observed.installation);
+  const current = () => {
+    const now = journal.currentInstallation(name);
+    return (
+      now.state === 'observed' &&
+      now.installation.incarnation === expectedInstallation.generation &&
+      journal.activationState(now.installation) === 'pending' &&
+      JSON.stringify(journal.activationPlan(now.installation)) ===
+        JSON.stringify(plan) &&
+      computePluginContentDigest(
+        dirname(root.packageRoot),
+        basename(root.packageRoot),
+      ) === expectedInstallation.artifact.digest &&
+      captures.every(
+        (capture) =>
+          capture.isCurrent() &&
+          computePluginContentDigest(
+            dirname(capture.root.packageRoot),
+            basename(capture.root.packageRoot),
+          ) === capture.installation!.contentDigest,
+      )
+    );
+  };
+  if (!current())
+    throw new Error(
+      'Recovery changed while it was being inspected; preview again',
+    );
+  const grantRevision = grantRevisions.revisionFor(name);
+  const recoveryRevision = `sha256:${createHash('sha256')
+    .update(
+      JSON.stringify({
+        expectedInstallation,
+        plan,
+        grantRevision,
+        dependencies: approvals,
+      }),
+    )
+    .digest('hex')}`;
+  return {
+    source: root.packageRoot,
+    parent: plan.parent,
+    origin,
+    current,
+    dependencies,
+    view: {
+      manifest,
+      expectedInstallation,
+      recoveryRevision,
+      contentDigest: basis.contentDigest,
+      grantRevision,
+      permissions: {
+        required: basis.required,
+        autoGranted: basis.autoGranted,
+        pendingConsent: basis.pendingConsent,
+      },
+      dependencies: approvals,
+      skip: plan.skipped ?? [],
+    },
+  };
+}
+
+export async function previewInstalledPluginRecovery(
+  name: string,
+  deps: PluginInstallSharedDeps,
+) {
+  return (await inspectRetainedPluginRecovery(name, deps)).view;
+}
+
+/** Recovery continues the selected immutable bytes and data scope. Missing or
+ * pending dependencies have an explicit dependency-first remedy; they are not
+ * fetched or silently adopted by this offline recovery operation. */
+export async function recoverInstalledPlugin(
+  name: string,
+  deps: PluginInstallSharedDeps,
+  decision: { recoveryRevision: string; consent: PluginInstallConsent },
+) {
+  const captured = await inspectRetainedPluginRecovery(name, deps);
+  if (
+    decision.consent.kind !== 'operator-decision' ||
+    decision.consent.grantRevision !== captured.view.grantRevision
+  )
+    throw new PluginGrantMutationSupersededError();
+  if (decision.recoveryRevision !== captured.view.recoveryRevision)
+    throw new Error('Recovery changed; preview it again before continuing');
+  const authorization = Object.freeze({}) as RetainedRecoveryAuthorization;
+  retainedRecoveryAuthorizations.set(authorization, captured);
+  try {
+    return await installPluginFromSource(
+      captured.source,
+      captured.view.skip,
+      deps,
+      {
+        consent: decision.consent,
+        expectedPluginName: name,
+        expectedInstallation: captured.view.expectedInstallation,
+        activationSession: deps.activationSession,
+        retainedRecovery: authorization,
+        activationParent: captured.parent,
+      },
+    );
+  } finally {
+    retainedRecoveryAuthorizations.delete(authorization);
+  }
+}
+
+async function runOwnedPluginMutation<T>(
+  deps: PluginInstallSharedDeps,
+  provided: PluginActivationSession | undefined,
+  operation: (
+    owned: PluginInstallSharedDeps,
+    session: PluginActivationSession,
+  ) => Promise<T>,
+): Promise<T> {
+  if (provided && deps.activationSession && provided !== deps.activationSession)
+    throw new Error('Plugin activation ownership does not match the caller');
+  const providedSession = provided ?? deps.activationSession;
+  const session = providedSession ?? createPluginActivationSession();
+  return withPluginPublicationContext(deps.projectHomeDir, async () => {
+    try {
+      const result = await operation(
+        {
+          ...deps,
+          activationSession: session,
+          ...(deps.reconcileEngineConnections
+            ? {
+                reconcileEngineConnections: (plugin: string) => {
+                  const pending =
+                    deps.packageMcpJournal &&
+                    pluginActivationSessionPermit(
+                      session,
+                      deps.packageMcpJournal,
+                      plugin,
+                    );
+                  return pending
+                    ? deps.reconcileEngineConnections!(
+                        plugin,
+                        pluginActivationProviderReadView(session),
+                      )
+                    : deps.reconcileEngineConnections!(plugin);
+                },
+              }
+            : {}),
+        },
+        session,
+      );
+      if (!providedSession)
+        await completePluginActivationComposition(
+          await preparePluginActivationComposition(session),
+        );
+      if (!providedSession)
+        deliverPluginActivationNotifications(session, (error) =>
+          deps.logger.warn('Plugin readiness notification failed', { error }),
+        );
+      return result;
+    } catch (error) {
+      if (!providedSession) {
+        try {
+          await completePluginActivationComposition(
+            await preparePluginActivationComposition(session, 'compensation'),
+          );
+        } catch (activationError) {
+          throw new AggregateError(
+            [error, activationError],
+            'Plugin mutation and compensation activation both failed; recovery is pending',
+          );
+        }
+      }
+      throw error;
+    } finally {
+      if (!providedSession) closePluginActivationSession(session);
+    }
+  });
+}
+
+export const installPluginFromSource: typeof installPluginFromSourceUnderContext =
+  (...args) =>
+    runOwnedPluginMutation(
+      args[2],
+      args[3]?.activationSession,
+      (owned, session) =>
+        installPluginFromSourceUnderContext(args[0], args[1], owned, {
+          ...args[3],
+          activationSession: session,
+        }),
+    );
+
+async function installPluginFromSourceUnderContext(
   source: string,
   skip: string[] | undefined,
   deps: PluginInstallSharedDeps,
   options?: {
     registryId?: string;
     registryKey?: string;
+    activationSession?: PluginActivationSession;
+    activationParent?: { installation: string; generation: string };
+    retainedRecovery?: RetainedRecoveryAuthorization;
+    /** Trusted request-entry observation, never deserialized request data. */
+    grantSnapshot?: PluginGrantRevisionSnapshot;
+    dataPolicy?: 'preserve' | 'retain-and-reset';
+    expectedPluginName?: string;
+    expectedInstallation?: PluginInstallationRevision | null;
     /**
      * The operator's pre-install decision (archive#4288). Omitted means no
      * decision was taken — which is not the same as "none was needed", and is
@@ -1935,6 +2938,17 @@ export async function installPluginFromSource(
     pluginsDir,
     projectHomeDir,
   } = deps;
+  const recovery = options?.retainedRecovery
+    ? retainedRecoveryAuthorizations.get(options.retainedRecovery)
+    : undefined;
+  if (
+    options?.retainedRecovery &&
+    (!recovery || recovery.source !== source || !recovery.current())
+  )
+    throw new Error('Retained recovery changed; preview again');
+  const requestGrants = publicationGrantRevisions(
+    () => options?.grantSnapshot ?? observePluginGrantRevisions(projectHomeDir),
+  );
   const consent: PluginInstallConsent = options?.consent ?? {
     kind: 'no-operator-decision',
     caller: 'this caller',
@@ -1945,6 +2959,8 @@ export async function installPluginFromSource(
   // diff — see `removeDependencyTreesCreatedByThisInstall`.
   const createdPluginTrees = new Set<string>();
   const createdPluginDigests = new Map<string, string>();
+  const managedCreated = new Map<string, string>();
+  const registryDependencyOwners = new Map<string, string>();
   let retiredDependencyBackups: RemovedDependencyBackup[] = [];
   const ownershipHandoffs: PluginDependencyOwnershipHandoff[] = [];
 
@@ -1954,6 +2970,7 @@ export async function installPluginFromSource(
   }
 
   const { tempDir, tempName } = result;
+  let grantScope: PluginGrantMutationScope | undefined;
   let backupRoot: string | null = null;
   // Destructive rollback (delete the live plugin dir, restore from backup) is
   // gated on this flag, never on backupRoot existence: the root is created
@@ -1962,9 +2979,17 @@ export async function installPluginFromSource(
   let serverQuiescence: PluginPublicServerQuiescence | null = null;
   let eventSubscriptionQuiescence: { release(): void } | null = null;
   let releaseInstallPublication: (() => Promise<void>) | undefined;
+  let leaveInstallGraph: (() => void) | undefined;
   try {
-    const manifest = await readPluginManifestFile(join(tempDir, 'plugin.json'));
+    const { manifest, format: manifestFormat } =
+      await readPluginManifestFileWithFormat(join(tempDir, 'plugin.json'));
+    const isAgentPlugin = manifestFormat === 'agent-plugin-1.0';
     const pluginName = manifest.name || tempName;
+    if (
+      options?.expectedPluginName &&
+      options.expectedPluginName !== pluginName
+    )
+      throw new Error('Plugin identity cannot change during update');
     assertPluginNameSegment(pluginName);
     // The identity itself, not just its shape as a path segment: Station
     // mounts its own routes at some literal first segments on `/api/plugins`,
@@ -1976,6 +3001,24 @@ export async function installPluginFromSource(
     // uninstall routes too, and refusing there would strand a plugin already
     // installed under such a name instead of letting the operator remove it.
     assertPluginIdentityAvailable(pluginName);
+    if (
+      consent.kind === 'operator-decision' &&
+      consent.grantRevision !== undefined &&
+      consent.grantRevision !==
+        readPluginGrantRevision(projectHomeDir, pluginName)
+    )
+      throw new PluginGrantMutationSupersededError();
+    grantScope = createPluginGrantMutationScope(projectHomeDir, pluginName, {
+      expectedRevision:
+        consent.kind === 'operator-decision' &&
+        consent.grantRevision !== undefined
+          ? consent.grantRevision
+          : requestGrants.revisionFor(pluginName),
+    });
+    leaveInstallGraph = enterPluginInstallationGraph(
+      projectHomeDir,
+      pluginName,
+    );
 
     // ── The consent gate (archive#4288) ──────────────────────────────────
     //
@@ -2019,7 +3062,108 @@ export async function installPluginFromSource(
       (dependency) =>
         resolvePluginDependencySource(dependency, source, dependencySourceRoot),
     );
+    if (isAgentPlugin && manifest.dependencies?.length) {
+      const approvals = new Map(
+        consent.kind === 'operator-decision'
+          ? (consent.dependencyApprovals ?? []).map(
+              (entry) => [entry.id, entry] as const,
+            )
+          : [],
+      );
+      const edges = new Map<string, string[]>([
+        [pluginName, manifest.dependencies.map((entry) => entry.id)],
+      ]);
+      await resolvePluginDependencies(
+        manifest,
+        pluginsDir,
+        () => ({
+          async install(id: string): Promise<never> {
+            throw new Error(`Dependency preflight cannot install '${id}'`);
+          },
+          async resolveSource(id: string) {
+            const selected = await resolveSinglePluginRegistryProvider(id);
+            if (!selected.source)
+              throw new Error(
+                `Plugin dependency '${id}' has no inspectable source`,
+              );
+            return selected.source;
+          },
+          async listAvailable() {
+            return (
+              await Promise.all(
+                getPluginRegistryProviders().map((entry) =>
+                  entry.provider.listAvailable(),
+                ),
+              )
+            ).flat();
+          },
+        }),
+        logger,
+        new Set(),
+        source,
+        dependencySourceRoot,
+        {
+          beforeResolve(id) {
+            if (!approvedDependencyIds.has(id)) {
+              if (consent.kind !== 'operator-decision')
+                throw new Error('Dependency approval is required');
+              assertPluginOperatorDecision({
+                pluginName,
+                consent,
+                basis: {
+                  contentDigest: consentBasis.contentDigest,
+                  required: consentBasis.required,
+                  dependencies: [id],
+                },
+              });
+            }
+          },
+          async resolved(dependency) {
+            const approval = approvals.get(dependency.id);
+            if (
+              !approvedDependencyIds.has(dependency.id) ||
+              !approval ||
+              !dependency.consent
+            )
+              throw new Error(
+                `Plugin dependency '${dependency.id}' needs a readable, preview-bound approval before building`,
+              );
+            if (
+              approval.grantRevision !== undefined &&
+              approval.grantRevision !==
+                readPluginGrantRevision(projectHomeDir, dependency.id)
+            )
+              throw new PluginGrantMutationSupersededError();
+            const basis = dependency.consent;
+            assertPluginOperatorDecision({
+              pluginName: dependency.id,
+              consent: { ...approval, kind: 'operator-decision' },
+              basis: {
+                contentDigest: basis.contentDigest,
+                required: basis.permissions,
+                dependencies: basis.dependencies,
+              },
+            });
+            edges.set(dependency.id, basis.dependencies);
+          },
+        },
+      );
+      const visiting = new Set<string>(),
+        visited = new Set<string>();
+      const visit = (id: string) => {
+        if (visiting.has(id))
+          throw new Error(`Plugin dependency cycle detected: ${id}`);
+        if (visited.has(id)) return;
+        visiting.add(id);
+        for (const child of edges.get(id) ?? []) visit(child);
+        visiting.delete(id);
+        visited.add(id);
+      };
+      visit(pluginName);
+    }
     const dependencyLifecycle = createDependencyLifecycle({
+      packageMcpJournal: deps.packageMcpJournal,
+      grantRevisions: requestGrants,
       consent,
       stagedParent: manifest,
       pluginsDir,
@@ -2029,10 +3173,161 @@ export async function installPluginFromSource(
       settleProviderAdapterRetirements: deps.settleProviderAdapterRetirements,
     });
 
+    dependencyLifecycle.validatePortableInstalled = async (dependency) => {
+      assertPluginDependencyAcyclic(projectHomeDir, dependency.id);
+      if (!deps.packageMcpJournal) return false;
+      const captured = captureLocalPluginInstallation(
+        pluginsDir,
+        deps.packageMcpJournal,
+        dependency.id,
+      );
+      if (!captured?.installation) return false;
+      const expectedRecoveryDependency = recovery?.dependencies.get(
+        dependency.id,
+      );
+      if (
+        recovery &&
+        (!expectedRecoveryDependency ||
+          expectedRecoveryDependency.generation !==
+            captured.installation.incarnation ||
+          expectedRecoveryDependency.artifact.digest !==
+            captured.installation.contentDigest)
+      )
+        throw new Error(
+          `Recovery dependency '${dependency.id}' changed; preview again`,
+        );
+      if (
+        !captured.isCurrent() ||
+        computePluginContentDigest(
+          dirname(captured.root.packageRoot),
+          basename(captured.root.packageRoot),
+        ) !== captured.installation.contentDigest
+      )
+        throw new Error(
+          `Plugin dependency '${dependency.id}' installation changed; preview again`,
+        );
+      const installed = readPluginManifestFileSync(
+        join(captured.root.packageRoot, 'plugin.json'),
+      );
+      if (installed.name !== dependency.id)
+        throw new Error(
+          'Plugin dependency installation identity does not match',
+        );
+      if (
+        dependency.version &&
+        dependency.version !== '*' &&
+        dependency.version !== installed.version
+      )
+        throw new Error(
+          `Plugin dependency '${dependency.id}' requires exact version '${dependency.version}', found '${installed.version}'`,
+        );
+      assertDependencyProviderSlotsAvailable(
+        pluginsDir,
+        dependency.id,
+        installed,
+        manifest,
+        deps.packageMcpJournal,
+      );
+      return true;
+    };
+    dependencyLifecycle.installPortable = async ({
+      dependencyId,
+      source: childSource,
+      manifest: childManifest,
+    }) => {
+      const approval =
+        consent.kind === 'operator-decision'
+          ? consent.dependencyApprovals?.find(
+              (item) => item.id === dependencyId,
+            )
+          : undefined;
+      if (!approval)
+        throw new Error(
+          `Portable dependency '${dependencyId}' requires its own preview-bound approval`,
+        );
+      assertDependencyProviderSlotsAvailable(
+        pluginsDir,
+        dependencyId,
+        childManifest,
+        manifest,
+        deps.packageMcpJournal,
+      );
+      const current = await (await installationHostFor(deps).service()).inspect(
+        dependencyId,
+      );
+      if (current)
+        throw new Error(
+          `Plugin dependency '${dependencyId}' changed while its source was being acquired; preview again`,
+        );
+      const installedChild = await installPluginFromSource(
+        childSource,
+        [],
+        deps,
+        {
+          ...(registryDependencyOwners.has(dependencyId)
+            ? {
+                registryId: dependencyId,
+                registryKey: registryDependencyOwners.get(dependencyId)!,
+              }
+            : {}),
+          activationSession: options?.activationSession,
+          ...(managedLifecycle
+            ? {
+                activationParent: {
+                  installation: pluginName,
+                  generation: managedLifecycle.selected.generation,
+                },
+              }
+            : {}),
+          expectedPluginName: dependencyId,
+          expectedInstallation: null,
+          consent: {
+            kind: 'operator-decision',
+            contentDigest: approval.contentDigest,
+            grantRevision:
+              approval.grantRevision ?? requestGrants.revisionFor(dependencyId),
+            permissions: approval.permissions,
+            dependencies: [...approvedDependencyIds],
+            dependencyApprovals:
+              consent.kind === 'operator-decision'
+                ? consent.dependencyApprovals
+                : undefined,
+          },
+        },
+      );
+      const installed = resolveInstalledPluginRoot(pluginsDir, dependencyId);
+      if (installed?.kind !== 'incarnation')
+        throw new Error(
+          'Managed dependency installation did not publish its materialization',
+        );
+      const digest = computePluginContentDigest(
+        dirname(installed.packageRoot),
+        basename(installed.packageRoot),
+      );
+      if (!digest)
+        throw new Error(
+          'Managed dependency installation digest is unavailable',
+        );
+      createdPluginTrees.add(dependencyId);
+      createdPluginDigests.set(dependencyId, digest);
+      if (!installedChild.lifecycle)
+        throw new Error(
+          'Managed dependency installation has no admission receipt',
+        );
+      managedCreated.set(
+        dependencyId,
+        installedChild.lifecycle.selected.generation,
+      );
+    };
+
     // One lock order for every publication: global publication, then plugin
     // content. Waiting for publication must never retain a dependency lock.
-    releaseInstallPublication = await acquireFileMutationLockAsync(
-      join(projectHomeDir, 'plugin-install-publication.mutation'),
+    releaseInstallPublication = await acquirePluginPublicationLease(
+      projectHomeDir,
+      () =>
+        acquireFileMutationLockAsync(
+          join(projectHomeDir, 'plugin-install-publication.mutation'),
+        ),
     );
     await ensureCanonicalRegistryInstallAliases(projectHomeDir);
     if (manifest.workspacePanes?.length) {
@@ -2044,7 +3339,7 @@ export async function installPluginFromSource(
         }
       }
     }
-    const pluginDir = join(pluginsDir, pluginName);
+    let pluginDir = join(pluginsDir, pluginName);
     assertPathInside(pluginsDir, pluginDir, 'Plugin install target');
     assertRegistryInstallTargetAvailable(
       projectHomeDir,
@@ -2053,6 +3348,50 @@ export async function installPluginFromSource(
       options?.registryKey,
       pluginName,
     );
+    const installationService =
+      isAgentPlugin || deps.installationHost || deps.packageMcpJournal
+        ? await installationHostFor(deps).service()
+        : null;
+    const priorInstallation = installationService
+      ? await installationService.inspect(pluginName)
+      : null;
+    const selectedRoot = priorInstallation
+      ? resolvePluginMaterialization(
+          pluginsDir,
+          pluginName,
+          priorInstallation.materialization,
+        )
+      : resolveInstalledPluginRoot(pluginsDir, pluginName);
+    if (
+      (priorInstallation && !isAgentPlugin) ||
+      (isAgentPlugin
+        ? selectedRoot?.kind === 'legacy'
+        : selectedRoot?.kind === 'incarnation')
+    )
+      throw new PluginIncarnationError('migration-required');
+    if (
+      priorInstallation &&
+      selectedRoot?.dataScope !== priorInstallation.dataScope
+    )
+      throw new Error('Installed data scope does not match its authority');
+    const priorJournalInstallation =
+      deps.packageMcpJournal?.currentInstallation(pluginName);
+    const priorWasReady =
+      priorJournalInstallation?.state === 'observed' &&
+      deps.packageMcpJournal!.admissionOpen(
+        priorJournalInstallation.installation,
+      );
+    const priorActivationPlan =
+      priorJournalInstallation?.state === 'observed'
+        ? deps.packageMcpJournal!.activationPlan(
+            priorJournalInstallation.installation,
+          )
+        : null;
+    let permissionArtifact: CapturedPluginPermissionArtifact | undefined;
+    let managedLifecycle:
+      | Awaited<ReturnType<NonNullable<typeof installationService>['install']>>
+      | undefined;
+    if (isAgentPlugin && selectedRoot) pluginDir = selectedRoot.packageRoot;
     const existingManifest = existsSync(join(pluginDir, 'plugin.json'))
       ? await readManifestForRemoval(
           join(pluginDir, 'plugin.json'),
@@ -2064,9 +3403,16 @@ export async function installPluginFromSource(
       ? capturePersistedAgentOwnership(agentsDir, pluginName, existingManifest)
       : new Map<string, string | undefined>();
     const hadExistingPlugin = existingManifest !== null;
-    const retainedDependencyOwnership = hadExistingPlugin
-      ? readPluginDependencyOwnership(projectHomeDir, pluginName)
-      : [];
+    const retainedDependencyOwnership = (
+      hadExistingPlugin
+        ? readPluginDependencyOwnership(projectHomeDir, pluginName)
+        : []
+    ).filter(
+      (entry) =>
+        !recovery ||
+        (entry.generation !== undefined &&
+          recovery.dependencies.get(entry.id)?.generation === entry.generation),
+    );
     if (hadExistingPlugin) {
       eventSubscriptionQuiescence =
         (await deps.quiesceEventSubscriptions?.(pluginName)) ?? null;
@@ -2110,7 +3456,7 @@ export async function installPluginFromSource(
         // taken.
         if (hadExistingPlugin) {
           const backupDir = join(installBackupRoot, 'plugin');
-          cpSync(pluginDir, backupDir, PLUGIN_TREE_COPY);
+          if (!isAgentPlugin) cpSync(pluginDir, backupDir, PLUGIN_TREE_COPY);
           backupPluginOwnedIntegrations(
             join(projectHomeDir, 'integrations'),
             pluginName,
@@ -2123,7 +3469,128 @@ export async function installPluginFromSource(
         // The parent and every dependency publish under one cross-process
         // transaction. A provider collision cannot race between preflight and
         // dependency activation, and rollback retains the same outer fence.
-        const registryDependencyOwners = new Map<string, string>();
+
+        if (isAgentPlugin) {
+          if (!recovery) await buildPlugin(tempDir, pluginName, manifest);
+          assertPluginBundleAssetsContained(tempDir);
+          const artifact = captureLocalPluginArtifact(tempDir);
+          const service = await installationHostFor(deps).service(artifact);
+          if (
+            options?.dataPolicy === 'retain-and-reset' &&
+            options.expectedInstallation === undefined
+          )
+            throw new Error(
+              'Preview the current installation before starting with new data',
+            );
+          // Acquisition-owner scoped continuity, not a signature/publisher claim.
+          // Native canonicalization prevents alternate local spellings changing identity.
+          const acquisitionSource = existsSync(source)
+            ? realpathSync.native(source)
+            : source;
+          if (recovery && !recovery.current())
+            throw new Error('Retained recovery changed; preview again');
+          const origin =
+            recovery?.origin ??
+            createHash('sha256')
+              .update(
+                JSON.stringify({
+                  owner: realpathSync.native(projectHomeDir),
+                  registryId: options?.registryId ?? null,
+                  registryKey: options?.registryKey ?? null,
+                  source: acquisitionSource,
+                }),
+              )
+              .digest('hex');
+          const activationPlan: PluginActivationPlan | undefined = isAgentPlugin
+            ? {
+                version: 1,
+                artifactDigest: artifact.digest,
+                sourceDigest: consentBasis.contentDigest,
+                descriptorDigest: pluginActivationDescriptorDigest(manifest),
+                origin,
+                consent:
+                  consent.kind === 'operator-decision'
+                    ? {
+                        ...consent,
+                        grantRevision:
+                          consent.grantRevision ??
+                          requestGrants.revisionFor(pluginName),
+                      }
+                    : consent,
+                previous: priorInstallation,
+                ...(options?.activationParent
+                  ? { parent: options.activationParent }
+                  : {}),
+                agents: (manifest.agents ?? [])
+                  .filter((agent) => !skipSet.has(`agent:${agent.slug}`))
+                  .map((agent) => ({
+                    slug: agent.slug,
+                    previousProject:
+                      persistedAgentOwnership.get(agent.slug) ?? null,
+                  })),
+                ownedDependencies: retainedDependencyOwnership,
+                skipped: [...skipSet],
+              }
+            : undefined;
+          if (
+            activationPlan &&
+            (!deps.packageMcpJournal || !options?.activationSession)
+          )
+            throw new Error(
+              'Station namespace activation requires an owned runtime installation session',
+            );
+          managedLifecycle = await service.install({
+            installation: pluginName,
+            expected:
+              options?.expectedInstallation !== undefined
+                ? options.expectedInstallation
+                : priorInstallation,
+            artifact,
+            origin,
+            data: options?.dataPolicy,
+            ...(activationPlan ? { activationPlan } : {}),
+          });
+          const installed = resolveInstalledPluginRoot(pluginsDir, pluginName);
+          if (installed?.kind !== 'incarnation')
+            throw new Error(
+              'Selected plugin has no local execution materialization',
+            );
+          pluginDir = installed.packageRoot;
+          const activationPermit = activationPlan
+            ? registerInstalledPluginActivation(
+                deps,
+                pluginDir,
+                manifest,
+                managedLifecycle.selected,
+              )
+            : undefined;
+          const captured = deps.packageMcpJournal
+            ? activationPermit
+              ? captureLocalPluginActivation(
+                  pluginsDir,
+                  deps.packageMcpJournal,
+                  activationPermit,
+                )
+              : captureLocalPluginInstallation(
+                  pluginsDir,
+                  deps.packageMcpJournal,
+                  pluginName,
+                )
+            : null;
+          permissionArtifact = {
+            pluginId: pluginName,
+            digest: artifact.digest,
+            isCurrent: () =>
+              (captured
+                ? captured.isCurrent()
+                : resolveInstalledPluginRoot(pluginsDir, pluginName)
+                    ?.generation === installed.generation) &&
+              computePluginContentDigest(
+                dirname(installed.packageRoot),
+                basename(installed.packageRoot),
+              ) === artifact.digest,
+          };
+        }
 
         for (const [index, dependency] of (
           manifest.dependencies ?? []
@@ -2229,15 +3696,14 @@ export async function installPluginFromSource(
           }
         }
 
-        scanPluginPromptGeneration(tempDir, pluginName);
-        await buildPlugin(tempDir, pluginName);
-        assertPluginBundleAssetsContained(tempDir);
-
-        if (existsSync(pluginDir) && pluginDir !== tempDir) {
-          rmSync(pluginDir, { recursive: true, force: true });
-        }
-        if (tempDir !== pluginDir) {
-          cpSync(tempDir, pluginDir, { recursive: true });
+        if (!isAgentPlugin) {
+          scanPluginPromptGeneration(tempDir, pluginName);
+          await buildPlugin(tempDir, pluginName, manifest);
+          assertPluginBundleAssetsContained(tempDir);
+          if (existsSync(pluginDir) && pluginDir !== tempDir)
+            rmSync(pluginDir, { recursive: true, force: true });
+          if (tempDir !== pluginDir)
+            cpSync(tempDir, pluginDir, { recursive: true });
         }
         // The tree just changed. The lock's release forgets the memoized
         // digest, but reads happen INSIDE this span (`hasGrant` below, and
@@ -2254,6 +3720,13 @@ export async function installPluginFromSource(
           manifest,
           previousManifest: existingManifest,
           persistedOwnership: persistedAgentOwnership,
+          installationGeneration: managedLifecycle?.selected.generation,
+          cleanupGenerations: isAgentPlugin
+            ? [
+                managedLifecycle!.selected.generation,
+                ...(priorInstallation ? [priorInstallation.generation] : []),
+              ]
+            : undefined,
           include: (slug) => !skipSet.has(`agent:${slug}`),
           logger,
         });
@@ -2262,10 +3735,12 @@ export async function installPluginFromSource(
           join(projectHomeDir, 'integrations'),
           pluginName,
         );
-        const copiedIntegrations = copyPluginIntegrations(
-          pluginDir,
-          join(projectHomeDir, 'integrations'),
-        );
+        const copiedIntegrations = isAgentPlugin
+          ? []
+          : copyPluginIntegrations(
+              pluginDir,
+              join(projectHomeDir, 'integrations'),
+            );
         for (const integrationId of copiedIntegrations) {
           logger.info(`Copied tool config: ${integrationId}`);
         }
@@ -2293,10 +3768,13 @@ export async function installPluginFromSource(
         // `serverModule` where the old one did not starts without
         // `plugin.server`.
         const rebound = hadExistingPlugin
-          ? await rebindGrantsAfterContentChange(
-              projectHomeDir,
-              pluginName,
-              manifest,
+          ? await grantScope!.run(() =>
+              rebindGrantsAfterContentChange(
+                projectHomeDir,
+                pluginName,
+                manifest,
+                permissionArtifact,
+              ),
             )
           : { retained: [], withdrawn: [] };
         if (rebound.withdrawn.length > 0) {
@@ -2315,14 +3793,16 @@ export async function installPluginFromSource(
           consentGranted,
           pendingConsent,
           withdrawn: autoGrantWithdrew,
-        } = await processInstallPermissions(
-          projectHomeDir,
-          pluginName,
-          requiredPermissionsForManifest(manifest),
-          // The decision the gate above already refused to proceed without,
-          // recorded against the tree that just landed rather than through a
-          // second round trip after the mutation (archive#4288).
-          { consented: consentedPermissions },
+        } = await grantScope!.run(() =>
+          processInstallPermissions(
+            projectHomeDir,
+            pluginName,
+            requiredPermissionsForManifest(manifest),
+            // The decision the gate above already refused to proceed without,
+            // recorded against the tree that just landed rather than through a
+            // second round trip after the mutation (archive#4288).
+            { consented: consentedPermissions, artifact: permissionArtifact },
+          ),
         );
         // Derived, not the `[]` a first install used to assert (archive#4288,
         // delta review). A first install CAN withdraw: a leftover grants
@@ -2352,6 +3832,7 @@ export async function installPluginFromSource(
           // publication step fails, the outer catch restores these backups
           // alongside the old parent tree and grant/ownership snapshot.
           retiredDependencyBackups = await removeOwnedDependencyLifecycles({
+            managedDeps: deps,
             ownershipHandoffs,
             dependencies: droppedDependencyOwnership,
             removedPluginName: pluginName,
@@ -2372,12 +3853,18 @@ export async function installPluginFromSource(
             createdPluginTrees,
             retainedDependencyOwnership,
             approvedDependencyIds,
+            deps.packageMcpJournal,
+            managedCreated,
+            options?.activationSession,
           ),
+          permissionArtifact,
         );
         const activeProviders = hasGrant(
           projectHomeDir,
           pluginName,
           'providers.register',
+          undefined,
+          permissionArtifact,
         )
           ? (manifest.providers ?? []).filter(
               (provider) => !skipSet.has(`provider:${provider.type}`),
@@ -2388,7 +3875,15 @@ export async function installPluginFromSource(
           pluginName,
           { ...manifest, providers: activeProviders },
           logger,
-          { strict: true },
+          {
+            strict: true,
+            ...(permissionArtifact
+              ? (captureManagedPluginPermission(deps, pluginName) ?? {
+                  artifact: permissionArtifact,
+                  packageRoot: pluginDir,
+                })
+              : {}),
+          },
         );
         await deps.reconcileEngineConnections?.(pluginName);
 
@@ -2417,14 +3912,29 @@ export async function installPluginFromSource(
             inspectedDependencies.add(dependency.id);
             assertPluginNameSegment(dependency.id);
             const dependencyManifest = readPluginManifestFileSync(
-              join(pluginsDir, dependency.id, 'plugin.json'),
+              join(
+                ownershipPackageRoot(
+                  pluginsDir,
+                  dependency.id,
+                  deps.packageMcpJournal,
+                  options?.activationSession,
+                ) ?? join(pluginsDir, dependency.id),
+                'plugin.json',
+              ),
             );
             dependencyPermissions.push({
               id: dependency.id,
               pendingConsent: requiredPermissionsForManifest(dependencyManifest)
                 .filter(
                   (permission) =>
-                    !hasGrant(projectHomeDir, dependency.id, permission),
+                    !hasGrant(
+                      projectHomeDir,
+                      dependency.id,
+                      permission,
+                      undefined,
+                      captureManagedPluginPermission(deps, dependency.id)
+                        ?.artifact,
+                    ),
                 )
                 .map((permission) => ({
                   permission,
@@ -2436,14 +3946,31 @@ export async function installPluginFromSource(
         };
         inspectDependencyPermissions(manifest);
 
-        eventBus?.emit('plugins:installed', {
-          name: pluginName,
-          agents: manifest.agents?.map((agent) => agent.slug) || [],
+        deferPluginActivationNotification(deps.activationSession!, () => {
+          if (managedLifecycle) {
+            const selected =
+              deps.packageMcpJournal?.currentInstallation(pluginName);
+            if (
+              selected?.state !== 'observed' ||
+              selected.installation.incarnation !==
+                managedLifecycle.selected.generation ||
+              !deps.packageMcpJournal!.admissionOpen(selected.installation)
+            )
+              return;
+          }
+          eventBus?.emit('plugins:installed', {
+            name: pluginName,
+            agents: manifest.agents?.map((agent) => agent.slug) || [],
+          });
         });
         pluginInstalls.add(1, { plugin: pluginName });
 
+        dependencyLifecycle.commit?.();
+        commitRemovedDependencies(retiredDependencyBackups);
+        grantScope!.commit();
         return {
           success: true,
+          ...(managedLifecycle ? { lifecycle: managedLifecycle } : {}),
           plugin: {
             name: pluginName,
             displayName: manifest.displayName,
@@ -2467,16 +3994,45 @@ export async function installPluginFromSource(
           },
         };
       } catch (installError) {
-        const dependencyCleanupFailures =
-          await removeDependencyTreesCreatedByThisInstall(
-            pluginsDir,
-            createdPluginTrees,
-            pluginName,
-            logger,
-            ROLLBACK_LOCK_TIMEOUT_MS,
-            (dependencyId) => dependencyLifecycle.rollback(dependencyId),
-            createdPluginDigests,
-          );
+        // An indeterminate selection must be reconciled by its authority,
+        // never inferred from a failed transport acknowledgement.
+        if (isAgentPlugin && installError instanceof PluginInstallationPending)
+          throw installError;
+        const dependencyCleanupFailures = await withPluginRetirementScope(
+          pluginName,
+          () =>
+            removeDependencyTreesCreatedByThisInstall(
+              pluginsDir,
+              createdPluginTrees,
+              pluginName,
+              logger,
+              ROLLBACK_LOCK_TIMEOUT_MS,
+              async (dependencyId) => {
+                if (managedCreated.has(dependencyId)) {
+                  const current = await (
+                    await installationHostFor(deps).service()
+                  ).inspect(dependencyId);
+                  if (
+                    current?.generation !== managedCreated.get(dependencyId)
+                  ) {
+                    logger.warn(
+                      'Preserved independently replaced dependency during rollback',
+                      { plugin: dependencyId },
+                    );
+                    return true;
+                  }
+
+                  await uninstallInstalledPlugin(dependencyId, deps);
+                  return true;
+                }
+                await dependencyLifecycle.rollback(dependencyId);
+              },
+              createdPluginDigests,
+              deps.packageMcpJournal,
+              options?.activationSession,
+            ),
+        );
+        await rollbackOwnedGrants(grantScope);
         const error =
           dependencyCleanupFailures.length > 0
             ? new AggregateError(
@@ -2494,8 +4050,37 @@ export async function installPluginFromSource(
         }
         if (hadExistingPlugin && backupRoot) {
           try {
-            rmSync(pluginDir, { recursive: true, force: true });
-            cpSync(join(backupRoot, 'plugin'), pluginDir, PLUGIN_TREE_COPY);
+            if (isAgentPlugin) {
+              if (managedLifecycle && priorInstallation) {
+                const restored = await installationService!.compensate({
+                  expected: managedLifecycle.selected,
+                  retained: priorInstallation,
+                  ...(priorActivationPlan
+                    ? {
+                        activationPlan: {
+                          ...priorActivationPlan,
+                          parent: options?.activationParent,
+                        },
+                      }
+                    : {}),
+                });
+                pluginDir = selectedRoot!.packageRoot;
+                registerInstalledPluginActivation(
+                  deps,
+                  pluginDir,
+                  existingManifest!,
+                  restored,
+                  priorWasReady ? 'compensation' : 'install',
+                );
+                permissionArtifact = captureManagedPluginPermission(
+                  deps,
+                  pluginName,
+                )?.artifact;
+              }
+            } else {
+              rmSync(pluginDir, { recursive: true, force: true });
+              cpSync(join(backupRoot, 'plugin'), pluginDir, PLUGIN_TREE_COPY);
+            }
             // archive#4288, delta review MEDIUM 1. The memo currently holds
             // the digest of the tree this rollback just DELETED —
             // `rebindGrantsAfterContentChange` and `processInstallPermissions`
@@ -2513,7 +4098,11 @@ export async function installPluginFromSource(
               pluginName,
               backupRoot,
             );
-            await restorePluginDurableState(projectHomeDir, backupRoot);
+            await restorePluginDurableState(
+              projectHomeDir,
+              backupRoot,
+              captureManagedPluginPermission(deps, pluginName)?.artifact,
+            );
             await restoreRemovedDependencyLifecycles({
               backups: retiredDependencyBackups,
               pluginsDir,
@@ -2523,6 +4112,11 @@ export async function installPluginFromSource(
               settleProviderAdapterRetirements:
                 deps.settleProviderAdapterRetirements,
             });
+            await rebindCompensatedDependencyOwnership(
+              deps,
+              pluginName,
+              retiredDependencyBackups,
+            );
             await synchronizePluginAgentDefinitions({
               agentsDir,
               pluginDir,
@@ -2532,15 +4126,40 @@ export async function installPluginFromSource(
               previousManifest: manifest,
               logger,
               persistedOwnership: persistedAgentOwnership,
+              installationGeneration: isAgentPlugin
+                ? (await installationService!.inspect(pluginName))?.generation
+                : undefined,
+              cleanupGenerations: isAgentPlugin
+                ? [
+                    priorInstallation!.generation,
+                    ...(managedLifecycle
+                      ? [managedLifecycle.selected.generation]
+                      : []),
+                  ]
+                : undefined,
             });
             await loadPluginProviders(
               pluginsDir,
               pluginName,
-              hasGrant(projectHomeDir, pluginName, 'providers.register')
+              hasGrant(
+                projectHomeDir,
+                pluginName,
+                'providers.register',
+                undefined,
+                permissionArtifact,
+              )
                 ? existingManifest
                 : { ...existingManifest, providers: [] },
               logger,
-              { strict: true },
+              {
+                strict: true,
+                ...(permissionArtifact
+                  ? (captureManagedPluginPermission(deps, pluginName) ?? {
+                      artifact: permissionArtifact,
+                      packageRoot: pluginDir,
+                    })
+                  : {}),
+              },
             );
             await deps.reconcileEngineConnections?.(pluginName);
             await deps.settleProviderAdapterRetirements?.();
@@ -2556,13 +4175,27 @@ export async function installPluginFromSource(
           // aggregate both, matching the existing-plugin and uninstall branches
           // (archive#1835 delta review).
           try {
-            rmSync(pluginDir, { recursive: true, force: true });
+            if (isAgentPlugin) {
+              if (managedLifecycle) {
+                await installationService!.withdraw(managedLifecycle.selected);
+                if (deps.packageMcpJournal)
+                  retirePluginActivation(
+                    deps.activationSession,
+                    deps.packageMcpJournal,
+                    managedLifecycle.selected.generation,
+                  );
+              }
+            } else rmSync(pluginDir, { recursive: true, force: true });
             removePluginOwnedIntegrations(
               join(projectHomeDir, 'integrations'),
               pluginName,
             );
             if (backupRoot && backupComplete) {
-              await restorePluginDurableState(projectHomeDir, backupRoot);
+              await restorePluginDurableState(
+                projectHomeDir,
+                backupRoot,
+                captureManagedPluginPermission(deps, pluginName)?.artifact,
+              );
             }
             const { replacePluginProvidersForSource } = await import(
               '../../providers/registries/registry.js'
@@ -2577,6 +4210,11 @@ export async function installPluginFromSource(
               projectHomeDir,
               manifest: { ...manifest, agents: [] },
               previousManifest: manifest,
+              cleanupGenerations: isAgentPlugin
+                ? managedLifecycle
+                  ? [managedLifecycle.selected.generation]
+                  : []
+                : undefined,
               logger,
             });
             await rollbackOwnershipHandoffs(ownershipHandoffs);
@@ -2591,6 +4229,7 @@ export async function installPluginFromSource(
       }
     });
   } finally {
+    leaveInstallGraph?.();
     await releaseInstallPublication?.();
     serverQuiescence?.release();
     eventSubscriptionQuiescence?.release();
@@ -2606,12 +4245,34 @@ export async function installPluginFromSource(
   }
 }
 
-export async function uninstallInstalledPlugin(
+interface PluginRemovalRecovery {
+  root: string;
+  capture(
+    compensate: (
+      parent?: NonNullable<PluginActivationPlan['parent']>,
+    ) => Promise<PluginInstallationRevision | null>,
+    commit: () => void,
+  ): void;
+}
+
+export const uninstallInstalledPlugin: typeof uninstallInstalledPluginUnderContext =
+  (...args) =>
+    runOwnedPluginMutation(args[1], args[1].activationSession, (owned) =>
+      uninstallInstalledPluginUnderContext(args[0], owned, args[2]),
+    );
+
+async function uninstallInstalledPluginUnderContext(
   name: string,
   deps: PluginInstallSharedDeps,
-): Promise<{ success: true }> {
-  const release = await acquireFileMutationLockAsync(
-    join(deps.projectHomeDir, 'plugin-install-publication.mutation'),
+  recovery?: PluginRemovalRecovery,
+): Promise<{ success: true; lifecycle?: unknown }> {
+  const requestGrants = publicationGrantRevisions(() =>
+    observePluginGrantRevisions(deps.projectHomeDir),
+  );
+  const release = await acquirePluginPublicationLease(deps.projectHomeDir, () =>
+    acquireFileMutationLockAsync(
+      join(deps.projectHomeDir, 'plugin-install-publication.mutation'),
+    ),
   );
   try {
     await ensureCanonicalRegistryInstallAliases(deps.projectHomeDir);
@@ -2619,7 +4280,13 @@ export async function uninstallInstalledPlugin(
       resolveInstalledPluginName(deps.projectHomeDir, deps.pluginsDir, name) ||
       name;
     return await withPluginContentLock(deps.pluginsDir, installedName, () =>
-      uninstallPluginUnderPublication(name, deps, installedName),
+      uninstallPluginUnderPublication(
+        name,
+        deps,
+        installedName,
+        recovery,
+        requestGrants,
+      ),
     );
   } finally {
     await release();
@@ -2630,9 +4297,22 @@ async function uninstallPluginUnderPublication(
   name: string,
   deps: PluginInstallSharedDeps,
   installedPluginName: string,
-): Promise<{ success: true }> {
+  recovery?: PluginRemovalRecovery,
+  requestGrants?: PluginGrantRevisionSnapshot,
+): Promise<{ success: true; lifecycle?: unknown }> {
   const { agentsDir, eventBus, logger, pluginsDir, projectHomeDir } = deps;
-  const pluginDir = join(pluginsDir, installedPluginName);
+  const captured = deps.packageMcpJournal
+    ? captureLocalPluginInstallation(
+        pluginsDir,
+        deps.packageMcpJournal,
+        installedPluginName,
+      )
+    : null;
+  const selectedRoot = deps.packageMcpJournal
+    ? captured?.root
+    : resolveInstalledPluginRoot(pluginsDir, installedPluginName);
+  const pluginDir =
+    selectedRoot?.packageRoot ?? join(pluginsDir, installedPluginName);
   // The selected installed directory is the uninstall identity. A mutable
   // manifest may describe what needs cleanup, but it cannot rename the
   // principal whose grants, providers, integrations, or host record are
@@ -2643,14 +4323,72 @@ async function uninstallPluginUnderPublication(
     throw new Error('Plugin not found');
   }
 
+  const grantScope = createPluginGrantMutationScope(
+    projectHomeDir,
+    pluginName,
+    { expectedRevision: requestGrants?.revisionFor(pluginName) },
+  );
   let backupRoot: string | null = null;
   let removedDependencyBackups: RemovedDependencyBackup[] = [];
   const ownershipHandoffs: PluginDependencyOwnershipHandoff[] = [];
+  let isAgentPlugin = false;
+  try {
+    const raw = JSON.parse(
+      readFileSync(join(pluginDir, 'plugin.json'), 'utf8'),
+    ) as Record<string, unknown>;
+    isAgentPlugin =
+      raw.$schema ===
+      'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json';
+  } catch {
+    // The authoritative manifest read below owns the uninstall refusal.
+  }
   const manifest = await readManifestForRemoval(
     join(pluginDir, 'plugin.json'),
     installedPluginName,
     logger,
   );
+  const managed = isAgentPlugin || selectedRoot?.kind === 'incarnation';
+  if (managed && manifest.name !== pluginName)
+    throw new Error(
+      'Installed plugin manifest identity does not match its directory',
+    );
+  if (managed && selectedRoot?.kind !== 'incarnation')
+    throw new PluginIncarnationError('migration-required');
+  const installationService = managed
+    ? await installationHostFor(deps).service()
+    : null;
+  const priorInstallation = installationService
+    ? await installationService.inspect(pluginName)
+    : null;
+  const priorJournal = deps.packageMcpJournal?.currentInstallation(pluginName);
+  if (
+    captured?.installation &&
+    (priorInstallation?.generation !== captured.installation.incarnation ||
+      priorInstallation.materialization !== selectedRoot?.generation ||
+      priorJournal?.state !== 'observed' ||
+      priorJournal.installation.incarnation !==
+        captured.installation.incarnation)
+  )
+    throw new Error(
+      'Plugin installation changed before removal; reload before retrying',
+    );
+  const priorWasReady =
+    priorJournal?.state === 'observed' &&
+    deps.packageMcpJournal!.admissionOpen(priorJournal.installation);
+  const priorActivationPlan =
+    priorJournal?.state === 'observed'
+      ? deps.packageMcpJournal!.activationPlan(priorJournal.installation)
+      : null;
+  if (managed && !priorInstallation)
+    throw new Error('Package installation authority is unavailable');
+  let lifecycle:
+    | Awaited<ReturnType<NonNullable<typeof installationService>['withdraw']>>
+    | undefined;
+  if (
+    !managed &&
+    existsSync(join(projectHomeDir, 'agent-plugin-data', pluginName))
+  )
+    throw new PluginIncarnationError('migration-required');
   // Destructive dependency cleanup reads only Station's host-owned install
   // authority. The parent manifest and every file in its mutable tree are
   // untrusted uninstall inputs and cannot mint ownership over another plugin.
@@ -2683,9 +4421,117 @@ async function uninstallPluginUnderPublication(
   // fail the uninstall without deleting the live plugin and "restoring" an
   // incomplete copy (archive#1835 delta-2 review; same invariant as install).
   let backupComplete = false;
+  let compensatedInstallation: PluginInstallationRevision | null = null;
+  const compensateRemoval = async (
+    parent?: NonNullable<PluginActivationPlan['parent']>,
+  ): Promise<PluginInstallationRevision | null> => {
+    if (!backupRoot || !backupComplete) return null;
+    if (managed) {
+      const observed = await installationService!.inspect(pluginName);
+      const expected =
+        compensatedInstallation ?? (lifecycle ? null : priorInstallation);
+      if ((observed?.generation ?? null) !== (expected?.generation ?? null))
+        throw new Error('Plugin selection changed before removal compensation');
+      if (!compensatedInstallation) {
+        compensatedInstallation = await installationService!.compensate({
+          expected,
+          retained: priorInstallation!,
+          ...(priorActivationPlan
+            ? { activationPlan: { ...priorActivationPlan, parent } }
+            : {}),
+        });
+        registerInstalledPluginActivation(
+          deps,
+          pluginDir,
+          manifest,
+          compensatedInstallation,
+          priorWasReady ? 'compensation' : 'install',
+        );
+      }
+    } else {
+      rmSync(pluginDir, { recursive: true, force: true });
+      cpSync(join(backupRoot, 'plugin'), pluginDir, PLUGIN_TREE_COPY);
+    }
+    await restoreRemovedDependencyLifecycles({
+      backups: removedDependencyBackups,
+      ...(compensatedInstallation
+        ? {
+            activationParent: {
+              installation: pluginName,
+              generation: compensatedInstallation.generation,
+            },
+          }
+        : {}),
+      pluginsDir,
+      projectHomeDir,
+      logger,
+      reconcileEngineConnections: deps.reconcileEngineConnections,
+      settleProviderAdapterRetirements: deps.settleProviderAdapterRetirements,
+    });
+    // Defensive, for the same reason as the install rollback above
+    // (archive#4288, delta review MEDIUM 1). Nothing in the uninstall
+    // path refreshes the memo today, so this rollback's `hasGrant` is
+    // correct by luck rather than by construction; a restored tree is a
+    // tree whose memoized digest must not be trusted, whoever wrote it.
+    forgetPluginContentDigest(pluginsDir, pluginName);
+    restorePluginOwnedIntegrations(
+      join(projectHomeDir, 'integrations'),
+      pluginName,
+      backupRoot,
+    );
+    await rollbackOwnedGrants(grantScope);
+    await restorePluginDurableState(
+      projectHomeDir,
+      backupRoot,
+      captureManagedPluginPermission(deps, pluginName)?.artifact,
+    );
+    await rebindCompensatedDependencyOwnership(
+      deps,
+      pluginName,
+      removedDependencyBackups,
+    );
+
+    await synchronizePluginAgentDefinitions({
+      agentsDir,
+      pluginDir,
+      pluginName,
+      projectHomeDir,
+      manifest,
+      previousManifest: { ...manifest, agents: [] },
+      logger,
+      persistedOwnership: persistedAgentOwnership,
+      installationGeneration: compensatedInstallation?.generation,
+    });
+    const permission = captureManagedPluginPermission(deps, pluginName);
+    await loadPluginProviders(
+      pluginsDir,
+      pluginName,
+      hasGrant(
+        projectHomeDir,
+        pluginName,
+        'providers.register',
+        undefined,
+        permission?.artifact,
+      )
+        ? manifest
+        : { ...manifest, providers: [] },
+      logger,
+      {
+        strict: true,
+        ...permission,
+      },
+    );
+    await deps.reconcileEngineConnections?.(pluginName);
+    await deps.settleProviderAdapterRetirements?.();
+    await rollbackOwnershipHandoffs(ownershipHandoffs);
+    return managed ? await installationService!.inspect(pluginName) : null;
+  };
+
   try {
-    backupRoot = createStationTempDirSync('plugin-uninstall');
-    cpSync(pluginDir, join(backupRoot, 'plugin'), PLUGIN_TREE_COPY);
+    backupRoot = recovery?.root ?? createStationTempDirSync('plugin-uninstall');
+    if (recovery) mkdirSync(backupRoot, { recursive: true });
+    if (!managed)
+      cpSync(pluginDir, join(backupRoot, 'plugin'), PLUGIN_TREE_COPY);
     backupPluginOwnedIntegrations(
       join(projectHomeDir, 'integrations'),
       pluginName,
@@ -2694,6 +4540,7 @@ async function uninstallPluginUnderPublication(
     // Last: throws typed on a corrupt grants store, before which every other
     // backup element is already complete.
     backupPluginDurableState(projectHomeDir, backupRoot, pluginName);
+
     backupComplete = true;
 
     if (manifest.agents) {
@@ -2707,15 +4554,24 @@ async function uninstallPluginUnderPublication(
         projectHomeDir,
         pluginName,
         manifest,
+        managed ? [priorInstallation!.generation] : undefined,
       );
     }
 
-    await revokeAllGrants(projectHomeDir, pluginName);
+    await grantScope.run(() => revokeAllGrants(projectHomeDir, pluginName));
     removePluginOwnedIntegrations(
       join(projectHomeDir, 'integrations'),
       pluginName,
     );
-    rmSync(pluginDir, { recursive: true, force: true });
+    if (managed) {
+      lifecycle = await installationService!.withdraw(priorInstallation!);
+      if (deps.packageMcpJournal)
+        retirePluginActivation(
+          deps.activationSession,
+          deps.packageMcpJournal,
+          priorInstallation!.generation,
+        );
+    } else rmSync(pluginDir, { recursive: true, force: true });
     const { replacePluginProvidersForSource } = await import(
       '../../providers/registries/registry.js'
     );
@@ -2723,6 +4579,7 @@ async function uninstallPluginUnderPublication(
     await deps.settleProviderAdapterRetirements?.();
     await deps.removeEngineConnections?.(pluginName);
     removedDependencyBackups = await removeOwnedDependencyLifecycles({
+      managedDeps: deps,
       ownershipHandoffs,
       dependencies: ownedDependencies,
       removedPluginName: pluginName,
@@ -2739,78 +4596,34 @@ async function uninstallPluginUnderPublication(
       name === installedPluginName ? undefined : name,
     );
     await removePluginHostRecord(projectHomeDir, pluginName);
-    eventBus?.emit('plugins:removed', { name: pluginName });
+
+    eventBus?.emit('plugins:removed', {
+      name: pluginName,
+      ...(managed ? { retained: true } : {}),
+    });
     pluginUninstalls.add(1, { plugin: pluginName });
     logger.info('Plugin removed', { plugin: pluginName });
-    return { success: true };
+    const finishRemoval = () => {
+      commitRemovedDependencies(removedDependencyBackups);
+      grantScope.commit();
+    };
+    if (recovery) recovery.capture(compensateRemoval, finishRemoval);
+    else finishRemoval();
+    return { success: true, ...(lifecycle ? { lifecycle } : {}) };
   } catch (error) {
-    // Only a COMPLETE backup may drive the delete-and-restore rollback; an
-    // incomplete one means nothing destructive has run inside the try yet —
-    // fail the uninstall and leave the live plugin and its integrations
-    // untouched (archive#1835 delta-2 review).
-    if (backupRoot && backupComplete) {
-      try {
-        await restoreRemovedDependencyLifecycles({
-          backups: removedDependencyBackups,
-          pluginsDir,
-          projectHomeDir,
-          logger,
-          reconcileEngineConnections: deps.reconcileEngineConnections,
-          settleProviderAdapterRetirements:
-            deps.settleProviderAdapterRetirements,
-        });
-        rmSync(pluginDir, { recursive: true, force: true });
-        cpSync(join(backupRoot, 'plugin'), pluginDir, PLUGIN_TREE_COPY);
-        // Defensive, for the same reason as the install rollback above
-        // (archive#4288, delta review MEDIUM 1). Nothing in the uninstall
-        // path refreshes the memo today, so this rollback's `hasGrant` is
-        // correct by luck rather than by construction; a restored tree is a
-        // tree whose memoized digest must not be trusted, whoever wrote it.
-        forgetPluginContentDigest(pluginsDir, pluginName);
-        restorePluginOwnedIntegrations(
-          join(projectHomeDir, 'integrations'),
-          pluginName,
-          backupRoot,
-        );
-        await restorePluginDurableState(projectHomeDir, backupRoot);
-        await synchronizePluginAgentDefinitions({
-          agentsDir,
-          pluginDir,
-          pluginName,
-          projectHomeDir,
-          manifest,
-          previousManifest: { ...manifest, agents: [] },
-          logger,
-          persistedOwnership: persistedAgentOwnership,
-        });
-        await loadPluginProviders(
-          pluginsDir,
-          pluginName,
-          hasGrant(projectHomeDir, pluginName, 'providers.register')
-            ? manifest
-            : { ...manifest, providers: [] },
-          logger,
-          {
-            strict: true,
-          },
-        );
-        await deps.reconcileEngineConnections?.(pluginName);
-        await deps.settleProviderAdapterRetirements?.();
-        await rollbackOwnershipHandoffs(ownershipHandoffs);
-      } catch (rollbackError) {
-        throw new AggregateError(
-          [error, rollbackError],
-          'Plugin uninstall and rollback both failed.',
-        );
-      } finally {
-        rmSync(backupRoot, { recursive: true, force: true });
-      }
+    try {
+      await compensateRemoval();
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [error, rollbackError],
+        'Plugin uninstall and rollback both failed.',
+      );
     }
     throw error;
   } finally {
     serverQuiescence.release();
     eventSubscriptionQuiescence?.release();
-    if (backupRoot) {
+    if (backupRoot && !recovery) {
       rmSync(backupRoot, { recursive: true, force: true });
     }
   }

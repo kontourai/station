@@ -246,10 +246,12 @@ export interface InitializeRuntimeDeps {
   captureAgentConfigurationRevisions?: () => {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint?: string;
   };
   onAgentConfigurationReady?: (revisions: {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint?: string;
   }) => void;
   guardDefaultAgentTools?: (tools: any[]) => any[];
   replaceTemplateVariables: (text: string, agentName?: string) => string;
@@ -734,6 +736,8 @@ export async function initializeRuntime(
   logger.debug('Bedrock model catalog initialized');
 
   await loadRuntimePluginAssets({
+    packageMcpJournal:
+      orchestrationEventStore.createPackageMcpAdmissionJournal(),
     logger,
     projectHomeDir: configLoader.getProjectHomeDir(),
     loadPluginOverrides: () => configLoader.loadPluginOverrides(),
@@ -875,14 +879,16 @@ export async function initializeRuntime(
     configurationBefore &&
     configurationAfter &&
     (configurationBefore.provider !== configurationAfter.provider ||
-      configurationBefore.appConfig !== configurationAfter.appConfig)
+      configurationBefore.appConfig !== configurationAfter.appConfig ||
+      configurationBefore.selectedPackageFingerprint !==
+        configurationAfter.selectedPackageFingerprint)
   ) {
     throw new Error(
       'Runtime configuration changed while startup agents were being constructed.',
     );
   }
-  if (configurationAfter) {
-    deps.onAgentConfigurationReady?.(configurationAfter);
+  if (configurationBefore) {
+    deps.onAgentConfigurationReady?.(configurationBefore);
   }
   stationAgentsReady = true;
 

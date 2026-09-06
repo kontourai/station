@@ -1,3 +1,4 @@
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 /**
  * Workspace Home role routes (archive#3122 stage 3 / archive#3677 PR 2):
  * READ, REVOKE, and the GRANT channel on the distinct-origin consent surface.
@@ -99,6 +100,7 @@ import { assertPluginNameSegment } from './plugin-install-shared.js';
 const CONSENT_TARGET_KIND = 'workspace-home-role';
 
 export interface PluginHomeRoleRouteDeps {
+  packageMcpJournal?: PackageMcpAdmissionJournal;
   pluginsDir: string;
   projectHomeDir: string;
   eventBus?: EventBus;
@@ -187,6 +189,8 @@ export function registerPluginHomeRoleRoutes(
     (() =>
       new DistributionProfileService(
         deps.projectHomeDir,
+        undefined,
+        deps.packageMcpJournal,
       ).listPluginWorkspacePaneContributions());
 
   app.get('/home-role', (c) => {
