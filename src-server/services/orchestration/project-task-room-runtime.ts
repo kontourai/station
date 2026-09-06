@@ -4,6 +4,7 @@
  * authenticated request on each operation.
  */
 import { createHash, randomUUID } from 'node:crypto';
+import type { HomeTransferClosingSeal } from '@kontourai/station-contracts/cloud-move';
 import {
   LIVE_ACTIVITY_MAX_PARTICIPANTS,
   LIVE_ACTIVITY_MAX_ROOMS,
@@ -62,7 +63,7 @@ import type { ProjectTaskRoomWorkingState } from './project-task-room-working-st
 import { createOrchestrationRunId } from './run-projection.js';
 
 type RecoverableRoomHistory = ProjectTaskRoomAuthority &
-  Partial<Pick<ProjectTaskRoomHistory, 'findByProposal'>>;
+  Partial<Pick<ProjectTaskRoomHistory, 'findByProposal' | 'readSourceSeal'>>;
 type BrowserCapability = 'discover' | 'history-read' | 'message-write';
 type RoomCapability =
   | BrowserCapability
@@ -255,6 +256,17 @@ export type ProjectTaskRoomInspectionOutcome =
       readonly channelId: string;
     }
   | { readonly kind: 'not-found' | 'denied' | 'unavailable' };
+
+export type ProjectTaskRoomSourceSealObservationOutcome =
+  | { readonly kind: 'sealed'; readonly seal: HomeTransferClosingSeal }
+  | {
+      readonly kind:
+        | 'unsealed'
+        | 'denied'
+        | 'not-found'
+        | 'unavailable'
+        | 'conflict';
+    };
 
 export class ProjectTaskRoomRuntime {
   readonly #deps: ProjectTaskRoomRuntimeDeps;
@@ -706,6 +718,94 @@ export class ProjectTaskRoomRuntime {
         taskId: resolved.receipt.scope.taskId,
         channelId: projectTaskRoomChannelId(resolved.receipt.scope),
       };
+    } catch {
+      return { kind: 'unavailable' };
+    } finally {
+      this.#issued.delete(grant.opaqueToken);
+    }
+  }
+
+  /** Observe an existing source seal without opening or mutating either room. */
+  async readTransferSourceSeal(input: {
+    taskId: string;
+    request: Request;
+    channelId: string;
+    operationId: string;
+    sourceHomeRef: string;
+    targetHomeRef: string;
+  }): Promise<ProjectTaskRoomSourceSealObservationOutcome> {
+    if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+    const initialScope = this.#scope(input.taskId);
+    if (!initialScope) return { kind: 'not-found' };
+    const grant = await this.#issue(
+      input.taskId,
+      input.request,
+      'history-read',
+    );
+    if (!grant) {
+      if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+      return this.#scope(input.taskId)
+        ? { kind: 'denied' }
+        : { kind: 'not-found' };
+    }
+    try {
+      const admission = await this.#resolveGrant(grant, 'history-read');
+      if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+      if (admission.kind !== 'granted')
+        return {
+          kind:
+            admission.kind === 'unavailable'
+              ? 'unavailable'
+              : admission.kind === 'not-found'
+                ? 'not-found'
+                : 'denied',
+        };
+      const admittedScope = this.#scope(input.taskId);
+      if (!admittedScope) return { kind: 'not-found' };
+      if (
+        !sameScope(admission.receipt.scope, initialScope) ||
+        !sameScope(admittedScope, initialScope) ||
+        projectTaskRoomChannelId(admittedScope) !== input.channelId
+      )
+        return { kind: 'conflict' };
+      if (!this.#history.readSourceSeal) return { kind: 'unavailable' };
+      const observed = await this.#history.readSourceSeal({ grant });
+      if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+      const currentScope = this.#scope(input.taskId);
+      if (!currentScope) return { kind: 'not-found' };
+      if (
+        !sameScope(currentScope, initialScope) ||
+        projectTaskRoomChannelId(currentScope) !== input.channelId
+      )
+        return { kind: 'conflict' };
+      const delivery = await this.#resolveGrant(grant, 'history-read');
+      if (this.#closed || this.#deps.hosted?.()) return { kind: 'unavailable' };
+      const finalScope = this.#scope(input.taskId);
+      if (!finalScope) return { kind: 'not-found' };
+      if (delivery.kind !== 'granted')
+        return {
+          kind:
+            delivery.kind === 'unavailable'
+              ? 'unavailable'
+              : delivery.kind === 'not-found'
+                ? 'not-found'
+                : 'denied',
+        };
+      if (
+        !sameScope(finalScope, currentScope) ||
+        !sameScope(delivery.receipt.scope, finalScope) ||
+        projectTaskRoomChannelId(finalScope) !== input.channelId
+      )
+        return { kind: 'conflict' };
+      if (observed.kind !== 'sealed') return observed;
+      if (
+        observed.seal.operationId !== input.operationId ||
+        observed.seal.sourceHomeRef !== input.sourceHomeRef ||
+        observed.seal.targetHomeRef !== input.targetHomeRef ||
+        observed.seal.checkpoint.channelId !== input.channelId
+      )
+        return { kind: 'conflict' };
+      return observed;
     } catch {
       return { kind: 'unavailable' };
     } finally {

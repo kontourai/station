@@ -1,13 +1,7 @@
-import type { ProjectTaskRoomCheckpoint } from '@kontourai/station-contracts/project-task-room';
+import type { HomeTransferClosingSeal } from '@kontourai/station-contracts/cloud-move';
 
 /** Private source-side barrier. This receipt grants no target authority. */
-export interface ProjectTaskRoomSourceSeal {
-  operationId: string;
-  sourceHomeRef: string;
-  targetHomeRef: string;
-  checkpoint: ProjectTaskRoomCheckpoint;
-  workingStateDigest: string;
-}
+export type ProjectTaskRoomSourceSeal = HomeTransferClosingSeal;
 
 interface SealDatabase {
   exec(sql: string): void;

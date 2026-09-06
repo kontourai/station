@@ -1,3 +1,4 @@
+import { externalSessionContinuationSupport } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type {
   AdoptedSessionResult,
@@ -96,6 +97,10 @@ export function AttachedSessionDetail({
   visualViewport: ReturnType<typeof useMobileVisualViewport>;
 }) {
   const { showToast } = useToast();
+  const continuationSupport = externalSessionContinuationSupport(
+    session.provider,
+  );
+  const continuationSupported = continuationSupport.state === 'native';
   const adoptionIntent = useRef(createAdoptOrchestrationSessionIntent());
   // A settled server outcome is distinct from local reservation evidence: the
   // former says this exact continuation cannot be retried safely, whereas the
@@ -251,7 +256,8 @@ export function AttachedSessionDetail({
   const adoptionOutcomeUncertain =
     adoptionError?.failureClass === 'uncertain-no-response';
   const adoptionTransportFailed = isStationTransportFailure(adoption.error);
-  const adoptionDisabled = adoption.isPending || serverRejectedRetry;
+  const adoptionDisabled =
+    !continuationSupported || adoption.isPending || serverRejectedRetry;
   // archive#3227 C3: this was an inline copy of `sessionTitle`'s first and
   // last branches with its delegation branch missing, so an attached session
   // that DID carry a delegated task id read "Claude Code session" here and
@@ -336,8 +342,9 @@ export function AttachedSessionDetail({
           <div>
             <strong>Continue independently</strong>
             <p>
-              Station creates its own continuation. Your terminal keeps the
-              original session.
+              {continuationSupport.state === 'native'
+                ? 'Station creates its own continuation. Your terminal keeps the original session.'
+                : continuationSupport.reason}
             </p>
           </div>
           {/* The stream's SSE state says nothing about whether this REST
@@ -347,7 +354,12 @@ export function AttachedSessionDetail({
             variant="primary"
             disabled={adoptionDisabled}
             onClick={() => {
-              if (adoption.isPending || serverRejectedRetryRef.current) return;
+              if (
+                !continuationSupported ||
+                adoption.isPending ||
+                serverRejectedRetryRef.current
+              )
+                return;
               adoption.mutate(getSelectionIntent());
             }}
           >
