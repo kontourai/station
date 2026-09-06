@@ -1,6 +1,8 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { dismissSetupLauncher } from './helpers/orchestration';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 /**
  * archive#304 regression, re-homed by #1536 F.
@@ -68,7 +70,7 @@ async function mockShell(page: Page) {
       }),
     ),
   );
-  await page.route('**/api/**', (route) => {
+  await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/orchestration/sessions/read-model')
       return route.fulfill(json({ success: true, data: [] }));
@@ -166,7 +168,8 @@ async function mockShell(page: Page) {
       return route.fulfill(
         json({ success: true, data: { items: [], pendingCount: 0 } }),
       );
-    return route.fulfill(json({ success: true, data: [] }));
+    if (await fulfillStationShellRead(route)) return;
+    return rejectUnexpectedFixtureRequest(route);
   });
   await page.route('**/config/app', (route) =>
     route.fulfill(

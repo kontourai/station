@@ -970,7 +970,7 @@ async function openNewChatModal(page: Page) {
     .locator('.chat-dock__tab-actions .chat-dock__new')
     .nth(1);
   await expect(newChatButton).toBeVisible({ timeout: 10_000 });
-  await newChatButton.dispatchEvent('click');
+  await newChatButton.click();
   await expect(page.locator('.new-chat-modal')).toBeVisible({ timeout: 5_000 });
 }
 

@@ -734,18 +734,13 @@ export async function openHeaderSettings(page: Page): Promise<void> {
 }
 
 export async function dismissSetupLauncher(page: Page): Promise<void> {
-  const continueButton = page.getByRole('button', {
-    name: 'Continue Without Setup',
-  });
-  await continueButton.click({ timeout: 1000 }).catch(async () => {
-    await page.evaluate(() => {
-      document.querySelector('[data-testid="setup-launcher"]')?.remove();
-    });
-  });
-  await page.getByTestId('setup-launcher').waitFor({
-    state: 'detached',
-    timeout: 3000,
-  });
+  const launcher = page.getByTestId('setup-launcher');
+  if (await launcher.isVisible()) {
+    await launcher
+      .getByRole('button', { name: 'Dismiss setup launcher', exact: true })
+      .click();
+    await expect(launcher).toBeHidden();
+  }
 }
 
 export async function seedOrchestrationRoutes(

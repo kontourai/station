@@ -29,14 +29,6 @@ async function mockStationIdentity(page: Page) {
   );
 }
 
-async function forceClick(page: Page, selector: string) {
-  await page
-    .locator(selector)
-    .evaluate((el) =>
-      el.dispatchEvent(new MouseEvent('click', { bubbles: true })),
-    );
-}
-
 async function mockRegistry(page: Page) {
   const installCalls: string[] = [];
   const layoutStates = new Map<
@@ -284,7 +276,7 @@ test.describe('Registry page', () => {
     await page.goto('/registry');
     await page.waitForSelector('.page__tab', { timeout: 15_000 });
 
-    await forceClick(page, '.page__tab:has-text("Skills")');
+    await page.getByRole('tab', { name: 'Skills', exact: true }).click();
     await page.getByRole('button', { name: /Prompt Toolkit/i }).click();
 
     await expect(page.getByTestId('registry-detail')).toContainText(

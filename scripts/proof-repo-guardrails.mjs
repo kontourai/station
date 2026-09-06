@@ -683,7 +683,7 @@ if (monitoringContext.includes('fetch(')) {
   errors.push('MonitoringContext must not issue raw fetch() calls.');
 }
 for (const requiredHook of [
-  'fetchMonitoringEvents',
+  'fetchMonitoringEventWindow',
   'useMonitoringStatsQuery',
 ]) {
   if (!monitoringContext.includes(requiredHook)) {
@@ -1957,7 +1957,7 @@ const strandsMessageSync = readRequiredSource(
 for (const requiredHelper of [
   'export function mapStrandsContentBlocksToParts',
   'export async function syncStrandsMessagesToMemory',
-  'const delta = agentMessages.slice(existing?.length || 0);',
+  'agentMessages.slice(existing?.length || 0)',
   'await memoryAdapter.addMessage(',
 ]) {
   if (!strandsMessageSync.includes(requiredHelper)) {
@@ -4290,12 +4290,22 @@ const orchestrationHook = readRequiredSource(
 );
 for (const requiredHelper of [
   './orchestration/ensureOrchestrationEventStream',
-  'sendExecutionMessageRequest',
   'useOrchestrationProvidersQuery',
 ]) {
   if (!orchestrationHook.includes(requiredHelper)) {
     errors.push(`useOrchestration must use ${requiredHelper}.`);
   }
+}
+const foregroundDispatch = readRequiredSource(
+  '../src-ui/src/lib/foregroundMessageDispatch.ts',
+);
+if (
+  !foregroundDispatch.includes('@kontourai/station-sdk/client') ||
+  !foregroundDispatch.includes('sendExecutionMessage(')
+) {
+  errors.push(
+    'Foreground dispatch must use the portable SDK execution request.',
+  );
 }
 for (const retiredInlineOrchestrationSnippet of [
   'type OrchestrationEvent =',

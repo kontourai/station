@@ -546,9 +546,7 @@ test.describe('Project Navigation', () => {
   });
 
   test('new project form renders', async ({ page }) => {
-    await page
-      .getByRole('button', { name: /New Project/ })
-      .dispatchEvent('click');
+    await page.getByRole('button', { name: /New Project/ }).click();
     await expect(page).toHaveURL(/\/projects\/new/);
     await expect(page.getByPlaceholder('My Project')).toBeVisible({
       timeout: 5000,

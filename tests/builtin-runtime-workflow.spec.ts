@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import {
+  dismissSetupLauncher,
   emitMockOrchestrationEvent,
   installMockOrchestrationEventWindow,
   installMockOrchestrationSse,
@@ -379,16 +380,13 @@ async function openRuntimeSession(
     page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1),
   ).toBeVisible({ timeout: 15_000 });
   await dismissSetupLauncher(page);
-  await page
-    .locator('.chat-dock__tab-actions .chat-dock__new')
-    .nth(1)
-    .dispatchEvent('click');
+  await page.locator('.chat-dock__tab-actions .chat-dock__new').nth(1).click();
   await expect(
     page.locator('.new-chat-modal__agent', { hasText: runtimeName }),
   ).toBeVisible({ timeout: 10_000 });
   await page
     .locator('.new-chat-modal__agent', { hasText: runtimeName })
-    .dispatchEvent('click');
+    .click();
   await page.getByRole('button', { name: 'Earlier' }).click();
   const selectedChat = page
     .getByRole('complementary', { name: 'Inbox chats' })
@@ -409,16 +407,6 @@ async function waitForExecutionThread(
     .toBeTruthy();
   return requests.find((request) => request.message === message)!
     .conversationId!;
-}
-
-async function dismissSetupLauncher(page: import('@playwright/test').Page) {
-  const continueBtn = page.getByRole('button', {
-    name: 'Continue Without Setup',
-  });
-  if (await continueBtn.isVisible().catch(() => false)) {
-    await continueBtn.click({ force: true });
-    await expect(continueBtn).not.toBeVisible({ timeout: 5_000 });
-  }
 }
 
 test.describe('Built-in runtime chat workflows', () => {
@@ -460,9 +448,7 @@ test.describe('Built-in runtime chat workflows', () => {
     ).toBeVisible({ timeout: 15_000 });
     await dismissSetupLauncher(page);
 
-    await page
-      .getByRole('button', { name: 'Conversation history' })
-      .click({ force: true });
+    await page.getByRole('button', { name: 'Conversation history' }).click();
     await expect(page.locator('.conversation-history')).toContainText(
       'Claude history',
     );
@@ -493,9 +479,7 @@ test.describe('Built-in runtime chat workflows', () => {
     ).toBeVisible({ timeout: 15_000 });
     await dismissSetupLauncher(page);
 
-    await page
-      .getByRole('button', { name: 'Conversation history' })
-      .click({ force: true });
+    await page.getByRole('button', { name: 'Conversation history' }).click();
     await expect(page.locator('.conversation-history')).toContainText(
       'Codex history',
     );

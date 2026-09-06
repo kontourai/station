@@ -112,3 +112,16 @@ test('does not confuse a shadowed local name with a storage observation', () => 
     function another() { const stored = options.enabled; if (stored) { expect(stored).toBe(true); } }`),
   ).toEqual([]);
 });
+
+test('rejects deleting the setup reminder to bypass an obstructed user action', () => {
+  expect(
+    inspect(
+      `await page.evaluate(() => document.querySelector('[data-testid="setup-launcher"]')?.remove());`,
+    ).map((entry) => entry.rule),
+  ).toEqual(['removes-setup-launcher']);
+  expect(
+    inspect(
+      `await page.evaluate(() => document.querySelector('#temporary-measurement')?.remove());`,
+    ),
+  ).toEqual([]);
+});

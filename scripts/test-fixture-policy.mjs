@@ -110,6 +110,12 @@ export function inspectBrowserFixture(source, file) {
         ['disabled', 'inert'].includes(literal(node.arguments[0]))
       ) {
         report(node, 'removes-interaction-guard');
+      } else if (
+        method === 'remove' &&
+        inEvaluation(node) &&
+        node.expression.getText(ast).includes('setup-launcher')
+      ) {
+        report(node, 'removes-setup-launcher');
       } else if (method === 'dispatchEvent') {
         const event = node.arguments[0];
         const eventName =
