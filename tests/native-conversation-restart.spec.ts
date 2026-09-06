@@ -12,6 +12,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import type {
   DelegatedTaskFollowUpHandle,
   DelegatedTaskHandle,
+  DelegatedTaskSnapshot,
   ForegroundMessageInput,
   ForegroundMessageReceipt,
 } from '@kontourai/station-sdk/client';
@@ -463,15 +464,20 @@ for (const { runtimeFramework, origin } of restartProfiles) {
         expect(result.conversationId).toBe(first.conversationId);
         if ('taskId' in first) expect(result.taskId).toBe(first.taskId);
         thirdEvents = await completed(live, result, PROMPTS[2]);
-        if ('taskId' in first)
-          expect(
-            thirdEvents.some(
-              (event) =>
-                (event.method === 'session.started' ||
-                  event.method === 'session.configured') &&
-                event.metadata?.taskId === first.taskId,
-            ),
-          ).toBe(true);
+        if ('taskId' in first) {
+          // The durable task binding belongs to the Conversation root;
+          // children intentionally do not duplicate legacy task metadata.
+          const observed = await api<{ data: DelegatedTaskSnapshot }>(
+            live,
+            `/api/orchestration/delegations/${encodeURIComponent(first.taskId)}`,
+          );
+          expect(observed.data).toMatchObject({
+            taskId: first.taskId,
+            conversationId: first.conversationId,
+            sessionId: result.currentSessionId ?? result.sessionId,
+            status: 'completed',
+          });
+        }
         third = result;
       }
       expect(
