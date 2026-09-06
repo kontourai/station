@@ -205,10 +205,12 @@ function ToolbarMenuSurface({
         // `useMenuFocus`'s cleanup, not by this callback — so a normal click,
         // whose `pointerup` closes the panel before `click` is dispatched, is
         // not a double dismissal. `onClick` is kept because it is the only
-        // channel a caller without pointer events has, and because the
-        // backdrop is removed on `pointerup`, so the browser retargets that
-        // click to the nearest connected ancestor rather than to whatever
-        // sits underneath.
+        // channel a caller without pointer events has. The backdrop is
+        // removed on `pointerup`, and in Chromium and Gecko the click that
+        // follows retargets to the nearest connected ancestor rather than to
+        // whatever sits underneath; that is expected rather than verified
+        // here, since jsdom cannot reproduce retargeting and no e2e drives
+        // this backdrop over a live control.
         onPointerUp={dismiss}
         onPointerCancel={dismiss}
         onClick={dismiss}

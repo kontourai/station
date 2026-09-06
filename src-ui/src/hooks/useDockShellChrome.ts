@@ -683,18 +683,20 @@ export function useDockShellChrome({
       (shellOccupant
         ? regionModel?.surfaces.get(shellOccupant)?.shortcut?.id
         : undefined) ?? 'dock.toggle',
-    // Three cases reach a fallback: the model-less ambient dock (Chat's and
-    // nothing else's, the same mount `dock.toggle` above falls back for), an
-    // empty region, and an occupant the registry does not hold. Only the
-    // first is Chat's. For the others the occupant's own id beats naming
-    // another surface — a non-Chat shell reading "Hide Chat" would be #1386's
-    // defect relocated. Unreachable today: `RegionShells` mounts a shell only
-    // for an occupant in `REGION_SURFACE_SHELLS`, whose keys
+    // Three cases reach a fallback, and TWO of them are Chat's, because
+    // neither has an occupant to name: the model-less ambient dock (Chat's
+    // and nothing else's, the same mount `dock.toggle` above falls back for
+    // — `shellOccupant` is the literal `'chat'` there, NOT null, so the model
+    // is what this branches on) and an empty region. The third, an occupant
+    // the registry does not hold, takes the occupant's own id: a non-Chat
+    // shell reading "Hide Chat" would be #1386's defect relocated. That third
+    // case is unreachable today — `RegionShells` mounts a shell only for an
+    // occupant in `REGION_SURFACE_SHELLS`, whose keys
     // `region-surface-boundary.test.ts` pins equal to the registry's.
     surfaceTitle:
-      (shellOccupant
-        ? (regionModel?.surfaces.get(shellOccupant)?.title ?? shellOccupant)
-        : undefined) ?? 'Chat',
+      regionModel && shellOccupant
+        ? (regionModel.surfaces.get(shellOccupant)?.title ?? shellOccupant)
+        : 'Chat',
     canMaximize: shellOccupant !== null,
     ownsMaximizeShortcut: registersDockShortcuts,
     applyDockSnap,
