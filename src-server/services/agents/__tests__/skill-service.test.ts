@@ -25,6 +25,9 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 const { SkillService } = await import('../skill-service.js');
 const { skillRecordClaimsName, saveSkillConfigIn, deleteSkillPackageAt } =
   await import('../../../domain/config-loader-storage.js');
+const { localSkillRevisionFromDirectory } = await import(
+  '../skill-revision.js'
+);
 
 let testDir: string;
 const mockConfigLoader = {
@@ -1456,6 +1459,42 @@ describe('SkillService', () => {
     ).toContain('Machine body');
     expect(existsSync(projectDir)).toBe(false);
     expect(result).toEqual({ removed: true, conflict: false });
+  });
+
+  // The destructive half, in the shape the reviewer's probe took: the caller
+  // holds the revision of the package IT created — `<home>/skills/<name>`,
+  // which setup-import's rollback made — while the name now resolves to a
+  // workspace package. Verifying through the name-derived directory then
+  // matches, and the delete lands on a package that was never verified and
+  // never created by this caller.
+  test("compare-delete will not delete one package on another package's revision", async () => {
+    const projectDir = seedProjectSkill('rollback-target');
+    const nameDerived = join(testDir, 'skills', 'rollback-target');
+    mkdirSync(nameDerived, { recursive: true });
+    writeFileSync(
+      join(nameDerived, 'SKILL.md'),
+      '---\nname: setup-import-created\ndescription: Created by rollback\n---\nImported body',
+      'utf-8',
+    );
+    await service.discoverSkills(testDir, 'demo');
+    // The revision of the package the CALLER created, not of the one the name
+    // resolves to.
+    const revision = await localSkillRevisionFromDirectory(nameDerived);
+
+    const result = await service.removeSkillIfRevision(
+      'rollback-target',
+      revision,
+      testDir,
+    );
+
+    expect(
+      existsSync(projectDir),
+      'a package was deleted on a revision taken from a different package',
+    ).toBe(true);
+    expect(readFileSync(join(projectDir, 'SKILL.md'), 'utf-8')).toContain(
+      'Workspace body',
+    );
+    expect(result).toEqual({ removed: false, conflict: true });
   });
 
   // A stale revision still refuses, and refusing must not delete either tree.
