@@ -208,7 +208,9 @@ test.describe
         await page.getByRole('button', { name: 'Join room' }).click();
         const alert = page
           .getByRole('alert')
-          .filter({ hasText: 'Your access to this live room changed.' });
+          .filter({
+            hasText: 'This live collaboration action is not allowed.',
+          });
         await expect(alert).toBeVisible();
         await expect(
           page.getByRole('button', { name: 'Announce work' }),
@@ -223,7 +225,8 @@ test.describe
         console.log(`[live-refusal-browser] ${visualRoot}`);
         for (const width of [1280, 390]) {
           await page.setViewportSize({ width, height: 900 });
-          await expect(alert).toBeVisible();
+          await alert.scrollIntoViewIfNeeded();
+          await expect(alert).toBeInViewport();
           await page.screenshot({
             path: testInfo.outputPath(`live-refusal-${width}.png`),
             fullPage: true,

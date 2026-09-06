@@ -158,10 +158,7 @@ describe('ProjectTaskRoomPresence', () => {
 
 test.each([
   ['invalid', 'This live collaboration action could not be accepted.'],
-  [
-    'forbidden',
-    'Your access to this live room changed. Refresh before trying again.',
-  ],
+  ['forbidden', 'This live collaboration action is not allowed.'],
   [
     'identity_changed',
     'Your access to this live room changed. Refresh before trying again.',

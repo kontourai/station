@@ -66,6 +66,8 @@ export function ProjectTaskRoomPresence({ taskId }: { taskId: string }) {
           setError('The live room has reached its capacity.');
           break;
         case 'forbidden':
+          setError('This live collaboration action is not allowed.');
+          break;
         case 'identity_changed':
           setError(
             'Your access to this live room changed. Refresh before trying again.',
