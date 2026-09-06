@@ -1148,6 +1148,154 @@ describe('AttachedSessionFollowService', () => {
     ]);
   });
 
+  test('does not reuse a cursor when a source changes kind under one provider and handle', async () => {
+    const fixture = {
+      ...session,
+      provider: 'fixture-provider',
+      threadId: 'external:fixture:kind-change',
+    };
+    const oldSource: AttachedSessionSource = {
+      provider: fixture.provider,
+      kind: 'fixture-transcript-v1',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [fixture] }),
+      read: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', events: [], cursor: 40 }),
+    };
+    const options = {
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    };
+    await new AttachedSessionFollowService({
+      ...options,
+      sources: [oldSource],
+    }).pollNow();
+
+    const replacementSource: AttachedSessionSource = {
+      ...oldSource,
+      kind: 'fixture-transcript-v2',
+      read: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', events: [], cursor: 80 }),
+    };
+    await new AttachedSessionFollowService({
+      ...options,
+      sources: [replacementSource],
+    }).pollNow();
+
+    expect(replacementSource.read).toHaveBeenCalledWith(fixture, undefined);
+    expect(
+      store.readSessions().find((item) => item.threadId === fixture.threadId),
+    ).toEqual(
+      expect.objectContaining({
+        attachedSource: {
+          kind: 'fixture-transcript-v2',
+          externalSessionId: fixture.sessionId,
+        },
+      }),
+    );
+  });
+
+  test('does not preserve an old cursor when a changed source fails to read', async () => {
+    const oldFixture = {
+      ...session,
+      provider: 'fixture-provider',
+      threadId: 'external:fixture:failed-kind-change',
+      sourceHandle: 'fixture-handle-v1',
+    };
+    const changedFixture = {
+      ...oldFixture,
+      sourceHandle: 'fixture-handle-v2',
+    };
+    const source = {
+      provider: oldFixture.provider,
+      kind: 'fixture-transcript-v1',
+      discover: vi
+        .fn()
+        .mockResolvedValueOnce({ outcome: 'ok', sessions: [oldFixture] })
+        .mockResolvedValueOnce({ outcome: 'ok', sessions: [changedFixture] }),
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({ outcome: 'ok', events: [], cursor: 40 })
+        .mockRejectedValueOnce(new Error('source replaced')),
+    } satisfies AttachedSessionSource;
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    });
+
+    await service.pollNow();
+    source.kind = 'fixture-transcript-v2';
+    await service.pollNow();
+
+    expect(source.read).toHaveBeenNthCalledWith(2, changedFixture, undefined);
+    expect(
+      store
+        .readSessions()
+        .find((item) => item.threadId === changedFixture.threadId),
+    ).toEqual(
+      expect.objectContaining({
+        attachedSource: {
+          kind: 'fixture-transcript-v2',
+          externalSessionId: changedFixture.sessionId,
+        },
+        resumeCursor: undefined,
+      }),
+    );
+  });
+
+  test('restores a legacy Claude cursor through persisted attached-source metadata', async () => {
+    store.upsertSession({
+      provider: 'claude',
+      threadId: session.threadId,
+      status: 'ready',
+      cwd: session.cwd,
+      controlMode: 'read-only-attached',
+      attachedSource: {
+        kind: 'claude-transcript',
+        externalSessionId: session.sessionId,
+      },
+      resumeCursor: {
+        kind: 'station.attached-session-cursor/v1',
+        provider: 'claude',
+        sourceHandle: session.sourceHandle,
+        cursor: 40,
+      },
+      createdAt: session.createdAt,
+      updatedAt: session.createdAt,
+    });
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+      read: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', events: [], cursor: 80 }),
+    };
+
+    await new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    }).pollNow();
+
+    expect(source.read).toHaveBeenCalledWith(session, 40);
+  });
+
   test('rejects a durable transcript cursor when the opaque source handle changes', async () => {
     const firstSource: AttachedSessionSource = {
       provider: 'claude',

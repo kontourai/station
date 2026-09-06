@@ -34,7 +34,7 @@ const MAX_SEEN_EVENT_IDS = 2_048;
 interface FollowState {
   ownership: 'attached' | 'collision';
   seen: Map<string, true>;
-  cursors: Map<string, { sourceHandle: string; cursor: AttachedSessionCursor }>;
+  cursors: Map<string, AttachedSessionCursorOwner>;
   /**
    * The attribution the PERSISTED log already expresses, read once when this
    * thread is first followed in this process. Without it the fingerprinted
@@ -63,6 +63,13 @@ const ATTACHED_SESSION_CURSOR_KIND = 'station.attached-session-cursor/v1';
 interface PersistedAttachedSessionCursor {
   kind: typeof ATTACHED_SESSION_CURSOR_KIND;
   provider: string;
+  sourceHandle: string;
+  cursor: AttachedSessionCursor;
+}
+
+interface AttachedSessionCursorOwner {
+  provider: string;
+  sourceKind: string;
   sourceHandle: string;
   cursor: AttachedSessionCursor;
 }
@@ -335,7 +342,7 @@ export class AttachedSessionFollowService {
     descriptor: AttachedSessionDescriptor,
     attribution: Exclude<AttachedProjectAttribution, { state: 'unattributed' }>,
   ): Promise<void> {
-    const state = this.followState(descriptor);
+    const state = this.followState(source, descriptor);
     // archive#1997: one persisted-sessions snapshot for both the ownership
     // check and the alias lookup — this ran up to four separate full
     // `readSessions()` scans per followed session per 2s tick (two here, up
@@ -375,26 +382,26 @@ export class AttachedSessionFollowService {
       state.storedAttribution = fingerprint;
     }
 
-    const priorCursor = state.cursors.get(source.provider);
+    const priorCursor = state.cursors.get(sourceCursorKey(source));
+    const reusableCursor = cursorMatchesSource(priorCursor, source, descriptor)
+      ? priorCursor.cursor
+      : undefined;
     let read: AttachedSessionReadResult;
     try {
-      read = await source.read(
-        descriptor,
-        priorCursor?.sourceHandle === descriptor.sourceHandle
-          ? priorCursor.cursor
-          : undefined,
-      );
+      read = await source.read(descriptor, reusableCursor);
     } catch {
       // Preserve an already durable cursor even when this observation fails.
       // A later successful poll can continue without replaying the source.
-      this.persistAttachedSession(source, descriptor, priorCursor?.cursor);
+      this.persistAttachedSession(source, descriptor, reusableCursor);
       attachedSessionDiscovery.add(1, {
         source: sourceLabel(source),
         outcome: 'unknown_source',
       });
       return;
     }
-    state.cursors.set(source.provider, {
+    state.cursors.set(sourceCursorKey(source), {
+      provider: source.provider,
+      sourceKind: source.kind,
       sourceHandle: descriptor.sourceHandle,
       cursor: read.cursor,
     });
@@ -439,7 +446,10 @@ export class AttachedSessionFollowService {
     }
   }
 
-  private followState(descriptor: AttachedSessionDescriptor): FollowState {
+  private followState(
+    source: AttachedSessionSource,
+    descriptor: AttachedSessionDescriptor,
+  ): FollowState {
     const cached = this.followStates.get(descriptor.threadId);
     if (cached) {
       const persistedSessions = this.options.eventStore.readSessions();
@@ -495,7 +505,7 @@ export class AttachedSessionFollowService {
           ? 'collision'
           : 'attached',
       seen: new Map(),
-      cursors: restoredAttachedSessionCursors(persisted, descriptor),
+      cursors: restoredAttachedSessionCursors(persisted, source, descriptor),
       ...persistedEnvelopeFacts(configuredEvents, {
         latestEventAt: this.options.eventStore.latestEventCreatedAtByThread(
           descriptor.threadId,
@@ -592,6 +602,7 @@ export class AttachedSessionFollowService {
 
 function restoredAttachedSessionCursors(
   persisted: ProviderSession | undefined,
+  source: AttachedSessionSource,
   descriptor: AttachedSessionDescriptor,
 ): FollowState['cursors'] {
   const cursors: FollowState['cursors'] = new Map();
@@ -607,16 +618,35 @@ function restoredAttachedSessionCursors(
   if (
     record.kind !== ATTACHED_SESSION_CURSOR_KIND ||
     record.provider !== descriptor.provider ||
+    persisted.attachedSource?.kind !== source.kind ||
     record.sourceHandle !== descriptor.sourceHandle ||
     !validAttachedSessionCursor(record.cursor)
   ) {
     return cursors;
   }
-  cursors.set(descriptor.provider, {
+  cursors.set(sourceCursorKey(source), {
+    provider: source.provider,
+    sourceKind: source.kind,
     sourceHandle: descriptor.sourceHandle,
     cursor: record.cursor,
   });
   return cursors;
+}
+
+function sourceCursorKey(source: AttachedSessionSource): string {
+  return `${source.provider}\u0000${source.kind}`;
+}
+
+function cursorMatchesSource(
+  cursor: AttachedSessionCursorOwner | undefined,
+  source: AttachedSessionSource,
+  descriptor: AttachedSessionDescriptor,
+): cursor is AttachedSessionCursorOwner {
+  return (
+    cursor?.provider === source.provider &&
+    cursor.sourceKind === source.kind &&
+    cursor.sourceHandle === descriptor.sourceHandle
+  );
 }
 
 function validAttachedSessionCursor(
