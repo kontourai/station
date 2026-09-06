@@ -34,6 +34,19 @@ import {
   surfaceDockShell,
 } from './helpers/region-placement';
 
+/**
+ * How long a wait for the HOME region gets.
+ *
+ * Home is not painted with the shell: its region appears only once the home
+ * surface resolves (connections, projects, the resolved surface itself), so
+ * on a loaded machine it lands seconds after the dock region beside it —
+ * observed live, with the Activity shell up and `#station-main` still empty.
+ * Playwright's 5s default is not a budget for that, and an assertion whose
+ * outcome depends on machine load is not a gate. Every other first-render
+ * wait in these specs is budgeted the same way.
+ */
+const HOME_RENDER_TIMEOUT_MS = 15_000;
+
 /** The primary area's own heading, which only a `main` occupant renders. */
 function mainHeading(page: import('@playwright/test').Page, name: string) {
   return page
@@ -76,7 +89,7 @@ test.describe('Activity surface deep link', () => {
     await expect(
       page.locator('#station-main').getByRole('region', { name: 'Home' }),
       'the deep link must not displace the primary area',
-    ).toBeVisible();
+    ).toBeVisible({ timeout: HOME_RENDER_TIMEOUT_MS });
     await expect(
       mainHeading(page, 'Activity'),
       'a revealed surface must not also be rendered as the primary area',
@@ -124,7 +137,7 @@ test.describe('Activity surface deep link', () => {
     await expect(
       page.locator('#station-main').getByRole('region', { name: 'Home' }),
       'an emptied primary area reads as Home',
-    ).toBeVisible();
+    ).toBeVisible({ timeout: HOME_RENDER_TIMEOUT_MS });
     await expect(mainHeading(page, 'Activity')).toHaveCount(0);
   });
 });
