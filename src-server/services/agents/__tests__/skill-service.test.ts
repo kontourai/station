@@ -1185,17 +1185,21 @@ describe('SkillService', () => {
       testDir,
     );
 
-    expect(result.success).toBe(false);
-    expect(result.message).toContain('workspace-owned');
-    expect(result.message).toContain(projectDir);
-    // The machine root is where the copy would have landed.
-    expect(existsSync(join(testDir, 'skills', 'workspace-owned'))).toBe(false);
+    // The filesystem first, so removing the guard reds on the copy itself
+    // rather than on the refusal that would have prevented it.
+    expect(
+      existsSync(join(testDir, 'skills', 'workspace-owned')),
+      'a second package was written to the machine root',
+    ).toBe(false);
     // …and the package that does exist is untouched.
     expect(readFileSync(join(projectDir, 'SKILL.md'), 'utf-8')).toBe(before);
     expect(
       JSON.parse(readFileSync(join(projectDir, 'skill.json'), 'utf-8'))
         .description,
     ).toBe('Workspace copy');
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('workspace-owned');
+    expect(result.message).toContain(projectDir);
   });
 
   // Review L2. A package copied into a new directory keeps the record it was
