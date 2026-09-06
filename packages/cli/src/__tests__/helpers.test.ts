@@ -1,4 +1,11 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -86,16 +93,31 @@ describe('channel lifecycle homes', () => {
     },
   );
 
-  it('still lets --temp-home mint its own home ahead of --home', () => {
-    // Combining them is refused at the CLI boundary; this pins that the
-    // resolver never silently starts a throwaway home at a path the operator
-    // named and expects to keep.
-    const target = resolveLifecycleHomeTarget({
-      homeDir: '/tmp/flag-home',
-      tempHome: true,
-    });
-    expect(target.source).toBe('--temp-home');
-    expect(target.projectHome).not.toBe('/tmp/flag-home');
+  it('mints a canonical temporary home ahead of --home, even through an aliased temp root', () => {
+    const fixture = realpathSync(
+      mkdtempSync(join(tmpdir(), 'station-home-identity-')),
+    );
+    const physical = join(fixture, 'physical');
+    const alias = join(fixture, 'alias');
+    mkdirSync(physical);
+    symlinkSync(
+      physical,
+      alias,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    vi.stubEnv('STATION_TEMP_ROOT', alias);
+    try {
+      const target = resolveLifecycleHomeTarget({
+        homeDir: '/tmp/flag-home',
+        tempHome: true,
+      });
+      expect(target.source).toBe('--temp-home');
+      expect(target.projectHome).not.toBe('/tmp/flag-home');
+      expect(target.projectHome).toBe(realpathSync(target.projectHome));
+      expect(target.projectHome.startsWith(physical)).toBe(true);
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
   });
 
   it('rejects shared-root and container selections before CLI lifecycle work', () => {
