@@ -22,7 +22,10 @@ import {
   toolServerIntegrationMutationLockPath,
 } from '../services/plugins/tool-server-credential-store.js';
 import { publishJsonFileWithOwnedLock } from './file-storage-helpers.js';
-import { resolveSkillDirectory } from './skill-paths.js';
+import {
+  assertSkillPackageDirectory,
+  resolveSkillDirectory,
+} from './skill-paths.js';
 
 /**
  * Defense-in-depth (repo review, 2026-07-26; loosened same day after a
@@ -49,7 +52,17 @@ export interface SkillConfigRecord {
   name: string;
   description?: string;
   source: 'local' | 'registry' | 'plugin' | 'flow-agents';
-  installedAt: string;
+  /**
+   * When this package was INSTALLED, by whatever installed it.
+   *
+   * Optional because a package can be discovered without ever having been
+   * installed — a `SKILL.md` authored by hand, or dropped into a workspace
+   * (#1614) — and the honest answer to "when was this installed" for such a
+   * package is nothing at all. A writer that has no install to date must leave
+   * it absent rather than stamp the moment it happened to write a record,
+   * which would date the record and read as the package.
+   */
+  installedAt?: string;
   version?: string;
   path: string;
   body?: string;
@@ -429,6 +442,43 @@ export async function loadSkillConfig(
   if (!skillRecordClaimsName(record, name))
     throw new Error(`Skill '${name}' not found`);
   return record;
+}
+
+/**
+ * Write a package's record INTO the package's own directory.
+ *
+ * `saveSkillConfig` below resolves that directory from the name and a project
+ * slug it is never given, so a scoped write put `SKILL.md` in the project
+ * directory and `skill.json` in `<home>/skills/<name>` — one package in two
+ * roots, each half telling a different story about where the other is (#1619).
+ * The caller that already knows the directory passes it, which is the only way
+ * the two files cannot diverge. It asserts containment through
+ * `assertSkillPackageDirectory`, because a directory that did not come from
+ * `resolveSkillDirectory` has not been through its guarantees.
+ */
+export async function saveSkillConfigIn(
+  projectHomeDir: string,
+  directory: string,
+  config: SkillConfigRecord,
+): Promise<void> {
+  assertSkillPackageDirectory(projectHomeDir, config.name, directory);
+  await mkdir(directory, { recursive: true });
+  await writeFile(
+    join(directory, 'skill.json'),
+    JSON.stringify(config, null, 2),
+    'utf-8',
+  );
+}
+
+/** Remove a package by its own directory. See `saveSkillConfigIn`. */
+export async function deleteSkillPackageAt(
+  projectHomeDir: string,
+  name: string,
+  directory: string,
+): Promise<void> {
+  assertSkillPackageDirectory(projectHomeDir, name, directory);
+  if (!existsSync(directory)) throw new Error(`Skill '${name}' not found`);
+  await rm(directory, { recursive: true, force: true });
 }
 
 export async function saveSkillConfig(

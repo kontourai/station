@@ -91,14 +91,40 @@ describe('skill-service-install', () => {
     const result = await removeInstalledSkill({
       name: 'deep-research',
       projectHomeDir: tempDir,
+      // The caller resolves the package's own directory now (#1619); a remove
+      // that derived it from the name and a slug answered "not found" for
+      // every workspace package.
+      targetDir: skillDir,
       rediscover,
     });
 
+    expect(existsSync(skillDir)).toBe(false);
     expect(result).toEqual({
       success: true,
       message: 'Removed deep-research',
     });
     expect(rediscover).toHaveBeenCalledOnce();
+  });
+
+  it('refuses to remove a directory outside a skills root Station writes', async () => {
+    // The floor beneath a caller-resolved directory: a remove deletes a whole
+    // package tree, so a plugin's root — which is inside the home and has a
+    // `skills` parent — must not be one of them.
+    const pluginSkill = join(tempDir, 'plugins', 'acme', 'skills', 'shipper');
+    mkdirSync(pluginSkill, { recursive: true });
+    const rediscover = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      removeInstalledSkill({
+        name: 'shipper',
+        projectHomeDir: tempDir,
+        targetDir: pluginSkill,
+        rediscover,
+      }),
+    ).rejects.toThrow(/does not sit in a skills root Station writes/);
+
+    expect(existsSync(pluginSkill)).toBe(true);
+    expect(rediscover).not.toHaveBeenCalled();
   });
 
   it('refuses a registry id that would escape the skills root, touching nothing', async () => {
@@ -168,6 +194,10 @@ describe('skill-service-install', () => {
       removeInstalledSkill({
         name: '../candidate',
         projectHomeDir: tempDir,
+        // Even handed a directory that looks ordinary, the NAME is refused —
+        // the assertion that used to happen inside the name-derived resolution
+        // now happens on the caller's directory instead.
+        targetDir: join(tempDir, 'skills', 'candidate'),
         rediscover: vi.fn(),
       }),
     ).rejects.toThrow(/Invalid skill name/);

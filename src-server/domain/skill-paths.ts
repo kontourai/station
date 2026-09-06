@@ -11,7 +11,15 @@
  * here can create an import cycle between the domain and service layers.
  */
 import { existsSync, realpathSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path';
 import { SETUP_IMPORT_MAX_TARGET_NAME_LENGTH } from '@kontourai/station-shared/setup-import-bounds';
 
 /**
@@ -167,6 +175,59 @@ export function isDirectoryPhysicallyWithin(
  * `../candidate` selected a directory beside the registry root and copied
  * outside `<home>/skills`.
  */
+/**
+ * Re-assert, for a package directory that did NOT come from
+ * `resolveSkillDirectory`, everything that resolver guarantees.
+ *
+ * The write path resolves a package's directory from where DISCOVERY found it
+ * rather than from a name plus a project slug no route can supply (#1619). That
+ * moves the derivation off this module, so the guarantees have to move with it
+ * or they are simply gone: the name is still a single safe path segment, the
+ * directory is still that name inside a `skills` root, and the root is still
+ * physically inside the home Station owns — the same containment
+ * `resolveSkillDirectory` asserts, checked here on a directory somebody else
+ * derived.
+ *
+ * It does NOT decide whether Station may write a package (a canonical
+ * package's root is elsewhere and fails the containment check, but a plugin's
+ * may not): that is `SkillService.isSkillWritable`'s question, and this is the
+ * floor beneath it.
+ */
+export function assertSkillPackageDirectory(
+  projectHomeDir: string,
+  name: string,
+  directory: string,
+): void {
+  assertSafeSkillName(name);
+  const resolved = resolve(directory);
+  if (basename(resolved) !== name) {
+    throw new Error(
+      `Skill directory ${JSON.stringify(directory)} is not the package for ${JSON.stringify(name)}`,
+    );
+  }
+  if (!isDirectoryPhysicallyWithin(projectHomeDir, resolved)) {
+    throw new Error(
+      `Skill directory ${JSON.stringify(directory)} resolves outside ${projectHomeDir}`,
+    );
+  }
+  // A WRITABLE skills root, named exactly: `<home>/skills` or
+  // `<home>/projects/<slug>/skills`, which are the two roots `skillsRootDir`
+  // builds and the two `deriveOrigin` reads as `user` and `project`. "Its
+  // parent happens to be called skills" is not the same statement and admits
+  // `<home>/plugins/<ns>/skills/<name>` — a root Station serves from and must
+  // never write to.
+  const parent = relative(resolve(projectHomeDir), dirname(resolved))
+    .split(sep)
+    .join('/');
+  const inWritableRoot =
+    parent === 'skills' || /^projects\/[^/]+\/skills$/.test(parent);
+  if (!inWritableRoot) {
+    throw new Error(
+      `Skill directory ${JSON.stringify(directory)} does not sit in a skills root Station writes (${projectHomeDir}/skills or ${projectHomeDir}/projects/<project>/skills)`,
+    );
+  }
+}
+
 export function resolveSkillDirectory(
   projectHomeDir: string,
   name: string,

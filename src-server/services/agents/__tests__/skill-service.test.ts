@@ -23,9 +23,8 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   canonicalSkillsDiscovered: { add: vi.fn() },
 }));
 const { SkillService } = await import('../skill-service.js');
-const { skillRecordClaimsName } = await import(
-  '../../../domain/config-loader-storage.js'
-);
+const { skillRecordClaimsName, saveSkillConfigIn, deleteSkillPackageAt } =
+  await import('../../../domain/config-loader-storage.js');
 
 let testDir: string;
 const mockConfigLoader = {
@@ -49,6 +48,16 @@ const mockConfigLoader = {
       'utf-8',
     );
   }),
+  // The directory-addressed pair the write path uses (#1619). These call the
+  // REAL storage functions rather than imitating them, so the containment they
+  // assert is asserted here too — a stub that only wrote a file would let a
+  // write escape its root in every test in this file.
+  saveSkillIn: vi.fn(async (directory: string, config: unknown) =>
+    saveSkillConfigIn(testDir, directory, config as never),
+  ),
+  deleteSkillAt: vi.fn(async (name: string, directory: string) =>
+    deleteSkillPackageAt(testDir, name, directory),
+  ),
   deleteSkill: vi.fn(),
   listSkills: vi.fn().mockResolvedValue([]),
   skillExists: vi.fn().mockResolvedValue(false),
@@ -542,16 +551,18 @@ describe('SkillService', () => {
     // carrying `legacyIds`, because that is the only thing that lets
     // `station doctor --migrate-playbooks` recognise its own prior work
     // instead of writing the same record again under a `-2` suffix.
+    // Through the DIRECTORY-addressed writer the create uses (#1619), so this
+    // observes the write that actually happens rather than a name-addressed
+    // one nothing calls any more.
     let bodyExistedWhenRecordWasWritten: boolean | undefined;
-    mockConfigLoader.saveSkill.mockImplementationOnce(
-      async (name: string, config: unknown) => {
+    mockConfigLoader.saveSkillIn.mockImplementationOnce(
+      async (directory: string, config: unknown) => {
         bodyExistedWhenRecordWasWritten = existsSync(
-          join(testDir, 'skills', name, 'SKILL.md'),
+          join(directory, 'SKILL.md'),
         );
-        const dir = join(testDir, 'skills', name);
-        mkdirSync(dir, { recursive: true });
+        mkdirSync(directory, { recursive: true });
         writeFileSync(
-          join(dir, 'skill.json'),
+          join(directory, 'skill.json'),
           JSON.stringify(config, null, 2),
           'utf-8',
         );
@@ -569,22 +580,26 @@ describe('SkillService', () => {
     expect(bodyExistedWhenRecordWasWritten).toBe(false);
   });
 
-  test('a failed body write still leaves the identity on disk', async () => {
-    // The same invariant from the other side: the partial state a real failure
-    // produces must be the RECOVERABLE one — a record carrying the id, not an
-    // unclaimed command-enabled body.
-    mockConfigLoader.saveSkill.mockImplementationOnce(
-      async (name: string, config: unknown) => {
-        const dir = join(testDir, 'skills', name);
-        mkdirSync(dir, { recursive: true });
+  test('a failed body write is compensated, leaving no half-written package', async () => {
+    // The other side of the ordering invariant, corrected. This case used to
+    // assert that the record SURVIVES a failed body write — which was true
+    // only because the harness stubbed `deleteSkill` as a no-op, so the
+    // compensation the writer runs did nothing here. Production removes the
+    // package it could not finish, and the recoverable partial state the
+    // ordering above protects is the CRASH one, where no compensation gets to
+    // run at all. Asserting the real behaviour of both is what this pair does
+    // now; a caught failure leaves nothing behind.
+    mockConfigLoader.saveSkillIn.mockImplementationOnce(
+      async (directory: string, config: unknown) => {
+        mkdirSync(directory, { recursive: true });
         writeFileSync(
-          join(dir, 'skill.json'),
+          join(directory, 'skill.json'),
           JSON.stringify(config, null, 2),
           'utf-8',
         );
         // A directory where `SKILL.md` must go: the body write now fails the
         // way a full disk or a lost process would, after the record landed.
-        mkdirSync(join(dir, 'SKILL.md'), { recursive: true });
+        mkdirSync(join(directory, 'SKILL.md'), { recursive: true });
       },
     );
     await expect(
@@ -598,13 +613,15 @@ describe('SkillService', () => {
         testDir,
       ),
     ).rejects.toThrow();
-    const record = JSON.parse(
-      readFileSync(
-        join(testDir, 'skills', 'half-written', 'skill.json'),
-        'utf-8',
-      ),
+
+    // Neither half survives: no orphan record claiming a legacy id, and no
+    // unclaimed body.
+    expect(existsSync(join(testDir, 'skills', 'half-written'))).toBe(false);
+    // …and the compensation ran through the same directory the writes did.
+    expect(mockConfigLoader.deleteSkillAt).toHaveBeenCalledWith(
+      'half-written',
+      join(testDir, 'skills', 'half-written'),
     );
-    expect(record.legacyIds).toEqual(['another-legacy-uuid']);
   });
 
   test('a plugin prompt keeps its legacy id when a local skill holds its name', async () => {
@@ -1218,8 +1235,8 @@ describe('SkillService', () => {
   // workspace package, edit a machine package (which re-discovers), then refuse
   // the workspace package again. Unfixed, the second answer is "not found",
   // because the registry no longer holds the package the refusal is about.
-  test('an unscoped update still refuses a workspace package after a successful write', async () => {
-    seedProjectSkill('workspace-twice');
+  test('a workspace package is still editable after an unrelated write', async () => {
+    const projectDir = seedProjectSkill('workspace-twice');
     await service.createLocalSkill(
       { name: 'machine-two', description: 'Mine', body: 'Body' },
       testDir,
@@ -1228,81 +1245,235 @@ describe('SkillService', () => {
 
     const before = await service.updateLocalSkill(
       'workspace-twice',
-      { description: 'Edited' },
+      { description: 'First' },
       testDir,
     );
-    const succeeded = await service.updateLocalSkill(
+    const unrelated = await service.updateLocalSkill(
       'machine-two',
       { description: 'Edited' },
       testDir,
     );
     const after = await service.updateLocalSkill(
       'workspace-twice',
+      { description: 'Second' },
+      testDir,
+    );
+
+    expect(before.success).toBe(true);
+    expect(unrelated.success, 'the write that re-discovers did not run').toBe(
+      true,
+    );
+    // Unfixed, this one answers "not found": the rediscovery after the
+    // unrelated write dropped the project root, so the registry no longer held
+    // the package this write resolves its directory from.
+    expect(
+      after.success,
+      'the workspace package stopped being writable after an unrelated write',
+    ).toBe(true);
+    expect(readFileSync(join(projectDir, 'SKILL.md'), 'utf-8')).toContain(
+      'Second',
+    );
+  });
+
+  // #1619. The write now resolves the package DISCOVERY found, so an unscoped
+  // PUT — the only kind a route makes — edits the workspace package in place.
+  // Round 1 refused this, because the write derived `<home>/skills/<name>` from
+  // a name and an absent slug and would have written a second package there;
+  // the fix is to stop deriving it, and the refusal it needed goes with it.
+  test('an unscoped update edits the workspace package where it lives', async () => {
+    const projectDir = seedProjectSkill('workspace-owned');
+    await service.discoverSkills(testDir, 'demo');
+
+    const result = await service.updateLocalSkill(
+      'workspace-owned',
+      { description: 'Edited through the route, which passes no slug' },
+      testDir,
+    );
+
+    // The filesystem first: the edit landed in the workspace package…
+    expect(readFileSync(join(projectDir, 'SKILL.md'), 'utf-8')).toContain(
+      'Edited through the route',
+    );
+    const record = JSON.parse(
+      readFileSync(join(projectDir, 'skill.json'), 'utf-8'),
+    );
+    expect(record.description).toBe(
+      'Edited through the route, which passes no slug',
+    );
+    expect(record.path).toBe(projectDir);
+    // …its record went in BESIDE its body rather than into the machine root,
+    // which is the split package #1619's second finding names…
+    expect(
+      existsSync(join(testDir, 'skills', 'workspace-owned')),
+      'a second package appeared in the machine root',
+    ).toBe(false);
+    // …and the origin follows the root it is written to.
+    expect(record.origin).toBe('project');
+    expect(result.success).toBe(true);
+  });
+
+  // #1619 finding (a), the create mirror: called WITH a slug, the body went to
+  // the project directory and the record — through a name-addressed save with
+  // no slug — to `<home>/skills/<name>`. One package in two roots, each half
+  // describing the other's location.
+  test('a scoped create writes both halves into the same directory', async () => {
+    const result = await service.createLocalSkill(
+      { name: 'scoped-create', description: 'Workspace', body: 'Body' },
+      testDir,
+      'demo',
+    );
+
+    const projectDir = join(
+      testDir,
+      'projects',
+      'demo',
+      'skills',
+      'scoped-create',
+    );
+    expect(existsSync(join(projectDir, 'SKILL.md'))).toBe(true);
+    expect(
+      existsSync(join(projectDir, 'skill.json')),
+      'the record did not land beside its body',
+    ).toBe(true);
+    expect(
+      existsSync(join(testDir, 'skills', 'scoped-create')),
+      'a record was written into the machine root instead',
+    ).toBe(false);
+    expect(result.success).toBe(true);
+    // …and the package it wrote is the package the read answers from.
+    const detail = await service.getSkill('scoped-create');
+    expect(detail.path).toBe(projectDir);
+    expect(detail.origin).toBe('project');
+  });
+
+  // A rename moves a package WITHIN its own root. Derived from a name and a
+  // slug, the destination was `<home>/skills/<newName>` for a workspace
+  // package — a move across roots nobody asked for.
+  test('renaming a workspace package keeps it in its own root', async () => {
+    seedProjectSkill('before-rename');
+    await service.discoverSkills(testDir, 'demo');
+
+    const result = await service.updateLocalSkill(
+      'before-rename',
+      { name: 'after-rename' },
+      testDir,
+    );
+
+    const projectRoot = join(testDir, 'projects', 'demo', 'skills');
+    expect(existsSync(join(projectRoot, 'after-rename', 'SKILL.md'))).toBe(
+      true,
+    );
+    expect(existsSync(join(projectRoot, 'before-rename'))).toBe(false);
+    expect(
+      existsSync(join(testDir, 'skills', 'after-rename')),
+      'the rename moved the package into the machine root',
+    ).toBe(false);
+    expect(result.success).toBe(true);
+    expect(service.listSkills()[0].origin).toBe('project');
+  });
+
+  // The lock names the directory the write touches, so two callers holding
+  // different slugs for one package can no longer take two different locks.
+  test('the mutation capability is taken on the package directory', async () => {
+    const projectDir = seedProjectSkill('locked');
+    await service.discoverSkills(testDir, 'demo');
+    // Observed from INSIDE the write, which is the only moment the capability
+    // is held — no polling, no race.
+    let held: { own: boolean; machineRoot: boolean } | undefined;
+    mockConfigLoader.saveSkillIn.mockImplementationOnce(
+      async (directory: string, config: unknown) => {
+        held = {
+          own: existsSync(`${projectDir}.mutation`),
+          machineRoot: existsSync(join(testDir, 'skills', 'locked.mutation')),
+        };
+        return saveSkillConfigIn(testDir, directory, config as never);
+      },
+    );
+
+    await service.updateLocalSkill(
+      'locked',
       { description: 'Edited' },
       testDir,
     );
 
-    expect(before.success).toBe(false);
-    expect(succeeded.success, 'the write that re-discovers did not run').toBe(
-      true,
-    );
-    expect(after.success).toBe(false);
     expect(
-      after.message,
-      'the refusal changed after an unrelated successful write',
-    ).toBe(before.message);
+      held?.own,
+      'the workspace package was not locked in its own root',
+    ).toBe(true);
+    expect(
+      held?.machineRoot,
+      'a lock was taken in the machine root, where the package is not',
+    ).toBe(false);
+    // Released on the way out.
+    expect(existsSync(`${projectDir}.mutation`)).toBe(false);
   });
 
-  // Review H1. The read resolves a workspace package (#1602); this write still
-  // derives its directory from the name and the caller's slug, and the route
-  // passes none. Unguarded, a PUT on a workspace skill read the workspace
-  // package and wrote a SECOND one to the machine root — stamped `project` at a
-  // machine path, with the workspace body left untouched and the listing then
-  // showing the copy. Before #1602 the read threw first, so nothing was
-  // written; that is what this refusal restores, honestly and with a reason.
-  test('an unscoped update of a project-only skill writes nothing and says why', async () => {
-    const projectDir = seedProjectSkill('workspace-owned');
+  // A remove deletes a package TREE, so the rule that decides whether Station
+  // owns a package decides this too.
+  test('a remove deletes the discovered package, and refuses a foreign root', async () => {
+    const projectDir = seedProjectSkill('removable');
+    const pluginSkillDir = join(testDir, 'plugins', 'acme', 'skills', 'served');
+    mkdirSync(pluginSkillDir, { recursive: true });
+    writeFileSync(
+      join(pluginSkillDir, 'SKILL.md'),
+      '---\nname: served\ndescription: From a plugin\n---\nBody',
+      'utf-8',
+    );
     await service.discoverSkills(testDir, 'demo');
-    const before = readFileSync(join(projectDir, 'SKILL.md'), 'utf-8');
+
+    const refused = await service.removeSkill('served', testDir);
+    expect(existsSync(pluginSkillDir), 'a plugin root was deleted').toBe(true);
+    expect(refused.success).toBe(false);
+    expect(refused.message).toContain('Station does not own');
+
+    const removed = await service.removeSkill('removable', testDir);
+    expect(existsSync(projectDir)).toBe(false);
+    expect(removed.success).toBe(true);
+  });
+
+  // The refusal that remains: a root Station serves from and does not own.
+  test('an update of a package in a root Station does not own is refused', async () => {
+    const pluginSkillDir = join(
+      testDir,
+      'plugins',
+      'acme',
+      'skills',
+      'shipper',
+    );
+    mkdirSync(pluginSkillDir, { recursive: true });
+    writeFileSync(
+      join(pluginSkillDir, 'SKILL.md'),
+      '---\nname: shipper\ndescription: From a plugin\n---\nPlugin body',
+      'utf-8',
+    );
+    await service.discoverSkills(testDir);
 
     const result = await service.updateLocalSkill(
-      'workspace-owned',
-      { description: 'Edited from the route, which passes no slug' },
+      'shipper',
+      { description: 'Edited' },
       testDir,
     );
 
-    // The filesystem first, so removing the guard reds on the copy itself
-    // rather than on the refusal that would have prevented it.
-    expect(
-      existsSync(join(testDir, 'skills', 'workspace-owned')),
-      'a second package was written to the machine root',
-    ).toBe(false);
-    // …and the package that does exist is untouched.
-    expect(readFileSync(join(projectDir, 'SKILL.md'), 'utf-8')).toBe(before);
-    expect(
-      JSON.parse(readFileSync(join(projectDir, 'skill.json'), 'utf-8'))
-        .description,
-    ).toBe('Workspace copy');
+    expect(existsSync(join(testDir, 'skills', 'shipper'))).toBe(false);
+    expect(readFileSync(join(pluginSkillDir, 'SKILL.md'), 'utf-8')).toContain(
+      'Plugin body',
+    );
     expect(result.success).toBe(false);
-    expect(result.message).toContain('workspace-owned');
-    expect(result.message).toContain(projectDir);
+    expect(result.message).toContain(pluginSkillDir);
+    expect(result.message).toContain('install it into this workspace');
   });
 
-  // The other half of that refusal's message. The machine root can already hold
-  // a directory for this name without holding a PACKAGE — a record-only
-  // directory is exactly what a scoped `createLocalSkill` leaves behind today
-  // (`configLoader.saveSkill` has no slug either, #1619) — and there the write
-  // would not have added a copy, it would have written over what is there. The
-  // refusal says which.
-  test('the refusal says overwritten when the destination already holds something', async () => {
+  // The shape that made the machine root dangerous in the first place: a
+  // record-only directory left there by a scoped `createLocalSkill` before
+  // #1619 (`configLoader.saveSkill` had no slug either). The write must not go
+  // near it — it belongs to no discovered package — and the workspace package
+  // it shadows is edited where it lives.
+  test('a stray record in the machine root is not what an update writes to', async () => {
     const projectDir = seedProjectSkill('shadowed');
     const machineDir = join(testDir, 'skills', 'shadowed');
     mkdirSync(machineDir, { recursive: true });
-    writeFileSync(
-      join(machineDir, 'skill.json'),
-      JSON.stringify({ name: 'shadowed', source: 'local' }),
-      'utf-8',
-    );
+    const stray = JSON.stringify({ name: 'shadowed', source: 'local' });
+    writeFileSync(join(machineDir, 'skill.json'), stray, 'utf-8');
     await service.discoverSkills(testDir, 'demo');
 
     const result = await service.updateLocalSkill(
@@ -1311,12 +1482,14 @@ describe('SkillService', () => {
       testDir,
     );
 
-    expect(result.success).toBe(false);
-    expect(result.message).toContain(
-      `overwritten the package at ${machineDir}`,
-    );
-    expect(result.message).toContain(projectDir);
+    expect(result.success).toBe(true);
+    // The stray record is untouched, byte for byte…
+    expect(readFileSync(join(machineDir, 'skill.json'), 'utf-8')).toBe(stray);
     expect(existsSync(join(machineDir, 'SKILL.md'))).toBe(false);
+    // …and the edit went to the package that actually exists.
+    expect(readFileSync(join(projectDir, 'SKILL.md'), 'utf-8')).toContain(
+      'Edited',
+    );
   });
 
   // Review L2. A package copied into a new directory keeps the record it was

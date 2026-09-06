@@ -171,6 +171,7 @@ export function parseImportedSkillMarkdown(
 
 export {
   assertSafeSkillName,
+  assertSkillPackageDirectory,
   isDirectoryPhysicallyWithin,
   isDirectoryWithin,
   isSafeSkillName,

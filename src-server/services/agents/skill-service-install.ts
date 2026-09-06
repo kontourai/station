@@ -4,7 +4,11 @@ import { dirname, join } from 'node:path';
 import type { SkillConfig } from '../../domain/config-loader.js';
 import type { ISkillRegistryProvider } from '../../providers/provider-interfaces.js';
 import { withLocalSkillMutation } from './skill-local-mutation.js';
-import { resolveSkillDirectory, skillsRootDir } from './skill-metadata.js';
+import {
+  assertSkillPackageDirectory,
+  resolveSkillDirectory,
+  skillsRootDir,
+} from './skill-metadata.js';
 import { localSkillRevisionFromDirectory } from './skill-revision.js';
 
 interface SkillInstallConfigLoader {
@@ -23,7 +27,12 @@ interface InstallSkillDeps {
 interface RemoveSkillDeps {
   name: string;
   projectHomeDir: string;
-  projectSlug?: string;
+  /**
+   * The package's OWN directory, resolved by the caller from where discovery
+   * found it (#1619). Derived here from the name and a project slug no route
+   * supplies, a remove answered "not found" for every workspace package.
+   */
+  targetDir: string;
   rediscover: () => Promise<void>;
 }
 
@@ -40,15 +49,19 @@ export async function installSkillFromRegistry({
   // This is the public boundary used by SkillService and by direct callers.
   // Keep locking here, then call only the owned helper below: nesting the same
   // file capability would deadlock across service instances.
-  return withLocalSkillMutation([name], projectHomeDir, projectSlug, () =>
-    installSkillFromRegistryOwned({
-      name,
-      projectHomeDir,
-      projectSlug,
-      configLoader,
-      providers,
-      rediscover,
-    }),
+  // An install's directory is name-derived: it is a create, and there is no
+  // discovered package to read one from (#1619).
+  return withLocalSkillMutation(
+    [resolveSkillDirectory(projectHomeDir, name, projectSlug)],
+    () =>
+      installSkillFromRegistryOwned({
+        name,
+        projectHomeDir,
+        projectSlug,
+        configLoader,
+        providers,
+        rediscover,
+      }),
   );
 }
 
@@ -158,10 +171,13 @@ async function installSkillFromRegistryOwned({
 export async function removeInstalledSkill({
   name,
   projectHomeDir,
-  projectSlug,
+  targetDir,
   rediscover,
 }: RemoveSkillDeps): Promise<{ success: boolean; message: string }> {
-  const targetDir = resolveSkillDirectory(projectHomeDir, name, projectSlug);
+  // The floor beneath a directory the caller resolved: a remove deletes a
+  // whole package tree, so it must be a package directory in a root Station
+  // writes and nothing else.
+  assertSkillPackageDirectory(projectHomeDir, name, targetDir);
   if (!existsSync(targetDir)) {
     return { success: false, message: `Skill '${name}' not found` };
   }
