@@ -380,14 +380,48 @@
   min-width: 0;
 }
 
+/*
+ * #1582 D10: the name line is a flex row of two boxes, not one text run.
+ *
+ * The badge used to be concatenated into the same `text-overflow: ellipsis`
+ * box as the name, so the two shared ONE truncation and the pill decided where
+ * the name got cut — the Agents rail showed "Station…", a seven-character
+ * name, beside a detail pane wide enough to print a sentence. Widening the
+ * rail would not have fixed it: the pill grows with the server's reason string,
+ * so it can eat any width the rail is given.
+ *
+ * The badge is what yields. `flex-shrink` is applied in proportion to each
+ * item's base size, so the large factor below means the pill absorbs
+ * essentially all of the overflow before the name gives up a pixel — "the name
+ * gets the column's remaining width", expressed as a rule rather than a
+ * measured constant.
+ */
 .split-pane__item-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   line-height: 1.15;
+}
+
+.split-pane__item-name-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.split-pane__item-name-badge {
+  display: flex;
+  align-items: center;
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .split-pane__item--selected .split-pane__item-name,
