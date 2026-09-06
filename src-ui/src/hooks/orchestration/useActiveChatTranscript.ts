@@ -101,9 +101,27 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     // reconstruction is involved.
     const currentSessionId = window.currentSessionId;
     if (currentSessionId && session.currentSessionId !== currentSessionId) {
-      activeChatsStore.updateChat(session.id, { currentSessionId });
+      activeChatsStore.updateChat(session.id, {
+        currentSessionId,
+        ...(session.conversationId
+          ? {
+              conversationOpenPending: true,
+              conversationOpenFailed: false,
+              // Retire the predecessor shell at the boundary. Subsequent
+              // live events and open revalidation now address the new child.
+              orchestrationTurnOpen: false,
+              openTurnId: undefined,
+              streamingMessage: undefined,
+            }
+          : {}),
+      });
     }
-  }, [session.currentSessionId, session.id, window.currentSessionId]);
+  }, [
+    session.conversationId,
+    session.currentSessionId,
+    session.id,
+    window.currentSessionId,
+  ]);
   const checkpointKey = `${apiBase}\0${session.id}\0${checkpointRevision}`;
   const [changedFilesState, setChangedFilesState] = useState<{
     key: string;

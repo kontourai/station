@@ -177,10 +177,17 @@ export function conversationOpenPatch(
               liveUsage: undefined,
               toolCalls: [],
               ephemeralMessages: [],
-              orchestrationTurnOpen: false,
-              openTurnId: undefined,
-              openTurnShellSuperseded: undefined,
-              streamingMessage: undefined,
+              // A boundary read may arrive after the new child's live turn.
+              // Keep that child's stream; only predecessor state is retired.
+              ...(previous?.currentSessionId === execution.sessionId &&
+              previous.orchestrationTurnOpen
+                ? {}
+                : {
+                    orchestrationTurnOpen: false,
+                    openTurnId: undefined,
+                    openTurnShellSuperseded: undefined,
+                    streamingMessage: undefined,
+                  }),
               pendingClientTurnId: undefined,
               isProcessingStep: false,
               ...(previous?.queuedMessages?.length

@@ -1,10 +1,17 @@
+/** @vitest-environment jsdom */
+
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import { describe, expect, test, vi } from 'vitest';
 import {
   commitConversationOpen,
   conversationOpenPatch,
 } from '../components/chat-dock/conversationOpenController';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { conversationCanMutate } from '../contexts/conversation-open-policy';
+import {
+  handleTurnAbortedEvent,
+  handleTurnCompletedEvent,
+} from '../hooks/orchestration/turnHandlers';
 
 const conversation = {
   id: 'conversation-749',
@@ -346,3 +353,88 @@ test('same-child native model intent retains its authorized model provider witho
     orchestrationProvider: 'station-agent',
   });
 });
+
+test('current child live shell survives its authoritative identity refresh', () => {
+  const resolution = resolved(false);
+  resolution.execution = {
+    sessionId: resolution.currentSessionId,
+    agentId: conversation.agentSlug,
+    provider: 'claude',
+    model: 'opus',
+  };
+  const previous = {
+    currentSessionId: resolution.currentSessionId,
+    agentSlug: 'codex',
+    orchestrationProvider: 'codex' as const,
+    orchestrationTurnOpen: true,
+    openTurnId: 'new-child-turn',
+    streamingMessage: { role: 'assistant' as const, content: 'live answer' },
+  };
+  const next = { ...previous, ...conversationOpenPatch(resolution, previous) };
+  expect(next.orchestrationProvider).toBe('claude');
+  expect(next.openTurnId).toBe('new-child-turn');
+  expect(next.streamingMessage?.content).toBe('live answer');
+  expect(next.orchestrationTurnOpen).toBe(true);
+});
+
+test.each(['completed', 'aborted'] as const)(
+  'current %s terminal refreshes a busy open snapshot once',
+  (terminal) => {
+    const id = `refresh-${terminal}`;
+    const resolution = resolved(false);
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      title: 'Busy restore',
+      agentName: 'Codex',
+    });
+    activeChatsStore.updateChat(id, {
+      conversationId: id,
+      currentSessionId: resolution.currentSessionId,
+      conversationOpenState: resolution,
+      openTurnId: 'current-turn',
+      input: 'preserved draft',
+    });
+    const base = {
+      threadId: resolution.currentSessionId,
+      provider: 'codex' as const,
+      createdAt: '2026-09-06T00:00:00.000Z',
+      turnId: 'current-turn',
+    };
+    handleTurnCompletedEvent('http://station.test', {
+      ...base,
+      method: 'turn.completed',
+      turnId: 'previous-turn',
+    });
+    expect(activeChatsStore.getSnapshot()[id].conversationOpenPending).not.toBe(
+      true,
+    );
+    if (terminal === 'completed') {
+      handleTurnCompletedEvent('http://station.test', {
+        ...base,
+        method: 'turn.completed',
+      });
+    } else {
+      handleTurnAbortedEvent({
+        ...base,
+        method: 'turn.aborted',
+        reason: 'stopped',
+      });
+    }
+    expect(activeChatsStore.getSnapshot()[id]).toMatchObject({
+      conversationOpenPending: true,
+      input: 'preserved draft',
+    });
+    activeChatsStore.updateChat(id, {
+      conversationOpenPending: false,
+      conversationOpenState: resolved(true),
+    });
+    handleTurnCompletedEvent('http://station.test', {
+      ...base,
+      method: 'turn.completed',
+    });
+    expect(activeChatsStore.getSnapshot()[id].conversationOpenPending).toBe(
+      false,
+    );
+    activeChatsStore.removeChat(id);
+  },
+);

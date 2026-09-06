@@ -185,9 +185,10 @@ export function handleTurnCompletedEvent(
   // connection's window; the terminal is then the only identity available
   // and adopting it is correct. This mirrors `adoptTerminalIdentity` in
   // `runtime-event-projection.ts` exactly.
-  const openTurnId = activeChatsStore.getChatForExecutionSession(
+  const currentChat = activeChatsStore.getChatForExecutionSession(
     event.threadId,
-  )?.openTurnId;
+  );
+  const openTurnId = currentChat?.openTurnId;
   const historyRevision =
     activeChatsStore.getChatForExecutionSession(event.threadId)
       ?.orchestrationHistoryRevision ?? 0;
@@ -206,6 +207,13 @@ export function handleTurnCompletedEvent(
   );
   activeChatsStore.updateChat(event.threadId, {
     orchestrationHistoryRevision: historyRevision + 1,
+    ...(closesOpenTurn &&
+    currentChat?.conversationId &&
+    currentChat.currentSessionId === event.threadId &&
+    currentChat.conversationOpenState?.status === 'resolved' &&
+    !currentChat.conversationOpenState.canContinue
+      ? { conversationOpenPending: true, conversationOpenFailed: false }
+      : {}),
   });
   // Queue settlement is independent of the live streaming shell: provider
   // turn identity is exact evidence even for a delayed terminal event.
@@ -263,6 +271,13 @@ export function handleTurnAbortedEvent(
     isProcessingStep: false,
     activityHint: undefined,
     orchestrationHistoryRevision: historyRevision + 1,
+    ...(chat?.conversationId &&
+    chat.currentSessionId === event.threadId &&
+    (!chat.openTurnId || chat.openTurnId === event.turnId) &&
+    chat.conversationOpenState?.status === 'resolved' &&
+    !chat.conversationOpenState.canContinue
+      ? { conversationOpenPending: true, conversationOpenFailed: false }
+      : {}),
   });
 }
 

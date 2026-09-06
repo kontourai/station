@@ -38,6 +38,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS: 60_000,
 }));
 
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 
 const baseSession = {
@@ -60,6 +61,51 @@ const event = (eventId: string, method: string, fields = {}) => ({
 });
 
 describe('useActiveChatTranscript', () => {
+  test('observing a new child schedules authoritative open once without clearing the draft', async () => {
+    const id = 'live-boundary-conversation';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Boundary',
+    });
+    activeChatsStore.updateChat(id, {
+      conversationId: id,
+      currentSessionId: 'old-child',
+      input: 'keep my draft',
+    });
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [],
+      currentSessionId: 'new-child',
+    });
+    const session: ChatSession = {
+      ...baseSession,
+      id,
+      conversationId: id,
+      currentSessionId: 'old-child',
+    };
+    const { rerender, unmount } = renderHook(
+      ({ session }) => useActiveChatTranscript('http://station.test', session),
+      { initialProps: { session } },
+    );
+    await waitFor(() =>
+      expect(activeChatsStore.getSnapshot()[id]).toMatchObject({
+        currentSessionId: 'new-child',
+        conversationOpenPending: true,
+        input: 'keep my draft',
+      }),
+    );
+    activeChatsStore.updateChat(id, { conversationOpenPending: false });
+    rerender({ session: { ...session, currentSessionId: 'new-child' } });
+    expect(activeChatsStore.getSnapshot()[id].conversationOpenPending).toBe(
+      false,
+    );
+    unmount();
+    activeChatsStore.removeChat(id);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     recoveryBudget.clear();
