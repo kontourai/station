@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { FullScreenLoader } from '@kontourai/station-sdk';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -13,6 +14,7 @@ import {
   HOST_RECOVERY_RELOAD_CONTROL,
   HOST_RECOVERY_SCREEN_SELECTOR,
   PENDING_ACCESS_CHECK_SELECTOR,
+  PLATFORM_BOOTSTRAP_LOADER_SELECTOR,
 } from '../../../tests/helpers/local-ui-access-readiness';
 import { LocalUiSessionGate } from '../components/LocalUiSessionGate';
 import { ApiBaseProvider } from '../contexts/ApiBaseContext';
@@ -45,6 +47,10 @@ import { PlatformBootstrap } from '../platform/PlatformProfileContext';
  *    it is ever worth the cost.
  *  - The shell selector's element. The pin below reads App's source, so it
  *    covers the TAG and its id, not that the element is on screen.
+ *  - That `PlatformBootstrap` is what renders the pre-gate loader. The loader's
+ *    own markup is pinned below; that this is the component holding it while it
+ *    has no profile is a one-line read of
+ *    `platform/PlatformProfileContext.tsx`.
  *  - Visibility. These are presence checks; the adapter asks Playwright for
  *    visibility. No caller reaches a dock-owned view where that could differ
  *    (`isAmbientMobileDockFullscreen` is structurally false for the `layout`
@@ -214,6 +220,21 @@ describe('local UI access readiness screens map to the gate one-to-one', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test("the platform bootstrap's pre-gate loader matches no readiness screen", () => {
+    // `PlatformBootstrap` sits ABOVE the gate and holds this while it has no
+    // platform profile, so it is on screen before the gate is even mounted. It
+    // matches none of the screens above — which is exactly why the wait has to
+    // name it as a pre-shell wait rather than read it as a screen it does not
+    // know (#1617 delta review, F1).
+    render(<FullScreenLoader label="Station" />);
+
+    expect(
+      document.querySelectorAll(PLATFORM_BOOTSTRAP_LOADER_SELECTOR).length,
+    ).toBeGreaterThan(0);
+    expect(present(SETTLED_PROBES)).toEqual([]);
+    expect(present([PENDING_ACCESS_CHECK])).toEqual([]);
   });
 
   test('the protected shell selector names the element App actually renders', () => {
