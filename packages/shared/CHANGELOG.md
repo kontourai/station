@@ -1,5 +1,31 @@
 # @kontourai/station-shared
 
+## 0.8.0
+
+### Minor Changes
+
+- 4aca094: Add read-only cloud setup preview and AWS EC2 template preparation. Report credential enrollment, workspace review, and unavailable execution handoff explicitly; do not provision resources or transfer authority.
+- 1344781: Record recovery-from-copy provenance atomically with an offline home restore. Show the snapshot time and explicit absence of transferred execution authority in CLI and JSON output, and expose a bounded read-only recovery-record reader.
+  
+  Expose a host-scoped system-status disclosure and show a persistent browser recovery notice with snapshot time and explicit authority limits.
+- ce6ec59: Add encrypted, bounded Git workspace packages with shared capture, inspection, and fresh-directory import APIs and cloud CLI commands. Preserve supported staged and uncommitted work without transferring credentials or execution authority. Document self-hosted use, resource limits, and recovery.
+- 0c3d60e: Verify restored Git workspace contents through the bounded package codecs and emit a package-bound verification receipt. Check fresh local imports before target Project creation, preserving failed imports for explicit recovery and reporting platform limitations.
+
+### Patch Changes
+
+- f6f9497: Add a GCP development target to the shared read-only cloud preview, retaining explicit gaps for provisioning, credentials, and execution transfer. Document the isolated operator-run Compute Engine bootstrap.
+- d209461: Keep plugin builds from reinstalling a containing Station workspace. Root-managed
+  plugins use the managed dependency bootstrap; standalone nested plugins install
+  only into their own directory, preserving the host's lock and dependencies.
+- Updated dependencies [e172b3d]
+- Updated dependencies [4aca094]
+- Updated dependencies [7ef36cc]
+- Updated dependencies [1344781]
+- Updated dependencies [ce6ec59]
+- Updated dependencies [0d75052]
+- Updated dependencies [0c3d60e]
+  - @kontourai/station-contracts@0.8.0
+
 ## 0.7.0
 
 ### Patch Changes

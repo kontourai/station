@@ -1,5 +1,19 @@
 # @kontourai/station-basis-pane
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [e172b3d]
+- Updated dependencies [4aca094]
+- Updated dependencies [7ef36cc]
+- Updated dependencies [1344781]
+- Updated dependencies [ce6ec59]
+- Updated dependencies [0d75052]
+- Updated dependencies [0c3d60e]
+  - @kontourai/station-contracts@0.8.0
+  - @kontourai/station-sdk@0.8.0
+
 ## 0.3.0
 
 ### Minor Changes
