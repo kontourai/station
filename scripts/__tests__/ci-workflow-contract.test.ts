@@ -247,11 +247,16 @@ describe('CI verification workflow contracts', () => {
       '.github/workflows/backlog-priority-policy.yml',
       '.github/workflows/android-test.yml',
       '.github/workflows/dependency-advisory.yml',
-      // #1645: the gallery gate's liveness check. It fails when
-      // nightly-gallery has not CONCLUDED SUCCESS inside its window, which is
-      // the one signal a `cancelled` run cannot produce — the gate spent eight
-      // days queued and never-assigned, and nothing here noticed because
-      // `cancelled` never matches this workflow's `failure` guard.
+      // #1645: the gallery gate itself. Watching only its freshness check
+      // would delay a genuine pixel regression until two consecutive failures
+      // aged past the window, then report it as a freshness problem naming the
+      // wrong subject.
+      '.github/workflows/nightly-gallery.yml',
+      // And that gate's liveness check. It fails when nightly-gallery has not
+      // CONCLUDED SUCCESS inside its window, which is the one signal a
+      // `cancelled` run cannot produce — the gate spent eight days queued and
+      // never-assigned, and nothing here noticed because `cancelled` never
+      // matches this workflow's `failure` guard.
       '.github/workflows/gallery-freshness.yml',
     ];
     const intendedTargetNames = intendedTargetFiles.map((targetFile) => {
@@ -619,7 +624,17 @@ describe('CI verification workflow contracts', () => {
     // legitimately cancels its predecessor — and while this job could not
     // reach a runner at all, that setting is what converted four of six
     // consecutive stalls into a fresh-looking `cancelled` run.
-    expect(gallery).toContain('cancel-in-progress: false');
+    //
+    // Read the parsed value, not the file text: a prose line explaining the
+    // choice satisfies `toContain('cancel-in-progress: false')` on its own, so
+    // the substring form would stay green if the key itself flipped or went
+    // away while the comment survived.
+    const galleryDocument = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/nightly-gallery.yml',
+    )?.document as
+      | { concurrency?: { 'cancel-in-progress'?: unknown } }
+      | undefined;
+    expect(galleryDocument?.concurrency?.['cancel-in-progress']).toBe(false);
     expect(gallery).toContain("if: github.event_name != 'pull_request'");
     // #1645: a digest-pinned Playwright container on a hosted runner, not the
     // fleet. The comparator hashes a decoded RGBA buffer with no threshold, so
@@ -630,11 +645,21 @@ describe('CI verification workflow contracts', () => {
     // published under the same tag is a different renderer wearing the same
     // name. Bump it in lockstep with `@playwright/test`.
     expect(gallery).toContain('runs-on: ubuntu-22.04');
-    const container = gallery.match(
-      /image: mcr\.microsoft\.com\/playwright:v(?<version>[\d.]+)-\w+@sha256:(?<digest>[0-9a-f]{64})$/m,
+    expect(gallery).not.toContain('runs-on: [self-hosted');
+    // Anchored to the parsed `container.image`, not matched loose against the
+    // file, so a digest quoted in a comment cannot stand in for the pin. The
+    // version is a strict dotted triple rather than `[\d.]+`, which would
+    // accept `1..2` or a bare `1`.
+    const containerImage = (
+      galleryDocument as
+        | { jobs?: Record<string, { container?: { image?: unknown } }> }
+        | undefined
+    )?.jobs?.['screenshot-diff']?.container?.image;
+    expect(containerImage).toEqual(expect.any(String));
+    const container = String(containerImage).match(
+      /^mcr\.microsoft\.com\/playwright:v(?<version>\d+\.\d+\.\d+)-[a-z]+@sha256:(?<digest>[0-9a-f]{64})$/,
     );
     expect(container?.groups?.digest).toEqual(expect.any(String));
-    expect(gallery).not.toContain('runs-on: [self-hosted');
 
     // The container IS the renderer, so the Playwright inside it must be the
     // Playwright that drives it. The digest cannot be derived from anything in

@@ -78,14 +78,42 @@ jobs:
         uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with: { install: false }
 
-      - run: npm run dependencies:ci
+      # The Playwright image carries no C++ toolchain (verified against the
+      # pinned digest: no `make`, `g++`, `cc` or `gcc`), and
+      # `packaging/node-pty-prebuilds/manifest.json` publishes no Linux
+      # artifact yet (`"artifacts": {}`), so node-pty is the one dependency
+      # that must compile from source here. Without this it fails and
+      # `dependency-lifecycle` continues DEGRADED by design (#1244) — which for
+      # this job would mean photographing an app whose interactive terminal
+      # panes are unavailable, and `home` reaches the terminal module. A
+      # gallery exists to be a picture of the app; a picture of a degraded one
+      # is worse than no picture.
+      #
+      # This touches no font, no rasterizer and no browser, so the digest pin's
+      # purpose survives it intact. The designed fix is a `linux-x64` prebuild
+      # through `node-pty-prebuilds.yml` (whose matrix already has that
+      # target), which removes this step; tracked separately.
+      - name: Install the native build toolchain node-pty needs
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential
 
-      # Informational, and deliberately so: the failure path already belongs to
-      # `run-e2e-suite.mjs`. What this records is the identity of the renderer
-      # the captured pixels are bound to — Playwright build and the font set
-      # the fallback stack will actually resolve against — so a future diff can
-      # be attributed to the product or to the image rather than argued about.
-      - name: Record the pinned renderer identity
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          npm run dependencies:ci 2>&1 | tee "${RUNNER_TEMP}/dependencies-ci.log"
+
+      # Records the identity of the renderer the captured pixels are bound to —
+      # Playwright build, and the font set the `system-ui` fallback will
+      # actually resolve against (#1649) — so a future diff can be attributed
+      # to the product or to the image rather than argued about.
+      #
+      # It also REFUSES a degraded capture rather than merely noting one. A
+      # missing capability does not produce a false green; it produces
+      # something worse to diagnose — a real pixel difference that reads as a
+      # product regression. Failing here names the cause instead.
+      - name: Record the pinned renderer identity and refuse a degraded capture
         run: |
           set -euo pipefail
           npx playwright --version
@@ -93,6 +121,19 @@ jobs:
           ls -1 "${PLAYWRIGHT_BROWSERS_PATH}"
           echo "fontconfig families: $(fc-list --format '%{family[0]}\n' | sort -u | wc -l)"
           fc-list --format '%{family[0]}\n' | sort -u
+          echo "--- terminal readiness ---"
+          if node -e 'require("node-pty"); console.log("node-pty: loadable")'; then
+            echo "terminal capability: available"
+          else
+            echo "::error::node-pty is not loadable, so this capture would photograph an app without interactive terminal panes. Fix the toolchain/prebuild in .github/workflows/nightly-gallery.yml rather than re-baselining against a degraded render."
+            exit 1
+          fi
+          echo "--- dependency-lifecycle degradation ---"
+          if grep -F '[dependency-lifecycle] DEGRADED' "${RUNNER_TEMP}/dependencies-ci.log"; then
+            echo "::error::dependency-lifecycle reported a DEGRADED capability above. A gallery capture must photograph a fully-capable build; refusing rather than baselining the degradation."
+            exit 1
+          fi
+          echo "no degraded capability reported"
 
       - name: Capture screenshot bucket and enforce exact baseline
         run: |

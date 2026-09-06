@@ -32,6 +32,16 @@
  * and the alternative (assume the run was fine) is the fail-open this module
  * exists to prevent.
  *
+ * ## `updated_at` is a proxy for the conclusion time
+ *
+ * The Actions API exposes no "concluded at" for a run, so age is measured from
+ * `updated_at`. For a completed run that is the conclusion within seconds, but
+ * it is not immutable: re-running a run bumps it, so a re-run of an old success
+ * reads as fresh. That is the correct reading here — a re-run genuinely did
+ * execute the gate again — but it means this measures "a success executed
+ * recently", not "the schedule fired recently". A schedule that stopped firing
+ * while somebody re-ran the last green by hand would look healthy.
+ *
  * ## Exit codes
  *
  * 0 fresh, 1 stale. Stale is a real failure: this workflow is watched by
@@ -229,6 +239,11 @@ export function parseArgs(argv) {
       case '--runs-file':
         // Offline path: a pre-fetched `{runs, jobsByRunId}` document. Used by
         // the tests and available for reproducing a verdict by hand.
+        //
+        // Guarded like its siblings: an empty value would store `''`, which is
+        // falsy, so `main` would silently fall through to the LIVE API instead
+        // of reading the file the caller asked for.
+        if (!value) throw new Error('--runs-file requires a value.');
         options.runsFile = value;
         break;
       default:
@@ -239,8 +254,13 @@ export function parseArgs(argv) {
   return options;
 }
 
-async function fetchJson(url, token) {
-  const response = await fetch(url, {
+/**
+ * `fetchImpl` is injectable so the network path is reachable from tests. It was
+ * the only part of this module with no coverage at all, which is the wrong place
+ * for a blind spot in a watchdog.
+ */
+export async function fetchJson(url, token, fetchImpl = fetch) {
+  const response = await fetchImpl(url, {
     headers: {
       accept: 'application/vnd.github+json',
       authorization: `Bearer ${token}`,
@@ -253,15 +273,23 @@ async function fetchJson(url, token) {
   return response.json();
 }
 
-async function collectFromApi(options) {
-  const token = process.env.GITHUB_TOKEN;
-  const repository = process.env.GITHUB_REPOSITORY;
-  const apiUrl = process.env.GITHUB_API_URL ?? 'https://api.github.com';
+export async function collectFromApi(
+  options,
+  env = process.env,
+  fetchImpl = fetch,
+) {
+  const token = env.GITHUB_TOKEN;
+  const repository = env.GITHUB_REPOSITORY;
+  const apiUrl = env.GITHUB_API_URL ?? 'https://api.github.com';
   if (!token) throw new Error('GITHUB_TOKEN is required to read run history.');
   if (!repository) throw new Error('GITHUB_REPOSITORY is required.');
 
   const runsUrl = `${apiUrl}/repos/${repository}/actions/workflows/${encodeURIComponent(options.workflow)}/runs?branch=${encodeURIComponent(options.branch)}&per_page=${DEFAULT_RUN_PAGE_SIZE}`;
-  const { workflow_runs: runs = [] } = await fetchJson(runsUrl, token);
+  const { workflow_runs: runs = [] } = await fetchJson(
+    runsUrl,
+    token,
+    fetchImpl,
+  );
 
   // Job evidence is only needed for runs that could qualify; a cancelled or
   // failed run is rejected before its jobs are ever consulted.
@@ -271,6 +299,7 @@ async function collectFromApi(options) {
     const { jobs = [] } = await fetchJson(
       `${apiUrl}/repos/${repository}/actions/runs/${run.id}/jobs?per_page=100`,
       token,
+      fetchImpl,
     );
     jobsByRunId[String(run.id)] = jobs;
   }

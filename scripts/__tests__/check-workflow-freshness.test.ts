@@ -5,7 +5,9 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
   classifyRunEvidence,
+  collectFromApi,
   evaluateWorkflowFreshness,
+  fetchJson,
   parseArgs,
   parseInstant,
   renderVerdict,
@@ -254,6 +256,33 @@ describe('fail-closed input handling', () => {
     ).toThrow(/not an ISO-8601 instant/);
   });
 
+  /**
+   * The malformed run must abort the whole evaluation, not be quietly skipped
+   * while a healthy sibling carries the verdict. Skipping would be the
+   * plausible-looking behaviour and the wrong one: it reports `fresh` off a
+   * history it could not fully read, which is the shape that lets a real
+   * problem hide behind one good row.
+   */
+  test('a malformed run aborts even when an eligible success is present', () => {
+    expect(() =>
+      evaluateWorkflowFreshness({
+        runs: [
+          run({ id: 7, updated_at: new Date(NOW - 1 * HOUR).toISOString() }),
+          run({ id: 8, updated_at: 'sometime last week' }),
+        ],
+        jobsByRunId: { '7': EXECUTED, '8': EXECUTED },
+        maxAgeMs: 36 * HOUR,
+        now: NOW,
+      }),
+    ).toThrow(/run 8 updated_at is not an ISO-8601 instant/);
+  });
+
+  test('--runs-file with an empty value is refused, not silently sent live', () => {
+    expect(() => parseArgs(['--workflow=a.yml', '--runs-file='])).toThrow(
+      /--runs-file requires a value/,
+    );
+  });
+
   test('job evidence of the wrong shape throws', () => {
     expect(() =>
       classifyRunEvidence(run(), 'success' as never, 'main'),
@@ -330,6 +359,125 @@ describe('argument parsing', () => {
       maxAgeHours: 36,
       branch: 'main',
       json: false,
+    });
+  });
+});
+
+/**
+ * The network path. Every other test here supplies `--runs-file`, so without
+ * these the code that actually runs in CI — the preconditions, the URL shapes,
+ * and which runs get their jobs fetched — would be the one uncovered part of a
+ * watchdog. `fetch` and `process.env` are injected rather than stubbed
+ * globally.
+ */
+describe('GitHub API collection', () => {
+  const options = { workflow: 'nightly-gallery.yml', branch: 'main' };
+  const env = {
+    GITHUB_TOKEN: 'tok',
+    GITHUB_REPOSITORY: 'kontourai/station',
+  };
+
+  function stubFetch(routes: Record<string, unknown>) {
+    const calls: string[] = [];
+    const impl = async (url: string) => {
+      calls.push(url);
+      const body = Object.entries(routes).find(([fragment]) =>
+        url.includes(fragment),
+      )?.[1];
+      if (body === undefined) {
+        return { ok: false, status: 404, json: async () => ({}) };
+      }
+      return { ok: true, status: 200, json: async () => body };
+    };
+    return { impl, calls };
+  }
+
+  test('a missing token or repository refuses before any request', async () => {
+    const { impl, calls } = stubFetch({});
+    await expect(
+      collectFromApi(options, { GITHUB_REPOSITORY: 'a/b' }, impl),
+    ).rejects.toThrow(/GITHUB_TOKEN is required/);
+    await expect(
+      collectFromApi(options, { GITHUB_TOKEN: 'tok' }, impl),
+    ).rejects.toThrow(/GITHUB_REPOSITORY is required/);
+    expect(calls).toEqual([]);
+  });
+
+  test('requests the workflow runs scoped to the branch, and jobs only for successes', async () => {
+    const runs = [
+      run({ id: 11, conclusion: 'cancelled' }),
+      run({ id: 12 }),
+      run({ id: 13, status: 'queued', conclusion: null }),
+    ];
+    const { impl, calls } = stubFetch({
+      '/actions/workflows/': { workflow_runs: runs },
+      '/actions/runs/12/jobs': { jobs: EXECUTED },
+    });
+
+    const collected = await collectFromApi(options, env, impl);
+
+    expect(calls[0]).toBe(
+      'https://api.github.com/repos/kontourai/station/actions/workflows/nightly-gallery.yml/runs?branch=main&per_page=20',
+    );
+    // Only run 12 qualified, so only its jobs were fetched: a cancelled or
+    // still-queued run is rejected before its jobs are ever consulted.
+    expect(calls.slice(1)).toEqual([
+      'https://api.github.com/repos/kontourai/station/actions/runs/12/jobs?per_page=100',
+    ]);
+    expect(collected.runs).toHaveLength(3);
+    expect(Object.keys(collected.jobsByRunId)).toEqual(['12']);
+
+    // And the collected shape feeds the evaluator directly.
+    expect(
+      evaluateWorkflowFreshness({
+        ...collected,
+        maxAgeMs: 36 * HOUR,
+        now: NOW,
+      }).fresh,
+    ).toBe(true);
+  });
+
+  test('GITHUB_API_URL is honoured for a non-dotcom host', async () => {
+    const { impl, calls } = stubFetch({
+      '/actions/workflows/': { workflow_runs: [] },
+    });
+    await collectFromApi(
+      options,
+      { ...env, GITHUB_API_URL: 'https://ghe.example/api/v3' },
+      impl,
+    );
+    expect(calls[0]).toBe(
+      'https://ghe.example/api/v3/repos/kontourai/station/actions/workflows/nightly-gallery.yml/runs?branch=main&per_page=20',
+    );
+  });
+
+  test('a non-ok response throws rather than yielding an empty history', async () => {
+    const { impl } = stubFetch({});
+    await expect(
+      fetchJson('https://api.github.com/nope', 'tok', impl),
+    ).rejects.toThrow(/GitHub API 404/);
+    // An empty history would evaluate to `no-runs`, which is stale — but a
+    // transport failure must not be reported as a verdict about the gate at
+    // all, so it propagates instead.
+    await expect(collectFromApi(options, env, impl)).rejects.toThrow(
+      /GitHub API 404/,
+    );
+  });
+
+  test('the request carries the API version and bearer token', async () => {
+    const seen: Record<string, unknown>[] = [];
+    const impl = async (
+      _url: string,
+      init: { headers: Record<string, string> },
+    ) => {
+      seen.push(init.headers);
+      return { ok: true, status: 200, json: async () => ({}) };
+    };
+    await fetchJson('https://api.github.com/x', 'secret-token', impl);
+    expect(seen[0]).toMatchObject({
+      accept: 'application/vnd.github+json',
+      authorization: 'Bearer secret-token',
+      'x-github-api-version': '2022-11-28',
     });
   });
 });

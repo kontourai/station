@@ -14,11 +14,16 @@ on:
       # (two levels, within GitHub's limit of three). Its green runs have no
       # skipped jobs, so the close guard below can clear its tracker (#1315).
       - Android Tests
-      # The gallery gate's liveness check (#1645). It fails when
-      # nightly-gallery has not concluded success inside its window, which is
-      # the one signal a `cancelled` run cannot produce on its own. Its single
-      # job is unconditional, so a recovered run has no skipped job and the
-      # close guard below can clear the tracker.
+      # The gallery gate itself (#1645). Watching only its freshness check
+      # would delay a genuine pixel regression until two consecutive failures
+      # aged past the window, and then report it as a freshness problem naming
+      # the wrong subject. Its single job is unconditional under both of its
+      # triggers, so a recovered run has no skipped job and the close guard
+      # below can clear the tracker.
+      - Nightly gallery
+      # And that gate's liveness check, which fails when Nightly gallery has
+      # not concluded success inside its window — the one signal a `cancelled`
+      # run cannot produce on its own. Same unconditional-job argument.
       - Gallery freshness
     types: [completed]
 
