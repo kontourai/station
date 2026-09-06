@@ -122,6 +122,8 @@ test('a non-chat dock occupant renders inside the height-bearing scroll containe
     rule,
     'index.css must still declare the `.dock-slot__body` rule',
   ).toBeDefined();
+  expect(rule).toMatch(/display:\s*flex/);
+  expect(rule).toMatch(/flex-direction:\s*column/);
   expect(rule).toMatch(/flex:\s*1 1 auto/);
   expect(rule).toMatch(/min-height:\s*0/);
   expect(rule).toMatch(/overflow:\s*auto/);

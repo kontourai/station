@@ -133,6 +133,11 @@ test('follows an external Codex rollout and explains unavailable independent con
     const detail = page.getByTestId('session-detail');
     await expect(detail).toContainText('Inspect Codex workspace first');
     await expect(detail).toContainText('Codex activity is visible.');
+    const initialAnswer = detail.getByText('Codex activity is visible.', {
+      exact: true,
+    });
+    await initialAnswer.scrollIntoViewIfNeeded();
+    await expect(initialAnswer).toBeInViewport();
     await expect(
       detail.getByRole('button', { name: 'Continue in Station' }),
     ).toBeDisabled();
@@ -165,6 +170,11 @@ test('follows an external Codex rollout and explains unavailable independent con
     );
     expect(readFileSync(sourcePath, 'utf8')).toBe(initial + appended);
     await page.setViewportSize({ width: 320, height: 720 });
+    const mobileContinue = detail.getByRole('button', {
+      name: 'Continue in Station',
+    });
+    await mobileContinue.scrollIntoViewIfNeeded();
+    await expect(mobileContinue).toBeInViewport();
     await expect(
       detail.getByRole('button', { name: 'Continue in Station' }),
     ).toBeVisible();
@@ -440,7 +450,7 @@ test.describe
       await page.setViewportSize({ width: 320, height: 720 });
       await expect(detail).toBeVisible();
       await expect(
-        page.getByRole('button', {
+        detail.getByRole('button', {
           name: /send|approve|decline|stop|resume|retry|delegate/i,
         }),
       ).toHaveCount(0);
