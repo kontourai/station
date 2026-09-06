@@ -143,14 +143,22 @@ export interface SkillVariable {
 
 /**
  * Where a skill came from, written by the writer that knows: `createLocalSkill`
- * writes `user`, a registry install writes `registry`, and `package`/`plugin`
- * are derived from the read-only root a skill was discovered under.
- * `migrated-playbook` is written by `station doctor --migrate-playbooks`, the
- * one-shot helper that reads a legacy `prompts.json` — the word records where
- * the skill came from, and is not a live product noun.
+ * writes `user` (or `project` when the write is project-scoped), a registry
+ * install writes `registry`, and `package`/`plugin`/`project` are derived from
+ * the root a skill was discovered under. `migrated-playbook` is written by
+ * `station doctor --migrate-playbooks`, the one-shot helper that reads a legacy
+ * `prompts.json` — the word records where the skill came from, and is not a
+ * live product noun.
+ *
+ * `user` and `project` are both writable roots and differ only in scope:
+ * `user` is `<home>/skills` (every project on this machine sees it), `project`
+ * is `<home>/projects/<slug>/skills` (one workspace does). Before `project`
+ * existed a workspace-scoped skill reported `user`, so a reader could not tell
+ * the two apart and no surface could name the difference (#1582 D6).
  */
 export type SkillOrigin =
   | 'user'
+  | 'project'
   | 'registry'
   | 'plugin'
   | 'package'

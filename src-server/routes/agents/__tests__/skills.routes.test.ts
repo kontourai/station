@@ -65,17 +65,29 @@ function setup() {
     );
     return { success: true, message: 'Created' };
   });
-  skillService.updateLocalSkill = vi.fn(async (name: string, updates: any) => {
-    if (updates.name !== undefined) assertSafeSkillName(updates.name);
-    const effectiveName = updates.name ?? name;
-    assertSkillCommandAllowed(
-      effectiveName,
-      updates.command,
-      skillService.listSkills(),
-      name,
-    );
-    return { success: true, message: 'Updated' };
-  });
+  skillService.updateLocalSkill = vi.fn(
+    async (name: string, updates: any, projectHomeDir: string) => {
+      if (updates.name !== undefined) assertSafeSkillName(updates.name);
+      // The service refuses a write to a package it does not own for EVERY
+      // field, not only a command declaration (#1602 review H1). Without this,
+      // the stub answered success where the service answers a refusal, and the
+      // route's `!result.success` branch had no coverage for the rule at all.
+      if (!skillService.isSkillWritable(name, projectHomeDir)) {
+        return {
+          success: false,
+          message: `Skill '${name}' is served from /packages/${name}, which this update does not own; it would have written a second copy to ${projectHomeDir}/skills/${name}`,
+        };
+      }
+      const effectiveName = updates.name ?? name;
+      assertSkillCommandAllowed(
+        effectiveName,
+        updates.command,
+        skillService.listSkills(),
+        name,
+      );
+      return { success: true, message: 'Updated' };
+    },
+  );
   const getProjectHomeDir = vi.fn().mockReturnValue('/home/test');
   const app = createSkillRoutes(skillService as any, getProjectHomeDir);
   return { app, skillService, getProjectHomeDir };
@@ -254,7 +266,12 @@ describe('Skill Routes', () => {
     expect(skillService.updateLocalSkill).not.toHaveBeenCalled();
   });
 
-  test('PUT /:name still edits a read-only skill body (only command metadata is refused)', async () => {
+  test('PUT /:name forwards the service refusal for a read-only skill body as 400', async () => {
+    // The route no longer answers this one itself: its 409 covers a command
+    // declaration only, and the SERVICE refuses every field on a package it
+    // does not own. What is asserted here is the route's half — the request
+    // reaches the service, and the service's own reason is what the caller is
+    // told, verbatim, rather than a generic failure.
     const { app, skillService } = setup();
     skillService.isSkillWritable.mockReturnValue(false);
 
@@ -263,9 +280,20 @@ describe('Skill Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ body: 'Edited' }),
     });
+    const body = await json(res);
 
-    expect(res.status).toBe(200);
-    expect(skillService.updateLocalSkill).toHaveBeenCalled();
+    expect(res.status).toBe(400);
+    expect(body.success).toBe(false);
+    expect(body.error).toBe(
+      "Skill 'canonical-skill' is served from /packages/canonical-skill, which this update does not own; it would have written a second copy to /home/test/skills/canonical-skill",
+    );
+    // The ROUTE did not refuse it: its 409 is for a command declaration, and a
+    // body edit is not one.
+    expect(skillService.updateLocalSkill).toHaveBeenCalledWith(
+      'canonical-skill',
+      { body: 'Edited' },
+      '/home/test',
+    );
   });
 
   test('PUT /:name refuses a command word another skill already holds', async () => {

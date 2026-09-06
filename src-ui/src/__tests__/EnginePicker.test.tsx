@@ -473,3 +473,123 @@ describe('EnginePicker component', () => {
     expect(mutate).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * #1582 A5. The role screen is a STEP of the first-run chapter, not a second
+ * overlay beside it: before this it rendered its own scrim at
+ * `--layer-dialog`, its own 22px panel, a blue uppercase eyebrow standing in
+ * for the step counter, and two full-width slate buttons — a second visual
+ * system inside a four-step wizard whose other screens are one.
+ */
+describe('the step variant contributes no chrome of its own', () => {
+  function renderStep(props: Record<string, unknown> = {}) {
+    statusData = { providers: { configuredChatReady: false } };
+    connectionsData = [claudeConnection(), codexConnection()];
+    configData = undefined;
+    mutate.mockClear();
+    return render(
+      <EnginePicker
+        variant="step"
+        onChosen={() => {}}
+        onDismiss={() => {}}
+        {...props}
+      />,
+    );
+  }
+
+  test('renders no scrim, no eyebrow, no second title and no second dismiss', () => {
+    renderStep({ eyebrow: 'Step 3 of 4', title: 'Choose what powers Station' });
+
+    const picker = screen.getByTestId('engine-picker');
+    expect(
+      picker.querySelector('.engine-picker__backdrop'),
+      'the step painted a scrim inside the dialog that already has one',
+    ).toBeNull();
+    expect(picker.querySelector('.engine-picker__eyebrow')).toBeNull();
+    expect(picker.querySelector('.engine-picker__title')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Dismiss engine picker' }),
+      'the step kept its own dismiss beside the chapter header close',
+    ).toBeNull();
+    // The chapter owns the dialog role; a second one nested inside it is an
+    // ambiguous dialog stack, not a stronger signal.
+    expect(picker.querySelector('[role="dialog"]')).toBeNull();
+    // The rows themselves are still the picker's own.
+    expect(screen.getAllByRole('radio').length).toBeGreaterThan(0);
+  });
+
+  test('its actions are the chapter actions row, in the chapter primary tone', () => {
+    renderStep();
+
+    const actions = screen
+      .getByTestId('engine-picker')
+      .querySelector('.first-run-chapter__actions');
+    expect(
+      actions,
+      'the step did not use the shared actions row steps 1 and 2 use',
+    ).toBeTruthy();
+    const primary = screen.getByRole('button', { name: 'Use this engine' });
+    expect(
+      primary.className,
+      'the step primary is not the shared primary tone',
+    ).toContain('button--primary');
+    expect(
+      screen.getByRole('button', { name: 'Decide later' }).className,
+    ).toContain('button--secondary');
+    expect(actions?.contains(primary)).toBe(true);
+  });
+
+  test('the none-capable panel uses the same row and tone as the choosing one', () => {
+    // Found by fault injection: forcing the modal chrome back on THIS branch
+    // changed nothing any test could see, because every step-variant case
+    // above has capable engines. The branch is reachable — it is what a fresh
+    // home with nothing connected renders — and it is a step of the run too.
+    statusData = { providers: { configuredChatReady: false } };
+    connectionsData = [];
+    configData = undefined;
+    render(
+      <EnginePicker variant="step" onChosen={() => {}} onDismiss={() => {}} />,
+    );
+
+    const picker = screen.getByTestId('engine-picker');
+    expect(screen.getByTestId('engine-picker-none-capable')).toBeTruthy();
+    expect(picker.querySelector('.engine-picker__backdrop')).toBeNull();
+    expect(picker.querySelector('.engine-picker__eyebrow')).toBeNull();
+    const actions = picker.querySelector('.first-run-chapter__actions');
+    expect(
+      actions,
+      'the none-capable step did not use the shared actions row',
+    ).toBeTruthy();
+    const primary = screen.getByRole('button', { name: 'Got it' });
+    expect(primary.className).toContain('button--primary');
+    expect(actions?.contains(primary)).toBe(true);
+  });
+
+  test('reports the title it actually rendered, so a shared header cannot lie', () => {
+    const titles: string[] = [];
+    renderStep({
+      title: 'Choose what powers Station',
+      onTitleChange: (title: string) => titles.push(title),
+    });
+    expect(titles.at(-1)).toBe('Choose what powers Station');
+
+    // Nothing on this host can run the assistant: the panel stops asking
+    // which engine and starts explaining, and the header has to follow.
+    titles.length = 0;
+    statusData = { providers: { configuredChatReady: false } };
+    connectionsData = [];
+    configData = undefined;
+    render(
+      <EnginePicker
+        variant="step"
+        title="Choose what powers Station"
+        onChosen={() => {}}
+        onDismiss={() => {}}
+        onTitleChange={(title: string) => titles.push(title)}
+      />,
+    );
+    expect(titles.at(-1)).toBe(
+      'No connected engine can run the built-in assistant',
+    );
+  });
+});

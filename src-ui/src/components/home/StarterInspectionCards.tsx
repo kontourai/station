@@ -12,6 +12,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { Button } from '../Button';
+import { PageCallout } from '../PageCallout';
 import { SkeletonBlock } from '../state';
 import { navigateStarterHref } from './starterNavigation';
 
@@ -128,55 +129,60 @@ function StarterInspectionCard({
 
   if (loading)
     return (
-      <section
-        className="starter-work-card starter-work-card--loading"
-        aria-label={title}
-        aria-busy="true"
-      >
+      // #1582 C4: the same page callout Home's other offers use. One id per
+      // inspection, so the two cards are distinct and neither can be deduped
+      // away by the other.
+      <PageCallout calloutId={`starter-${id}`} ariaLabel={title} busy>
         <SkeletonBlock count={1} label={`Checking ${title.toLowerCase()}`} />
-      </section>
+      </PageCallout>
     );
 
   const ownerState = unbound
     ? candidate.data?.state
     : inspectionObservation?.completion.state;
+  const unreachable =
+    failed ||
+    ownerState === 'missing' ||
+    ownerState === 'unavailable' ||
+    ownerState === 'NOT_VERIFIED';
   return (
-    <section className="starter-work-card" aria-label={title}>
-      <div>
-        <p className="starter-work-card__title">{title}</p>
-        <p className="starter-work-card__body">
-          {failed
-            ? 'The exact owner is unavailable.'
-            : ownerState === 'missing'
-              ? 'An exact owner-backed item is not available yet.'
-              : ownerState === 'unavailable' || ownerState === 'NOT_VERIFIED'
-                ? 'The exact owner could not be verified.'
-                : description}
+    <PageCallout
+      calloutId={`starter-${id}`}
+      // An owner Station cannot reach is not an ordinary offer.
+      tone={unreachable ? 'warning' : 'info'}
+      ariaLabel={title}
+      title={title}
+      action={
+        unreachable ? (
+          <Button onClick={retry}>
+            Retry {id === 'inspect-approval' ? 'approval' : 'receipt'}{' '}
+            inspection
+          </Button>
+        ) : target ? (
+          <Button
+            variant="primary"
+            pending={launch.isPending}
+            onClick={() => void open()}
+          >
+            {bound
+              ? `Reopen ${id === 'inspect-approval' ? 'approval' : 'receipt'}`
+              : action}
+          </Button>
+        ) : null
+      }
+    >
+      {failed
+        ? 'The exact owner is unavailable.'
+        : ownerState === 'missing'
+          ? 'An exact owner-backed item is not available yet.'
+          : ownerState === 'unavailable' || ownerState === 'NOT_VERIFIED'
+            ? 'The exact owner could not be verified.'
+            : description}
+      {launch.isError && (
+        <p className="page-callout__notice" role="alert">
+          Inspection was not confirmed. Retry reuses the same exact operation.
         </p>
-        {launch.isError && (
-          <p className="starter-work-card__body" role="alert">
-            Inspection was not confirmed. Retry reuses the same exact operation.
-          </p>
-        )}
-      </div>
-      {failed ||
-      ownerState === 'missing' ||
-      ownerState === 'unavailable' ||
-      ownerState === 'NOT_VERIFIED' ? (
-        <Button onClick={retry}>
-          Retry {id === 'inspect-approval' ? 'approval' : 'receipt'} inspection
-        </Button>
-      ) : target ? (
-        <Button
-          variant="primary"
-          pending={launch.isPending}
-          onClick={() => void open()}
-        >
-          {bound
-            ? `Reopen ${id === 'inspect-approval' ? 'approval' : 'receipt'}`
-            : action}
-        </Button>
-      ) : null}
-    </section>
+      )}
+    </PageCallout>
   );
 }

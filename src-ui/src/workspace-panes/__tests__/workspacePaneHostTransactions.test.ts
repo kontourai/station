@@ -77,7 +77,7 @@ describe('workspace pane host transactions', () => {
       owner: Symbol('plugin'),
       preparation: { prepare: () => true, rollback: () => {} },
     });
-    expect(result).not.toBeNull();
+    expect(result).toMatchObject({ ok: true });
     const persisted = JSON.parse(
       values.get(workspacePaneHostStorageKey(before.scope, before.id)) ??
         'null',
@@ -104,12 +104,60 @@ describe('workspace pane host transactions', () => {
       },
     });
 
-    expect(result).toBeNull();
+    expect(result).toEqual({ ok: false, reason: 'not-persisted' });
     expect(events).toEqual(['prepare', 'rollback']);
     const persisted = JSON.parse(
       values.get(workspacePaneHostStorageKey(before.scope, before.id)) ?? '',
     );
     expect(persisted.instances).toEqual([one]);
+  });
+
+  test('names the reason a prepared open produced no next state', () => {
+    const before = document();
+    const { adapter } = storage();
+    const owner = Symbol('reasons');
+
+    // Already open: decided from the document, before anything is written.
+    expect(
+      prepareWorkspacePaneHostOpen({
+        state: { document: before, rendererFailures: {} },
+        instance: one,
+        storage: adapter,
+        owner,
+      }),
+    ).toEqual({ ok: false, reason: 'already-open' });
+
+    // Refused: the host document model declines a placement into a group it
+    // does not have, so the reducer never adds the occurrence.
+    expect(
+      prepareWorkspacePaneHostOpen({
+        state: { document: before, rendererFailures: {} },
+        instance: two,
+        storage: adapter,
+        owner,
+        action: {
+          type: 'add-existing-instance',
+          instance: two,
+          targetGroupId: 'absent',
+        },
+      }),
+    ).toEqual({ ok: false, reason: 'refused' });
+
+    // Not persisted: the durable write itself fails, after the reducer agreed.
+    expect(
+      prepareWorkspacePaneHostOpen({
+        state: { document: before, rendererFailures: {} },
+        instance: two,
+        storage: {
+          getItem: adapter.getItem,
+          setItem: () => {
+            throw new Error('quota');
+          },
+          removeItem: adapter.removeItem,
+        },
+        owner,
+      }),
+    ).toEqual({ ok: false, reason: 'not-persisted' });
   });
 
   test('computes close eligibility before committing a lifecycle close', () => {

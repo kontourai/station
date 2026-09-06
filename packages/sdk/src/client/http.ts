@@ -23,6 +23,7 @@ import {
   type ConnectionRetryClassification,
   isTerminalConnectionStatus,
 } from '@kontourai/station-contracts/http';
+import { boundResponse } from './bounded-response.js';
 import { withClientOriginHeaders } from './client-origin.js';
 
 /**
@@ -1009,11 +1010,7 @@ export async function getJson(
   const result =
     maximum === undefined
       ? response
-      : (await import('./bounded-response')).boundResponse(
-          response,
-          maximum,
-          assertAuthority,
-        );
+      : boundResponse(response, maximum, assertAuthority);
   return needsAuthorityGuard(url, requestOptions, configured)
     ? guardResponseAuthority(result, assertAuthority)
     : result;

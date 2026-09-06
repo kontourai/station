@@ -175,7 +175,7 @@ registerCommand(
           cacheInclusiveTotalTokens,
           providerPromptCacheInclusivity,
         },
-        { formatMeasuredTokens },
+        { formatMeasuredCostUsd, formatMeasuredTokens },
       ] = await Promise.all([
         import('@kontourai/station-shared/usage-fold'),
         import('@kontourai/station-shared/usage-measurement'),
@@ -297,15 +297,15 @@ registerCommand(
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
                     <div>
                       <strong>Consumed</strong><br/>
-                      In: ${modelData.inputTokens?.toLocaleString() || 0}<br/>
-                      Out: ${modelData.outputTokens?.toLocaleString() || 0}<br/>
-                      Total: ${modelData.totalTokens?.toLocaleString() || 0}
+                      In: ${formatMeasuredTokens(modelData.inputTokens)}<br/>
+                      Out: ${formatMeasuredTokens(modelData.outputTokens)}<br/>
+                      Total: ${formatMeasuredTokens(modelData.totalTokens)}
                     </div>
                     <div>
                       <strong>Stats</strong><br/>
                       Turns: ${modelData.turns || 0}<br/>
                       Tool Calls: ${modelData.toolCalls || 0}<br/>
-                      Cost: $${(modelData.estimatedCost || 0).toFixed(4)}
+                      Cost: ${formatMeasuredCostUsd(modelData.estimatedCost)}
                     </div>
                   </div>
                 </div>

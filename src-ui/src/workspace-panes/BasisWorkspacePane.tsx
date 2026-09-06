@@ -11,6 +11,7 @@ import type { BasisPaneHostScope } from './BasisPaneLauncher';
 import type { BuiltinWorkspacePaneProps } from './builtinWorkspacePaneRegistry';
 import { ConnectedStationBasisPane } from './ConnectedStationBasisPane';
 import { useWorkspacePaneHostOpenAction } from './WorkspacePaneHostOpenContext';
+import { describeWorkspacePaneOpenRefusal } from './workspacePaneHostOpenOutcome';
 
 const LazyConnectedSessionInventory = lazy(() =>
   import('./ConnectedSessionInventory').then(
@@ -22,7 +23,12 @@ const LazyConnectedSessionInventory = lazy(() =>
 
 export function BasisWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   const host = useWorkspacePaneHostOpenAction();
-  const [portableError, setPortableError] = useState(false);
+  /**
+   * The sentence for the reason the host gave, not one covering every reason
+   * (#1596). "cannot open here" was wrong for `no-lease`, which clears on its
+   * own when the other tab lets go.
+   */
+  const [portableError, setPortableError] = useState<string | null>(null);
   if (!isCanonicalBasisWorkspacePaneInstance(instance))
     return <section role="alert">Basis pane identity is unavailable.</section>;
   const context = instance.boundContext;
@@ -72,14 +78,20 @@ export function BasisWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
             type="button"
             className="button button--secondary button--small"
             onClick={() => {
-              setPortableError(!host?.open(portable.instance));
+              // No host at all is not a refusal to report: the button belongs
+              // to a pane already mounted inside one, so `host` is null only
+              // while this pane is itself unmounting.
+              const outcome = host?.open(portable.instance);
+              setPortableError(
+                !outcome || outcome.ok
+                  ? null
+                  : describeWorkspacePaneOpenRefusal(outcome.reason),
+              );
             }}
           >
             Open portable MCP App
           </button>
-          {portableError ? (
-            <span role="alert">Portable Basis App cannot open here.</span>
-          ) : null}
+          {portableError ? <span role="alert">{portableError}</span> : null}
         </div>
       ) : null}
       {scope.kind === 'session-inventory' ? (

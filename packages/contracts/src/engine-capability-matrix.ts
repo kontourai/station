@@ -331,6 +331,10 @@ export type BuiltInToolControlCell =
 
 export interface EngineCapabilityMatrix {
   engineId: EngineId;
+  /** Independent native child from an external transcript, never control of its original process. */
+  externalSessionContinuation?:
+    | { state: 'native'; basis: 'declared' }
+    | { state: 'unsupported'; reason: string };
   systemPrompt: CapabilityDelivery;
   /**
    * archive#895 wave C: the fallback for an authored prompt when
@@ -581,6 +585,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   claude: {
     engineId: toEngineId('claude'),
+    externalSessionContinuation: { state: 'native', basis: 'declared' },
     // systemPrompt deliverable via a per-session flag.
     systemPrompt: { state: 'session', channel: 'flag' },
     // The native flag channel above already delivers the authored prompt;
@@ -646,6 +651,11 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   codex: {
     engineId: toEngineId('codex'),
+    externalSessionContinuation: {
+      state: 'unsupported',
+      reason:
+        'Station can read this Codex transcript, but independent continuation is not available yet.',
+    },
     // Evidence gate (docs/design/agent-engine-unification.md
     // §4.1/§6.1): `codex app-server generate-json-schema` against the
     // installed codex-cli 0.145.0 CONFIRMS `developerInstructions` as a
@@ -1243,4 +1253,19 @@ export function resolveBuiltinAgentEngineBinding(input: {
     return capableEngines[0];
   }
   return null;
+}
+
+/** A declaration is product support, not permission or proof of current source readiness. */
+export function externalSessionContinuationSupport(
+  provider: string,
+):
+  | { state: 'native'; basis: 'declared' }
+  | { state: 'unsupported' | 'unknown'; reason: string } {
+  return (
+    ENGINE_CAPABILITY_MATRICES[provider]?.externalSessionContinuation ?? {
+      state: 'unknown',
+      reason:
+        'Station has not established independent continuation support for this engine.',
+    }
+  );
 }

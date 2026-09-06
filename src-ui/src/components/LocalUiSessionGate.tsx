@@ -118,6 +118,12 @@ export function LocalUiSessionGate({
   }
   if (resolution.kind === 'host-unavailable') {
     return (
+      // `local-ui-session-recovery` carries no styling: it is the hook the
+      // first-run readiness wait identifies this screen by
+      // (`tests/helpers/local-ui-access-readiness.ts`), and the `:not()` that
+      // keeps this screen out of that wait's "still pending" selector. Removing
+      // it makes a settled screen read as pending and the wait spin to its
+      // deadline. Rename it there in the same change.
       <main className="local-ui-session-recovery" aria-live="polite">
         <h1>Reconnecting to this Station</h1>
         <p role="alert">

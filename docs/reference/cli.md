@@ -921,13 +921,14 @@ station delegate targets [--on=<environment>] [--project=<slug>|--project-path=<
 foreground chat and delegation. It resolves the Conversation's current child
 Session at the serving Station; callers do not choose a Session just to send a
 follow-up. `task:` and `cli:` identifiers remain accepted as legacy
-conversation identities. `delegate continue <legacy-id> <message>` routes to
-the same continuation implementation, but is deprecated for at least this
+conversation identities. Ordinary chats and delegated conversations both use
+the canonical conversation continuation API. `delegate continue <legacy-id>
+<message>` retains the legacy task-bound API and response for at least this
 release and emits a migration notice. Supervision verbs keep their deliberately
 different scope: `status`, `events`, `respond`, and `interrupt` operate on the
 resolved current Session/task and their output identifies both the durable
-`conversationId` and `currentSessionId`. `taskId` remains a compatibility alias
-where it was already present.
+`conversationId` and `currentSessionId`. A Conversation selector does not create
+a Task or grant task-supervision authority.
 
 Creation accepts only the authored prompt, target, and optional parent Task.
 The serving Station produces the resulting Conversation and Session identities;
@@ -1000,15 +1001,26 @@ e.g. `delegate.create`, `delegate.status`, `delegate.events`,
 `delegate.continue`, `delegate.respond`, `delegate.interrupt`,
 `delegate.targets`.
 
+For canonical `delegate --session`, `data` contains the foreground execution
+receipt (`conversationId`, accepted `sessionId`, `providerTurnId`, `target`, and
+`resolution`), plus `currentSessionId` as an alias of `sessionId` and
+`status: 'dispatched'`. It does not invent a `taskId`; environment/model
+provenance is in `resolution`. Consumers needing the previous task-specific
+follow-up payload can use the deprecated `delegate continue` alias during
+the compatibility period. Task creation and supervision payloads are unchanged.
+
 `--on-request=<wait|fail>` (station#979, default `wait`, `create`/
 conversation continuation only) — `delegate` dispatch is fire-and-forget (the server
 returns a `status: 'dispatched'` handle immediately; there is no live
 event stream open at the CLI call site to react to mid-turn, unlike
-`chat`). `--on-request=fail` makes exactly one follow-up status check
-(`observeDelegatedTask`) right after dispatch: if the task already shows a
-`pendingRequest`, it prints the request and the exact
-`station delegate respond <task-id> <request-id> <decision>` command and
-exits **4** instead of the ordinary success output, leaving the Conversation
+`chat`). `--on-request=fail` makes one best-effort observation after dispatch.
+Canonical local continuation reads pending approvals on the accepted child
+Session and supplies a `station approvals respond` command. Task creation,
+legacy continuation, and saved-environment task probes use task supervision
+and a `station delegate respond` command. A saved-environment ordinary
+Conversation has no task probe; its unavailable observation is reported as a
+warning, preserving the successful dispatch. Observation errors never trigger
+another turn. An observed pending request exits **4**, leaving the Conversation
 alive. `--on-request=wait` skips that check entirely (today's behavior,
 unchanged). Independent of `--on-request`, `station delegate status`
 always prints the respond-command hint alongside an existing

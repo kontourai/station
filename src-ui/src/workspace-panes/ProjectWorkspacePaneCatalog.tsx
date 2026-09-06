@@ -1,4 +1,5 @@
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
+import { PageCallout } from '../components/PageCallout';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
@@ -83,8 +84,19 @@ function CatalogContents({
 export function ProjectWorkspacePaneModal({
   show,
   onClose,
+  notice,
   ...catalog
-}: CatalogProps & { show: boolean; onClose: () => void }) {
+}: CatalogProps & {
+  show: boolean;
+  onClose: () => void;
+  /**
+   * One sentence about the last selection this picker could not complete
+   * (#1596). The list stays interactive underneath it: a refusal is
+   * information, not the end of the task, and one of the reasons
+   * (`no-lease`) can resolve while the picker is still on screen.
+   */
+  notice?: string | null;
+}) {
   if (!show) return null;
   return (
     <ResponsiveDialogSurface
@@ -106,6 +118,22 @@ export function ProjectWorkspacePaneModal({
         Every known pane is listed. Available panes open directly; the others
         carry their state as a badge with the next step.
       </p>
+      {notice ? (
+        <PageCallout
+          calloutId="workspace-pane-open-refused"
+          tone="warning"
+          // `alert`, not `status`: this callout is MOUNTED by the click it
+          // answers, and a polite region inserted already holding its text is
+          // not reliably announced — which would leave a screen-reader user
+          // with the "nothing happened" #1596 exists to close. The Browser
+          // Preview launcher's refusal already uses `alert` for the same
+          // reason.
+          role="alert"
+          ariaLabel="Workspace pane could not open"
+        >
+          {notice}
+        </PageCallout>
+      ) : null}
       <CatalogContents {...catalog} />
       <ResponsiveSurfaceActions className="project-page__modal-cancel">
         <button

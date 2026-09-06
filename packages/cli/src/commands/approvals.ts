@@ -200,7 +200,7 @@ function printApprovals(pending: PendingApproval[], jsonMode: boolean): void {
   printJsonMode(pending, jsonMode);
 }
 
-async function listPendingForThread(
+export async function listPendingForThread(
   apiBase: string,
   threadId: string,
 ): Promise<PendingApproval[]> {

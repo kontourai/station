@@ -66,11 +66,38 @@ describe('StarterWorkCard', () => {
     const { container } = render(<StarterWorkCard />);
 
     const card = screen.getByLabelText('Starter work');
-    expect(card.classList.contains('starter-work-card--loading')).toBe(true);
+    // #1582 C4: the shimmer's flex sizing hangs off the shared primitive's
+    // busy modifier now (`.page-callout--busy .skeleton-block`), which is
+    // what stops the block collapsing to nothing inside a flex row.
+    expect(card.classList.contains('page-callout--busy')).toBe(true);
+    expect(card.getAttribute('aria-busy')).toBe('true');
     expect(
       screen.getByRole('status', { name: 'Checking starter work' }),
     ).toBeTruthy();
     expect(container.querySelector('.skeleton--block')).toBeTruthy();
+  });
+
+  it('#1582 C4: an unreachable ledger reads as a warning, with its copy unchanged', () => {
+    // The offer and its failure are the SAME callout — one identity, so a
+    // stack can never show both — but not the same tone: an offer is `info`,
+    // a ledger Station cannot reach is `warning`, which is the banner scale's
+    // own word for it.
+    projects = [{ slug: 'alpha', name: 'Alpha' }];
+    const refetch = vi.fn();
+    useStarterWorkQuery.mockReturnValue({
+      data: { state: 'unavailable' },
+      isLoading: false,
+      isError: false,
+      refetch,
+    });
+    render(<StarterWorkCard />);
+
+    const card = screen.getByLabelText('Starter work');
+    expect(card.getAttribute('data-callout-id')).toBe('starter-work');
+    expect(card.className).toContain('page-callout--warning');
+    expect(card.textContent).toContain('Starter Work is unavailable.');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetch).toHaveBeenCalled();
   });
 
   it('reopens only the exact bound Task', async () => {

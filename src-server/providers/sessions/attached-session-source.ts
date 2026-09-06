@@ -41,6 +41,8 @@ export type AttachedSessionCursor =
   | number
   | {
       offset: number;
+      /** Source-owned JSON parser state, bounded in storage and validated by its source codec. */
+      sourceState?: Record<string, unknown>;
       eventIndex?: number;
       turnId?: string;
       /** Written by sources that persist turn-usage aggregation state. */
@@ -65,6 +67,12 @@ export interface AttachedSessionUsageAccumulator {
 
 export interface AttachedSessionSource {
   readonly provider: string;
+  /**
+   * Stable source-owned identifier persisted with a read-only attachment and
+   * used for diagnostics. The common follower does not infer it from the
+   * provider name.
+   */
+  readonly kind: string;
   discover(): Promise<AttachedSessionDiscoveryResult>;
   read(
     session: AttachedSessionDescriptor,

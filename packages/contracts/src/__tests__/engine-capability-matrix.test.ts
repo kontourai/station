@@ -5,6 +5,7 @@ import {
   controlPlaneCapableEngineNames,
   ENGINE_CAPABILITY_MATRICES,
   engineControlPlaneCapability,
+  externalSessionContinuationSupport,
   resolveBuiltinAgentEngineBinding,
   resolveComposerImageSupport,
   resolveEngineCapabilityMatrix,
@@ -32,6 +33,24 @@ const ACP_ADAPTER_CAPABILITIES_FIXTURE = [
 ] as const;
 
 describe('engine capability matrix', () => {
+  test('external continuation declares native support separately from observation and unknown engines', () => {
+    expect(externalSessionContinuationSupport('claude')).toEqual({
+      state: 'native',
+      basis: 'declared',
+    });
+    expect(externalSessionContinuationSupport('codex')).toMatchObject({
+      state: 'unsupported',
+      reason: expect.any(String),
+    });
+    expect(externalSessionContinuationSupport('future-engine')).toMatchObject({
+      state: 'unknown',
+      reason: expect.any(String),
+    });
+    expect(externalSessionContinuationSupport('station')).toMatchObject({
+      state: 'unknown',
+    });
+  });
+
   test('sessionDeliveryChannels reproduces the shipped per-engine delivery truth (acp/claude/codex; bedrock/ollama undefined)', () => {
     expect(sessionDeliveryChannels('acp')).toEqual({
       toolServers: true,

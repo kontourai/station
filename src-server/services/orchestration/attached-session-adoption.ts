@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { externalSessionContinuationSupport } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   AdoptedSessionResult,
   OrchestrationCommandDispatchResult,
@@ -509,6 +510,8 @@ export class AttachedSessionAdoption {
   }
 
   private requireAdoptionAdapter(provider: EngineId): ProviderAdapterShape {
+    const support = externalSessionContinuationSupport(provider);
+    if (support.state !== 'native') throw new Error(support.reason);
     const adapter = this.deps.requireAdapter(provider);
     if (!adapter.adoptSession || !adapter.discardSession) {
       throw new Error(

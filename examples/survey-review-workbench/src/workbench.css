@@ -60,7 +60,7 @@
 .srw-button-primary {
   background: var(--accent-primary, #7c5cff);
   border-color: var(--accent-primary, #7c5cff);
-  color: var(--accent-contrast, #ffffff);
+  color: var(--text-on-accent, #fff);
 }
 
 .srw-status {

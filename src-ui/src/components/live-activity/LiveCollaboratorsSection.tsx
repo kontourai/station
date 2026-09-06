@@ -15,6 +15,22 @@ function workState(
   return state[0]!.toUpperCase() + state.slice(1);
 }
 
+/**
+ * One sentence derived from the two counts the projection actually reports.
+ * The panel used to stack four lines — a heading, a mono eyebrow, a mono count
+ * pair and a status line — to say what is usually "nobody but you". Both
+ * branches read the same two numbers, so the sentence is a derivation and not
+ * a label: "just you" is exactly one connected client publishing nothing.
+ */
+export function liveCollaboratorSummary(
+  connectedClients: number,
+  publishing: number,
+): string {
+  if (connectedClients === 1 && publishing === 0)
+    return 'Just you on this host';
+  return `${connectedClients} client${connectedClients === 1 ? '' : 's'}, ${publishing} publishing live work`;
+}
+
 /** The Activity-only host projection; task rooms remain the presence authority. */
 export function LiveCollaboratorsSection() {
   const { data } = useLiveActivityQuery();
@@ -23,21 +39,33 @@ export function LiveCollaboratorsSection() {
   if (!data || (data.participants.length === 0 && data.connectedClients === 0))
     return null;
   const publishing = data.participants.length;
-  const summary = `${data.connectedClients} connected client${data.connectedClients === 1 ? '' : 's'} · ${publishing} publishing live work`;
+  const summary = liveCollaboratorSummary(data.connectedClients, publishing);
   return (
     <section
       className="live-collaborators"
       aria-labelledby="live-collaborators-title"
     >
       <div className="live-collaborators__header">
-        <div>
-          <h3 id="live-collaborators-title">Live collaborators</h3>
-          <span className="live-collaborators__eyebrow">
-            Published work across this host
-          </span>
-        </div>
-        <span className="live-collaborators__summary">{summary}</span>
+        <h3 id="live-collaborators-title">Live collaborators</h3>
+        <p className="live-collaborators__summary">{summary}</p>
       </div>
+      <details className="live-collaborators__details">
+        <summary>What this counts</summary>
+        <p className="live-collaborators__eyebrow">
+          Published work across this host
+        </p>
+        <ul>
+          <li>
+            <strong>{data.connectedClients}</strong> connected client
+            {data.connectedClients === 1 ? '' : 's'} — paired devices connected
+            to this Station.
+          </li>
+          <li>
+            <strong>{publishing}</strong> publishing live work — sessions that
+            publish what they are doing to this host.
+          </li>
+        </ul>
+      </details>
       {publishing > 0 && (
         <ul className="live-collaborators__rows">
           {data.participants.map((participant) => (
@@ -108,11 +136,12 @@ export function LiveCollaboratorsSection() {
           ))}
         </ul>
       )}
-      {publishing === 0 && (
-        <p className="live-collaborators__connected-only" role="status">
-          Connected — activity not published.
-        </p>
-      )}
+      {/*
+        The "Connected — activity not published." line is gone: the derived
+        sentence above already states the same fact from the same counts, and
+        two renderings of one number is how a surface starts disagreeing with
+        itself. #1582 D5.
+      */}
     </section>
   );
 }

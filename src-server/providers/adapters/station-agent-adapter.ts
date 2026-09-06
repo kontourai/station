@@ -18,6 +18,7 @@ import {
 } from '@kontourai/station-contracts/turn-provenance-context';
 import {
   currentAuthorizedTurnCorrelation,
+  currentNativeMemoryHistory,
   INTERNAL_TURN_CORRELATION_HEADER,
   issueAuthorizedTurnCorrelationHandoff,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
@@ -791,6 +792,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       provider: this.provider,
       threadId: input.threadId,
       status: 'ready',
+      ...(input.persistSession !== undefined
+        ? { persistSession: input.persistSession }
+        : {}),
       ...(input.modelId ? { model: input.modelId } : {}),
       ...(input.cwd ? { cwd: input.cwd } : {}),
       ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
@@ -955,6 +959,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
                     issueAuthorizedTurnCorrelationHandoff(
                       turnCorrelation,
                       nativeOutputRelay,
+                      currentNativeMemoryHistory(),
                     ),
                 }
               : {}),

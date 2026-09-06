@@ -5,34 +5,6 @@
   overflow-x: hidden;
 }
 
-.starter-work-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin: 0 0 1.25rem;
-  padding: 1rem 1.25rem;
-  border: 1px solid var(--border-color, #334155);
-  border-radius: 0.75rem;
-}
-
-.starter-work-card__title {
-  margin: 0;
-  font-weight: 650;
-}
-.starter-work-card__body {
-  margin: 0.25rem 0 0;
-  color: var(--text-muted, #94a3b8);
-}
-
-/* A SkeletonBlock's children are percentage-width blocks. As an auto-sized
-   flex child they previously resolved against a collapsed intrinsic width,
-   leaving only the card's outline visible on a pending fresh Home. */
-.starter-work-card--loading > .skeleton-block {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 .home-view__intro {
   max-width: 680px;
 }

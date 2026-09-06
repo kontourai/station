@@ -5,6 +5,71 @@ import { FolderGlyph } from './icons/Glyph';
 import { FolderBrowserModal } from './modals/FolderBrowserModal';
 import './PathAutocomplete.css';
 
+/**
+ * The rectangle an element is actually visible within: the nearest ancestor
+ * that scrolls and therefore clips, or the viewport when nothing does.
+ *
+ * Exported so its own answer is provable without a browser fixture. `overflow`
+ * is read from the computed style rather than inferred from a class name,
+ * because a modal body only clips when the cascade says it does — and only the
+ * FIRST such ancestor matters: anything above it clips this element only
+ * through that one.
+ */
+export function scrollClipRect(element: Element): {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+} {
+  for (
+    let parent = element.parentElement;
+    parent;
+    parent = parent.parentElement
+  ) {
+    const style = getComputedStyle(parent);
+    const clips = [style.overflowY, style.overflowX].some(
+      (overflow) => overflow === 'auto' || overflow === 'scroll',
+    );
+    if (!clips) continue;
+    const rect = parent.getBoundingClientRect();
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      left: rect.left,
+      right: rect.right,
+    };
+  }
+  return {
+    top: 0,
+    bottom: window.innerHeight,
+    left: 0,
+    right: window.innerWidth,
+  };
+}
+
+/**
+ * Is the anchor inside the rectangle that clips it?
+ *
+ * A zero-sized anchor answers YES. An element that has not been laid out —
+ * jsdom measures nothing, and a field can render a frame before layout —
+ * produces an all-zero rect, and hiding the list because a measurement is
+ * unavailable would be a guess dressed as an observation. The rule this
+ * function exists for is the OTHER direction: hide only when the anchor was
+ * measured and is demonstrably outside.
+ */
+export function anchorIsWithinClip(
+  anchor: { top: number; bottom: number; left: number; right: number },
+  clip: { top: number; bottom: number; left: number; right: number },
+): boolean {
+  if (anchor.bottom === anchor.top && anchor.right === anchor.left) return true;
+  return (
+    anchor.bottom > clip.top &&
+    anchor.top < clip.bottom &&
+    anchor.right > clip.left &&
+    anchor.left < clip.right
+  );
+}
+
 const MAX_SUGGESTIONS = 8;
 
 function resolveBrowsePath(value: string): string | undefined {
@@ -193,7 +258,44 @@ export function PathAutocomplete({
     shouldSuggest,
   ]);
 
-  const show = active && !userDismissed && suggestions.length > 0;
+  const wouldShow = active && !userDismissed && suggestions.length > 0;
+  /*
+   * #1582 E6. The list is `position: absolute` inside the field, so it moves
+   * with its input already — what it did NOT do is stop rendering when the
+   * input left the scrollport it lives in. Scrolling the New Project modal's
+   * body by 220px put the input 177px above the visible area while the list,
+   * which hangs below the input and is taller than the gap, still painted 138px
+   * of itself over the Description field: a suggestion list with no field,
+   * anchored to something the reader cannot see.
+   *
+   * Measured rather than assumed: the input's rect against the rect of the
+   * nearest scrollable ancestor. It re-evaluates on any scroll (capture, so
+   * scrolls inside the modal body are seen) and on resize, and it is only ever
+   * a display decision — nothing is dismissed, so scrolling back reveals the
+   * same list with the same selection.
+   */
+  const [anchorVisible, setAnchorVisible] = useState(true);
+  useEffect(() => {
+    if (!wouldShow) return;
+    const measure = () => {
+      const input = inputRef.current;
+      if (!input) return;
+      setAnchorVisible(
+        anchorIsWithinClip(
+          input.getBoundingClientRect(),
+          scrollClipRect(input),
+        ),
+      );
+    };
+    measure();
+    window.addEventListener('scroll', measure, true);
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('scroll', measure, true);
+      window.removeEventListener('resize', measure);
+    };
+  }, [wouldShow]);
+  const show = wouldShow && anchorVisible;
 
   const dismiss = useCallback(() => {
     setSelectedIdx(-1);

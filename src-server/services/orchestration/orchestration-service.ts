@@ -106,6 +106,10 @@ import {
   createAuthorizedTurnCorrelation,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import {
+  createNativeMemoryHistoryCompanion,
+  type NativeMemoryHistoryCompanion,
+} from '../../runtime/conversation/native-memory-history.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import {
   requiredMissingPrerequisites,
@@ -225,6 +229,11 @@ import {
   normalizeOmittedModelId,
 } from './model-launch-planning.js';
 import {
+  captureNativeMemoryContinuity,
+  NativeMemoryContinuityUnavailableError,
+  type NativeMemorySessionIdentity,
+} from './native-memory-continuity.js';
+import {
   projectRequestAnswerability,
   type RequestReplayOutcome,
   type SessionAnswerabilityObservation,
@@ -322,6 +331,8 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  /** Request authority forwarded only by the server-owned foreground resolver. */
+  nativeMemoryReadAuthority?: SessionReadAuthority;
   sessionStartAdmission?: SessionCommandInternalOptions['sessionStartAdmission'];
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
@@ -1044,7 +1055,7 @@ export class OrchestrationService {
     typeof createNativeOutputDeclarationOperation
   >;
   /** Exact active generation until the ordered durable terminal event commits. */
-  private readonly nativeOutputTurnGenerations = new Map<string, string>();
+  private readonly nativeTurnGenerations = new Map<string, string>();
   private readonly consumedAdapterEventStreams =
     new WeakSet<ProviderAdapterShape>();
   private readonly activeEventAdapters = new Map<
@@ -2477,7 +2488,7 @@ export class OrchestrationService {
     // stop/retirement rejection must not leave a callback capable of
     // admitting output while this service is already shutting down.
     this.nativeOutputGrants.dispose();
-    this.nativeOutputTurnGenerations.clear();
+    this.nativeTurnGenerations.clear();
     // A delta still buffered is text the model produced and nobody saw.
     // Flush before anything else here can tear the publish path down —
     // guarded, because this runs first and a failed final publish must not
@@ -4611,6 +4622,7 @@ export class OrchestrationService {
                     let turnCorrelation:
                       | ReturnType<typeof createAuthorizedTurnCorrelation>
                       | undefined;
+                    let nativeMemory: NativeMemoryHistoryCompanion | undefined;
                     let nativeOutputRelay:
                       | ReturnType<typeof createNativeOutputRelayCompanion>
                       | undefined;
@@ -4702,7 +4714,7 @@ export class OrchestrationService {
                           },
                           sourceLease: {
                             isCurrent: () =>
-                              this.nativeOutputTurnGenerations.get(
+                              this.nativeTurnGenerations.get(
                                 turnInput.threadId,
                               ) === nativeTurnId &&
                               !this.quarantinedThreads.has(
@@ -4718,11 +4730,32 @@ export class OrchestrationService {
                           declarationOperation: this.nativeOutputDeclarations,
                         });
                         if (nativeOutputRelay) {
-                          this.nativeOutputTurnGenerations.set(
+                          this.nativeTurnGenerations.set(
                             turnInput.threadId,
                             nativeTurnId,
                           );
                         }
+                      }
+                      if (
+                        nativeTurn &&
+                        internal?.nativeMemoryReadAuthority &&
+                        this.options.eventStore
+                      ) {
+                        this.nativeTurnGenerations.set(
+                          turnInput.threadId,
+                          nativeTurn.turnId,
+                        );
+                        nativeMemory = await this.captureNativeMemoryHistory(
+                          turnInput.threadId,
+                          internal.nativeMemoryReadAuthority,
+                          () =>
+                            this.nativeTurnGenerations.get(
+                              turnInput.threadId,
+                            ) === nativeTurn.turnId &&
+                            !this.quarantinedThreads.has(turnInput.threadId) &&
+                            this.isAdapterCurrent(adapter) &&
+                            context?.requestCurrent?.() !== false,
+                        );
                       }
                       const accepted = await withTenantExecutionContext(
                         context?.tenantExecutionContext ?? boundTenant,
@@ -4737,6 +4770,7 @@ export class OrchestrationService {
                                         () => adapter.sendTurn(turnInput),
                                       )
                                     : adapter.sendTurn(turnInput),
+                                nativeMemory,
                               )
                             : adapter.sendTurn(turnInput),
                       );
@@ -4775,10 +4809,12 @@ export class OrchestrationService {
                     } catch (error) {
                       if (!providerAccepted) {
                         this.clientOriginTurns.cancel(turnInput.threadId);
-                        if (nativeOutputRelay && turnCorrelation) {
-                          this.nativeOutputTurnGenerations.delete(
-                            turnInput.threadId,
-                          );
+                        if (
+                          (nativeOutputRelay ||
+                            internal?.nativeMemoryReadAuthority) &&
+                          turnCorrelation
+                        ) {
+                          this.nativeTurnGenerations.delete(turnInput.threadId);
                           this.nativeOutputGrants.retireTerminal(
                             turnInput.threadId,
                             turnCorrelation.turnId,
@@ -5010,11 +5046,11 @@ export class OrchestrationService {
           ) {
             // Interrupt revokes now; the later terminal append remains the
             // normal retirement/cleanup boundary for non-interrupted turns.
-            const nativeTurnId = this.nativeOutputTurnGenerations.get(
+            const nativeTurnId = this.nativeTurnGenerations.get(
               command.threadId,
             );
             if (nativeTurnId) {
-              this.nativeOutputTurnGenerations.delete(command.threadId);
+              this.nativeTurnGenerations.delete(command.threadId);
               this.nativeOutputGrants.retireTerminal(
                 command.threadId,
                 nativeTurnId,
@@ -5980,9 +6016,9 @@ export class OrchestrationService {
     // Deletion, quarantine, and replacement all converge through this owned
     // teardown seam. Revoke before clearing the auth/adapter maps so a late
     // callback cannot observe a half-retired generation.
-    const nativeTurnId = this.nativeOutputTurnGenerations.get(threadId);
+    const nativeTurnId = this.nativeTurnGenerations.get(threadId);
     if (nativeTurnId) {
-      this.nativeOutputTurnGenerations.delete(threadId);
+      this.nativeTurnGenerations.delete(threadId);
       this.nativeOutputGrants.retireTerminal(threadId, nativeTurnId);
     }
     this.sessionAdapters.delete(threadId);
@@ -6395,10 +6431,10 @@ export class OrchestrationService {
         projectedEvent.turnId,
       );
       if (
-        this.nativeOutputTurnGenerations.get(projectedEvent.threadId) ===
+        this.nativeTurnGenerations.get(projectedEvent.threadId) ===
         projectedEvent.turnId
       ) {
-        this.nativeOutputTurnGenerations.delete(projectedEvent.threadId);
+        this.nativeTurnGenerations.delete(projectedEvent.threadId);
       }
     }
     // Already observed raw at the coalescing seam above; observing the merged
@@ -6776,15 +6812,160 @@ export class OrchestrationService {
    * survives for this thread (recovery still proceeds; ACP falls back to
    * its resume cursor's connectionId).
    */
+  /** The configured local owner can supply native prompt history across Session boundaries. */
+  supportsNativeMemoryContinuity(): boolean {
+    return this.options.eventStore !== undefined;
+  }
+
+  private async captureNativeMemoryHistory(
+    threadId: string,
+    authority: SessionReadAuthority,
+    generationIsCurrent: () => boolean,
+  ): Promise<NativeMemoryHistoryCompanion> {
+    const store = this.options.eventStore;
+    if (!store || !isSessionReadAuthority(authority))
+      throw new NativeMemoryContinuityUnavailableError();
+    const projectIdentity = (
+      detail: OrchestrationSessionDetail | null,
+    ): NativeMemorySessionIdentity | null => {
+      if (!detail) return null;
+      const { session } = detail;
+      const id = session.threadId;
+      const metadata = this.readLatestSessionStartMetadata(id, detail.events);
+      return {
+        sessionId: session.threadId,
+        provider: session.provider,
+        agentId: session.assignedAgentSlug,
+        userId: this.sessionAuthz.sessionOwnerUserId(id),
+        tenantId: session.tenantExecutionContext?.tenantId,
+        projectSlug: session.projectSlug,
+        cwd: session.cwd,
+        environmentId: session.environmentId,
+        connectionId:
+          typeof metadata?.connectionId === 'string'
+            ? metadata.connectionId
+            : undefined,
+        status: session.status,
+        persistSession: session.persistSession,
+      };
+    };
+    // Refresh adapter-owned state once at this request seam. Revalidating
+    // each lineage leg must not enumerate every host Session or its full
+    // transcript again; fresh point reads below still certify every check.
+    await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
+    const readIdentity = async (id: string) => {
+      const persisted = store.readSessionByThread(id);
+      if (persisted)
+        this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
+      const loaded = this.sessionReadModel.get(id);
+      if (
+        (!persisted && !loaded) ||
+        !generationIsCurrent() ||
+        !this.sessionAuthz.canReadSession(id, authority)
+      )
+        return null;
+      const events = store
+        .listSessionProjectionEvents(id)
+        .map((event) => event.payload);
+      const session = buildOrchestrationSessionSummary({
+        persisted,
+        loaded,
+        events,
+        turnProgress: this.turnProgress.read(id),
+        answerability: this.observeAnswerability(
+          id,
+          (loaded ?? persisted)?.provider,
+          new Date().toISOString(),
+        ),
+      });
+      if (
+        !generationIsCurrent() ||
+        !this.sessionAuthz.canReadSession(id, authority)
+      )
+        return null;
+      return projectIdentity({ session, events });
+    };
+    const current = await readIdentity(threadId);
+    if (current?.provider !== 'station-agent' || !current.agentId)
+      throw new NativeMemoryContinuityUnavailableError();
+    const allowMissingCurrentRecord =
+      store.latestEventByMethod(threadId, 'turn.started') === undefined;
+    const binding = await captureNativeMemoryContinuity(
+      {
+        currentSessionId: threadId,
+        scope: {
+          ...current,
+          provider: 'station-agent',
+          agentId: current.agentId,
+        },
+      },
+      {
+        conversationForSession: (id) => store.conversationForSession(id),
+        conversationSessions: (id) => store.conversationSessions(id),
+        contextBoundaryForSuccessor: (id) =>
+          store.conversationContextBoundaryForSuccessor(id),
+        readSession: readIdentity,
+        isAuthorityCurrent: () =>
+          generationIsCurrent() &&
+          this.sessionAuthz.canReadSession(threadId, authority),
+      },
+    );
+    return createNativeMemoryHistoryCompanion({
+      binding,
+      allowMissingCurrentRecord,
+      readCanonicalSession: async (id) => {
+        if (!this.sessionAuthz.canReadSession(id, authority))
+          throw new NativeMemoryContinuityUnavailableError();
+        return this.readSessionMessages(id, authority).flatMap((message) => {
+          if (message.role !== 'user' && message.role !== 'assistant')
+            return [];
+          const parts = message.parts.flatMap((part) =>
+            typeof part.text === 'string' && !part.runtimeError
+              ? [{ type: 'text' as const, text: part.text }]
+              : [],
+          );
+          return parts.length
+            ? [
+                {
+                  id: `native-prefix:${id}:${message.id}`,
+                  role: message.role,
+                  parts,
+                  ...(message.metadata?.timestamp !== undefined
+                    ? { metadata: { timestamp: message.metadata.timestamp } }
+                    : {}),
+                },
+              ]
+            : [];
+        });
+      },
+    });
+  }
+
   private readLatestSessionStartMetadata(
     threadId: string,
+    snapshot?: readonly CanonicalRuntimeEvent[],
   ): Record<string, unknown> | undefined {
-    const event = this.options.eventStore?.latestEventByMethod(
-      threadId,
-      'session.started',
-    );
-    const metadata = (event?.payload as { metadata?: Record<string, unknown> })
-      ?.metadata;
+    let payload: CanonicalRuntimeEvent | undefined;
+    if (snapshot) {
+      for (let index = snapshot.length - 1; index >= 0; index -= 1) {
+        const candidate = snapshot[index];
+        if (
+          candidate?.threadId === threadId &&
+          candidate.method === 'session.started'
+        ) {
+          payload = candidate;
+          break;
+        }
+      }
+    } else {
+      payload = this.options.eventStore?.latestEventByMethod(
+        threadId,
+        'session.started',
+      )?.payload;
+    }
+    const metadata = (
+      payload as { metadata?: Record<string, unknown> } | undefined
+    )?.metadata;
     return metadata ? stripReservedOrchestrationMetadata(metadata) : undefined;
   }
 

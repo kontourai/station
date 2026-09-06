@@ -82,6 +82,135 @@ async function service(
 }
 
 describe('UsageTelemetryService', () => {
+  /**
+   * #1582 A3: the first-run disclosure says "none is configured here, so
+   * nothing is sent" and offers to keep telemetry on or turn it off. Both
+   * are claims about THIS host, and before this the API could see neither:
+   * the endpoint is read from the environment in the constructor, and the
+   * effective enablement folds config over `STATION_TELEMETRY_ENABLED` over
+   * the default. A client left to guess either one would be writing a label
+   * with nothing behind it.
+   */
+  describe('the disclosure reports what the UI would otherwise assert', () => {
+    test('an unconfigured host reports no endpoint', async () => {
+      const subject = new UsageTelemetryService({
+        homeDir: await home(),
+        appConfig: {} as any,
+        version: '1.2.3',
+        logger: logger(),
+        env: {},
+      });
+      const disclosure = await subject.disclosure();
+      expect(disclosure.endpointConfigured).toBe(false);
+      expect(disclosure.telemetryEnabled).toBe(true);
+    });
+
+    test('a configured endpoint is reported, blank and whitespace are not', async () => {
+      for (const [endpoint, expected] of [
+        ['https://ingest.test', true],
+        ['', false],
+        ['   ', false],
+      ] as const) {
+        const subject = new UsageTelemetryService({
+          homeDir: await home(),
+          appConfig: {} as any,
+          version: '1.2.3',
+          logger: logger(),
+          env: { STATION_TELEMETRY_ENDPOINT: endpoint },
+        });
+        expect(
+          (await subject.disclosure()).endpointConfigured,
+          `endpoint ${JSON.stringify(endpoint)} reported wrongly`,
+        ).toBe(expected);
+      }
+    });
+
+    test('#1582 A3/L1: the reported source names the link that actually won', async () => {
+      // A client keeping the current state has to know whether anything
+      // durable records it: `env` is in force with nothing behind it, and
+      // keeping it is the moment to write it down.
+      const cases = [
+        [{ telemetryEnabled: false }, {}, 'config'],
+        [
+          { telemetryEnabled: true },
+          { STATION_TELEMETRY_ENABLED: '0' },
+          'config',
+        ],
+        [{}, { STATION_TELEMETRY_ENABLED: 'off' }, 'env'],
+        [{}, {}, 'default'],
+        // An unrecognised value is NOT the environment deciding — it falls
+        // through to the default, and calling it `env` would invite a client
+        // to record a value the environment never set.
+        [{}, { STATION_TELEMETRY_ENABLED: 'perhaps' }, 'default'],
+      ] as const;
+      for (const [appConfig, env, expected] of cases) {
+        const subject = new UsageTelemetryService({
+          homeDir: await home(),
+          appConfig: appConfig as any,
+          version: '1.2.3',
+          logger: logger(),
+          env: env as any,
+        });
+        expect(
+          (await subject.disclosure()).enabledSource,
+          `config ${JSON.stringify(appConfig)} + env ${JSON.stringify(env)} sourced wrongly`,
+        ).toBe(expected);
+      }
+    });
+
+    test('#1582 A3/L1: a config reload moves the source with the value', async () => {
+      // `options.appConfig` is the snapshot this service was CONSTRUCTED
+      // with and is never updated, so a source derived from it after a
+      // reload would report where the value came from at boot.
+      const subject = new UsageTelemetryService({
+        homeDir: await home(),
+        appConfig: {} as any,
+        version: '1.2.3',
+        logger: logger(),
+        env: { STATION_TELEMETRY_ENABLED: 'false' },
+      });
+      expect((await subject.disclosure()).enabledSource).toBe('env');
+
+      subject.reconfigure({ telemetryEnabled: true } as any);
+      const after = await subject.disclosure();
+      expect(after.telemetryEnabled).toBe(true);
+      expect(
+        after.enabledSource,
+        'the reload moved the value but left the source at boot',
+      ).toBe('config');
+    });
+
+    test('the reported enablement is the one that gates emission, not the stored field', async () => {
+      // The precedence the emitter itself applies: stored config wins, then
+      // the environment, then the default. A UI reading `AppConfig` alone
+      // would offer to turn OFF a host the environment had already turned
+      // off, and name a state that was not the case.
+      const cases = [
+        [{}, {}, true],
+        [{}, { STATION_TELEMETRY_ENABLED: 'false' }, false],
+        [{ telemetryEnabled: false }, {}, false],
+        [
+          { telemetryEnabled: true },
+          { STATION_TELEMETRY_ENABLED: 'false' },
+          true,
+        ],
+      ] as const;
+      for (const [appConfig, env, expected] of cases) {
+        const subject = new UsageTelemetryService({
+          homeDir: await home(),
+          appConfig: appConfig as any,
+          version: '1.2.3',
+          logger: logger(),
+          env: env as any,
+        });
+        expect(
+          (await subject.disclosure()).telemetryEnabled,
+          `config ${JSON.stringify(appConfig)} + env ${JSON.stringify(env)} reported wrongly`,
+        ).toBe(expected);
+      }
+    });
+  });
+
   test('DISCLOSURE GATE DEFECT: configured telemetry does not buffer, timer, or request before acknowledgement', async () => {
     const fetch = vi.fn();
     const setInterval = vi.fn();

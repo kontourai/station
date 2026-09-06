@@ -34,7 +34,9 @@ export interface ConversationStats {
 }
 
 export interface ConversationStatsViewInput {
-  stats?: ConversationStats;
+  stats?: Omit<ConversationStats, 'estimatedCost'> & {
+    estimatedCost?: number | null;
+  };
   conversationId?: string;
   modelId: string;
   modelStats?: Record<string, unknown>;
@@ -160,7 +162,7 @@ export function buildConversationStatsView({
     ),
     conversationId,
     modelId,
-    modelStats,
+    modelStats: modelStatsForWire(modelStats),
     systemPromptTokens,
     mcpServerTokens,
     userMessageTokens,
@@ -170,4 +172,23 @@ export function buildConversationStatsView({
     contextFilesTokens: fromStationMemory ? 0 : undefined,
     measurement,
   };
+}
+
+/** Storage uses null for an unpriced model; the wire represents it by absence. */
+function modelStatsForWire(modelStats: Record<string, unknown>) {
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' &&
+    value !== null &&
+    (Object.getPrototypeOf(value) === Object.prototype ||
+      Object.getPrototypeOf(value) === null);
+  // Preserve malformed containers/rows for the shared validator to reject.
+  if (!isRecord(modelStats)) return modelStats;
+  return Object.fromEntries(
+    Object.entries(modelStats).map(([modelId, stats]) => {
+      if (!isRecord(stats) || stats.estimatedCost !== null)
+        return [modelId, stats];
+      const { estimatedCost: _unreportedCost, ...measured } = stats;
+      return [modelId, measured];
+    }),
+  );
 }

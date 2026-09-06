@@ -3,6 +3,7 @@ import type {
   WorkspacePaneInstanceId,
 } from '@kontourai/station-contracts/workspace-pane';
 import { createContext, useContext } from 'react';
+import type { WorkspacePaneHostOpenOutcome } from './workspacePaneHostOpenOutcome';
 
 /** A persisted host destination chosen by the command surface before catalog selection. */
 export type WorkspacePaneHostOpenPlacement =
@@ -19,12 +20,16 @@ export type WorkspacePaneHostOpenPlacement =
  * instance; the host decides placement, focus, persistence, and lifecycle.
  */
 export interface WorkspacePaneHostOpenAction {
-  /** False means validation, durable host prepare, or caller state prepare rejected the occurrence. */
+  /**
+   * A refusal carries the reason the host produced it (#1596), so a caller can
+   * say what happened instead of completing a click with nothing on screen.
+   * `describeWorkspacePaneOpenRefusal` holds the sentence for each reason.
+   */
   open(
     instance: WorkspacePaneInstance,
     preparation?: WorkspacePaneHostOpenPreparation,
     placement?: WorkspacePaneHostOpenPlacement,
-  ): boolean;
+  ): WorkspacePaneHostOpenOutcome;
   /**
    * Selects and focuses one already-admitted pane. Unlike `open`, this never
    * writes a second occurrence or falls back when the exact identity is gone.

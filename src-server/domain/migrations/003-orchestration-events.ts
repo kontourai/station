@@ -940,9 +940,20 @@ export function ensureOrchestrationEventStoreColumns(
     .prepare('PRAGMA table_info(orchestration_command_receipts)')
     .all() as Array<{ name?: string }>;
   if (!receiptColumns.some((column) => column.name === 'client_origin')) {
-    db.exec(
-      'ALTER TABLE orchestration_command_receipts ADD COLUMN client_origin TEXT',
-    );
+    try {
+      db.exec(
+        'ALTER TABLE orchestration_command_receipts ADD COLUMN client_origin TEXT',
+      );
+    } catch (error) {
+      // Two constructors can observe the old schema together. The first adds
+      // the column; the second must tolerate only that exact additive race.
+      if (
+        !(error instanceof Error) ||
+        !error.message.includes('duplicate column name')
+      ) {
+        throw error;
+      }
+    }
   }
   // v3 deliberately reruns the complete projection build once so existing v2
   // stores receive the JavaScript (rather than SQLite trim) request-identity

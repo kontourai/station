@@ -371,3 +371,20 @@
   color: var(--accent-primary);
   background: var(--accent-hover);
 }
+
+/*
+ * The list row's source chip (#1582 D6). Same token pair and metrics as
+ * `.engine-chip__pill` — `--text-tertiary` on `--bg-tertiary`, measured there
+ * at 8.49:1 dark / 5.91:1 light — rather than a new tone, so the two quiet
+ * chips a row can carry read as one family.
+ */
+.skill-source-chip {
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}

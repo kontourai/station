@@ -154,9 +154,14 @@ export function selectChangedVerification(
       continue;
     }
     for (const edge of edges) {
-      // A direct dynamic mapping replaces graph selection for that path. This
-      // keeps the one exact target from running again through `related`.
-      if (edge.related && !hasExplicitBoundary && !isChangedTest)
+      // A direct mapping replaces the generic graph fallback. An edge that
+      // explicitly requests both tests and related selection supplements the
+      // import graph (for example, a source-reading portability check).
+      if (
+        edge.related &&
+        (!hasExplicitBoundary || edge.tests?.length) &&
+        !isChangedTest
+      )
         relatedPaths.add(path);
       for (const test of edge.tests ?? [])
         addReason(tests, test, `${edge.reason}: ${path}`);

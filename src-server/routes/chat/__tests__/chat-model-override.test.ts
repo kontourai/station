@@ -232,11 +232,13 @@ describe('chat-model-override helpers', () => {
     // conversation, so it has to carry the slug's conversation store or the
     // override silently costs the user their history.
     expect(createTempAgent).toHaveBeenCalledWith({
+      agentId: 'writer',
       name: 'writer:bedrock-main:resolved-model-id:7:0:0',
       instructions: 'Be helpful',
       model: { id: 'resolved-model' },
       tools: [{ name: 'tool-a' }],
       memoryAdapter: overrideMemoryAdapter,
+      hooks: undefined,
     });
     expect(
       activeAgents.get('writer:bedrock-main:resolved-model-id:7:0:0'),

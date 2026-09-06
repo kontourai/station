@@ -170,6 +170,7 @@ export async function resolveChatAgentModelOverride({
           requireStableRuntimeConfigurationAcross(ctx, lease, operation),
       );
       const tempWrapper = await ctx.framework.createTempAgent({
+        agentId: slug,
         name: cacheKey,
         instructions,
         model,

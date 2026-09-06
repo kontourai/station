@@ -41,6 +41,16 @@ interface DelegatedTaskRecord {
   failNextStatus?: boolean;
 }
 
+interface ConversationRecord {
+  conversationId: string;
+  sessionId: string;
+  providerTurnId: string;
+  environment: { id: string; name: string; kind: 'current' | 'ssh' };
+  target: { kind: 'agent'; id: string };
+  pendingRequest?: boolean;
+  failProbe?: boolean;
+}
+
 /**
  * station#1463: the real server derives `slugJoin` from how the project was
  * resolved (local target, byte-equal verified path, or name alone). The mock
@@ -62,6 +72,8 @@ describe('station delegate over HTTP', () => {
   let consoleLog: MockInstance;
   let consoleError: MockInstance;
   const tasks = new Map<string, DelegatedTaskRecord>();
+  const conversations = new Map<string, ConversationRecord>();
+  const sessionReads: string[] = [];
   let nextTaskSeq = 1;
   // station#978: captures every POST body this mock server receives, keyed
   // by pathname, so tests can assert the CLI's exact request shape (not
@@ -85,6 +97,19 @@ describe('station delegate over HTTP', () => {
     consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     requestBodies.length = 0;
     tasks.clear();
+    conversations.clear();
+    sessionReads.length = 0;
+    conversations.set('conversation:ordinary', {
+      conversationId: 'conversation:ordinary',
+      sessionId: 'conversation:ordinary:child',
+      providerTurnId: 'ordinary-turn-2',
+      environment: {
+        id: 'env-current',
+        name: 'Current environment',
+        kind: 'current',
+      },
+      target: { kind: 'agent', id: 'default' },
+    });
     nextTaskSeq = 1;
     createDeliveryFixture = undefined;
     statusDeliveryFixture = undefined;
@@ -199,6 +224,13 @@ describe('station delegate over HTTP', () => {
             : {}),
         };
         tasks.set(taskId, record);
+        conversations.set(taskId, {
+          conversationId: taskId,
+          sessionId: taskId,
+          providerTurnId: `provider-turn-${taskId}`,
+          environment,
+          target,
+        });
         sendJson(200, {
           success: true,
           data: {
@@ -387,6 +419,76 @@ describe('station delegate over HTTP', () => {
             environment: record.environment,
             target: record.target,
             ...(body.model ? { model: body.model } : {}),
+          },
+        });
+        return;
+      }
+
+      const conversationContinueMatch = url.pathname.match(
+        /^\/api\/orchestration\/chat\/([^/]+)\/continue$/,
+      );
+      if (method === 'POST' && conversationContinueMatch) {
+        const conversationId = decodeURIComponent(conversationContinueMatch[1]);
+        const record = conversations.get(conversationId);
+        if (!record) {
+          sendJson(conversationId === 'conversation:forbidden' ? 403 : 404, {
+            success: false,
+            error: 'Conversation not found or not authorized',
+          });
+          return;
+        }
+        record.pendingRequest = body.message === 'trigger canonical pending';
+        record.failProbe = body.message === 'trigger canonical probe failure';
+        sendJson(200, {
+          success: true,
+          data: {
+            conversationId: record.conversationId,
+            sessionId: record.sessionId,
+            providerTurnId: record.providerTurnId,
+            target: record.target,
+            resolution: {
+              schemaVersion: 'station.execution-resolution/v1',
+              environmentId: record.environment.id,
+              agentId: record.target.id,
+              engine: { kind: 'station' },
+              provider: 'station-agent',
+            },
+          },
+        });
+        return;
+      }
+
+      const sessionReadMatch = url.pathname.match(
+        /^\/api\/orchestration\/sessions\/([^/]+)$/,
+      );
+      if (method === 'GET' && sessionReadMatch) {
+        const sessionId = decodeURIComponent(sessionReadMatch[1]);
+        sessionReads.push(sessionId);
+        const record = [...conversations.values()].find(
+          (item) => item.sessionId === sessionId,
+        );
+        if (!record || record.failProbe) {
+          sendJson(record ? 503 : 404, {
+            success: false,
+            error: 'Session observation unavailable',
+          });
+          return;
+        }
+        sendJson(200, {
+          success: true,
+          data: {
+            session: { threadId: sessionId, provider: 'station-agent' },
+            events: record.pendingRequest
+              ? [
+                  {
+                    method: 'request.opened',
+                    threadId: sessionId,
+                    requestId: 'req-canonical',
+                    requestType: 'approval',
+                    title: 'Review change',
+                  },
+                ]
+              : [],
           },
         });
         return;
@@ -950,7 +1052,7 @@ describe('station delegate over HTTP', () => {
     expect(followUp.data.nextCursor).toBe(firstPage.data.nextCursor);
   });
 
-  test('conversation selector continues the root conversation into its current child Session (station#3414)', async () => {
+  test('conversation selector uses the canonical conversation continuation for a task-origin conversation (station#3414)', async () => {
     const { runCli } = await import('../cli.js');
 
     await runCli([
@@ -980,16 +1082,188 @@ describe('station delegate over HTTP', () => {
       kind: 'delegate.continue',
       data: {
         conversationId: created.data.conversationId,
-        taskId: created.data.taskId,
         sessionId: created.data.sessionId,
-        currentSessionId: created.data.currentSessionId,
+        providerTurnId: `provider-turn-${created.data.taskId}`,
         status: 'dispatched',
       },
     });
     expect(requestBodies.at(-1)).toMatchObject({
-      pathname: `/api/orchestration/delegations/${encodeURIComponent(created.data.conversationId)}/continue`,
-      body: { message: 'Keep going' },
+      pathname: `/api/orchestration/chat/${encodeURIComponent(created.data.conversationId)}/continue`,
+      body: { message: 'Keep going', environment: { kind: 'current' } },
     });
+  });
+
+  test('canonical --session continues an ordinary conversation without task lookup or Task identity', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--session=conversation:ordinary',
+      '--model=next-model',
+      '--model-option=fastMode=true',
+      'Keep going',
+      '--json',
+      `--api-base=${apiBase}`,
+    ]);
+
+    const continued = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    expect(continued).toMatchObject({
+      ok: true,
+      kind: 'delegate.continue',
+      data: {
+        conversationId: 'conversation:ordinary',
+        sessionId: 'conversation:ordinary:child',
+        currentSessionId: 'conversation:ordinary:child',
+        providerTurnId: 'ordinary-turn-2',
+        status: 'dispatched',
+      },
+    });
+    expect(continued.data).not.toHaveProperty('taskId');
+    expect(requestBodies).toEqual([
+      expect.objectContaining({
+        pathname: '/api/orchestration/chat/conversation%3Aordinary/continue',
+        body: {
+          message: 'Keep going',
+          environment: { kind: 'current' },
+          model: {
+            override: 'next-model',
+            options: { fastMode: true },
+          },
+        },
+      }),
+    ]);
+  });
+
+  test('canonical pending-request probe uses the accepted child without inventing a Task', async () => {
+    const { runCli } = await import('../cli.js');
+    const exit = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined) as never);
+    await runCli([
+      'delegate',
+      '--session=conversation:ordinary',
+      'trigger canonical pending',
+      '--on-request=fail',
+      '--json',
+      `--api-base=${apiBase}`,
+    ]);
+    expect(exit).toHaveBeenCalledWith(4);
+    const result = JSON.parse(String(consoleLog.mock.calls.at(-1)?.[0]));
+    expect(result.data).toMatchObject({
+      conversationId: 'conversation:ordinary',
+      sessionId: 'conversation:ordinary:child',
+      pendingRequest: {
+        requestId: 'req-canonical',
+        respondCommand:
+          "station approvals respond 'conversation:ordinary:child' 'req-canonical' <accept|acceptForSession|decline|cancel>",
+      },
+    });
+    expect(result.data).not.toHaveProperty('taskId');
+    expect(sessionReads).toEqual(['conversation:ordinary:child']);
+    expect(requestBodies).toHaveLength(1);
+  });
+
+  test.each(['local', 'saved'] as const)(
+    'an unavailable %s probe preserves the accepted turn without a retry or local fallback',
+    async (environment) => {
+      const { runCli } = await import('../cli.js');
+      const exit = vi
+        .spyOn(process, 'exit')
+        .mockImplementation((() => undefined) as never);
+      const stderr = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+      await runCli([
+        'delegate',
+        '--session=conversation:ordinary',
+        'trigger canonical probe failure',
+        '--on-request=fail',
+        '--json',
+        ...(environment === 'saved' ? ['--on=saved-env'] : []),
+        `--api-base=${apiBase}`,
+      ]);
+      expect(exit).not.toHaveBeenCalled();
+      expect(
+        JSON.parse(String(consoleLog.mock.calls.at(-1)?.[0])).data.status,
+      ).toBe('dispatched');
+      expect(
+        stderr.mock.calls.map(([text]) => String(text)).join(''),
+      ).toContain('continued successfully regardless');
+      expect(requestBodies).toHaveLength(1);
+      expect(sessionReads).toEqual(
+        environment === 'saved' ? [] : ['conversation:ordinary:child'],
+      );
+    },
+  );
+
+  test('canonical --session does not fall back to the task continuation route', async () => {
+    const { runCli } = await import('../cli.js');
+    const exit = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined) as never);
+
+    await runCli([
+      'delegate',
+      '--session=conversation:missing',
+      'Keep going',
+      '--json',
+      `--api-base=${apiBase}`,
+    ]);
+
+    expect(exit).toHaveBeenCalledWith(3);
+    expect(consoleError).toHaveBeenCalledWith(
+      'Error:',
+      'Conversation not found or not authorized',
+    );
+    expect(requestBodies.map(({ pathname }) => pathname)).toEqual([
+      '/api/orchestration/chat/conversation%3Amissing/continue',
+    ]);
+    expect(consoleLog).not.toHaveBeenCalled();
+  });
+
+  test('canonical --session preserves a forbidden response as exit 3 without fallback', async () => {
+    const { runCli } = await import('../cli.js');
+    const exit = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined) as never);
+
+    await runCli([
+      'delegate',
+      '--session=conversation:forbidden',
+      'Keep going',
+      '--json',
+      `--api-base=${apiBase}`,
+    ]);
+
+    expect(exit).toHaveBeenCalledWith(3);
+    expect(consoleError).toHaveBeenCalledWith(
+      'Error:',
+      'Conversation not found or not authorized',
+    );
+    expect(requestBodies.map(({ pathname }) => pathname)).toEqual([
+      '/api/orchestration/chat/conversation%3Aforbidden/continue',
+    ]);
+    expect(consoleLog).not.toHaveBeenCalled();
+  });
+
+  test('canonical --session rejects a workspace override before POST', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await expect(
+      runCli([
+        'delegate',
+        '--session=conversation:ordinary',
+        '--cwd=/tmp/other-workspace',
+        'Keep going',
+        '--json',
+        `--api-base=${apiBase}`,
+      ]),
+    ).rejects.toThrow(
+      /Workspace flags have no effect when continuing a conversation/,
+    );
+    expect(requestBodies).toHaveLength(0);
   });
 
   test('delegate continue remains a deprecated compatibility alias for task and cli identities (station#3414)', async () => {
@@ -1030,19 +1304,19 @@ describe('station delegate over HTTP', () => {
       stderrWrite.mock.calls.map((call) => String(call[0])).join(''),
     ).toContain("Deprecated: 'station delegate continue");
 
-    // The selector is opaque: a legacy cli: conversation uses the same route
-    // rather than a separate task-only resume path.
+    // The selector is opaque: a legacy cli: conversation uses the canonical
+    // conversation route rather than the task-only compatibility path.
     const cliId = 'cli:legacy-conversation';
-    tasks.set(cliId, {
-      taskId: cliId,
-      status: 'running',
+    conversations.set(cliId, {
+      conversationId: cliId,
+      sessionId: `${cliId}:child`,
+      providerTurnId: 'cli-legacy-turn-2',
       environment: {
         id: 'env-current',
         name: 'Current environment',
         kind: 'current',
       },
       target: { kind: 'agent', id: 'default' },
-      events: [],
     });
     consoleLog.mockClear();
     await runCli([
@@ -1056,6 +1330,9 @@ describe('station delegate over HTTP', () => {
       consoleLog.mock.calls.map((call) => call[0]).join('\n'),
     );
     expect(cliContinued.data.conversationId).toBe(cliId);
+    expect(requestBodies.at(-1)?.pathname).toBe(
+      `/api/orchestration/chat/${encodeURIComponent(cliId)}/continue`,
+    );
   });
 
   test('respond covers all four decisions (AC5)', async () => {

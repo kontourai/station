@@ -58,6 +58,13 @@ export const CI_FAST_TIMEOUT_MS = 12 * 60_000;
  */
 export const FULL_REGRESSION_PHASES = Object.freeze([
   Object.freeze({
+    id: 'browser-prerequisite',
+    command: 'npm run check:full-regression-browser',
+    privateScript: 'check:full-regression-browser',
+    weight: 20,
+    timeoutMs: 60_000,
+  }),
+  Object.freeze({
     id: 'repo-governance',
     command: 'npm run proof:repo-governance',
     privateScript: 'proof:repo-governance',

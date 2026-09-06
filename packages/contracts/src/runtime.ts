@@ -42,8 +42,14 @@ export interface ConversationStats {
   estimatedCost: number;
 }
 
-export interface ConversationModelStats extends ConversationStats {
-  contextTokens: number;
+/** Per-model measurements may be unreported, just like conversation totals. */
+export interface ConversationModelStats
+  extends Pick<ConversationStats, 'turns' | 'toolCalls'> {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  contextTokens?: number;
+  estimatedCost?: number;
 }
 
 /**
@@ -135,15 +141,21 @@ function isConversationModelStats(
 ): value is ConversationModelStats {
   if (!isPlainRecord(value)) return false;
   const candidate = value;
-  return [
-    'inputTokens',
-    'outputTokens',
-    'totalTokens',
-    'contextTokens',
-    'turns',
-    'toolCalls',
-    'estimatedCost',
-  ].every((key) => isFiniteNonnegative(candidate[key]));
+  return (
+    ['turns', 'toolCalls'].every((key) =>
+      isFiniteNonnegative(candidate[key]),
+    ) &&
+    [
+      'inputTokens',
+      'outputTokens',
+      'totalTokens',
+      'contextTokens',
+      'estimatedCost',
+    ].every(
+      (key) =>
+        candidate[key] === undefined || isFiniteNonnegative(candidate[key]),
+    )
+  );
 }
 
 /** One wire validator shared by the route, SDK, and UI-facing hook. */
