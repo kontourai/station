@@ -101,7 +101,17 @@ function classifyCall<P extends ToolCallLike>(
   const kind = classifyToolName(toolName);
   const args = part.args ?? part.input;
   const inProgress = part.state === 'running';
-  const label = callLabel(kind, toolName, args, inProgress);
+  // station#1558 (fix round, M6): the collapsed group header passed the
+  // boolean form, so anything not running read as done — "Ran npm test" for a
+  // call whose session ended before it reported. `ToolCallDisplay` already
+  // refuses that tense for an unresolved call; the header a reader sees FIRST
+  // must not contradict the row it expands into.
+  const label = callLabel(
+    kind,
+    toolName,
+    args,
+    part.state === 'unresolved' ? 'unresolved' : inProgress,
+  );
   const failed =
     Boolean(part.error || part.errorText) || part.state === 'error';
   return { part, index, kind, label, inProgress, failed };

@@ -297,7 +297,16 @@ function buildRows(envelope: TurnProvenanceEnvelope): ProvenanceRow[] {
       const named = tools.uses
         .map((use) => {
           const failures = use.failed + use.cancelled;
-          return failures > 0 ? `${use.name} (${failures} failed)` : use.name;
+          // station#1558 (fix round, L11): an unresolved call is annotated on
+          // its own terms. It must not join `failures` — that word names an
+          // outcome Station observed, and this one is the absence of any.
+          const unresolved = use.unresolved ?? 0;
+          const notes: string[] = [];
+          if (failures > 0) notes.push(`${failures} failed`);
+          if (unresolved > 0) notes.push(`${unresolved} unresolved`);
+          return notes.length > 0
+            ? `${use.name} (${notes.join(', ')})`
+            : use.name;
         })
         .join(', ');
       return tools.omittedNames > 0
@@ -459,7 +468,15 @@ function turnFindings(envelope: TurnProvenanceEnvelope): string[] {
       // finding (archive#1802): a genuine per-answer anomaly (this turn's
       // own tool call never resolved), distinct from `failed`/`cancelled`,
       // which both name an event Station DID observe.
-      const resolved = use.succeeded + use.failed + use.cancelled;
+      // station#1558: a call the session ended on now settles with its own
+      // `tool.completed` (`status: 'unresolved'`), so it counts as observed
+      // here — otherwise it would be counted twice, once as an observed
+      // unresolved outcome and again as a start with no terminal at all.
+      // Both roads lead to the same honest finding below.
+      const observedUnresolved = use.unresolved ?? 0;
+      unresolved += observedUnresolved;
+      const resolved =
+        use.succeeded + use.failed + use.cancelled + observedUnresolved;
       if (use.started > resolved) unresolved += use.started - resolved;
     }
     if (failed > 0) {

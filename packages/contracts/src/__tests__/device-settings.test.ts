@@ -246,13 +246,15 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
           visible: true,
           size: 0,
           occupant: { kind: 'surface', id: 'home' },
+          maximized: false,
         },
-        left: { visible: false, size: 400, occupant: null },
-        right: { visible: false, size: 400, occupant: null },
+        left: { visible: false, size: 400, occupant: null, maximized: false },
+        right: { visible: false, size: 400, occupant: null, maximized: false },
         bottom: {
           visible: false,
           size: 320,
           occupant: { kind: 'surface', id: 'chat' },
+          maximized: false,
         },
       },
     });

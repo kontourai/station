@@ -374,6 +374,63 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
     expect(navigationStore.lastDockMaximized).toBe(true);
   });
 
+  // #928 slice iii: the chord writes the REGION; navigation's `maximize`
+  // param and `lastDockMaximized` follow as its mirror. The collapse-on-
+  // navigate seam (archive#1298) restores the region without forgetting the
+  // preference, and a `focusSession`-style restore is inbound to the region.
+  test('dock.maximize maximizes the region, mirrors navigation, and survives collapse-on-navigate as memory', async () => {
+    renderHost();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock')).not.toBeNull(),
+    );
+    const maximize = (shortcutRegistry?.getAllShortcuts() ?? []).find(
+      (shortcut) => shortcut.id === 'dock.maximize',
+    );
+    if (!maximize) throw new Error('dock.maximize is not registered');
+    const dockStateWrite = vi.spyOn(navigationStore, 'setDockState');
+
+    act(() => maximize.handler());
+
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull(),
+    );
+    expect(currentRegionModel().regions.bottom.maximized).toBe(true);
+    expect(dockStateWrite).toHaveBeenCalledTimes(1);
+    expect(dockStateWrite).toHaveBeenCalledWith(true, true);
+    expect(new URLSearchParams(window.location.search).get('maximize')).toBe(
+      'true',
+    );
+    expect(navigationStore.lastDockMaximized).toBe(true);
+
+    // Navigating elsewhere restores the dock to its docked size (archive#869)
+    // WITHOUT touching the memory (archive#1298): the region clears, the URL
+    // param clears, `lastDockMaximized` stays.
+    dockStateWrite.mockClear();
+    act(() => navigationStore.navigate('/projects'));
+    await waitFor(() =>
+      expect(currentRegionModel().regions.bottom.maximized).toBe(false),
+    );
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-maximized')).toBeNull(),
+    );
+    expect(
+      new URLSearchParams(window.location.search).get('maximize'),
+    ).toBeNull();
+    expect(dockStateWrite).not.toHaveBeenCalled();
+    expect(navigationStore.lastDockMaximized).toBe(true);
+
+    // The `focusSession` restore still speaks navigation; the region follows.
+    act(() =>
+      navigationStore.setDockState(true, navigationStore.lastDockMaximized),
+    );
+    await waitFor(() =>
+      expect(currentRegionModel().regions.bottom.maximized).toBe(true),
+    );
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull(),
+    );
+  });
+
   test('placing chat while the dock is hidden reveals it there', async () => {
     renderHost();
     await waitFor(() =>

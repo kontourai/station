@@ -46,14 +46,20 @@ function renderHeader({
   chatIdentity,
   projectContext,
   workspaceControls,
+  surfaceTitle,
+  restoreSnap,
 }: {
   fullscreen?: boolean;
   chatIdentity?: ReactNode;
   projectContext?: ReactNode;
   workspaceControls?: ChatDockWorkspaceControls;
+  surfaceTitle?: string;
+  restoreSnap?: 'collapsed' | 'half' | 'full';
 } = {}) {
   return render(
     <ChatDockHeader
+      surfaceTitle={surfaceTitle}
+      restoreSnap={restoreSnap}
       chatIdentity={chatIdentity}
       projectContext={projectContext}
       chatControls={{
@@ -121,6 +127,40 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
     renderHeader();
 
     fireEvent.click(screen.getByLabelText('Show dock region'));
+
+    expect(onDockSnap).toHaveBeenCalledWith('full');
+  });
+
+  // #1385 review: `station.chatDock.snap` is Chat's key. A non-Chat shell
+  // reopens to ITS chrome's snap, so Chat having collapsed from Full cannot
+  // maximize Activity when its own collapsed bar is expanded.
+  //
+  // Located by ACCESSIBLE NAME, not by `title`. These two arrived from main
+  // written against its `useShortcutDisplay: () => ''` stub, where the tooltip
+  // is the bare label; this file replaced that stub with real chords (#1536 F,
+  // see the note above it) because an empty display makes every tooltip
+  // assertion here vacuous. The title is `Show Activity (⌘D)` under the real
+  // stub, so `getByTitle('Show Activity')` finds nothing. `aria-label` is
+  // `visibilityLabel` verbatim and does not move with the chord.
+  test('a non-Chat shell reopens to its own snap, never to Chat’s persisted Full', () => {
+    isDockOpen = false;
+    isDockMaximized = false;
+    window.localStorage.setItem('station.chatDock.snap', 'full');
+    renderHeader({ surfaceTitle: 'Activity', restoreSnap: 'half' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
+
+    expect(onDockSnap).toHaveBeenCalledWith('half');
+    expect(onDockSnap).not.toHaveBeenCalledWith('full');
+  });
+
+  test('a non-Chat shell that collapsed from its own Full reopens Full', () => {
+    isDockOpen = false;
+    isDockMaximized = false;
+    window.localStorage.setItem('station.chatDock.snap', 'half');
+    renderHeader({ surfaceTitle: 'Activity', restoreSnap: 'full' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
 
     expect(onDockSnap).toHaveBeenCalledWith('full');
   });

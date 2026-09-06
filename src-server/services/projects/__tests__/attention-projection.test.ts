@@ -848,7 +848,69 @@ describe('AttentionProjectionService', () => {
           requestType: 'approval',
         }),
       );
-      expect(result.items[0].body).toContain('args: {command}');
+      // #1545: the command itself, not a field-name list — `args: {command}`
+      // read the same for `ls -la` and `rm -rf /`.
+      expect(result.items[0].body).toContain('ls -la');
+    });
+
+    test('a Codex file-change approval names the files it will change (#1545 D4)', async () => {
+      // Codex publishes the app-server's raw request params, so there is no
+      // named argument bag at all — this row said only "Approve file changes".
+      const projection = makeService({
+        sessions: [
+          baseSession({
+            threadId: 'thread-codex-files',
+            lifecycleState: 'review_pending',
+          }),
+        ],
+        sessionEvents: {
+          'thread-codex-files': [
+            requestOpened({
+              threadId: 'thread-codex-files',
+              requestType: 'approval',
+              title: 'Approve file changes',
+              payload: {
+                changes: [
+                  { path: 'src/index.ts', diff: '@@ -1 +1 @@' },
+                  { path: 'README.md', diff: 'x'.repeat(4_000) },
+                ],
+              },
+            }),
+          ],
+        },
+      });
+
+      const result = await projection.list();
+
+      expect(result.items[0].body).toContain('src/index.ts, README.md');
+      // The diff bodies must not be what the line gets spent on.
+      expect(result.items[0].body).not.toContain('@@');
+      expect(result.items[0].body).not.toContain('xxxx');
+    });
+
+    test('a Codex command approval names the command (#1545 D4)', async () => {
+      const projection = makeService({
+        sessions: [
+          baseSession({
+            threadId: 'thread-codex-cmd',
+            lifecycleState: 'review_pending',
+          }),
+        ],
+        sessionEvents: {
+          'thread-codex-cmd': [
+            requestOpened({
+              threadId: 'thread-codex-cmd',
+              requestType: 'approval',
+              title: 'rm -rf tmp',
+              payload: { command: 'rm -rf tmp', reason: 'Needs approval' },
+            }),
+          ],
+        },
+      });
+
+      const result = await projection.list();
+
+      expect(result.items[0].body).toContain('rm -rf tmp');
     });
 
     test('a permission request produces a title naming the tool', async () => {
@@ -1008,16 +1070,19 @@ describe('AttentionProjectionService', () => {
       expect(item.body).not.toContain(secret);
       expect(item.body).not.toContain(hugeBlob);
       expect(item.title).not.toContain(secret);
-      // Field-name shape summary, not values — bounded length overall.
+      // #1545 renders values, so the bound and the secret redaction are now
+      // the ONLY things keeping this row safe: the field names still appear,
+      // their values do not, and the huge blob cannot fit.
       expect(item.body).toContain('apiKey');
       expect(item.body).toContain('authorization');
+      expect(item.body).toContain('[REDACTED]');
       expect((item.body ?? '').length).toBeLessThan(300);
       // Exact match, not just toContain: this is the secret-payload row of
       // the PR body's example table (title AND full body) — previously
       // only verified by code trace (review finding #5).
       expect(item.title).toBe('Tool call awaiting approval: http_request');
       expect(item.body).toBe(
-        'Allow http_request — args: {apiKey, authorization, body}',
+        `Allow http_request — {"apiKey":"[REDACTED]","authorization":"Bearer [REDACTED]","body":"${'x'.repeat(92)}…`,
       );
     });
 
@@ -1195,7 +1260,7 @@ describe('AttentionProjectionService', () => {
       // the one that fails against unconverged `projectApproval` (see the
       // red-output transcript in the PR).
       expect(item?.title).toBe('Tool call awaiting approval: bash');
-      expect(item?.body).toBe('Allow bash — args: {command}');
+      expect(item?.body).toBe('Allow bash — ls -la');
       // Convergence must not regress the existing approval-kind contract:
       // kind, actions, and the approval-notification source shape stay put.
       expect(item?.kind).toBe('approval');
