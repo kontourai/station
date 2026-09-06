@@ -132,6 +132,24 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
       '.new-chat-modal__agent[data-agent-slug="station"]',
     );
     await expect(stationAgent).toBeVisible({ timeout: 20_000 });
+    // Engine selection saves configuration before deferred activation settles.
+    // Prove its authoritative readiness before exercising the first dispatch.
+    await expect
+      .poll(
+        async () => {
+          const response = await authenticatedRequest.get(
+            '/api/agents/station',
+          );
+          expect(response.ok()).toBe(true);
+          const catalog = await response.json();
+          return (
+            catalog.catalogState !== 'reconciling' &&
+            catalog.data?.available === true
+          );
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true);
     await stationAgent.click();
     const composer = page.locator('textarea[placeholder*="Type a message"]');
     await expect(composer).toBeVisible();
