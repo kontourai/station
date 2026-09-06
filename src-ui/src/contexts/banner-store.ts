@@ -179,6 +179,7 @@ export const BANNER_EXIT_MS = 160;
 
 /** Stable ids for chrome sources — sources dismiss their own ids on cleanup. */
 export const BANNER_IDS = {
+  homeRecovery: 'chrome:home-recovery',
   offline: 'chrome:connection:offline',
   compat: 'chrome:connection:compat',
   credential: 'chrome:onboarding:credential',

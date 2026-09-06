@@ -325,6 +325,11 @@ export function ProjectSidebar() {
           <button
             type="button"
             className={`sidebar__project-btn${isHomeActive ? ' sidebar__project-btn--active' : ''}`}
+            // #1582 D4: exactly one sidebar row may claim to be the current
+            // location. `isHomeActive` already derives that from `main`'s
+            // occupant rather than the route alone, so it is the honest place
+            // to say it; the region-surface rows say `aria-pressed` instead.
+            aria-current={isHomeActive ? 'page' : undefined}
             onClick={goHome}
           >
             <span aria-hidden="true">⌂</span>

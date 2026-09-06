@@ -936,6 +936,37 @@ describe('App home route resolution', () => {
     expect(showSurface).not.toHaveBeenCalled();
   });
 
+  // #1582 H3: Escape twice on Schedule with Add Job open landed on Home. The
+  // dialog was never the problem — it consumes the first Escape correctly.
+  // The second reached `app.escapeUp`, which App arms from
+  // `getParentView(view) !== null`, and that used to fall back to Home for
+  // every unlisted view, arming the "go up" shortcut on a page with nothing
+  // above it. This asserts the production wiring, not the derivation alone:
+  // the registration on Schedule must be disabled, while Settings — which
+  // really is a full-page overlay of Home — keeps it.
+  test.each([
+    ['/schedule', false],
+    ['/agents', false],
+    ['/settings', true],
+  ])(
+    'arms app.escapeUp on %s only when the view has a parent',
+    async (path, expectedEnabled) => {
+      window.history.replaceState({}, '', path);
+      hooks.projects = { data: [], isLoading: false, isError: false };
+
+      render(<App />);
+      await act(async () => undefined);
+
+      const registration = vi
+        .mocked(useKeyboardShortcut)
+        .mock.calls.filter(([id]) => id === 'app.escapeUp')
+        .at(-1);
+      if (!registration) throw new Error('app.escapeUp was never registered');
+      expect(registration[1]).toBe('Escape');
+      expect(registration[5]).toBe(expectedEnabled);
+    },
+  );
+
   test('registers no region surface host for a full-screen chat layout', async () => {
     window.history.replaceState({}, '', '/projects/demo/layouts/chat');
     hooks.layout = { data: { type: 'chat' }, isLoading: false };

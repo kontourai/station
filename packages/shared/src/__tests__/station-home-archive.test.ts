@@ -20,8 +20,10 @@ import {
 import {
   createStationHomeBackup,
   readStationHomeBackupManifest,
+  readStationHomeRecovery,
   restoreStationHomeBackup,
   STATION_HOME_BACKUP_MANIFEST,
+  STATION_HOME_RECOVERY_RECORD,
   StationHomeArchiveError,
 } from '../station-home-archive.js';
 import { acquireStationHomeRuntimeLease } from '../station-home-lifecycle.js';
@@ -56,6 +58,86 @@ function homeFixture(): { root: string; home: string } {
 afterEach(() => {
   for (const value of roots.splice(0))
     rmSync(value, { recursive: true, force: true });
+});
+
+it('atomically records recovery-from-copy provenance without claiming transferred authority', () => {
+  const fixture = homeFixture();
+  const backup = createStationHomeBackup({
+    homeDir: fixture.home,
+    outputDir: join(fixture.root, 'backup'),
+    now: () => '2026-09-05T00:00:00.000Z',
+  });
+  expect(readStationHomeRecovery(fixture.home)).toEqual({
+    kind: 'not-restored',
+  });
+  const target = join(fixture.root, 'target');
+  const result = restoreStationHomeBackup({
+    homeDir: target,
+    backupDir: backup.backupDir,
+    confirm: true,
+  });
+  expect(readStationHomeRecovery(target)).toEqual({
+    kind: 'recovered',
+    recovery: result.recovery,
+  });
+  expect(result.recovery).toMatchObject({
+    kind: 'recovered-from-copy',
+    snapshotCreatedAt: backup.manifest.createdAt,
+    backupManifestSha256: createHash('sha256')
+      .update(JSON.stringify(backup.manifest))
+      .digest('hex'),
+    authorityTransferred: false,
+  });
+  expect(JSON.stringify(result.recovery)).not.toContain(fixture.root);
+  const second = createStationHomeBackup({
+    homeDir: target,
+    outputDir: join(fixture.root, 'second-backup'),
+  });
+  const repeat = restoreStationHomeBackup({
+    homeDir: target,
+    backupDir: second.backupDir,
+    confirm: true,
+  });
+  expect(repeat.recovery.recoveryId).not.toBe(result.recovery.recoveryId);
+  expect(readStationHomeRecovery(target)).toEqual({
+    kind: 'recovered',
+    recovery: repeat.recovery,
+  });
+});
+
+it('a failed restore rolls back the recovery disclosure with the home', () => {
+  const fixture = homeFixture();
+  const backup = createStationHomeBackup({
+    homeDir: fixture.home,
+    outputDir: join(fixture.root, 'backup'),
+  });
+  expect(() =>
+    restoreStationHomeBackup({
+      homeDir: fixture.home,
+      backupDir: backup.backupDir,
+      confirm: true,
+      afterPublish: () => {
+        throw new Error('publication fault');
+      },
+    }),
+  ).toThrow();
+  expect(readStationHomeRecovery(fixture.home)).toEqual({
+    kind: 'not-restored',
+  });
+  expect(
+    readFileSync(join(fixture.home, 'config', 'app.json'), 'utf8'),
+  ).toContain('original');
+});
+
+it('malformed recovery disclosure stays unavailable rather than claiming a normal or transferred home', () => {
+  const fixture = homeFixture();
+  const path = join(fixture.home, STATION_HOME_RECOVERY_RECORD);
+  for (const value of ['{}', 'x'.repeat(5000)]) {
+    writeFileSync(path, value);
+    expect(readStationHomeRecovery(fixture.home)).toEqual({
+      kind: 'unavailable',
+    });
+  }
 });
 
 describe('StationHomeArchive', () => {
