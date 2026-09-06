@@ -558,11 +558,17 @@ describe('useChatDockActiveChatSync', () => {
     expect(showSurface).not.toHaveBeenCalled();
   });
 
-  // archive#1284: the conversation simply doesn't resolve at all
-  // (deleted, or the ORIGINAL ground-truth bug -- `!conversation` at
-  // useChatDockActiveChatSync.ts:148-150 used to silently null the pointer
-  // here without ever trying `openConversation`).
-  it('reveals Activity for the session when the conversation cannot be found at all', async () => {
+  // station#1582: a lookup that answers "no such conversation" — an HTTP 404,
+  // and since this slice ONLY a 404 (`fetchConversationById` throws for every
+  // other non-success) — is the one outcome that carries no session to show. `?chat=` holds a chat's durable
+  // id (`activeChatDurableId`), which for a chat never promoted to a
+  // conversation is its client session id -- and `serializeActiveChats` never
+  // persists such a chat, so a reload of that URL is a guaranteed definitive
+  // miss. Revealing Activity for it opened a region the user never opened and
+  // filled it with skeletons for an id that resolves to nothing. The pointer
+  // still clears (archive#1284's real requirement: the effect must not loop
+  // back into the dead conversation); no surface is placed.
+  it('clears the dead pointer WITHOUT placing a surface when the conversation cannot be found at all', async () => {
     fetchConversationById.mockResolvedValue(null);
     const openConversation = vi.fn();
     const setActiveSessionId = vi.fn();
@@ -582,40 +588,54 @@ describe('useChatDockActiveChatSync', () => {
     );
 
     await waitFor(() =>
-      expect(showSurface).toHaveBeenCalledWith('activity', {
-        session: 'dead-chat',
-      }),
+      expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null }),
     );
-    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
+    expect(showSurface).not.toHaveBeenCalled();
     expect(openConversation).not.toHaveBeenCalled();
   });
 
-  // archive#1284: the lookup itself throwing (e.g. a network
-  // error) is a resolution failure exactly like a definitive miss -- it
-  // must not be a silent no-op either.
-  it('reveals Activity for the session when the conversation lookup throws', async () => {
-    fetchConversationById.mockRejectedValue(new Error('network down'));
-    const setActiveSessionId = vi.fn();
+  // archive#1284: the lookup itself throwing is an UNRESOLVED pointer, not a
+  // definitive miss -- we never learned whether the conversation exists, so
+  // the reveal stands. station#1582 widened what reaches this branch: the
+  // conversations route answers a transient server fault with the same
+  // `{success:false}` envelope it uses for a miss, and the SDK now throws a
+  // `StationHttpError` for it rather than reporting the conversation absent.
+  it.each([
+    ['a network error', Object.assign(new Error('network down'), {})],
+    [
+      'a 500 from the conversations route',
+      Object.assign(new Error('Conversation lookup exploded'), { status: 500 }),
+    ],
+    [
+      'a 401 while the session re-authenticates',
+      Object.assign(new Error('authentication required'), { status: 401 }),
+    ],
+  ])(
+    'reveals Activity for the session when the lookup fails with %s',
+    async (_label, thrown) => {
+      fetchConversationById.mockRejectedValue(thrown);
+      const setActiveSessionId = vi.fn();
 
-    renderHook(() =>
-      useChatDockActiveChatSync({
-        activeChat: 'thread-network-error',
-        agentCatalogKey: '__agent:claude',
-        agentsLoaded: true,
-        apiBase: '/api',
-        sessions: [],
-        openConversation: vi.fn(),
-        setActiveSessionId,
-        updateParams,
-        showSurface,
-      }),
-    );
+      renderHook(() =>
+        useChatDockActiveChatSync({
+          activeChat: 'thread-network-error',
+          agentCatalogKey: '__agent:claude',
+          agentsLoaded: true,
+          apiBase: '/api',
+          sessions: [],
+          openConversation: vi.fn(),
+          setActiveSessionId,
+          updateParams,
+          showSurface,
+        }),
+      );
 
-    await waitFor(() =>
-      expect(showSurface).toHaveBeenCalledWith('activity', {
-        session: 'thread-network-error',
-      }),
-    );
-    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
-  });
+      await waitFor(() =>
+        expect(showSurface).toHaveBeenCalledWith('activity', {
+          session: 'thread-network-error',
+        }),
+      );
+      expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
+    },
+  );
 });

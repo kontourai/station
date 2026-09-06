@@ -597,10 +597,33 @@ export function getPathForView(view: NavigationView): string | null {
   }
 }
 
-/** Returns Station's semantic parent, independent of browser arrival history. */
+/**
+ * Returns Station's semantic parent, independent of browser arrival history.
+ *
+ * A parent is DECLARED here, never assumed. The fallback used to be
+ * `{ type: 'home' }`, which handed every unlisted view a parent it does not
+ * have: a top-level sidebar destination is not below anything, so the single
+ * consumer of this — `app.escapeUp` in App.tsx — was armed on those pages and
+ * Escape navigated away from them. #1582 H3 measured it on Schedule (open Add
+ * Job, Escape closes the dialog, Escape again lands on Home), but the dialog
+ * was never involved: one Escape on the resting page did the same, and so did
+ * Agents, Connections, Plugins, Guidance, Review, Notifications, Developer and
+ * Profile. `null` means "no level up", which is what those pages are.
+ */
 export function getParentView(view: NavigationView): NavigationView | null {
   switch (view.type) {
     case 'home':
+      return null;
+    // Top-level destinations: nothing above them to go up to.
+    case 'agents':
+    case 'connections':
+    case 'guidance':
+    case 'plugins':
+    case 'review-queue':
+    case 'developer':
+    case 'schedule':
+    case 'notifications':
+    case 'profile':
       return null;
     case 'agent-edit':
     case 'agent-new':
@@ -608,7 +631,10 @@ export function getParentView(view: NavigationView): NavigationView | null {
     case 'connections-model-edit':
       return { type: 'connections-models' };
     case 'connections-engine-edit':
+    case 'connections-engine-new':
       return { type: 'connections-engines' };
+    case 'connections-computers':
+      return { type: 'connections' };
     case 'connections-tool-edit':
       return { type: 'connections-tools' };
     case 'connections-models':
@@ -631,11 +657,18 @@ export function getParentView(view: NavigationView): NavigationView | null {
     case 'layout':
       return { type: 'project', slug: view.projectSlug };
     case 'task':
+    // Settings behaves as a full-page overlay of Home rather than a sibling
+    // destination, and its Escape has always closed back to Home.
+    case 'settings':
+    case 'project':
+    case 'project-new':
+    case 'board':
+    case 'not-found':
       return { type: 'home' };
     case 'registry':
-      return view.tab ? { type: 'registry' } : { type: 'home' };
+      return view.tab ? { type: 'registry' } : null;
     default:
-      return { type: 'home' };
+      return null;
   }
 }
 
