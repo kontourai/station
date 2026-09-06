@@ -1,0 +1,54 @@
+/* ── The project-surface page frame ────────────────────────────────
+ *
+ * #1636: these rules used to live in `ProjectPage.css`, which only
+ * `views/ProjectPage.tsx` imports. Two different lazily loaded routes render
+ * this frame — the project page and `workspace-panes/WorkspacePaneRouteView`
+ * (its own route chunk, `AppViewContent.tsx`'s `workspace-pane` view) — so
+ * Vite emitted the only definition into the project-page chunk and the pane
+ * route borrowed it. Reached by clicking through the project page the frame
+ * was there; on a direct load, a bookmark or a refresh it was not, and the
+ * pane rendered edge to edge with no padding under the banner stack.
+ * Measured at 1440x900 on `origin/main` (cd42700d3): `.project-page__inner`
+ * padding `40px 32px 48px` / max-width `860px` / box x=410 w=860 arriving
+ * from the project page, against padding `0px` / max-width `none` / box
+ * x=240 w=1200 on a direct `goto` of the same URL.
+ *
+ * THE RULE THIS FILE EXISTS TO MAKE STRUCTURAL, and the one archive#3306
+ * already wrote for `page-layout.css`: a module that applies `.project-page`
+ * or `.project-page__inner` must import THIS stylesheet in that same module,
+ * so the frame travels into whatever chunk renders it and can never be
+ * load-order-dependent. The declarations are unchanged and were MOVED, not
+ * copied — `ProjectPage.css` keeps only what the project page's own content
+ * uses, and there is still exactly one place that decides this measure.
+ *
+ * `.project-page__modal-description` moves with them: the pane route uses it
+ * for the description under its page heading, so it is part of what a framed
+ * project surface needs rather than part of the project page. The `modal`
+ * in the name is inherited from its two dialog call sites and no longer
+ * describes every user; renaming it is a follow-up, not this fix.
+ */
+
+.project-page {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-primary);
+}
+
+.project-page__inner {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 2.5rem 2rem 3rem;
+}
+
+.project-page__modal-description {
+  margin: 0 0 16px;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  /* Tighter gutters so content does not overflow narrow screens */
+  .project-page__inner {
+    padding: 1.5rem 1rem 2rem;
+  }
+}
