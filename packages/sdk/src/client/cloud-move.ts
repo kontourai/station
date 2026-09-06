@@ -1,17 +1,7 @@
+import type { CloudMoveTargetObservation } from '@kontourai/station-contracts/cloud-move';
 import { type ClientRequestOptions, getJson } from './http';
 
-/** Observation of an enrolled process, never a transferable ownership grant. */
-export interface CloudMoveTargetObservation {
-  schemaVersion: 'station.cloud-target-observation/v1';
-  targetOrigin: string;
-  environmentId: string;
-  instanceId: string;
-  bootId: string;
-  sha: string;
-  observedAt: string;
-  executionAuthorityTransferred: false;
-  executionResumeAvailable: false;
-}
+export type { CloudMoveTargetObservation } from '@kontourai/station-contracts/cloud-move';
 
 function field(value: unknown, key: string): string {
   const result =

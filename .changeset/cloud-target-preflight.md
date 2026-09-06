@@ -1,4 +1,5 @@
 ---
+"@kontourai/station-contracts": minor
 "@kontourai/station-sdk": minor
 "@kontourai/station-cli": minor
 ---
