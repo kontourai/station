@@ -54,10 +54,14 @@ cannot supply a trusted claim, provider, signing key, or applied policy.
 
 The signature payload binds the schema target, registry identity, plugin name,
 version, source, and source-tree digest. The manifest is validated separately.
-The canonical digest includes path, entry kind, file bytes, and symlink target
-strings in ordinal path order; only root `.git` metadata is excluded. Symlinks
-are not followed by the digest. Existing materialization containment checks
-remain necessary. A signature does not prove sandboxing, harmless code,
+The canonical digest uses the versioned `station-plugin-tree/v2` encoding:
+a leading-NUL domain and explicit kind bytes with uint64 byte-length frames for
+paths and payloads. Siblings sort by filename bytes; directories, file bytes and
+raw symlink targets participate, and only root `.git` metadata is excluded.
+Lossy UTF-8 filenames refuse. Symlinks are not followed by the digest. Legacy
+delimiter-only digests do not become v2 proof; existing records and data are
+retained on refusal. See [versioned content integrity](plugin-installation-lifecycle.md#versioned-content-integrity).
+Existing materialization containment checks remain necessary. A signature does not prove sandboxing, harmless code,
 reproducible builds, or the contents of code downloaded during execution.
 
 Preview returns an opaque `registryTrustRevision` alongside the existing source
