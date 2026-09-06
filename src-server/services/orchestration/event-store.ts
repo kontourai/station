@@ -183,6 +183,13 @@ import {
   projectionFactKeysForEvent,
 } from './orchestration-session-state.js';
 import {
+  PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS,
+  type ProjectTaskRoomAppendReceiptReadResult,
+  type ProjectTaskRoomAppendReceiptRow,
+  parseDurableProjectTaskRoomAppendReceipt,
+  projectTaskRoomReceiptLookupIdentifier,
+} from './project-task-room-append-receipt.js';
+import {
   createProjectTaskRoomHistory,
   type ProjectTaskRoomAgentGrantAuthority,
   type ProjectTaskRoomCapabilityAuthority,
@@ -2261,6 +2268,37 @@ export class EventStore {
     });
     this.projectTaskRoomHistories.add(history);
     return history;
+  }
+
+  /** Read one immutable room append receipt without exposing room storage. */
+  readProjectTaskRoomAppendReceipt(input: {
+    channelId: string;
+    proposalId: string;
+  }): ProjectTaskRoomAppendReceiptReadResult {
+    if (
+      !projectTaskRoomReceiptLookupIdentifier(input.channelId) ||
+      !projectTaskRoomReceiptLookupIdentifier(input.proposalId)
+    )
+      return { kind: 'unavailable' };
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT ${PROJECT_TASK_ROOM_APPEND_RECEIPT_COLUMNS} FROM project_task_room_identities WHERE channel_id=? AND proposal_id=?`,
+        )
+        .get(input.channelId, input.proposalId) as
+        | ProjectTaskRoomAppendReceiptRow
+        | undefined;
+      if (!row) return { kind: 'not-found' };
+      const parsed = parseDurableProjectTaskRoomAppendReceipt(
+        row,
+        input.channelId,
+      );
+      return parsed
+        ? Object.freeze({ kind: 'found', ...parsed })
+        : { kind: 'unavailable' };
+    } catch {
+      return { kind: 'unavailable' };
+    }
   }
 
   /** Immutable server-owned scope for provider admission; never inferred from metadata. */

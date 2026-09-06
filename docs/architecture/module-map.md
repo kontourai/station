@@ -873,9 +873,14 @@ binds that authority to the private history port and owns cross-room admission
 identity.
 [operator reconciliation](../../src-server/services/orchestration/planned-home-admission-reconciliation.ts)
 settles existing admissions only through a trusted durable-receipt verifier.
+The [room receipt verifier](../../src-server/services/orchestration/planned-home-control-room-write-receipt-verifier.ts)
+binds one canonical room-write admission and trusted home owner to an indexed,
+integrity-checked EventStore receipt read. EventStore returns one immutable
+receipt and its stored digest; callers receive no SQLite or receipt-list access.
 The [controller guide](../guides/home-transfer-controller.md) owns setup,
 private integration contracts, recovery limits, and reproducible checks.
-Production control-session transport, provider admission, and target activation
+Production control-session transport, operator reconciliation transport,
+provider admission, and target activation
 remain integration requirements under the
 [channel home authority design](../design/channel-home-authority.md).
 
