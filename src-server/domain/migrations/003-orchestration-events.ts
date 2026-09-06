@@ -373,6 +373,7 @@ CREATE INDEX IF NOT EXISTS idx_native_invocation_runs_active
 -- racing that boundary and retain possible-effect truth across restart.
 CREATE TABLE IF NOT EXISTS orchestration_turn_boundaries (
   boundary_id TEXT PRIMARY KEY,
+  purpose TEXT NOT NULL DEFAULT 'turn' CHECK(purpose IN ('turn','task-dispatch')),
   thread_id TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('lifecycle', 'prepared', 'invoking', 'accepted', 'indeterminate')),
   provider_turn_id TEXT,
@@ -1401,4 +1402,19 @@ export function runOrchestrationEventMigration(projectHomeDir: string): void {
   ensureOrchestrationEventStoreColumns(db);
   ensureOrchestrationAdoptionColumns(db);
   db.close();
+}
+
+/** Keep dispatch completion ownership distinct from provider terminal evidence. */
+export function ensureOrchestrationBoundaryPurpose(
+  db: SessionStateSchemaDatabase,
+): void {
+  runConcurrentSafeMigration(db, () => {
+    const columns = db
+      .prepare('PRAGMA table_info(orchestration_turn_boundaries)')
+      .all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'purpose'))
+      db.exec(
+        "ALTER TABLE orchestration_turn_boundaries ADD COLUMN purpose TEXT NOT NULL DEFAULT 'turn' CHECK(purpose IN ('turn','task-dispatch'))",
+      );
+  });
 }
