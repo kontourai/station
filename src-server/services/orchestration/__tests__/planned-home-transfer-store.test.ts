@@ -302,3 +302,27 @@ test('an error after durable commit resolves without assigning a second revision
     revision: 1,
   });
 });
+
+test('refuses an in-memory authority database', () => {
+  const db = new DatabaseSync(':memory:');
+  databases.push(db);
+  expect(() => createSqlitePlannedHomeTransferStore(db)).toThrow(
+    'file-backed SQLite',
+  );
+});
+test('a later durability downgrade cannot commit or silently reassign ownership', () => {
+  const { db, store } = fixture();
+  ready(store);
+  db.exec('PRAGMA synchronous=OFF');
+  expect(store.commit(owner.tenantId, intent.operationId).kind).toBe(
+    'unavailable',
+  );
+  db.exec('PRAGMA synchronous=FULL');
+  expect(stored(store.inspect(owner.tenantId, owner.channelId))).toEqual(owner);
+  expect(stored(store.resolve(owner.tenantId, intent.operationId)).phase).toBe(
+    'target-ready',
+  );
+  expect(
+    stored(store.commit(owner.tenantId, intent.operationId)).committedRevision,
+  ).toBe(1);
+});

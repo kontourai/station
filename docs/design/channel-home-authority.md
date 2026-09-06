@@ -62,6 +62,10 @@ provides a SQLite implementation of `PlannedHomeTransferStore`. Consumers await
 its operations; asynchronous database or remote-service adapters can implement
 the same interface. A composing
 service supplies a centrally owned database outside portable home archives.
+The adapter requires a file-backed SQLite database with durable journaling and
+`synchronous=FULL` or `EXTRA`, checked at initialization and in every transaction.
+A later durability downgrade makes operations unavailable. These settings do
+not certify the underlying filesystem or storage hardware.
 The adapter itself performs no home authentication, membership authorization,
 lease issuance, renewal or target activation. No runtime write path currently
 uses its decisions as execution authority.

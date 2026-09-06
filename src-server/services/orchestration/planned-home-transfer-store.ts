@@ -185,7 +185,35 @@ function sameIntent(
   );
 }
 
+function requireDurableDatabase(db: Database): void {
+  const synchronous = db.prepare('PRAGMA synchronous').get() as {
+    synchronous?: unknown;
+  };
+  const journal = db.prepare('PRAGMA journal_mode').get() as {
+    journal_mode?: unknown;
+  };
+  const database = db.prepare('PRAGMA database_list').get() as {
+    name?: unknown;
+    file?: unknown;
+  };
+  if (
+    !synchronous ||
+    ![2, 3].includes(synchronous.synchronous as number) ||
+    !journal ||
+    !['delete', 'truncate', 'persist', 'wal'].includes(
+      journal.journal_mode as string,
+    ) ||
+    database?.name !== 'main' ||
+    typeof database.file !== 'string' ||
+    !database.file
+  )
+    throw new Error(
+      'Transfer decisions require file-backed SQLite with durable journaling and synchronous FULL or EXTRA',
+    );
+}
+
 export function createSqlitePlannedHomeTransferStore(db: Database) {
+  requireDurableDatabase(db);
   db.exec(`CREATE TABLE IF NOT EXISTS planned_home_owners (
     tenant_id TEXT NOT NULL, channel_id TEXT NOT NULL, record_json TEXT NOT NULL,
     PRIMARY KEY(tenant_id,channel_id));
@@ -260,6 +288,7 @@ export function createSqlitePlannedHomeTransferStore(db: Database) {
     try {
       db.exec('BEGIN IMMEDIATE');
       began = true;
+      requireDurableDatabase(db);
       const result = run();
       db.exec('COMMIT');
       began = false;
