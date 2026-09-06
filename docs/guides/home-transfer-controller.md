@@ -139,8 +139,33 @@ participant and peer record before returning a bound result.
 
 For the separate owner registration and prepared-operation bodies, use
 [personal decision preparation](../design/channel-home-authority.md#personal-controller-decision-preparation).
-Preparation does not yet consume these mappings to construct network coordinator
-adapters. No public source-seal, readiness, advance or commit endpoint is enabled.
+The prepared source participant can send `{}` to
+`POST /api/home-authority/transfers/:operationId/advance`. The controller builds
+its network readers only from the enrolled mappings and current peer records.
+It does not accept a URL, credential, adapter, grant or checkpoint in this request.
+
+An unsealed source returns HTTP 202 with `source-not-closed`. The source owner
+must already have produced a real closing seal for this exact operation. A
+general source-close UI/CLI is not shipped in this preview; this read-only network
+path does not create that seal. After a separate owner action closes the source
+and its state is restored, the controller reads the closing seals from both
+expected endpoints, verifies the exact identities/nonce/tuple/digest, and may
+commit the metadata decision. HTTP 200 `decision-committed` still has both
+execution flags false. The copied target stays sealed and cannot execute.
+
+The remote read-only endpoint is
+`POST /api/home-authority/rooms/:taskId/seal-observation`. Its body contains
+`channelId`, `operationId`, `sourceHomeRef`, `targetHomeRef` and `nonce`.
+It exposes the existing closing checkpoint, not message/document content.
+The controller uses it internally with an 8 KiB response ceiling and a 15-second
+whole-RPC deadline. Individual identity and seal RPCs have their own deadlines;
+a complete advance can make several calls. Lost responses are resolved by
+operation ID, not by assuming rollback. A committed replay uses the stored
+decision and current controller-side participant grants; it does not require
+the source or its outbound peer record to remain available.
+
+No raw closure/readiness submission, remote source-close command, target
+activation or Agent launch endpoint is enabled.
 
 Revoked participants, removed/changed peer records, failed remote authentication,
 wrong identities and corrupt storage prevent a successful binding result. Missing
@@ -149,15 +174,52 @@ and unavailable storage/transport 503. A failed remote credential can appear as
 unavailable transport to the controller; never interpret it as permission to use
 another endpoint or start execution.
 
+## Private admission journal
+
+The controller storage adapter records unresolved room-write and execution
+admissions against the exact current home and owner revision. Preparing a move
+blocks new admissions; an identical unresolved admission can still be settled.
+Ownership commit returns HTTP 202 `admission-pending` while any admission for
+that channel remains unresolved. Finishing requires the exact admission identity
+and a stable receipt digest. A changed intent or receipt conflicts. Restarting,
+waiting, or losing a process does not finish an admission.
+
+`ProjectTaskRoomHistory` also accepts a private optional write-admission port.
+With that port configured, a new append obtains admission inside the local
+write transaction after checking local authority, existing proposal identity,
+source seal and capacity. Local authority is checked again after admission.
+Committed and duplicate outcomes settle only from the validated durable receipt;
+a lost settlement acknowledgement returns unavailable and can be retried after
+reopening the room. Duplicate replay does not request new admission. Calls are
+bounded to one second, below the worker's five-second budget. A timeout never
+clears an unresolved controller record. Unmanaged rooms retain their original
+write path.
+
+This is private integration infrastructure: production runtime composition and
+Agent launch paths are not yet connected to the controller journal. Integrators must verify a durable local effect
+receipt before calling finish; storing a digest does not verify the receipt or
+prove that execution stopped. A previously finished record is historical replay,
+never permission to run the effect again. No public admission endpoint is shipped.
+
+The preview journal has a controller-wide limit of 4,096 records. At capacity,
+new admissions are refused; existing admissions can still finish or replay.
+Records are not automatically deleted. Commit checks the bounded journal's
+integrity, including routing columns, before checking the channel. Corruption
+or excess records fails closed. Production retention and runtime admission
+integration remain prerequisites for enabling sustained Agent execution.
+
 ## Reproduce the integration checks
 
 From an isolated repository worktree with managed dependencies installed:
 
 ```bash
 npm run test:focused -- \
+  src-server/services/orchestration/__tests__/planned-home-admission-store.test.ts \
+  src-server/services/orchestration/__tests__/planned-home-transfer-store.test.ts \
   src-server/services/orchestration/__tests__/home-transfer-room-binding.test.ts \
   src-server/services/orchestration/__tests__/home-transfer-room-probe.test.ts \
-  src-server/routes/environments/__tests__/home-authority-routes.test.ts
+  src-server/routes/environments/__tests__/home-authority-routes.test.ts \
+  src-server/routes/environments/__tests__/remote-home-transfer-decision.test.ts
 ```
 
 These tests use disposable pairing registries, external SQLite and authenticated

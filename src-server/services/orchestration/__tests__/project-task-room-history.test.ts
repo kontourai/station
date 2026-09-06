@@ -14,10 +14,14 @@ import {
   executeOwnedProcess,
 } from '../../../../scripts/lib/owned-process.mjs';
 import { EventStore } from '../event-store.js';
+import { createPlannedHomeAdmissionStore } from '../planned-home-admission-store.js';
+import { createSqlitePlannedHomeTransferStore } from '../planned-home-transfer-store.js';
 import {
   createProjectTaskRoomHistoryForTest,
   PROJECT_TASK_ROOM_LIMITS,
   type ProjectTaskRoomCapabilityAuthority,
+  type ProjectTaskRoomWriteAdmissionPort,
+  projectTaskRoomChannelId,
 } from '../project-task-room-history.js';
 import { createProjectTaskRoomWorkingState } from '../project-task-room-working-state.js';
 import { SessionExecutionCoordinator } from '../session-execution-coordinator.js';
@@ -47,6 +51,7 @@ const { DatabaseSync } = require('node:sqlite') as {
     prepare(sql: string): {
       run(...args: unknown[]): unknown;
       get(...args: unknown[]): unknown;
+      all(...args: unknown[]): unknown[];
     };
     close(): void;
   };
@@ -372,6 +377,262 @@ describe('ProjectTaskRoomHistory v2', () => {
     if (duplicate.kind === 'duplicate' && afterRestart.kind === 'duplicate')
       expect(afterRestart.receipt).toEqual(duplicate.receipt);
     await restarted.close();
+  });
+
+  describe('controller-backed room write admissions', () => {
+    it('preserves absent-port behavior and passes the port through EventStore composition', async () => {
+      const local = history();
+      await local.open({ grant: grant('discover') });
+      await expect(local.append(message('local-only'))).resolves.toMatchObject({
+        kind: 'committed',
+      });
+      await local.close();
+
+      const path = databasePath();
+      const calls: string[] = [];
+      const observed: unknown[] = [];
+      const orderedCapabilities: ProjectTaskRoomCapabilityAuthority = {
+        async resolve(input) {
+          calls.push('grant');
+          return capabilities.resolve(input);
+        },
+      };
+      const port: ProjectTaskRoomWriteAdmissionPort = {
+        async begin(identity) {
+          calls.push('begin');
+          observed.push(identity);
+          return { kind: 'admitted' };
+        },
+        async finish(input) {
+          calls.push('finish');
+          observed.push(input);
+          return { kind: 'finished' };
+        },
+      };
+      const store = new EventStore(path);
+      const room = store.createProjectTaskRoomHistory({
+        capabilities: orderedCapabilities,
+        roomWriteAdmissions: port,
+      });
+      port.begin = async () => ({ kind: 'denied' });
+      port.finish = async () => ({ kind: 'denied' });
+      await room.open({ grant: grant('discover') });
+      calls.length = 0;
+      await expect(room.append(message('controlled'))).resolves.toMatchObject({
+        kind: 'committed',
+      });
+      expect(calls).toEqual([
+        'grant',
+        'grant',
+        'grant',
+        'grant',
+        'begin',
+        'grant',
+        'finish',
+      ]);
+      expect(observed[0]).toMatchObject({
+        scope,
+        proposalId: 'controlled',
+        intentDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+      });
+      expect(observed[1]).toMatchObject({
+        proposalId: 'controlled',
+        receiptDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+      });
+      expect(Object.isFrozen(observed[0])).toBe(true);
+      expect(Object.isFrozen((observed[0] as { scope: object }).scope)).toBe(
+        true,
+      );
+      expect(Object.isFrozen(observed[1])).toBe(true);
+      await room.close();
+      expect(store.close()).toEqual({ kind: 'closed' });
+    });
+
+    it.each(['denied', 'unavailable'] as const)(
+      'does not append when begin returns %s',
+      async (kind) => {
+        const room = history(databasePath(), {
+          roomWriteAdmissions: {
+            begin: async () => ({ kind }),
+            finish: vi.fn(async () => ({ kind: 'finished' as const })),
+          },
+        });
+        await room.open({ grant: grant('discover') });
+        await expect(room.append(message(`begin-${kind}`))).resolves.toEqual({
+          kind,
+        });
+        await expect(
+          room.read({ grant: grant('history-read') }),
+        ).resolves.toMatchObject({ kind: 'available', records: [] });
+        await room.close();
+      },
+    );
+
+    it('times out a late begin and rechecks local authority after an admitted begin', async () => {
+      const late = history(databasePath(), {
+        roomWriteAdmissionMs: 10,
+        roomWriteAdmissions: {
+          begin: () =>
+            new Promise((resolve) =>
+              setTimeout(() => resolve({ kind: 'admitted' }), 50),
+            ),
+          finish: vi.fn(async () => ({ kind: 'finished' as const })),
+        },
+      });
+      await late.open({ grant: grant('discover') });
+      await expect(late.append(message('late-begin'))).resolves.toEqual({
+        kind: 'unavailable',
+      });
+      await late.close();
+
+      let revoked = false;
+      const authority: ProjectTaskRoomCapabilityAuthority = {
+        async resolve({ grant: presented, required }) {
+          if (revoked) return { kind: 'revoked' };
+          return capabilities.resolve({ grant: presented, required });
+        },
+      };
+      const room = history(databasePath(), {
+        capabilities: authority,
+        roomWriteAdmissions: {
+          async begin() {
+            revoked = true;
+            return { kind: 'admitted' };
+          },
+          finish: vi.fn(async () => ({ kind: 'finished' as const })),
+        },
+      });
+      await room.open({ grant: grant('discover') });
+      await expect(
+        room.append(message('revoked-after-begin')),
+      ).resolves.toEqual({ kind: 'denied' });
+      revoked = false;
+      await expect(
+        room.read({ grant: grant('history-read') }),
+      ).resolves.toMatchObject({ kind: 'available', records: [] });
+      await room.close();
+    });
+
+    it('settles a durable duplicate after a lost finish acknowledgement', async () => {
+      const path = databasePath();
+      let beginCalls = 0;
+      let finishCalls = 0;
+      let centralFinished = false;
+      let retainedReceiptDigest: string | undefined;
+      const port: ProjectTaskRoomWriteAdmissionPort = {
+        async begin() {
+          beginCalls += 1;
+          return centralFinished ? { kind: 'denied' } : { kind: 'admitted' };
+        },
+        async finish(input) {
+          finishCalls += 1;
+          retainedReceiptDigest ??= input.receiptDigest;
+          expect(input.receiptDigest).toBe(retainedReceiptDigest);
+          centralFinished = true;
+          return finishCalls === 1
+            ? { kind: 'unavailable' }
+            : { kind: 'finished' };
+        },
+      };
+      const room = history(path, { roomWriteAdmissions: port });
+      await room.open({ grant: grant('discover') });
+      await expect(room.append(message('finish-replay'))).resolves.toEqual({
+        kind: 'unavailable',
+      });
+      await room.close();
+      const reopened = history(path, { roomWriteAdmissions: port });
+      await expect(
+        reopened.append(message('finish-replay')),
+      ).resolves.toMatchObject({
+        kind: 'duplicate',
+        receipt: { proposalId: 'finish-replay' },
+      });
+      expect(beginCalls).toBe(1);
+      expect(finishCalls).toBe(2);
+      await reopened.close();
+    });
+
+    it('rejects null and malformed configured ports at construction', () => {
+      expect(() =>
+        history(databasePath(), {
+          roomWriteAdmissions:
+            null as unknown as ProjectTaskRoomWriteAdmissionPort,
+        }),
+      ).toThrow('write admission port is invalid');
+      expect(() =>
+        history(databasePath(), {
+          roomWriteAdmissions: {
+            begin: async () => ({ kind: 'admitted' }),
+          } as unknown as ProjectTaskRoomWriteAdmissionPort,
+        }),
+      ).toThrow('write admission port is invalid');
+    });
+
+    it('does not deliver a late local grant after the worker request times out', async () => {
+      let delayPostAdmission = false;
+      const authority: ProjectTaskRoomCapabilityAuthority = {
+        async resolve(input) {
+          if (delayPostAdmission)
+            await new Promise<void>((resolve) => setTimeout(resolve, 5_100));
+          return capabilities.resolve(input);
+        },
+      };
+      const path = databasePath();
+      const room = history(path, {
+        capabilities: authority,
+        roomWriteAdmissions: {
+          async begin() {
+            delayPostAdmission = true;
+            return { kind: 'admitted' };
+          },
+          finish: vi.fn(async () => ({ kind: 'finished' as const })),
+        },
+      });
+      await room.open({ grant: grant('discover') });
+      await expect(room.append(message('late-local-grant'))).resolves.toEqual({
+        kind: 'unavailable',
+      });
+      await new Promise<void>((resolve) => setTimeout(resolve, 200));
+      const database = new DatabaseSync(path);
+      expect(
+        database
+          .prepare(
+            'SELECT count(*) AS count FROM project_task_room_identities WHERE proposal_id=?',
+          )
+          .get('late-local-grant'),
+      ).toEqual({ count: 0 });
+      database.close();
+      await room.close();
+    }, 10_000);
+
+    it('refuses the same proposal identity with a changed intent digest', async () => {
+      let retainedDigest: string | undefined;
+      let beginCalls = 0;
+      const finish = vi.fn(async () => ({ kind: 'finished' as const }));
+      const room = history(databasePath(), {
+        roomWriteAdmissions: {
+          async begin(input) {
+            beginCalls += 1;
+            if (retainedDigest && retainedDigest !== input.intentDigest)
+              return { kind: 'conflict' };
+            retainedDigest = input.intentDigest;
+            return { kind: 'admitted' };
+          },
+          finish,
+        },
+      });
+      await room.open({ grant: grant('discover') });
+      await expect(
+        room.append(message('changed', 'first')),
+      ).resolves.toMatchObject({ kind: 'committed' });
+      await expect(room.append(message('changed', 'second'))).resolves.toEqual({
+        kind: 'rejected',
+        reason: 'idempotency-conflict',
+      });
+      expect(beginCalls).toBe(1);
+      expect(finish).toHaveBeenCalledOnce();
+      await room.close();
+    });
   });
 
   it('returns committed after an injected post-commit fault by exact identity readback', async () => {
@@ -2035,5 +2296,126 @@ it('does not invent document integrity evidence for an older source seal', async
     });
   } finally {
     await source.close();
+  }
+});
+
+it('holds real controller ownership until a durable room receipt settles after restart', async () => {
+  const database = new DatabaseSync(databasePath());
+  database.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL');
+  const transfers = createSqlitePlannedHomeTransferStore(database);
+  const admissions = createPlannedHomeAdmissionStore(database, () => true);
+  const owner = {
+    tenantId: 'personal-controller:test',
+    channelId: projectTaskRoomChannelId(scope),
+    homeRef: 'paired:source',
+    policyRevision: 'policy-1',
+    revision: 0,
+  };
+  expect(transfers.initialize(owner).kind).toBe('stored');
+  let acknowledgeReceipt = false;
+  let beginCalls = 0;
+  // Trusted fixture composition only; production needs a separate control session.
+  const identity = (
+    input: Parameters<ProjectTaskRoomWriteAdmissionPort['begin']>[0],
+  ) => ({
+    tenantId: owner.tenantId,
+    channelId: input.channelId,
+    admissionId: input.proposalId,
+    ownerRevision: owner.revision,
+    homeRef: owner.homeRef,
+    kind: 'room-write' as const,
+    intentDigest: input.intentDigest,
+  });
+  const port: ProjectTaskRoomWriteAdmissionPort = {
+    async begin(input) {
+      beginCalls += 1;
+      const result = admissions.begin(identity(input));
+      return result.kind === 'stored' && result.value.state === 'unresolved'
+        ? { kind: 'admitted' }
+        : { kind: 'denied' };
+    },
+    async finish(input) {
+      if (!acknowledgeReceipt) return { kind: 'unavailable' };
+      const result = admissions.finish({
+        ...identity(input),
+        receiptDigest: input.receiptDigest,
+      });
+      return result.kind === 'stored' && result.value.state === 'finished'
+        ? { kind: 'finished' }
+        : { kind: 'unavailable' };
+    },
+  };
+  const path = databasePath();
+  let room = history(path, { roomWriteAdmissions: port });
+  try {
+    await room.open({ grant: grant('discover') });
+    expect(await room.append(message('durable-write'))).toEqual({
+      kind: 'unavailable',
+    });
+    const intent = {
+      tenantId: owner.tenantId,
+      channelId: owner.channelId,
+      operationId: 'move',
+      sourceHomeRef: owner.homeRef,
+      targetHomeRef: 'paired:target',
+      policyRevision: owner.policyRevision,
+      expectedRevision: owner.revision,
+    };
+    expect(transfers.prepare(intent).kind).toBe('stored');
+    expect(await room.append(message('after-prepare'))).toEqual({
+      kind: 'denied',
+    });
+    const sealed = await room.sealSource({
+      grant: grant('home-transfer'),
+      operationId: intent.operationId,
+      sourceHomeRef: intent.sourceHomeRef,
+      targetHomeRef: intent.targetHomeRef,
+    });
+    expect(sealed.kind).toBe('sealed');
+    if (sealed.kind !== 'sealed') throw new Error('Missing actual source seal');
+    const closed = transfers.recordClosure(
+      owner.tenantId,
+      intent.operationId,
+      sealed.seal,
+    );
+    if (closed.kind !== 'stored' || !closed.value.closureDigest)
+      throw new Error('Missing closure');
+    expect(
+      transfers.recordReady(
+        owner.tenantId,
+        intent.operationId,
+        intent.targetHomeRef,
+        closed.value.closureDigest,
+      ).kind,
+    ).toBe('stored');
+    expect(transfers.commit(owner.tenantId, intent.operationId)).toEqual({
+      kind: 'admission-pending',
+    });
+    await room.close();
+    room = history(path, { roomWriteAdmissions: port });
+    acknowledgeReceipt = true;
+    const attemptsBeforeReplay = beginCalls;
+    expect(await room.append(message('durable-write'))).toMatchObject({
+      kind: 'duplicate',
+    });
+    expect(beginCalls).toBe(attemptsBeforeReplay);
+    expect(transfers.commit(owner.tenantId, intent.operationId)).toMatchObject({
+      kind: 'stored',
+      value: { phase: 'committed' },
+    });
+    expect(await room.append(message('old-source-after-transfer'))).toEqual({
+      kind: 'denied',
+    });
+    const contents = await room.read({ grant: grant('history-read') });
+    expect(contents).toMatchObject({
+      kind: 'available',
+      records: expect.arrayContaining([expect.any(Object)]),
+    });
+    if (contents.kind !== 'available')
+      throw new Error('Missing durable room history');
+    expect(contents.records).toHaveLength(1);
+  } finally {
+    await room.close();
+    database.close();
   }
 });
