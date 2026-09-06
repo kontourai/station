@@ -1947,5 +1947,5 @@ not persistent home identity, a compatibility certification or a transfer grant.
 
 The shared GET transport supports opt-in `requireCredential`, `redirect: 'error'`
 and `maxResponseBytes` options. The probe requires SDK-owned matching bearer
-attachment, refuses redirects, limits each body to 4 KiB and uses a shared
+attachment or a current authenticated native transport binding, refuses redirects, limits each body to 4 KiB and uses a shared
 15-second deadline. Existing callers retain their current defaults.

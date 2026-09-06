@@ -216,3 +216,77 @@ test('the operation deadline settles even when credential resolution never answe
   await assertion;
   expect(fetch).not.toHaveBeenCalled();
 });
+
+test('uses an authenticated native binding without exposing a renderer bearer', async () => {
+  const transport = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(reply(identity))
+    .mockResolvedValueOnce(reply({ environmentId: 'native-target' }))
+    .mockResolvedValueOnce(reply(identity));
+  const fetch = vi.fn();
+  vi.stubGlobal('fetch', fetch);
+  setClientCredentialResolver(() => ({
+    origin,
+    transport,
+    transportBindingIsCurrent: () => true,
+  }));
+  expect(await verifyCloudMoveTarget(origin)).toMatchObject({
+    environmentId: 'native-target',
+    bootId: identity.bootId,
+  });
+  expect(fetch).not.toHaveBeenCalled();
+  expect(transport).toHaveBeenCalledTimes(3);
+  for (const [, init] of transport.mock.calls)
+    expect(new Headers(init?.headers).has('authorization')).toBe(false);
+});
+test.each([undefined, false])(
+  'does not admit an unbound or stale native transport (%s)',
+  async (current) => {
+    const transport = vi.fn();
+    setClientCredentialResolver(() => ({
+      origin,
+      transport,
+      ...(current === undefined
+        ? {}
+        : { transportBindingIsCurrent: () => current }),
+    }));
+    await expect(verifyCloudMoveTarget(origin)).rejects.toThrow();
+    expect(transport).not.toHaveBeenCalled();
+  },
+);
+test('a native transport cannot supply authority for a different origin', async () => {
+  const transport = vi.fn();
+  setClientCredentialResolver(() => ({
+    origin: 'https://other.example.test',
+    transport,
+    transportBindingIsCurrent: () => true,
+  }));
+  await expect(verifyCloudMoveTarget(origin)).rejects.toThrow();
+  expect(transport).not.toHaveBeenCalled();
+});
+
+test('pins the initial scope across separate authenticated requests', async () => {
+  const scope = { apiBase: origin, authorityKey: 'profile-a' };
+  let active = 'profile-a';
+  setClientCredentialResolver(() => ({
+    origin,
+    credential: options.credential,
+    requestAuthority: {
+      apiBase: origin,
+      authorityKey: active,
+      isCurrent: () => true,
+    },
+  }));
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockImplementation(async () => {
+      active = 'profile-b';
+      scope.authorityKey = 'profile-b';
+      return reply(identity);
+    });
+  vi.stubGlobal('fetch', fetch);
+  await expect(
+    verifyCloudMoveTarget(origin, { requestScope: scope }),
+  ).rejects.toMatchObject({ name: 'StationRequestAuthorityError' });
+  expect(fetch).toHaveBeenCalledTimes(1);
+});

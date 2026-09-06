@@ -49,6 +49,9 @@ export async function verifyCloudMoveTarget(
     : deadline.signal;
   const requestOptions = {
     ...options,
+    ...(options?.requestScope
+      ? { requestScope: { ...options.requestScope } }
+      : {}),
     authentication: 'required' as const,
     requireCredential: true,
     maxResponseBytes: 4096,

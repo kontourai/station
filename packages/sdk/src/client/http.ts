@@ -68,7 +68,7 @@ export interface ClientRequestOptions {
   /** Origin the credential belongs to. Credentials are never sent elsewhere. */
   credentialOrigin?: string;
   authentication?: 'required' | 'omit';
-  /** Refuse network access without a matching enrolled bearer credential. */
+  /** Require a matching bearer credential or current authenticated host transport. */
   requireCredential?: boolean;
   /** Identity probes must not follow a response to another listener. */
   redirect?: 'error';
@@ -638,7 +638,13 @@ function resolveRequestHeaders(
   const source = explicit ?? configured;
   if (
     opts?.requireCredential &&
-    (!source?.credential || !sameOrigin(url, source.origin))
+    (!source ||
+      !sameOrigin(url, source.origin) ||
+      (!source.credential &&
+        !(
+          configured?.transport &&
+          configured.transportBindingIsCurrent?.() === true
+        )))
   ) {
     throw new Error(
       'An enrolled Station credential for this target is required',
