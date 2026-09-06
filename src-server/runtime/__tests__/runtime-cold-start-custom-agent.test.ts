@@ -641,6 +641,25 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     // both real agent builders still receive the resulting (empty) tool list.
     vi.spyOn(MCPManager, 'loadAgentTools').mockResolvedValue([]);
 
+    // ACP readiness is intentionally detached from initialize(). Observe its
+    // real reload instead of invoking a hook during the mutation it owns.
+    let resolveAcpReload!: () => void;
+    let rejectAcpReload!: (error: unknown) => void;
+    const acpReload = new Promise<void>((resolve, reject) => {
+      resolveAcpReload = resolve;
+      rejectAcpReload = reject;
+    });
+    const reloadDefaultAgent = runtime.reloadDefaultAgent.bind(runtime);
+    vi.spyOn(runtime, 'reloadDefaultAgent').mockImplementation(async () => {
+      try {
+        await reloadDefaultAgent();
+        resolveAcpReload();
+      } catch (error) {
+        rejectAcpReload(error);
+        throw error;
+      }
+    });
+
     await expect(runtime.initialize()).resolves.toBeUndefined();
     expect(runtime.listAgents()).toEqual(
       expect.arrayContaining(['default', 'custom-writer']),
@@ -664,6 +683,14 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       grantedTool.toolName,
       'operator',
     );
+
+    await acpReload;
+    const configuration = runtime as unknown as {
+      agentConfigurationMutationQueue: Promise<void>;
+      getStableAgentConfigurationRevision(): number | null;
+    };
+    await configuration.agentConfigurationMutationQueue;
+    expect(configuration.getStableAgentConfigurationRevision()).not.toBeNull();
 
     for (const agentSlug of ['default', 'custom-writer']) {
       const hooks = runtimeInternals.agentHooksMap.get(agentSlug);
