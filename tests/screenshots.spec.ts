@@ -159,19 +159,33 @@ function fulfillGalleryConnectionsFixture(route: Route): Promise<void> {
   });
 }
 
+/**
+ * #1536 F: the gallery seeds exactly ONE Station and reaches it, which is the
+ * state whose chip collapsed to its status dot — a fact that does not change
+ * while you work, in the row that runs out of width first. So the state and the
+ * identity are no longer visible text HERE; they are the accessible name and
+ * the tooltip, which is the only channel a dot leaves for the identity.
+ *
+ * Both are asserted, not just one: the name is what the product's own E2E
+ * selectors key on (`/^Manage Stations/`), and the title is what a pointer user
+ * can actually read. A chip that dropped either would still pass a class check.
+ */
 async function assertGalleryConnectionChrome(page: Page): Promise<void> {
   const chip = page.getByTestId('app-toolbar-connection');
   await expect(chip).toHaveClass(/app-toolbar__conn--connected/, {
     timeout: 10_000,
   });
-  await expect(chip.locator('.app-toolbar__conn-state')).toHaveText(
-    'Connected',
-  );
-  await expect(chip.locator('.app-toolbar__conn-name')).toHaveText(
-    GALLERY_CONNECTION_NAME,
-  );
+  await expect(chip).toHaveClass(/app-toolbar__conn--compact/);
+  const named = `Manage Stations — Connected · ${GALLERY_CONNECTION_NAME}`;
+  await expect(chip).toHaveAttribute('aria-label', named);
+  await expect(chip).toHaveAttribute('title', named);
+  // Collapsed means collapsed: neither text span renders, which is the width
+  // this change reclaims.
+  await expect(chip.locator('.app-toolbar__conn-state')).toHaveCount(0);
+  await expect(chip.locator('.app-toolbar__conn-name')).toHaveCount(0);
   // The gallery is a browser E2E instance, never a supervised desktop
-  // sidecar; pin the absence of HeaderActions' only remaining optional text.
+  // sidecar — and a sidecar's "App only" is news, so it would have kept the
+  // full chip. Pinning its absence is also the premise for the compact form.
   await expect(chip.getByTestId('desktop-sidecar-indicator')).toHaveCount(0);
 }
 
