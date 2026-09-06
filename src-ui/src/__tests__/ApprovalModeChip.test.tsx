@@ -85,7 +85,7 @@ describe('ApprovalModeChip', () => {
     );
 
     const claudeChip = screen.getByRole('button', {
-      name: /approval mode: ask every time\. engine approval control\. station approvals/i,
+      name: /approval mode: ask first\. engine approval control\. station approvals/i,
     });
     expect(claudeChip.getAttribute('title')).toContain(
       'Station approvals partly apply',
@@ -102,7 +102,7 @@ describe('ApprovalModeChip', () => {
     );
 
     const codexChip = screen.getByRole('button', {
-      name: /approval mode: ask every time\. engine approval control\. station approvals/i,
+      name: /approval mode: ask first\. engine approval control\. station approvals/i,
     });
     expect(codexChip.getAttribute('title')).toContain(
       'Station approvals do not apply',
@@ -119,7 +119,7 @@ describe('ApprovalModeChip', () => {
     );
 
     expect(
-      screen.getByRole('button', { name: /^Approval mode: Ask every time/ }),
+      screen.getByRole('button', { name: /^Approval mode: Ask first/ }),
     ).toBeTruthy();
   });
 
@@ -134,7 +134,7 @@ describe('ApprovalModeChip', () => {
     );
 
     await openSheet();
-    expect(option(/^Ask every time/).getAttribute('aria-checked')).toBe('true');
+    expect(option(/^Ask first/).getAttribute('aria-checked')).toBe('true');
     expect(option(/^Auto/).getAttribute('aria-checked')).toBe('false');
   });
 
@@ -239,7 +239,7 @@ describe('ApprovalModeChip', () => {
     expect(onChange).not.toHaveBeenCalled();
     // Back to the option list, still showing the pre-escalation value — the
     // mode never silently changed.
-    expect(option(/^Ask every time/).getAttribute('aria-checked')).toBe('true');
+    expect(option(/^Ask first/).getAttribute('aria-checked')).toBe('true');
   });
 
   test('dismissing the sheet mid-escalation leaves the mode untouched', async () => {
@@ -259,7 +259,7 @@ describe('ApprovalModeChip', () => {
 
     expect(onChange).not.toHaveBeenCalled();
     expect(
-      screen.getByRole('button', { name: /^Approval mode: Ask every time/ }),
+      screen.getByRole('button', { name: /^Approval mode: Ask first/ }),
     ).toBeTruthy();
   });
 
@@ -275,7 +275,7 @@ describe('ApprovalModeChip', () => {
     );
 
     await openSheet();
-    fireEvent.click(option(/^Ask every time/));
+    fireEvent.click(option(/^Ask first/));
 
     expect(onChange).toHaveBeenCalledWith('ask');
   });
@@ -316,9 +316,7 @@ describe('ApprovalModeChip', () => {
     ).toBeTruthy();
     await openSheet();
     expect(option(/^Auto/).getAttribute('aria-checked')).toBe('true');
-    expect(option(/^Ask every time/).getAttribute('aria-checked')).toBe(
-      'false',
-    );
+    expect(option(/^Ask first/).getAttribute('aria-checked')).toBe('false');
   });
 
   test('a pending full-access request keeps the receipted mode visible', async () => {
@@ -501,7 +499,7 @@ describe('ApprovalModeChip', () => {
    * archive#1010. `config.approvalMode` is a generic connection-config bag
    * field with no server-side gate (nothing restricts it to the two adapters
    * that read it), so a no-knob connection carrying one used to make the inert
-   * chip announce a governing posture — "Ask every time — default" — that the
+   * chip announce a governing posture — "Ask first — default" — that the
    * adapter provably ignores. An inert control asserting a security posture
    * nothing enforces is worse than one asserting nothing.
    */
@@ -516,7 +514,7 @@ describe('ApprovalModeChip', () => {
     );
 
     expect(screen.queryByRole('button')).toBeNull();
-    expect(screen.queryByText(/Ask every time/)).toBeNull();
+    expect(screen.queryByText(/Ask first/)).toBeNull();
     expect(screen.getByText('Set by engine')).toBeTruthy();
   });
 
@@ -588,7 +586,7 @@ describe('ApprovalModeChip', () => {
 
     const chip = screen.getByRole('button', { name: /^Approval mode:/ });
     expect(chip.getAttribute('aria-label')).toContain(
-      'Approval mode: Ask every time — default. Engine approval control.',
+      'Approval mode: Ask first — default. Engine approval control.',
     );
     expect(
       chip.querySelector('.chat-input__approval-chip-label')?.textContent,
