@@ -62,6 +62,7 @@ function deepCallable(): unknown {
     // forever — which is exactly how this shape failed CI at 4m57s against
     // the 5-minute lane budget while passing locally.
     get: (_target, property) => (property === 'then' ? undefined : proxy),
+    apply: () => proxy,
   });
   return proxy;
 }
@@ -75,6 +76,7 @@ function runtimeContext(
     {
       app,
       port: 4321,
+      host: '127.0.0.1',
       appConfig: {},
       configLoader: {
         getProjectHomeDir: () => homeDir,
@@ -90,14 +92,6 @@ function runtimeContext(
       memoryAdapters: new Map(),
       metricsLog: [],
       monitoringEvents: [],
-      // Route composition starts the boot-only completed-dispatch repair, which
-      // reads `sessionTurnBoundaryAuthority()` off the event store. A real
-      // `EventStore` always answers that with an authority, so the fixture owes
-      // one explicitly: the generic callable fallback returns undefined from a
-      // CALL, which is how this file reddened when the repair rail landed.
-      // Modelled as the available-and-empty authority — this fixture owns no
-      // durable dispatches — so the repair completes rather than reporting an
-      // unresolved boot the route composition under test never had.
       orchestrationEventStore: new Proxy(
         {
           sessionTurnBoundaryAuthority: () => ({

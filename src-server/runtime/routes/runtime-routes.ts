@@ -1,3 +1,10 @@
+import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+
+export {
+  type BoundedBodyResult,
+  readBoundedRequestBody,
+} from '../../security/bounded-request-body.js';
+
 import {
   createHash,
   randomBytes,
@@ -427,6 +434,10 @@ import {
   sanitizedTransportError,
 } from '../../utils/outward-error.js';
 import { expandTilde } from '../../utils/paths.js';
+import {
+  createPersonalHomeAuthorityDatabase,
+  HOME_AUTHORITY_DATABASE_ENV,
+} from '../bootstrap/personal-home-authority-database.js';
 import {
   configureRuntimeHttp,
   LOOPBACK_DEVICE_SESSION_COOKIE,
@@ -1131,7 +1142,13 @@ export function configureRuntimeRoutes(
   });
   context.app.route(
     '/api/home-authority',
-    createHomeAuthorityRoutes(context.environmentSecurityService),
+    createHomeAuthorityRoutes(
+      context.environmentSecurityService,
+      createPersonalHomeAuthorityDatabase(
+        context.configLoader.getProjectHomeDir(),
+        process.env[HOME_AUTHORITY_DATABASE_ENV],
+      ),
+    ),
   );
   // Shared resolver keeps project and Registry catalog projections identical.
   const layoutCatalog = new DistributionProfileService(
@@ -5609,11 +5626,6 @@ export function configureDevicePairingHostRoutes(
   });
 }
 
-export type BoundedBodyResult =
-  | { status: 'ok'; body: string }
-  | { status: 'too-large' }
-  | { status: 'invalid' };
-
 /** Exact hosted-ingress exception for the bearer-stage-grant-only upload leaf. */
 export function isAttachmentStageGrantUploadRequest(request: Request): boolean {
   const { pathname } = new URL(request.url);
@@ -5623,57 +5635,6 @@ export function isAttachmentStageGrantUploadRequest(request: Request): boolean {
       pathname,
     )
   );
-}
-
-/** Reads an unauthenticated request body without ever buffering past maxBytes. */
-export async function readBoundedRequestBody(
-  request: Request,
-  maxBytes: number,
-): Promise<BoundedBodyResult> {
-  const declared = request.headers.get('content-length');
-  if (declared !== null) {
-    if (!/^\d+$/.test(declared) || Number(declared) > maxBytes) {
-      return { status: 'too-large' };
-    }
-  }
-  const stream = request.body;
-  if (!stream) return { status: 'invalid' };
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const result = await reader.read();
-      if (result.done) break;
-      total += result.value.byteLength;
-      if (total > maxBytes) {
-        await reader
-          .cancel('proof request body exceeded byte limit')
-          .catch(() => {});
-        return { status: 'too-large' };
-      }
-      chunks.push(result.value);
-    }
-  } catch {
-    await reader.cancel().catch(() => {});
-    return { status: 'invalid' };
-  } finally {
-    reader.releaseLock();
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return {
-      status: 'ok',
-      body: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
-    };
-  } catch {
-    return { status: 'invalid' };
-  }
 }
 
 function resolveConfiguredRuntimeOrigins(

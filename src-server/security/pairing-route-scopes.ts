@@ -236,6 +236,14 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  {
+    id: '/api/home-authority/channels/:channelId/owner:administration',
+    method: 'POST',
+    prefix: '/api/home-authority/channels/:channelId/owner',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   // Home-authority preparation and transfer participation is a separate,
   // explicitly granted capability. Every present and future method beneath
   // this family stays on that one tier; it does not inherit ordinary
