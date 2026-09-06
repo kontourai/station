@@ -212,6 +212,48 @@ failure, duplicate decisions after reopening, and tenant-qualified lookups.
 They do not prove network partitions, a deployed witness, accepted-writer
 fencing, or live session continuation. Those remain integration requirements.
 
+## Authenticated remote room observation
+
+A prospective home exposes `POST /api/home-authority/rooms/:taskId/identity`
+under its own explicit `home:transfer` pairing permission. The controller must
+present a credential issued by that remote Station, separately from the
+participant credential used in the other direction. The body is exactly:
+
+```json
+{"channelId":"<expected room channel ID>","nonce":"<fresh request nonce>"}
+```
+
+The channel ID comes from the existing room identity, not an environment label
+or a Project slug. The remote runtime resolves the actual Task/Project scope
+through its existing request-principal and room-grant owners. It checks that the
+scope and principal remain current after asynchronous resolution. The probe
+never opens a room, drains a publication outbox, seals a source or starts work.
+The route rechecks the actual paired credential before delivering the response.
+Hosted mode remains refused.
+
+`HomeTransferRoomIdentityObservation` in the
+[cloud-move contract](../../packages/contracts/src/cloud-move.ts) binds the remote
+environment ID, remote-issued paired-device ID, exact Task and channel, and the
+request nonce. Both execution flags are false and responses are uncacheable.
+Unknown fields or invalid identifiers return 400, oversized bodies 413, wrong
+channel identity 409, absent Tasks 404, revoked/insufficient authority 403 and
+unavailable runtime state 503. Inputs are bounded to 2 KiB; channel and nonce
+strings are nonempty, bounded to 256 bytes, and cannot contain control characters.
+
+This observation proves the selected authenticated endpoint resolved that room;
+it is not hardware attestation or evidence that credentials were never copied.
+The [controller enrollment guide](../guides/home-transfer-controller.md) describes
+the implemented operator-approved participant-to-room mapping, server-owned peer
+lookup, nonce/environment/device/channel validation and live rechecks. Network
+seal/advance adapters still need to consume those bindings before use. Merely obtaining a successful observation does not enroll
+a target or authorize coordinator adapters.
+
+Tests cover real pairing/HTTP enforcement, revocation during lookup, exact-body
+validation, nonce reflection and wrong-channel refusal. A production runtime
+composition test verifies that the new route primes the existing room-principal
+resolver and leaves the durable room-head table empty. Runtime scope tests cover
+missing/moved Tasks and revoked/hosted authority without calling history methods.
+
 ## Private coordinator and verified decisions
 
 The paired authority's server-private `advance` operation composes the

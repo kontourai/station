@@ -618,6 +618,64 @@ describe('EnvironmentSecurityService', () => {
     expect(service.identifyDevice(exchanged.credential)).toBeNull();
   });
 
+  test('keeps exact peer-credential mutations operator-only while preserving scoped metadata reads and prefix boundaries', async () => {
+    const EnvironmentSecurityService = await loadEnvironmentSecurityService();
+    const service = new EnvironmentSecurityService({ homeDir: makeHome() });
+    const operator = await service.initialize();
+    const offer = service.devicePairing.createOffer({
+      endpoint: 'https://station.example.test',
+    });
+    const request = service.devicePairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Default paired device',
+    });
+    service.devicePairing.confirmRequest(request.requestId, {
+      kind: 'presented-credential',
+    });
+    const paired = service.devicePairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: request.requestId,
+    });
+
+    for (const path of [
+      '/api/environments/peers',
+      '/api/environments/peers/environment-b',
+      '/api/environments/peers/environment-b/credential',
+    ]) {
+      for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+        expect(
+          service.authorizeCredential(operator.credential, { method, path }),
+        ).toBe(true);
+        expect(
+          service.authorizeCredential(paired.credential, { method, path }),
+        ).toBe(false);
+      }
+    }
+
+    for (const method of ['GET', 'HEAD']) {
+      expect(
+        service.authorizeCredential(paired.credential, {
+          method,
+          path: '/api/environments/peers',
+        }),
+      ).toBe(true);
+    }
+
+    for (const path of [
+      '/api/environments/peersuffix',
+      '/api/environments/peers-archive/environment-b',
+    ]) {
+      expect(
+        service.authorizeCredential(paired.credential, {
+          method: 'POST',
+          path,
+        }),
+      ).toBe(true);
+    }
+  });
+
   test('rejects a valid-looking record with unexpected schema keys', async () => {
     const homeDir = makeHome();
     const EnvironmentSecurityService = await loadEnvironmentSecurityService();
