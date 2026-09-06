@@ -503,6 +503,12 @@ export function FirstRunHomeChapter() {
               load={loadFirstRunEnginePicker}
               componentProps={{
                 variant: 'step' as const,
+                // The step's title, or the picker resolves its own default
+                // ("Choose what powers your default assistant") and reports
+                // THAT up — the shared header then prints a name for this
+                // step that the run's own table does not have. Caught in the
+                // live screenshot of the rebuilt tree.
+                title: STEP_TITLES['engine-role'],
                 description:
                   'Choose the engine that runs the Station agent. Station Control and Station Docs stay attached to the role.',
                 onChosen: continueToAboutYou,

@@ -20,6 +20,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderWithIsolatedConnections as render } from '../../../__tests__/renderWithIsolatedConnections';
 
@@ -149,32 +150,45 @@ vi.mock('../../../hooks/useSystemStatus', () => ({
 vi.mock('../../EnginePicker', () => ({
   EnginePicker: ({
     variant,
+    title,
     onChosen,
     onDismiss,
     onTitleChange,
   }: {
     variant?: string;
+    title?: string;
     onChosen: () => void;
     onDismiss: () => void;
     onTitleChange?: (title: string) => void;
-  }) => (
-    <div data-testid="engine-picker" data-variant={variant}>
-      {enginePickerTitleOverride ? (
-        <button
-          type="button"
-          onClick={() => onTitleChange?.(enginePickerTitleOverride)}
-        >
-          Report a different title
+  }) => {
+    // The real picker reports the title it RENDERED, which is the caller's
+    // `title` unless the panel answers a different question. Mirrored here
+    // because a stub that reported nothing hid a live defect: the chapter had
+    // stopped passing `title` at all, the picker fell back to its own default
+    // ("Choose what powers your default assistant"), and the shared header
+    // printed a name this run's step table does not have.
+    useEffect(() => {
+      onTitleChange?.(title ?? '');
+    }, [onTitleChange, title]);
+    return (
+      <div data-testid="engine-picker" data-variant={variant}>
+        {enginePickerTitleOverride ? (
+          <button
+            type="button"
+            onClick={() => onTitleChange?.(enginePickerTitleOverride)}
+          >
+            Report a different title
+          </button>
+        ) : null}
+        <button type="button" onClick={onChosen}>
+          Use selected engine
         </button>
-      ) : null}
-      <button type="button" onClick={onChosen}>
-        Use selected engine
-      </button>
-      <button type="button" onClick={onDismiss}>
-        Decide later
-      </button>
-    </div>
-  ),
+        <button type="button" onClick={onDismiss}>
+          Decide later
+        </button>
+      </div>
+    );
+  },
 }));
 /** Set by the one test that proves the header follows the picker's own title. */
 let enginePickerTitleOverride: string | null = null;
