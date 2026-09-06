@@ -1,4 +1,6 @@
 import { ACPStatus } from '@kontourai/station-contracts/acp';
+import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
+import { readStationHomeRecovery } from '@kontourai/station-shared/station-home-archive';
 import { getNotificationProviders } from '../../providers/registries/registry.js';
 import { runtimeAgentKey } from '../../routes/agents/runtime-agent-identity.js';
 import { listDetectedUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
@@ -107,6 +109,19 @@ export function createRuntimeSystemRouteDeps(
   context: ConfigureRuntimeRoutesContext,
 ) {
   return {
+    getHomeRecovery: (): HomeRecoveryDisclosure => {
+      const result = readStationHomeRecovery(
+        context.configLoader.getProjectHomeDir(),
+      );
+      return result.kind === 'recovered'
+        ? {
+            kind: 'recovered-from-copy',
+            recoveryId: result.recovery.recoveryId,
+            snapshotCreatedAt: result.recovery.snapshotCreatedAt,
+            authorityTransferred: false,
+          }
+        : result;
+    },
     getBootHistory: () =>
       readBootHistory(
         createServerLogReader({

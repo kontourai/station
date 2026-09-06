@@ -1956,3 +1956,15 @@ connection, not an engine-connection identifier or another provider's identical
 model name. The initial accepted Session launch plan is not presented as proof
 of the connection used by a later turn. Unknown current-provider provenance
 stays unknown rather than being reconstructed from Agent defaults.
+
+## Home recovery disclosure
+
+`SystemStatus.homeRecovery` is an optional, host-scoped disclosure returned by
+system-status queries. `recovered-from-copy` includes `recoveryId`,
+`snapshotCreatedAt`, and `authorityTransferred: false`. `not-restored` means
+this home has no recovery record; `unavailable` means its record could not be
+verified. Older servers may omit the field. None of these values grants
+execution authority or proves a witnessed channel transfer. Do not reuse a
+cached recovery notice across API-base changes; refresh the selected Station
+before projecting it as current. The record exposes no filesystem path or
+backup manifest contents.
