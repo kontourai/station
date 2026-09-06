@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
-import { basename, dirname, join } from 'node:path';
+import { basename, delimiter, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
@@ -144,7 +144,7 @@ async function cli(live: LiveStation, args: string[]): Promise<string> {
       windowsHide: true,
       env: {
         ...process.env,
-        PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ''}`,
+        PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ''}`,
         STATION_ROOT: stationRootForLiveHome(live.home),
         STATION_HOME: live.home,
         STATION_API_CREDENTIAL: readE2EOperatorCredential(live.home),

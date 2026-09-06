@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { expect, type Page } from '@playwright/test';
 import {
@@ -125,7 +125,7 @@ export async function startStation(
     timeoutMs: options.performanceReference ? 300_000 : 120_000,
     env: {
       ...process.env,
-      PATH: `${NODE_BIN}:${process.env.PATH ?? ''}`,
+      PATH: `${NODE_BIN}${delimiter}${process.env.PATH ?? ''}`,
       STATION_ROOT: stationRootForLiveHome(live.home),
       STATION_HOME: live.home,
       STATION_E2E_SYSTEM_STATUS_READY:
@@ -252,7 +252,7 @@ export async function stopStation(live: LiveStation): Promise<void> {
   await runCommand(...stationCommand(args), {
     env: {
       ...process.env,
-      PATH: `${NODE_BIN}:${process.env.PATH ?? ''}`,
+      PATH: `${NODE_BIN}${delimiter}${process.env.PATH ?? ''}`,
       STATION_ROOT: stationRootForLiveHome(live.home),
       STATION_HOME: live.home,
     },
