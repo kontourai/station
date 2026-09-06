@@ -169,9 +169,26 @@ jobs:
           fi
           echo "no degraded capability reported"
 
+      # Capture through the bucket script DIRECTLY, not through
+      # `run-e2e-coverage.mjs --only=screenshot`. The coverage runner overrides
+      # `STATION_E2E_GALLERY_DIR` to a run-scoped
+      # `.kontourai/e2e-runs/<runId>/evidence/gallery`, while `screenshot:diff`
+      # reads `gallery/` — so the two halves of this gate never referred to the
+      # same pixels. Measured in run 34065319882: the capture PASSED (71
+      # screens, 2.2m) and the diff then aborted with "No capture manifest at
+      # …/gallery/capture.json". `tests/screenshots.spec.ts` says which is
+      # which in its own words: full coverage supplies an isolated run-scoped
+      # directory, and running the bucket directly "intentionally retains the
+      # familiar gitignored gallery/".
+      #
+      # That mismatch shipped with this workflow on 2026-08-29 and could not be
+      # observed, because the job never once reached a runner (#1645). The
+      # hermetic roster is unaffected: it lives in `run-e2e-suite.mjs`, which is
+      # what `test:e2e:screenshot` invokes either way, so this shortens the
+      # chain rather than leaving it.
       - name: Capture screenshot bucket and enforce exact baseline
         run: |
-          node scripts/run-e2e-coverage.mjs --only=screenshot
+          npm run test:e2e:screenshot
           npm run screenshot:diff
 
       - name: Upload gallery and pixel diffs

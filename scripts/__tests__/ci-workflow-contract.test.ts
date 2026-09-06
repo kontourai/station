@@ -705,11 +705,19 @@ describe('CI verification workflow contracts', () => {
     // runner-preflight reports the capabilities of a SELF-HOSTED runner; it
     // has nothing to assert about a hosted container.
     expect(gallery).not.toContain('runner-preflight@');
-    expect(runBodies).toContain(
-      'node scripts/run-e2e-coverage.mjs --only=screenshot',
-    );
+    // The capture and the diff must refer to the SAME pixels. Through
+    // `run-e2e-coverage.mjs` they did not: it overrides
+    // `STATION_E2E_GALLERY_DIR` to a run-scoped
+    // `.kontourai/e2e-runs/<runId>/evidence/gallery` while `screenshot:diff`
+    // reads `gallery/`, so the gate captured one directory and compared
+    // another. Measured in run 34065319882 — capture PASSED, diff aborted with
+    // "No capture manifest at …/gallery/capture.json". The bucket script
+    // invoked directly retains `gallery/`, which is what the spec's own comment
+    // says it is for.
+    expect(runBodies).toContain('npm run test:e2e:screenshot');
+    expect(runBodies).not.toContain('run-e2e-coverage.mjs --only=screenshot');
     expect(runBodies).toContain('npm run screenshot:diff');
-    expect(runBodies.indexOf('--only=screenshot')).toBeLessThan(
+    expect(runBodies.indexOf('npm run test:e2e:screenshot')).toBeLessThan(
       runBodies.indexOf('npm run screenshot:diff'),
     );
     expect(runBodies).not.toContain('npm run verify:e2e:full');
@@ -729,17 +737,20 @@ describe('CI verification workflow contracts', () => {
   });
 
   it('the nightly gallery entrypoint reaches the suppression-injecting suite (station#875)', () => {
-    // nightly-gallery.yml runs run-e2e-coverage.mjs, but the hermetic-roster
-    // flag lives in run-e2e-suite.mjs. Nothing else asserts that chain, so a
-    // renamed bucket script would leave every test green while the nightly
-    // captured with the fleet host's real CLIs — the exact daily re-red this
-    // lane exists to prevent.
-    const coverage = readFileSync(
-      resolve(root, 'scripts/run-e2e-coverage.mjs'),
-      'utf8',
+    // nightly-gallery.yml invokes `test:e2e:screenshot`, but the
+    // hermetic-roster flag lives in run-e2e-suite.mjs. Nothing else asserts
+    // that chain, so a renamed bucket script would leave every test green while
+    // the nightly captured with the host's real CLIs — the exact daily re-red
+    // this lane exists to prevent.
+    //
+    // #1645 shortened this chain by one hop: the workflow used to reach the
+    // bucket through `run-e2e-coverage.mjs --only=screenshot`, which wrote the
+    // gallery somewhere `screenshot:diff` never looked. The roster is unchanged
+    // either way because it has always lived in the suite runner, which is what
+    // this asserts.
+    expect(extractRunBodies(workflow('nightly-gallery.yml'))).toContain(
+      'npm run test:e2e:screenshot',
     );
-    expect(coverage).toContain("name: 'screenshot'");
-    expect(coverage).toContain("script: 'test:e2e:screenshot'");
     const pkg = JSON.parse(
       readFileSync(resolve(root, 'package.json'), 'utf8'),
     ) as { scripts: Record<string, string> };
