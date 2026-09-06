@@ -566,7 +566,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await page.getByRole('button', { name: 'Restore chat dock' }).click();
 
     await page.goto('/projects/station');
-    await page.getByRole('button', { name: 'Ask Station for help' }).click();
+    // #1552 D1: "Ask Station for help" is a row of the avatar's menu now, not a
+    // toolbar button. The prompt list it opens is unchanged.
+    await page.getByRole('button', { name: 'Profile and settings' }).click();
+    await page.getByRole('menuitem', { name: 'Ask Station for help' }).click();
     await page.getByRole('button', { name: 'What can you do?' }).click();
 
     await expect

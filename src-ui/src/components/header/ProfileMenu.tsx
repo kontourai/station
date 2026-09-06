@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { QuestionGlyph, SettingsGlyph } from '../icons/Glyph';
 import './HeaderMenu.css';
@@ -51,6 +52,23 @@ export function ProfileMenu({
   onToggleSettings: () => void;
 }) {
   const menuRef = useMenuFocus<HTMLDivElement>(isOpen, onClose);
+  /**
+   * Close when the breakpoint takes this menu's TRIGGER away.
+   *
+   * The avatar lives in `.app-toolbar__action--secondary`, which the mobile
+   * query hides (archive#3311 demoted the profile into the `⋯` menu there), but
+   * this panel is portalled to `document.body` — so a resize across the
+   * breakpoint left it floating over the app with nothing on screen that could
+   * have opened it and no trigger to return focus to. `RegionToolbarControls`
+   * guards its own branch changes the same way (#1552 review L4).
+   *
+   * `useIsMobile` is the same `MOBILE_MEDIA_QUERY` that CSS rule matches on, so
+   * this cannot drift from the breakpoint that actually hides the avatar.
+   */
+  const isMobile = useIsMobile();
+  useEffect(() => {
+    if (isOpen && isMobile) onClose();
+  }, [isOpen, isMobile, onClose]);
   useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {

@@ -37,10 +37,11 @@ export const ArrowUpGlyph = /* @__PURE__ */ glyph('M3 10l5-5 5 5');
 export const AttachmentGlyph = /* @__PURE__ */ glyph(
   'm6 8.5 3.8-3.8a2 2 0 1 1 2.8 2.8L7.4 12.7a3 3 0 0 1-4.2-4.2l5-5',
 );
-/** Kanban columns — the Console Board pane tile. */
+/** A notification bell — the header's Notifications control. */
 export const BellGlyph = /* @__PURE__ */ glyph(
   'M12 5.5A4 4 0 0 0 4 5.5c0 4.7-2 6-2 6h12s-2-1.3-2-6M9.2 14a1.4 1.4 0 0 1-2.4 0',
 );
+/** Kanban columns — the Console Board pane tile. */
 export const BoardGlyph = /* @__PURE__ */ glyph(
   'M2.5 3h3.2v10H2.5V3Zm3.9 0h3.2v7H6.4V3Zm3.9 0h3.2v5h-3.2V3Z',
 );

@@ -11,6 +11,7 @@ import {
   occupiedDockRegion,
   occupiedRegion,
   placeSurface as placeSurfaceInArrangement,
+  type RegionArrangement,
   type RegionId,
   type RegisteredSurface,
   regionLabel,
@@ -218,9 +219,32 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
     );
 
   /**
-   * Where the region's current occupant ENDS UP if `surfaceId` takes the region
-   * — computed by running the model's own `placeSurface` over the arrangement
-   * and reading the result, not by restating its rules here.
+   * Where a surface sits in an arrangement, and whether that means the reader
+   * can SEE it. The one derivation behind both the pressed segment and the
+   * displacement note below, so the two cannot disagree about the same surface
+   * in the same arrangement (#1552 review M3: the note promised "moves to Right"
+   * for a relocation `placeSurface` makes with `visible: false`, and the picker
+   * then showed that surface as Hidden).
+   *
+   * `main` is always visible, so holding it is always showing.
+   */
+  const placementOf = (
+    arrangement: RegionArrangement,
+    surfaceId: string,
+  ): { region: RegionId | undefined; shown: boolean } => {
+    const region = occupiedRegion(arrangement, surfaceId);
+    return {
+      region,
+      shown: Boolean(
+        region && (region === 'main' || arrangement[region].visible),
+      ),
+    };
+  };
+
+  /**
+   * What happens to the region's current occupant if `surfaceId` takes the
+   * region — computed by running the model's own `placeSurface` over the
+   * arrangement and reading the result, not by restating its rules here.
    *
    * This is the honest form of what the retired verb list called "Swap in X".
    * The rules are not obvious (a swap back into the vacated region, else the
@@ -228,6 +252,11 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
    * is always unplaced), and a hand-written sentence about them is a claim
    * nothing derives — the class of defect this arc exists to remove. Pure
    * function, no state touched.
+   *
+   * A relocation can also arrive HIDDEN — `placeSurface` carries the target
+   * region's previous visibility across to the displaced surface — so a landing
+   * region alone does not mean the reader will see it there. Three outcomes,
+   * three sentences.
    */
   const displacementNote = (
     surfaceId: string,
@@ -237,19 +266,20 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
     if (!displaced || displaced === surfaceId) return undefined;
     const displacedTitle = surfaces.get(displaced)?.title ?? displaced;
     const next = placeSurfaceInArrangement(regions, surfaceId, id);
-    const landedIn = occupiedRegion(next, displaced);
-    return landedIn
-      ? `${displacedTitle} moves to ${regionLabel(landedIn)}`
-      : `${displacedTitle} is hidden`;
+    const landed = placementOf(next, displaced);
+    if (!landed.region) return `${displacedTitle} is hidden`;
+    return landed.shown
+      ? `${displacedTitle} moves to ${regionLabel(landed.region)}`
+      : `${displacedTitle} moves to ${regionLabel(landed.region)}, hidden`;
   };
 
   const placementRow = (surface: RegisteredSurface): RegionPlacementRow => {
-    const held = occupiedRegion(regions, surface.id);
     // Showing, not merely placed: a surface in a hidden dock region is Hidden as
     // far as this picker is concerned, which is the same question the folded
-    // menu's `checked` answers. `main` is always visible, so holding it is
-    // always showing.
-    const shown = Boolean(held && (held === 'main' || regions[held].visible));
+    // menu's `checked` answers — and the same `placementOf` the displacement
+    // note reads, so a segment and a tooltip can never describe one surface two
+    // ways.
+    const { region: held, shown } = placementOf(regions, surface.id);
     return {
       surfaceId: surface.id,
       label: surface.title,

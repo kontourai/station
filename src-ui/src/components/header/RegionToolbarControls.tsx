@@ -28,6 +28,19 @@ function SurfaceGlyph({ icon }: { icon: string }) {
 const DOCK_WHEN = { not: 'composerFocused' } as const;
 
 /**
+ * What the folded control opens. The trigger's `aria-haspopup` and the panel's
+ * own `role` are both derived from one value of this type, so a branch cannot
+ * announce one and render the other (#1552 review M1).
+ */
+type PopupRole = 'menu' | 'group';
+
+/**
+ * Where the picker puts focus on open: the checked segment of the first row —
+ * where the surface currently IS, which is also the row's roving tab stop.
+ */
+const CHECKED_SEGMENT = '[role="radio"][aria-checked="true"]';
+
+/**
  * The region frame. One glyph, not one per region: since #1536 F the toolbar
  * carries a single folded control, so the glyph names the arrangement rather
  * than identifying which of five rectangles this one was.
@@ -90,6 +103,7 @@ function ToolbarMenuSurface({
   anchorRight,
   className,
   role,
+  initialFocusSelector,
   onClose,
   children,
 }: {
@@ -102,12 +116,34 @@ function ToolbarMenuSurface({
    * arrow keys belong to the `radiogroup` rows inside it. Never absent — the
    * panel has an `aria-label`, and a labelled element with no role is not
    * reachable by role from a test or an assistive technology's rotor.
+   *
+   * The TRIGGER derives its `aria-haspopup` from this same value, so the claim
+   * and the popup cannot disagree (#1552 review M1: it announced `menu` while
+   * opening a `group`).
    */
-  role: 'menu' | 'group';
+  role: PopupRole;
+  /**
+   * Where focus lands on open, when the family's default is wrong.
+   *
+   * `useMenuFocus` focuses the first focusable descendant, which for the picker
+   * is the first row's FIRST segment — not its checked one — so opening the
+   * panel silently proposed "Left" while the roving `tabIndex` said the checked
+   * segment was the row's tab stop (review M2). Applied in an effect declared
+   * AFTER the `useMenuFocus` call below, so it runs after that hook's own focus
+   * within the same commit rather than racing it.
+   */
+  initialFocusSelector?: string;
   onClose: () => void;
   children: ReactNode;
 }) {
   const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
+  // Declared after `useMenuFocus` on purpose: effects in one component run in
+  // declaration order, so this lands after that hook has already focused the
+  // first focusable descendant, and replaces it rather than being replaced.
+  useEffect(() => {
+    if (!initialFocusSelector) return;
+    menuRef.current?.querySelector<HTMLElement>(initialFocusSelector)?.focus();
+  }, [initialFocusSelector, menuRef]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
@@ -202,6 +238,12 @@ function FoldedRegionMenu({
  * `role="menu"` (a menu owns the arrow keys for its own rows, which would take
  * them away from the segments here).
  *
+ * The arrows move FOCUS only; Space/Enter on the focused segment commits it and
+ * closes the panel. A radio group conventionally selects as it moves, but here
+ * selection IS the placement — it relocates a surface and dismisses the panel —
+ * so moving through the segments would rearrange the shell three times on the
+ * way to the fourth. Focus-only is the deliberate deviation (#1552 review L1).
+ *
  * PRESSED STATE is `segment.checked`, derived by `useRegionSurfaceMenu` from the
  * arrangement. Nothing here holds a second opinion about which segment is on.
  */
@@ -272,13 +314,30 @@ function RegionPlacementPicker({
                   // own `placeSurface` run over the current arrangement — see
                   // `displacementNote`. Absent when nothing is displaced, so a
                   // tooltip never promises a consequence that will not occur.
-                  {...(segment.displaces ? { title: segment.displaces } : {})}
+                  //
+                  // `title` is a POINTER channel only, so the consequence is
+                  // also a description (#1552 review L6). The referenced span is
+                  // `hidden`, which keeps it out of the button's accessible NAME
+                  // (still just "Bottom") while `aria-describedby` still
+                  // resolves its text — the accname spec includes referenced
+                  // hidden nodes.
+                  {...(segment.displaces
+                    ? {
+                        title: segment.displaces,
+                        'aria-describedby': `${segment.key}-displaces`,
+                      }
+                    : {})}
                   onClick={() => {
                     segment.onSelect();
                     onClose();
                   }}
                 >
                   {segment.label}
+                  {segment.displaces ? (
+                    <span id={`${segment.key}-displaces`} hidden>
+                      {segment.displaces}
+                    </span>
+                  ) : null}
                 </button>
               ))}
             </span>
@@ -353,6 +412,11 @@ function ConnectedRegionToolbarControls() {
   // unchanged — every Show/Hide, Place and Swap the buttons carried is a row
   // in this menu — and so are the chords above, which are the fast path.
   const label = bottomOnly ? 'Regions' : 'Layout regions';
+  // ONE decision, read by the trigger and by the panel. The folded branch opens
+  // a menu of commands; the fine pointer opens a group of `radiogroup` rows, and
+  // `aria-haspopup` has no value that describes that — so it is omitted rather
+  // than made up. `aria-expanded` still reports the panel's state either way.
+  const popupRole: PopupRole = bottomOnly ? 'menu' : 'group';
   return (
     <fieldset className="app-toolbar__regions">
       <legend>Regions</legend>
@@ -362,7 +426,7 @@ function ConnectedRegionToolbarControls() {
         className="app-toolbar__region-btn app-toolbar__region-layout"
         aria-label={label}
         title={label}
-        aria-haspopup="menu"
+        {...(popupRole === 'menu' ? { 'aria-haspopup': 'menu' as const } : {})}
         aria-expanded={menuOpen}
         onClick={(event) => openMenu(event.currentTarget)}
       >
@@ -384,8 +448,10 @@ function ConnectedRegionToolbarControls() {
           anchorRight={menuAnchorRight}
           // The folded list IS a menu of commands and keeps the role (and with
           // it `useMenuFocus`'s arrow keys). The picker is a `group` of
-          // `radiogroup`s — see `ToolbarMenuSurface`.
-          role={bottomOnly ? 'menu' : 'group'}
+          // `radiogroup`s — see `ToolbarMenuSurface`. Same value the trigger's
+          // `aria-haspopup` is derived from.
+          role={popupRole}
+          initialFocusSelector={bottomOnly ? undefined : CHECKED_SEGMENT}
           className={bottomOnly ? undefined : 'region-placement'}
           onClose={() => setMenuOpen(false)}
         >

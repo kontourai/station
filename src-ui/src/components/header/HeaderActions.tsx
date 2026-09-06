@@ -84,7 +84,8 @@ interface HeaderActionsProps {
   onHelpPrompt: (prompt: string) => void;
   onOpenConnections: () => void;
   onOpenProfile: () => void;
-  onToggleHelp: () => void;
+  /** Opens the help menu. Never a toggle — see `openHelp` in the view model. */
+  onOpenHelp: () => void;
   onToggleNotifications: () => void;
   onToggleSettings: () => void;
   onToggleOverflow: () => void;
@@ -108,7 +109,7 @@ export function HeaderActions({
   onHelpPrompt,
   onOpenConnections,
   onOpenProfile,
-  onToggleHelp,
+  onOpenHelp,
   onToggleNotifications,
   onToggleSettings,
   onToggleOverflow,
@@ -449,7 +450,7 @@ export function HeaderActions({
               userInitials,
               onClose: onCloseProfileMenu,
               onOpenProfile,
-              onOpenHelp: onToggleHelp,
+              onOpenHelp,
               onToggleSettings,
             }}
             pending={null}
@@ -488,7 +489,7 @@ export function HeaderActions({
               userInitials,
               onClose: onCloseOverflow,
               onOpenConnections,
-              onOpenHelp: onToggleHelp,
+              onOpenHelp,
               onOpenProfile,
             }}
             pending={null}

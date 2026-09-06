@@ -206,7 +206,7 @@ async function renderMarkupForState(state: ChipState): Promise<string> {
       onHelpPrompt={() => {}}
       onOpenConnections={() => {}}
       onOpenProfile={() => {}}
-      onToggleHelp={() => {}}
+      onOpenHelp={() => {}}
       onToggleNotifications={() => {}}
       onToggleSettings={() => {}}
       onToggleOverflow={() => {}}

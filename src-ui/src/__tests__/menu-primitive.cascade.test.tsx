@@ -3,8 +3,9 @@
  *
  * #1552 D4 — ONE MENU PRIMITIVE, proved in a real engine.
  *
- * This shell had five independent menu vocabularies across the six surfaces this
- * file measures: the dock's placement menu
+ * This shell had five independent menu vocabularies across the six surfaces that
+ * predate it — plus the avatar's ProfileMenu, which #1552 D1 added onto the
+ * shared spec, for seven measured here: the dock's placement menu
  * and its More menu (6px radius, 2px padding, 32px rows, no label inset), the
  * header's `⋯` overflow menu (8px radius, no padding, 44px rows, a hairline
  * between EVERY row), the region Layout menu (that surface again, plus ruled
@@ -123,6 +124,7 @@ import { DockPlacementControl } from '../components/chat-dock/DockPlacementContr
 import { HelpMenu } from '../components/header/HelpMenu';
 import { LayoutSwitcher } from '../components/header/LayoutSwitcher';
 import { OverflowMenu } from '../components/header/OverflowMenu';
+import { ProfileMenu } from '../components/header/ProfileMenu';
 import { RegionToolbarControls } from '../components/header/RegionToolbarControls';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -184,6 +186,29 @@ const MENUS: readonly {
           onOpenConnections={() => {}}
           onOpenHelp={() => {}}
           onOpenProfile={() => {}}
+        />,
+      );
+    },
+  },
+  {
+    name: 'the avatar’s profile menu',
+    selector: '.app-toolbar__profile-menu',
+    open: () => {
+      // The fine pointer, where this menu exists at all: on a phone the avatar
+      // that opens it is hidden and the panel closes itself (see ProfileMenu).
+      harness.bottomOnly = false;
+      harness.isMobile = false;
+      render(
+        <ProfileMenu
+          isOpen
+          isProfileActive={false}
+          isSettingsActive={false}
+          settingsShortcut="⌘,"
+          userInitials="ST"
+          onClose={() => {}}
+          onOpenProfile={() => {}}
+          onOpenHelp={() => {}}
+          onToggleSettings={() => {}}
         />,
       );
     },
@@ -382,7 +407,7 @@ describe.skipIf(!chromiumAvailable)(
       document.body.innerHTML = '';
     });
 
-    test('all six menus render, and every one of them has rows to measure', () => {
+    test('all seven menus render, and every one of them has rows to measure', () => {
       // The precondition. A selector that stopped matching would otherwise take
       // its menu silently out of every assertion below.
       expect(measured.map((menu) => menu.name)).toEqual(
@@ -451,7 +476,7 @@ describe.skipIf(!chromiumAvailable)(
           .join('\n')}`,
       ).toHaveLength(1);
       // 12px inset + 16px slot + 8px gap. Asserted as a number as well as an
-      // agreement, so a change that moves all six together still gets read.
+      // agreement, so a change that moves all seven together still gets read.
       expect([...offsets.keys()][0]).toBe(36);
     });
 

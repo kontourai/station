@@ -2,6 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 import {
+  cleanup,
   createEvent,
   fireEvent,
   render,
@@ -125,12 +126,22 @@ function surfaceRow(menu: HTMLElement, surfaceTitle: string) {
   });
 }
 
-/** Its segments, in order, as `label` plus whether the segment is pressed. */
+/**
+ * Its segments, in order, as `label` plus whether the segment is pressed.
+ *
+ * The LABEL is the segment's own text node, not `textContent`: a segment that
+ * displaces an occupant also carries a `hidden` span for its `aria-describedby`
+ * description, which `textContent` would concatenate into the label (#1552
+ * review L6). The description has its own assertions.
+ */
 function segments(menu: HTMLElement, surfaceTitle: string) {
   return within(surfaceRow(menu, surfaceTitle))
     .getAllByRole('radio')
     .map((segment) => ({
-      label: segment.textContent,
+      label: [...segment.childNodes]
+        .filter((node) => node.nodeType === Node.TEXT_NODE)
+        .map((node) => node.textContent)
+        .join(''),
       checked: segment.getAttribute('aria-checked'),
     }));
 }
@@ -268,7 +279,9 @@ describe('RegionToolbarControls', () => {
     expect(buttons).toHaveLength(1);
     const trigger = buttons[0] as HTMLButtonElement;
     expect(trigger.getAttribute('aria-label')).toBe('Layout regions');
-    expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+    // No `aria-haspopup`: this branch opens a group of radiogroups, and there
+    // is no value for that — see the popup-claim test above (#1552 review M1).
+    expect(trigger.getAttribute('aria-haspopup')).toBeNull();
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
     // WCAG 2.5.3: the visible word must be part of the accessible name.
     const visible = trigger.querySelector(
@@ -281,6 +294,38 @@ describe('RegionToolbarControls', () => {
       /\.app-toolbar__region-layout\s*\{([^}]*)\}/,
     )?.[1];
     expect(layoutRule).toMatch(/width:\s*auto/);
+  });
+
+  /**
+   * #1552 review M1: the trigger announced `aria-haspopup="menu"` on BOTH
+   * branches while the fine pointer opens a `role="group"` of `radiogroup`s.
+   * Both directions here, because the folded branch really does open a menu and
+   * must keep saying so.
+   */
+  test('the trigger claims a popup only when it opens one, and names the right kind', () => {
+    render(<RegionToolbarControls />);
+
+    const picker = screen.getByRole('button', { name: 'Layout regions' });
+    expect(
+      picker.getAttribute('aria-haspopup'),
+      'the picker is a group of radiogroups; there is no aria-haspopup value for that, so it must claim none',
+    ).toBeNull();
+    expect(picker.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(picker);
+    expect(picker.getAttribute('aria-expanded')).toBe('true');
+    // What it actually opened.
+    expect(screen.getByRole('group', { name: 'Layout regions' })).toBeTruthy();
+    expect(screen.queryByRole('menu')).toBeNull();
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    harness.bottomOnly = true;
+    harness.isMobile = false;
+    cleanup();
+    render(<RegionToolbarControls />);
+    const folded = screen.getByRole('button', { name: 'Regions' });
+    expect(folded.getAttribute('aria-haspopup')).toBe('menu');
+    fireEvent.click(folded);
+    expect(screen.getByRole('menu', { name: 'Region surfaces' })).toBeTruthy();
   });
 
   test('the menu opens portalled, anchored to the trigger, and closes on select', () => {
@@ -363,6 +408,22 @@ describe('RegionToolbarControls', () => {
         `${surface} must have one tab stop, on the checked segment`,
       ).toEqual(['true']);
     }
+
+    // WHERE FOCUS LANDS ON OPEN. `useMenuFocus` focuses the first focusable
+    // descendant, which here is the first row's FIRST segment — and a
+    // `tabIndex={-1}` button still matches its `button:not([disabled])` query,
+    // so nothing about the roving tab stop steered it. The panel therefore
+    // opened proposing "Left" while telling assistive technology the checked
+    // segment was the row's tab stop (#1552 review M2). The assertion this
+    // replaces (`activeElement === items[0]`) was dropped in the retarget, which
+    // is why the regression was invisible.
+    expect(document.activeElement).toBe(
+      within(chatRow).getByRole('radio', { name: 'Bottom' }),
+    );
+    expect(
+      (document.activeElement as HTMLElement).getAttribute('aria-checked'),
+      'focus must land on the CHECKED segment, not merely on a fixed one',
+    ).toBe('true');
 
     chatSegments[1]?.focus();
     fireEvent.keyDown(chatRow, { key: 'ArrowRight' });
@@ -506,11 +567,61 @@ describe('RegionToolbarControls', () => {
         .getAttribute('title'),
     ).toBe('Home is hidden');
     // Left is empty: no consequence, so no tooltip claiming one.
+    const left = within(surfaceRow(menu, 'Activity')).getByRole('radio', {
+      name: 'Left',
+    });
+    expect(left.hasAttribute('title')).toBe(false);
+    expect(left.hasAttribute('aria-describedby')).toBe(false);
+
+    // #1552 review L6: the consequence reaches a non-pointer reader too, and
+    // does so WITHOUT joining the button's accessible name — the segment is
+    // still called "Bottom", which is what `getByRole` above resolves it by.
+    const bottom = within(surfaceRow(menu, 'Activity')).getByRole('radio', {
+      name: 'Bottom',
+    });
+    const described = document.getElementById(
+      bottom.getAttribute('aria-describedby') ?? '',
+    );
+    expect(described?.textContent).toBe('Chat moves to Right');
+    expect(bottom.textContent).toContain('Bottom');
+  });
+
+  /**
+   * #1552 review M3. `placeSurface` carries the TARGET region's previous
+   * visibility across to the surface it displaces, so a relocation can arrive
+   * hidden — and the note used to say "moves to Right" for exactly that, while
+   * the picker's own segment for that surface then read Hidden. One arrangement,
+   * two contradictory statements. Both now come from `placementOf`.
+   */
+  test('a displaced surface that lands hidden is described as landing hidden', () => {
+    // Chat holds `right` and is SHOWN; Activity holds `bottom` and is hidden.
+    // Choosing Activity's Right segment swaps the pair, and Chat inherits
+    // `right`'s… no: Chat goes back to the region Activity vacates (`bottom`)
+    // carrying `right`'s visibility at the time of the move, which is `true`.
+    // The reverse is the hidden case: choosing CHAT's Bottom segment sends
+    // Activity to `right` with `bottom`'s visibility, which is false.
+    Object.assign(harness.regions.right, { visible: true, occupant: 'chat' });
+    Object.assign(harness.regions.bottom, {
+      visible: false,
+      occupant: 'activity',
+    });
+    render(<RegionToolbarControls />);
+    const { menu } = openLayoutMenu();
+
+    const note = within(surfaceRow(menu, 'Chat'))
+      .getByRole('radio', { name: 'Bottom' })
+      .getAttribute('title');
+    expect(note).toBe('Activity moves to Right, hidden');
+
+    // The precondition that makes "hidden" the honest word: Activity is not
+    // visible now, and the move relocates it without revealing it — so a note
+    // stopping at "moves to Right" would promise the reader a surface they will
+    // still not see. (`checked` is the raw attribute string, so this compares
+    // against 'true' rather than truthiness — every segment has the attribute.)
     expect(
-      within(surfaceRow(menu, 'Activity'))
-        .getByRole('radio', { name: 'Left' })
-        .hasAttribute('title'),
-    ).toBe(false);
+      segments(menu, 'Activity').find((segment) => segment.checked === 'true')
+        ?.label,
+    ).toBe('Hidden');
   });
 
   test('with Activity in main, Main is its pressed segment and Chat is still offered no Main', () => {

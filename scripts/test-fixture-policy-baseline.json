@@ -91,12 +91,6 @@
       "rule": "unmodeled-success-fallback",
       "fingerprint": "9b089e9c0ea407c0090640bbcfac5c4e1878002365f04fc84d2a128036a3c718",
       "reason": "legacy-unqualified"
-    },
-    {
-      "file": "tests/web-push-subscribe.spec.ts",
-      "rule": "synthetic-click",
-      "fingerprint": "ba2977f485a379c5026dfbb5e2549d4dc752dc02599d5e2eedc99e85fe55295f",
-      "reason": "legacy-unqualified"
     }
   ]
 }

@@ -39,7 +39,7 @@ export function Header({
     showNotifications,
     showOverflow,
     showProfileMenu,
-    toggleHelp,
+    openHelp,
     toggleNotifications,
     toggleOverflow,
     toggleProfileMenu,
@@ -156,7 +156,7 @@ export function Header({
         onHelpPrompt={handleHelpPrompt}
         onOpenConnections={openConnectionModal}
         onOpenProfile={openProfile}
-        onToggleHelp={toggleHelp}
+        onOpenHelp={openHelp}
         onToggleNotifications={toggleNotifications}
         onToggleSettings={onToggleSettings}
         onToggleOverflow={toggleOverflow}

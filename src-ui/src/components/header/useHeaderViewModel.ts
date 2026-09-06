@@ -111,7 +111,14 @@ export function useHeaderViewModel({
     closeProfileMenu: () => setShowProfileMenu(false),
     handleHelpPrompt,
     openConnectionModal: openConnectionsModal,
-    toggleHelp: () => setShowHelp((current) => !current),
+    /**
+     * OPEN, not toggle. Both remaining callers are menu ROWS ("Ask Station for
+     * help" in the avatar menu and in the `⋯` overflow), and a row that toggles
+     * closes an already-open help menu instead of showing it — the press then
+     * reads as doing nothing (#1552 review L3). The toolbar button that made a
+     * toggle the right shape was removed in D1.
+     */
+    openHelp: () => setShowHelp(true),
     toggleNotifications: () => setShowNotifications((current) => !current),
     toggleOverflow: () => setShowOverflow((current) => !current),
     toggleProfileMenu: () => setShowProfileMenu((current) => !current),

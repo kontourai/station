@@ -257,6 +257,11 @@
 [data-theme="dark"] {
   --shadow-sm: 0 -2px 10px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 -4px 20px rgba(0, 0, 0, 0.3);
+  /* Menus, which open DOWNWARD. `--shadow-md` casts UPWARD (`0 -4px`) because
+     it was shaped for the bottom dock, so a menu wearing it is lit from below —
+     the #1552 review's M4. This is the value every menu in the shell used
+     before the family consolidated them. */
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.5);
   --shadow-xl: 0 18px 40px rgba(0, 0, 0, 0.25);
 
@@ -430,6 +435,7 @@
   --overlay-modal: rgba(0, 0, 0, 0.5);
   --shadow-sm: 0 -2px 10px rgba(0, 0, 0, 0.1);
   --shadow-md: 0 -4px 20px rgba(0, 0, 0, 0.15);
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.15);
   --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.2);
   --shadow-xl: 0 18px 40px rgba(0, 0, 0, 0.12);
   --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.3);
@@ -1637,7 +1643,8 @@ button:hover {
  * width stay with each menu, because where a menu opens is genuinely its own
  * business and is the one thing they do not share (see
  * `.chat-dock__more-menu`). `src-ui/src/__tests__/menu-primitive.cascade.test.tsx`
- * measures all six in one real Chromium cascade.
+ * measures all SEVEN — the six above and ProfileMenu — in one real Chromium
+ * cascade.
  *
  * WHAT IS DELIBERATELY ABSENT: per-row dividers. A rule between every row
  * turns a list into a ruled table in which the ONE division that carries
@@ -1661,7 +1668,7 @@ button:hover {
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-lg);
   background: var(--bg-secondary);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-menu);
 }
 
 /* A group of rows under one label. `min-inline-size: 0` because a `fieldset`'s
@@ -1777,6 +1784,9 @@ button:hover {
   bottom: calc(100% + var(--space-1));
   left: var(--space-2);
   min-width: 9rem;
+  /* This one opens UPWARD (see the note above), so it keeps the upward-casting
+     `--shadow-md` the family's downward default replaces. */
+  box-shadow: var(--shadow-md);
 }
 
 /* #1536 F: the dock header's More control. Same 28px square as the placement
@@ -1887,6 +1897,13 @@ button:hover {
   bottom: auto;
   left: auto;
   z-index: var(--layer-navigation);
+  /* It wears `.dock-placement-menu` for the family but does NOT open upward by
+     default: it measures the trigger and opens downward whenever there is room,
+     which is the common case, so it takes the downward shadow back. The
+     remaining case — this menu flipping upward in a short viewport and casting
+     downward — is a disclosed residue, not a new one: before the family existed
+     it cast upward in BOTH directions. */
+  box-shadow: var(--shadow-menu);
 }
 
 .chat-dock__more-backdrop {

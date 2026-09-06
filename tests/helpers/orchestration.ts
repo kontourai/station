@@ -468,6 +468,35 @@ export async function emitMockOrchestrationEvent(
   );
 }
 
+/**
+ * Opens Settings the way the shell now offers it.
+ *
+ * #1552 D1 folded "Open settings" into the avatar's menu on a fine pointer: the
+ * standalone gear is `.app-toolbar__action--compact-only`, so at a desktop
+ * viewport it is `display: none` and `button[aria-label="Open settings"]`
+ * matches nothing visible. The gear still exists on a phone, where the avatar —
+ * and therefore its menu — is hidden instead, so this takes whichever route the
+ * running breakpoint actually offers rather than assuming one.
+ *
+ * The avatar branch is deliberately a real click through the real menu: it is
+ * the only end-to-end coverage of the route D1 introduced, and a spec that
+ * reached Settings by chord would pass with that menu completely broken.
+ */
+export async function openHeaderSettings(page: Page): Promise<void> {
+  const avatar = page.getByRole('button', { name: 'Profile and settings' });
+  if (await avatar.isVisible().catch(() => false)) {
+    await avatar.click();
+    await page
+      .getByRole('menuitem', { name: 'Open settings' })
+      .click({ timeout: 10_000 });
+    return;
+  }
+  // The phone toolbar keeps the gear (see `.app-toolbar__action--compact-only`).
+  const gear = page.getByRole('button', { name: 'Open settings' });
+  await gear.waitFor({ timeout: 10_000 });
+  await gear.first().click();
+}
+
 export async function dismissSetupLauncher(page: Page): Promise<void> {
   const continueButton = page.getByRole('button', {
     name: 'Continue Without Setup',
