@@ -84,6 +84,11 @@ The first-run Engines chapter shows the detected, not-yet-connected local Engine
 one there explicitly connects the Engine and creates its External agent together; detection itself
 remains read-only until that action.
 
+For the built-in Claude Code Engine, Station runs the `claude` executable it finds installed on
+your machine, as long as that executable is not older than the Claude Code bundled with the Claude
+Agent SDK; otherwise it runs the bundled copy. The Engine's readiness detail names both versions
+and which of the two Station will launch.
+
 ---
 
 ## OpenAI-compatible endpoints
