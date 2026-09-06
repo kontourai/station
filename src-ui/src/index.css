@@ -360,14 +360,23 @@
      (`.toast` at :1029 reads --elevation-overlay too but has no live surface;
      the notification card is `.toast-card`, which sets its own shadow.)
 
-     `[data-theme="dark"]` is the half of this selector that carries the fix.
-     `:root` is not redundant — it covers the frame before `main.tsx` runs, and
-     any document that never stamps the attribute — but deleting it would leave
-     both real product states correct, so do not read it as the guard. What
-     restores the defect is REMOVING these two lines from this block; re-adding
-     them to the light block on top of this one is harmless duplication.
-     tests/overlay-elevation-tokens.spec.ts fails on the removal, measuring the
-     real `data-theme="dark"` document first and the unattributed one after. */
+     `:root` is the half of this selector that carries the fix, and it carries
+     it for EVERY theme: it matches unconditionally, so one declaration here
+     covers dark, light, and the unstamped first frame. `[data-theme="dark"]`
+     is redundant beside it — it only re-matches a subset — and is present
+     because it is this block's existing selector, not because it guards
+     anything. Both halves were removed in a live browser and re-read to settle
+     it rather than argue it: dropping `[data-theme="dark"]` changed nothing in
+     any of the three states; dropping `:root` left dark correct and returned
+     `""` under `[data-theme="light"]` and on an unstamped root — the same
+     defect, mirrored. So narrowing this selector is as dangerous as deleting
+     the lines, and it fails in the theme you are least likely to be looking at.
+
+     What does NOT restore the defect is re-adding the pair to the light block
+     on top of this one; that is duplication and renders identically.
+     tests/overlay-elevation-tokens.spec.ts covers all of it — the real
+     `data-theme="dark"` document as the primary case, then light and the
+     unstamped frame, so a narrowed selector reds as loudly as a deletion. */
   --elevation-overlay: var(--k-elevation-overlay);
   --radius-overlay: var(--k-radius-overlay);
   --accent-subtle: color-mix(in srgb, var(--k-brand) 6%, transparent);
@@ -504,11 +513,11 @@
   /* --elevation-overlay / --radius-overlay are deliberately absent here. They
      alias --k-* tokens that resolve on the reading element, and Console Kit
      already overrides --k-elevation-overlay under this same selector, so the
-     one declaration in the `:root, [data-theme="dark"]` block above resolves
-     to the light shadow on a light root. Re-adding them here would render
-     identically — it is duplication, not a fix. #1637 was the opposite shape:
-     they were declared ONLY here, so a `data-theme="dark"` root (what
-     `main.tsx` stamps by default) matched no declaration at all. */
+     `:root` declaration above resolves to the light shadow on a light root —
+     measured. Re-adding them here would render identically; it is duplication,
+     not a fix. #1637 was the opposite shape: they were declared ONLY here, so a
+     `data-theme="dark"` root (what `main.tsx` stamps by default) matched no
+     declaration at all and every overlay lost its radius and its lift. */
 
   /* Semantic aliases */
   --color-bg: var(--bg-primary);

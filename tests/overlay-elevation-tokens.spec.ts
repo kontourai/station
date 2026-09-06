@@ -22,13 +22,19 @@ import { expect, test } from '@playwright/test';
  * What this pins, and why the shape can actually fail rather than retiring
  * the question it names:
  *
- *  - **`data-theme="dark"` is the load-bearing case**, because that is the
+ *  - **`data-theme="dark"` is the primary case**, because that is the
  *    attribute the shipped app sets. An earlier draft measured the
  *    *unattributed* document instead, which is a state the product only
  *    occupies for the frame before `main.tsx` runs — a real defect could hide
- *    behind a `:root` declaration that the product never reaches. The
- *    unattributed document is kept as secondary coverage of that frame, and
- *    `light` is checked so the fix cannot have pinned one theme's value.
+ *    behind a `:root` declaration the product never reaches.
+ *  - **`light` and the unstamped root are not decoration.** The fix lives in
+ *    a `:root, [data-theme="dark"]` block, and `:root` is the half that
+ *    carries it: both halves were dropped in a live browser and re-read, and
+ *    removing `[data-theme="dark"]` changed nothing while removing `:root`
+ *    left dark correct and returned `""` under light and on an unstamped
+ *    root. So narrowing that selector is a real and easy regression, it is
+ *    invisible in the theme most people develop in, and these two states are
+ *    the only thing that catches it.
  *  - Every read **sets the attribute and measures inside the same
  *    `page.evaluate`**. Splitting them across round-trips lets a React commit
  *    or the settings hydration re-stamp `data-theme` in between, which would
@@ -228,6 +234,10 @@ test.describe('overlay elevation and radius tokens (#1637)', () => {
     ).toBe(resolved.kitElevation);
   });
 
+  // This is the test that catches a NARROWED selector — someone deciding the
+  // `:root` half of `:root, [data-theme="dark"]` is redundant. Measured in a
+  // live browser: that edit leaves the dark case above passing and returns
+  // `""` here.
   test('both aliases resolve under light and on an unattributed document', async ({
     page,
   }) => {
