@@ -22,6 +22,16 @@ export type NavigationLocation = Readonly<{ pathname: string; search: string }>;
 
 function canonicalSearch(search: string): string {
   const params = new URLSearchParams(search);
+  // A closed dock is never maximized (archive#795, station#1613). Every param
+  // WRITE normalizes that away (`closedDockNeverMaximized`), but a URL loaded
+  // directly or restored by `popstate` can still carry `maximize=true` with no
+  // `dock=open`, and `restoreLocation` sends its destination back through a
+  // writer — so a location captured in that state comes back WITHOUT the param
+  // and would not compare equal to itself. Dropping it here, where both sides
+  // of the comparison pass, is what keeps a capture/restore round trip exact;
+  // canonicalizing only the captured record would make `isCurrentLocation`
+  // false for a location nobody navigated away from.
+  if (params.get('dock') !== 'open') params.delete('maximize');
   params.sort();
   return params.toString();
 }
@@ -562,22 +572,17 @@ class NavigationStore {
   };
 
   /**
-   * A captured origin never holds the closed-and-maximized pair (archive#795,
-   * station#1613): `restoreLocation` clears params the origin lacks, so a
-   * captured `?maximize=true` with no `dock=open` would be restored through
-   * `closedDockNeverMaximized` and come back WITHOUT `maximize` — leaving
-   * `isCurrentLocation` false for the location just restored, and callers that
-   * key on it (`useNewChatSetupReturn`) cancelling rather than resuming.
-   * Canonicalizing at capture keeps the round trip exact.
+   * Records exactly where the user is. The closed-dock rule that lets a
+   * restored location still compare equal to its origin lives in
+   * `canonicalSearch`, which both sides of `isCurrentLocation` pass through —
+   * canonicalizing the RECORD instead would make `isCurrentLocation` false for
+   * a location nobody navigated away from (station#1613 review).
    */
   captureLocation(): NavigationLocation {
-    const params = new URLSearchParams(window.location.search);
-    let search = window.location.search;
-    if (params.get('dock') !== 'open' && params.has('maximize')) {
-      params.delete('maximize');
-      search = params.size ? `?${params}` : '';
-    }
-    return { pathname: window.location.pathname, search };
+    return {
+      pathname: window.location.pathname,
+      search: window.location.search,
+    };
   }
 
   isCurrentLocation(location: NavigationLocation): boolean {

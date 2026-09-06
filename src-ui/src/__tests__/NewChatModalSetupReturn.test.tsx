@@ -246,6 +246,30 @@ describe('New Chat repair and return', () => {
       undefined,
     );
   });
+  // station#1613: the origin carries `?maximize=true` with no `dock=open` —
+  // the one route into the closed-and-maximized pair that no param write
+  // normalizes. `restoreLocation` sends its destination back through a writer,
+  // so the param is dropped on the way home; the origin and the restored URL
+  // must still compare equal or this Back cancels the journey and drops the
+  // user's retained draft. `canonicalSearch` is what makes them equal.
+  test('browser route Back resumes from an origin whose maximize param the restore normalizes away', async () => {
+    act(() => {
+      window.history.replaceState({}, '', '/?maximize=true');
+      navigationStore.navigate('/', {});
+    });
+    expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+
+    const view = harness();
+    await openSetup();
+
+    // Back to the origin, then the write that closes the dock — the shape the
+    // restore lands in once `closedDockNeverMaximized` has run.
+    act(() => navigationStore.navigate('/', { dock: null }));
+    await screen.findByRole('dialog', { name: 'New Chat' });
+    expect(view.onClose).not.toHaveBeenCalled();
+  });
+
   test('browser route Back resumes and unrelated navigation cancels', async () => {
     const view = harness();
     await openSetup();

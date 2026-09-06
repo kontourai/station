@@ -296,28 +296,36 @@ describe('navigationStore dock maximize memory', () => {
       );
     });
 
-    test('captureLocation never records the closed-and-maximized pair, so a restore round trip is exact', () => {
+    test('a location carrying maximize without dock=open still equals itself, and equals the restore that drops the param', () => {
       // A `?maximize=true` link with no `dock=open` is the one route into that
-      // pair that no writer normalizes (#1613). Capturing it verbatim would
-      // make `restoreLocation` clear `maximize` on the way back and leave
-      // `isCurrentLocation` false for the location it just restored.
+      // pair that no writer normalizes (#1613), and `restoreLocation` sends its
+      // destination back through a writer — so the param is gone on the way
+      // back. `canonicalSearch` drops it on BOTH sides of the comparison; the
+      // capture itself records the URL verbatim.
       window.history.replaceState({}, '', '/?maximize=true&fontSize=16');
       navigationStore.navigate('/', {});
 
       const captured = navigationStore.captureLocation();
 
-      expect(captured.search).not.toContain('maximize');
+      expect(captured.search).toContain('maximize=true');
       expect(captured.search).toContain('fontSize=16');
-      expect(navigationStore.isCurrentLocation(captured)).toBe(false);
+      expect(navigationStore.isCurrentLocation(captured)).toBe(true);
+
+      // What the restore lands on: same location, param normalized away.
+      window.history.replaceState({}, '', '/?fontSize=16');
+      navigationStore.navigate('/', {});
+      expect(navigationStore.isCurrentLocation(captured)).toBe(true);
     });
 
-    test('captureLocation keeps maximize when the dock is open', () => {
+    test('an open dock keeps maximize significant to the comparison', () => {
       navigationStore.setDockState(true, true);
-
       const captured = navigationStore.captureLocation();
-
       expect(captured.search).toContain('maximize=true');
       expect(navigationStore.isCurrentLocation(captured)).toBe(true);
+
+      // Restoring the dock to docked is a real difference, not a normalized one.
+      navigationStore.setDockState(true, false);
+      expect(navigationStore.isCurrentLocation(captured)).toBe(false);
     });
 
     test('navigate carrying an open dock across a route change keeps maximize', () => {
