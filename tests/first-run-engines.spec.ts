@@ -383,12 +383,17 @@ async function passEngineRoleStep(page: Page) {
       )
       .first(),
   ).toBeVisible();
+  // A count, never `isVisible()` as an early return: a visibility check that
+  // silently skips is a skip that reads as a pass (the repo's fixture policy
+  // rejects the shape by name). The settle above is what makes the count
+  // meaningful — one of the two screens is definitely on by then.
   const picker = page.getByTestId('engine-picker');
-  if (!(await picker.isVisible())) return;
-  await picker
-    .getByRole('button', { name: /^(Decide later|Got it)$/ })
-    .first()
-    .click();
+  if ((await picker.count()) > 0) {
+    await picker
+      .getByRole('button', { name: /^(Decide later|Got it)$/ })
+      .first()
+      .click();
+  }
 }
 
 function disclosureInventory(acknowledged: boolean, telemetryEnabled = true) {
