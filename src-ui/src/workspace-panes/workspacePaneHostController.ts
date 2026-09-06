@@ -41,6 +41,11 @@ import {
   writeWorkspacePaneHostSelection,
 } from './workspacePaneHostNavigation';
 import {
+  WORKSPACE_PANE_OPENED,
+  type WorkspacePaneHostOpenOutcome,
+  workspacePaneOpenRefused,
+} from './workspacePaneHostOpenOutcome';
+import {
   reduceWorkspacePaneHost,
   type WorkspacePaneHostState,
 } from './workspacePaneHostReducer';
@@ -114,7 +119,7 @@ export interface WorkspacePaneHostController {
     instance: WorkspacePaneInstance,
     preparation?: WorkspacePaneHostOpenPreparation,
     placement?: WorkspacePaneHostOpenPlacement,
-  ): boolean;
+  ): WorkspacePaneHostOpenOutcome;
 }
 
 /** Stateful controller: hydration, lifecycle and serial navigation never leak into the view tree. */
@@ -635,12 +640,12 @@ export function useWorkspacePaneHostController({
       preparation?: WorkspacePaneHostOpenPreparation,
       placement?: WorkspacePaneHostOpenPlacement,
     ) => {
-      if (!hasPersistenceLease()) return false;
+      if (!hasPersistenceLease()) return workspacePaneOpenRefused('no-lease');
       if (
         openInstanceAdmissionRef.current &&
         !openInstanceAdmissionRef.current(instance)
       )
-        return false;
+        return workspacePaneOpenRefused('refused');
       const action: Extract<
         WorkspacePaneHostAction,
         { type: 'add-existing-instance' } | { type: 'split' }
@@ -652,7 +657,7 @@ export function useWorkspacePaneHostController({
               instance,
               ...(placement ? { targetGroupId: placement.targetGroupId } : {}),
             };
-      const nextState = prepareWorkspacePaneHostOpen({
+      const prepared = prepareWorkspacePaneHostOpen({
         state: stateRef.current,
         instance,
         storage: hostStorage,
@@ -660,12 +665,15 @@ export function useWorkspacePaneHostController({
         preparation,
         action,
       });
-      if (!nextState) return false;
-      stateRef.current = nextState;
+      if (!prepared.ok) return workspacePaneOpenRefused(prepared.reason);
+      stateRef.current = prepared.state;
       dispatch(action);
-      writeWorkspacePaneHostSelection(nextState.document, instance.instanceId);
+      writeWorkspacePaneHostSelection(
+        prepared.state.document,
+        instance.instanceId,
+      );
       emitOperationalEvent(instance, 'opened');
-      return true;
+      return WORKSPACE_PANE_OPENED;
     },
     [emitOperationalEvent, hasPersistenceLease, hostStorage],
   );
