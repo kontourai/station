@@ -567,11 +567,14 @@ function createProjectTaskRoomHistoryInternal(
         'sourceHomeRef',
         'targetHomeRef',
         'checkpoint',
+        'workingStateDigest',
       ]) ||
       !id(stored.seal.operationId) ||
       !id(stored.seal.sourceHomeRef) ||
       !id(stored.seal.targetHomeRef) ||
       stored.seal.sourceHomeRef === stored.seal.targetHomeRef ||
+      typeof stored.seal.workingStateDigest !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(stored.seal.workingStateDigest) ||
       !validCheckpoint(stored.seal.checkpoint) ||
       stored.seal.checkpoint.channelId !== channelIdFor(resolved.receipt.scope)
     )
@@ -650,10 +653,13 @@ function createProjectTaskRoomHistoryInternal(
         'sourceHomeRef',
         'targetHomeRef',
         'checkpoint',
+        'workingStateDigest',
       ]) ||
       stored.seal.operationId !== operationId ||
       stored.seal.sourceHomeRef !== sourceHomeRef ||
       stored.seal.targetHomeRef !== targetHomeRef ||
+      typeof stored.seal.workingStateDigest !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(stored.seal.workingStateDigest) ||
       !validCheckpoint(stored.seal.checkpoint) ||
       stored.seal.checkpoint.channelId !== channelIdFor(resolved.receipt.scope)
     )

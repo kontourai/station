@@ -106,6 +106,16 @@ new writes. A transfer coordinator must separately compare this observation
 with the authenticated source receipt and selected target identity before
 activation. No coordinator or activation endpoint is exposed by this reader.
 
+New seals also contain a digest of the room's document snapshots and replay
+metadata, captured inside the closing transaction. The document owner validates
+each snapshot before hashing its exact source bytes. Verification recomputes
+that digest, so unchanged history cannot mask altered document data. Capture is
+bounded to 128 documents of at most 512 KiB each; larger or deferred snapshots
+remain unavailable for sealing. The digest is integrity evidence, not a home
+signature or ownership grant. Legacy seals without a captured document digest
+stay sealed but cannot claim this verification; the target must not manufacture
+the missing source evidence from its own copy.
+
 This barrier does not yet have a public runtime/HTTP caller. The supplied home
 references are intent bindings, not independently verified host identities.
 Target activation, the external authority adapter and cross-host acceptance

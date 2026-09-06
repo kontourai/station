@@ -18,6 +18,7 @@ import type {
 } from '@kontourai/station-contracts/project-task-room';
 import { PROJECT_TASK_ROOM_MAX_PAGE_JSON_ITEMS } from '@kontourai/station-contracts/project-task-room';
 import { PROJECT_TASK_ROOM_HISTORY_MIGRATION } from '../../domain/migrations/005-project-task-room-history.js';
+import { SharedWorkingState } from '../../domain/shared-working-state.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import { measureBoundedJson, plainDataObject } from './bounded-json.js';
 import {
@@ -604,6 +605,83 @@ async function open(
   }
 }
 
+/** Validate and bind all document snapshots while the caller holds the room transaction. */
+function roomWorkingStateDigest(
+  scope: ProjectTaskRoomScope,
+): string | undefined {
+  const digest = createHash('sha256').update(
+    'station-room-seal-documents/v1\0',
+  );
+  digest.update(JSON.stringify([scope.projectId, scope.taskId]));
+  if (
+    !db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='project_task_room_working_states'",
+      )
+      .get()
+  )
+    return digest.digest('hex');
+  const size = db
+    .prepare(`SELECT count(*) AS count,
+    coalesce(max(length(CAST(snapshot_json AS BLOB))),0) AS largest,
+    coalesce(max(length(CAST(document_id AS BLOB))),0) AS idBytes,
+    coalesce(max(length(CAST(revision AS BLOB))),0) AS revisionBytes,
+    coalesce(max(length(CAST(compaction_floor AS BLOB))),0) AS floorBytes
+    FROM project_task_room_working_states WHERE project_id=? AND task_id=?`)
+    .get(scope.projectId, scope.taskId) as {
+    count: number;
+    largest: number;
+    idBytes: number;
+    revisionBytes: number;
+    floorBytes: number;
+  };
+  if (
+    size.count > 128 ||
+    size.largest > 512 * 1024 ||
+    size.idBytes > 1024 ||
+    size.revisionBytes > 1024 ||
+    size.floorBytes > 1024
+  )
+    return undefined;
+  for (const raw of db
+    .prepare(`SELECT document_id,snapshot_json,revision,compaction_floor
+    FROM project_task_room_working_states WHERE project_id=? AND task_id=? ORDER BY document_id`)
+    .iterate(scope.projectId, scope.taskId)) {
+    const row = raw as {
+      document_id: string;
+      snapshot_json: string;
+      revision: string;
+      compaction_floor: string;
+    };
+    const state = new SharedWorkingState({
+      scope: {
+        projectId: scope.projectId,
+        taskId: scope.taskId,
+        documentId: row.document_id,
+      },
+      snapshot: JSON.parse(row.snapshot_json),
+    });
+    const snapshot = state.snapshot();
+    if (
+      snapshot.revision !== row.revision ||
+      typeof row.compaction_floor !== 'string' ||
+      row.compaction_floor.length === 0 ||
+      snapshot.deferred.length
+    )
+      return undefined;
+    // Length-framed JSON binds the exact accepted source bytes, not just a caller's revision label.
+    digest.update(
+      JSON.stringify([
+        row.document_id,
+        row.revision,
+        row.compaction_floor,
+        row.snapshot_json,
+      ]),
+    );
+  }
+  return digest.digest('hex');
+}
+
 function inspectSourceSeal(
   request: Extract<Request, { type: 'read-source-seal' }>,
 ) {
@@ -628,6 +706,7 @@ function inspectSourceSeal(
           sourceHomeRef: unknown;
           targetHomeRef: unknown;
           checkpointJson: unknown;
+          workingStateDigest: unknown;
         }
       | undefined;
     if (!row) return { kind: 'unsealed' };
@@ -641,7 +720,12 @@ function inspectSourceSeal(
     )
       return { kind: 'unavailable' };
     const sealedCheckpoint = JSON.parse(row.checkpointJson);
-    if (canonical(sealedCheckpoint) !== canonical(checkpoint(room)))
+    if (
+      canonical(sealedCheckpoint) !== canonical(checkpoint(room)) ||
+      typeof row.workingStateDigest !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(row.workingStateDigest) ||
+      row.workingStateDigest !== roomWorkingStateDigest(request.scope)
+    )
       return { kind: 'unavailable' };
     return {
       kind: 'sealed',
@@ -650,6 +734,7 @@ function inspectSourceSeal(
         sourceHomeRef: row.sourceHomeRef,
         targetHomeRef: row.targetHomeRef,
         checkpoint: sealedCheckpoint,
+        workingStateDigest: row.workingStateDigest,
       },
     };
   } finally {
@@ -689,9 +774,11 @@ async function sealSource(
           sourceHomeRef: string;
           targetHomeRef: string;
           checkpointJson: string;
+          workingStateDigest: string | null;
         }
       | undefined;
     if (existing) {
+      const documentDigest = roomWorkingStateDigest(request.scope);
       db.exec('ROLLBACK');
       if (
         existing.operationId !== request.operationId ||
@@ -700,7 +787,11 @@ async function sealSource(
       )
         return { kind: 'conflict' };
       const priorCheckpoint = JSON.parse(existing.checkpointJson);
-      if (canonical(priorCheckpoint) !== canonical(checkpoint(room)))
+      if (
+        canonical(priorCheckpoint) !== canonical(checkpoint(room)) ||
+        !documentDigest ||
+        existing.workingStateDigest !== documentDigest
+      )
         return { kind: 'unavailable' };
       return {
         kind: 'sealed',
@@ -709,6 +800,7 @@ async function sealSource(
           sourceHomeRef: existing.sourceHomeRef,
           targetHomeRef: existing.targetHomeRef,
           checkpoint: priorCheckpoint,
+          workingStateDigest: documentDigest,
         },
       };
     }
@@ -736,7 +828,13 @@ async function sealSource(
       db.exec('ROLLBACK');
       return { kind: 'execution-pending' };
     }
+    const workingStateDigest = roomWorkingStateDigest(request.scope);
+    if (!workingStateDigest) {
+      db.exec('ROLLBACK');
+      return { kind: 'unavailable' };
+    }
     const seal = {
+      workingStateDigest,
       operationId: request.operationId,
       sourceHomeRef: request.sourceHomeRef,
       targetHomeRef: request.targetHomeRef,
