@@ -648,10 +648,41 @@ export class SkillService {
       }
       return {
         skill,
-        origin: recordedOrigin ?? this.deriveOrigin(skill.location, source),
+        origin:
+          this.recordedOriginAgainstPath(recordedOrigin, skill.location) ??
+          this.deriveOrigin(skill.location, source),
         install: { version, source, path, provenance, legacyIds },
       };
     });
+  }
+
+  /**
+   * A recorded origin, checked against the root the package actually sits in.
+   *
+   * `user` and `project` are the two WRITABLE roots and differ only in SCOPE —
+   * and the scope IS the root, so for that pair the path is the authority and a
+   * recorded `user` yields to a location under `<home>/projects`. Every
+   * `skill.json` written before `project` existed records `user` for a
+   * project-scoped package, and `updateLocalSkill` faithfully preserves it, so
+   * without this correction every skill already on disk in a workspace would
+   * read as "This machine" forever (#1582 D6, review M1).
+   *
+   * Every other recorded origin stands. `registry`/`plugin`/`package`/
+   * `migrated-playbook` record where a skill CAME FROM, which is a fact about
+   * its history that no path can restate — a registry install living in the
+   * project root is still a registry install.
+   *
+   * `undefined` in, `undefined` out: this corrects a record, it does not invent
+   * one. The read sites fall through to `deriveOrigin` exactly as before.
+   */
+  private recordedOriginAgainstPath(
+    recorded: SkillOrigin | undefined,
+    location: string | undefined,
+  ): SkillOrigin | undefined {
+    if (recorded !== 'user') return recorded;
+    return this.deriveOrigin(location, undefined) === 'project'
+      ? 'project'
+      : 'user';
   }
 
   /**
@@ -948,7 +979,10 @@ export class SkillService {
         variables: variables.length > 0 ? variables : undefined,
         legacyIds: readSkillLegacyIds(config.legacyIds),
         origin:
-          readSkillOrigin(config.origin) ??
+          this.recordedOriginAgainstPath(
+            readSkillOrigin(config.origin),
+            registered?.location ?? skillPath,
+          ) ??
           this.deriveOrigin(registered?.location ?? skillPath, config.source),
       };
     } catch (error) {
@@ -1520,7 +1554,15 @@ export class SkillService {
       command: updates.command ?? declared.command,
       variables: updates.variables ?? declared.variables,
       legacyIds: updates.legacyIds ?? readSkillLegacyIds(current.legacyIds),
-      origin: updates.origin ?? readSkillOrigin(current.origin),
+      // Corrected on the way BACK to disk too, so a workspace package stops
+      // carrying a stale `user` the moment anything edits it. Still never
+      // invents one: an unrecorded origin stays unrecorded here.
+      origin:
+        updates.origin ??
+        this.recordedOriginAgainstPath(
+          readSkillOrigin(current.origin),
+          skillPath,
+        ),
     };
     // The EFFECTIVE command after this write, not the submitted fragment: a
     // rename changes the derived command word even when the request carries no

@@ -56,7 +56,7 @@
   border-radius: 6px;
   padding: 10px 14px;
   background: var(--accent-primary);
-  color: var(--text-on-accent);
+  color: var(--text-on-accent, #fff);
   cursor: pointer;
   font: inherit;
   font-weight: 700;

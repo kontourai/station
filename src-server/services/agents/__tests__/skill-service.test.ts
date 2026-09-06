@@ -974,6 +974,86 @@ describe('SkillService', () => {
     expect(byName.get('machine-wide')).toBe('user');
   });
 
+  // Review M1. Every read is `recorded ?? derived`, and every `skill.json`
+  // written before `project` existed records `user` — including for a
+  // project-scoped package, because `createLocalSkill` stamped it and
+  // `updateLocalSkill` preserves it. Without the path correction these stay
+  // "This machine" forever, which is most of the skills this change is for.
+  test('a legacy record saying user under the project root reads as project', async () => {
+    const dir = join(testDir, 'projects', 'demo', 'skills', 'legacy-scoped');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'SKILL.md'),
+      '---\nname: legacy-scoped\ndescription: Written before project existed\n---\nBody',
+    );
+    // The exact bytes the pre-change writer produced.
+    writeFileSync(
+      join(dir, 'skill.json'),
+      JSON.stringify({
+        name: 'legacy-scoped',
+        source: 'local',
+        path: dir,
+        origin: 'user',
+      }),
+      'utf-8',
+    );
+    await service.discoverSkills(testDir, 'demo');
+
+    expect(service.listSkills()[0].origin).toBe('project');
+  });
+
+  // The same correction at the DETAIL fold, which is a second reader of the
+  // same field and is where the two diverge if only one is fixed. Asserted in
+  // the negative direction, on the machine root, because that is the direction
+  // this harness can supply: `ConfigLoader.loadSkill` resolves
+  // `<home>/skills/<name>` with NO project slug (`loadSkillConfig` ->
+  // `resolveSkillDirectory(projectHomeDir, name)`), so a project-scoped detail
+  // read cannot reach its own record at all and falls to
+  // `fromInstallRecordOnly`. That is pre-existing and outside this change; what
+  // is asserted here is that the correction runs at this fold and does not
+  // over-correct a genuinely machine-wide skill into a workspace one.
+  test('the detail fold leaves a machine-wide user record alone', async () => {
+    await service.createLocalSkill(
+      { name: 'machine-wide', description: 'Mine', body: 'Body' },
+      testDir,
+    );
+
+    expect(
+      JSON.parse(
+        readFileSync(
+          join(testDir, 'skills', 'machine-wide', 'skill.json'),
+          'utf-8',
+        ),
+      ).origin,
+    ).toBe('user');
+    expect((await service.getSkill('machine-wide')).origin).toBe('user');
+  });
+
+  test('a recorded origin that is not user still wins over the path', async () => {
+    // `registry`/`plugin`/`package`/`migrated-playbook` say where a skill CAME
+    // FROM, which no path can restate: a registry install sitting in a project
+    // root is still a registry install. Only the writable pair is scope.
+    const dir = join(testDir, 'projects', 'demo', 'skills', 'installed-here');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'SKILL.md'),
+      '---\nname: installed-here\ndescription: Installed from Registry\n---\nBody',
+    );
+    writeFileSync(
+      join(dir, 'skill.json'),
+      JSON.stringify({
+        name: 'installed-here',
+        source: 'registry',
+        path: dir,
+        origin: 'registry',
+      }),
+      'utf-8',
+    );
+    await service.discoverSkills(testDir, 'demo');
+
+    expect(service.listSkills()[0].origin).toBe('registry');
+  });
+
   test('creating a skill under a project records the scope it was written into', async () => {
     await service.createLocalSkill(
       { name: 'scoped-skill', description: 'Ours', body: 'Body' },

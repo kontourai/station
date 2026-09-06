@@ -362,6 +362,16 @@ export function ChatDockBody({
    */
   const conversationLoading =
     resolvingOpen || (transcript.enabled && !transcript.settled);
+  /*
+   * The wait is BOUNDED but not short: both reads go through the SDK client,
+   * whose `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS` is 30_000, so a resolution that
+   * never lands settles into the read-only verdict in at most ~30s rather than
+   * hanging. That is long enough that the composer being disabled with no way
+   * out would be its own defect, so "Start new chat" stays reachable for the
+   * whole window (review L1). Retry deliberately does not: retrying a read
+   * that is still in flight is what the resolver is already doing.
+   */
+  const canStartNewWhileWaiting = conversationLoading && Boolean(onNewChat);
   const forkFromTurn = onForkFromTurn;
   const renderedSession = useMemo(
     () =>
@@ -1093,20 +1103,44 @@ export function ChatDockBody({
             )}
           </div>
         )}
-      {conversationLoading && transcript.messages.length > 0 ? (
-        /*
-         * The transitional state, in the repo's one loading vocabulary
-         * (`state-primitives-ratchet`: name the wait in a skeleton's `label`,
-         * never a new sentence). It replaces the red "is read-only" alert this
-         * phase used to paint: nothing has gone wrong — `hydrateActiveChats`
-         * seeds the pending phase on every reload of a chat with a conversation
-         * id, so this is the ordinary path (#1582 E3/B6).
-         *
-         * Only when the transcript already has messages: with an empty
-         * transcript the filler below carries the same wait, and two skeletons
-         * for one wait is the multiplicity this change exists to remove.
-         */
-        <SkeletonBlock count={1} label="Loading conversation" />
+      {/*
+        The transitional state, in the repo's one loading vocabulary
+        (`state-primitives-ratchet`: name the wait in a skeleton's `label`,
+        never a new sentence). It replaces the red "is read-only" alert this
+        phase used to paint: nothing has gone wrong — `hydrateActiveChats`
+        seeds the pending phase on every reload of a chat with a conversation
+        id, so this is the ordinary path (#1582 E3/B6).
+
+        The skeleton renders only when the transcript already has messages:
+        with an empty transcript the filler below carries the same wait, and
+        two skeletons for one wait is the multiplicity this change exists to
+        remove. The row itself renders for the whole window, because it also
+        carries the one way out of it.
+
+        `.session-history-controls` is this pane's existing control row
+        (archive#3386 already widened it past "buttons only"), reused rather
+        than given a class of its own — the entry stylesheet is at its budget
+        ceiling to the byte.
+      */}
+      {conversationLoading ? (
+        <div className="session-history-controls">
+          {transcript.messages.length > 0 ? (
+            <SkeletonBlock count={1} label="Loading conversation" />
+          ) : null}
+          {canStartNewWhileWaiting ? (
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() =>
+                void Promise.resolve(onNewChat?.()).catch(
+                  surfaceRecoveryFailure,
+                )
+              }
+            >
+              Start new chat
+            </button>
+          ) : null}
+        </div>
       ) : null}
       {readOnlyOpen ? (
         <LazyBoundary

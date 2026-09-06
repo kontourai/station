@@ -57,8 +57,8 @@ export function LiveCollaboratorsSection() {
         <ul>
           <li>
             <strong>{data.connectedClients}</strong> connected client
-            {data.connectedClients === 1 ? '' : 's'} — browsers and CLIs
-            attached to this Station.
+            {data.connectedClients === 1 ? '' : 's'} — paired devices connected
+            to this Station.
           </li>
           <li>
             <strong>{publishing}</strong> publishing live work — sessions that

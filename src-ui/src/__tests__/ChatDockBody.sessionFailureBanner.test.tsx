@@ -226,12 +226,14 @@ function renderDock({
   events = [] as any[],
   read,
   onRetryOrchestrationSessions = vi.fn(),
+  onNewChat,
 }: {
   orchestrationSession?: any;
   session?: ChatSession;
   events?: any[];
   read?: 'pending' | 'error' | 'present' | 'absent';
   onRetryOrchestrationSessions?: () => void;
+  onNewChat?: (input?: string) => void;
 } = {}) {
   const resolvedRead = read ?? (orchestrationSession ? 'present' : 'absent');
   transcriptMock.events = events;
@@ -246,6 +248,7 @@ function renderDock({
         activeOrchestrationSession={orchestrationSession}
         activeOrchestrationSessionRead={resolvedRead}
         onRetryOrchestrationSessions={onRetryOrchestrationSessions}
+        onNewChat={onNewChat}
         chatFontSize={14}
         dockHeight={400}
         showStatsPanel={false}
@@ -591,6 +594,53 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(screen.queryByText('Start a conversation')).toBeNull();
     // 3. no second sentence under the composer saying the same thing again
     expect(chatInputPropsMock.current?.sendBlockedReason).toBeUndefined();
+  });
+
+  // Review L1. The resolving phase disables the composer for up to the SDK's
+  // 30s request timeout. Before this, the red banner it replaced at least
+  // offered "Start new chat" — so removing the banner removed the only way out
+  // of the wait. Retry is deliberately absent: it would re-ask a question the
+  // resolver is already asking.
+  test('#1582 E3 a resolving conversation still offers a way out', async () => {
+    const onNewChat = vi.fn();
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: true,
+        messages: [],
+      }),
+      onNewChat,
+    });
+
+    const startNew = await screen.findByRole('button', {
+      name: 'Start new chat',
+    });
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    fireEvent.click(startNew);
+    expect(onNewChat).toHaveBeenCalled();
+    // The composer stays refused — the way out is a NEW chat, not a write into
+    // the one whose continuation is unproven.
+    expect(chatInputPropsMock.current?.disabled).toBe(true);
+  });
+
+  test('#1582 E3 a settled conversation carries no such control', async () => {
+    // The mirror: the affordance is scoped to the wait, not permanent chrome.
+    transcriptMock.enabled = true;
+    transcriptMock.settled = true;
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({ messages: [] }),
+      onNewChat: vi.fn(),
+    });
+
+    expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
   });
 
   // The other half of the same window, and the one that actually reproduced on

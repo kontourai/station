@@ -52,6 +52,14 @@ const INVENTORY = join(ROOT, 'docs/ui/accent-foreground-exceptions.json');
  * in this repo, so the fallback won and the label rendered white at 1.62:1 —
  * the exact pair measured in this file's opening paragraph, in the one part of
  * `examples/` the gate could not see (#1582 G9).
+ *
+ * The scope split also decides the FALLBACK. A starter renders only inside the
+ * shell, so it consumes `--text-on-accent` bare, which is what this gate
+ * requires — a fallback on this pair is the same defect wherever the token is
+ * absent. The demo apps outside this scope, and `ConnectionManagerDiscoverPanel`
+ * inside it, keep `var(--text-on-accent, #fff)`: they may render with no
+ * Station token layer at all, where their own literal fill is one white text
+ * belongs on (review L3).
  */
 const SOURCE_ROOTS = [
   'src-ui/src',
