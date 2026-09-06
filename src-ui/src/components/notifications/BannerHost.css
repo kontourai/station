@@ -10,56 +10,12 @@
   left: 0;
   right: 0;
   z-index: var(--layer-notice);
-  /* The value the three dock-superseding rules below use — a bottom dock on
-   * desktop, every dock mode on mobile, and #920's critical card over a
-   * maximized dock. Named once because it has a YIELD CONDITION (the rule
-   * directly below), and a raise expressed as a literal at each site is a
-   * raise the next site forgets to make yield. */
-  --banner-dock-supersede: calc(var(--layer-dock) + 1);
   display: flex;
   flex-direction: column;
   gap: 6px;
   box-sizing: border-box;
   padding: 6px 8px 0;
   pointer-events: none;
-}
-
-/* #1638: the raise supersedes the DOCK's chrome, and must not supersede a
- * modal surface the dock CONTAINS.
- *
- * `tokens.css` states the ordering this restores: "passive notices remain
- * below active dialogs; only an explicit system blocker may supersede one"
- * (`--layer-notice` 9000 < `--layer-dialog` 10000). A dialog mounted inside
- * the dock cannot express that on its own, because `.chat-dock` is
- * `position: fixed; z-index: var(--layer-dock)` and therefore a stacking
- * context: `ChatDockModalStack` (rendered by `ChatDock.tsx`, so every dock
- * dialog — New Chat, the task switcher, the model picker, the overflow
- * sheet) declares `.responsive-surface-overlay`'s `z-index: var
- * (--layer-dialog) !important` and still paints at the dock's own 9200 in the
- * root stacking context. Measured live at 390x844 on a temp-home instance:
- * host `z-index: 9201`, overlay `z-index: 10000` with
- * `section.chat-dock` (fixed, 9200) as its nearest stacking-context ancestor,
- * and `document.elementFromPoint` at the centre of the open New Chat sheet's
- * search input (195, 160) returning `button.banner-host__cap` — the exact
- * "banner-host ... intercepts pointer events" Playwright reported.
- *
- * The interceptor is a real control, not a transparent container: the host
- * and its items are `pointer-events: none` and the cap/dismiss/action
- * rectangles opt back in (see the docblocks above `.banner-host__stack` and
- * `.banner-host__cap`). So there is nothing to fix in `pointer-events` here —
- * a control that paints over a dialog is a control that should not be above
- * it at all.
- *
- * Broad on purpose: `.responsive-surface-overlay` is the shared seam every
- * Station dialog and sheet renders through (`ResponsiveDialogSurface`, which
- * marks every panel `aria-modal`), and the dock is not the only stacking
- * context in the shell that can trap one. Where the dialog is NOT trapped it
- * already outranks the notice and this yield changes nothing reachable; its
- * full-viewport scrim covers the notice's band either way. When the surface
- * closes the notice returns to the raise with no state to unwind, which is
- * why this is a selector and not a mounted/unmounted flag. */
-.app__main:has(.responsive-surface-overlay) > .banner-host {
-  --banner-dock-supersede: var(--layer-notice);
 }
 
 /* The content area gives back exactly the space the stack occupies.
@@ -669,7 +625,7 @@
 * dismiss, action and cap rectangles are taken and every other pixel still
 * reaches the dock, in every state alike. */
   .app__main:has(> [data-region="bottom"]) > .banner-host {
-    z-index: var(--banner-dock-supersede);
+    z-index: calc(var(--layer-dock) + 1);
   }
 }
 
@@ -701,13 +657,13 @@
   > .banner-host.banner-host--critical-chrome
   :is(.banner-host__item--critical-chrome, .banner-host__cap--critical-chrome) {
   position: relative;
-  z-index: var(--banner-dock-supersede);
+  z-index: calc(var(--layer-dock) + 1);
 }
 
 /* Shell mobile breakpoint — keep in lockstep with index.css. */
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .app__main > .banner-host {
-    z-index: var(--banner-dock-supersede);
+    z-index: calc(var(--layer-dock) + 1);
   }
 
   .banner-host__item-inner {

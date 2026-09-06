@@ -8,49 +8,46 @@
  * real product notices up (the Board-unavailable redirect notice and the
  * update-available notice) and the New Chat sheet open:
  *
- *   .banner-host            z-index 9201, pointer-events: none
+ *   .banner-host             z-index 9201, pointer-events: none
  *   .new-chat-modal__overlay z-index 10000, nearest stacking-context ancestor
  *                            section.chat-dock (position: fixed, z-index 9200)
  *   document.elementFromPoint(195, 160)  // centre of the sheet's search input
  *     -> button.banner-host__cap "1 more notice, 1 informational"
  *
- * and Playwright reported the issue's own sentence, verbatim:
+ * and Playwright refused the click with the issue's own sentence:
  * `<button ... class="banner-host__cap banner-host__cap--info">1 more notice,
  * 1 informational</button> from <section ... class="banner-host ...">…</section>
  * subtree intercepts pointer events`.
  *
- * WHY IT HAPPENS. `.chat-dock` is `position: fixed; z-index: var(--layer-dock)`,
- * so it is a stacking context, and `ChatDock.tsx` renders `ChatDockModalStack`
- * INSIDE it. Every dock dialog — New Chat, the task switcher, the model
- * picker, the overflow sheet — therefore paints at the dock's own 9200 no
- * matter that `.responsive-surface-overlay` declares
- * `z-index: var(--layer-dialog) !important` (10000). `BannerHost.css` raises
- * the host to `--layer-dock + 1` where the dock leaves no column to inset
- * into (a bottom dock on desktop, every dock mode on mobile) so a blocking
- * notice stays reachable — and that raise, meant for the dock's chrome,
- * lands one above every dialog the dock contains. `tokens.css` says the
- * ordering it broke out loud: "passive notices remain below active dialogs".
+ * WHY IT HAPPENS. `.chat-dock` is `position: fixed` with a z-index, so it is a
+ * stacking context, and `ChatDock.tsx` renders `ChatDockModalStack` INSIDE it.
+ * Every dock dialog therefore paints at whatever the DOCK's z-index is, not at
+ * the `--layer-dialog` its overlay declares. Two pieces of shell chrome sat
+ * above that, and BOTH are reachable on a phone: `BannerHost.css` raises the
+ * notice to `--layer-dock + 1` wherever the dock leaves no column to inset
+ * into, and the mobile `.app__main > .chat-dock.is-maximized` rule drops a
+ * maximized dock to `--layer-sticky + 1` (101), under even the plain
+ * `--layer-notice`. The reported journey was in the SECOND state — the phone
+ * dock maximizes itself — which is why both shapes are measured below and why
+ * lowering the notice alone was not the fix.
  *
- * The interceptor is a REAL control, not a transparent container: the host
- * and its items are `pointer-events: none` and only the cap / dismiss /
- * collapse / action rectangles opt back in. So `pointer-events` is already
- * right here and the fix is the ordering — `--banner-dock-supersede` yields
- * to `--layer-notice` while a `.responsive-surface-overlay` is open in the
- * shell.
+ * The interceptor is a REAL control, not a transparent container: the host and
+ * its items are `pointer-events: none` and only the cap / dismiss / collapse /
+ * action rectangles opt back in. So `pointer-events` was already right, and
+ * the fix is the ordering: `index.css` promotes a dock that HOSTS a
+ * `.responsive-surface-overlay` to `--layer-dialog`, which is the layer the
+ * dialog declared and could not reach.
  *
- * WHAT THIS FIXTURE COMPOSES, AND WHY IT NEEDS THE DOCK. The subject is a
- * hit test, which no source scan can see (`src-ui/AGENTS.md`:
- * "DOM/source-string assertions do not establish CSS layout, hit testing").
- * So: the REAL `BannerHost` and the REAL `ResponsiveDialogSurface`, rendered
- * through `@testing-library/react`, injected into a real Chromium page
- * carrying `index.css` + `BannerHost.css` with every `@import` resolved —
- * the same harness as `BannerHost.touch-target.test.tsx`. The shell
- * containers around them (`.app__main`, `.chat-dock`) are the load-bearing
- * part: put the dialog anywhere else and it reaches `--layer-dialog` in the
- * root stacking context, outranks the banner on its own, and the fixture
- * measures nothing. `assertTheDockStillTrapsItsDialogs` keeps that honest —
- * if `.chat-dock` ever stops being a stacking context this file fails loudly
- * rather than passing for the wrong reason.
+ * WHAT THIS FIXTURE COMPOSES, AND WHY IT NEEDS THE DOCK. The subject is a hit
+ * test, which no source scan can see (`src-ui/AGENTS.md`: "DOM/source-string
+ * assertions do not establish CSS layout, hit testing"). So: the REAL
+ * `BannerHost` and the REAL `ResponsiveDialogSurface`, rendered through
+ * `@testing-library/react`, injected into a real Chromium page carrying
+ * `index.css` + `BannerHost.css` with every `@import` resolved — the same
+ * harness as `BannerHost.touch-target.test.tsx`. The shell containers around
+ * them (`.app__main`, `.chat-dock`) are the load-bearing part: put the dialog
+ * anywhere else and it reaches `--layer-dialog` on its own and the fixture
+ * measures nothing. `assertTheDockStillTrapsItsDialogs` keeps that honest.
  *
  * PRECONDITION: launches a real Chromium. Per this repo's browser-test
  * doctrine, a missing browser FAILS loudly rather than skipping — see the
@@ -249,7 +246,6 @@ interface Measured {
   dockTrapsDialogs: boolean;
   dockZIndex: string;
   hostZIndex: string;
-  hostSupersede: string;
   overlayZIndex: string;
   overlapping: {
     control: string;
@@ -339,9 +335,6 @@ describe.skipIf(!chromiumAvailable)(
               dockStyle.position !== 'static' && dockStyle.zIndex !== 'auto',
             dockZIndex: dockStyle.zIndex,
             hostZIndex: getComputedStyle(host).zIndex,
-            hostSupersede: getComputedStyle(host)
-              .getPropertyValue('--banner-dock-supersede')
-              .trim(),
             overlayZIndex: getComputedStyle(overlay).zIndex,
             overlapping,
           };
@@ -404,17 +397,17 @@ describe.skipIf(!chromiumAvailable)(
     );
 
     test.each(SHAPES)(
-      'the raise itself yields to the notice layer while the surface is open: $name',
+      'the hosting dock reaches the layer its dialog declares: $name',
       async (shape) => {
         const measured = await measure(shape);
-        assertTheDockStillTrapsItsDialogs(measured);
-        // `--layer-notice`, the passive-notice layer `tokens.css` names — not
-        // `--layer-dock + 1`, which is what put it over the dialog. Asserted on
-        // the named value rather than the host's own `z-index`, because #920's
-        // critical shape deliberately leaves the host at `auto` and hands the
-        // raise to the critical card instead; the value is what both shapes
-        // share.
-        expect(measured.hostSupersede).toBe('9000');
+        // `--layer-dialog`. Stated as the number because the hit test above
+        // cannot tell "reached the dialog layer" from "happened to clear the
+        // notice" — a maximized dock's own 101 cleared nothing, and a raise to
+        // any value that merely beats today's notice would pass the hit test
+        // while leaving the next piece of shell chrome above the dialog.
+        expect(measured.dockZIndex).toBe('10000');
+        // And the notice is where it always was: nothing in this fix moves it.
+        expect(measured.overlayZIndex).toBe('10000');
       },
     );
   },
