@@ -13,7 +13,7 @@ import {
   LIFECYCLE_PRIORITY,
   moreImportantLifecycle,
 } from '../../utils/lifecycle-priority';
-import { modelDisplayLabel } from '../../utils/modelCapabilities';
+import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import {
   activeTurnProgress,
   orchestrationLifecycleLabel,
@@ -232,7 +232,7 @@ export interface RemoteHomeEnvironmentSessions {
 export type ResolveModelLabel = (modelId: string | null | undefined) => string;
 
 export const defaultResolveModelLabel: ResolveModelLabel = (modelId) =>
-  modelDisplayLabel(modelId);
+  modelIdentityLabel(modelId);
 
 export function buildHomeWorkItems({
   chats,
@@ -645,13 +645,15 @@ function mergedExecutionLineage(
   right: HomeWorkItem,
 ): string[] {
   return [
-    ...(left.orchestrationThreadIds ?? []),
-    left.orchestrationThreadId,
-    ...(right.orchestrationThreadIds ?? []),
-    right.orchestrationThreadId,
-  ]
-    .filter((id): id is string => Boolean(id))
-    .filter((id, index, all) => all.indexOf(id) === index);
+    ...new Set(
+      [
+        ...(left.orchestrationThreadIds ?? []),
+        left.orchestrationThreadId,
+        ...(right.orchestrationThreadIds ?? []),
+        right.orchestrationThreadId,
+      ].filter((id): id is string => Boolean(id)),
+    ),
+  ];
 }
 
 function isLocalActionableLifecycle(item: HomeWorkItem): boolean {

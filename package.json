@@ -62,7 +62,7 @@
     "veritas:evidence": "npm exec -- veritas readiness --check evidence --working-tree",
     "veritas:shadow": "npm exec -- veritas readiness --working-tree",
     "trust-reconcile-verify": "npm run full:regression",
-    "verification:policy:gate": "node scripts/verification-policy-gate.mjs && node scripts/product-law-gate.mjs",
+    "verification:policy:gate": "node scripts/verification-policy-gate.mjs && node scripts/product-law-gate.mjs && npm run test:fixtures:guard",
     "verification:stress": "node scripts/run-verification-stress.mjs",
     "verification:stress:run": "node scripts/run-verification-stress.mjs --run",
     "coding-composition:gate": "node scripts/coding-composition-inventory-gate.mjs",
@@ -230,6 +230,7 @@
     "tauri:docs": "node scripts/tauri-context.mjs",
     "volt": "volt",
     "changeset": "changeset",
+    "changesets:check": "node scripts/check-changesets.mjs",
     "version-packages": "changeset version && npm run dependencies:lock && npm run dependencies:check && npm run lockfile-sync:gate",
     "publish-packages": "changeset publish",
     "test:coverage": "node scripts/run-verification.mjs request test-coverage",
@@ -257,7 +258,11 @@
     "gate:test-import-existence": "node scripts/test-import-existence-gate.mjs",
     "gate:ci-change-classifier": "vitest run scripts/__tests__/classify-ci-change.test.ts scripts/__tests__/ci-workflow-contract.test.ts",
     "typecheck:examples": "tsc --noEmit -p examples/minimal-layout/tsconfig.json && tsc --noEmit -p examples/shared-providers/tsconfig.json && tsc --noEmit -p examples/knowledge-library/tsconfig.json && tsc --noEmit -p examples/meeting-notes/tsconfig.json",
-    "dependencies:lock": "node scripts/dependency-lifecycle.mjs lock"
+    "dependencies:lock": "node scripts/dependency-lifecycle.mjs lock",
+    "test:fixtures:check": "node scripts/test-fixture-policy.mjs",
+    "test:journeys:profile": "node scripts/run-journey-profiles.mjs",
+    "test:mutation:smoke": "node scripts/run-test-mutations.mjs",
+    "test:fixtures:guard": "npm run test:fixtures:check && npm run test:focused -- scripts/__tests__/test-fixture-policy.test.ts scripts/__tests__/fixture-audit.test.ts scripts/__tests__/connection-fixtures.test.ts scripts/__tests__/test-mutations.test.ts scripts/__tests__/journey-profiles.test.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.4.0",
@@ -266,7 +271,7 @@
     "@ai-sdk/google": "^3.0.101",
     "@ai-sdk/openai-compatible": "^2.0.35",
     "@ai-sdk/provider-utils": "^4.0.50",
-    "@anthropic-ai/claude-agent-sdk": "^0.3.224",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.261",
     "@anthropic-ai/sdk": "^0.122.0",
     "@aws-sdk/client-bedrock": "^3.1120.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1120.0",

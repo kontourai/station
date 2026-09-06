@@ -10,6 +10,7 @@ import {
   type WorkingStateSnapshot,
 } from '../../domain/shared-working-state.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
+import { projectTaskRoomRevisionPublicationId } from './project-task-room-document-id.js';
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -715,7 +716,9 @@ async function handle(message: any) {
             !evidenceRevision(parent.evidence_revision))
         )
           throw new Error('corrupt revision evidence head');
-        const publicationIntentId = `revision-publication:${value.intentId}`;
+        const publicationIntentId = projectTaskRoomRevisionPublicationId(
+          value.intentId,
+        );
         if (!boundedText(publicationIntentId))
           throw new Error('publication intent too large');
         const actorKind = value.actorKind ?? 'human';

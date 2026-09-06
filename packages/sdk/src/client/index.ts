@@ -65,11 +65,13 @@ export {
 } from './http';
 export * from './integrations';
 export * from './knowledge';
+export * from './learning-source';
 export * from './orchestration';
 export { getPluginHeaders } from './plugin-headers';
 export * from './plugins';
 export * from './project-task-rooms';
 export * from './projects';
+export * from './request-inspection';
 export * from './reviews';
 export * from './runs';
 export * from './scheduler';

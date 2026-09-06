@@ -7,6 +7,10 @@ import {
   type AgentSpec,
   isSupportedAgentIconToken,
 } from '@kontourai/station-contracts/agent';
+import type {
+  AttentionRequestInspection,
+  AttentionRequestReference,
+} from '@kontourai/station-contracts/attention';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
@@ -221,6 +225,7 @@ import {
   normalizeOmittedModelId,
 } from './model-launch-planning.js';
 import {
+  projectRequestAnswerability,
   type RequestReplayOutcome,
   type SessionAnswerabilityObservation,
 } from './open-requests.js';
@@ -237,6 +242,10 @@ import {
 } from './orchestration-session-state.js';
 import { type OrchestrationStreamPresenceSubject } from './orchestration-stream-presence.js';
 import { type RecoveryDispatchAdapter } from './recovery-dispatch-adapter.js';
+import {
+  inspectRequestEvent,
+  RequestEventGuardError,
+} from './request-inspection.js';
 import { servingInstanceIdentity } from './serving-instance.js';
 import { sessionAgentStartUnavailableReason } from './session-agent-resolution.js';
 import { SessionAuthorization } from './session-authorization.js';
@@ -3279,6 +3288,71 @@ export class OrchestrationService {
   // bodies live in SessionEventReads (session-event-reads.ts). Flat
   // same-named forwarders keep the test Proxy's authority injection (T3)
   // and the per-method initialize() latch (T9) exactly as the bodies had.
+  inspectAttentionRequest(
+    reference: AttentionRequestReference,
+    authority: SessionReadScope,
+  ): AttentionRequestInspection | null {
+    this.initialize();
+    let persisted: ProviderSession | undefined;
+    try {
+      persisted = this.options.eventStore?.readSessionByThread(
+        reference.threadId,
+      );
+    } catch {
+      return null;
+    }
+    if (persisted)
+      this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
+    const session = this.sessionReadModel.get(reference.threadId) ?? persisted;
+    if (
+      !session ||
+      !this.sessionAuthz.canReadSession(reference.threadId, authority)
+    )
+      return null;
+    // Establish the exact bounded record before any additional lifecycle facts.
+    const inspected = inspectRequestEvent(
+      this.options.eventStore,
+      reference,
+      session.provider,
+    );
+    if (inspected.state !== 'open') return inspected;
+    let answerability: ReturnType<typeof projectRequestAnswerability>;
+    try {
+      answerability = projectRequestAnswerability({
+        ...this.observeAnswerability(
+          reference.threadId,
+          session.provider,
+          new Date().toISOString(),
+        ),
+        lifecycleState: projectSessionLifecycle({
+          session,
+          events:
+            this.options.eventStore
+              ?.listSessionProjectionEvents(reference.threadId, {
+                requestId: reference.requestId,
+              })
+              .map((event) => event.payload) ?? [],
+        }).lifecycleState,
+      });
+    } catch {
+      return {
+        state: 'unavailable',
+        reference,
+        message: 'This request could not be verified.',
+      };
+    }
+    return {
+      ...inspected,
+      answerability,
+      canRespond:
+        answerability.answerable &&
+        this.options.adapterRegistry.get(session.provider) !== undefined &&
+        !this.quarantinedThreads.has(reference.threadId) &&
+        !this.isReadOnlyAttachedSession(reference.threadId) &&
+        !this.isPeerDelegationActivityRecord(reference.threadId),
+    };
+  }
+
   readRequestOutcome(
     threadId: string,
     requestId: string,
@@ -4008,6 +4082,8 @@ export class OrchestrationService {
        * keeps working; the emitted event simply carries no `principal`.
        */
       principal?: PrincipalRef;
+      /** Captured HTTP principal liveness; never supplied by the command body. */
+      requestCurrent?: () => boolean;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -4066,6 +4142,7 @@ export class OrchestrationService {
        * keeps working; the emitted event simply carries no `principal`.
        */
       principal?: PrincipalRef;
+      requestCurrent?: () => boolean;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -5099,6 +5176,56 @@ export class OrchestrationService {
             adapters: this.options.adapterRegistry.list(),
           });
           this.assertAdapterCurrent(adapter);
+          if (command.expectedRequestEventId !== undefined) {
+            if (context?.requestCurrent && !context.requestCurrent())
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'Request authority changed before the decision.',
+              );
+            // Adapter resolution can await. Recheck authorization and the exact
+            // current request immediately before its synchronous adapter handoff.
+            if (
+              context?.userId !== undefined &&
+              !this.sessionAuthz.canReadSessionForCommand(
+                command.threadId,
+                context.userId,
+                context.tenantExecutionContext,
+              )
+            )
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'This request is no longer available to you.',
+              );
+            const inspected = this.inspectAttentionRequest(
+              {
+                threadId: command.threadId,
+                requestId: command.requestId,
+                requestEventId: command.expectedRequestEventId,
+              },
+              INTERNAL_SESSION_READ_SCOPE,
+            );
+            if (!inspected || inspected.state === 'unavailable') {
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'This request could not be verified. Inspect it again before responding.',
+              );
+            }
+            if (inspected.state !== 'open')
+              throw new RequestEventGuardError(
+                'request_event_changed',
+                inspected.message,
+              );
+            if (inspected.provider !== adapter.provider)
+              throw new RequestEventGuardError(
+                'request_event_changed',
+                'The request engine changed. Inspect the current request before responding.',
+              );
+            if (!inspected.canRespond)
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'This session cannot currently answer the request.',
+              );
+          }
           await adapter.respondToRequest(
             command.threadId,
             command.requestId,
@@ -5192,7 +5319,8 @@ export class OrchestrationService {
           error instanceof SessionEndedError ||
           // archive#3493 fix round: a Stop refused because the session is
           // still starting is a refusal to act, not a failed action.
-          error instanceof SessionStopWhileStartingError
+          error instanceof SessionStopWhileStartingError ||
+          error instanceof RequestEventGuardError
             ? ('rejected' as const)
             : ('failed' as const),
       };
@@ -5209,7 +5337,8 @@ export class OrchestrationService {
         // deliberately — widening which codes leak through this seam is a
         // separate, per-code decision.
         error instanceof SessionEndedError ||
-          error instanceof SessionStopWhileStartingError
+          error instanceof SessionStopWhileStartingError ||
+          error instanceof RequestEventGuardError
           ? error.code
           : undefined,
       );

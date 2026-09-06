@@ -21,7 +21,9 @@
  * Enable could not see as the same thing, and four engines ended up with
  * seven rows.
  *
- * `cannot_verify` counts as "worth showing" even with `detected: false`,
+ * A detected registry entry with `reason: 'not_connected'` is a separate
+ * actionable state: the explicit connect route persists its Engine connection
+ * and materializes its Agent. `cannot_verify` counts as "worth showing" even with `detected: false`,
  * mirroring `onboardingGateUtils.setupBannerVariant`'s existing rule: an
  * adapter Station could not probe is an unknown, not an absence.
  */
@@ -50,6 +52,7 @@ import { findAuthoredAgentForEngineConnection } from '../modals/new-chat-modal-u
  */
 export type FirstRunEngineState =
   | 'available'
+  | 'detected_connect'
   | 'enabled'
   | 'blocked'
   | 'undetected';
@@ -58,6 +61,7 @@ export interface FirstRunEngineOption {
   engineId: string;
   name: string;
   engineConnectionId?: EngineConnectionId;
+  registryEntryId?: string;
   state: FirstRunEngineState;
   /** Checked when the checklist opens. */
   defaultChecked: boolean;
@@ -71,7 +75,8 @@ export interface FirstRunEnablePlanItem {
   engineId: string;
   name: string;
   /** The only thing the create needs: the server names the Agent. */
-  engineConnectionId: EngineConnectionId;
+  engineConnectionId?: EngineConnectionId;
+  registryEntryId?: string;
 }
 
 interface FirstRunEnableOutcomeBase {
@@ -93,9 +98,10 @@ export type FirstRunEnableOutcome =
 
 const STATE_ORDER: Record<FirstRunEngineState, number> = {
   available: 0,
-  enabled: 1,
-  blocked: 2,
-  undetected: 3,
+  detected_connect: 1,
+  enabled: 2,
+  blocked: 3,
+  undetected: 4,
 };
 
 /**
@@ -114,6 +120,8 @@ function notReadyNote(engine: ExternalEngineReadinessProjection): string {
       return `Station could not verify ${engine.name} is ready.`;
     case 'missing_prerequisites':
       return `${engine.name} needs its setup finished first.`;
+    case 'not_connected':
+      return `${engine.name} is available to connect on this Station.`;
     default:
       return `${engine.name} is not ready yet.`;
   }
@@ -163,6 +171,9 @@ function toOption(
     ...(engine.engineConnectionId
       ? { engineConnectionId: engine.engineConnectionId }
       : {}),
+    ...(engine.registryEntryId
+      ? { registryEntryId: engine.registryEntryId }
+      : {}),
   };
   const existing = engine.engineConnectionId
     ? findAuthoredAgentForEngineConnection(agents, engine.engineConnectionId)
@@ -197,6 +208,19 @@ function toOption(
       state: 'available',
       defaultChecked: true,
       selectable: true,
+    };
+  }
+  if (
+    engine.detected &&
+    engine.reason === 'not_connected' &&
+    engine.registryEntryId
+  ) {
+    return {
+      ...base,
+      state: 'detected_connect',
+      defaultChecked: true,
+      selectable: true,
+      note: notReadyNote(engine),
     };
   }
   if (engine.detected || engine.reason === 'cannot_verify') {
@@ -264,6 +288,8 @@ export function buildFirstRunEngineOptions({
  */
 export function firstRunEngineRowLabel(option: FirstRunEngineOption): string {
   switch (option.state) {
+    case 'detected_connect':
+      return `Connect and set up ${option.name}`;
     case 'enabled':
       return `Ready — ${option.name}`;
     case 'available':
@@ -298,12 +324,21 @@ export function buildFirstRunEnableBatch(
   const selected = new Set(selectedEngineIds);
   const plan: FirstRunEnablePlanItem[] = [];
   for (const option of options) {
-    if (!option.selectable || !option.engineConnectionId) continue;
+    if (
+      !option.selectable ||
+      (!option.engineConnectionId && !option.registryEntryId)
+    )
+      continue;
     if (!selected.has(option.engineId)) continue;
     plan.push({
       engineId: option.engineId,
       name: option.name,
-      engineConnectionId: option.engineConnectionId,
+      ...(option.engineConnectionId
+        ? { engineConnectionId: option.engineConnectionId }
+        : {}),
+      ...(option.registryEntryId
+        ? { registryEntryId: option.registryEntryId }
+        : {}),
     });
   }
   return plan;

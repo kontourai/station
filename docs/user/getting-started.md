@@ -71,7 +71,9 @@ runs its own agent loop.
 
 1. Open **Connections**.
 2. On the **Models** tab choose a detected service or **Add model connection**;
-   on the **Engines** tab choose a detected engine or **Add engine**.
+   on the **Engines** tab choose a detected engine or **Add engine**. During
+   first run, a detected Engine can be ticked to connect it and create its
+   External agent in the same confirmed action.
 3. Follow its setup action until it reports **Ready**.
 
 For a credential-free first path, use a supported local model service and then
@@ -237,3 +239,36 @@ directory for manual review.
 - Read [Station concepts](concepts.md).
 - Customize [keyboard shortcuts](../guides/keyboard-shortcuts.md).
 - Review the [Station privacy policy](https://kontourai.io/privacy/station/).
+
+## Inspect a learning source
+
+Open **Developer → Memory** and select a record from a personal Default File
+Store, then choose **Inspect learning source**. If Developer is hidden, enable
+developer tools in Settings. The inspector requires local access to the Station
+that owns the store; remote pairing or an operator API credential alone is not
+enough. Hosted Stations and tenant-scoped requests are not supported by this
+personal-store inspection.
+
+The inspector shows the source text, provenance, and observation time. **Refresh
+source** reads it again. If the store was replaced, access changed, or the source
+cannot be verified, the old content is withheld. Inspection does not repair or
+change the source.
+
+A record marked active is not evidence that a learning was activated. This view
+shows source records only; candidate decisions, active learning revisions, and
+observed effects require records from their respective owners. It offers no
+promotion or retirement action.
+
+## Return to a decision
+
+Open Notifications to find work that needs your attention. When an approval or
+permission has recorded request evidence, **Inspect request** opens its current
+details. Choose **Approve once** or **Deny** only after reviewing the request.
+You can expand **Request identity** for its exact record or open the Session for
+more context.
+
+A resolved or changed request must be inspected again from refreshed attention.
+A request that cannot currently be answered remains visible without decision
+buttons. If the decision cannot be confirmed, **Check request again** refreshes
+its state before another attempt. Other notifications retain their existing
+Session and action controls.

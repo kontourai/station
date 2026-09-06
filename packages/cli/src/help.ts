@@ -182,6 +182,7 @@ const VERBS: Record<string, VerbSpec> = {
       'pack-workspace',
       'inspect-workspace',
       'unpack-workspace',
+      'verify-workspace',
       'import-project',
     ],
     usage: [
@@ -191,6 +192,7 @@ const VERBS: Record<string, VerbSpec> = {
       'station cloud pack-workspace --workspace=<checkout-root> --key-file=<key> --output=<new-package> --source-paused',
       'station cloud inspect-workspace --archive=<package> --key-file=<key>',
       'station cloud unpack-workspace --archive=<package> --key-file=<key> --destination=<new-directory>',
+      'station cloud verify-workspace --archive=<package> --key-file=<key> --workspace=<restored-checkout> --workspace-paused',
       'station cloud import-project --archive=<package> --key-file=<key> --destination=<new-directory> --target-workspace=<server-path> --name=<name> --slug=<slug> --station=<enrolled-target>',
     ],
     detail: [

@@ -8,6 +8,7 @@ import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { isSupportedAgentIconToken } from '@kontourai/station-contracts/agent';
+import { ATTENTION_REQUEST_MAX_BYTES } from '@kontourai/station-contracts/attention';
 import {
   CHAT_ATTACHMENT_MAX_BYTES,
   CHAT_ATTACHMENT_MAX_COUNT,
@@ -376,7 +377,13 @@ export type SessionInventoryEventDescriptor =
       turnId: string;
       toolCallId: string;
       name: string;
-      terminalStatus: 'succeeded' | 'failed' | 'cancelled';
+      /**
+       * station#1558: `'unresolved'` exists on THIS internal descriptor and
+       * deliberately not on the published `ThreadToolResultRow`. The
+       * inventory projection drops such a completion rather than emit a row
+       * — see `session-inventory-module.ts` and the note on that contract.
+       */
+      terminalStatus: 'succeeded' | 'failed' | 'cancelled' | 'unresolved';
     }
   | {
       id: string;
@@ -2151,7 +2158,9 @@ export class EventStore {
               ? 'succeeded'
               : row.status === 'error'
                 ? 'failed'
-                : 'cancelled',
+                : row.status === 'unresolved'
+                  ? 'unresolved'
+                  : 'cancelled',
         };
       case 'request.resolved':
         return {
@@ -2591,7 +2600,16 @@ export class EventStore {
    * Their consumers render the reference through the transcript projection's
    * chip, and `GET /api/attachments/:ref` fetches the bytes on demand.
    */
+  private projectionPayloadSql(bounded: boolean, alias = ''): string {
+    const column = `${alias}payload`;
+    return bounded
+      ? `CASE WHEN LENGTH(CAST(${column} AS BLOB)) <= ${ATTENTION_REQUEST_MAX_BYTES} THEN ${column} END AS payload`
+      : column;
+  }
+
   private mapEventRow(row: any): PersistedRuntimeEvent {
+    if (row.payload === null)
+      throw new Error('Projection payload exceeds read budget');
     return this.hydrateAttachments(mapPersistedEventRow(row));
   }
 
@@ -4065,10 +4083,11 @@ export class EventStore {
   latestEventByMethod(
     threadId: string,
     method: string,
+    bounded = false,
   ): PersistedRuntimeEvent | undefined {
     const row = this.db
       .prepare(
-        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, observed_at, sequence, global_sequence
+        `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, observed_at, sequence, global_sequence
          FROM orchestration_events
          WHERE thread_id = ? AND method = ?
          ORDER BY sequence DESC
@@ -4081,10 +4100,11 @@ export class EventStore {
   firstEventByMethod(
     threadId: string,
     method: string,
+    bounded = false,
   ): PersistedRuntimeEvent | undefined {
     const row = this.db
       .prepare(
-        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, observed_at, sequence, global_sequence
+        `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, observed_at, sequence, global_sequence
          FROM orchestration_events
          WHERE thread_id = ? AND method = ?
          ORDER BY sequence ASC
@@ -4094,10 +4114,13 @@ export class EventStore {
     return row ? this.mapEventRow(row) : undefined;
   }
 
-  latestEvent(threadId: string): PersistedRuntimeEvent | undefined {
+  latestEvent(
+    threadId: string,
+    bounded = false,
+  ): PersistedRuntimeEvent | undefined {
     const row = this.db
       .prepare(
-        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+        `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
          FROM orchestration_events
          WHERE thread_id = ?
          ORDER BY sequence DESC
@@ -4110,6 +4133,7 @@ export class EventStore {
   latestEventByMethods(
     threadId: string,
     methods: readonly string[],
+    bounded = false,
   ): PersistedRuntimeEvent | undefined {
     if (methods.length === 0) {
       throw new Error('An event-method query requires at least one method');
@@ -4118,7 +4142,7 @@ export class EventStore {
     for (const method of methods) {
       const row = this.db
         .prepare(
-          `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+          `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
            FROM orchestration_events
            WHERE thread_id = ? AND method = ?
            ORDER BY sequence DESC
@@ -4135,10 +4159,11 @@ export class EventStore {
 
   firstTurnStartedWithPrompt(
     threadId: string,
+    bounded = false,
   ): PersistedRuntimeEvent | undefined {
     const row = this.db
       .prepare(
-        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+        `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
          FROM orchestration_events
          WHERE thread_id = ? AND method = 'turn.started'
            AND typeof(json_extract(payload, '$.prompt')) = 'text'
@@ -4219,6 +4244,32 @@ export class EventStore {
    * replay followed by an in-memory Set or a correlated history scan. A large
    * completed-request history therefore never reparses unrelated payloads.
    */
+  readCurrentRequestEvent(
+    threadId: string,
+    requestId: string,
+  ):
+    | { state: 'found'; event: PersistedRuntimeEvent }
+    | { state: 'missing' | 'oversized' } {
+    const row = this.db
+      .prepare(
+        `SELECT event.id, event.provider, event.thread_id, event.turn_id,
+              event.method, event.created_at, event.sequence, event.global_sequence,
+              LENGTH(CAST(event.payload AS BLOB)) AS payload_bytes,
+              CASE WHEN LENGTH(CAST(event.payload AS BLOB)) <= ? THEN event.payload END AS payload
+       FROM orchestration_request_state AS current
+       INNER JOIN orchestration_events AS event
+         ON event.id = current.event_id AND event.thread_id = current.thread_id
+            AND event.request_id = current.request_id AND event.method = current.method
+       WHERE current.thread_id = ? AND current.request_id = ?`,
+      )
+      .get(ATTENTION_REQUEST_MAX_BYTES, threadId, requestId) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) return { state: 'missing' };
+    if (typeof row.payload !== 'string') return { state: 'oversized' };
+    return { state: 'found', event: this.mapEventRow(row as any) };
+  }
+
   listUnresolvedRequestEvents(threadId: string): PersistedRuntimeEvent[] {
     return (
       this.db
@@ -4243,7 +4294,11 @@ export class EventStore {
    * so growing state-bearing history cannot become a projection-all-history
    * read.
    */
-  listSessionProjectionEvents(threadId: string): PersistedRuntimeEvent[] {
+  listSessionProjectionEvents(
+    threadId: string,
+    options: { requestId?: string } = {},
+  ): PersistedRuntimeEvent[] {
+    const bounded = options.requestId !== undefined;
     // archive#3557/#3558 fix-round review BLOCK 1: computed once and shared
     // between the `turn.started` slot below and the turn-scoped terminal
     // slot it anchors — see `latestTerminalEventForTurn`'s docblock for why
@@ -4252,17 +4307,18 @@ export class EventStore {
     const latestTurnStarted = this.latestEventByMethod(
       threadId,
       'turn.started',
+      bounded,
     );
     const facts = [
-      this.latestEvent(threadId),
-      this.latestEventByMethod(threadId, 'flow.run-attached'),
-      this.latestEventByMethod(threadId, 'policy.hooks-attached'),
-      this.latestEventByMethod(threadId, 'session.started'),
+      this.latestEvent(threadId, bounded),
+      this.latestEventByMethod(threadId, 'flow.run-attached', bounded),
+      this.latestEventByMethod(threadId, 'policy.hooks-attached', bounded),
+      this.latestEventByMethod(threadId, 'session.started', bounded),
       // The first accepted configuration carries the immutable launch-plan
       // receipt; later configuration events can restate runtime state.
-      this.firstEventByMethod(threadId, 'session.configured'),
-      this.latestEventByMethod(threadId, 'session.configured'),
-      this.firstTurnStartedWithPrompt(threadId),
+      this.firstEventByMethod(threadId, 'session.configured', bounded),
+      this.latestEventByMethod(threadId, 'session.configured', bounded),
+      this.firstTurnStartedWithPrompt(threadId, bounded),
       // archive#3524: the CURRENT turn's own announcement. Neither existing
       // slot guarantees this fact stays visible — `firstTurnStartedWithPrompt`
       // is pinned to the session's first turn WITH A NON-EMPTY PROMPT
@@ -4313,12 +4369,28 @@ export class EventStore {
       // `latestTurnStarted` names, not the thread's latest terminal — see
       // {@link EventStore.latestTerminalEventForTurn}'s docblock for why.
       latestTurnStarted?.turnId
-        ? this.latestTerminalEventForTurn(threadId, latestTurnStarted.turnId)
+        ? this.latestTerminalEventForTurn(
+            threadId,
+            latestTurnStarted.turnId,
+            bounded,
+          )
         : undefined,
-      this.latestEventByMethods(threadId, LIFECYCLE_METHODS),
-      this.latestCurrentTurnRuntimeErrorEvent(threadId),
-      ...this.listSessionProjectionFactEvents(threadId),
-      ...this.listUnresolvedRequestEvents(threadId),
+      this.latestEventByMethods(threadId, LIFECYCLE_METHODS, bounded),
+      this.latestCurrentTurnRuntimeErrorEvent(threadId, bounded),
+      ...this.listSessionProjectionFactEvents(threadId, bounded),
+      // The verified selected open request supplies pending-review evidence;
+      // another request's later resolution must not erase it.
+      ...(options.requestId !== undefined
+        ? (() => {
+            const current = this.readCurrentRequestEvent(
+              threadId,
+              options.requestId,
+            );
+            if (current.state !== 'found')
+              throw new Error('Request fact unavailable');
+            return [current.event];
+          })()
+        : this.listUnresolvedRequestEvents(threadId)),
     ].filter((event): event is PersistedRuntimeEvent => Boolean(event));
     return [...new Map(facts.map((event) => [event.id, event])).values()].sort(
       (left, right) => left.sequence - right.sequence,
@@ -4412,8 +4484,9 @@ export class EventStore {
    */
   private latestCurrentTurnRuntimeErrorEvent(
     threadId: string,
+    bounded = false,
   ): PersistedRuntimeEvent | undefined {
-    const event = this.latestEventByMethod(threadId, 'runtime.error');
+    const event = this.latestEventByMethod(threadId, 'runtime.error', bounded);
     if (!event) return undefined;
     if (!event.turnId) {
       // Session-scoped (archive#3485): retained until a strictly later
@@ -4423,7 +4496,11 @@ export class EventStore {
         ? undefined
         : event;
     }
-    const latestTurn = this.latestEventByMethod(threadId, 'turn.started');
+    const latestTurn = this.latestEventByMethod(
+      threadId,
+      'turn.started',
+      bounded,
+    );
     if (!latestTurn) return event;
     // Supersession is a question about turn IDENTITY, not about sequence. One
     // turn can be announced more than once — `claude-adapter.ts`'s steer path
@@ -4431,7 +4508,7 @@ export class EventStore {
     // later `turn.started` is only proof the session moved on when it names a
     // DIFFERENT turn.
     if (latestTurn.turnId === event.turnId) return event;
-    const ownTurnStart = this.turnStartedEvent(threadId, event.turnId);
+    const ownTurnStart = this.turnStartedEvent(threadId, event.turnId, bounded);
     // A turn that was never announced has no `turn.started` to compare, so
     // supersession is measured from the error itself: a turn announced AFTER
     // the failure is the session moving past it.
@@ -4506,10 +4583,11 @@ export class EventStore {
   private turnStartedEvent(
     threadId: string,
     turnId: string,
+    bounded = false,
   ): PersistedRuntimeEvent | undefined {
     const row = this.db
       .prepare(
-        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+        `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started'
          ORDER BY sequence ASC
@@ -4547,10 +4625,11 @@ export class EventStore {
   private latestTerminalEventForTurn(
     threadId: string,
     turnId: string,
+    bounded = false,
   ): PersistedRuntimeEvent | undefined {
     const row = this.db
       .prepare(
-        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+        `SELECT id, provider, thread_id, turn_id, method, ${this.projectionPayloadSql(bounded)}, created_at, sequence, global_sequence
          FROM orchestration_events
          WHERE thread_id = ? AND turn_id = ?
            AND method IN ('turn.completed', 'turn.aborted')
@@ -4563,11 +4642,12 @@ export class EventStore {
 
   private listSessionProjectionFactEvents(
     threadId: string,
+    bounded = false,
   ): PersistedRuntimeEvent[] {
     return (
       this.db
         .prepare(
-          `SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, event.payload, event.created_at, event.sequence, event.global_sequence
+          `SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, ${this.projectionPayloadSql(bounded, 'event.')}, event.created_at, event.sequence, event.global_sequence
            FROM orchestration_session_projection_facts AS fact
            INNER JOIN orchestration_events AS event ON event.id = fact.event_id
            WHERE fact.thread_id = ?

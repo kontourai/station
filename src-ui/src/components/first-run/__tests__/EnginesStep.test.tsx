@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AgentData } from '../../../contexts/AgentsContext';
 
 const materializeEngineAgent = vi.fn();
+const connectAndMaterializeEngine = vi.fn();
 const agentsState: {
   agents: AgentData[];
   loaded: boolean;
@@ -48,6 +49,9 @@ vi.mock('../../../contexts/AgentsContext', () => ({
 vi.mock('@kontourai/station-sdk', () => ({
   useMaterializeEngineAgentMutation: () => ({
     mutateAsync: materializeEngineAgent,
+  }),
+  useConnectAndMaterializeEngineMutation: () => ({
+    mutateAsync: connectAndMaterializeEngine,
   }),
 }));
 vi.mock('../../../hooks/useDevicePresentation', () => ({
@@ -160,6 +164,12 @@ beforeEach(() => {
     .mockReset()
     .mockImplementation(async (engineId: string) => ({
       data: { slug: engineId, name: engineId },
+      created: true,
+    }));
+  connectAndMaterializeEngine
+    .mockReset()
+    .mockImplementation(async (registryEntryId: string) => ({
+      data: { slug: registryEntryId, name: registryEntryId },
       created: true,
     }));
   agentsState.agents = [];
@@ -330,6 +340,48 @@ describe('on a paired device the chapter names the host it scanned', () => {
 });
 
 describe('confirming the checklist', () => {
+  test('connects and materializes a detected registry Engine through its registry entry', async () => {
+    const detectedKiro = engine({
+      name: 'Kiro CLI',
+      engineId: 'kiro' as never,
+      detected: true,
+      reason: 'not_connected',
+      registryEntryId: 'kiro',
+    });
+    const { onDone } = renderChapter([detectedKiro]);
+
+    expect(checkbox('kiro')?.checked).toBe(true);
+    expect(row('kiro').textContent).toContain('Connect and set up Kiro CLI');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Set up 1' }));
+    });
+    expect(connectAndMaterializeEngine).toHaveBeenCalledWith('kiro');
+    expect(materializeEngineAgent).not.toHaveBeenCalled();
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+  });
+
+  test('reports a detected registry Engine install failure without swallowing it', async () => {
+    const detectedKiro = engine({
+      name: 'Kiro CLI',
+      engineId: 'kiro' as never,
+      detected: true,
+      reason: 'not_connected',
+      registryEntryId: 'kiro',
+    });
+    connectAndMaterializeEngine.mockRejectedValueOnce(
+      new Error('Kiro CLI could not be connected'),
+    );
+    renderChapter([detectedKiro]);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Set up 1' }));
+    });
+    expect(
+      (await screen.findByTestId('first-run-engines-report')).textContent,
+    ).toContain(
+      'Kiro CLI: could not be set up. Kiro CLI could not be connected',
+    );
+  });
+
   test('creates exactly one Agent per newly ticked engine', async () => {
     const { onDone } = renderChapter([CODEX, CLAUDE]);
     await act(async () => {

@@ -42,6 +42,54 @@ describe('Station Thread tool-result adapter', () => {
     },
   );
 
+  // station#1558: Station's `unresolved` has no member of its own in Thread's
+  // published enum, but Thread already names this exact case — `unknown`.
+  // Folding it into `cancelled` or `error` would export a claim nothing
+  // observed.
+  test("projects an unresolved completion as Thread's own unknown terminal status", () => {
+    const result = projectToolCompletedEvent({
+      eventId: 'event-unresolved',
+      threadId: 'session-1',
+      turnId: 'turn-1',
+      toolCallId: 'open-call',
+      toolName: 'shell',
+      status: 'unresolved',
+      output:
+        'No result was reported before the session ended; whether the tool ran is unknown.',
+    });
+    expect(result).toMatchObject({
+      state: 'available',
+      result: { resultId: 'event-unresolved', terminalStatus: 'unknown' },
+    });
+  });
+
+  test('accepts an unresolved descriptor instead of dropping it as unvalidatable', () => {
+    const projected = projectToolCompletedDescriptor({
+      eventId: 'event-unresolved-descriptor',
+      threadId: 'session-1',
+      turnId: 'turn-1',
+      method: 'tool.completed',
+      toolCallId: 'open-call',
+      toolName: 'shell',
+      status: 'unresolved',
+    });
+    expect(projected).toMatchObject({
+      state: 'available',
+      result: { terminalStatus: 'unknown' },
+    });
+    // An unknown status word is still refused.
+    expect(
+      projectToolCompletedDescriptor({
+        eventId: 'event-nonsense',
+        threadId: 'session-1',
+        method: 'tool.completed',
+        toolCallId: 'open-call',
+        toolName: 'shell',
+        status: 'invented',
+      }),
+    ).toBeNull();
+  });
+
   test('uses only the exact policyDenied marker and published inert projection', () => {
     const denied = projectToolCompletedEvent({
       eventId: 'event-denied',

@@ -133,35 +133,66 @@ describe('WorkspacePaneAvailabilityList', () => {
   });
 
   test('renders a deterministic generated preview placeholder per pane id', () => {
-    render(
+    const accentsByName = () =>
+      new Map(
+        [
+          ...document.querySelectorAll<HTMLElement>(
+            '.workspace-pane-availability-list__card',
+          ),
+        ].map((card) => [
+          card.querySelector('.workspace-pane-availability-list__name')
+            ?.textContent,
+          card
+            .querySelector<HTMLElement>(
+              '.workspace-pane-availability-list__preview',
+            )
+            ?.style.getPropertyValue('--pane-preview-accent'),
+        ]),
+      );
+
+    const first = render(
       <WorkspacePaneAvailabilityList
-        entries={[available]}
+        entries={[available, unavailable]}
         onSelect={vi.fn()}
+        onAction={vi.fn()}
+        canExecuteAction={() => true}
       />,
     );
+    const beforeReorder = accentsByName();
+    expect([...beforeReorder.keys()]).toEqual(['Files', 'Preview']);
+    // Two panes, two accents: an accent that is constant would pass the
+    // reorder check below without deriving anything from the id.
+    expect(new Set(beforeReorder.values()).size).toBe(2);
+    first.unmount();
 
-    const glyph = document.querySelector(
-      '.workspace-pane-availability-list__preview-glyph',
-    ) as HTMLElement;
-    expect(glyph.textContent).toBe('F');
-    // Deterministic: same id, same accent, regardless of catalog order.
-    expect(panePreviewAccent('pane.files')).toBe(
-      panePreviewAccent('pane.files'),
+    // The SAME panes in the opposite catalog order keep their own accents —
+    // the derivation reads the descriptor id, not the render position.
+    render(
+      <WorkspacePaneAvailabilityList
+        entries={[unavailable, available]}
+        onSelect={vi.fn()}
+        onAction={vi.fn()}
+        canExecuteAction={() => true}
+      />,
     );
+    const afterReorder = accentsByName();
+    expect([...afterReorder.keys()]).toEqual(['Preview', 'Files']);
+    expect(afterReorder.get('Files')).toBe(beforeReorder.get('Files'));
+    expect(afterReorder.get('Preview')).toBe(beforeReorder.get('Preview'));
+    // And it is the exported derivation, not an unrelated constant.
+    expect(afterReorder.get('Files')).toBe(panePreviewAccent('pane.files'));
 
     const preview = document.querySelector(
       '.workspace-pane-availability-list__preview',
     ) as HTMLElement;
-    expect(preview.style.getPropertyValue('--pane-preview-accent')).toBe(
-      panePreviewAccent('pane.files'),
-    );
     // Decorative only — the pane's name and state remain the textual signal.
     expect(preview.getAttribute('aria-hidden')).toBe('true');
   });
 
   // #765 F4: Coding and Chat both rendered a giant letter "C". Built-in
-  // panes now carry their real icon on the tile; the letter remains only the
-  // last-resort fallback for renderers this build does not recognise.
+  // panes carry their real icon on the tile; #1536 E8 replaced the remaining
+  // letter fallback with a contributed-pane glyph, so no tile spells one
+  // letter of the name the card already prints beside it.
   test('renders a built-in pane’s real glyph on the tile instead of a letter placeholder', () => {
     const builtinChat: WorkspacePaneAvailabilityCatalogEntry = {
       ...available,
@@ -202,11 +233,15 @@ describe('WorkspacePaneAvailabilityList', () => {
     expect(coding).not.toBe(chat);
   });
 
-  test('keeps the letter fallback for renderers this build does not recognise', () => {
+  // #1536 E8: the audit found a plugin pane's tile rendering a lone capital
+  // "S". A contributed pane with neither `icon` nor `previewImage` gets a real
+  // glyph, and the letter placeholder is gone from every branch.
+  test('renders a contributed-pane glyph, not a name initial, for renderers this build does not recognise', () => {
     const pluginPane: WorkspacePaneAvailabilityCatalogEntry = {
       ...available,
       descriptor: {
         ...available.descriptor,
+        name: 'SDK Patterns',
         renderer: { kind: 'plugin-component', name: 'some-plugin-pane' },
       },
     };
@@ -217,12 +252,40 @@ describe('WorkspacePaneAvailabilityList', () => {
       />,
     );
 
+    const preview = document.querySelector(
+      '.workspace-pane-availability-list__preview',
+    ) as HTMLElement;
     expect(
-      document.querySelector('.workspace-pane-availability-list__preview-glyph')
+      preview.querySelector('.workspace-pane-availability-list__preview-icon'),
+    ).toBeTruthy();
+    expect(preview.textContent).toBe('');
+    expect(
+      document.querySelector(
+        '.workspace-pane-availability-list__preview-glyph',
+      ),
+    ).toBe(null);
+    // The name is still on the card, in full, where it belongs.
+    expect(
+      document.querySelector('.workspace-pane-availability-list__name')
         ?.textContent,
-    ).toBe('F');
+    ).toBe('SDK Patterns');
+  });
+
+  test('a pane with no renderer at all still gets a glyph rather than a letter', () => {
+    render(
+      <WorkspacePaneAvailabilityList
+        entries={[available]}
+        onSelect={vi.fn()}
+      />,
+    );
+
     expect(
       document.querySelector('.workspace-pane-availability-list__preview-icon'),
+    ).toBeTruthy();
+    expect(
+      document.querySelector(
+        '.workspace-pane-availability-list__preview-glyph',
+      ),
     ).toBe(null);
   });
 

@@ -71,6 +71,7 @@ export type {
   NeedsInputAttentionItem,
   ReviewPendingAttentionItem,
   SessionFailedAttentionItem,
+  SetupIncompleteAttentionItem,
 } from '@kontourai/station-contracts/attention';
 export type {
   AdoptedSessionResult,
@@ -331,6 +332,7 @@ export {
 export {
   type ACPConnectionInfo,
   type ACPConnectionRegistryEntry,
+  type ACPRegistryInstallAgentReceipt,
   type AcceptFlowExceptionInput,
   type AcpSlashCommandDescriptor,
   type AdoptOrchestrationSessionIntent,
@@ -396,6 +398,7 @@ export {
   clearFeedbackAnalysis,
   clearNotificationActivity,
   clearNotifications,
+  connectAndMaterializeACPRegistryEngine,
   createACPConnection,
   createAdoptOrchestrationSessionIntent,
   createAgent,
@@ -735,6 +738,7 @@ export {
   useCodingFilesQuery,
   useConfigProvenanceQuery,
   useConfigQuery,
+  useConnectAndMaterializeEngineMutation,
   useConnectionQuery,
   useConnectionsQuery,
   useConnectSshEnvironmentMutation,
@@ -839,6 +843,7 @@ export {
   useKnowledgeStatusQuery,
   useKnowledgeTreeQuery,
   useKnowledgeUpdateMutation,
+  useLearningSourceObservationQuery,
   useLinkKnowledgeRecordMutation,
   useLoadedOrchestrationSessionsQuery,
   useMaterializeEngineAgentMutation,
@@ -1130,6 +1135,13 @@ export {
   orchestrationQueries,
   taskQueries,
 } from './queryFactories';
+export {
+  type AttentionRequestInspection,
+  type AttentionRequestReference,
+  attentionRequestQueryKey,
+  inspectAttentionRequest,
+  useAttentionRequestInspection,
+} from './request-inspection';
 export {
   claimSessionEventWindowCapabilityRecovery,
   fetchSessionEventWindowCapability,

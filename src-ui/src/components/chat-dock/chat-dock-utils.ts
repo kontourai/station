@@ -1,6 +1,5 @@
 import {
-  modelDisplayLabel,
-  resolvedModelLabel,
+  modelIdentityLabel,
   type SelectableModel,
 } from '../../utils/modelCapabilities';
 
@@ -154,36 +153,19 @@ export function effectiveChatModelId(input: {
  * What to CALL the model a chat is running, for a surface that names it
  * alongside the composer (station#3309).
  *
- * Not a third derivation: it is the composer's own two questions in the
- * composer's own order. `resolvedModelLabel` first, so an alias the engine has
- * resolved renders as the concrete model it resolved to (#1012) rather than as
- * "Default (recommended)"; a catalog-backed name otherwise (station#3391).
- * Asking only the second one is what made the dock header and the composer
- * pill disagree about one chat, live.
- *
- * The fallbacks are not byte-identical, deliberately. The composer's is
- * `effectiveModelInfo?.name || effectiveModelId`, which prints a raw id when
- * the catalog has no entry; this uses `modelDisplayLabel`, which prettifies it
- * ('claude-opus-5[1m]' -> 'Opus 5 (1M)'). For an uncatalogued model the pill
- * and this row therefore render the same model under two spellings. That is a
- * cosmetic difference between a control that must round-trip a selectable id
- * and a row that only has to name something, not the two-answers-for-one-fact
- * problem above — a compact identity row showing a raw id is the defect
- * `modelDisplayLabel` was written to end.
- *
- * `null` when no model id was reported — the caller shows nothing rather than
- * `modelDisplayLabel`'s "Model not reported", which is a claim about the
- * SESSION and not something a compact identity row is entitled to make.
+ * Not a second derivation: `modelIdentityLabel` is the one rule, shared with
+ * the composer chip, Home, the sidebar rows and the transcript's provenance
+ * strip (#1536 B5). This adds only the `null` contract — no model id reported
+ * means the caller shows nothing, rather than "Model not reported", which is a
+ * claim about the SESSION and not something a compact identity row is entitled
+ * to make.
  */
 export function chatModelLabel(
   modelId: string | undefined,
   models: SelectableModel[],
 ): string | null {
   if (!modelId) return null;
-  const entry = models.find((model) => model.id === modelId);
-  return (
-    resolvedModelLabel(entry, models) ?? modelDisplayLabel(modelId, models)
-  );
+  return modelIdentityLabel(modelId, models);
 }
 
 /**

@@ -203,20 +203,24 @@ describe('assistant row identity composition (station#1434)', () => {
 
     // The label and the value are separate WORDS, not one welded token: the
     // rendered text a person reads (and a screen reader announces, and a
-    // copy-paste yields) is "Requested sonnet-latest".
+    // copy-paste yields) is "Requested Sonnet Latest". #1536 B5: the VALUE is
+    // the shared identity label, never the raw observed id, which now lives in
+    // the title alongside it.
     const rendered = Array.from(
       (claims as HTMLElement).querySelectorAll('.message__model-claim'),
     ).map((claim) => claim.textContent);
     expect(rendered).toEqual([
-      'Requested sonnet-latest',
-      'Reported sonnet-9-20260701',
+      'Requested Sonnet Latest',
+      'Reported Sonnet 9 20260701',
     ]);
 
     // Each model identity is claimed exactly once on the row — the card's
     // collapsed pill does not restate the model the row already labels.
-    expect(occurrences(container, 'sonnet-9-20260701')).toBe(1);
-    // 'sonnet-latest' is a substring of nothing else here.
-    expect(occurrences(container, 'sonnet-latest')).toBe(1);
+    expect(occurrences(container, 'Sonnet 9 20260701')).toBe(1);
+    // 'Sonnet Latest' is a substring of nothing else here.
+    expect(occurrences(container, 'Sonnet Latest')).toBe(1);
+    // And the raw ids reach the reader only through the claim titles.
+    expect(occurrences(container, 'sonnet-9-20260701')).toBe(0);
 
     // And the legacy bare badge is gone: no unlabelled model claim survives.
     expect(container.querySelector('.message__model-badge')).toBeNull();
@@ -246,10 +250,12 @@ describe('assistant row identity composition (station#1434)', () => {
     );
     // The hover text a person reads: options ride the requested claim…
     expect(requested.getAttribute('title')).toBe(
-      'Model requested · Station requested: effort: high',
+      'Model requested (sonnet-latest) · Station requested: effort: high',
     );
     // …and never the reported one, which would read as the engine's report.
-    expect(reported.getAttribute('title')).toBe('Model reported by engine');
+    expect(reported.getAttribute('title')).toBe(
+      'Model reported by engine (sonnet-9-20260701)',
+    );
   });
 
   it('still surfaces the request’s options when the envelope observed only the model the engine reported', () => {
@@ -267,9 +273,9 @@ describe('assistant row identity composition (station#1434)', () => {
 
     const claims = container.querySelectorAll('.message__model-claim');
     expect(claims).toHaveLength(1);
-    expect(claims[0].textContent).toBe('Reported sonnet-9-20260701');
+    expect(claims[0].textContent).toBe('Reported Sonnet 9 20260701');
     expect(claims[0].getAttribute('title')).toBe(
-      'Model reported by engine · Station requested: effort: high',
+      'Model reported by engine (sonnet-9-20260701) · Station requested: effort: high',
     );
   });
 
@@ -285,7 +291,7 @@ describe('assistant row identity composition (station#1434)', () => {
 
     expect(
       container.querySelector('.message__model-claim')?.getAttribute('title'),
-    ).toBe('Model reported by engine');
+    ).toBe('Model reported by engine (sonnet-9-20260701)');
   });
 
   it('states one model claim when the engine reported back exactly what Station requested', () => {
@@ -302,7 +308,7 @@ describe('assistant row identity composition (station#1434)', () => {
 
     const claims = container.querySelector('.message__model-claims');
     expect(within(claims as HTMLElement).getByText('Model')).toBeTruthy();
-    expect(occurrences(container, 'sonnet-9-20260701')).toBe(1);
+    expect(occurrences(container, 'Sonnet 9 20260701')).toBe(1);
     expect(within(claims as HTMLElement).queryByText('Requested')).toBeNull();
   });
 
@@ -319,7 +325,7 @@ describe('assistant row identity composition (station#1434)', () => {
     });
 
     expect(container.querySelector('.message__model-claims')).toBeNull();
-    expect(occurrences(container, 'Claude 3.7 Sonnet')).toBe(0);
+    expect(occurrences(container, '3 7 Sonnet Latest')).toBe(0);
     expect(occurrences(container, 'claude-3-7-sonnet-latest')).toBe(0);
   });
 
@@ -341,7 +347,10 @@ describe('assistant row identity composition (station#1434)', () => {
     // An unreadable envelope is not an envelope: the row keeps the pre-#1434
     // badge behaviour rather than silently dropping the model it does know.
     expect(container.querySelector('.message__model-claims')).toBeNull();
-    expect(screen.getByText('Claude 3.7 Sonnet')).toBeTruthy();
+    // #1536 B5: through the shared identity rule. The private table this
+    // replaced answered "Custom" for every model newer than Claude 3, so a row
+    // running claude-opus-5 named it "Custom" while Home named it "Opus 5".
+    expect(screen.getByText('3 7 Sonnet Latest')).toBeTruthy();
   });
 
   it('states no engine when the envelope is readable but its engine slot is a gap', () => {
@@ -377,7 +386,43 @@ describe('assistant row identity composition (station#1434)', () => {
     expect(copy?.querySelector('svg')?.getAttribute('aria-hidden')).toBe(
       'true',
     );
-    expect(screen.getByText('Claude 3.7 Sonnet')).toBeTruthy();
+    expect(screen.getByText('3 7 Sonnet Latest')).toBeTruthy();
     expect(screen.getByText('Here is the answer.')).toBeTruthy();
+  });
+  /**
+   * #1536 B5 / review H1. The badge is the row's ONLY model statement when the
+   * envelope is absent or unreadable, and the private table it used to call —
+   * five Claude 3 ids, "Custom" for everything else — was deleted with no
+   * render assertion left behind. Calling the helper directly (as
+   * `modelIdentityLabel.test.ts` does) does not prove this element renders its
+   * result: the badge could go back to a table, or to `msg.requestedModel`,
+   * and every helper test would stay green.
+   */
+  it('renders the shared identity label as the badge text when no envelope is readable', () => {
+    const { container } = renderRow({
+      role: 'assistant',
+      content: 'Here is the answer.',
+      model: 'claude-opus-5',
+      provenance: { envelopeVersion: 9999, engine: { state: 'observed' } },
+    });
+
+    const badge = container.querySelector('.message__model-badge');
+    expect(badge).toBeTruthy();
+    // The exact string is the whole assertion: neither the raw id nor the
+    // retired table's "Custom" can satisfy it, so restating those as separate
+    // `not.toBe` lines proved nothing the equality did not already.
+    expect(badge?.textContent).toBe('Opus 5');
+  });
+
+  it('renders the badge for a row carrying no provenance at all', () => {
+    const { container } = renderRow({
+      role: 'assistant',
+      content: 'Here is the answer.',
+      model: 'claude-opus-5[1m]',
+    });
+
+    expect(container.querySelector('.message__model-badge')?.textContent).toBe(
+      'Opus 5 (1M)',
+    );
   });
 });

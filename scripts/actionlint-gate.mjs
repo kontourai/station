@@ -37,6 +37,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load } from 'js-yaml';
+import { collectRequiredBrowserSmokeFindings } from './ci-workflow-governance.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -1478,7 +1479,9 @@ function primaryCiRouterFindings(file, document) {
   }
   if (file !== '.github/workflows/ci.yml') return [];
 
-  const findings = [];
+  const findings = collectRequiredBrowserSmokeFindings(document).map(
+    (message) => ({ file, jobId: 'fast-checks', message }),
+  );
   const jobs = document?.jobs ?? {};
   if (!hasOnlyReadContentsPermission(document.permissions))
     findings.push({
@@ -1599,6 +1602,17 @@ function primaryCiRouterFindings(file, document) {
           run: 'echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"\nfor attempt in 1 2 3; do\n  echo "Playwright install attempt $attempt"\n  if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then\n    exit 0\n  fi\n  echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"\n  sleep 15\ndone\necho "::error::Playwright install failed after 3 attempts"\nexit 1\n',
         },
         { name: 'Run fast CI lane', run: 'npm run ci:fast' },
+        // #1540: these exact commands run on the same isolated, read-only
+        // candidate runner as ci:fast. No new credentials or host authority.
+        {
+          name: 'Verify critical browser journeys before merge',
+          run: 'npm run test:e2e:pr-smoke',
+        },
+        {
+          name: 'Report contract-test changes for review',
+          run: 'node scripts/test-contract-review.mjs',
+        },
+
         {
           name: 'Run interactive workspace performance smoke',
           run: 'npm run performance:workspace:smoke',

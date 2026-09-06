@@ -35,7 +35,10 @@
  */
 
 import type { DevicePresentation } from '@kontourai/station-contracts/system-status';
-import { useMaterializeEngineAgentMutation } from '@kontourai/station-sdk';
+import {
+  useConnectAndMaterializeEngineMutation,
+  useMaterializeEngineAgentMutation,
+} from '@kontourai/station-sdk';
 import { useEffect, useRef, useState } from 'react';
 import {
   useAgents,
@@ -428,6 +431,7 @@ export function FirstRunEnginesChapter({
   onGiveUp: () => void;
 }) {
   const materializeEngineAgent = useMaterializeEngineAgentMutation();
+  const connectAndMaterializeEngine = useConnectAndMaterializeEngineMutation();
   // The same status query `useFirstRunEngineOptions` already reads — one
   // request, one derivation, and the row notes and the chapter's own
   // sentences therefore cannot name two different machines.
@@ -515,8 +519,9 @@ export function FirstRunEnginesChapter({
         // Sequential on purpose: these are read-modify-write creates against
         // one agent store, and a partial failure must leave the remaining
         // selections still attempted rather than aborting the batch.
-        const { data, created, warnings } =
-          await materializeEngineAgent.mutateAsync(item.engineConnectionId);
+        const { data, created, warnings } = item.registryEntryId
+          ? await connectAndMaterializeEngine.mutateAsync(item.registryEntryId)
+          : await materializeEngineAgent.mutateAsync(item.engineConnectionId!);
         results.push(
           firstRunEnableSuccessOutcome(
             item,

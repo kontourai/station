@@ -27,14 +27,28 @@ import {
 
 export { RegistryInstallAliasFormatError } from './registry-install-aliases.js';
 
+/**
+ * A manifest catalog entry. `type` is the catalog's KIND field: the manifest
+ * lists every entry under `plugins`, and the kind is what decides which
+ * browse surface an entry belongs to. Absent means plugin, because that is
+ * what every entry written before the field was read actually is.
+ *
+ * The kind partitions the BROWSE lists only. Install and uninstall still
+ * resolve an id the same way for either kind (`registry.ts` asks the plugin
+ * registry first and falls through to the agent provider), so an entry cannot
+ * become uninstallable by declaring a kind.
+ */
 interface ManifestPlugin {
   id: string;
   displayName: string;
   description: string;
   version: string;
   source: string;
-  type: string;
+  type?: string;
 }
+
+/** `ManifestPlugin.type` for an entry that is an agent DEFINITION, not code. */
+const AGENT_MANIFEST_KIND = 'agent';
 
 interface ManifestTool {
   id: string;
@@ -244,11 +258,39 @@ export class JsonManifestRegistryProvider
     return tempDir;
   }
 
-  // IAgentRegistryProvider implementation
+  /**
+   * Entries of one catalog kind. The browse surfaces partition the manifest
+   * between them so a tab lists only what it names: the agent surface used to
+   * serve `manifest.plugins` whole, so a catalog of layout plugins listed
+   * under "Agents" beneath a "Selected agent" heading, with an install action
+   * that installed a plugin (#1536 D2).
+   */
+  private manifestEntriesOfKind(
+    manifest: Manifest,
+    kind: 'agent' | 'plugin',
+  ): ManifestPlugin[] {
+    return manifest.plugins.filter((entry) =>
+      kind === AGENT_MANIFEST_KIND
+        ? entry.type === AGENT_MANIFEST_KIND
+        : entry.type !== AGENT_MANIFEST_KIND,
+    );
+  }
+
+  // IPluginRegistryProvider implementation
 
   async listAvailable(): Promise<RegistryItem[]> {
+    return this.listAvailableOfKind('plugin');
+  }
+
+  async listInstalled(): Promise<RegistryItem[]> {
+    return this.listInstalledOfKind('plugin');
+  }
+
+  private async listAvailableOfKind(
+    kind: 'agent' | 'plugin',
+  ): Promise<RegistryItem[]> {
     const manifest = await this.fetchManifest();
-    return manifest.plugins.map((plugin) => ({
+    return this.manifestEntriesOfKind(manifest, kind).map((plugin) => ({
       id: plugin.id,
       displayName: plugin.displayName,
       description: plugin.description,
@@ -258,14 +300,16 @@ export class JsonManifestRegistryProvider
     }));
   }
 
-  async listInstalled(): Promise<RegistryItem[]> {
+  private async listInstalledOfKind(
+    kind: 'agent' | 'plugin',
+  ): Promise<RegistryItem[]> {
     const manifest = await this.fetchManifest();
     const installedPlugins = new Map(
       this.readInstalledPlugins().map((item) => [String(item.id), item]),
     );
     const aliases = this.readRegistryInstallAliases();
 
-    return manifest.plugins.flatMap((plugin) => {
+    return this.manifestEntriesOfKind(manifest, kind).flatMap((plugin) => {
       const alias = aliases[plugin.id];
       if (!alias || alias.registryKey !== this.getRegistryKey()) {
         return [];
@@ -455,6 +499,21 @@ export class JsonManifestRegistryProvider
     } catch (error: any) {
       return { success: false, message: error.message };
     }
+  }
+
+  /**
+   * Agent-definition view over the manifest, registered as the agent registry
+   * provider (`register-manifest-registry.ts`). Only entries the catalog
+   * declares as agents are browsable here; install and uninstall stay the
+   * class's, so an id resolves identically whichever surface offered it.
+   */
+  agentRegistry(): IAgentRegistryProvider {
+    return {
+      listAvailable: () => this.listAvailableOfKind(AGENT_MANIFEST_KIND),
+      listInstalled: () => this.listInstalledOfKind(AGENT_MANIFEST_KIND),
+      install: (id: string) => this.install(id),
+      uninstall: (id: string) => this.uninstall(id),
+    };
   }
 
   async resolveSource(id: string): Promise<string | null> {

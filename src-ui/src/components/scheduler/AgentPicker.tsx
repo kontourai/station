@@ -7,7 +7,7 @@ import {
 } from '../../contexts/AgentsContext';
 import { agentRunnability } from '../agent-runnability';
 import { AgentIcon } from '../icons/AgentIcon';
-import { CheckGlyph } from '../icons/Glyph';
+import { ArrowDownGlyph, CheckGlyph } from '../icons/Glyph';
 import { Empty, SkeletonList } from '../state';
 import {
   schedulerAgentOptions,
@@ -111,7 +111,10 @@ export function AgentPicker({
     return (
       <button
         type="button"
-        className="agent-picker__trigger"
+        // `choice-trigger` is #1546's shared picker vocabulary. This render
+        // path is newer than that change, so the merge could not carry the
+        // class onto it — every trigger in this picker wears it.
+        className="choice-trigger agent-picker__trigger"
         disabled
         // #1536 R5: "Agent unavailable" overclaimed — no Agent has been found
         // unavailable; the CATALOG did not load, which is a different fact and
@@ -128,7 +131,11 @@ export function AgentPicker({
   // dead row here — carries the reason (`SCHEDULER_ENGINE_AGENT_NOTE`).
   if (!eligible.length) {
     return (
-      <button type="button" className="agent-picker__trigger" disabled>
+      <button
+        type="button"
+        className="choice-trigger agent-picker__trigger"
+        disabled
+      >
         {selected ? (
           <>
             <AgentIcon agent={selected} size="small" />
@@ -150,7 +157,7 @@ export function AgentPicker({
         type="button"
         ref={triggerRef}
         onClick={() => setOpen(!open)}
-        className="agent-picker__trigger"
+        className="choice-trigger agent-picker__trigger"
       >
         {selected && <AgentIcon agent={selected} size="small" />}
         <span className="agent-picker__trigger-name">
@@ -163,7 +170,7 @@ export function AgentPicker({
               : 'Not runnable here'}
           </span>
         )}
-        <span className="agent-picker__trigger-caret">▼</span>
+        <ArrowDownGlyph className="choice-caret" />
       </button>
       {open &&
         pos &&
