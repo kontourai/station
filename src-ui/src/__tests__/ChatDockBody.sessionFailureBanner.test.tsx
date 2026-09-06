@@ -26,7 +26,12 @@ import {
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
-const transcriptMock = vi.hoisted(() => ({ events: [] as any[] }));
+const transcriptMock = vi.hoisted(() => ({
+  events: [] as any[],
+  enabled: false,
+  settled: true,
+  messages: [] as any[],
+}));
 const chatInputPropsMock = vi.hoisted(() => ({
   current: null as Record<string, any> | null,
 }));
@@ -112,11 +117,14 @@ vi.mock('../hooks/useTTS', () => ({
  */
 vi.mock('../hooks/orchestration/useActiveChatTranscript', () => ({
   useActiveChatTranscript: () => ({
-    enabled: false,
-    messages: [],
+    enabled: transcriptMock.enabled,
+    messages: transcriptMock.messages,
     events: transcriptMock.events,
     hasMore: false,
     loading: false,
+    // `settled` is the reader's own "has anyone looked yet". The default
+    // matches the settled reader every other test in this file assumes.
+    settled: transcriptMock.settled,
     upgradeRequired: false,
     loadOlder: vi.fn(async () => {}),
     reload: vi.fn(async () => {}),
@@ -257,6 +265,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   beforeEach(() => {
     agentsMock.current = [];
     transcriptMock.events = [];
+    transcriptMock.enabled = false;
+    transcriptMock.settled = true;
+    transcriptMock.messages = [];
     chatInputPropsMock.current = null;
     queuedMessagesPropsMock.current = null;
     steerOrchestrationTurnMock.mockReset();
@@ -523,6 +534,10 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     ).toContain('Last message you sent: ship the release notes');
   });
 
+  // #1582 E3/B6 changed what this state LOOKS like, not what it permits. The
+  // composer stays disabled — a conversation whose continuation is unproven
+  // must not be written to — but a reload is the ordinary path, not a failure,
+  // so it may not claim one.
   test('#749 keeps the composer disabled while a reloaded conversation is resolving', async () => {
     renderDock({
       session: buildSession({
@@ -532,9 +547,121 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     });
 
     expect(chatInputPropsMock.current?.disabled).toBe(true);
+    // The wait is announced by the repo's skeleton vocabulary, not a bespoke
+    // sentence, and not by `role="alert"` — `role`/tone are what made this
+    // ordinary phase read as a failure.
+    const notice = await screen.findByLabelText('Loading conversation');
+    expect(notice.getAttribute('role')).toBe('status');
+    expect(notice.getAttribute('aria-busy')).toBe('true');
+    // The conversation-open banner specifically: this suite's default session
+    // has already failed, so it carries its own (correct) alert.
+    expect(screen.queryByText(/is read-only/)).toBeNull();
+  });
+
+  // The three simultaneous claims E3 recorded, each asserted absent by the
+  // words the user actually saw.
+  test('#1582 E3 a resolving reload shows one state, not three', async () => {
+    renderDock({
+      // A HEALTHY session reloading: E3 is about the ordinary path, so the
+      // fixture must not also be a failed session (this suite's default).
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        title: 'A healthy session being reloaded',
+        conversationId: 'cool',
+        conversationOpenPending: true,
+        messages: [],
+      }),
+    });
+
+    await screen.findByLabelText('Loading conversation');
+    // 1. no red read-only banner — asserted on the error BOX as well as the
+    //    words, because the box is what makes the state read as a failure.
+    expect(screen.queryByText(/is read-only/)).toBeNull();
     expect(
-      await screen.findByText('Station is resolving its current session.'),
-    ).toBeTruthy();
+      screen.queryByText('Station is resolving its current session.'),
+    ).toBeNull();
+    expect(document.querySelector('.session-history-error')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    // 2. no empty-conversation placeholder over a transcript that has not
+    //    finished loading — "Start a conversation" is a claim that this chat
+    //    has none, which nothing has established yet.
+    expect(screen.queryByText('Start a conversation')).toBeNull();
+    // 3. no second sentence under the composer saying the same thing again
+    expect(chatInputPropsMock.current?.sendBlockedReason).toBeUndefined();
+  });
+
+  // The other half of the same window, and the one that actually reproduced on
+  // a live reload: the conversation-open read had already landed while the
+  // TRANSCRIPT read had not, and the empty placeholder claimed the chat had no
+  // messages for ~1.7s.
+  test('#1582 E3 an unread transcript is not an empty conversation', async () => {
+    transcriptMock.enabled = true;
+    transcriptMock.settled = false;
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        title: 'A healthy session being reloaded',
+        conversationId: 'cool',
+        orchestrationSessionStarted: true,
+        messages: [],
+      }),
+    });
+
+    expect(screen.queryByText('Start a conversation')).toBeNull();
+    expect(await screen.findByLabelText('Loading conversation')).toBeTruthy();
+    // The composer is NOT disabled by a transcript read: nothing about an
+    // unrendered history stops a new message, and disabling it here would be a
+    // new refusal wearing the fix's name.
+    expect(chatInputPropsMock.current?.disabled).toBe(false);
+  });
+
+  test('#1582 E3 a settled empty transcript still says the chat is empty', async () => {
+    transcriptMock.enabled = true;
+    transcriptMock.settled = true;
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        title: 'A genuinely empty chat',
+        orchestrationSessionStarted: true,
+        messages: [],
+      }),
+    });
+
+    expect(await screen.findByText('Start a conversation')).toBeTruthy();
+    expect(screen.queryByLabelText('Loading conversation')).toBeNull();
+  });
+
+  // The mirror: once the read lands on a genuine verdict the error chrome is
+  // exactly what must appear. Without this, suppressing the banner in the
+  // resolving case would be indistinguishable from suppressing it always.
+  test('#1582 E3 a failed resolution still gets the red banner and the empty state', async () => {
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        title: 'A healthy session being reloaded',
+        conversationId: 'cool',
+        conversationOpenFailed: true,
+        messages: [],
+      }),
+    });
+
+    expect(await screen.findByText(/is read-only/)).toBeTruthy();
+    expect(screen.queryByLabelText('Loading conversation')).toBeNull();
+    expect(chatInputPropsMock.current?.sendBlockedReason).toBe(
+      'This conversation is available read-only. Retry resolution or start a new chat.',
+    );
   });
 
   test('#749 transport failure remains read-only and exposes recovery actions', async () => {
