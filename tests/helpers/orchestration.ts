@@ -1,8 +1,10 @@
+import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { expect, type Page } from '@playwright/test';
 import {
   E2E_STATION_COMPATIBILITY,
   installE2EWorkspacePaneCatalog,
 } from './current-station-contract';
+import { rejectUnexpectedFixtureRequest } from './fixture-audit';
 
 const E2E_ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
 const emittedOrchestrationEvents = new WeakMap<
@@ -515,6 +517,19 @@ export async function seedOrchestrationRoutes(
     projectSlug: 'dev',
     projectId: DEV_CONFIG.id,
     layoutSlug: CODING_LAYOUT.slug,
+  });
+  // This fixture Project has only built-in Panes and no installed package
+  // actions. Its identity exists in mocked Project routes, not the live server.
+  const paneActions: WorkspacePaneHostActionCatalog = {
+    projectSlug: 'dev',
+    support: 'supported',
+    complete: true,
+    contributions: [],
+  };
+  await page.route('**/api/orchestration/pane-host/dev/catalog', (route) => {
+    if (route.request().method() !== 'GET')
+      return rejectUnexpectedFixtureRequest(route);
+    return route.fulfill({ json: { success: true, data: paneActions } });
   });
   await page.addInitScript(() => {
     if (localStorage.getItem('station-connect-connections-active')) return;
