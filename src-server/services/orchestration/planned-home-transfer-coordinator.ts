@@ -1,11 +1,13 @@
 import type { ProjectTaskRoomGrant } from '@kontourai/station-contracts/project-task-room';
 import {
   type PlannedHomeTransfer,
+  type PlannedHomeTransferIntent,
   type PlannedHomeTransferStore,
   plannedHomeTransferClosureDigest,
   type TransferStoreResult,
 } from './planned-home-transfer-store.js';
 import type { ProjectTaskRoomHistory } from './project-task-room-history.js';
+import type { ProjectTaskRoomSourceSeal } from './project-task-room-source-seal.js';
 
 const NO_EXECUTION_AUTHORITY = {
   executionAuthorityTransferred: false,
@@ -16,6 +18,39 @@ export interface PlannedHomeTransferCoordinatorOptions {
   readonly store: PlannedHomeTransferStore;
   /** Trusted controller namespace supplied by the composing authority. */
   readonly tenantId: string;
+  readonly source: PlannedHomeTransferSourceOwner;
+  readonly target: PlannedHomeTransferTargetOwner;
+}
+
+export interface PlannedHomeTransferSourceOwner {
+  /** Stable private identity used only to reject one owner in both roles. */
+  readonly ownerIdentity: object;
+  ensureClosed(intent: Readonly<PlannedHomeTransferIntent>): Promise<
+    | { kind: 'sealed'; seal: ProjectTaskRoomSourceSeal }
+    | {
+        kind:
+          | 'unsealed'
+          | 'denied'
+          | 'unavailable'
+          | 'conflict'
+          | 'publication-pending'
+          | 'execution-pending';
+      }
+  >;
+}
+
+export interface PlannedHomeTransferTargetOwner {
+  /** Stable private identity used only to reject one owner in both roles. */
+  readonly ownerIdentity: object;
+  readSeal(
+    intent: Readonly<PlannedHomeTransferIntent>,
+  ): Promise<
+    | { kind: 'sealed'; seal: ProjectTaskRoomSourceSeal }
+    | { kind: 'unsealed' | 'denied' | 'unavailable' | 'conflict' }
+  >;
+}
+
+export interface LocalProjectTaskRoomTransferOwnersInput {
   readonly source: {
     readonly history: Pick<ProjectTaskRoomHistory, 'sealSource'>;
     readonly grant: ProjectTaskRoomGrant<'home-transfer'>;
@@ -24,6 +59,40 @@ export interface PlannedHomeTransferCoordinatorOptions {
     readonly history: Pick<ProjectTaskRoomHistory, 'readSourceSeal'>;
     readonly grant: ProjectTaskRoomGrant<'history-read'>;
   };
+}
+
+export interface PlannedHomeTransferOwners {
+  readonly source: PlannedHomeTransferSourceOwner;
+  readonly target: PlannedHomeTransferTargetOwner;
+}
+
+/** Bind real local room histories to the intent-shaped transfer owner ports. */
+export function createLocalProjectTaskRoomTransferOwners(
+  owners: LocalProjectTaskRoomTransferOwnersInput,
+): PlannedHomeTransferOwners {
+  const sourceHistory = owners.source.history;
+  const targetHistory = owners.target.history;
+  const sealSource = sourceHistory.sealSource.bind(sourceHistory);
+  const readSourceSeal = targetHistory.readSourceSeal.bind(targetHistory);
+  const sourceGrant = Object.freeze(structuredClone(owners.source.grant));
+  const targetGrant = Object.freeze(structuredClone(owners.target.grant));
+  return Object.freeze({
+    source: Object.freeze({
+      ownerIdentity: sourceHistory as object,
+      ensureClosed: (intent: Readonly<PlannedHomeTransferIntent>) =>
+        sealSource({
+          grant: sourceGrant,
+          operationId: intent.operationId,
+          sourceHomeRef: intent.sourceHomeRef,
+          targetHomeRef: intent.targetHomeRef,
+        }),
+    }),
+    target: Object.freeze({
+      ownerIdentity: targetHistory as object,
+      readSeal: (_intent: Readonly<PlannedHomeTransferIntent>) =>
+        readSourceSeal({ grant: targetGrant }),
+    }),
+  });
 }
 
 export type PlannedHomeTransferCoordinatorResult =
@@ -36,6 +105,7 @@ export type PlannedHomeTransferCoordinatorResult =
       readonly reason:
         | 'publication-pending'
         | 'execution-pending'
+        | 'source-not-closed'
         | 'target-unavailable';
       readonly decision: PlannedHomeTransfer;
     })
@@ -85,19 +155,13 @@ export function createPlannedHomeTransferCoordinator(
 ): PlannedHomeTransferCoordinator {
   const tenantId = options.tenantId;
   const sameOwner =
-    (options.source.history as object) === (options.target.history as object);
+    options.source.ownerIdentity === options.target.ownerIdentity;
   const resolve = options.store.resolve.bind(options.store);
   const recordClosure = options.store.recordClosure.bind(options.store);
   const recordReady = options.store.recordReady.bind(options.store);
   const commit = options.store.commit.bind(options.store);
-  const sealSource = options.source.history.sealSource.bind(
-    options.source.history,
-  );
-  const readTargetSeal = options.target.history.readSourceSeal.bind(
-    options.target.history,
-  );
-  const sourceGrant = Object.freeze(structuredClone(options.source.grant));
-  const targetGrant = Object.freeze(structuredClone(options.target.grant));
+  const ensureSourceClosed = options.source.ensureClosed.bind(options.source);
+  const readTargetSeal = options.target.readSeal.bind(options.target);
 
   return {
     async advance(operationId) {
@@ -106,19 +170,14 @@ export function createPlannedHomeTransferCoordinator(
         const resolved = storedDecision(await resolve(tenantId, operationId));
         if (isBlocked(resolved)) return resolved;
         let decision = structuredClone(resolved);
+        const intent = Object.freeze(structuredClone(decision.intent));
 
         if (decision.phase === 'committed') {
           return committedOutcome(decision);
         }
 
         if (decision.phase === 'prepared') {
-          const intent = Object.freeze(structuredClone(decision.intent));
-          const sealed = await sealSource({
-            grant: sourceGrant,
-            operationId: intent.operationId,
-            sourceHomeRef: intent.sourceHomeRef,
-            targetHomeRef: intent.targetHomeRef,
-          });
+          const sealed = await ensureSourceClosed(intent);
           if (
             sealed.kind === 'publication-pending' ||
             sealed.kind === 'execution-pending'
@@ -126,6 +185,14 @@ export function createPlannedHomeTransferCoordinator(
             return {
               kind: 'pending',
               reason: sealed.kind,
+              decision,
+              ...NO_EXECUTION_AUTHORITY,
+            };
+          }
+          if (sealed.kind === 'unsealed') {
+            return {
+              kind: 'pending',
+              reason: 'source-not-closed',
               decision,
               ...NO_EXECUTION_AUTHORITY,
             };
@@ -142,8 +209,8 @@ export function createPlannedHomeTransferCoordinator(
           decision.phase === 'source-closed' ||
           decision.phase === 'target-ready'
         ) {
-          const persistedOperationId = decision.intent.operationId;
-          const restored = await readTargetSeal({ grant: targetGrant });
+          const persistedOperationId = intent.operationId;
+          const restored = await readTargetSeal(intent);
           if (restored.kind === 'unsealed' || restored.kind === 'unavailable') {
             return {
               kind: 'pending',
@@ -154,9 +221,9 @@ export function createPlannedHomeTransferCoordinator(
           }
           if (restored.kind !== 'sealed') return blocked(restored.kind);
           if (
-            restored.seal.operationId !== decision.intent.operationId ||
-            restored.seal.sourceHomeRef !== decision.intent.sourceHomeRef ||
-            restored.seal.targetHomeRef !== decision.intent.targetHomeRef ||
+            restored.seal.operationId !== intent.operationId ||
+            restored.seal.sourceHomeRef !== intent.sourceHomeRef ||
+            restored.seal.targetHomeRef !== intent.targetHomeRef ||
             plannedHomeTransferClosureDigest(restored.seal) !==
               decision.closureDigest
           ) {
@@ -167,7 +234,7 @@ export function createPlannedHomeTransferCoordinator(
               await recordReady(
                 tenantId,
                 persistedOperationId,
-                decision.intent.targetHomeRef,
+                intent.targetHomeRef,
                 decision.closureDigest,
               ),
             );
@@ -181,7 +248,7 @@ export function createPlannedHomeTransferCoordinator(
         if (decision.phase === 'committed') return committedOutcome(decision);
         if (decision.phase !== 'target-ready') return blocked('conflict');
         const committed = storedDecision(
-          await commit(tenantId, decision.intent.operationId),
+          await commit(tenantId, intent.operationId),
         );
         if (isBlocked(committed)) return committed;
         if (committed.phase !== 'committed') return blocked('conflict');
