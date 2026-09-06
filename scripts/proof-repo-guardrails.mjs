@@ -559,7 +559,7 @@ if (!configContext.includes('useUpdateConfigMutation')) {
 const agentsContext = readRequiredSource(
   '../src-ui/src/contexts/AgentsContext.tsx',
 );
-if (agentsContext.includes('fetch(')) {
+if (hasRawFetchCall(agentsContext)) {
   errors.push('AgentsContext must not issue raw fetch() calls.');
 }
 for (const requiredHook of [
