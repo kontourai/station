@@ -84,6 +84,37 @@ const receipt = () =>
   ({ commandId: 'cmd-1', status: 'accepted' }) as OrchestrationCommandReceipt;
 
 describe('AttachedSessionAdoption', () => {
+  it('rejects unsupported external continuation before resolving or invoking an adapter', async () => {
+    const source: ProviderSession = {
+      provider: 'codex',
+      threadId: 'external:codex:fixture',
+      status: 'ready',
+      cwd: '/fixture/project',
+      controlMode: 'read-only-attached',
+      attachedSource: {
+        kind: 'codex-rollout',
+        externalSessionId: 'native-source',
+      },
+      createdAt: '2026-09-06T00:00:00Z',
+      updatedAt: '2026-09-06T00:00:00Z',
+    };
+    let adapterRequests = 0;
+    const { deps } = makeDeps({
+      eventStore: { readSessions: () => [source] } as unknown as EventStore,
+      listProjects: () => [
+        { slug: 'project', workingDirectory: '/fixture/project' },
+      ],
+      requireAdapter: () => {
+        adapterRequests += 1;
+        throw new Error('must not invoke');
+      },
+    });
+    await expect(
+      new AttachedSessionAdoption(deps).adopt(source.threadId, receipt()),
+    ).rejects.toThrow('independent continuation is not available yet');
+    expect(adapterRequests).toBe(0);
+  });
+
   it('startReconciliation stores and returns the same rejecting promise adopt() awaits — no internal catch', async () => {
     const boom = new Error('ledger read failed');
     const ledger = {
