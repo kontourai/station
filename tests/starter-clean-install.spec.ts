@@ -107,7 +107,7 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
     await resumedEngines.getByRole('button', { name: 'Continue' }).click();
     await page
       .getByTestId('first-run-about-you')
-      .getByRole('button', { name: 'Take the tour' })
+      .getByRole('button', { name: 'Start your first chat' })
       .click();
     await expect
       .poll(async () => {
@@ -121,13 +121,9 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
       '/config/app',
     );
     expect(completedConfig.telemetryEnabled).not.toBe(true);
-    await page.getByRole('button', { name: 'Skip the tour' }).click();
-    await page.getByRole('button', { name: 'Home', exact: true }).click();
-
     await expect(
-      page.getByRole('button', { name: /Start direct chat/i }),
+      page.getByRole('dialog', { name: 'New Chat', exact: true }),
     ).toBeVisible();
-    await page.getByRole('button', { name: /Start direct chat/i }).click();
     const stationAgent = page.locator(
       '.new-chat-modal__agent[data-agent-slug="station"]',
     );
