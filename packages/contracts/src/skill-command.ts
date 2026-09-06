@@ -203,6 +203,11 @@ export function resolveSkillCommands<
  */
 const COMMAND_CLAIM_PRECEDENCE: Record<SkillOrigin, number> = {
   user: 0,
+  // `project` shares tier 0 with `user`: discovery scans the project root
+  // BEFORE `<home>/skills` and both override the read-only roots, so splitting
+  // them here would make command arbitration disagree with name arbitration.
+  // Name remains the tiebreak within the tier, exactly as for `user`.
+  project: 0,
   'migrated-playbook': 0,
   registry: 1,
   plugin: 3,

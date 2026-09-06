@@ -148,6 +148,11 @@ vi.mock('@kontourai/station-sdk', () => ({
   // The engines step's one enable path (archive#3627). Nothing here confirms
   // a batch; it exists so the step can mount.
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
+  // #1559 gave detected-but-unconnected rows their own server path, and this
+  // mock never grew it — so every case that reached the engines step threw
+  // "No export is defined on the mock" and six tests here were red on `main`
+  // rather than exercising the exclusivity rule they are named for.
+  useConnectAndMaterializeEngineMutation: () => ({ mutateAsync: vi.fn() }),
   useForceRefetchSystemStatus: () => forceRefetch,
   useEngineConnectionsQuery: () => ({ data: [] }),
   useConfigQuery: () => ({ data: configValue, isFetching: false }),
@@ -314,8 +319,11 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
       chapter: 0,
       disclosure: 0,
     });
-    // Step one of three, and the engines step is genuinely behind it.
-    expect(screen.getByText('Step 1 of 3')).toBeTruthy();
+    // Step one, and the engines step is genuinely behind it. FOUR, not
+    // three: this home has recorded no engine role either, and #1575 put
+    // that screen into the plan — the assertion had said three since, which
+    // is why this case was red on `main`.
+    expect(screen.getByText('Step 1 of 4')).toBeTruthy();
     screen.getByTestId('first-run-disclosure').click();
     view.rerender(
       <OnboardingGate>
@@ -323,7 +331,7 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
       </OnboardingGate>,
     );
     expect(screen.queryAllByTestId('first-run-engines')).toHaveLength(1);
-    expect(screen.getByText('Step 2 of 3')).toBeTruthy();
+    expect(screen.getByText('Step 2 of 4')).toBeTruthy();
   });
 
   test('a pending home is not offered the modal even with the chapter closed', () => {

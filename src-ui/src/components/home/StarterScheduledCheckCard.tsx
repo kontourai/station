@@ -12,10 +12,19 @@ import {
 import { useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { Button } from '../Button';
+import { PageCallout } from '../PageCallout';
 import { SkeletonBlock } from '../state';
 import { navigateStarterHref } from './starterNavigation';
 
 const STARTER_ID = 'run-scheduled-check' as const;
+
+/**
+ * One identity across every state this card renders. #1582 C4: it is the same
+ * page callout as Home's other offers — same border, same tone scale, same
+ * action row — rather than a fourth hand-rolled card.
+ */
+const CALLOUT_ID = 'starter-scheduled-check';
+const CALLOUT_LABEL = 'Run a scheduled readiness check';
 
 function isScheduledObservation(
   value: StarterWorkObservation | undefined,
@@ -77,13 +86,9 @@ export function StarterScheduledCheckCard() {
 
   if (loading)
     return (
-      <section
-        className="starter-work-card starter-work-card--loading"
-        aria-label="Run a scheduled readiness check"
-        aria-busy="true"
-      >
+      <PageCallout calloutId={CALLOUT_ID} ariaLabel={CALLOUT_LABEL} busy>
         <SkeletonBlock count={1} label="Checking scheduled readiness work" />
-      </section>
+      </PageCallout>
     );
 
   const terminalConcern =
@@ -93,71 +98,70 @@ export function StarterScheduledCheckCard() {
       ? launchResult
       : undefined;
   return (
-    <section
-      className="starter-work-card"
-      aria-label="Run a scheduled readiness check"
+    <PageCallout
+      calloutId={CALLOUT_ID}
+      // An owner Station cannot reach, or a check that ended badly, is not an
+      // ordinary offer — the banner scale's own word for it is `warning`.
+      tone={failed || terminalConcern ? 'warning' : 'info'}
+      ariaLabel={CALLOUT_LABEL}
+      title="Run a scheduled readiness check"
+      action={
+        href && completion === 'running' ? (
+          <Button
+            variant="primary"
+            pending={launch.isPending}
+            onClick={() => void run(true)}
+          >
+            Resume exact check
+          </Button>
+        ) : href ? (
+          <Button
+            variant="primary"
+            onClick={() => navigateStarterHref(navigate, href)}
+          >
+            {terminalConcern ? 'Inspect receipt' : 'Open scheduled check'}
+          </Button>
+        ) : failed ? (
+          <Button
+            onClick={() => {
+              void status.refetch();
+              void observation.refetch();
+            }}
+          >
+            Retry scheduled check status
+          </Button>
+        ) : blockedLaunch?.retrySafe === false ? (
+          <Button variant="primary" onClick={() => navigate('/schedule')}>
+            Open Schedule
+          </Button>
+        ) : (
+          <Button
+            variant="primary"
+            pending={launch.isPending}
+            onClick={() => void run()}
+          >
+            Run check
+          </Button>
+        )
+      }
     >
-      <div>
-        <p className="starter-work-card__title">
-          Run a scheduled readiness check
+      {failed
+        ? 'The Scheduler receipt owner is unavailable.'
+        : terminalConcern
+          ? `The exact check is ${completion}. Inspect its receipt before taking another action.`
+          : completion === 'completed'
+            ? 'The exact check completed. Its findings remain evidence input, not a gate verdict.'
+            : completion === 'running'
+              ? 'The exact check is running.'
+              : blockedLaunch
+                ? blockedLaunch.reason
+                : 'Create a disabled daily check and run it once through the real Scheduler.'}
+      {launch.isError && (
+        <p className="page-callout__notice" role="alert">
+          The response was not confirmed. Retry uses the same operation and
+          cannot start another run.
         </p>
-        <p className="starter-work-card__body">
-          {failed
-            ? 'The Scheduler receipt owner is unavailable.'
-            : terminalConcern
-              ? `The exact check is ${completion}. Inspect its receipt before taking another action.`
-              : completion === 'completed'
-                ? 'The exact check completed. Its findings remain evidence input, not a gate verdict.'
-                : completion === 'running'
-                  ? 'The exact check is running.'
-                  : blockedLaunch
-                    ? blockedLaunch.reason
-                    : 'Create a disabled daily check and run it once through the real Scheduler.'}
-        </p>
-        {launch.isError && (
-          <p className="starter-work-card__body" role="alert">
-            The response was not confirmed. Retry uses the same operation and
-            cannot start another run.
-          </p>
-        )}
-      </div>
-      {href && completion === 'running' ? (
-        <Button
-          variant="primary"
-          pending={launch.isPending}
-          onClick={() => void run(true)}
-        >
-          Resume exact check
-        </Button>
-      ) : href ? (
-        <Button
-          variant="primary"
-          onClick={() => navigateStarterHref(navigate, href)}
-        >
-          {terminalConcern ? 'Inspect receipt' : 'Open scheduled check'}
-        </Button>
-      ) : failed ? (
-        <Button
-          onClick={() => {
-            void status.refetch();
-            void observation.refetch();
-          }}
-        >
-          Retry scheduled check status
-        </Button>
-      ) : blockedLaunch?.retrySafe === false ? (
-        <Button variant="primary" onClick={() => navigate('/schedule')}>
-          Open Schedule
-        </Button>
-      ) : (
-        <Button
-          variant="primary"
-          pending={launch.isPending}
-          onClick={() => void run()}
-        >
-          Run check
-        </Button>
       )}
-    </section>
+    </PageCallout>
   );
 }
