@@ -202,14 +202,15 @@ integration remain prerequisites for enabling sustained Agent execution.
 The private control-session authority adds a separate `home:control` pairing
 permission. An operator must add it to an already-paired home. Operator
 currentness is rechecked after body buffering and parsing, so credential
-rotation while a scope-change request is pending prevents the promotion. It is absent
-from the default grant and every pairing preset, including `home-transfer`.
+rotation while a scope-change request is pending prevents the promotion. It is
+absent from the default grant and every pairing preset, including `home-transfer`.
 Transfer participation cannot open or bind a control session, and a control
 session does not authorize room access or Agent execution.
 
 The controller stores one session record per paired home, bounded to 4,096
-records in the external authority database. The record stores capability and replay secrets only as SHA-256 digests,
-alongside their identity and generation metadata. The fresh
+records in the external authority database. The record stores capability and
+replay secrets only as SHA-256 digests, alongside their identity and generation
+metadata. The fresh
 256-bit capability and 256-bit replay secret remain in runtime memory and must
 never be written to a Station home, Project, peer record, log or portable
 archive. A new open or same-process retry supplies the open ID and replay
@@ -217,8 +218,9 @@ secret. Knowing the inspectable open ID or copying the pairing credential is
 insufficient to recover the cached capability. After restart, a caller may
 instead present the exact retained capability. If the controller loses its
 replay cache and the runtime has no retained capability, the result is
-`recovery-required`, even if the runtime still knows the replay secret. A different open cannot replace an active
-session. There is no timeout, process-ID expiry or automatic deletion path.
+`recovery-required`, even if the runtime still knows the replay secret. A
+different open cannot replace an active session. There is no timeout,
+process-ID expiry or automatic deletion path.
 
 Operator retirement names the exact paired device and expected session
 generation. It refuses while any admission for that home remains unresolved.
@@ -241,9 +243,19 @@ Binding also fixes the admission kind and requires the exact current owner
 channel/revision plus a separate caller-owned synchronous local-authority guard.
 Historical finished admission replay returns `settled`, never permission to
 repeat an effect. The caller must verify a durable local effect receipt before
-finishing; a stored receipt digest
-does not independently verify it. This is private foundation only: no HTTP
-route, bootstrap composition, room writer or Agent launch path uses it yet.
+finishing; a stored receipt digest does not independently verify it.
+
+The personal-controller prototype exposes only these control-session endpoints:
+
+| Method and path | Authority and result |
+| --- | --- |
+| `POST /api/home-authority/control-sessions/open` | A current `home:control` participant submits an exact open/replay body and receives a no-store capability observation. |
+| `POST /api/home-authority/control-sessions/:deviceId/inspect` | The current operator reads generation, state and unresolved count without capability material. |
+| `POST /api/home-authority/control-sessions/:deviceId/retire` | The current operator conditionally retires the exact expected generation. |
+
+Every response keeps execution-transfer and resume flags false. There is no
+admission begin/finish endpoint, room writer, Agent launch or target activation
+in this slice.
 
 ## Private operator receipt reconciliation
 
@@ -274,6 +286,7 @@ From an isolated repository worktree with managed dependencies installed:
 
 ```bash
 npm run test:focused -- \
+  src-server/routes/environments/__tests__/home-control-session-routes.test.ts \
   src-server/services/orchestration/__tests__/planned-home-control-session-authority.test.ts \
   src-server/services/orchestration/__tests__/planned-home-admission-reconciliation.test.ts \
   src-server/services/orchestration/__tests__/planned-home-admission-store.test.ts \

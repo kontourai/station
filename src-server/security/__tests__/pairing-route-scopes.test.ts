@@ -111,6 +111,29 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
     );
   });
 
+  test('keeps control-session participation and operator administration on exact rules', () => {
+    expect(
+      requiredPairingScope('POST', '/api/home-authority/control-sessions/open'),
+    ).toBe('home:control');
+    for (const leaf of ['inspect', 'retire']) {
+      expect(
+        requiredPairingScope(
+          'POST',
+          `/api/home-authority/control-sessions/device-a/${leaf}`,
+        ),
+      ).toBe('access:manage');
+    }
+    expect(
+      requiredPairingScope('GET', '/api/home-authority/control-sessions/open'),
+    ).toBe('home:transfer');
+    expect(
+      requiredPairingScope(
+        'POST',
+        '/api/home-authority/control-sessions/device-a/unknown',
+      ),
+    ).toBe('home:transfer');
+  });
+
   test('a standard paired chat tier admits every attachment staging control leaf', () => {
     const standard = pairingScopePresetString('standard');
     const chatScope = requiredPairingScope('POST', '/api/orchestration/chat');
