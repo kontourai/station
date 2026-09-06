@@ -130,7 +130,50 @@ describe('local UI access readiness wait', () => {
     const { observation: port } = observation([]);
 
     await expect(waitForLocalUiAccessReadinessThrough(port)).rejects.toThrow(
-      'the access gate never settled. On screen: the gate’s "taking longer than expected" alert. Recovery reloads taken: 0.',
+      'the access gate never settled. On screen: the gate’s "taking longer than expected" alert.',
+    );
+  });
+
+  test('a still-pending gate is waited through, not failed', async () => {
+    // 'pending' is what the degraded alert reads as: the gate has not answered
+    // yet, and `useDegradedQueryState` clears that state on a later success.
+    const { observation: port, state } = observation([
+      'pending',
+      'pending',
+      'ready',
+    ]);
+
+    await expect(waitForLocalUiAccessReadinessThrough(port)).resolves.toEqual({
+      hostRecoveryReloads: 0,
+    });
+    expect(state.waits).toEqual([20_000, 19_000, 18_000]);
+  });
+
+  test('a timeout after recovery reloads does not claim the gate never settled', async () => {
+    const { observation: port } = observation(['host-unavailable'], {
+      pendingScreenDetail: async () => '"Reconnecting to this Station"',
+    });
+
+    await expect(
+      waitForLocalUiAccessReadinessThrough(port, 1_500),
+    ).rejects.toThrow(
+      'the access gate settled into its host-recovery screen 1 time(s) and the deadline expired with no protected shell. On screen: "Reconnecting to this Station".',
+    );
+  });
+
+  test("a recovery screen with no way forward surfaces the reload's own reason", async () => {
+    // The adapter rejects when the screen offers no control. The wait must let
+    // that sentence through rather than converting it into a timeout report.
+    const { observation: port } = observation(['host-unavailable'], {
+      reloadAfterHostRecovery: async () => {
+        throw new Error(
+          'the access gate\'s host-recovery screen offered no "Try again" control',
+        );
+      },
+    });
+
+    await expect(waitForLocalUiAccessReadinessThrough(port)).rejects.toThrow(
+      'the access gate\'s host-recovery screen offered no "Try again" control',
     );
   });
 
@@ -147,7 +190,7 @@ describe('local UI access readiness wait', () => {
 
     await expect(
       waitForLocalUiAccessReadinessThrough(port, 1_500),
-    ).rejects.toThrow('the access gate never settled');
+    ).rejects.toThrow('the deadline expired with no protected shell');
     // 1s wait + 1s reload overran the 1.5s budget, so no second wait was made.
     expect(state.waits).toEqual([1_500]);
   });
