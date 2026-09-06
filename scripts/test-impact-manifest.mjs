@@ -181,9 +181,25 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
 /** Deterministic, reviewable edges the runtime dependency graph cannot see. */
 export const TEST_IMPACT_MANIFEST = Object.freeze([
   {
+    pattern: 'src-desktop/Cargo.toml',
+    tests: ['scripts/__tests__/tauri-webdriver-boundary.test.ts'],
+    reason: 'embedded WebDriver dependency boundary',
+  },
+  {
+    pattern: 'src-desktop/tauri.webdriver.conf.json',
+    tests: ['scripts/__tests__/tauri-webdriver-boundary.test.ts'],
+    reason: 'embedded WebDriver application identity boundary',
+  },
+  {
+    pattern: 'tests/tauri-shell/direct-webdriver.ts',
+    tests: ['scripts/__tests__/tauri-webdriver-boundary.test.ts'],
+    reason: 'embedded WebDriver test harness boundary',
+  },
+  {
     pattern: 'src-server/runtime/routes/runtime-routes.ts',
     tests: [
       'src-server/runtime/routes/__tests__/runtime-routes-hosted-mcp-composition.test.ts',
+      'src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts',
     ],
     reason: 'runtime route composition and hosted MCP capability coverage',
   },
@@ -192,6 +208,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
       'src-server/services/orchestration/completed-task-dispatch-recovery.ts',
     tests: [
       'src-server/runtime/routes/__tests__/runtime-routes-hosted-mcp-composition.test.ts',
+      'src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts',
       'src-server/services/orchestration/__tests__/completed-task-dispatch-recovery.test.ts',
     ],
     reason: 'boot-time dispatch recovery must compose with runtime routes',
@@ -545,7 +562,10 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   },
   {
     pattern: 'src-desktop/src/lib.rs',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
+    tests: [
+      'scripts/__tests__/native-recovery-docs.test.ts',
+      'scripts/__tests__/tauri-webdriver-boundary.test.ts',
+    ],
     reason: 'native window, logging, and activation documentation source seam',
   },
   {
