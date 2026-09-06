@@ -1905,7 +1905,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessions,
     activeSessionId,
     activeSession,
-    setActiveSessionId,
+    onNewChat: openNewChatDirect,
     setShowSessionPicker,
     focusSession: focusSessionInPane,
   });
