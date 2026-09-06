@@ -1566,15 +1566,6 @@
   }
 
   /* Stack the chat CTA so the button is full-width and tappable */
-  .project-page__chat-cta {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .project-page__chat-cta-btn {
-    width: 100%;
-    min-height: 44px;
-  }
-
   /* Namespace config bar: stack label/input/checkbox vertically */
   .project-page__ns-config {
     flex-direction: column;
@@ -1585,48 +1576,4 @@
   .project-page__conversation-item {
     min-height: 44px;
   }
-}
-
-.project-page__chat-cta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-  padding: 1rem 1.25rem;
-  background: var(--bg-elevated, var(--bg-secondary));
-  border: 1px solid var(--accent-primary);
-  border-radius: 10px;
-}
-
-.project-page__chat-cta-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
-.project-page__chat-cta-text strong {
-  color: var(--text-primary);
-  font-size: var(--text-md);
-}
-
-.project-page__chat-cta-text span {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
-.project-page__chat-cta-btn {
-  flex-shrink: 0;
-  padding: 0.55rem 1.1rem;
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-  border: none;
-  border-radius: 8px;
-  font-size: var(--text-base);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.project-page__chat-cta-btn:hover {
-  background: var(--accent-hover-fill);
 }

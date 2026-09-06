@@ -14,7 +14,7 @@ const primaryBtnStyle: React.CSSProperties = {
   border: 'none',
   cursor: 'pointer',
   background: 'var(--accent-primary, #3b82f6)',
-  color: 'var(--accent-contrast, white)',
+  color: 'var(--text-on-accent, white)',
 };
 
 const secondaryBtnStyle: React.CSSProperties = {

@@ -622,6 +622,34 @@ describe('ProjectPage (#762 query-failure regression)', () => {
       expect(screen.queryByText(/Chat with Station/)).toBeNull();
     });
 
+    test('#1582 C4: it is the shared page callout, with its copy unchanged', async () => {
+      // It used to be an inline card with its own border, its own text ramp
+      // and a hand-rolled accent button — one of the three visual systems
+      // Home and this page used for the same kind of offer.
+      readyCodex();
+
+      await renderProjectPage();
+
+      const callout = document.querySelector(
+        '[data-callout-id="project-chat-cta"]',
+      );
+      expect(
+        callout,
+        'the CTA does not render through PageCallout',
+      ).toBeTruthy();
+      expect(callout?.className).toContain('page-callout--info');
+      expect(callout?.querySelector('.page-callout__title')?.textContent).toBe(
+        'New here? Chat with Codex to get started.',
+      );
+      expect(callout?.querySelector('.page-callout__body')?.textContent).toBe(
+        'Ask a question or describe a task — no setup required.',
+      );
+      expect(
+        callout?.querySelector('.page-callout__action .button--primary')
+          ?.textContent,
+      ).toBe('Start a chat');
+    });
+
     test('withholds the banner, and its no-setup promise, when nothing can start a chat', async () => {
       readyCodex();
       sdkMocks.engineConnections = [

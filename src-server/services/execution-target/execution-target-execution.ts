@@ -255,6 +255,8 @@ export class ContinuationWorkspaceError extends Error {
 
 export interface ExecutionTargetExecutionDependencies
   extends ExecutionTargetResolverDependencies {
+  /** Private local owner: native prompt history supplies its own authorized lineage. */
+  nativeMemoryOwnsTranscript?: boolean;
   readSessionBinding: (
     access: EnvironmentAccess,
     sessionId: string,
@@ -791,15 +793,19 @@ export async function executeForegroundMessage(
         clientTurnId: effectiveClientTurnId ?? '',
       })
     : input.attachments;
+  const transcriptSeed =
+    resolved.provider === 'station-agent' && deps.nativeMemoryOwnsTranscript
+      ? undefined
+      : continuation?.transcriptSeed;
   const turn = await deps.sendTurn(
     resolved.access,
     {
       threadId: sessionId,
       input: message,
       ...(attachments ? { attachments } : {}),
-      ...(continuation?.transcriptSeed || input.ambientContext
+      ...(transcriptSeed || input.ambientContext
         ? {
-            ambientContext: [continuation?.transcriptSeed, input.ambientContext]
+            ambientContext: [transcriptSeed, input.ambientContext]
               .filter(
                 (value): value is string =>
                   typeof value === 'string' && value.trim().length > 0,
