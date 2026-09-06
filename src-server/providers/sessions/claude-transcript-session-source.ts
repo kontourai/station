@@ -61,6 +61,7 @@ export interface ClaudeTranscriptSessionSourceOptions {
  */
 export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
   readonly provider = 'claude';
+  readonly kind = 'claude-transcript';
   private readonly projectsDir: string;
   private readonly maxCandidates: number;
   private readonly maxBytes: number;
