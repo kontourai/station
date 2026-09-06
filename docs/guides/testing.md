@@ -384,10 +384,18 @@ Two consequences worth stating plainly:
   own commit that changes nothing else. A regeneration on a developer machine
   bakes in that machine's fonts along with whatever upstream drift has
   accumulated, under whoever happens to be holding the branch.
-- **Bump the container digest in lockstep with `@playwright/test`**, and expect
-  a re-baseline to be part of that change. A rebuilt base image published under
+- **Bump the container in lockstep with `@playwright/test`**, and expect a
+  re-baseline to be part of that change. A rebuilt base image published under
   the same tag is a different renderer wearing the same name, which is why the
   pin is a digest rather than `v1.62.1-noble`.
+
+  What is enforced, and what is not: `ci-workflow-contract.test.ts` asserts the
+  **version** in the image reference equals the `@playwright/test` version
+  resolved in `pnpm-lock.yaml` (the lockfile, not the caret range in
+  `package.json`, so a resolved minor bump cannot slip past). The **digest** is
+  not checked and cannot be — nothing in this repository derives it. A digest
+  that no longer matches its tag's contents therefore surfaces as a Playwright
+  launch error in the nightly, not as a silent renderer change.
 
 `.github/workflows/gallery-freshness.yml` asserts daily that the gallery gate
 has actually **concluded success** within 36 hours, via

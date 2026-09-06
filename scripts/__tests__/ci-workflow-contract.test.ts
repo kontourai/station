@@ -8,6 +8,7 @@ import {
   REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
   readWorkflowDocuments,
 } from '../actionlint-gate.mjs';
+import { readPnpmLockfile } from '../lib/pnpm-lockfile.mjs';
 import {
   resolveAndroidBuildRun,
   sanitizeLookupDiagnostic,
@@ -629,10 +630,36 @@ describe('CI verification workflow contracts', () => {
     // published under the same tag is a different renderer wearing the same
     // name. Bump it in lockstep with `@playwright/test`.
     expect(gallery).toContain('runs-on: ubuntu-22.04');
-    expect(gallery).toMatch(
-      /image: mcr\.microsoft\.com\/playwright:v[\d.]+-\w+@sha256:[0-9a-f]{64}$/m,
+    const container = gallery.match(
+      /image: mcr\.microsoft\.com\/playwright:v(?<version>[\d.]+)-\w+@sha256:(?<digest>[0-9a-f]{64})$/m,
     );
+    expect(container?.groups?.digest).toEqual(expect.any(String));
     expect(gallery).not.toContain('runs-on: [self-hosted');
+
+    // The container IS the renderer, so the Playwright inside it must be the
+    // Playwright that drives it. The digest cannot be derived from anything in
+    // this repository — that half stays unverifiable, and a skew there surfaces
+    // as a Playwright launch error rather than silently. The VERSION in the tag
+    // can be derived, and it is the half worth guarding: a bump to
+    // `@playwright/test` that leaves the image behind would otherwise only be
+    // discovered by a nightly that nobody is watching closely.
+    //
+    // The oracle is the LOCKFILE, not `package.json`. The declared specifier is
+    // a caret range (`^1.62.1`), so comparing against the declaration would
+    // miss exactly the case that matters — a resolved minor bump that installs
+    // a Playwright the pinned image does not contain.
+    const resolvedPlaywright = (
+      readPnpmLockfile(root) as {
+        importers: Record<
+          string,
+          { devDependencies?: Record<string, { version?: unknown }> }
+        >;
+      }
+    ).importers['.']?.devDependencies?.['@playwright/test']?.version;
+    expect(resolvedPlaywright).toEqual(expect.any(String));
+    // pnpm appends peer suffixes to some resolutions; the version is the head.
+    const installedVersion = String(resolvedPlaywright).replace(/\(.*$/, '');
+    expect(container?.groups?.version).toBe(installedVersion);
     // runner-preflight reports the capabilities of a SELF-HOSTED runner; it
     // has nothing to assert about a hosted container.
     expect(gallery).not.toContain('runner-preflight@');
