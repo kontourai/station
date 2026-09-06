@@ -967,7 +967,7 @@ test('GET / reads each persisted definition once and refreshes the catalog on th
         }),
       ]),
     );
-    expect(agentFileReads.toSorted()).toEqual(
+    expect([...agentFileReads].sort()).toEqual(
       ['registered', 'unregistered'].map((slug) =>
         join(home, 'agents', slug, 'agent.json'),
       ),

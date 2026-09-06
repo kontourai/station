@@ -407,6 +407,7 @@ export class AgentService {
     coreAgents: Array<{ id: string; [key: string]: any }>,
     resolveAgentAvailability?: (spec: AgentSpec) => string | null,
   ): Promise<EnrichedAgent[]> {
+    agentOps.add(1, { operation: 'list' });
     const entries = (await this.configLoader.readAgentCatalog()).map(
       ({ metadata, spec }) => ({
         metadata,
