@@ -106,8 +106,19 @@ sentinel. All six were observed live:
    at all. When the same gate later ran in a proper worktree, it did fail — but
    the first red was worth nothing, and believing it would have attributed
    someone else's break to the wrong cause.
+7. **The green was about a corpus that did not contain the subject.** (6)'s
+   mirror, and the same `git ls-files` from the other side: a gate scoped that
+   way cannot see an untracked file, so on any change that ADDS one, a
+   pre-`git add` green is evidence about a corpus the new file was not in.
+   `scripts/mobile-css-ratchet.mjs` was reported green on a new stylesheet and
+   was red the moment it was staged — same bytes, PASS untracked and FAIL
+   tracked. What makes this one dangerous is the contrast with its neighbours:
+   `verification:policy:gate` announces its own blindness (`include non-tracked
+   test file`) while the ratchet is simply silent, so silence read as success.
+   **Run `git ls-files`-scoped gates after staging**, and treat any gate that
+   discovers its own inputs as unrun until its subject is in the index.
 
-The rule that covers all six: **read the output, not the colour** — including
+The rule that covers all seven: **read the output, not the colour** — including
 when the colour is green.
 
 ### A count is not a reading
