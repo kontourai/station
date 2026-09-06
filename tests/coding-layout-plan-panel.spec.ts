@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { contrastRatio } from './helpers/color-contrast';
 import {
   emitMockOrchestrationEvent,
   installMockOrchestrationSse,
@@ -188,35 +189,11 @@ test.describe('Coding Layout Inspector — expanded (a tool configured)', () => 
     await expect(page.locator('.workflow-plan-panel')).toBeHidden();
   });
 
-  test('verdict StatusBadge uses the tone contrast color (not muted)', async ({
-    page,
-  }) => {
-    // Regression for the Console Kit `.status`/`.tone-*` source-order bug: the
-    // `.status` base set `color: var(--k-text-muted)` declared after the tone
-    // rules, so it clobbered the tone's contrast color — rendering a
-    // low-contrast badge (light-grey text on a saturated tone background). The
-    // verdict text must resolve to the tone's `--k-brand-contrast`, not muted.
+  test('verdict StatusBadge has readable contrast', async ({ page }) => {
     await selectWorkspacePane(page, 'Readiness');
     const verdict = page.locator('.status.tone-negative').first();
     await expect(verdict).toBeVisible();
-    const { color, contrast, muted } = await verdict.evaluate((el) => {
-      const cs = getComputedStyle(el);
-      const probe = (name: string) => {
-        const d = document.createElement('span');
-        d.style.color = `var(${name})`;
-        el.appendChild(d);
-        const v = getComputedStyle(d).color;
-        el.removeChild(d);
-        return v;
-      };
-      return {
-        color: cs.color,
-        contrast: probe('--k-brand-contrast'),
-        muted: probe('--k-text-muted'),
-      };
-    });
-    expect(color).toBe(contrast);
-    expect(color).not.toBe(muted);
+    expect(await contrastRatio(verdict)).toBeGreaterThanOrEqual(4.5);
   });
 
   test('hosts coding and inspector surfaces as independently selectable panes', async ({
@@ -405,9 +382,13 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
       })
       .click();
     await expect(page.getByText('README.md', { exact: true })).toBeVisible();
-    const readme = page.getByRole('button', { name: 'README.md' });
+    const readme = page
+      .getByRole('region', { name: 'File tree', exact: true })
+      .getByRole('button', { name: /README\.md$/ });
     await readme.click();
-    await expect(readme).toHaveClass(/file-tree-row--selected/);
+    await expect(
+      page.getByText('State stays here.', { exact: false }),
+    ).toBeVisible();
 
     await page.getByRole('button', { name: 'Back to pane tabs' }).click();
     await surfaces
@@ -421,11 +402,13 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
     await page.getByRole('button', { name: 'Back to pane tabs' }).click();
     await surfaces
       .getByRole('tab', {
-        name: 'Files',
+        name: 'File Preview — README.md',
         exact: true,
       })
       .click();
-    await expect(readme).toHaveClass(/file-tree-row--selected/);
+    await expect(
+      page.getByText('State stays here.', { exact: false }),
+    ).toBeVisible();
     await page.getByRole('button', { name: 'Back to pane tabs' }).click();
     await surfaces
       .getByRole('tab', {

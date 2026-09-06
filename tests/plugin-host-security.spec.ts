@@ -362,7 +362,7 @@ function paneCatalog() {
         instanceId: 'hostile-instance',
         version: '1.0.0',
         stateKey: 'hostile',
-        boundContext: { contribution },
+        boundContext: { projectId: 'hostile', contribution },
       },
     ],
     availability: [

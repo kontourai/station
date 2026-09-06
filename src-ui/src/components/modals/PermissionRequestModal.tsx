@@ -4,10 +4,7 @@ import type {
 } from '@kontourai/station-contracts/plugin';
 import { describePermission } from '../../core/permission-vocabulary';
 import { Button } from '../Button';
-import {
-  ResponsiveDialogSurface,
-  ResponsiveSurfaceActions,
-} from '../ResponsiveDialogSurface';
+import { Dialog } from '../Dialog';
 
 const TIER_STYLES: Record<
   PermissionTier,
@@ -48,16 +45,28 @@ export function PermissionRequestModal({
   onDeny: () => void;
 }) {
   return (
-    <ResponsiveDialogSurface
-      ariaLabel={
+    <Dialog
+      title={
         request.decisionOnly ? 'Install this plugin?' : 'Permission Request'
       }
       onClose={onDeny}
-      panelStyle={{ maxWidth: 480, padding: '1.5rem' }}
+      closeLabel="Close permission request"
+      size="sm"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onDeny}>
+            Deny
+          </Button>
+          <Button onClick={onApprove}>
+            {request.decisionOnly
+              ? 'Install'
+              : request.permissions.some((p) => p.tier === 'trusted')
+                ? 'Review trusted access'
+                : 'Approve'}
+          </Button>
+        </>
+      }
     >
-      <h3 style={{ margin: '0 0 4px', fontSize: '1rem' }}>
-        {request.decisionOnly ? 'Install this plugin?' : 'Permission Request'}
-      </h3>
       <p
         style={{
           margin: '0 0 1rem',
@@ -141,19 +150,6 @@ export function PermissionRequestModal({
             : 'Approval opens a separate, host-owned review page that plugin code cannot submit for you.'}
         </div>
       )}
-
-      <ResponsiveSurfaceActions>
-        <Button variant="secondary" onClick={onDeny}>
-          Deny
-        </Button>
-        <Button onClick={onApprove}>
-          {request.decisionOnly
-            ? 'Install'
-            : request.permissions.some((p) => p.tier === 'trusted')
-              ? 'Review trusted access'
-              : 'Approve'}
-        </Button>
-      </ResponsiveSurfaceActions>
-    </ResponsiveDialogSurface>
+    </Dialog>
   );
 }

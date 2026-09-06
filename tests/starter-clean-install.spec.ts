@@ -62,7 +62,9 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
     await page.getByRole('button', { name: 'Continue Without Setup' }).click();
     const disclosure = page.getByTestId('first-run-disclosure');
     await expect(disclosure).toBeVisible({ timeout: 20_000 });
-    await disclosure.getByRole('button', { name: 'I understand' }).click();
+    await disclosure
+      .getByRole('button', { name: /^(Turn it off|Keep usage telemetry off)$/ })
+      .click();
     const engineChapter = page.getByTestId('first-run-engines');
     await expect(engineChapter).toBeVisible({ timeout: 20_000 });
     await engineChapter.getByRole('button', { name: 'Not now' }).click();

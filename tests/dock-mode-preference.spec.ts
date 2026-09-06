@@ -507,36 +507,6 @@ test.describe('Dock Mode Preference', () => {
     expect(url.searchParams.has('dockSlotPlacement')).toBe(false);
   });
 
-  test('an explicit dock-mode choice from the chat settings panel persists to the device-scope store', async ({
-    page,
-  }) => {
-    await page.goto('/');
-    await settleDock(page);
-    await dismissSetupLauncher(page);
-
-    await page.locator('.chat-dock__header').click();
-    await settleDock(page);
-    await page.getByTitle('Chat settings').click();
-
-    const modal = page.locator('.chat-settings-modal');
-    await expect(modal).toBeVisible();
-    await modal.getByRole('menuitemradio', { name: 'Right' }).click();
-    await modal.getByRole('button', { name: 'Done' }).click();
-
-    const persistedDockMode = await page.evaluate(() => {
-      const raw = localStorage.getItem('station-device-settings-v1');
-      const envelope = raw ? JSON.parse(raw) : null;
-      return envelope?.values?.dockSlotPlacement ?? null;
-    });
-    expect(persistedDockMode).toBe('right');
-
-    // And the URL param still wins on this same page (existing behavior),
-    // confirming the write-both contract rather than one replacing the
-    // other.
-    const url = new URL(page.url());
-    expect(url.searchParams.get('dockSlotPlacement')).toBe('right');
-  });
-
   test('drag left then right persists across reload, and the keyboard placement menu converges on that state', async ({
     page,
   }) => {
@@ -594,6 +564,7 @@ test.describe('Dock Mode Preference', () => {
     await dismissSetupLauncher(page);
     await expect(page.locator('.chat-dock')).toHaveClass(/chat-dock--bottom/);
 
+    await page.locator('.chat-dock__header').hover();
     await page.getByRole('button', { name: 'Move the dock' }).click();
     const menu = page.getByRole('menu', { name: 'Dock placement' });
     await expect(menu).toBeVisible();
@@ -645,9 +616,12 @@ test.describe('Dock Mode Preference', () => {
     await settleDock(page);
     await dismissSetupLauncher(page);
     await page.locator('.chat-dock__header').click();
-    await page.getByTitle('Chat settings').click();
-    await page.getByRole('menuitemradio', { name: 'Right' }).click();
-    await page.getByRole('button', { name: 'Done' }).click();
+    await page.locator('.chat-dock__header').hover();
+    await page.getByRole('button', { name: 'Move the dock' }).click();
+    await page
+      .getByRole('menu', { name: 'Dock placement' })
+      .getByRole('menuitemradio', { name: 'Right' })
+      .click();
     await expect(page.locator('.chat-dock')).toHaveClass(/chat-dock--right/);
 
     await page.setViewportSize({ width: 390, height: 844 });

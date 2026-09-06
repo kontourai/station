@@ -96,7 +96,7 @@
     {
       "path": "src-ui/src/components/modals/ConfirmModal.tsx",
       "strategy": "covered",
-      "contract": "ResponsiveDialogSurface",
+      "contract": "Dialog",
       "evidence": "src-ui/src/components/modals/__tests__/ConfirmModal.test.tsx"
     },
     {
@@ -128,7 +128,7 @@
     {
       "path": "src-ui/src/components/modals/PermissionRequestModal.tsx",
       "strategy": "covered",
-      "contract": "ResponsiveDialogSurface",
+      "contract": "Dialog",
       "evidence": "src-ui/src/core/__tests__/PermissionManager.installConsent.test.tsx; tests/builder-delivery-viewer.spec.ts; tests/fieldwork-review.spec.ts; tests/survey-review-workbench.spec.ts"
     },
     {
