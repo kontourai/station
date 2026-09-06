@@ -507,15 +507,20 @@ export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
    * Station never saw a result, and cannot tell whether the tool ran. Every
    * adapter that tracks its open calls settles them this way when its
    * session ends (station#1569 item 4 extended this past Claude to ACP,
-   * Codex and station-agent) — including a session superseded by a restart
-   * on the same thread, whose calls settle on their OWN turns because every
-   * terminal carries the turnId that issued the call and both folds
-   * attribute by turn. What such a record withholds is only what is
-   * thread-keyed rather than turn-keyed: `session.exited`, which a client
-   * reads as "this thread's session ended" and which would close the
-   * successor's still-running cards. Claude and Codex agree on this
-   * (station#1586 item 3 removed the asymmetry; Codex previously published
-   * nothing at all for a superseded record). It is
+   * Codex and station-agent).
+   *
+   * A session SUPERSEDED by a restart on the same thread settles its own
+   * calls too, on their OWN turns — every terminal carries the turnId that
+   * issued the call and both folds attribute by turn — while withholding
+   * what is thread-keyed rather than turn-keyed: `session.exited`, which a
+   * client reads as "this thread's session ended" and which would close the
+   * successor's still-running cards. For Claude that is an observed path
+   * (`stopSession` removes the record before awaiting its drain, so a
+   * restart during that window is real). Codex's transport takes the same
+   * decision on the same shape, but as a defensive branch: its registration
+   * lifecycle admits no restart mid-drain today, so nothing production
+   * reaches it with an open call (station#1586 item 3; see
+   * `codex-adapter-transport.ts`'s `finalizeUnexpectedExit`). It is
    * NOT a failure (nothing observed the tool fail) and NOT a cancellation
    * (nobody asked for it to stop); folding it into either would be a claim
    * Station cannot support. Without it, the row simply stayed "running"

@@ -241,6 +241,31 @@ vi.mock('../bootstrap/store-integrity-verification.js', () => ({
   startStoreIntegrityVerification: storeIntegrityVerification.start,
 }));
 
+/**
+ * station#1586 (item 6, fix round M2): boot fires the engine prerequisite
+ * priming, and the real thing resolves the host's `claude` and SPAWNS it for
+ * a version probe (plus a credentials read) — inside a suite whose whole
+ * point is a hermetic cold boot, after its assertions, on whatever the dev
+ * machine happens to have installed. Mocked for the same reason
+ * `checkOllamaAvailability` and `checkBedrockCredentials` are above; the
+ * priming's own behaviour is proven in
+ * `bootstrap/__tests__/engine-prerequisite-priming.test.ts`, and the call
+ * recorded here is what proves boot actually performs it.
+ */
+const enginePrerequisitePriming = vi.hoisted(() => ({
+  calls: [] as Array<{ adapters: unknown[]; signal?: AbortSignal }>,
+  primeEnginePrerequisites: vi.fn(),
+}));
+vi.mock('../bootstrap/engine-prerequisite-priming.js', () => ({
+  primeEnginePrerequisites: (options: {
+    adapters: unknown[];
+    signal?: AbortSignal;
+  }) => {
+    enginePrerequisitePriming.calls.push(options);
+    return Promise.resolve();
+  },
+}));
+
 const { StationRuntime } = await import('../bootstrap/station-runtime.js');
 const { BedrockAdapter } = await import(
   '../../providers/adapters/bedrock-adapter.js'
@@ -307,6 +332,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     }
     storeIntegrityVerification.start.mockClear();
     storeIntegrityVerification.stop.mockClear();
+    enginePrerequisitePriming.calls.length = 0;
     routeMocks.configureRuntimeRoutes.mockClear();
     routeMocks.servicePairs.length = 0;
     routeMocks.taskDispatches.length = 0;
@@ -369,6 +395,60 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     // is left racing the (about-to-be-deleted) home directory.
     expect(bootSettled).toBe(true);
     await boot;
+  });
+
+  it('primes engine prerequisites once at boot, on a signal shutdown aborts (station#1586)', async () => {
+    // The boot wiring itself: the priming module's own suite proves what one
+    // prime does, and nothing proved that a real cold boot performs it. It
+    // also pins the shutdown coupling — an unsignalled fire-and-forget is
+    // what let a boot-time host probe outlive the runtime that started it.
+    home = await createSchemaHome('station-coldstart-prime-');
+    mkdirSync(join(home, 'config'), { recursive: true });
+    writeFileSync(
+      join(home, 'config', 'app.json'),
+      JSON.stringify({
+        defaultModel: '',
+        invokeModel: '',
+        structureModel: '',
+        systemPrompt: 'You are {{AGENT_NAME}}.',
+        templateVariables: [],
+        region: 'eu-west-1',
+      }),
+    );
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    replaceTerminalListener(runtime);
+    vi.spyOn(
+      runtime as unknown as { resolveBuiltinEngineBinding: () => unknown },
+      'resolveBuiltinEngineBinding',
+    ).mockResolvedValue(null);
+    vi.spyOn(OllamaLLMProvider.prototype, 'healthCheck').mockResolvedValue(
+      false,
+    );
+    vi.spyOn(MCPManager, 'loadAgentTools').mockResolvedValue([]);
+
+    await expect(runtime.initialize()).resolves.toBeUndefined();
+
+    expect(enginePrerequisitePriming.calls).toHaveLength(1);
+    const [primed] = enginePrerequisitePriming.calls;
+    // The adapter the runtime itself constructed and registered — priming a
+    // different instance would warm a memo no session ever reads.
+    expect(primed.adapters).toEqual([
+      (runtime as unknown as { claudeAdapter: unknown }).claudeAdapter,
+    ]);
+    // Live at boot…
+    expect(primed.signal).toBeInstanceOf(AbortSignal);
+    expect(primed.signal?.aborted).toBe(false);
+
+    await runtime.shutdown();
+    runtime = undefined;
+    // …and closed by shutdown, so the priming cannot wait on work the runtime
+    // no longer has a use for. (It does not kill a probe child already
+    // spawned — see `enginePrerequisitePrimingAbort`'s doc.)
+    expect(primed.signal?.aborted).toBe(true);
   });
 
   it('restores a saved usage-telemetry disclosure receipt during runtime bootstrap (#2015)', async () => {

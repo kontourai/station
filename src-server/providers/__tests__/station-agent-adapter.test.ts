@@ -8,6 +8,7 @@ import {
 import { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { tenantExecutionContextOutcomes } from '../../telemetry/metrics.js';
+import type { PendingIdlessToolCall } from '../adapters/station-agent-adapter.js';
 import {
   mapStationAgentStreamEvent,
   readChatRejectionReason,
@@ -80,7 +81,7 @@ describe('mapStationAgentStreamEvent — tool-result relay (station#3113, #3117)
       threadId: 'thread-1',
       turnId: 'turn-1',
       publish: (e) => published.push(e),
-      pendingIdlessToolCallIds: [],
+      pendingIdlessToolCalls: [],
     });
     return published;
   }
@@ -182,7 +183,7 @@ describe('mapStationAgentStreamEvent — tool-result relay (station#3113, #3117)
 describe('mapStationAgentStreamEvent — id-less tool chunks (station#1586 item 2)', () => {
   function relay(
     events: Array<Record<string, unknown>>,
-    pendingIdlessToolCallIds: string[] = [],
+    pendingIdlessToolCalls: PendingIdlessToolCall[] = [],
   ) {
     const published: CanonicalRuntimeEvent[] = [];
     const reports = events.map((event) =>
@@ -191,10 +192,10 @@ describe('mapStationAgentStreamEvent — id-less tool chunks (station#1586 item 
         threadId: 'thread-idless',
         turnId: 'turn-1',
         publish: (e) => published.push(e),
-        pendingIdlessToolCallIds,
+        pendingIdlessToolCalls,
       }),
     );
-    return { published, reports, pendingIdlessToolCallIds };
+    return { published, reports, pendingIdlessToolCalls };
   }
 
   test('an id-less call and its id-less result publish as one row', () => {
@@ -241,7 +242,7 @@ describe('mapStationAgentStreamEvent — id-less tool chunks (station#1586 item 
   });
 
   test('an id-less result with nothing pending still publishes, and reports that it paired with nothing', () => {
-    const { published, reports, pendingIdlessToolCallIds } = relay([
+    const { published, reports, pendingIdlessToolCalls } = relay([
       { type: 'tool-result', toolName: 'repo_write', output: 'written' },
     ]);
 
@@ -257,13 +258,13 @@ describe('mapStationAgentStreamEvent — id-less tool chunks (station#1586 item 
     expect(reports[0].unpairedToolResult).toBe(true);
     // …and it settles nothing, because nothing was opened under that id.
     expect(reports[0].toolSettled).toBeUndefined();
-    expect(pendingIdlessToolCallIds).toEqual([]);
+    expect(pendingIdlessToolCalls).toEqual([]);
   });
 
   test('a chunk that carries its own id never consumes a pending id-less call', () => {
     // The discriminating control for the FIFO: pairing is for chunks with no
     // identity of their own, and must not steal one from a chunk that has it.
-    const pending: string[] = [];
+    const pending: PendingIdlessToolCall[] = [];
     const { published } = relay(
       [
         { type: 'tool-call', toolName: 'idless_tool', input: {} },
@@ -282,7 +283,76 @@ describe('mapStationAgentStreamEvent — id-less tool chunks (station#1586 item 
     expect((published[1] as unknown as { toolCallId: string }).toolCallId).toBe(
       'call-real',
     );
-    expect(pending).toEqual([idlessId]);
+    expect(pending).toEqual([
+      { toolCallId: idlessId, toolName: 'idless_tool' },
+    ]);
+  });
+
+  /**
+   * station#1586 (fix round, L5): the asymmetric shape — a call that DID
+   * carry an id whose result arrives without one, while a different id-less
+   * call is still open. Order alone hands that result the other call's
+   * minted id: one call's output on another's row, and the identified call
+   * left to settle as a false "no result was reported". The reported tool
+   * name is the only thing in the chunks that can refuse it.
+   */
+  test('an id-less result does not claim a pending id-less call of another name', () => {
+    const pending: PendingIdlessToolCall[] = [];
+    const { published, reports } = relay(
+      [
+        {
+          type: 'tool-call',
+          toolCallId: 'call-real',
+          toolName: 'named_tool',
+          input: {},
+        },
+        { type: 'tool-call', toolName: 'idless_tool', input: {} },
+        // `named_tool`'s own outcome, minus the id.
+        { type: 'tool-result', toolName: 'named_tool', output: 'named out' },
+      ],
+      pending,
+    );
+
+    const idlessId = (published[1] as unknown as { toolCallId: string })
+      .toolCallId;
+    const resultId = (published[2] as unknown as { toolCallId: string })
+      .toolCallId;
+    // It did NOT take the id-less call's row…
+    expect(resultId).not.toBe(idlessId);
+    expect(resultId).not.toBe('call-real');
+    expect(reports[2].toolSettled).toBeUndefined();
+    expect(reports[2].unpairedToolResult).toBe(true);
+    // …and that call is still open, waiting for a result of its own.
+    expect(pending).toEqual([
+      { toolCallId: idlessId, toolName: 'idless_tool' },
+    ]);
+    // The honest cost, pinned rather than papered over: the outcome publishes
+    // as a start-less row (what every id-less result did before pairing
+    // existed), and `call-real` will settle `unresolved` at session end
+    // because nothing could attribute this result to it.
+    expect(published[2]).toMatchObject({
+      method: 'tool.completed',
+      toolName: 'named_tool',
+      status: 'success',
+      output: 'named out',
+    });
+  });
+
+  test('an unnamed chunk on either side still pairs in order', () => {
+    // The name check must not break the ordinary case: `safeToolName`'s
+    // display fallback is not a reported name, so a chunk that reported
+    // nothing contradicts nothing.
+    const { published, reports } = relay([
+      { type: 'tool-call', input: {} },
+      { type: 'tool-result', toolName: 'repo_write', output: 'ok' },
+    ]);
+
+    const openedId = (published[0] as unknown as { toolCallId: string })
+      .toolCallId;
+    expect((published[1] as unknown as { toolCallId: string }).toolCallId).toBe(
+      openedId,
+    );
+    expect(reports[1].toolSettled).toEqual({ toolCallId: openedId });
   });
 });
 

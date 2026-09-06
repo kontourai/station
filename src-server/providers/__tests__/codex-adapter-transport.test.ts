@@ -723,13 +723,19 @@ describe('CodexAdapterTransport', () => {
     });
 
     /**
-     * station#1586 (item 3): a record the thread no longer owns — a restart
-     * installed a successor while this process was dying — used to publish
-     * NOTHING, so its open rows ran forever. Its tool terminals are
-     * turn-keyed (PR #1560 puts the issuing turnId on each one, PR #1570 has
-     * both folds attribute by turn), so they land on the stopped session's
-     * own turn and never over the successor's. Only the thread-keyed facts
-     * stay withheld.
+     * station#1586 (item 3): a record the thread no longer owns used to
+     * publish NOTHING, so an open row on it would run forever. Its tool
+     * terminals are turn-keyed (PR #1560 puts the issuing turnId on each one,
+     * PR #1570 has both folds attribute by turn), so they land on that
+     * record's own turn and never over a successor's. Only the thread-keyed
+     * facts stay withheld.
+     *
+     * The state is constructed directly because production cannot reach it
+     * with an open call today — `registerSession` throws while the old record
+     * is still registered, so no restart lands mid-drain — which is why the
+     * branch is documented as defensive in `finalizeUnexpectedExit` (fix
+     * round, M3). This pins the decision the branch encodes; it is not
+     * evidence of a live leak.
      */
     test('a superseded record settles its own open calls, without session.exited', async () => {
       const { transport, processHandle, record } = recordWithOpenCall(

@@ -500,6 +500,21 @@ export class StationRuntime {
   private reconciliationChurnWindowStartMs = 0;
   private reconciliationChurnCount = 0;
   private readonly nativeEngineAdoptionAbort = new AbortController();
+  /**
+   * station#1586 (item 6, fix round M2): aborted on shutdown so the boot-time
+   * prerequisite priming settles instead of outliving the runtime, exactly
+   * like the adoption window beside it.
+   *
+   * What it bounds is the PRIMING, not the child process. `ClaudeAdapter`
+   * deliberately does not forward a caller's signal into its shared
+   * `--version` probe (one caller abandoning readiness must not abort an
+   * observation another is awaiting — see `versionProbe`'s comment), so a
+   * probe already spawned still runs to `runCliCommand`'s own 10s ceiling.
+   * This stops the priming from starting after a shutdown and stops it
+   * waiting on work the runtime no longer has a use for; killing the child
+   * would need a change in the adapter's shared-probe contract.
+   */
+  private readonly enginePrerequisitePrimingAbort = new AbortController();
   private configurationSourceUnsubscribers: Array<() => void> = [];
   private schedulerService?: SchedulerService;
   private kitLifecycleReady: Promise<void> = Promise.resolve();
@@ -3000,9 +3015,14 @@ export class StationRuntime {
     // first turn. Fire-and-forget, like the adoption above: the probe is
     // memoized per `command + args`, so a session starting while this is
     // still in flight awaits the same probe rather than spawning a second.
+    //
+    // Signalled like the adoption above (station#1586 M2). Read
+    // `enginePrerequisitePrimingAbort`'s doc for what that does and does not
+    // stop: it bounds this priming, not a probe child already spawned.
     void primeEnginePrerequisites({
       adapters: [this.claudeAdapter],
       logger: this.logger,
+      signal: this.enginePrerequisitePrimingAbort.signal,
     });
   }
 
@@ -3773,6 +3793,10 @@ export class StationRuntime {
     // Optional-chained: prototype-built test doubles (Object.create) have no
     // constructor-initialized fields, and shutdown must never throw for them.
     this.nativeEngineAdoptionAbort?.abort();
+    // Same moment, same reason (station#1586 M2), same optional chaining for
+    // prototype-built doubles: the boot-time prerequisite priming must settle
+    // rather than outlive the runtime.
+    this.enginePrerequisitePrimingAbort?.abort();
     // Early, before the shutdown-promise guard: a store probe in flight is a child process, and
     // `gracefulShutdown` ends in `process.exit`. Same optional-chaining
     // reason as the line above — prototype-built doubles have no fields.

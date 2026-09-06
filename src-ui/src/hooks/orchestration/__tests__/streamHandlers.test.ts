@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChatsStore;
 let handleToolStartedEvent: typeof import('../streamHandlers').handleToolStartedEvent;
 let handleToolCompletedEvent: typeof import('../streamHandlers').handleToolCompletedEvent;
+let handleToolProgressEvent: typeof import('../streamHandlers').handleToolProgressEvent;
 let handleTextDeltaEvent: typeof import('../streamHandlers').handleTextDeltaEvent;
 // archive#3351: spies on the messageParts module (see the doMock in the
 // text-delta describe below) to prove the dedup actually removed the
@@ -56,9 +57,11 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
     ({ activeChatsStore } = await import(
       '../../../contexts/active-chats-store'
     ));
-    ({ handleToolStartedEvent, handleToolCompletedEvent } = await import(
-      '../streamHandlers'
-    ));
+    ({
+      handleToolStartedEvent,
+      handleToolCompletedEvent,
+      handleToolProgressEvent,
+    } = await import('../streamHandlers'));
 
     activeChatsStore.initChat(threadId, {
       agentSlug: 'assistant',
@@ -795,6 +798,146 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
         expect(
           historyParts(1).filter((part) => part.type === 'tool-invocation')[0],
         ).toMatchObject({ state: 'running' });
+      });
+    });
+
+    /**
+     * station#1586 (fix round, M1): the opener and the progress writer had no
+     * turn rule at all — they wrote into the streaming shell unconditionally.
+     * With the terminal now turn-aware, a `tool.started` naming an earlier
+     * turn opened a row in the STREAMING turn's bubble whose outcome was then
+     * (correctly) delivered to the earlier turn's message, leaving the
+     * streaming row running forever. Both halves are asserted here as one
+     * sequence, because either alone reads as correct.
+     */
+    describe('the opener and progress obey the turn rule (station#1586 M1)', () => {
+      /** turn-a committed and closed; turn-b is the shell that is streaming. */
+      function seedClosedTurnAndOpenShell() {
+        activeChatsStore.updateChat(threadId, {
+          openTurnId: 'turn-b',
+          messages: [
+            {
+              role: 'assistant',
+              content: 'A finished narrating.',
+              turnId: 'turn-a',
+              contentParts: [
+                { type: 'text', content: 'A finished narrating.' },
+              ],
+            },
+          ],
+          streamingMessage: {
+            role: 'assistant',
+            content: 'B answers.',
+            contentParts: [{ type: 'text', content: 'B answers.' }],
+          },
+        });
+      }
+
+      function toolStarted(overrides: Record<string, unknown> = {}) {
+        return {
+          eventId: 'evt-start',
+          provider: 'station-agent',
+          threadId,
+          createdAt: '2026-08-15T00:00:00.000Z',
+          method: 'tool.started',
+          itemId: 'tool-late',
+          toolCallId: 'tool-late',
+          toolName: 'write_file',
+          arguments: { path: 'a.txt' },
+          ...overrides,
+        } as unknown as Parameters<typeof handleToolStartedEvent>[0];
+      }
+
+      test('a tool.started for an earlier turn opens its row there, and its result settles it — nothing is left running on the streaming turn', () => {
+        seedClosedTurnAndOpenShell();
+
+        handleToolStartedEvent(toolStarted({ turnId: 'turn-a' }));
+        handleToolCompletedEvent(
+          toolCompleted({
+            eventId: 'evt-late',
+            turnId: 'turn-a',
+            toolCallId: 'tool-late',
+            status: 'success',
+            output: 'A output',
+          }),
+        );
+
+        const aTools = historyParts(0).filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(aTools).toHaveLength(1);
+        expect(aTools[0]).toMatchObject({
+          toolCallId: 'tool-late',
+          state: 'completed',
+          result: 'A output',
+        });
+        // The row the streaming turn never owned: before M1 the start landed
+        // here and stayed `running` for the life of the chat.
+        expect(
+          streamingParts().filter((part) => part.type === 'tool-invocation'),
+        ).toHaveLength(0);
+      });
+
+      test('a tool.progress for an earlier turn updates that row, not the streaming shell', () => {
+        seedClosedTurnAndOpenShell();
+        handleToolStartedEvent(toolStarted({ turnId: 'turn-a' }));
+
+        handleToolProgressEvent({
+          eventId: 'evt-progress',
+          provider: 'station-agent',
+          threadId,
+          createdAt: '2026-08-15T00:00:01.000Z',
+          method: 'tool.progress',
+          turnId: 'turn-a',
+          itemId: 'tool-late',
+          toolCallId: 'tool-late',
+          message: 'still working',
+        } as unknown as Parameters<typeof handleToolProgressEvent>[0]);
+
+        expect(
+          historyParts(0).filter((part) => part.type === 'tool-invocation')[0],
+        ).toMatchObject({
+          toolCallId: 'tool-late',
+          state: 'running',
+          progressMessage: 'still working',
+        });
+        expect(
+          streamingParts().filter((part) => part.type === 'tool-invocation'),
+        ).toHaveLength(0);
+      });
+
+      test('a tool.started for the open turn still opens on the streaming shell', () => {
+        // The discriminating control: the routing is a turn contradiction,
+        // not a blanket move to history.
+        seedClosedTurnAndOpenShell();
+
+        handleToolStartedEvent(toolStarted({ turnId: 'turn-b' }));
+
+        expect(
+          streamingParts()
+            .filter((part) => part.type === 'tool-invocation')
+            .map((part) => part.toolCallId),
+        ).toEqual(['tool-late']);
+        expect(
+          historyParts(0).filter((part) => part.type === 'tool-invocation'),
+        ).toHaveLength(0);
+        expect(activeChatsStore.getSnapshot()[threadId]?.isProcessingStep).toBe(
+          true,
+        );
+      });
+
+      test('a tool.started for a turn with no committed message falls back to the streaming shell', () => {
+        // Same last-resort shape the terminal has: there is nowhere else to
+        // put it, and dropping the row would hide live activity.
+        seedClosedTurnAndOpenShell();
+
+        handleToolStartedEvent(toolStarted({ turnId: 'turn-unknown' }));
+
+        expect(
+          streamingParts()
+            .filter((part) => part.type === 'tool-invocation')
+            .map((part) => part.toolCallId),
+        ).toEqual(['tool-late']);
       });
     });
 

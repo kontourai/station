@@ -651,10 +651,11 @@ export class CodexAdapterTransport {
       //
       // Same guard as the ordinary path below, for the same reason: a
       // deliberate stop has `stopSession`'s own settle. station#1586 (item 3)
-      // dropped the supersession half of it at both doors — a superseded
-      // record's TOOL terminals are turn-keyed (PR #1560/#1570), so they land
-      // on the stopped session's own turn and not over its successor; only
-      // the thread-keyed facts stay withheld.
+      // dropped the supersession half of it at both doors — a record the
+      // thread no longer owns still publishes TURN-keyed terminals safely
+      // (PR #1560/#1570); only the thread-keyed facts stay withheld. See the
+      // ordinary path's comment for why that half is defensive rather than a
+      // fix for an observed leak.
       if (!record.stopped) {
         this.settleUnresolvedToolCalls(record, nowIso);
       }
@@ -667,15 +668,30 @@ export class CodexAdapterTransport {
       // `stopSession` owns the settle for a stop already in flight, so a
       // stopped record publishes nothing here.
       //
-      // station#1586 (item 3): a SUPERSEDED record does settle its own open
-      // calls. Those calls are this record's, its process is gone, and every
-      // tool terminal carries the turnId that ISSUED the call (PR #1560) —
-      // read from the entry itself, never from whatever turn is active now —
-      // while both folds attribute by turn (PR #1570), so the row lands on
-      // the stopped session's own turn rather than on its successor's. The
-      // Claude adapter already settles this exact case for the same reason
-      // (`stopSession`'s station#1569 item 6 branch). Withholding here left
-      // the rows running forever with no terminal from any path.
+      // station#1586 (item 3): a record this thread no longer owns settles
+      // its own open calls. Those calls are this record's, its process is
+      // gone, and every tool terminal carries the turnId that ISSUED the call
+      // (PR #1560) — read from the entry itself, never from whatever turn is
+      // active now — while both folds attribute by turn (PR #1570), so a row
+      // lands on the stopped session's own turn rather than on any
+      // successor's.
+      //
+      // DEFENSIVE, stated precisely (station#1586 fix round, M3): no
+      // production path reaches this branch with an OPEN call today. A
+      // restart cannot install a successor mid-drain — `registerSession`
+      // throws while the old record is still registered, and it is only
+      // unregistered after this method's `await terminateRecord` — and every
+      // other unregister site (`stopSession`, the process `error` door, the
+      // stdin EPIPE door) sets `stopped` first, so it takes the arm above.
+      // The one shape that does arrive here is a SECOND teardown door after
+      // the ordinary path below already unregistered and settled this record,
+      // where `openToolCalls` is empty and this publishes nothing. So the
+      // settle is not a fix for an observed leak; it is here so that this
+      // branch cannot become the one door that abandons rows if the
+      // registration lifecycle changes — which is exactly how the Claude
+      // adapter's own restart window (station#1569 item 6, an observed path
+      // there because its `stopSession` removes the record BEFORE awaiting
+      // the drain) came to need it.
       //
       // What stays withheld is what is genuinely thread-keyed rather than
       // turn-keyed: `session.exited` below (a client reads it as "this
