@@ -90,6 +90,27 @@ function runtimeContext(
       memoryAdapters: new Map(),
       metricsLog: [],
       monitoringEvents: [],
+      // Route composition starts the boot-only completed-dispatch repair, which
+      // reads `sessionTurnBoundaryAuthority()` off the event store. A real
+      // `EventStore` always answers that with an authority, so the fixture owes
+      // one explicitly: the generic callable fallback returns undefined from a
+      // CALL, which is how this file reddened when the repair rail landed.
+      // Modelled as the available-and-empty authority — this fixture owns no
+      // durable dispatches — so the repair completes rather than reporting an
+      // unresolved boot the route composition under test never had.
+      orchestrationEventStore: new Proxy(
+        {
+          sessionTurnBoundaryAuthority: () => ({
+            reconcile: () => ({ kind: 'available', interrupted: [] }),
+          }),
+        },
+        {
+          get(target, property) {
+            if (property in target) return Reflect.get(target, property);
+            return deepCallable();
+          },
+        },
+      ),
       taskGraphService: { listTasks: () => [] },
       ...overrides,
     },
