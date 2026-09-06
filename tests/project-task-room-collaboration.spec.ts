@@ -206,11 +206,9 @@ test.describe
       });
       try {
         await page.getByRole('button', { name: 'Join room' }).click();
-        const alert = page
-          .getByRole('alert')
-          .filter({
-            hasText: 'This live collaboration action is not allowed.',
-          });
+        const alert = page.getByRole('alert').filter({
+          hasText: 'This live collaboration action is not allowed.',
+        });
         await expect(alert).toBeVisible();
         await expect(
           page.getByRole('button', { name: 'Announce work' }),
