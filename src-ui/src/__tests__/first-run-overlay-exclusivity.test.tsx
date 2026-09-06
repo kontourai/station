@@ -148,6 +148,9 @@ vi.mock('@kontourai/station-sdk', () => ({
   // The engines step's one enable path (archive#3627). Nothing here confirms
   // a batch; it exists so the step can mount.
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
+  // Detected ACP engines take this distinct connect-then-materialize path.
+  // The overlay tests do not exercise it, but the real chapter mounts it.
+  useConnectAndMaterializeEngineMutation: () => ({ mutateAsync: vi.fn() }),
   useForceRefetchSystemStatus: () => forceRefetch,
   useEngineConnectionsQuery: () => ({ data: [] }),
   useConfigQuery: () => ({ data: configValue, isFetching: false }),
@@ -314,8 +317,9 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
       chapter: 0,
       disclosure: 0,
     });
-    // Step one of three, and the engines step is genuinely behind it.
-    expect(screen.getByText('Step 1 of 3')).toBeTruthy();
+    // The disclosure remains the first step in the current four-step run,
+    // and the engines chapter is genuinely behind it.
+    expect(screen.getByText('Step 1 of 4')).toBeTruthy();
     screen.getByTestId('first-run-disclosure').click();
     view.rerender(
       <OnboardingGate>
@@ -323,7 +327,7 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
       </OnboardingGate>,
     );
     expect(screen.queryAllByTestId('first-run-engines')).toHaveLength(1);
-    expect(screen.getByText('Step 2 of 3')).toBeTruthy();
+    expect(screen.getByText('Step 2 of 4')).toBeTruthy();
   });
 
   test('a pending home is not offered the modal even with the chapter closed', () => {
