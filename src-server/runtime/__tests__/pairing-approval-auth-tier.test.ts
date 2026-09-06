@@ -12,7 +12,10 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
 import { requiredPairingScope } from '../../security/pairing-route-scopes.js';
-import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import {
+  getRuntimeAuthenticatedRequestPrincipal,
+  isRuntimeRequestPrincipalCurrent,
+} from '../../security/runtime-request-security.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
@@ -109,7 +112,10 @@ async function createHarness() {
       allowedOrigins: [ORIGIN],
     },
   });
-  configureDevicePairingHostRoutes(app as never, security.devicePairing);
+  configureDevicePairingHostRoutes(app as never, security.devicePairing, {
+    isRequestPrincipalCurrent: (request) =>
+      isRuntimeRequestPrincipalCurrent(request, security),
+  });
 
   // The attention projection over the SAME pairing service, mounted with the
   // SAME viewer predicate `configureRuntimeRoutes` installs — so the item the

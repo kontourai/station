@@ -692,3 +692,31 @@ test('session journal capacity is bounded without expiry or deletion recovery', 
   );
   expect(keys.some((key) => /time|expir|deadline|pid/i.test(key))).toBe(false);
 });
+
+test('capability tokens must be primitive strings rather than coercible buffers', async () => {
+  const f = await fixture();
+  const home = f.promoteControl(f.pair('Home'));
+  f.initializeOwner(home.device.id);
+  const authority = f.createAuthority();
+  const capability = stored(
+    authority.open(home.principal, openInput('strict-token')),
+  ).capability;
+  const malformed = {
+    ...capability,
+    token: Buffer.from(capability.token),
+  } as unknown as typeof capability;
+  expect(
+    authority.bind(malformed, {
+      channelId: 'channel-a',
+      ownerRevision: 0,
+      kind: 'room-write',
+      requireSynchronousLocalAuthority: () => true,
+    }).kind,
+  ).toBe('conflict');
+  expect(
+    authority.open(home.principal, {
+      openId: 'strict-token',
+      existingCapability: malformed,
+    }).kind,
+  ).toBe('conflict');
+});

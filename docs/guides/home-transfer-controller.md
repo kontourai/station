@@ -200,7 +200,9 @@ integration remain prerequisites for enabling sustained Agent execution.
 ## Private control sessions
 
 The private control-session authority adds a separate `home:control` pairing
-permission. An operator must add it to an already-paired home. It is absent
+permission. An operator must add it to an already-paired home. Operator
+currentness is rechecked after body buffering and parsing, so credential
+rotation while a scope-change request is pending prevents the promotion. It is absent
 from the default grant and every pairing preset, including `home-transfer`.
 Transfer participation cannot open or bind a control session, and a control
 session does not authorize room access or Agent execution.
