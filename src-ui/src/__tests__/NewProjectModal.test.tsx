@@ -290,13 +290,18 @@ describe('NewProjectModal starter layout picker', () => {
     // on the group and then reading `aria-pressed` synchronously read the
     // pre-selection render whenever the host was busy enough to separate the
     // two (#1603). The pressed state is the later signal, so it is the one to
-    // await; the group is still asserted, after it.
-    await waitFor(() =>
-      expect(
-        screen
-          .getByRole('button', { name: /Coding/ })
-          .getAttribute('aria-pressed'),
-      ).toBe('true'),
+    // await; the group is still asserted, after it. Above the 1s default,
+    // because the hook's own 400ms settle has to elapse before discovery is
+    // even asked — that leaves ~600ms for the query, the render and the
+    // selection effect on a loaded host.
+    await waitFor(
+      () =>
+        expect(
+          screen
+            .getByRole('button', { name: /Coding/ })
+            .getAttribute('aria-pressed'),
+        ).toBe('true'),
+      { timeout: 3_000 },
     );
     expect(screen.getByText('Recommended for this Git directory')).toBeTruthy();
   });

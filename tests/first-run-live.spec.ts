@@ -291,8 +291,9 @@ test('phone first run recovers from no provider to a real streamed reply', async
       `${baseURL}/projects/mobile-dogfood/layouts/coding?dock=open`,
     );
     // archive#3309 pulled New chat out of the "Chat actions" overflow to a
-    // pinned far-right header icon; #1552's toolbar declutter folded it back
-    // in, so on a phone the sheet is where the affordance now is (#1606).
+    // pinned far-right header icon; #1512 deleted that icon from
+    // `ChatDockMobileHeader` and handed `onNewChat` to the sheet again, so on a
+    // phone the sheet is where the affordance now is (#1606).
     // Assert it there, then open the selection surface via the deterministic
     // event — clicking the item takes the one-click direct path whenever
     // exactly one runtime is chat-ready, which is this fixture once the Ollama

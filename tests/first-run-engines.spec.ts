@@ -1224,30 +1224,44 @@ for (const viewport of [
  *
  * A wide chrome keeps `ChatDockHeader`'s own control — "New chat", or "Start a
  * chat" while the dock holds no session. On a phone that control is gone:
- * archive#3309's pinned far-right icon was folded back into the mobile header's
- * `⋯` "Chat actions" sheet by #1552's toolbar declutter, so the sheet's menu
- * item is the phone's route (the same one `mobile-chat-composer.spec.ts` and
+ * archive#3309's pinned far-right icon was deleted from
+ * `ChatDockMobileHeader` by #1512, which passes `onNewChat` to the header's
+ * `⋯` "Chat actions" sheet instead, so the sheet's menu item is the phone's
+ * route (the same one `mobile-chat-composer.spec.ts` and
  * `new-chat-mobile-context-sheet.spec.ts` drive).
  */
 type NewChatChrome = 'wide' | 'phone';
 
 async function openNewChatFromChrome(page: Page, chrome: NewChatChrome) {
-  const wideControl = page.getByRole('button', {
-    name: /^(New chat|Start a chat)$/,
-  });
+  // Scoped to the dock HEADER row, which both chromes render
+  // (`ChatDockHeader` / `ChatDockMobileHeader` share `chat-dock__header`). The
+  // dock BODY's empty state carries a "Start a chat" of its own
+  // (`ChatDockContentArea`), and a page-wide locator would read that as the
+  // header control the phone is supposed to have lost.
+  const wideControl = page
+    .locator('.chat-dock__header')
+    .getByRole('button', { name: /^(New chat|Start a chat)$/ });
   if (chrome === 'wide') {
     await wideControl.click();
     return;
   }
-  // Absence first: it is what makes this a drive of the phone's route rather
-  // than of a wide control that happens to have survived at 390px — the exact
-  // claim #1552 makes, and the exact claim that broke this fixture when
+  const chatActions = page.getByRole('button', {
+    name: 'Chat actions',
+    exact: true,
+  });
+  // The phone header has to be MOUNTED before its absence proves anything: an
+  // assertion made straight after `goto('/')` passes just as well on a dock
+  // that has not rendered at all.
+  await expect(chatActions).toBeVisible({ timeout: 20_000 });
+  // Then absence, which is what makes this a drive of the phone's route rather
+  // than of a wide control that happened to survive at 390px — the exact claim
+  // #1512 makes, and the exact claim that broke this fixture when
   // archive#3309's icon went away (#1606).
   await expect(
     wideControl,
-    'the phone chrome must not render a top-level New chat control',
+    'the phone dock header must not render a New chat control of its own',
   ).toHaveCount(0);
-  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
+  await chatActions.click();
   // The sheet is a lazily imported chunk (`ChatDockMobileOverflowSheet`, kept
   // out of the entry bundle), so its first open is a module fetch that renders
   // nothing while it is in flight — more than Playwright's 5s expect default
@@ -1372,6 +1386,12 @@ for (const viewport of [
   test(`New Chat setup return preserves choices on ${viewport.label}`, async ({
     page,
   }, testInfo) => {
+    // The phone route opens the lazily imported ⋯ sheet, and that first open
+    // alone is allowed 15s in `openNewChatFromChrome`. The config's 30s test
+    // timeout does not leave the rest of this journey — a Connections round
+    // trip and a catalog refetch behind "Return to New Chat" — a budget under
+    // that worst case.
+    if (viewport.chrome === 'phone') test.setTimeout(60_000);
     await page.setViewportSize({
       width: viewport.width,
       height: viewport.height,
