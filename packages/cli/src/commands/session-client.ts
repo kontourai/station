@@ -59,7 +59,7 @@ export interface PendingRequestNotice {
  * points at — the decision itself is left as a placeholder for the operator
  * to fill in, since only they know which of the four is correct.
  */
-function buildApprovalsRespondCommand(
+export function buildApprovalsRespondCommand(
   threadId: string,
   requestId: string,
 ): string {

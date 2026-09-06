@@ -11,6 +11,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -113,7 +114,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
    * `locality` entirely to model a caller with no verified home-possession
    * authority fact — the case that must fail closed.
    */
-  async function setup(deviceCredential: string) {
+  async function setup(deviceCredential: string, deviceScope = 'pairing-v7') {
     const directory = mkdtempSync(join(tmpdir(), 'station-room-principal-'));
     directories.push(directory);
     const store = new EventStore(join(directory, 'orchestration.sqlite'));
@@ -128,9 +129,10 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
       await next();
     });
     const environmentSecurityService = deepStub({
+      getPublicHandshake: async () => ({ environmentId: 'environment-local' }),
       identifyDevice: (credential: string) =>
         credential === deviceCredential
-          ? { id: 'device-x', name: 'Device X', scope: 'pairing-v7' }
+          ? { id: 'device-x', name: 'Device X', scope: deviceScope }
           : undefined,
       verifyOperatorCredential: (credential: string) =>
         credential === 'operator-secret',
@@ -191,6 +193,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
     return {
       app,
       store,
+      databasePath: join(directory, 'orchestration.sqlite'),
       roomRuntime: result.projectTaskRoomRuntime!,
       setCaller: (next: RuntimeAuthenticatedRequestPrincipal) => {
         caller = next;
@@ -607,5 +610,75 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
     expect(body.data.participants.length).toBeGreaterThan(0);
     await roomRuntime.close();
     store.close();
+  });
+
+  test('home transfer room probes prime the same production request principal without opening a room', async () => {
+    const { app, store, roomRuntime, setCaller, databasePath } = await setup(
+      'transfer-credential',
+      'home:transfer',
+    );
+    setCaller({
+      credential: 'transfer-credential',
+      authority: 'device-credential',
+      deviceId: 'device-x',
+      source: 'bearer',
+    });
+    const request = new Request(
+      'http://station/api/home-authority/rooms/task-1/identity',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelId: 'wrong-channel', nonce: 'probe-1' }),
+      },
+    );
+    const mismatch = await app.fetch(request, loopbackEnv());
+    // An unprimed grant would be denied; a real resolved room rejects only
+    // the caller's incorrect channel binding.
+    expect(mismatch.status).toBe(409);
+    const inspected = await roomRuntime.inspectTransferRoom({
+      taskId: task.id,
+      request,
+    });
+    expect(inspected.kind).toBe('available');
+    if (inspected.kind !== 'available')
+      throw new Error('Expected actual scope identity');
+    const response = await app.fetch(
+      new Request('http://station/api/home-authority/rooms/task-1/identity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelId: inspected.channelId,
+          nonce: 'probe-2',
+        }),
+      }),
+      loopbackEnv(),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      environmentId: 'environment-local',
+      pairedDeviceId: 'device-x',
+      taskId: task.id,
+      channelId: inspected.channelId,
+      nonce: 'probe-2',
+      executionAuthorityTransferred: false,
+    });
+    await roomRuntime.close();
+    expect(store.close()).toEqual({ kind: 'closed' });
+    const database = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      const table = database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='project_task_room_heads'",
+        )
+        .get();
+      if (table)
+        expect(
+          database
+            .prepare('SELECT COUNT(*) AS count FROM project_task_room_heads')
+            .get(),
+        ).toMatchObject({ count: 0 });
+    } finally {
+      database.close();
+    }
   });
 });

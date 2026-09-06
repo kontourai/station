@@ -51,6 +51,11 @@ interface ModelMessage {
 interface ModelRequest {
   messages?: ModelMessage[];
 }
+
+type ConversationResumeReceipt = ForegroundMessageReceipt & {
+  currentSessionId: string;
+  status: 'dispatched';
+};
 function textOf(message: ModelMessage): string {
   return typeof message.content === 'string'
     ? message.content
@@ -155,13 +160,20 @@ async function cli(live: LiveStation, args: string[]): Promise<string> {
 }
 
 function delegationResult<
-  T extends DelegatedTaskHandle | DelegatedTaskFollowUpHandle,
+  T extends DelegatedTaskHandle | ConversationResumeReceipt,
 >(stdout: string, kind: 'create' | 'continue'): T {
   const result = JSON.parse(stdout) as { ok: boolean; kind: string; data: T };
   expect(result.ok).toBe(true);
   expect(result.kind).toBe(`delegate.${kind}`);
   expect(result.data.status).toBe('dispatched');
-  expect(result.data.taskId).toBeTruthy();
+  if (kind === 'create') {
+    expect('taskId' in result.data && result.data.taskId).toBeTruthy();
+  } else {
+    expect(
+      'providerTurnId' in result.data && result.data.providerTurnId,
+    ).toBeTruthy();
+    expect(result.data).not.toHaveProperty('taskId');
+  }
   expect(result.data.currentSessionId).toBeTruthy();
   return result.data;
 }
@@ -363,7 +375,7 @@ for (const { runtimeFramework, origin } of restartProfiles) {
                 } satisfies ForegroundMessageInput,
               )
             ).data
-          : delegationResult<DelegatedTaskFollowUpHandle>(
+          : delegationResult<ConversationResumeReceipt>(
               await cli(live, [
                 'delegate',
                 `--session=${first.conversationId}`,
@@ -377,7 +389,7 @@ for (const { runtimeFramework, origin } of restartProfiles) {
         expect(second.resolution.workspace).toEqual(
           first.resolution?.workspace,
         );
-      } else if ('taskId' in first) expect(second.taskId).toBe(first.taskId);
+      }
       await completed(live, second, PROMPTS[1]);
 
       await stopStation(live);
@@ -389,13 +401,18 @@ for (const { runtimeFramework, origin } of restartProfiles) {
       expect(await api(live, '/api/system/runtime')).toEqual({
         runtime: runtimeFramework,
       });
-      // `chat` requires the Agent positional even on resume; its continuation
-      // request uses the server's existing binding. `delegate` requires its
-      // own Task binding. Neither follow-up supplies Project/cwd overrides.
+      // Cross the entry surface after restart: ordinary chat resumes through
+      // delegate's Conversation selector; a delegated task resumes through
+      // chat. Neither supplies replacement Project/cwd bindings.
       const args =
         origin === 'foreground'
-          ? ['chat', agentSlug, `--session=${first.conversationId}`, PROMPTS[2]]
-          : ['delegate', `--session=${first.conversationId}`, PROMPTS[2]];
+          ? ['delegate', `--session=${first.conversationId}`, PROMPTS[2]]
+          : [
+              'chat',
+              agentSlug,
+              `--session=${first.conversationId}`,
+              PROMPTS[2],
+            ];
       let stdout: string;
       try {
         stdout = await cli(live, args);
@@ -427,9 +444,13 @@ for (const { runtimeFramework, origin } of restartProfiles) {
         }
         throw error;
       }
-      let third: unknown;
+      let third: {
+        conversationId: string;
+        sessionId: string;
+        currentSessionId?: string;
+      };
       let thirdEvents: CanonicalRuntimeEvent[];
-      if (origin === 'foreground') {
+      if (origin === 'delegated') {
         // session-client.ts emits one pretty JSON result, not the delegated
         // {ok,kind,data} envelope or NDJSON. No exported result type exists.
         const result = JSON.parse(stdout) as {
@@ -457,28 +478,34 @@ for (const { runtimeFramework, origin } of restartProfiles) {
           currentSessionId: snapshot.data.currentSessionId,
         };
       } else {
-        const result = delegationResult<DelegatedTaskFollowUpHandle>(
+        const result = delegationResult<ConversationResumeReceipt>(
           stdout,
           'continue',
         );
         expect(result.conversationId).toBe(first.conversationId);
-        if ('taskId' in first) expect(result.taskId).toBe(first.taskId);
+        expect(result).not.toHaveProperty('taskId');
         thirdEvents = await completed(live, result, PROMPTS[2]);
-        if ('taskId' in first) {
-          // The durable task binding belongs to the Conversation root;
-          // children intentionally do not duplicate legacy task metadata.
-          const observed = await api<{ data: DelegatedTaskSnapshot }>(
-            live,
-            `/api/orchestration/delegations/${encodeURIComponent(first.taskId)}`,
-          );
-          expect(observed.data).toMatchObject({
-            taskId: first.taskId,
-            conversationId: first.conversationId,
-            sessionId: result.currentSessionId ?? result.sessionId,
-            status: 'completed',
-          });
-        }
         third = result;
+      }
+      if ('taskId' in first) {
+        // The durable task binding belongs to the Conversation root;
+        // children intentionally do not duplicate legacy task metadata.
+        const observed = await api<{ data: DelegatedTaskSnapshot }>(
+          live,
+          `/api/orchestration/delegations/${encodeURIComponent(first.taskId)}`,
+        );
+        expect(observed.data).toMatchObject({
+          taskId: first.taskId,
+          conversationId: first.conversationId,
+          sessionId: third.sessionId,
+          status: 'completed',
+        });
+      } else {
+        // Continuing through the delegate entry point must not mint Task
+        // supervision authority for an ordinary Conversation.
+        await expect(
+          cli(live, ['delegate', 'status', first.conversationId]),
+        ).rejects.toThrow('does not match a delegated-task binding');
       }
       expect(
         thirdEvents.some(

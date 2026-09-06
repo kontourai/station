@@ -236,6 +236,20 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  ...[
+    '/api/home-authority/channels/:channelId/bindings',
+    '/api/home-authority/channels/:channelId/bindings/:controllerDeviceId/inspect',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:administration`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+    }),
+  ),
+
   {
     id: '/api/home-authority/channels/:channelId/owner:administration',
     method: 'POST',

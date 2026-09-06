@@ -1,3 +1,4 @@
+import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 
 export {
@@ -1145,6 +1146,7 @@ export function configureRuntimeRoutes(
         context.configLoader.getProjectHomeDir(),
         process.env[HOME_AUTHORITY_DATABASE_ENV],
       ),
+      { peers: peerCredentialStore },
     ),
   );
   // Shared resolver keeps project and Registry catalog projections identical.
@@ -2348,8 +2350,16 @@ export function configureRuntimeRoutes(
     };
     context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
+    context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
     context.app.route('/api/tasks', createProjectTaskRoomRoutes(roomRuntime));
   }
+  context.app.route(
+    '/api/home-authority/rooms',
+    createHomeTransferRoomRoutes({
+      security: context.environmentSecurityService,
+      roomRuntime: projectTaskRoomRuntime,
+    }),
+  );
   context.app.route(
     '/api/live-activity',
     createLiveActivityRoutes({
@@ -2890,12 +2900,16 @@ export function configureRuntimeRoutes(
   // rather than a second file read.
   context.app.route(
     '/api/environments/peers',
-    createPeerCredentialRoutes(peerCredentialStore, (environmentId) =>
-      context.sshEnvironmentService
-        .list()
-        .some(
-          (environment) => environment.profile.environmentId === environmentId,
-        ),
+    createPeerCredentialRoutes(
+      peerCredentialStore,
+      (environmentId) =>
+        context.sshEnvironmentService
+          .list()
+          .some(
+            (environment) =>
+              environment.profile.environmentId === environmentId,
+          ),
+      isRequestPrincipalCurrent,
     ),
   );
   // station#1423: the operator's own answer-share management family. The base

@@ -1,4 +1,4 @@
-/** Opt-in bounded GET body for the portable client entry. */
+/** Opt-in bounded GET body for portable client requests with a byte ceiling. */
 export function boundResponse(
   response: Response,
   maximum: number,

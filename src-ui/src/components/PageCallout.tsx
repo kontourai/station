@@ -51,7 +51,17 @@ export interface PageCalloutProps {
   action?: ReactNode;
   /** Names the region. Required, because a callout is a landmark with no heading. */
   ariaLabel: string;
-  role?: 'status';
+  /**
+   * A live-region role, when the callout is an ANSWER to something the reader
+   * just did rather than page furniture they can find at their leisure.
+   *
+   * `alert` (assertive) is the one to reach for when the callout is MOUNTED by
+   * the action — a polite `status` region that is inserted already containing
+   * its text is not reliably announced, so the reader who cannot see it gets
+   * nothing (#1596). `status` is for a region that is already in the tree and
+   * whose text changes, where politeness is what stops it interrupting.
+   */
+  role?: 'status' | 'alert';
   /**
    * The callout is waiting on something and renders a skeleton in place of
    * its copy. ONE prop: it sets `aria-busy` AND the `--busy` modifier the
