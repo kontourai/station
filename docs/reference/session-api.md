@@ -109,12 +109,36 @@ by `requestId`.
 
 Three more command types exist on the same union but are outside this doc's session-lifecycle
 scope — see the zod schemas in `orchestration.ts` for their exact shapes: `adoptSession`
-(`{ type: 'adoptSession', sourceThreadId, idempotencyKey? }`, take over a
+(`{ type: 'adoptSession', sourceThreadId, idempotencyKey? }`, create an independent continuation of a
 read-only attached session; a UUID idempotency key safely replays the same
 Continue intent and returns the existing continuation with
 `alreadyAdopted: true`),
 `interruptTurn` (`{ type: 'interruptTurn', threadId, turnId? }`, cancel an in-flight turn),
 and `stopSession` (`{ type: 'stopSession', threadId }`).
+
+External transcript observation does not grant control of the original terminal
+process. The engine capability matrix declares independent continuation support;
+known unsupported and unknown engines retain a disabled **Continue in Station**
+control with a reason. The adoption owner enforces the same declaration before
+invoking an adapter, then checks current source, Project, ownership, and runtime
+requirements. A native continuation declaration does not guarantee readiness of
+any particular source.
+
+Codex rollout observation reads the local `CODEX_HOME/sessions` directory
+(`~/.codex/sessions` by default) through bounded, read-only pages. It imports
+supported turn boundaries, user messages, assistant text, public reasoning
+summaries, tool activity, cumulative token snapshots, and compaction markers.
+Only transcripts attributed to configured Projects enter the shared follower.
+Encrypted content and subagent sidechain traversal are outside this importer.
+Additional user input after observed assistant or tool activity keeps the same
+native turn identity and is marked as steering. When the rollout does not
+establish that phase, the text remains in a bounded diagnostic without a guessed
+initial-input or steering classification.
+A tool-output body alone does not establish success or failure; it is retained
+as observed progress without inventing a verdict. Discovery and parser limits
+are reported as incomplete observations. Cursor progress is saved after the
+page's events, so an interrupted import replays through durable event-id
+deduplication. This observation path does not enable Codex native continuation.
 
 ### The receipt envelope
 

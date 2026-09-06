@@ -133,6 +133,27 @@ function renderAttached({
 }
 
 describe('AttachedSessionDetail permission-posture row badge (station#1424)', () => {
+  test.each(['codex', 'future-engine'])(
+    'keeps unsupported or unknown %s continuation visible and disabled',
+    (provider) => {
+      adoptOrchestrationSession.mockClear();
+      renderAttached({ session: { provider } });
+      const button = screen.getByRole('button', {
+        name: 'Continue in Station',
+      });
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      expect(
+        screen.getByText(
+          provider === 'codex'
+            ? 'Station can read this Codex transcript, but independent continuation is not available yet.'
+            : 'Station has not established independent continuation support for this engine.',
+        ),
+      ).toBeTruthy();
+      fireEvent.click(button);
+      expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+    },
+  );
+
   test('every assistant row is annotated "Read only" — this view only ever shows a read-only-attached session', () => {
     renderAttached();
     // The user turn (from the prompt) never gets the badge.

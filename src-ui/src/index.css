@@ -1459,6 +1459,8 @@ button:hover {
    of the viewport — the S4 lesson), and an `overflow: auto` on the shell
    root would clip that menu at the dock's top edge. */
 .dock-slot__body {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;

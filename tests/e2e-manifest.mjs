@@ -1142,7 +1142,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Isolated Claude JSONL follow: discover after startup, open the canonical read-only transcript, observe an append without reload, reject direct mutation, and prove 320px containment.',
+      'Isolated Claude and Codex JSONL follow: discover after startup, open read-only activity, observe appends, reject unsupported continuation or direct mutation, and retain controls at 320px.',
     exceptions: [],
   },
   {
