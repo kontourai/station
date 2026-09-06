@@ -447,12 +447,14 @@ export async function loadSkillConfig(
 /**
  * Write a package's record INTO the package's own directory.
  *
- * `saveSkillConfig` below resolves that directory from the name and a project
- * slug it is never given, so a scoped write put `SKILL.md` in the project
- * directory and `skill.json` in `<home>/skills/<name>` — one package in two
- * roots, each half telling a different story about where the other is (#1619).
- * The caller that already knows the directory passes it, which is the only way
- * the two files cannot diverge. It asserts containment through
+ * The name-addressed `saveSkillConfig`/`deleteSkillConfig` this replaced
+ * resolved that directory from the name and a project slug they were never
+ * given, so a scoped write put `SKILL.md` in the project directory and
+ * `skill.json` in `<home>/skills/<name>` — one package in two roots, each half
+ * telling a different story about where the other is (#1619). They are gone
+ * rather than left for the next writer to reach for: the caller that already
+ * knows the directory passes it, which is the only way the two files cannot
+ * diverge. It asserts containment through
  * `assertSkillPackageDirectory`, because a directory that did not come from
  * `resolveSkillDirectory` has not been through its guarantees.
  */
@@ -479,29 +481,6 @@ export async function deleteSkillPackageAt(
   assertSkillPackageDirectory(projectHomeDir, name, directory);
   if (!existsSync(directory)) throw new Error(`Skill '${name}' not found`);
   await rm(directory, { recursive: true, force: true });
-}
-
-export async function saveSkillConfig(
-  projectHomeDir: string,
-  name: string,
-  config: SkillConfigRecord,
-): Promise<void> {
-  const dir = resolveSkillDirectory(projectHomeDir, name);
-  await mkdir(dir, { recursive: true });
-  await writeFile(
-    join(dir, 'skill.json'),
-    JSON.stringify(config, null, 2),
-    'utf-8',
-  );
-}
-
-export async function deleteSkillConfig(
-  projectHomeDir: string,
-  name: string,
-): Promise<void> {
-  const dir = resolveSkillDirectory(projectHomeDir, name);
-  if (!existsSync(dir)) throw new Error(`Skill '${name}' not found`);
-  await rm(dir, { recursive: true, force: true });
 }
 
 export function skillConfigExists(

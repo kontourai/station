@@ -12,7 +12,14 @@ import {
 import { localSkillRevisionFromDirectory } from './skill-revision.js';
 
 interface SkillInstallConfigLoader {
-  saveSkill: (name: string, config: SkillConfig) => Promise<void>;
+  /**
+   * Directory-addressed, like every other write since #1619: the install has
+   * just published the package at `skillDir`, and a name-addressed save
+   * resolves `<home>/skills/<name>` with no slug — so a scoped install put the
+   * package in the project root and its record in the machine one (review M3,
+   * the last production write left name-addressed).
+   */
+  saveSkillIn: (directory: string, config: SkillConfig) => Promise<void>;
 }
 
 interface InstallSkillDeps {
@@ -143,7 +150,7 @@ async function installSkillFromRegistryOwned({
             2,
           ),
         );
-        await configLoader.saveSkill(name, {
+        await configLoader.saveSkillIn(skillDir, {
           name,
           description: item?.description,
           source: 'registry',

@@ -1409,6 +1409,86 @@ describe('SkillService', () => {
     expect(existsSync(`${projectDir}.mutation`)).toBe(false);
   });
 
+  // Review H1, the worst defect this branch produced. `removeSkillIfRevision`
+  // digested `resolveSkillDir(home, name, slug)` — name-derived — and then
+  // called a remove that resolved through `packageDirectoryFor`, so it verified
+  // one tree and deleted another. Setup-import's rollback then recorded a
+  // successful compensation for a tree it never verified, and a package it
+  // never created was gone.
+  //
+  // The precondition is ordinary: discovery keys on the FRONTMATTER name, so a
+  // machine package whose directory is named differently registers under the
+  // frontmatter name, and a workspace package genuinely of that name registers
+  // second in the same key.
+  test('compare-delete verifies and deletes the same package', async () => {
+    // `<home>/skills/other-directory` whose frontmatter says `shared`.
+    const machineDir = join(testDir, 'skills', 'other-directory');
+    mkdirSync(machineDir, { recursive: true });
+    writeFileSync(
+      join(machineDir, 'SKILL.md'),
+      '---\nname: shared\ndescription: Machine copy\n---\nMachine body',
+      'utf-8',
+    );
+    // …and a workspace package that really is called `shared`.
+    const projectDir = seedProjectSkill('shared');
+    await service.discoverSkills(testDir, 'demo');
+    // The name-derived directory the old code digested, holding a THIRD
+    // package — the one whose revision would have been compared.
+    const nameDerived = join(testDir, 'skills', 'shared');
+    mkdirSync(nameDerived, { recursive: true });
+    writeFileSync(
+      join(nameDerived, 'SKILL.md'),
+      '---\nname: shared\ndescription: Name-derived\n---\nName-derived body',
+      'utf-8',
+    );
+
+    // A revision of whatever the service says this package is…
+    const revision = await service.localSkillRevision('shared', testDir);
+    const result = await service.removeSkillIfRevision(
+      'shared',
+      revision,
+      testDir,
+    );
+
+    // …and the tree that goes is the tree that was verified. Whichever package
+    // the service resolves, the two must be the same one — that is the claim,
+    // not which of them wins.
+    expect(result.removed).toBe(true);
+    const survivors = [projectDir, nameDerived].filter((dir) =>
+      existsSync(dir),
+    );
+    expect(
+      survivors.length,
+      'compare-delete removed a package it never verified',
+    ).toBe(1);
+    // The verified one is gone; the other is untouched, byte for byte.
+    const [survivor] = survivors;
+    expect(readFileSync(join(survivor, 'SKILL.md'), 'utf-8')).toContain(
+      survivor === projectDir ? 'Workspace body' : 'Name-derived body',
+    );
+  });
+
+  // A stale revision still refuses, and refusing must not delete either tree.
+  test('compare-delete on a changed package deletes nothing', async () => {
+    const projectDir = seedProjectSkill('changed');
+    await service.discoverSkills(testDir, 'demo');
+    const revision = await service.localSkillRevision('changed', testDir);
+    writeFileSync(
+      join(projectDir, 'SKILL.md'),
+      '---\nname: changed\ndescription: Edited by hand\n---\nEdited',
+      'utf-8',
+    );
+
+    const result = await service.removeSkillIfRevision(
+      'changed',
+      revision,
+      testDir,
+    );
+
+    expect(existsSync(projectDir)).toBe(true);
+    expect(result).toEqual({ removed: false, conflict: true });
+  });
+
   // A remove deletes a package TREE, so the rule that decides whether Station
   // owns a package decides this too.
   test('a remove deletes the discovered package, and refuses a foreign root', async () => {
@@ -1425,7 +1505,7 @@ describe('SkillService', () => {
     const refused = await service.removeSkill('served', testDir);
     expect(existsSync(pluginSkillDir), 'a plugin root was deleted').toBe(true);
     expect(refused.success).toBe(false);
-    expect(refused.message).toContain('Station does not own');
+    expect(refused.message).toContain('is not a skills root Station writes');
 
     const removed = await service.removeSkill('removable', testDir);
     expect(existsSync(projectDir)).toBe(false);
@@ -1461,7 +1541,7 @@ describe('SkillService', () => {
     );
     expect(result.success).toBe(false);
     expect(result.message).toContain(pluginSkillDir);
-    expect(result.message).toContain('install it into this workspace');
+    expect(result.message).toContain('is not a skills root Station writes');
   });
 
   // The shape that made the machine root dangerous in the first place: a
@@ -1810,13 +1890,10 @@ describe('SkillService', () => {
         `---\nname: ${name}\ndescription: D\ncommand:\n  enabled: true\n  name: "ship"\n---\nBody`,
       );
       // …each with the install record a real package has, so the detail
-      // assertion below has a record to read. Disclosed, and not this test's
-      // subject: a DISCOVERED package with no `skill.json` at all has no detail
-      // read in either root — `getSkill` has no record beside the body and
-      // `configLoader.loadSkill` has none to re-derive, so the pane 404s for a
-      // name the list shows. Same class as #1602, in the recordless direction;
-      // filed as #1614. This harness used to answer a fabricated config there,
-      // which is what made that gap invisible.
+      // assertion below reads a record rather than the recordless answer
+      // #1614 added (which has its own cases above). The gap that comment used
+      // to describe — a discovered package with no `skill.json` having no
+      // detail read at all — is fixed; this fixture simply is not that case.
       writeFileSync(
         join(dir, 'skill.json'),
         JSON.stringify({

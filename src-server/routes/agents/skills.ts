@@ -315,7 +315,14 @@ export function createSkillRoutes(
       const name = param(c, 'name');
       const result = await skillService.removeSkill(name, getProjectHomeDir());
       if (!result.success) {
-        return c.json({ success: false, error: result.message }, 404);
+        // A package Station does not own is a 409, exactly as the same refusal
+        // is on PUT above — the request is understood and the skill exists;
+        // what is refused is Station's authority over it. 404 said the skill
+        // was not there, which is a different and false answer.
+        return c.json(
+          { success: false, error: result.message },
+          result.message.startsWith(`Cannot remove '${name}':`) ? 409 : 404,
+        );
       }
       skillOps.add(1, { operation: 'delete' });
       return c.json({ success: true });

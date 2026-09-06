@@ -61,7 +61,6 @@ import {
 } from './config-loader-app.js';
 import {
   deleteIntegrationConfig,
-  deleteSkillConfig,
   deleteSkillPackageAt,
   integrationConfigExists,
   listIntegrationMetadata,
@@ -72,7 +71,6 @@ import {
   type SkillConfigRecord,
   saveACPConfigFile,
   saveIntegrationConfig,
-  saveSkillConfig,
   saveSkillConfigIn,
   skillConfigExists,
   updateIntegrationConfig,
@@ -1419,10 +1417,6 @@ export class ConfigLoader {
   /**
    * Save a skill config
    */
-  async saveSkill(name: string, config: SkillConfig): Promise<void> {
-    await saveSkillConfig(this.projectHomeDir, name, config);
-  }
-
   /**
    * Write a package's record into the package's own directory, for a caller
    * that has already resolved it (`SkillService`, which resolves it from where
@@ -1435,13 +1429,6 @@ export class ConfigLoader {
   /** Remove a package by its own directory. See `saveSkillIn`. */
   async deleteSkillAt(name: string, directory: string): Promise<void> {
     await deleteSkillPackageAt(this.projectHomeDir, name, directory);
-  }
-
-  /**
-   * Delete a skill directory
-   */
-  async deleteSkill(name: string): Promise<void> {
-    await deleteSkillConfig(this.projectHomeDir, name);
   }
 
   /**

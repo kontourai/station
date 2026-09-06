@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
+  assertSkillPackageDirectory,
   isDirectoryPhysicallyWithin,
   isDirectoryWithin,
   resolveSkillDirectory,
@@ -105,5 +106,93 @@ describe('resolveSkillDirectory refuses a symlinked-out skill directory', () => 
     expect(resolveSkillDirectory(home, 'alpha')).toBe(
       join(home, 'skills', 'alpha'),
     );
+  });
+});
+
+/**
+ * The floor beneath every directory the write path did NOT get from
+ * `resolveSkillDirectory` (#1619). Its rejection paths are what stand between a
+ * caller-supplied directory and `rm -rf`, so each one is executed here rather
+ * than reached through a service that happens to call it.
+ */
+describe('assertSkillPackageDirectory', () => {
+  test('accepts a package in either root Station writes', () => {
+    expect(() =>
+      assertSkillPackageDirectory(home, 'alpha', join(home, 'skills', 'alpha')),
+    ).not.toThrow();
+    expect(() =>
+      assertSkillPackageDirectory(
+        home,
+        'alpha',
+        join(home, 'projects', 'demo', 'skills', 'alpha'),
+      ),
+    ).not.toThrow();
+  });
+
+  test('refuses an unsafe name, whatever directory it is handed', () => {
+    for (const name of ['../escaped', 'a/b', '__proto__', '..']) {
+      expect(
+        () =>
+          assertSkillPackageDirectory(home, name, join(home, 'skills', 'safe')),
+        name,
+      ).toThrow(/Invalid skill name/);
+    }
+  });
+
+  test('refuses a directory that is not this package', () => {
+    expect(() =>
+      assertSkillPackageDirectory(home, 'alpha', join(home, 'skills', 'beta')),
+    ).toThrow(/is not the package for/);
+    // A case difference is a different directory on a case-sensitive
+    // filesystem and the same one elsewhere; either way it is not this name.
+    expect(() =>
+      assertSkillPackageDirectory(home, 'alpha', join(home, 'skills', 'Alpha')),
+    ).toThrow(/is not the package for/);
+  });
+
+  test('refuses a root Station serves from but does not write', () => {
+    // Inside the home, with a parent literally called `skills` — which is why
+    // "the parent is called skills" is not the rule.
+    expect(() =>
+      assertSkillPackageDirectory(
+        home,
+        'shipper',
+        join(home, 'plugins', 'acme', 'skills', 'shipper'),
+      ),
+    ).toThrow(/does not sit in a skills root Station writes/);
+    expect(() =>
+      assertSkillPackageDirectory(
+        home,
+        'alpha',
+        join(home, 'projects', 'demo', 'alpha'),
+      ),
+    ).toThrow(/does not sit in a skills root Station writes/);
+  });
+
+  test('refuses a directory outside the home', () => {
+    expect(() =>
+      assertSkillPackageDirectory(home, 'alpha', join(outside, 'alpha')),
+    ).toThrow(/resolves outside/);
+  });
+
+  // Review H2. Containment against the HOME plus a lexical parent check do not
+  // compose into "physically inside a writable root": a package directory that
+  // is a symlink redirecting elsewhere INSIDE the home satisfies both while
+  // every write lands outside the roots. `resolveSkillDirectory` refuses this
+  // exact shape (above), and moving the derivation must not drop the guarantee.
+  test('refuses a package directory symlinked elsewhere inside the home', () => {
+    const elsewhere = join(home, 'not-a-skills-root');
+    mkdirSync(elsewhere, { recursive: true });
+    writeFileSync(join(elsewhere, 'canary.txt'), 'untouched', 'utf-8');
+    mkdirSync(join(home, 'skills'), { recursive: true });
+    symlinkSync(elsewhere, join(home, 'skills', 'aliased'), 'dir');
+
+    expect(() =>
+      assertSkillPackageDirectory(
+        home,
+        'aliased',
+        join(home, 'skills', 'aliased'),
+      ),
+    ).toThrow(/resolves outside/);
   });
 });

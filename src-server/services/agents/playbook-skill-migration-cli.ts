@@ -3,7 +3,7 @@
  *
  * `station doctor --migrate-playbooks` runs with no Station server, so it
  * assembles the same seams the boot path uses out of their free-function form:
- * `loadSkillConfig`/`saveSkillConfig` behind a `SkillService`, and
+ * `loadSkillConfig` and the directory-addressed writers behind a `SkillService`, and
  * `config-loader-agents`' own load/save (which carry the identity and schema
  * refusals) as the agent port. Nothing here re-implements a write — a second
  * writer for the same files is exactly what this migration exists to remove.
@@ -20,7 +20,6 @@ import {
 import {
   deleteSkillPackageAt,
   loadSkillConfig,
-  saveSkillConfig,
   saveSkillConfigIn,
 } from '../../domain/config-loader-storage.js';
 import {
@@ -41,8 +40,6 @@ export async function runPlaybookSkillMigrationForHome(
   const configLoader = {
     getProjectHomeDir: () => homeDir,
     loadSkill: (name: string) => loadSkillConfig(homeDir, name),
-    saveSkill: (name: string, config: never) =>
-      saveSkillConfig(homeDir, name, config),
     // The directory-addressed pair the write path uses since #1619. This
     // loader is hand-built rather than a `ConfigLoader`, so it has to carry
     // every method the service calls — a missing one is a runtime failure the

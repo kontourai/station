@@ -37,6 +37,9 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 const { SkillService } = await import('../skill-service.js');
+const { saveSkillConfigIn, deleteSkillPackageAt } = await import(
+  '../../../domain/config-loader-storage.js'
+);
 const { migratePlaybooksToSkills } = await import(
   '../playbook-skill-migration.js'
 );
@@ -81,19 +84,16 @@ const configLoader = {
       'utf-8',
     );
   }),
-  // The directory-addressed pair the write path uses (#1619), writing where it
-  // is told rather than where a name would have resolved.
-  saveSkillIn: vi.fn(async (directory: string, config: unknown) => {
-    mkdirSync(directory, { recursive: true });
-    writeFileSync(
-      join(directory, 'skill.json'),
-      JSON.stringify(config, null, 2),
-      'utf-8',
-    );
-  }),
-  deleteSkillAt: vi.fn(async (_name: string, directory: string) => {
-    rmSync(directory, { recursive: true, force: true });
-  }),
+  // The REAL directory-addressed pair (#1619), not an imitation: the
+  // containment they assert is the floor beneath every write, and a stub that
+  // only wrote a file would let this suite certify a write that escapes its
+  // root (review: test power).
+  saveSkillIn: vi.fn(async (directory: string, config: unknown) =>
+    saveSkillConfigIn(home, directory, config as never),
+  ),
+  deleteSkillAt: vi.fn(async (name: string, directory: string) =>
+    deleteSkillPackageAt(home, name, directory),
+  ),
   deleteSkill: vi.fn(),
   listSkills: vi.fn().mockResolvedValue([]),
   skillExists: vi.fn().mockResolvedValue(false),

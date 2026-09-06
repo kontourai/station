@@ -30,7 +30,7 @@ describe('skill-service-install', () => {
 
   it('installs a skill through the first successful registry provider', async () => {
     const skillDir = join(tempDir, 'skills', 'deep-research');
-    const saveSkill = vi.fn().mockResolvedValue(undefined);
+    const saveSkillIn = vi.fn().mockResolvedValue(undefined);
     const rediscover = vi.fn().mockResolvedValue(undefined);
     const provider = {
       install: vi
@@ -55,7 +55,7 @@ describe('skill-service-install', () => {
     const result = await installSkillFromRegistry({
       name: 'deep-research',
       projectHomeDir: tempDir,
-      configLoader: { saveSkill },
+      configLoader: { saveSkillIn },
       providers: [{ provider }] as any,
       rediscover,
     });
@@ -65,8 +65,8 @@ describe('skill-service-install', () => {
       'deep-research',
       expect.stringContaining('.deep-research.install-'),
     );
-    expect(saveSkill).toHaveBeenCalledWith(
-      'deep-research',
+    expect(saveSkillIn).toHaveBeenCalledWith(
+      skillDir,
       expect.objectContaining({
         version: '1.2.3',
         path: skillDir,
@@ -133,7 +133,7 @@ describe('skill-service-install', () => {
     // registry and wrote outside `<home>/skills`.
     const outside = join(tempDir, 'candidate');
     mkdirSync(outside, { recursive: true });
-    const saveSkill = vi.fn().mockResolvedValue(undefined);
+    const saveSkillIn = vi.fn().mockResolvedValue(undefined);
     const rediscover = vi.fn().mockResolvedValue(undefined);
     const provider = {
       install: vi.fn().mockResolvedValue({ success: true, message: 'ok' }),
@@ -145,7 +145,7 @@ describe('skill-service-install', () => {
         installSkillFromRegistry({
           name,
           projectHomeDir: tempDir,
-          configLoader: { saveSkill },
+          configLoader: { saveSkillIn },
           providers: [{ provider }] as any,
           rediscover,
         }),
@@ -154,13 +154,13 @@ describe('skill-service-install', () => {
 
     // No provider was reached, so nothing was copied and nothing recorded.
     expect(provider.install).not.toHaveBeenCalled();
-    expect(saveSkill).not.toHaveBeenCalled();
+    expect(saveSkillIn).not.toHaveBeenCalled();
     expect(rediscover).not.toHaveBeenCalled();
     expect(readdirSync(outside)).toEqual([]);
   });
 
   it('records registry provenance the writer knows', async () => {
-    const saveSkill = vi.fn().mockResolvedValue(undefined);
+    const saveSkillIn = vi.fn().mockResolvedValue(undefined);
     const provider = {
       install: vi
         .fn()
@@ -178,13 +178,13 @@ describe('skill-service-install', () => {
     await installSkillFromRegistry({
       name: 'deep-research',
       projectHomeDir: tempDir,
-      configLoader: { saveSkill },
+      configLoader: { saveSkillIn },
       providers: [{ provider }] as any,
       rediscover: vi.fn().mockResolvedValue(undefined),
     });
 
-    expect(saveSkill).toHaveBeenCalledWith(
-      'deep-research',
+    expect(saveSkillIn).toHaveBeenCalledWith(
+      join(tempDir, 'skills', 'deep-research'),
       expect.objectContaining({ origin: 'registry' }),
     );
   });
@@ -209,11 +209,11 @@ describe('skill-service-install', () => {
       loadSkill: vi.fn(),
       listSkills: vi.fn().mockResolvedValue([]),
       skillExists: vi.fn().mockResolvedValue(false),
-      deleteSkill: vi.fn(),
-      saveSkill: vi.fn(async (name: string, config: unknown) => {
-        const target = join(tempDir, 'skills', name);
-        mkdirSync(target, { recursive: true });
-        writeFileSync(join(target, 'skill.json'), JSON.stringify(config));
+      deleteSkillAt: vi.fn(),
+      // Writes where it is told, like the real directory-addressed writer.
+      saveSkillIn: vi.fn(async (directory: string, config: unknown) => {
+        mkdirSync(directory, { recursive: true });
+        writeFileSync(join(directory, 'skill.json'), JSON.stringify(config));
       }),
     };
     const service = new SkillService(loader as never, {
@@ -269,7 +269,7 @@ describe('skill-service-install', () => {
       installSkillFromRegistry({
         name: 'cleanup',
         projectHomeDir: tempDir,
-        configLoader: { saveSkill: vi.fn() },
+        configLoader: { saveSkillIn: vi.fn() },
         providers: [{ provider }] as never,
         rediscover: vi.fn(),
       }),

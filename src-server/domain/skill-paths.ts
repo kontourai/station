@@ -216,9 +216,8 @@ export function assertSkillPackageDirectory(
   // parent happens to be called skills" is not the same statement and admits
   // `<home>/plugins/<ns>/skills/<name>` — a root Station serves from and must
   // never write to.
-  const parent = relative(resolve(projectHomeDir), dirname(resolved))
-    .split(sep)
-    .join('/');
+  const root = dirname(resolved);
+  const parent = relative(resolve(projectHomeDir), root).split(sep).join('/');
   const inWritableRoot =
     parent === 'skills' || /^projects\/[^/]+\/skills$/.test(parent);
   if (!inWritableRoot) {
@@ -226,8 +225,36 @@ export function assertSkillPackageDirectory(
       `Skill directory ${JSON.stringify(directory)} does not sit in a skills root Station writes (${projectHomeDir}/skills or ${projectHomeDir}/projects/<project>/skills)`,
     );
   }
+  // …and PHYSICALLY inside that root, which the two checks above do not
+  // compose into. Containment against the HOME plus a lexical shape accepts a
+  // package directory that is a symlink redirecting elsewhere inside the home
+  // — `<home>/skills/<name>` pointing at `<home>/somewhere-else` satisfies
+  // both while every write lands outside the roots. `resolveSkillDirectory`
+  // made exactly this call against `skillsRootDir(...)` and refused it
+  // (`skill-paths.test.ts` pins that refusal); moving the derivation must not
+  // drop the guarantee that came with it (review H2).
+  if (!isDirectoryPhysicallyWithin(root, resolved)) {
+    throw new Error(
+      `Skill directory ${JSON.stringify(directory)} resolves outside ${root}`,
+    );
+  }
 }
 
+/**
+ * THE one place a skill NAME becomes a directory.
+ *
+ * Every writer that starts from a name resolves through this — local create,
+ * registry install, and the conditional setup-import seams — so a name can
+ * never reach a filesystem join without having been refused first. Review
+ * delta-2 finding (a): `installSkill` forwarded an unchecked registry id into
+ * `cp(join(root, id), join(targetDir, id))`, so `../candidate` selected a
+ * directory beside the registry root and copied outside `<home>/skills`.
+ *
+ * A writer that starts from a DISCOVERED package resolves its directory from
+ * the registry instead (#1619) and asserts the same guarantees through
+ * `assertSkillPackageDirectory` above; this stays the derivation for everything
+ * that has only a name.
+ */
 export function resolveSkillDirectory(
   projectHomeDir: string,
   name: string,
