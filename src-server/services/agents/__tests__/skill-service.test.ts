@@ -1760,12 +1760,14 @@ describe('SkillService', () => {
       testDir,
     );
 
-    expect(result.success).toBe(false);
-    expect(result.message).toMatch(/already exists/);
+    // The packages first, so removing the refusal reds on the move rather than
+    // on the answer that would have prevented it.
     expect(existsSync(join(testDir, 'skills', 'alpha', 'SKILL.md'))).toBe(true);
     expect(
       readFileSync(join(testDir, 'skills', 'taken', 'SKILL.md'), 'utf-8'),
     ).toContain('Other body');
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/already exists/);
   });
 
   // The DIRECTORY half of that refusal, which the name rule above cannot reach:
@@ -1827,18 +1829,23 @@ describe('SkillService', () => {
       testDir,
     );
 
-    expect(result.success).toBe(false);
-    expect(result.message).toContain('pdf');
-    // The package is still there, still canonical, and still the one that
-    // answers to its own name.
+    // The listing first: unguarded, the local package moves to
+    // `<home>/skills/pdf`, is registered last, wins the name, and the canonical
+    // package is simply gone from the answer — which is the defect, not the
+    // refusal's absence.
     const listed = new Map(
       withPackage.listSkills().map((skill) => [skill.name, skill]),
     );
-    expect(listed.get('pdf')?.origin).toBe('package');
+    expect(
+      listed.get('pdf')?.origin,
+      'the local package took the canonical package name',
+    ).toBe('package');
     expect(listed.get('pdf')?.path).toBe(packageSkill);
-    expect(listed.get('notes')).toBeDefined();
+    expect(listed.get('notes'), 'the renamed package vanished').toBeDefined();
     expect(existsSync(join(testDir, 'skills', 'notes', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(testDir, 'skills', 'pdf'))).toBe(false);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('pdf');
   });
 
   // Review round 2, L3, at the seam it actually reaches: with no `SKILL.md`
