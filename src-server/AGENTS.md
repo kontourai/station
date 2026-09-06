@@ -7,3 +7,5 @@ Run the exact focused server tests selected by `npm run gate:for`; add a targete
 Every new process launch must set `windowsHide: true`.
 
 Batch repeated reads at the owning request seam, preserving user scope, corruption behavior, and freshness between requests. Verify the caller actually uses the batch; a helper-only test cannot establish request cost. Follow the [test-effectiveness route](../docs/guides/testing.md#fixture-fidelity-and-test-effectiveness) for targeted mutations and diagnostic profiling, and keep browser counters separate from server/device performance claims.
+
+Do not assume path helpers are pure string operations: Flow Agents resolves its shared artifact root through Git. Resolve that root once per listing request and reuse it for sidecar paths; avoid a persistent cwd cache that could miss worktree or authority changes.
