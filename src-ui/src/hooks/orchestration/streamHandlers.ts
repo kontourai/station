@@ -4,6 +4,7 @@ import { derivePlanArtifactFromStreamingState } from '../../utils/planArtifacts'
 import { extractUIBlocks } from '../../utils/uiBlocks';
 import {
   createAssistantStreamingMessage,
+  toolPartSettleableBy,
   upsertTextPart,
   upsertToolPart,
   upsertToolResultBlocks,
@@ -136,20 +137,22 @@ export function handleToolProgressEvent(
 /**
  * station#1558: does this part list already hold the call this result
  * settles? A part already pinned to a DIFFERENT terminal event id is a
- * distinct durable result and does not count — the same rule
- * `upsertToolPart` applies when it picks a slot to update.
+ * distinct durable result and does not count.
+ *
+ * station#1569 (H1): shares `toolPartSettleableBy` with `upsertToolPart`
+ * rather than restating it. These two must agree — this one decides WHICH
+ * message the result lands on, that one decides which row inside it — and
+ * when they disagreed about an `unresolved` row the scan skipped past the
+ * message holding the call and the upsert then appended a second row to a
+ * different message entirely.
  */
 function holdsToolCall(
   parts: ChatContentPart[] | undefined,
   toolCallId: string,
   resultEventId: string | undefined,
 ): boolean {
-  return (parts ?? []).some(
-    (part) =>
-      part.type === 'tool-invocation' &&
-      part.toolCallId === toolCallId &&
-      (part.sourceEventId === undefined ||
-        part.sourceEventId === resultEventId),
+  return (parts ?? []).some((part) =>
+    toolPartSettleableBy(part, toolCallId, resultEventId),
   );
 }
 

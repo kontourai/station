@@ -74,6 +74,11 @@ export interface ClassifiedToolCall<P extends ToolCallLike = ToolCallLike> {
   inProgress: boolean;
   /** The call reached a failure terminal (error text or an error state). */
   failed: boolean;
+  /** The session ended with the call still open, so whether it ran is
+   * unknown (station#1558's `unresolved` terminal). Neither in progress nor
+   * done — the batch header's verb has to account for it separately from
+   * both (station#1569 item 3). */
+  unresolved: boolean;
 }
 
 export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
@@ -87,6 +92,11 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
   /** How many of this run's calls failed — a collapsed batch must disclose
    * failure without being opened (archive#2652 redesign). */
   failedCount: number;
+  /** How many of this run's calls ended `unresolved`. Disclosed for the same
+   * reason `failedCount` is: the summary's verb alone cannot say that some of
+   * these calls may never have run, and a reader who does not open the batch
+   * would otherwise be told nothing (station#1569 item 3). */
+  unresolvedCount: number;
 }
 
 export type MessageBlock<P extends ToolCallLike = ToolCallLike> =
@@ -106,15 +116,16 @@ function classifyCall<P extends ToolCallLike>(
   // call whose session ended before it reported. `ToolCallDisplay` already
   // refuses that tense for an unresolved call; the header a reader sees FIRST
   // must not contradict the row it expands into.
+  const unresolved = part.state === 'unresolved';
   const label = callLabel(
     kind,
     toolName,
     args,
-    part.state === 'unresolved' ? 'unresolved' : inProgress,
+    unresolved ? 'unresolved' : inProgress,
   );
   const failed =
     Boolean(part.error || part.errorText) || part.state === 'error';
-  return { part, index, kind, label, inProgress, failed };
+  return { part, index, kind, label, inProgress, failed, unresolved };
 }
 
 /** Joins per-kind segments the way the owner-supplied examples read: plain
@@ -122,6 +133,7 @@ function classifyCall<P extends ToolCallLike>(
 function summarizeCalls(
   calls: ClassifiedToolCall[],
   inProgress: boolean,
+  unresolved: boolean,
 ): string {
   if (calls.length === 1) {
     const suffix = inProgress ? '…' : '';
@@ -137,9 +149,20 @@ function summarizeCalls(
   for (const kind of KIND_ORDER) {
     const count = counts.get(kind) ?? 0;
     if (count === 0) continue;
-    const verbForm = inProgress
-      ? KIND_VERBS[kind].progressiveVerb
-      : KIND_VERBS[kind].verb;
+    // station#1569 (item 3): the same tense rule the solo case and
+    // `ToolCallDisplay` already apply, extended to the multi-call header. A
+    // batch containing an unresolved call read "Ran 2 commands" — the past
+    // tense asserts work that may never have happened, for a batch whose own
+    // expanded rows say the opposite. The bare infinitive is the only form
+    // honest for a MIXED batch: it claims neither completion nor flight, and
+    // `unresolvedCount` below carries the specifics. Checked before
+    // `inProgress` for the same reason: "Running" is as much a claim as
+    // "Ran" for a call whose session is gone.
+    const verbForm = unresolved
+      ? KIND_VERBS[kind].pendingVerb
+      : inProgress
+        ? KIND_VERBS[kind].progressiveVerb
+        : KIND_VERBS[kind].verb;
     const verb = segments.length === 0 ? verbForm : verbForm.toLowerCase();
     const nouns = KIND_NOUNS[kind];
     const noun = count === 1 ? nouns.singularNoun : nouns.pluralNoun;
@@ -147,7 +170,10 @@ function summarizeCalls(
   }
 
   const joined = segments.join(', ');
-  return inProgress ? `${joined}…` : joined;
+  // The ellipsis means "still going". An unresolved call is not still going —
+  // nothing is coming for it — so it never gets one, even in the mixed batch
+  // where some sibling call is genuinely in flight.
+  return inProgress && !unresolved ? `${joined}…` : joined;
 }
 
 /** Classifies a single run (from `splitToolCallRuns`) into a `ToolCallGroup`
@@ -159,7 +185,8 @@ export function classifyToolCallRun<P extends ToolCallLike>(
 ): ToolCallGroup<P> {
   const calls = run.calls.map(({ part, index }) => classifyCall(part, index));
   const inProgress = calls.some((c) => c.inProgress);
-  const summary = summarizeCalls(calls, inProgress);
+  const unresolvedCount = calls.filter((c) => c.unresolved).length;
+  const summary = summarizeCalls(calls, inProgress, unresolvedCount > 0);
   const failedCount = calls.filter((c) => c.failed).length;
   return {
     type: 'tool-call-group',
@@ -168,6 +195,7 @@ export function classifyToolCallRun<P extends ToolCallLike>(
     summary,
     inProgress,
     failedCount,
+    unresolvedCount,
   };
 }
 
