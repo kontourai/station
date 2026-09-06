@@ -323,6 +323,7 @@ export async function bootstrapRuntimeDefaultAgent(
   });
 
   const defaultAgent = await context.framework.createTempAgent({
+    agentId: 'station',
     name: 'default',
     instructions: () =>
       context.replaceTemplateVariables(
