@@ -341,7 +341,12 @@ const FIRST_RUN_CHROME: DisclosureChrome = {
 };
 
 const STANDALONE_CHROME: DisclosureChrome = {
-  lede: 'usage-telemetry-disclosure__lede',
+  // Its OWN class, not the inventory's `__lede`: that one is the paragraph
+  // `DisclosureInventory` opens with, and the summary sits above the details
+  // holding it — two different ledes wearing one name is how a later reader
+  // restyles the wrong paragraph. They share their declarations in the
+  // stylesheet, which is where sharing belongs.
+  lede: 'usage-telemetry-disclosure__summary',
   inventory: 'usage-telemetry-disclosure__inventory',
 };
 

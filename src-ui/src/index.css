@@ -5630,7 +5630,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   margin-bottom: 6px;
 }
 
-.usage-telemetry-disclosure__lede {
+.usage-telemetry-disclosure__lede,
+.usage-telemetry-disclosure__summary {
   color: var(--text-secondary);
   line-height: 1.6;
   margin-bottom: 20px;
@@ -5643,6 +5644,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
  * because this surface is mounted by `OnboardingGate` and by Settings, neither
  * of which loads the chapter's stylesheet.
  */
+.usage-telemetry-disclosure__inventory {
+  margin-bottom: 16px;
+}
+
 .usage-telemetry-disclosure__inventory > summary {
   cursor: pointer;
   padding: 8px 0;

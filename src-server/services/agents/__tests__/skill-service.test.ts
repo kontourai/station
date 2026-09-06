@@ -1109,47 +1109,126 @@ describe('SkillService', () => {
     expect((await service.getSkill('machine-wide')).origin).toBe('user');
   });
 
-  // Delta-review L3. The write path corrects the record too. The shape here is
-  // a project-scoped package whose NAME also exists machine-wide, which is what
-  // `updateLocalSkill`'s opening `getSkill(name)` used to need to resolve at all
-  // (#1602 — now fixed, so a project-only package reaches this heal too; kept
-  // as written because the duplicate-name case is the one that pins which
-  // record the read picks). Disclosed: no route passes a slug today
-  // (`routes/agents/skills.ts:185` calls `updateLocalSkill(name, updates,
-  // getProjectHomeDir())`), so this heal is reachable from the service only.
-  test('updating a project-scoped skill heals a stale user record', async () => {
-    await service.createLocalSkill(
-      { name: 'dup', description: 'Machine copy', body: 'Body' },
-      testDir,
-    );
-    const projectDir = join(testDir, 'projects', 'demo', 'skills', 'dup');
-    mkdirSync(projectDir, { recursive: true });
+  /** A workspace package as it sits on disk: its own body, its own record. */
+  function seedProjectSkill(
+    name: string,
+    overrides: Record<string, unknown> = {},
+  ) {
+    const dir = join(testDir, 'projects', 'demo', 'skills', name);
+    mkdirSync(dir, { recursive: true });
     writeFileSync(
-      join(projectDir, 'SKILL.md'),
-      '---\nname: dup\ndescription: Workspace copy\n---\nBody',
+      join(dir, 'SKILL.md'),
+      `---\nname: ${name}\ndescription: Workspace copy\n---\nWorkspace body`,
+      'utf-8',
     );
     writeFileSync(
-      join(projectDir, 'skill.json'),
+      join(dir, 'skill.json'),
       JSON.stringify({
-        name: 'dup',
+        name,
+        description: 'Workspace copy',
         source: 'local',
-        path: projectDir,
+        installedAt: '2026-01-01T00:00:00.000Z',
+        path: dir,
         origin: 'user',
+        ...overrides,
       }),
       'utf-8',
     );
+    return dir;
+  }
+
+  // Delta-review L3. The write path corrects the record too. Reaching it needs
+  // a scoped call on a package the scope actually owns — which #1602 is what
+  // made possible: before it, `updateLocalSkill`'s opening `getSkill(name)`
+  // threw for a project-only package and this heal could only be reached
+  // through a machine-wide duplicate of the same name, a shape the guard below
+  // now (correctly) refuses. Disclosed: no route passes a slug today
+  // (`routes/agents/skills.ts:184-188` calls `updateLocalSkill(name, updates,
+  // getProjectHomeDir())`), so this heal is reachable from the service only
+  // (#1619).
+  test('updating a project-scoped skill heals a stale user record', async () => {
+    const projectDir = seedProjectSkill('scoped');
+    await service.discoverSkills(testDir, 'demo');
 
     const result = await service.updateLocalSkill(
-      'dup',
+      'scoped',
       { description: 'Workspace copy, edited' },
       testDir,
       'demo',
     );
 
     expect(result.success).toBe(true);
+    const record = JSON.parse(
+      readFileSync(join(projectDir, 'skill.json'), 'utf-8'),
+    );
+    expect(record.origin).toBe('project');
+    expect(record.description).toBe('Workspace copy, edited');
+    // And nothing was written to the machine root under that name.
+    expect(existsSync(join(testDir, 'skills', 'scoped'))).toBe(false);
+  });
+
+  // Review H1. The read resolves a workspace package (#1602); this write still
+  // derives its directory from the name and the caller's slug, and the route
+  // passes none. Unguarded, a PUT on a workspace skill read the workspace
+  // package and wrote a SECOND one to the machine root — stamped `project` at a
+  // machine path, with the workspace body left untouched and the listing then
+  // showing the copy. Before #1602 the read threw first, so nothing was
+  // written; that is what this refusal restores, honestly and with a reason.
+  test('an unscoped update of a project-only skill writes nothing and says why', async () => {
+    const projectDir = seedProjectSkill('workspace-owned');
+    await service.discoverSkills(testDir, 'demo');
+    const before = readFileSync(join(projectDir, 'SKILL.md'), 'utf-8');
+
+    const result = await service.updateLocalSkill(
+      'workspace-owned',
+      { description: 'Edited from the route, which passes no slug' },
+      testDir,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('workspace-owned');
+    expect(result.message).toContain(projectDir);
+    // The machine root is where the copy would have landed.
+    expect(existsSync(join(testDir, 'skills', 'workspace-owned'))).toBe(false);
+    // …and the package that does exist is untouched.
+    expect(readFileSync(join(projectDir, 'SKILL.md'), 'utf-8')).toBe(before);
     expect(
-      JSON.parse(readFileSync(join(projectDir, 'skill.json'), 'utf-8')).origin,
-    ).toBe('project');
+      JSON.parse(readFileSync(join(projectDir, 'skill.json'), 'utf-8'))
+        .description,
+    ).toBe('Workspace copy');
+  });
+
+  // Review L2. A package copied into a new directory keeps the record it was
+  // copied with. That record's `legacyIds`/`provenance`/`installedAt` are the
+  // ORIGINAL skill's, so answering the new name with them hands a caller
+  // another skill's identity — and `resolveSkillName` would route that skill's
+  // legacy ids here. A record that does not claim this name is no record.
+  test("a record that names a different skill is not this skill's record", async () => {
+    const dir = join(testDir, 'skills', 'renamed');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'SKILL.md'),
+      '---\nname: renamed\ndescription: Copied and renamed\n---\nBody',
+      'utf-8',
+    );
+    // The bytes a copy of `origin-skill` carries with it.
+    writeFileSync(
+      join(dir, 'skill.json'),
+      JSON.stringify({
+        name: 'origin-skill',
+        description: 'The skill this record was written for',
+        source: 'registry',
+        installedAt: '2020-01-01T00:00:00.000Z',
+        path: join(testDir, 'skills', 'origin-skill'),
+        legacyIds: ['11111111-2222-3333-4444-555555555555'],
+      }),
+      'utf-8',
+    );
+    await service.discoverSkills(testDir);
+
+    await expect(service.getSkill('renamed')).rejects.toThrow(
+      "Skill 'renamed' not found",
+    );
   });
 
   test('a recorded origin that is not user still wins over the path', async () => {

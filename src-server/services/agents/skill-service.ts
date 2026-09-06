@@ -1530,8 +1530,32 @@ export class SkillService {
   ): Promise<{ success: boolean; message: string }> {
     // A rename is a create under a new name: the same seam, the same refusal.
     if (updates.name !== undefined) assertSafeSkillName(updates.name);
-    const current = await this.getSkill(name);
     const skillDir = this.resolveSkillDir(projectHomeDir, name, projectSlug);
+    // THE PACKAGE THIS WRITE WOULD TOUCH HAS TO BE THE ONE THE READ ANSWERED
+    // FROM.
+    //
+    // `getSkill` now resolves a project-scoped package's record (#1602), while
+    // this write still derives its directory from the name and the caller's
+    // slug — and no route passes one (`routes/agents/skills.ts:184-188`). So a
+    // PUT against a workspace skill read its content out of
+    // `<home>/projects/<slug>/skills/<name>` and wrote it to
+    // `<home>/skills/<name>`: a second package at a machine path, stamped with
+    // the workspace package's `origin`, the original body untouched, and the
+    // listing then showing the copy. Before #1602 the read threw first, so the
+    // write was unreachable; it is reachable now, and refusing is the honest
+    // answer until the slug is threaded through the route (#1619).
+    //
+    // `isSkillWritable` is the predicate, not a second copy of it: the route
+    // already refuses a command declaration on the same rule, and one rule that
+    // two callers share cannot drift into two answers.
+    if (!this.isSkillWritable(name, projectHomeDir, projectSlug)) {
+      const location = this.registry.get(name)?.location;
+      return {
+        success: false,
+        message: `Skill '${name}' is served from ${location ? dirname(location) : 'a package Station does not own'}, which this update does not own; it would have written a second copy to ${skillDir}`,
+      };
+    }
+    const current = await this.getSkill(name);
     const skillPath = join(skillDir, 'SKILL.md');
     let preservedFrontmatter: string[] = [];
     if (existsSync(skillPath)) {
@@ -1548,8 +1572,13 @@ export class SkillService {
     }
     // Declarations, never `current.variables` — that is the derived set.
     const declared = await this.loadDeclaredMetadata(name, skillPath);
+    // A rename MOVES the package, so the destination is resolved BEFORE the
+    // record is built: the origin below is a fact about where this write lands.
+    const nextName = updates.name ?? current.name;
+    const nextDir = this.resolveSkillDir(projectHomeDir, nextName, projectSlug);
+    const nextPath = join(nextDir, 'SKILL.md');
     const next: EditableSkillInput = {
-      name: updates.name ?? current.name,
+      name: nextName,
       description: updates.description ?? current.description,
       body: updates.body ?? current.body ?? '',
       tags: updates.tags ?? current.tags,
@@ -1567,11 +1596,18 @@ export class SkillService {
       // long been written one on update — pre-existing, unchanged, and not
       // something this line can be read as preventing. All it adds is
       // `user` -> `project` (delta-review L2).
+      //
+      // Against the DESTINATION, not the path the read came from: `user` and
+      // `project` differ only in which root the package sits in, so the only
+      // path that can say which one this record will be true of is the one it
+      // is being written to. The guard above means the two share a root today;
+      // deriving it from `nextPath` keeps that a property of the code rather
+      // than an assumption about a caller.
       origin:
         updates.origin ??
         this.recordedOriginAgainstPath(
           readSkillOrigin(current.origin),
-          skillPath,
+          nextPath,
         ),
     };
     // The EFFECTIVE command after this write, not the submitted fragment: a
@@ -1593,11 +1629,6 @@ export class SkillService {
     // `gamma` pointing back at `alpha`, and uninstalling `gamma` removing
     // neither. (Pre-existing on origin/main, not introduced by this branch;
     // fixed here because this branch made rename reachable and refusable.)
-    const nextDir = this.resolveSkillDir(
-      projectHomeDir,
-      next.name,
-      projectSlug,
-    );
     if (nextDir !== skillDir) {
       if (existsSync(nextDir)) {
         throw new Error(
@@ -1612,7 +1643,6 @@ export class SkillService {
       // so the old name has no residue to remove. Deleting by the old name
       // here would `rm -rf` whatever now sits at that path.
     }
-    const nextPath = join(nextDir, 'SKILL.md');
     await mkdir(nextDir, { recursive: true });
     await writeFile(
       nextPath,
@@ -1797,9 +1827,25 @@ export class SkillService {
     name: string,
     location: string | undefined,
   ): Promise<SkillConfig> {
-    const recordPath = location ? this.installRecordPath(location) : undefined;
-    if (recordPath && existsSync(recordPath)) {
-      return JSON.parse(await readFile(recordPath, 'utf-8')) as SkillConfig;
+    if (location) {
+      const recordPath = this.installRecordPath(location);
+      if (existsSync(recordPath)) {
+        const record = JSON.parse(
+          await readFile(recordPath, 'utf-8'),
+        ) as SkillConfig;
+        // A record answers only for the name it CLAIMS. A package copied into
+        // a new directory keeps the record it was copied with, and that
+        // record's `legacyIds`, `provenance` and `installedAt` belong to the
+        // skill it was written for — answering the new name with them would
+        // hand a caller another skill's identity, and `resolveSkillName` would
+        // then route that skill's legacy ids here.
+        if (record.name === name) return record;
+      }
+      // Discovery found this package, so its own directory is the only place
+      // its record can be. A record next door under a name-derived path is
+      // another package's, and a disowned one is nobody's — both are the
+      // recordless case (#1614), which is what this says.
+      throw new Error(`Skill '${name}' not found`);
     }
     return this.configLoader.loadSkill(name);
   }
