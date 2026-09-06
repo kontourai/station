@@ -1,44 +1,106 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "coding-starter",
   "version": "1.0.0",
-  "displayName": "Coding Starter",
-  "description": "Code-focused starter layout with file browser, terminal notes, diff review, and chat handoff patterns.",
-  "entrypoint": "src/index.tsx",
-  "capabilities": ["chat", "navigation"],
-  "permissions": ["navigation.dock", "agents.invoke"],
-  "layout": {
-    "slug": "coding",
-    "source": "./layout.json"
-  },
-  "agents": [
-    {
-      "slug": "coding-starter-assistant",
-      "source": "./agents/coding-starter-assistant/agent.json"
-    }
-  ],
-  "workspacePaneHost": {
-    "version": "station.workspace-pane-host-contribution/v1",
-    "actions": [
-      {
-        "id": "review-diff",
-        "label": "Review current diff",
-        "presentation": "action",
-        "intent": {
-          "kind": "prompt",
-          "prompt": "Review the current diff for correctness, missing tests, and risky assumptions."
-        }
-      }
-    ],
-    "agentSelection": {
-      "availableAgents": [
+  "description": "Two Project Workspace Panes with labelled code examples and an owner-qualified review action.",
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "title": "Coding Starter",
+      "entrypoint": "./src/index.tsx",
+      "capabilities": ["chat", "navigation"],
+      "permissions": ["navigation.dock", "agents.invoke"],
+      "agents": [
         {
-          "kind": "own-plugin-agent",
-          "agentId": "coding-starter-assistant"
+          "slug": "coding-starter-assistant",
+          "source": "./agents/coding-starter-assistant/agent.json"
         }
       ],
-      "defaultAgent": {
-        "kind": "own-plugin-agent",
-        "agentId": "coding-starter-assistant"
+      "workspacePanes": [
+        {
+          "version": "1.0",
+          "id": "pane:plugin%3Acoding-starter:coding:workspace",
+          "name": "Coding Workspace",
+          "rendererId": "renderer:plugin%3Acoding-starter:plugin-component:coding-workspace",
+          "renderer": {
+            "kind": "plugin-component",
+            "name": "coding-workspace"
+          },
+          "placement": {
+            "supportedRegions": ["primary"],
+            "preferredRegion": "primary"
+          },
+          "modes": [
+            {
+              "id": "default",
+              "contextRequirement": {
+                "project": true
+              }
+            }
+          ],
+          "provenance": {
+            "origin": "plugin",
+            "pluginId": "coding-starter"
+          },
+          "lifecycle": {
+            "stage": "stable"
+          }
+        },
+        {
+          "version": "1.0",
+          "id": "pane:plugin%3Acoding-starter:coding:diff",
+          "name": "Coding Diff Review",
+          "rendererId": "renderer:plugin%3Acoding-starter:plugin-component:coding-diff-review",
+          "renderer": {
+            "kind": "plugin-component",
+            "name": "coding-diff-review"
+          },
+          "placement": {
+            "supportedRegions": ["primary"],
+            "preferredRegion": "primary"
+          },
+          "modes": [
+            {
+              "id": "default",
+              "contextRequirement": {
+                "project": true
+              }
+            }
+          ],
+          "provenance": {
+            "origin": "plugin",
+            "pluginId": "coding-starter"
+          },
+          "lifecycle": {
+            "stage": "stable"
+          }
+        }
+      ],
+      "workspacePaneHost": {
+        "version": "station.workspace-pane-host-contribution/v1",
+        "actions": [
+          {
+            "id": "review-diff",
+            "label": "Review current diff",
+            "presentation": "action",
+            "intent": {
+              "kind": "prompt",
+              "prompt": "Review the current diff for correctness, missing tests, and risky assumptions."
+            }
+          }
+        ],
+        "agentSelection": {
+          "availableAgents": [
+            {
+              "kind": "own-plugin-agent",
+              "agentId": "coding-starter-assistant"
+            }
+          ],
+          "defaultAgent": {
+            "kind": "own-plugin-agent",
+            "agentId": "coding-starter-assistant"
+          }
+        }
       }
     }
   }

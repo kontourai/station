@@ -6,9 +6,10 @@
   "type": "module",
   "main": "./src/index.tsx",
   "files": [
-    "layout.json",
     "plugin.json",
-    "src"
+    "src",
+    "agents",
+    "README.md"
   ],
   "peerDependencies": {
     "@kontourai/station-sdk": "*",

@@ -1,31 +1,74 @@
 # Coding Starter
 
-Code-focused layout starter for teams that want a workspace shaped around files, terminal output, diffs, and agent handoff.
+A host-only Agent Plugins 1.0 package with two Station Workspace Panes and one
+owner-qualified review action. The package ID and source directory remain
+`coding-starter`.
 
-## What It Demonstrates
+**Coding Workspace** shows a labelled sample file list and terminal output. **Coding Diff Review**
+shows a labelled example diff and review prompts. These are authored examples,
+not a live repository browser, command runner, or current Git diff. Connect an
+appropriate provider before presenting real project data.
 
-- A file-browser panel that can later be backed by a provider.
-- A terminal-output panel for command and test summaries.
-- A diff-review tab with explicit behavior, test, and verification prompts.
-- A chat handoff button using the host navigation SDK.
+## Install and place
 
-## Run It
+Use a Station build supporting the `io.kontourai.station` namespace, Project
+Pane SDK context, and captured host actions. Candidate SDK/CLI availability does
+not imply an npm publication. From this directory:
 
-Install from the local starter registry:
-
-```bash
-station registry install coding-starter --manifest examples/registry/manifest.json
+```sh
+station plugin build
+station plugin preview .
+station plugin install .
 ```
 
-The starter uses static fixture data so it works immediately. Replace the file list, terminal output, and diff source with plugin providers when you connect it to a real repository.
+Review the `navigation.dock` and `agents.invoke` permissions. Open the intended
+Project, choose **Add pane**, then **Coding Workspace** or **Coding Diff Review**. Installation makes
+the contribution discoverable; placement is an explicit Project action. Both
+Panes can also be placed in the host's supported Project Layout regions.
 
-## Workspace host action migration
+**Open Chat Dock** only opens the existing dock through the public navigation
+SDK. It does not submit the sample code or choose an Agent. **Review current
+diff** is the separate action in the host action bar. Its authored prompt asks
+the package-owned `coding-starter-assistant` to review the current diff; it does
+not automatically attach the sample diff shown by the Pane. The Agent needs
+appropriate repository access to inspect a real diff.
 
-| Previous behavior | Current behavior |
+## Agent and execution
+
+The packaged Agent definition contains its original name and prompt, with no
+engine or model override. Configure a compatible native model connection in
+Station before invoking it. The host binds the declared own-plugin Agent to
+its exact installation and the selected Project; it does not silently select
+an unrelated Agent when configuration, permission, or ownership is missing.
+
+For Projects configured with worktree execution, the canonical owner provisions
+the Session workspace. Native Bash and relative file operations use that
+Session directory; explicitly configured MCP roots retain their own meaning.
+This is execution-location propagation, not a universal filesystem sandbox.
+An uncertain launch is never automatically retried.
+
+An unavailable Pane or action displays its host reason. Pending activation can
+require recovery; an uninstalled package withdraws its rendered controls. There
+is no whole-plugin enable/disable workflow implied by this example.
+
+## Package and migration
+
+The package includes `plugin.json`, authored source/CSS, `agents/`, and this
+README. No install hook copies files into Station's checkout. Keep authored CSS
+selectors scoped to the package: this example uses `coding-starter-` class
+names so it cannot inherit or override the host's terminal styles. Building a copied
+source directory requires compatible candidate tooling and its dependencies;
+no independently resolved public-registry install is claimed here.
+
+| Previous input | Current input |
 | --- | --- |
-| `actions[]` displayed on the Layout | `Review current diff` appears once in the Project host action bar for direct and placed panes. |
-| Layout `defaultAgent` / `availableAgents`, or ambient fallback where absent | `workspacePaneHost.agentSelection` explicitly selects the package-owned `coding-starter-assistant`. `requiredAgents` never selects an Agent. |
-| Namespaced `package:agent` string | `own-plugin-agent` with clean `coding-starter-assistant`; Station supplies installation ownership. |
-| Persisted Layout records | Remain unchanged. The host contribution takes over global action display; tab-local actions stay local. |
+| Legacy `layout.json` with Workspace and Diff tabs | Two explicit Project Pane descriptors with stable descriptor and renderer IDs. |
+| Top-level Station fields | The Agent Plugins 1.0 Station namespace. |
+| Global review action and default Agent | The same single `workspacePaneHost` contribution and own-plugin Agent reference, never duplicated per Pane. |
+| Optional legacy `onShowChat` callback | The existing public SDK dock navigation call; the unused callback is removed. |
+| Agent source missing from package files | The exact authored Agent file is packaged. |
 
-Grant **agents.invoke** through Library before running the action. The package keeps native Station execution; configure its model connection before running it. A Project configured for worktree isolation provisions its workspace through the canonical execution owner; native Bash and relative file operations use that Session directory. Explicit MCP resource roots retain their configured meaning. No migration silently switches an existing Agent to another engine. Missing connections, Project restrictions, and withdrawn permissions refuse execution rather than selecting another Agent. An uncertain launch is never automatically retried. This semantic migration does not claim all structural migration work in [the example migration](https://github.com/kontourai/station/issues/265) is complete.
+This slice does not remove compatibility parsers or complete
+[the example migration](https://github.com/kontourai/station/issues/265). It adds
+no command-palette protocol and does not resolve
+[#1419](https://github.com/kontourai/station/issues/1419).
