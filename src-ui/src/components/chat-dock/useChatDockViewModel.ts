@@ -235,10 +235,17 @@ export function useChatDockViewModel({
     (layout: any) => layout.type === 'coding',
   );
 
+  const observedExecution =
+    activeSessionForHook?.conversationOpenState?.status === 'resolved'
+      ? activeSessionForHook.conversationOpenState.execution
+      : undefined;
   const agentConnectionId =
-    activeSessionForHook?.agentConnectionId ??
-    agentForHook?.execution?.agentConnectionId ??
-    null;
+    observedExecution &&
+    observedExecution.sessionId === activeSessionForHook?.currentSessionId
+      ? (observedExecution?.engineConnectionId ?? null)
+      : (activeSessionForHook?.agentConnectionId ??
+        agentForHook?.execution?.agentConnectionId ??
+        null);
   const runtimeConnection = agentConnections.find(
     (connection) => connection.id === agentConnectionId,
   );
@@ -466,6 +473,7 @@ export function useChatDockViewModel({
     modelSupportsAttachments,
     modelProviderLabel,
     modelProviders,
+    modelConnections,
     modelsLoading,
     modelsStale,
     sessionCodingLayout,

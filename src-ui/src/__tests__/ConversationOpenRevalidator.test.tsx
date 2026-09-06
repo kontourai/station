@@ -7,6 +7,7 @@ const resolveOpen = vi.fn();
 const openPatch = vi.fn();
 
 vi.mock('../components/chat-dock/conversationOpenController', () => ({
+  conversationExecutionChanged: () => false,
   resolveConversationOpenAuthoritatively: (...args: unknown[]) =>
     resolveOpen(...args),
   conversationOpenPatch: (...args: unknown[]) => openPatch(...args),

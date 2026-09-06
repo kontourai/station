@@ -1,4 +1,8 @@
-import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
+import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  type ConnectionConfig,
+  EXECUTION_MODE,
+} from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import {
   conversationQueries,
@@ -759,6 +763,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     modelSupportsAttachments,
     modelProviderLabel,
     modelProviders,
+    modelConnections,
     modelsLoading,
     modelsStale,
     sessionCodingLayout,
@@ -1566,10 +1571,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             ([, chat]) => chat.conversationId === conversationId,
           )?.[0],
         updateChat,
+        readChat: (tabId) => activeChatsStore.getSnapshot()[tabId],
+        agentName: (id) => agents.find((agent) => agent.slug === id)?.name,
         setRecovery: setConversationOpenRecovery,
       });
     },
-    [apiBase, openUserSelectedConversationInScopedPane, projects, updateChat],
+    [
+      apiBase,
+      openUserSelectedConversationInScopedPane,
+      projects,
+      updateChat,
+      agents,
+    ],
   );
   const retryActiveConversationOpen = useCallback(async () => {
     if (!activeSession?.conversationId) return;
@@ -1580,6 +1593,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       apiBase,
       updateChat,
       () => showToast('Conversation resolution is unavailable. Try again.'),
+      (tabId) => activeChatsStore.getSnapshot()[tabId],
     );
   }, [activeSession, apiBase, showToast, updateChat]);
   const retryConversationOpenRecovery = useCallback(async () => {
@@ -2984,6 +2998,23 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             conversationId: activeSession.conversationId,
             apiBase,
             updateChat,
+            availableModels: effectiveModels,
+            modelConnections,
+            modelsLoading,
+            modelsStale,
+            canModelSelect: chatInput.canModelSelect,
+            catalogConnectionId:
+              activeSession.executionMode === EXECUTION_MODE.STATION
+                ? undefined
+                : chatEngineConnection?.id,
+            catalogProvider:
+              activeSession.executionMode === EXECUTION_MODE.STATION
+                ? 'station-agent'
+                : resolveEngineCapabilityMatrix(
+                    chatEngineConnection?.id,
+                    chatEngineConnection,
+                  ).engineId,
+            agents,
           }}
           pending={null}
         />

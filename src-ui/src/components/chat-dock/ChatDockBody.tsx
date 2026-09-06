@@ -899,7 +899,11 @@ export function ChatDockBody({
             // engine) otherwise sits there with no way to send it — the same
             // drain, on demand.
             onRetry: () =>
-              drainQueuedMessageOnTurnCompleted(apiBase, activeSession.id),
+              drainQueuedMessageOnTurnCompleted(
+                apiBase,
+                activeSession.id,
+                true,
+              ),
             canSteer:
               isExecutionActive &&
               !!activeSession.orchestrationProvider &&

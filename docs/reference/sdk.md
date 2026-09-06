@@ -1950,6 +1950,31 @@ and `maxResponseBytes` options. The probe requires SDK-owned matching bearer
 attachment or a current authenticated native transport binding. It refuses
 redirects, limits each body to 4 KiB and uses a shared 15-second deadline. Existing callers retain their current defaults.
 
+### Restored conversation execution
+
+A resolved conversation-open response may include `execution`, an observation
+of the exact authorized current Session: Agent, engine provider, recorded
+engine connection when known, and separately reported/retained versus accepted
+model identities. This is distinct from inventory labels and mutable Agent
+defaults. The read refuses a lineage change across its awaited work instead of
+combining one child's labels with another child's transcript. No resume cursor
+or credential data is exposed.
+
+After a child changes, the composer refreshes this execution identity and drops
+predecessor model controls and local approval state. Draft text remains; queued
+messages require review. A same-child unsent model choice waits for current
+capability evidence and is retained only when supported. If an older server
+cannot establish a changed child's execution binding, the transcript remains
+available while sending stays unavailable. Open-chat labels prefer the exact
+current Session's reported/retained model rather than a persisted predecessor.
+
+For native chats, the engine observation is separate from the LLM provider
+selection. A retained unsent choice must match its own currently available model
+connection, not an engine-connection identifier or another provider's identical
+model name. The initial accepted Session launch plan is not presented as proof
+of the connection used by a later turn. Unknown current-provider provenance
+stays unknown rather than being reconstructed from Agent defaults.
+
 ## Home recovery disclosure
 
 `SystemStatus.homeRecovery` is an optional, host-scoped disclosure returned by

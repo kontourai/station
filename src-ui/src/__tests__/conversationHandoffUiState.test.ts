@@ -10,6 +10,8 @@ describe('conversation handoff UI state', () => {
     const predecessor = {
       messages: [{ role: 'assistant' as const, content: 'historical answer' }],
       queuedMessages: ['old queue'],
+      orchestrationModel: 'predecessor-model',
+      requestedProviderOptions: { reasoningEffort: 'high' },
       pendingApprovals: ['approval-old'],
       approvalToasts: new Map([['approval-old', 'Approve?']]),
       sessionAutoApprove: ['tool-old'],
@@ -74,6 +76,8 @@ describe('conversation handoff UI state', () => {
       orchestrationHistoryRevision: 5,
     });
     expect(accepted.streamingMessage).toBeUndefined();
+    expect(accepted.orchestrationModel).toBeUndefined();
+    expect(accepted.requestedProviderOptions).toEqual({});
     expect(accepted.approvalToasts).toEqual(new Map());
   });
 

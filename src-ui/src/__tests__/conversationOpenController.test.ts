@@ -1,10 +1,19 @@
+/** @vitest-environment jsdom */
+
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import { describe, expect, test, vi } from 'vitest';
 import {
   commitConversationOpen,
   conversationOpenPatch,
 } from '../components/chat-dock/conversationOpenController';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { conversationCanMutate } from '../contexts/conversation-open-policy';
+import { drainQueuedMessageOnTurnCompleted } from '../hooks/orchestration/queueDrain';
+import {
+  handleRuntimeErrorEvent,
+  handleTurnAbortedEvent,
+  handleTurnCompletedEvent,
+} from '../hooks/orchestration/turnHandlers';
 
 const conversation = {
   id: 'conversation-749',
@@ -25,7 +34,9 @@ const notAnswerable = {
   observedAt: '2026-08-29T00:02:00.000Z',
 };
 
-function resolved(canContinue = true): ConversationOpenResolution {
+function resolved(
+  canContinue = true,
+): Extract<ConversationOpenResolution, { status: 'resolved' }> {
   return {
     status: 'resolved',
     conversation,
@@ -127,4 +138,364 @@ describe('#749 conversation open controller', () => {
       recovery: { status: 'missing-session' },
     });
   });
+});
+
+test('restored Codex state adopts the current Claude child without carrying model or permission state', () => {
+  const previous = {
+    conversationId: conversation.id,
+    currentSessionId: 'old-codex',
+    agentSlug: 'codex',
+    agentName: 'Old Codex',
+    provider: 'codex',
+    orchestrationModel: 'gpt-sidebar-old',
+    agentConnectionId: 'old-codex-connection',
+    model: 'gpt-old',
+    requestedModel: 'gpt-deliberate',
+    requestedProviderOptions: { reasoningEffort: 'high' },
+    providerOptions: { fastMode: true },
+    input: 'Keep this unsent follow-up',
+    queuedMessages: ['Queued follow-up'],
+    sessionAutoApprove: ['shell'],
+    pendingApprovals: [],
+  };
+  const resolution: ConversationOpenResolution = {
+    ...resolved(),
+    conversation: { ...conversation, agentSlug: 'claude-agent' as any },
+    execution: {
+      sessionId: 'conversation-749:child:2',
+      agentId: 'claude-agent' as any,
+      provider: 'claude',
+      engineConnectionId: 'claude-connection',
+      model: 'sonnet-current',
+    },
+  };
+  const patch = conversationOpenPatch(resolution, previous);
+  const actual = { ...previous, ...patch };
+  expect(actual).toMatchObject({
+    currentSessionId: resolution.currentSessionId,
+    agentSlug: 'claude-agent',
+    provider: 'claude',
+    agentConnectionId: 'claude-connection',
+    model: 'sonnet-current',
+    orchestrationModel: 'sonnet-current',
+    requestedModel: null,
+    requestedProviderOptions: {},
+    providerOptions: {},
+    sessionAutoApprove: [],
+    input: 'Keep this unsent follow-up',
+    queuedMessages: ['Queued follow-up'],
+  });
+  expect(actual.queuedMessageFailure?.message).toContain(
+    'Review queued messages',
+  );
+  expect(conversationCanMutate(actual)).toBe(true);
+});
+
+test('same-child deliberate model intent waits for capability evidence and survives only a valid choice', () => {
+  const resolution: ConversationOpenResolution = {
+    ...resolved(),
+    execution: {
+      sessionId: 'conversation-749:child:2',
+      agentId: conversation.agentSlug,
+      provider: 'codex',
+      engineConnectionId: 'codex-connection',
+      model: 'current-model',
+    },
+  };
+  const previous = {
+    conversationId: conversation.id,
+    currentSessionId: resolution.currentSessionId,
+    agentSlug: conversation.agentSlug,
+    provider: 'codex',
+    agentConnectionId: 'codex-connection',
+    requestedModel: 'chosen-model',
+    requestedProviderOptions: { reasoningEffort: 'high' },
+    input: 'draft',
+  };
+  const pending = conversationOpenPatch(resolution, previous);
+  expect(pending.conversationOpenPending).toBe(true);
+  expect(pending.requestedModel).toBe('chosen-model');
+  expect(conversationCanMutate({ ...previous, ...pending })).toBe(false);
+  const valid = conversationOpenPatch(resolution, previous, {
+    validModelIds: ['chosen-model'],
+    provider: 'codex',
+    engineConnectionId: 'codex-connection',
+    providerOptions: { effort: 'high' },
+  });
+  expect(valid).toMatchObject({
+    conversationOpenPending: false,
+    requestedModel: 'chosen-model',
+    requestedProviderOptions: { effort: 'high' },
+  });
+  const invalid = conversationOpenPatch(resolution, previous, {
+    validModelIds: [],
+  });
+  expect(invalid.requestedModel).toBeNull();
+  expect(invalid.error).toContain('saved model choice');
+});
+
+test('a changed child from an older server cannot retain writable predecessor identity', () => {
+  const previous = {
+    conversationId: conversation.id,
+    currentSessionId: 'old-codex',
+    agentSlug: conversation.agentSlug,
+    provider: 'codex',
+    model: 'old-model',
+    requestedModel: 'old-model',
+    input: 'draft',
+  };
+  const actual = {
+    ...previous,
+    ...conversationOpenPatch(resolved(), previous),
+  };
+  expect(actual.agentSlug).toBeUndefined();
+  expect(actual.provider).toBeUndefined();
+  expect(actual.requestedModel).toBeNull();
+  expect(actual.input).toBe('draft');
+  expect(conversationCanMutate(actual)).toBe(false);
+});
+
+test('same-child stale connection cannot validate a model using another connection catalog', () => {
+  const resolution: ConversationOpenResolution = {
+    ...resolved(),
+    execution: {
+      sessionId: 'conversation-749:child:2',
+      agentId: conversation.agentSlug,
+      provider: 'codex',
+      engineConnectionId: 'connection-new',
+      model: 'retained-current',
+    },
+  };
+  const previous = {
+    conversationId: conversation.id,
+    currentSessionId: resolution.currentSessionId,
+    agentSlug: conversation.agentSlug,
+    provider: 'codex',
+    agentConnectionId: 'connection-old',
+    requestedModel: 'old-only-model',
+    input: 'draft',
+  };
+  const patch = conversationOpenPatch(resolution, previous, {
+    validModelIds: ['old-only-model'],
+    provider: 'codex',
+    engineConnectionId: 'connection-old',
+  });
+  expect(patch).toMatchObject({
+    agentConnectionId: 'connection-new',
+    requestedModel: null,
+    requestedProviderOptions: {},
+  });
+  const wrongCatalog = conversationOpenPatch(
+    resolution,
+    { ...previous, agentConnectionId: 'connection-new' },
+    {
+      validModelIds: ['old-only-model'],
+      provider: 'codex',
+      engineConnectionId: 'connection-old',
+    },
+  );
+  expect(wrongCatalog.requestedModel).toBeNull();
+});
+
+test('same-child native model intent retains its authorized model provider without confusing it with the engine', () => {
+  const resolution: ConversationOpenResolution = {
+    ...resolved(),
+    conversation: { ...conversation, agentSlug: 'station' as any },
+    execution: {
+      sessionId: 'conversation-749:child:2',
+      agentId: 'station' as any,
+      provider: 'station-agent',
+      model: 'last-observed',
+    },
+  };
+  const previous = {
+    currentSessionId: resolution.currentSessionId,
+    conversationId: conversation.id,
+    agentSlug: 'station',
+    executionMode: 'station' as const,
+    orchestrationProvider: 'station-agent',
+    provider: 'openai',
+    providerId: 'model-chosen',
+    defaultProviderId: 'model-original',
+    requestedModel: 'deliberate-next-model',
+    requestedModelSource: 'session override' as const,
+    input: 'draft',
+  };
+  const waiting = conversationOpenPatch(resolution, previous);
+  expect(waiting).toMatchObject({
+    conversationOpenPending: true,
+    provider: 'openai',
+    providerId: 'model-chosen',
+    requestedModel: 'deliberate-next-model',
+  });
+  const choice = {
+    validModelIds: ['deliberate-next-model'],
+    provider: 'station-agent',
+    modelProvider: { id: 'model-chosen', type: 'openai' },
+    validModelProviderIds: ['model-chosen', 'model-original'],
+  };
+  const patch = conversationOpenPatch(resolution, previous, choice);
+  expect(patch).toMatchObject({
+    conversationOpenPending: false,
+    orchestrationProvider: 'station-agent',
+    provider: 'openai',
+    providerId: 'model-chosen',
+    defaultProviderId: 'model-original',
+    requestedModel: 'deliberate-next-model',
+    model: 'last-observed',
+  });
+  const wrongProvider = conversationOpenPatch(resolution, previous, {
+    ...choice,
+    modelProvider: { id: 'other-model-connection', type: 'openai' },
+    validModelProviderIds: ['other-model-connection'],
+  });
+  expect(wrongProvider).toMatchObject({
+    requestedModel: null,
+    providerId: undefined,
+    orchestrationProvider: 'station-agent',
+  });
+});
+
+test('current child live shell survives its authoritative identity refresh', () => {
+  const resolution = resolved(false);
+  resolution.execution = {
+    sessionId: resolution.currentSessionId,
+    agentId: conversation.agentSlug,
+    provider: 'claude',
+    model: 'opus',
+  };
+  const previous = {
+    currentSessionId: resolution.currentSessionId,
+    agentSlug: 'codex',
+    orchestrationProvider: 'codex' as const,
+    orchestrationTurnOpen: true,
+    openTurnId: 'new-child-turn',
+    streamingMessage: { role: 'assistant' as const, content: 'live answer' },
+  };
+  const next = { ...previous, ...conversationOpenPatch(resolution, previous) };
+  expect(next.orchestrationProvider).toBe('claude');
+  expect(next.openTurnId).toBe('new-child-turn');
+  expect(next.streamingMessage?.content).toBe('live answer');
+  expect(next.orchestrationTurnOpen).toBe(true);
+});
+
+test.each(['completed', 'aborted', 'error'] as const)(
+  'current %s terminal refreshes a busy open snapshot once',
+  (terminal) => {
+    const id = `refresh-${terminal}`;
+    const resolution = resolved(false);
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      title: 'Busy restore',
+      agentName: 'Codex',
+    });
+    activeChatsStore.updateChat(id, {
+      conversationId: id,
+      currentSessionId: resolution.currentSessionId,
+      conversationOpenState: resolution,
+      openTurnId: 'current-turn',
+      input: 'preserved draft',
+    });
+    const base = {
+      threadId: resolution.currentSessionId,
+      provider: 'codex' as const,
+      createdAt: '2026-09-06T00:00:00.000Z',
+      turnId: 'current-turn',
+    };
+    handleTurnCompletedEvent('http://station.test', {
+      ...base,
+      method: 'turn.completed',
+      turnId: 'previous-turn',
+    });
+    expect(activeChatsStore.getSnapshot()[id].conversationOpenPending).not.toBe(
+      true,
+    );
+    if (terminal === 'completed') {
+      handleTurnCompletedEvent('http://station.test', {
+        ...base,
+        method: 'turn.completed',
+      });
+    } else if (terminal === 'error') {
+      handleRuntimeErrorEvent({
+        ...base,
+        method: 'runtime.error',
+        severity: 'error',
+        message: 'Provider refused',
+      });
+    } else {
+      handleTurnAbortedEvent({
+        ...base,
+        method: 'turn.aborted',
+        reason: 'stopped',
+      });
+    }
+    expect(activeChatsStore.getSnapshot()[id]).toMatchObject({
+      conversationOpenPending: true,
+      input: 'preserved draft',
+    });
+    activeChatsStore.updateChat(id, {
+      conversationOpenPending: false,
+      conversationOpenState: resolved(true),
+    });
+    handleTurnCompletedEvent('http://station.test', {
+      ...base,
+      method: 'turn.completed',
+    });
+    expect(activeChatsStore.getSnapshot()[id].conversationOpenPending).toBe(
+      false,
+    );
+    activeChatsStore.removeChat(id);
+  },
+);
+
+test('binding-change queue review blocks automatic and delayed dispatch', () => {
+  vi.useFakeTimers();
+  const id = 'reviewed-queue';
+  activeChatsStore.initChat(id, {
+    agentSlug: 'codex',
+    agentName: 'Codex',
+    title: 'Queue',
+  });
+  activeChatsStore.updateChat(id, {
+    messages: [],
+    queuedMessages: ['keep this exact prompt'],
+    queuedMessageFailure: {
+      reviewReason: 'execution-binding-changed',
+      message: 'Review changed binding',
+      at: 1,
+    },
+  });
+  const scheduledBeforeDrain = vi.getTimerCount();
+  drainQueuedMessageOnTurnCompleted('http://station.test', id);
+  expect(activeChatsStore.getSnapshot()[id].queuedMessages).toEqual([
+    'keep this exact prompt',
+  ]);
+  expect(vi.getTimerCount()).toBe(scheduledBeforeDrain);
+  drainQueuedMessageOnTurnCompleted('http://station.test', id, true);
+  expect(activeChatsStore.getSnapshot()[id].queuedMessages).toEqual([]);
+  const newExecution = resolved(true);
+  newExecution.execution = {
+    sessionId: newExecution.currentSessionId,
+    agentId: conversation.agentSlug,
+    provider: 'claude',
+    model: 'opus',
+  };
+  activeChatsStore.updateChat(
+    id,
+    conversationOpenPatch(newExecution, activeChatsStore.getSnapshot()[id]),
+  );
+  // There is no stored queue head for the controller to mark at this moment.
+  expect(
+    activeChatsStore.getSnapshot()[id].queuedMessageFailure,
+  ).toBeUndefined();
+  vi.runAllTimers();
+  expect(activeChatsStore.getSnapshot()[id].queuedMessages).toEqual([
+    'keep this exact prompt',
+  ]);
+  expect(activeChatsStore.getSnapshot()[id].messages).toEqual([]);
+  expect(
+    activeChatsStore.getSnapshot()[id].queuedMessageFailure?.reviewReason,
+  ).toBe('execution-binding-changed');
+  activeChatsStore.removeChat(id);
+  vi.useRealTimers();
 });
