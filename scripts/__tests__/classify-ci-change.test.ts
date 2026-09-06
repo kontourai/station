@@ -45,7 +45,9 @@ const iosRelevanceShell = parse(
     resolve(import.meta.dirname, '../../.github/workflows/build-ios.yml'),
     'utf8',
   ),
-).jobs.classify.steps.find((step) => step.id === 'relevance').run;
+).jobs.classify.steps.find(
+  (step: { id?: string }) => step.id === 'relevance',
+).run;
 
 function runIosRelevanceShell(
   root: string,
