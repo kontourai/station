@@ -248,7 +248,13 @@ test('phone first run recovers from no provider to a real streamed reply', async
     // Chat remains the independent dock beside the Workspace Pane host. The
     // route opens the named session directly; no workspace tab owns it.
     const chatDock = page.getByRole('region', { name: 'Chat dock' });
-    await expect(chatDock).toBeVisible();
+    // The dock is this journey's first post-navigation surface, so it gets the
+    // same budget as everything else that appears after a goto here. It was
+    // carrying Playwright's 5 s default, which made the 20 s below unreachable
+    // — you cannot see the empty state before its own region — and on a loaded
+    // host it red with the layout mid-load ("Convincing electrons to
+    // cooperate…") rather than missing (#1617).
+    await expect(chatDock).toBeVisible({ timeout: 20_000 });
     const emptyState = chatDock.getByTestId('chat-empty-state-unconfigured');
     await expect(emptyState).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(/^Error:/)).toHaveCount(0);
