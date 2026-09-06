@@ -1999,6 +1999,7 @@ button:hover {
   padding: 0;
   border: 0;
   background: none;
+  overflow: hidden;
 }
 
 .chat-dock__scope {
@@ -2157,6 +2158,7 @@ button:hover {
 /* Project context breadcrumb between tabs and body */
 .chat-dock__project-context {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 6px;
   padding: 4px 12px;
@@ -2260,6 +2262,7 @@ button:hover {
    `.new-chat-modal__context-dir--fallback` still names the retired
    `--fallback` rule in a comment: that surface keeps its own visible path. */
 .chat-dock__project-context > .git-tooltip-anchor {
+  min-width: 0;
   margin-left: auto;
 }
 
@@ -3036,9 +3039,17 @@ button:hover {
   gap: 4px;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+  /* The branch glyph and the branch name are one token; without this the
+     header squeezed "main" onto a second line under the ⎇, and a long branch
+     name broke across three. A squeezed badge ellipsises instead. */
+  min-width: 0;
+  white-space: nowrap;
 }
 .git-badge__branch {
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-secondary);
+  text-overflow: ellipsis;
 }
 .git-badge__dirty {
   color: var(--warning, #e5c07b);

@@ -1,3 +1,4 @@
+import type { SchedulerSchedule } from '@kontourai/station-contracts/scheduler';
 import { useRef, useState } from 'react';
 import { usePreviewSchedule } from '../../hooks/useScheduler';
 
@@ -129,7 +130,21 @@ export function CronEditor({
   );
 }
 
-export function cronToHuman(cron: string, referenceDate?: Date): string | null {
+/**
+ * #1536 D1: the SCHEDULE's zone, because a cron expression alone does not say
+ * what its hour means. This used to take a reference `Date` and apply
+ * `setUTCHours`, then label the result with the READER's zone abbreviation —
+ * two independent errors that compounded: `0 8 * * 1-5` in America/Denver
+ * rendered as "2:00 AM MDT" for a job that fires at 8:00 AM MDT. The reference
+ * date existed only to serve that UTC assumption and is gone with it.
+ *
+ * Absent `timezone` is labelled UTC, which is what the scheduler actually does
+ * with an unzoned schedule (`nextOccurrences`) — not a guess, and not silence.
+ */
+export function cronToHuman(
+  cron: string,
+  options?: { timezone?: string },
+): string | null {
   const parts = cron.trim().split(/\s+/);
   if (parts.length !== 5) return null;
   if (parts.some((p) => !/^[\d*,\-/]+$/.test(p))) return null;
@@ -160,18 +175,22 @@ export function cronToHuman(cron: string, referenceDate?: Date): string | null {
     'December',
   ];
 
+  const zoneLabel = options?.timezone ?? 'UTC';
   const fmtTime = (h: string, m: string) => {
-    const d = referenceDate ? new Date(referenceDate) : new Date();
-    d.setUTCHours(parseInt(h, 10), parseInt(m, 10), 0, 0);
-    const time = d.toLocaleTimeString(undefined, {
+    // The cron's hour IS the wall-clock hour in `zoneLabel`, so there is
+    // nothing to convert — only a label to attach. Formatting a UTC-anchored
+    // instant with `timeZone: 'UTC'` reproduces those exact numerals under the
+    // reader's own locale conventions (12h/24h, separator) without importing
+    // the reader's OFFSET, which is what went wrong before.
+    const wallClock = new Date(
+      Date.UTC(2001, 0, 1, parseInt(h, 10), parseInt(m, 10)),
+    );
+    const time = wallClock.toLocaleTimeString(undefined, {
       hour: 'numeric',
       minute: '2-digit',
+      timeZone: 'UTC',
     });
-    const tz = d
-      .toLocaleTimeString(undefined, { timeZoneName: 'short' })
-      .split(' ')
-      .pop();
-    return `${time} ${tz}`;
+    return `${time} · ${zoneLabel}`;
   };
 
   const fmtDow = (d: string) => {
@@ -266,12 +285,20 @@ export function cronToHuman(cron: string, referenceDate?: Date): string | null {
   }
 }
 
-export function CronPreview({ cron }: { cron: string }) {
-  const { data, isLoading } = usePreviewSchedule(cron || null);
+/**
+ * #1536 D1: takes the SCHEDULE, not a bare expression. Both halves of this
+ * preview were wrong for a zoned job — the occurrences were projected as UTC
+ * because the request carried no zone, and the human line applied the reader's
+ * offset to an hour that was never UTC.
+ */
+export function CronPreview({ schedule }: { schedule: SchedulerSchedule }) {
+  const cron = schedule.kind === 'cron' ? schedule.expr : '';
+  const timezone = schedule.kind === 'cron' ? schedule.timezone : undefined;
+  const { data, isLoading } = usePreviewSchedule(cron || null, timezone);
   if (!cron) return null;
 
   const valid = data && Array.isArray(data) && data.length > 0;
-  const human = cronToHuman(cron, valid ? new Date(data[0]) : undefined);
+  const human = cronToHuman(cron, { timezone });
 
   if (isLoading)
     return (
@@ -295,6 +322,13 @@ export function CronPreview({ cron }: { cron: string }) {
       {valid ? (
         data.slice(0, 3).map((d: string, i: number) => (
           <span key={i} className="schedule__cron-time">
+            {/* #1536 R1: ONE convention for instants across the panel — an
+                occurrence is a moment, so it reads in the READER's zone with a
+                short zone label, exactly like the jobs table's "Next Fire"
+                column (`JobDetail.localTime`). The RULE above it stays in the
+                schedule's zone, because a weekday rule is only checkable
+                against the zone it is written in; the two are different kinds
+                of fact and the panel now says which is which. */}
             {new Date(d).toLocaleString(undefined, {
               weekday: 'short',
               month: 'short',
