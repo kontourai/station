@@ -1,4 +1,4 @@
-/** Opt-in bounded GET body; loaded only by callers requesting a byte ceiling. */
+/** Opt-in bounded GET body; wraps only requests with a byte ceiling. */
 export function boundResponse(
   response: Response,
   maximum: number,

@@ -666,16 +666,19 @@ describe('runCoreCommand', () => {
           {
             threadId: 'thread-1',
             method: 'content.text-delta',
+            turnId: 'turn-1',
             delta: 'Hello',
           },
           {
             threadId: 'thread-1',
             method: 'content.text-delta',
+            turnId: 'turn-1',
             delta: ' world',
           },
           {
             threadId: 'thread-1',
             method: 'turn.completed',
+            turnId: 'turn-1',
             finishReason: 'stop',
           },
         ]),
@@ -743,6 +746,7 @@ describe('runCoreCommand', () => {
           {
             threadId: 'thread-1',
             method: 'turn.completed',
+            turnId: 'turn-1',
             finishReason: 'stop',
           },
         ]),
