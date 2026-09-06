@@ -94,8 +94,9 @@ describe('re-showing a hidden Chat region keeps lastDockMaximized (#1563)', () =
     expect(result.current.regions.bottom.maximized).toBe(false);
     expect(navigationStore.lastDockMaximized).toBe(true);
 
-    // The very next show: an open is never maximized, and the memory the
-    // close kept is still there for a restore.
+    // The very next show opens docked (the region's flag was cleared by the
+    // hide and the show forwards nothing), and the memory the close kept is
+    // still there for a restore.
     act(() => result.current.setRegion('bottom', { visible: true }));
     expect(snapshot().isDockOpen).toBe(true);
     expect(snapshot().isDockMaximized).toBe(false);

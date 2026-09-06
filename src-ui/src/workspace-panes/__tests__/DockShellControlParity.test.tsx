@@ -441,6 +441,7 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
       expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull(),
     );
     const dockStateWrite = vi.spyOn(navigationStore, 'setDockState');
+    const memoryBefore = navigationStore.lastDockMaximized;
 
     chooseChatForEmptyRight();
     await waitFor(() =>
@@ -450,7 +451,12 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
     expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
     expect(dockParam()).toBe('open');
     expect(dockStateWrite).toHaveBeenCalledTimes(1);
-    expect(dockStateWrite).toHaveBeenCalledWith(true, false);
+    // A placement-show is a plain show: it forwards no maximize, so
+    // `lastDockMaximized` is whatever the last close left (#1563). The
+    // hide-from-Full round trip itself is pinned in
+    // `RegionModelContext.reshowKeepsMaximizeMemory.test.tsx`.
+    expect(dockStateWrite).toHaveBeenCalledWith(true, undefined);
+    expect(navigationStore.lastDockMaximized).toBe(memoryBefore);
   });
 
   test('a placement arriving through the device setting is not replayed as a choice', async () => {

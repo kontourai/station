@@ -476,8 +476,12 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     // (`updateRegion` clears it with the hide), so forwarding it would set
     // `lastDockMaximized` to false on the very next show and `focusSession`'s
     // `setDockState(true, lastDockMaximized)` would reopen docked (#1563).
-    // `setDockState(true, undefined)` leaves the memory alone; the URL's
-    // `maximize` param was already cleared by the close. A maximize change
+    // `setDockState(true, undefined)` leaves the memory alone and does not
+    // touch the URL's `maximize` param: a close through `setDockState` clears
+    // it (archive#795), and a param that lingers from some other write (a
+    // `?maximize=true` link without `dock=open`, a dead-chat pointer clear)
+    // is re-seeded into the region by the inbound effect below, so that Chat
+    // opens at Full rather than diverging from the shell. A maximize change
     // navigation already shows — the collapse-on-navigate seam clears the URL
     // param first (`useDockShellChrome.restoreDockToDocked`) precisely so
     // `lastDockMaximized` is left alone (archive#1298) — is not re-written,
