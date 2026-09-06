@@ -289,6 +289,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // through `execFileSync` on purpose — its oracle has to be what git actually
   // returns for a pathspec, not a fixture that would pin the bug instead.
   'scripts/__tests__/gate-scope.test.ts',
+  // station#1645: the gallery freshness check is consumed by main-health.yml
+  // purely as an EXIT STATUS, so four bounded single-shot `spawnSync` children
+  // drive the real CLI. Asserting the exported evaluator alone would leave the
+  // one contract anything downstream reads untested.
+  'scripts/__tests__/check-workflow-freshness.test.ts',
   // station#928: the placement-vocabulary ratchet enumerates its scan scope
   // through one single-shot `git ls-files` for the same reason as
   // gate-scope.test.ts above — the scope must be what git tracks, not a

@@ -1,0 +1,71 @@
+name: Gallery freshness
+
+# The gallery gate's own liveness check (#1645).
+#
+# `nightly-gallery.yml` went eight days without producing any signal, because
+# its job never reached a runner and the stalled runs were closed as
+# `cancelled` rather than `failure`. Nothing in this repository treated that as
+# a problem: `cancelled` renders neutral, notifies nobody, and
+# `main-health.yml`'s listener keys on `conclusion == 'failure'`. A gate whose
+# absence is indistinguishable from a pass is not a gate.
+#
+# This asserts the opposite property directly — that a real success happened
+# recently — so every silence mode is caught: queued to the 24h timeout,
+# cancelled, workflow disabled, schedule dropped, or a runner-group allow-list
+# that stops admitting the job.
+#
+# It runs on a hosted runner ON PURPOSE. Watching the fleet from the fleet
+# would let the same conditions silence the watcher, which is how the gallery
+# went quiet in the first place.
+
+on:
+  schedule:
+    # 18:00 UTC daily. The gallery's own runs are created 3.8-5.1h after their
+    # 07:30 cron, so they conclude around 12:00-13:30 UTC; this reads several
+    # hours after that, and scheduler lag on THIS workflow only moves the read
+    # later, which the 36h window absorbs.
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Reading another workflow's run and job history.
+  actions: read
+
+concurrency:
+  group: gallery-freshness-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gallery-freshness:
+    name: Assert the gallery gate concluded success recently
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      # No dependency install: the check imports only Node builtins and
+      # scripts/lib/module-entry.mjs, deliberately, so an install failure
+      # cannot take the liveness check down with it.
+      #
+      # 36h window. The schedule is daily, observed scheduler lag on the
+      # gallery reaches ~5.1h, and its job may run for up to its 60m timeout —
+      # so the gap between two consecutive successes can legitimately approach
+      # 30h. 24h would false-alarm on ordinary lag; 36h leaves ~6h of margin
+      # while still failing on a single genuinely missed night (which lands
+      # near 54h).
+      - name: Check nightly-gallery freshness
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/check-workflow-freshness.mjs \
+            --workflow=nightly-gallery.yml \
+            --branch=main \
+            --max-age-hours=36

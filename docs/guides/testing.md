@@ -389,6 +389,18 @@ Two consequences worth stating plainly:
   the same tag is a different renderer wearing the same name, which is why the
   pin is a digest rather than `v1.62.1-noble`.
 
+`.github/workflows/gallery-freshness.yml` asserts daily that the gallery gate
+has actually **concluded success** within 36 hours, via
+`scripts/check-workflow-freshness.mjs`, and `main-health.yml` files the P1
+tracker when it has not. This exists because the gate spent eight days
+producing no signal at all (#1645): its job never reached a runner, and the
+stalled runs were closed as `cancelled` — which is neutral, notifies nobody,
+and never matches a `conclusion == 'failure'` listener. A `cancelled` run is
+silence, not a pass, and the only way to notice silence is to assert the
+success rather than react to a verdict. The window is sized from observed
+scheduler lag (the gallery's runs are created 3.8–5.1h after their cron), not
+from the cron itself.
+
 ### Region grid parity (`scripts/region-grid-parity.mjs`)
 
 The dock grid in `src-ui/src/index.css` keys its tracks on the shell's
