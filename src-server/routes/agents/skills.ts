@@ -324,7 +324,7 @@ export function createSkillRoutes(
         //
         // PUT answers 400 for the same refusal (its 409 covers a different
         // condition, a command declaration on a read-only package). The two
-        // verbs disagreeing is a real inconsistency, filed as #1662 rather
+        // verbs disagreeing is a real inconsistency, filed as #1669 rather
         // than changed here: a client-visible status change on PUT does not
         // belong in a fix round.
         return c.json(
