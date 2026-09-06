@@ -115,6 +115,47 @@ describe('ingestBackgroundTaskEvent — tool cards', () => {
 
   // station#1558: the session ended with this call still open. Not 'stopped'
   // (nobody asked it to stop) and not 'failed' (nothing observed a failure).
+  // station#1569: `unresolved` is the one settled state that is not final —
+  // the engine can still report the real result after the session-end
+  // settle, and the card must follow the transcript's correction.
+  test('a real result after an unresolved settle corrects the card; other settled states stay put', () => {
+    let state = ingestBackgroundTaskEvent(
+      createEmptyBackgroundTasksState(),
+      event('tool.started', { toolCallId: 'call-1', toolName: 'bash' }),
+    );
+    state = ingestBackgroundTaskEvent(
+      state,
+      event('tool.completed', {
+        toolCallId: 'call-1',
+        toolName: 'bash',
+        status: 'unresolved',
+      }),
+    );
+    state = ingestBackgroundTaskEvent(
+      state,
+      event('tool.completed', {
+        toolCallId: 'call-1',
+        toolName: 'bash',
+        status: 'success',
+        createdAt: '2026-07-29T00:00:12.000Z',
+      }),
+    );
+    expect(state.entries['call-1']).toMatchObject({
+      state: 'completed',
+      endedAt: Date.parse('2026-07-29T00:00:12.000Z'),
+    });
+    // A completed card is final: a later unresolved does not reopen it.
+    state = ingestBackgroundTaskEvent(
+      state,
+      event('tool.completed', {
+        toolCallId: 'call-1',
+        toolName: 'bash',
+        status: 'unresolved',
+      }),
+    );
+    expect(state.entries['call-1'].state).toBe('completed');
+  });
+
   test('tool.completed(unresolved) closes the card as unresolved', () => {
     let state = ingestBackgroundTaskEvent(
       createEmptyBackgroundTasksState(),
