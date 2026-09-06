@@ -252,7 +252,10 @@ export function buildConversationStatsUpdate({
     existingModelStats[modelId] ?? createEmptyConversationStats();
   // A first recorded cost starts its aggregate. An existing unknown cost
   // must remain unknown; a later priced turn cannot reconstruct it.
-  const priorCost = existingStats === undefined ? 0 : stats.estimatedCost;
+  const priorCost =
+    existingStats === undefined || existingStats === null
+      ? 0
+      : stats.estimatedCost;
   const priorModelCost =
     existingModelStats[modelId] === undefined
       ? 0

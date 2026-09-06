@@ -132,6 +132,12 @@ describe('usage-stats', () => {
       const first = buildConversationStatsUpdate(params);
       expect(first.updatedStats.estimatedCost).toBe(cost);
       expect(first.modelStats.model?.estimatedCost).toBe(cost);
+      const nullAggregate = buildConversationStatsUpdate({
+        ...params,
+        existingStats: null,
+      });
+      expect(nullAggregate.updatedStats.estimatedCost).toBe(cost);
+      expect(nullAggregate.modelStats.model?.estimatedCost).toBe(cost);
       const unknown = buildConversationStatsUpdate({ ...params, cost: null });
       const later = buildConversationStatsUpdate({
         ...params,
