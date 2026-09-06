@@ -311,6 +311,16 @@ test.describe('Notifications: attention queue and activity log', () => {
         (item) => !item.acknowledgedAt && !isStandingAttentionKind(item.kind),
       ),
     ).toEqual([]);
+    const snapshot = await readAttention(authenticatedRequest);
+    if (snapshot.pendingCount === 0) {
+      await expect(page.getByText('All caught up')).toBeVisible();
+    } else {
+      await expect(
+        page.getByRole('heading', {
+          name: `Needs attention (${snapshot.pendingCount})`,
+        }),
+      ).toBeVisible();
+    }
     await expect(bulkDismiss(page)).toBeDisabled();
   });
 });
