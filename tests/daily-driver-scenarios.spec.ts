@@ -931,20 +931,49 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
 
       // 1. Stream while scrolled up: an incoming turn must not hijack the
       // reader's scroll position, and mounted rows must stay bounded.
-      await transcript.evaluate((element) => {
-        element.scrollTop = Math.max(
-          1,
-          Math.floor(element.scrollHeight / 2) - element.clientHeight,
-        );
-        // Wheel-then-scroll is how a real reader leaves the tail; the
-        // transcript's follow-the-tail state keys off user gestures, not
-        // bare programmatic scrollTop writes.
-        element.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
-        element.dispatchEvent(new Event('scroll', { bubbles: true }));
-      });
-      const scrollBefore = await transcript.evaluate(
-        (element) => element.scrollTop,
+      await transcript.hover();
+      const wheelDelta = await transcript.evaluate(
+        (element) =>
+          Math.floor(element.scrollHeight / 2) -
+          element.clientHeight -
+          element.scrollTop,
       );
+      await page.mouse.wheel(0, wheelDelta || -1);
+      let anchor: { id: string; offset: number } | null = null;
+      let stableSamples = 0;
+      await expect
+        .poll(
+          async () => {
+            const current = await transcript.evaluate((element) => {
+              const bounds = element.getBoundingClientRect();
+              const row = [
+                ...element.querySelectorAll<HTMLElement>(
+                  '[data-transcript-row]',
+                ),
+              ].find((node) => {
+                const rect = node.getBoundingClientRect();
+                return rect.bottom > bounds.top && rect.top < bounds.bottom;
+              });
+              return row
+                ? {
+                    id: row.dataset.transcriptRow!,
+                    offset: row.getBoundingClientRect().top - bounds.top,
+                  }
+                : null;
+            });
+            stableSamples =
+              current &&
+              anchor?.id === current.id &&
+              Math.abs(anchor.offset - current.offset) <= 1
+                ? stableSamples + 1
+                : 0;
+            anchor = current;
+            return stableSamples;
+          },
+          { message: 'reader anchor did not settle after wheel input' },
+        )
+        .toBeGreaterThanOrEqual(2);
+      const retainedAnchor = anchor!;
       const scrolledTurnId = `dd-stress-${path.profile}-scrolled`;
       const scrolledText = `Scrolled-up stream for ${path.profile}.`;
       await emitTurnEvent(page, {
@@ -962,14 +991,28 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
           method: 'content.text-delta',
           extra: { itemId: scrolledTurnId, delta: `${scrolledText} ` },
         });
-      const scrollAfter = await transcript.evaluate(
-        (element) => element.scrollTop,
-      );
-      const scrollHeldDuringStream = Math.abs(scrollAfter - scrollBefore) <= 2;
-      expect(
-        scrollHeldDuringStream,
-        `performance-stress (${path.profile}): streaming while scrolled up must not move the reader; scrollTop ${scrollBefore} -> ${scrollAfter}`,
-      ).toBe(true);
+      await expect
+        .poll(() => loadedTranscriptRows(page))
+        .toBeGreaterThan(loadedRows);
+      const readerDrift = () =>
+        transcript.evaluate((element, saved) => {
+          const row = [
+            ...element.querySelectorAll<HTMLElement>('[data-transcript-row]'),
+          ].find((node) => node.dataset.transcriptRow === saved.id);
+          return row
+            ? Math.abs(
+                row.getBoundingClientRect().top -
+                  element.getBoundingClientRect().top -
+                  saved.offset,
+              )
+            : Number.POSITIVE_INFINITY;
+        }, retainedAnchor);
+      await expect
+        .poll(readerDrift, {
+          message: `performance-stress (${path.profile}): streaming moved the retained reader anchor`,
+        })
+        .toBeLessThanOrEqual(2);
+      const scrollHeldDuringStream = (await readerDrift()) <= 2;
       const mountedRowsDuringStream = await mountedTranscriptRows(page);
       await emitTurnEvent(page, {
         threadId,

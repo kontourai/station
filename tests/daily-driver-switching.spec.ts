@@ -160,6 +160,10 @@ async function selectComposerModel(page: Page, optionName: RegExp) {
  * test.tsx:179` asserts exactly that negative). Open the overflow first.
  */
 async function forkFromHere(page: Page) {
+  await page
+    .locator('.turn-footer')
+    .filter({ has: page.getByRole('button', { name: 'More answer actions' }) })
+    .hover();
   await page.getByRole('button', { name: 'More answer actions' }).click();
   await page.getByRole('menuitem', { name: 'Fork from here' }).click();
 }

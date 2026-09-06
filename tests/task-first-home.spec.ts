@@ -209,11 +209,20 @@ async function mockTaskFirstHome(
       );
       return;
     }
-    if (path === '/api/orchestration/sessions/task-first-home/event-window') {
+    if (
+      path === '/api/orchestration/sessions/task-first-home/event-window' ||
+      path === '/api/orchestration/conversations/task-first-home/event-window'
+    ) {
       await route.fulfill(
         json({
           protocolVersion: 1,
-          session: taskSession,
+          ...(path.includes('/conversations/')
+            ? {
+                conversationId: 'task-first-home',
+                currentSessionId: 'task-first-home',
+                handoffs: [],
+              }
+            : { session: taskSession }),
           events: (options.sessionEvents ?? []).map((event, index) => ({
             sequence: index + 1,
             event,
@@ -431,6 +440,16 @@ async function mockTaskFirstHome(
           error: 'Optional project source unavailable in this Home fixture',
         },
       });
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      [
+        '/api/orchestration/sessions/task-first-home/checkpoints',
+        '/api/projects/layouts/available',
+      ].includes(path)
+    ) {
+      await route.fulfill(json([]));
       return;
     }
     if (await fulfillStationShellRead(route)) return;
