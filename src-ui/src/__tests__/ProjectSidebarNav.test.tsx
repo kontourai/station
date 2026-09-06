@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const flagsState = vi.hoisted(() => ({ flags: new Set<string>() }));
 const regionState = vi.hoisted(() => ({
   showSurface: vi.fn(),
+  toggleSurface: vi.fn(),
   activityVisible: false,
   mainOccupant: null as string | null,
 }));
@@ -20,6 +21,7 @@ vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
 }));
 vi.mock('../contexts/RegionModelContext', () => ({
   useRegionModelOptional: () => ({
+    toggleSurface: regionState.toggleSurface,
     regions: {
       main: { visible: true, size: 0, occupant: regionState.mainOccupant },
       left: { visible: false, size: 400, occupant: null },
@@ -44,6 +46,7 @@ describe('ProjectSidebarNav', () => {
   beforeEach(() => {
     flagsState.flags = new Set();
     regionState.showSurface.mockReset();
+    regionState.toggleSurface.mockReset();
     regionState.activityVisible = false;
     regionState.mainOccupant = null;
     routeTransitionStore.clearPending(routeTransitionStore.getSnapshot() ?? '');
@@ -216,6 +219,44 @@ describe('ProjectSidebarNav', () => {
         .getAllByRole('button')
         .filter((button) => button.getAttribute('aria-current') === 'page'),
     ).toHaveLength(1);
+  });
+
+  // A control that reports `aria-pressed` has to un-press, or the state it
+  // announces is a label nothing acts on. Hiding goes through the model's own
+  // toggle (#1523), so the sidebar keeps no copy of the placement rules.
+  test('pressing a shown region-surface row hides it through the model toggle', () => {
+    regionState.activityVisible = true;
+    render(
+      <ProjectSidebarNav
+        collapsed={false}
+        isMobile={false}
+        navigate={vi.fn()}
+        activePath="/registry"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
+    expect(regionState.toggleSurface).toHaveBeenCalledWith('activity');
+    expect(regionState.showSurface).not.toHaveBeenCalled();
+  });
+
+  test('pressing a hidden region-surface row reveals it through the show seam', () => {
+    // Revealing keeps `useShowSurface`, which routes to the canonical deep
+    // link when no region host is mounted — the model's toggle has no such
+    // fallback.
+    regionState.activityVisible = false;
+    render(
+      <ProjectSidebarNav
+        collapsed={false}
+        isMobile={false}
+        navigate={vi.fn()}
+        activePath="/registry"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
+    expect(regionState.showSurface).toHaveBeenCalledWith('activity');
+    expect(regionState.toggleSurface).not.toHaveBeenCalled();
   });
 
   test('reports Activity as not pressed while its region is hidden', () => {

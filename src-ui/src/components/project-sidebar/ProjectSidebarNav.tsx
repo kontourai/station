@@ -102,8 +102,19 @@ export function ProjectSidebarNav({
         aria-current={isCurrent ? 'page' : undefined}
         aria-pressed={destination.regionSurface ? isShown : undefined}
         onClick={() => {
-          if (destination.regionSurface) showSurface(destination.regionSurface);
-          else navigate(destination.route);
+          if (destination.regionSurface) {
+            // A control that reports `aria-pressed` has to un-press. Hiding
+            // goes through the model's own `toggleSurface` — the one decision
+            // behind this surface's chord and its Regions-menu row (#1523,
+            // #1420), so the sidebar carries no copy of the placement rules.
+            // Revealing stays with `useShowSurface`, which routes to the
+            // canonical deep link when no region host is mounted; the model's
+            // toggle has no such fallback and would write state nothing
+            // renders.
+            if (isShown && regionModel)
+              regionModel.toggleSurface(destination.regionSurface);
+            else showSurface(destination.regionSurface);
+          } else navigate(destination.route);
           if (isMobile) onAfterNavigate?.();
         }}
         title={collapsed ? label : undefined}
