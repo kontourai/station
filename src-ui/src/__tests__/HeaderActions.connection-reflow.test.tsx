@@ -634,8 +634,19 @@ describe.skipIf(!chromiumAvailable)(
      *
      * Both halves, because either alone is satisfiable while the row is still
      * unbounded: the GLYPH is capped at two characters, and the resulting BOX
-     * is no wider than the 23.91px the arithmetic in `chat.css` budgets for it.
-     * A cap that rendered "9999+" would pass the first and fail the second.
+     * is no wider than a two-character badge. A cap that rendered "9999+"
+     * would pass the first and fail the second.
+     *
+     * The box half is asserted against "99" MEASURED IN THIS PAGE, not against
+     * the px figure `chat.css` records. Glyph metrics are platform-specific:
+     * the numbers in that comment were measured on macOS, and the same badge
+     * renders 25.34px on CI's Linux runner, so a transcribed ceiling reds on
+     * a platform difference rather than on a defect — which is exactly what it
+     * did. What must hold everywhere is the RELATION the arithmetic depends
+     * on: whatever a two-character badge costs on this platform, the cap never
+     * costs more. The absolute budget in `chat.css` is a macOS measurement and
+     * says so; the reachability it exists to protect is enforced end to end at
+     * 360px by `tests/toolbar-reachability.spec.ts`, on CI's own renderer.
      */
     test('the notification badge is bounded, so the row arithmetic is a bound (#1132)', async () => {
       const measureBadge = async (pendingCount: number) => {
@@ -653,24 +664,26 @@ describe.skipIf(!chromiumAvailable)(
             );
             const bell = badge?.closest('button');
             if (!badge || !bell) throw new Error('no notification badge');
-            return {
-              text: badge.textContent,
-              width: badge.getBoundingClientRect().width,
-              accessibleName: bell.getAttribute('aria-label'),
-            };
+            const rendered = badge.textContent;
+            const width = badge.getBoundingClientRect().width;
+            const accessibleName = bell.getAttribute('aria-label');
+            // The two-character reference, measured on the SAME element with
+            // the same computed style on whatever platform is running. The cap
+            // means the component can no longer produce two digits, so the
+            // ceiling has to be established here rather than rendered.
+            badge.textContent = '99';
+            const twoCharacterWidth = badge.getBoundingClientRect().width;
+            badge.textContent = rendered;
+            return { text: rendered, width, accessibleName, twoCharacterWidth };
           });
         } finally {
           await page.close();
         }
       };
 
-      // The budget `chat.css` reserves for this member, and the two-character
-      // worst case that has to fit inside it.
-      const BADGE_CEILING_PX = 23.91;
-
       const single = await measureBadge(3);
       expect(single.text).toBe('3');
-      expect(single.width).toBeLessThanOrEqual(BADGE_CEILING_PX);
+      expect(single.width).toBeLessThanOrEqual(single.twoCharacterWidth);
 
       const many = await measureBadge(123);
       expect(
@@ -679,8 +692,8 @@ describe.skipIf(!chromiumAvailable)(
       ).toBe('9+');
       expect(
         many.width,
-        `the capped badge must fit the ${BADGE_CEILING_PX}px the breakpoint arithmetic budgets`,
-      ).toBeLessThanOrEqual(BADGE_CEILING_PX);
+        'the capped badge must be no wider than the two-character badge the row budgets for',
+      ).toBeLessThanOrEqual(many.twoCharacterWidth);
 
       // The exact count is what the cap gives up on screen, so it must survive
       // in the accessible name — that is the trade this cap is allowed to make.
