@@ -314,6 +314,11 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
         projectId,
       );
       if (!preview) return;
+      // #1596 names three click paths; this is not one of them, and its
+      // outcome is deliberately still unsurfaced: the row selection and the
+      // navigation intent above are what the reader sees, and they happen
+      // whether or not the preview occurrence is admitted. Reporting a
+      // refusal here needs a place in this pane's own chrome to put it.
       paneHostOpen.open(
         preview,
         createFilePreviewPaneStatePreparation(

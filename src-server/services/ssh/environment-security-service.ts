@@ -562,6 +562,15 @@ export class EnvironmentSecurityService {
     },
   ): boolean {
     if (this.verifyOperatorCredential(candidate)) return true;
+    if (
+      ['POST', 'PUT', 'PATCH', 'DELETE'].includes(
+        request.method.toUpperCase(),
+      ) &&
+      (request.path === '/api/environments/peers' ||
+        request.path.startsWith('/api/environments/peers/'))
+    ) {
+      return false;
+    }
     if (request.path.startsWith('/api/pairing')) {
       // archive#1887: the family stays operator-only, with ONE narrow
       // exception. A device the operator explicitly promoted (scope carries

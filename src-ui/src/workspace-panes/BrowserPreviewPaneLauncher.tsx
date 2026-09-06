@@ -8,6 +8,7 @@ import { createBrowserPreviewPaneInstance } from './browserPreviewPaneInstance';
 import { createBrowserPreviewPaneStatePreparation } from './browserPreviewPaneStateStorage';
 import type { WorkspacePaneHostOpenAction } from './WorkspacePaneHostOpenContext';
 import { presentWorkspacePaneAvailability } from './workspacePaneAvailabilityPresentation';
+import { describeWorkspacePaneOpenRefusal } from './workspacePaneHostOpenOutcome';
 
 export function BrowserPreviewPaneLauncher({
   projectId,
@@ -50,18 +51,22 @@ export function BrowserPreviewPaneLauncher({
           updatedAt: new Date().toISOString(),
         };
         const instance = createBrowserPreviewPaneInstance(state, projectId);
-        if (
-          !instance ||
-          !host.open(
-            instance,
-            createBrowserPreviewPaneStatePreparation(
-              window.localStorage,
-              instance.stateKey,
-              state,
-            ),
-          )
-        ) {
+        if (!instance) {
           setError('Station could not open this Browser Preview pane.');
+          return;
+        }
+        const outcome = host.open(
+          instance,
+          createBrowserPreviewPaneStatePreparation(
+            window.localStorage,
+            instance.stateKey,
+            state,
+          ),
+        );
+        if (!outcome.ok) {
+          // The host's own reason, rather than one sentence for four
+          // situations (#1596).
+          setError(describeWorkspacePaneOpenRefusal(outcome.reason));
           return;
         }
         setError(null);
