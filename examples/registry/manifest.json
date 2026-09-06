@@ -3,8 +3,8 @@
   "plugins": [
     {
       "id": "minimal-layout",
-      "displayName": "Minimal Layout",
-      "description": "Getting-started layout plugin with the smallest useful UI surface.",
+      "displayName": "Minimal Workspace",
+      "description": "Minimal Workspace Pane for Agent discovery and explicit local chat dock navigation.",
       "version": "1.0.0",
       "source": "../minimal-layout"
     },

@@ -156,6 +156,7 @@ describe('e2e manifest', () => {
       'tests/agents-new-muse-echo-turn.spec.ts',
       'tests/csp-shell.spec.ts',
       'tests/plugin-bundle-csp.spec.ts',
+      'tests/minimal-workspace-example.spec.ts',
       'tests/workspace-pane-host-actions-live.spec.ts',
       'tests/bundled-plugin-registry-lifecycle.spec.ts',
       'tests/ui-crud-smoke.spec.ts',
