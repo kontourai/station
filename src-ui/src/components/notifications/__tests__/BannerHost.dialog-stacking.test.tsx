@@ -116,13 +116,16 @@ function buildFixtureCss(): string {
  * the control that actually intercepted — `buildBannerStackView` renders no
  * cap unless something is hidden behind it.
  */
-function presentFixtureBanners(): void {
+function presentFixtureBanners(critical: boolean): void {
   act(() => {
     bannerStore.present({
       id: 'station-1638:front',
       priority: 10,
-      tone: 'info',
-      message: 'This project has no Builder runs yet',
+      tone: critical ? 'error' : 'info',
+      criticalChrome: critical || undefined,
+      message: critical
+        ? 'Station could not load the plugin registry'
+        : 'This project has no Builder runs yet',
       dismissible: true,
       dismissAriaLabel: 'Dismiss notice',
     });
@@ -186,8 +189,8 @@ function renderDialogMarkup(): string {
   return markup;
 }
 
-function renderBannerHostMarkup(): string {
-  presentFixtureBanners();
+function renderBannerHostMarkup(critical: boolean): string {
+  presentFixtureBanners(critical);
   const { container, unmount } = render(<BannerHost connectionSlot={false} />);
   const markup = container.innerHTML;
   unmount();
@@ -199,7 +202,7 @@ function renderBannerHostMarkup(): string {
  * container both the host and the dock sit in, and `.chat-dock` is the
  * stacking context that traps its own dialogs.
  */
-function buildFixtureHtml(): string {
+function buildFixtureHtml(shape: Shape): string {
   return `<!doctype html>
 <html>
   <head>
@@ -209,18 +212,44 @@ function buildFixtureHtml(): string {
   <body>
     <div class="app app--with-sidebar">
       <div class="app__main">
-        ${renderBannerHostMarkup()}
-        <section class="chat-dock chat-dock--bottom">${renderDialogMarkup()}</section>
+        ${renderBannerHostMarkup(shape.critical)}
+        <section class="${shape.dockClassName}">${renderDialogMarkup()}</section>
       </div>
     </div>
   </body>
 </html>`;
 }
 
+/**
+ * The two shell states that reach the raise. `is-maximized` with a critical
+ * notice is the one the reported journey was actually in — the phone dock
+ * maximizes itself, and #920 lets a critical card cross the dock layer
+ * through the same named value.
+ */
+interface Shape {
+  readonly name: string;
+  readonly dockClassName: string;
+  readonly critical: boolean;
+}
+
+const SHAPES: readonly Shape[] = [
+  {
+    name: 'an ordinary notice over a bottom dock',
+    dockClassName: 'chat-dock chat-dock--bottom',
+    critical: false,
+  },
+  {
+    name: "#920's critical card over a maximized dock",
+    dockClassName: 'chat-dock is-maximized chat-dock--bottom',
+    critical: true,
+  },
+];
+
 interface Measured {
   dockTrapsDialogs: boolean;
   dockZIndex: string;
   hostZIndex: string;
+  hostSupersede: string;
   overlayZIndex: string;
   overlapping: {
     control: string;
@@ -248,10 +277,10 @@ describe.skipIf(!chromiumAvailable)(
       act(() => bannerStore.reset());
     });
 
-    async function measure(): Promise<Measured> {
+    async function measure(shape: Shape): Promise<Measured> {
       const page = await browser.newPage({ viewport: VIEWPORT });
       try {
-        await page.setContent(buildFixtureHtml());
+        await page.setContent(buildFixtureHtml(shape));
         return await page.evaluate(() => {
           const describe_ = (element: Element | null) =>
             element
@@ -310,6 +339,9 @@ describe.skipIf(!chromiumAvailable)(
               dockStyle.position !== 'static' && dockStyle.zIndex !== 'auto',
             dockZIndex: dockStyle.zIndex,
             hostZIndex: getComputedStyle(host).zIndex,
+            hostSupersede: getComputedStyle(host)
+              .getPropertyValue('--banner-dock-supersede')
+              .trim(),
             overlayZIndex: getComputedStyle(overlay).zIndex,
             overlapping,
           };
@@ -337,44 +369,54 @@ describe.skipIf(!chromiumAvailable)(
       }
     }
 
-    test('a control inside the open surface hit-tests to itself where the banner paints over it', async () => {
-      const measured = await measure();
-      assertTheDockStillTrapsItsDialogs(measured);
+    test.each(SHAPES)(
+      'a control inside the open surface hit-tests to itself where the banner paints over it: $name',
+      async (shape) => {
+        const measured = await measure(shape);
+        assertTheDockStillTrapsItsDialogs(measured);
 
-      // Power guard: without a real overlap this assertion is vacuous. The
-      // live report was the cap over the sheet's search input; here it is the
-      // cap and the dismiss/collapse row over the surface's own controls.
-      expect(
-        measured.overlapping.length,
-        'no control inside the modal surface overlaps a banner control, so ' +
-          'this measurement proves nothing. The banner stack or the surface ' +
-          'geometry moved — restore an overlap rather than deleting the test.',
-      ).toBeGreaterThan(0);
+        // Power guard: without a real overlap this assertion is vacuous. The
+        // live report was the cap over the sheet's search input; here it is the
+        // cap and the dismiss/collapse row over the surface's own controls.
+        expect(
+          measured.overlapping.length,
+          'no control inside the modal surface overlaps a banner control, so ' +
+            'this measurement proves nothing. The banner stack or the surface ' +
+            'geometry moved — restore an overlap rather than deleting the test.',
+        ).toBeGreaterThan(0);
 
-      const stolen = measured.overlapping.filter((entry) => !entry.hitsItself);
-      expect(
-        stolen,
-        'the banner host took a click from a control inside an open modal ' +
-          `surface (host z-index ${measured.hostZIndex}, overlay z-index ` +
-          `${measured.overlayZIndex} trapped by .chat-dock at ` +
-          `${measured.dockZIndex}):\n${stolen
-            .map(
-              (entry) =>
-                `  ${entry.control} at (${entry.point.x}, ${entry.point.y}) hit ${entry.hit} (${entry.banner})`,
-            )
-            .join('\n')}`,
-      ).toEqual([]);
-    });
+        const stolen = measured.overlapping.filter(
+          (entry) => !entry.hitsItself,
+        );
+        expect(
+          stolen,
+          'the banner host took a click from a control inside an open modal ' +
+            `surface (host z-index ${measured.hostZIndex}, overlay z-index ` +
+            `${measured.overlayZIndex} trapped by .chat-dock at ` +
+            `${measured.dockZIndex}):\n${stolen
+              .map(
+                (entry) =>
+                  `  ${entry.control} at (${entry.point.x}, ${entry.point.y}) hit ${entry.hit} (${entry.banner})`,
+              )
+              .join('\n')}`,
+        ).toEqual([]);
+      },
+    );
 
-    test('the notice returns to its own named layer while the surface is open', async () => {
-      const measured = await measure();
-      assertTheDockStillTrapsItsDialogs(measured);
-      // `--layer-notice`, the passive-notice layer `tokens.css` names — not
-      // `--layer-dock + 1`, which is what put it over the dialog. Stated as a
-      // number because the hit test above cannot distinguish "yielded to the
-      // notice layer" from "yielded far enough by accident".
-      expect(measured.hostZIndex).toBe('9000');
-    });
+    test.each(SHAPES)(
+      'the raise itself yields to the notice layer while the surface is open: $name',
+      async (shape) => {
+        const measured = await measure(shape);
+        assertTheDockStillTrapsItsDialogs(measured);
+        // `--layer-notice`, the passive-notice layer `tokens.css` names — not
+        // `--layer-dock + 1`, which is what put it over the dialog. Asserted on
+        // the named value rather than the host's own `z-index`, because #920's
+        // critical shape deliberately leaves the host at `auto` and hands the
+        // raise to the critical card instead; the value is what both shapes
+        // share.
+        expect(measured.hostSupersede).toBe('9000');
+      },
+    );
   },
 );
 
