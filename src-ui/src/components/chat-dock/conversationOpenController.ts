@@ -35,6 +35,33 @@ export async function resolveConversationOpenAuthoritatively(
   return resolveConversationOpen(conversationId, apiBase);
 }
 
+/** Provider is a model-provider field for native chats; keep the engine domain separate. */
+export function conversationExecutionChanged(
+  resolution: ConversationOpenResolution,
+  previous?: Partial<ChatUIState>,
+): boolean {
+  if (!previous || resolution.status !== 'resolved') return false;
+  const execution = resolution.execution;
+  const previousEngine =
+    previous.executionMode === EXECUTION_MODE.STATION
+      ? 'station-agent'
+      : (previous.orchestrationProvider ?? previous.provider);
+  const previousEngineConnection =
+    previous.executionMode === EXECUTION_MODE.STATION
+      ? undefined
+      : previous.agentConnectionId;
+  return (
+    (previous.currentSessionId ?? previous.conversationId) !==
+      resolution.currentSessionId ||
+    Boolean(
+      execution &&
+        (previous.agentSlug !== execution.agentId ||
+          previousEngine !== execution.provider ||
+          previousEngineConnection !== execution.engineConnectionId),
+    )
+  );
+}
+
 /** One total binding patch prevents retry and reload paths from drifting. */
 export function conversationOpenPatch(
   resolution: ConversationOpenResolution,
@@ -44,21 +71,15 @@ export function conversationOpenPatch(
     provider?: string;
     engineConnectionId?: string;
     providerOptions?: Record<string, unknown>;
+    modelProvider?: { id: string; type: string };
+    validModelProviderIds?: readonly string[];
     agentName?: string;
   },
 ): Partial<ChatUIState> {
   const resolved = resolution.status === 'resolved' ? resolution : undefined;
   const execution = resolved?.execution;
-  const changedChild = Boolean(
-    previous &&
-      resolved &&
-      ((previous.currentSessionId ?? previous.conversationId) !==
-        resolved.currentSessionId ||
-        (execution &&
-          (previous.agentSlug !== execution.agentId ||
-            previous.provider !== execution.provider ||
-            previous.agentConnectionId !== execution.engineConnectionId))),
-  );
+  const changedChild = conversationExecutionChanged(resolution, previous);
+  const native = execution?.provider === 'station-agent';
   const unknownReplacement = changedChild && !execution;
   const pendingChoice = Boolean(
     execution &&
@@ -79,8 +100,32 @@ export function conversationOpenPatch(
       previous?.requestedModel &&
         (pendingChoice ||
           (catalogMatchesExecution &&
+            (!native ||
+              (choice?.modelProvider &&
+                choice.validModelProviderIds?.includes(
+                  choice.modelProvider.id,
+                ) &&
+                (!previous.providerId ||
+                  previous.providerId === choice.modelProvider.id))) &&
             choice?.validModelIds?.includes(previous.requestedModel))),
     );
+  const nativeProvider = pendingChoice
+    ? previous?.provider
+    : keepRequested
+      ? choice?.modelProvider?.type
+      : undefined;
+  const nativeProviderId = pendingChoice
+    ? previous?.providerId
+    : keepRequested
+      ? choice?.modelProvider?.id
+      : undefined;
+  const nativeDefaultProviderId = pendingChoice
+    ? previous?.defaultProviderId
+    : keepRequested &&
+        previous?.defaultProviderId &&
+        choice?.validModelProviderIds?.includes(previous.defaultProviderId)
+      ? previous.defaultProviderId
+      : undefined;
   const executionPatch: Partial<ChatUIState> = execution
     ? {
         agentSlug: execution.agentId,
@@ -90,7 +135,7 @@ export function conversationOpenPatch(
           previous?.projectSlug === resolution.conversation.projectSlug
             ? previous?.projectName
             : undefined,
-        provider: execution.provider,
+        provider: native ? nativeProvider : execution.provider,
         orchestrationProvider: execution.provider,
         executionMode:
           execution.provider === 'station-agent'
@@ -100,8 +145,8 @@ export function conversationOpenPatch(
           ? 'project'
           : 'global',
         agentConnectionId: execution.engineConnectionId,
-        providerId: undefined,
-        defaultProviderId: undefined,
+        providerId: native ? nativeProviderId : undefined,
+        defaultProviderId: native ? nativeDefaultProviderId : undefined,
         defaultModel: undefined,
         defaultModelSource: undefined,
         model: execution.model ?? execution.acceptedModel,

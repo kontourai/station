@@ -68,7 +68,7 @@ export function acceptConversationHandoffUiState(
     currentSessionId: receipt.currentSessionId,
     // A predecessor observation is not evidence about the newly admitted child.
     orchestrationModel: undefined,
-    orchestrationProvider: execution.provider,
+    orchestrationProvider: undefined,
     requestedProviderOptions: {},
     model: receipt.target.modelId ?? execution.model,
     modelSource: receipt.target.modelId

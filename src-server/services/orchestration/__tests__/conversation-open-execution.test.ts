@@ -15,7 +15,7 @@ const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const stop of cleanup.splice(0).reverse()) await stop();
 });
-test('opening a durable conversation observes its current Claude child and recorded connection after a Codex handoff', async () => {
+function readerFixture() {
   const home = mkdtempSync(join(tmpdir(), 'station-open-execution-'));
   const store = new EventStore(join(home, 'events.sqlite'));
   const adapter = new GateTestAdapter();
@@ -31,6 +31,11 @@ test('opening a durable conversation observes its current Claude child and recor
     store.close();
     rmSync(home, { recursive: true, force: true });
   });
+  return { store, service };
+}
+
+test('opening a durable conversation observes its current Claude child and recorded connection after a Codex handoff', async () => {
+  const { store, service } = readerFixture();
   const root = 'durable-codex-conversation',
     child = 'claude-current-child';
   store.upsertSession({
@@ -114,4 +119,71 @@ test('opening a durable conversation observes its current Claude child and recor
       sessionReadAuthorityFromRequest('other-user', undefined, undefined),
     ),
   ).resolves.toBeNull();
+});
+
+test('an initial native launch plan is not relabeled as current model-connection evidence', async () => {
+  const { store, service } = readerFixture();
+  const threadId = 'native-conversation';
+  store.upsertSession({
+    threadId,
+    provider: 'station-agent',
+    status: 'ready',
+    model: 'native-model',
+    createdAt: '2026-09-01T00:00:00Z',
+    updatedAt: '2026-09-01T00:01:00Z',
+  });
+  store.appendEvent({
+    eventId: 'native-start',
+    threadId,
+    sessionId: threadId,
+    provider: 'station-agent',
+    method: 'session.started',
+    metadata: {
+      userId: 'owner',
+      agentSlug: 'station',
+      modelLaunchPlan: {
+        kind: 'station-resolved',
+        evidence: 'catalog-accepted',
+        modelConnectionId: 'native-model-connection',
+        modelId: 'native-model',
+      },
+    },
+    createdAt: '2026-09-01T00:00:01Z',
+  });
+  const authority = sessionReadAuthorityFromRequest(
+    'owner',
+    undefined,
+    undefined,
+  );
+  const accepted = await service.resolveConversationOpen(threadId, authority);
+  expect(accepted).toMatchObject({
+    status: 'resolved',
+    execution: {
+      provider: 'station-agent',
+    },
+  });
+  if (accepted?.status === 'resolved')
+    expect(accepted.execution).not.toHaveProperty('modelConnectionId');
+  store.appendEvent({
+    eventId: 'native-pending',
+    threadId,
+    sessionId: threadId,
+    provider: 'station-agent',
+    method: 'session.configured',
+    metadata: {
+      userId: 'owner',
+      agentSlug: 'station',
+      modelLaunchPlan: {
+        kind: 'station-resolved',
+        evidence: 'catalog-pending',
+        modelConnectionId: 'unaccepted-connection',
+        modelId: 'other-model',
+      },
+    },
+    createdAt: '2026-09-01T00:00:02Z',
+  });
+  const pending = await service.resolveConversationOpen(threadId, authority);
+  expect(pending?.status).toBe('resolved');
+  if (pending?.status === 'resolved')
+    expect(pending.execution).not.toHaveProperty('modelConnectionId');
 });

@@ -1949,3 +1949,10 @@ capability evidence and is retained only when supported. If an older server
 cannot establish a changed child's execution binding, the transcript remains
 available while sending stays unavailable. Open-chat labels prefer the exact
 current Session's reported/retained model rather than a persisted predecessor.
+
+For native chats, the engine observation is separate from the LLM provider
+selection. A retained unsent choice must match its own currently available model
+connection, not an engine-connection identifier or another provider's identical
+model name. The initial accepted Session launch plan is not presented as proof
+of the connection used by a later turn. Unknown current-provider provenance
+stays unknown rather than being reconstructed from Agent defaults.

@@ -18,6 +18,12 @@ export interface ConversationOpenRevalidatorProps {
   catalogProvider?: string;
   catalogConnectionId?: string;
   agents?: readonly { slug: string; name?: string }[];
+  modelConnections?: readonly {
+    id: string;
+    type: string;
+    enabled?: boolean;
+    status?: string;
+  }[];
 }
 
 /** Re-proves a persisted child binding before the surrounding pane mutates. */
@@ -33,6 +39,7 @@ export function ConversationOpenRevalidator({
   catalogProvider,
   catalogConnectionId,
   agents,
+  modelConnections,
 }: ConversationOpenRevalidatorProps) {
   useEffect(() => {
     let cancelled = false;
@@ -45,14 +52,10 @@ export function ConversationOpenRevalidator({
           );
         if (cancelled) return;
         const previous = activeChatsStore.getSnapshot()[sessionId];
-        const sameChild =
-          resolution.status === 'resolved' &&
-          previous?.currentSessionId === resolution.currentSessionId &&
-          (!resolution.execution ||
-            (previous.agentSlug === resolution.execution.agentId &&
-              previous.provider === resolution.execution.provider &&
-              previous.agentConnectionId ===
-                resolution.execution.engineConnectionId));
+        const sameChild = !controller.conversationExecutionChanged(
+          resolution,
+          previous,
+        );
         // Do not discard a deliberate choice merely because its catalog is still loading.
         if (sameChild && previous?.requestedModel && modelsLoading) return;
         const models =
@@ -61,9 +64,31 @@ export function ConversationOpenRevalidator({
                 (model) => model.available !== false,
               )
             : [];
-        const selected = models.find(
-          (model) => model.id === previous?.requestedModel,
+        const native =
+          resolution.status === 'resolved' &&
+          resolution.execution?.provider === 'station-agent';
+        const allowedModelConnections = (modelConnections ?? []).filter(
+          (connection) =>
+            connection.enabled !== false && connection.status === 'ready',
         );
+        const matches = models.filter(
+          (model) =>
+            model.id === previous?.requestedModel &&
+            (!native ||
+              (model.providerId &&
+                allowedModelConnections.some(
+                  (connection) => connection.id === model.providerId,
+                ) &&
+                (!previous?.providerId ||
+                  previous.providerId === model.providerId))),
+        );
+        const selected = matches.length === 1 ? matches[0] : undefined;
+        const modelProvider =
+          native && selected?.providerId
+            ? allowedModelConnections.find(
+                (connection) => connection.id === selected.providerId,
+              )
+            : undefined;
         const actualAgent =
           resolution.status === 'resolved'
             ? resolution.execution?.agentId
@@ -71,7 +96,18 @@ export function ConversationOpenRevalidator({
         updateChat(
           sessionId,
           controller.conversationOpenPatch(resolution, previous, {
-            validModelIds: models.map((model) => model.id),
+            validModelIds: selected ? [selected.id] : [],
+            ...(modelProvider
+              ? {
+                  modelProvider: {
+                    id: modelProvider.id,
+                    type: modelProvider.type,
+                  },
+                }
+              : {}),
+            validModelProviderIds: allowedModelConnections.map(
+              (connection) => connection.id,
+            ),
             provider: catalogProvider,
             engineConnectionId: catalogConnectionId,
             providerOptions: selected
@@ -109,6 +145,7 @@ export function ConversationOpenRevalidator({
     catalogProvider,
     catalogConnectionId,
     agents,
+    modelConnections,
   ]);
 
   return null;

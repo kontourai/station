@@ -287,3 +287,62 @@ test('same-child stale connection cannot validate a model using another connecti
   );
   expect(wrongCatalog.requestedModel).toBeNull();
 });
+
+test('same-child native model intent retains its authorized model provider without confusing it with the engine', () => {
+  const resolution: ConversationOpenResolution = {
+    ...resolved(),
+    conversation: { ...conversation, agentSlug: 'station' as any },
+    execution: {
+      sessionId: 'conversation-749:child:2',
+      agentId: 'station' as any,
+      provider: 'station-agent',
+      model: 'last-observed',
+    },
+  };
+  const previous = {
+    currentSessionId: resolution.currentSessionId,
+    conversationId: conversation.id,
+    agentSlug: 'station',
+    executionMode: 'station' as const,
+    orchestrationProvider: 'station-agent',
+    provider: 'openai',
+    providerId: 'model-chosen',
+    defaultProviderId: 'model-original',
+    requestedModel: 'deliberate-next-model',
+    requestedModelSource: 'session override' as const,
+    input: 'draft',
+  };
+  const waiting = conversationOpenPatch(resolution, previous);
+  expect(waiting).toMatchObject({
+    conversationOpenPending: true,
+    provider: 'openai',
+    providerId: 'model-chosen',
+    requestedModel: 'deliberate-next-model',
+  });
+  const choice = {
+    validModelIds: ['deliberate-next-model'],
+    provider: 'station-agent',
+    modelProvider: { id: 'model-chosen', type: 'openai' },
+    validModelProviderIds: ['model-chosen', 'model-original'],
+  };
+  const patch = conversationOpenPatch(resolution, previous, choice);
+  expect(patch).toMatchObject({
+    conversationOpenPending: false,
+    orchestrationProvider: 'station-agent',
+    provider: 'openai',
+    providerId: 'model-chosen',
+    defaultProviderId: 'model-original',
+    requestedModel: 'deliberate-next-model',
+    model: 'last-observed',
+  });
+  const wrongProvider = conversationOpenPatch(resolution, previous, {
+    ...choice,
+    modelProvider: { id: 'other-model-connection', type: 'openai' },
+    validModelProviderIds: ['other-model-connection'],
+  });
+  expect(wrongProvider).toMatchObject({
+    requestedModel: null,
+    providerId: undefined,
+    orchestrationProvider: 'station-agent',
+  });
+});
