@@ -36,6 +36,13 @@
  *     with a reset in each stacking rule — a coupling this stylesheet cannot
  *     enforce on the next one added.
  *
+ * That second point removes one coupling and leaves another, so it is worth
+ * being exact: `auto` needs no basis reset anywhere, but the unconditional
+ * wrap still makes a stacked header a multi-line COLUMN container, and the
+ * <= 640px block below pins `flex-wrap: nowrap` for exactly that reason —
+ * removing it puts a 470px identity in a 390px region. Any future rule that
+ * stacks this header owes the same pin. The coupling moved; it did not vanish.
+ *
  * What must NOT enter that base size is the subtitle. A wrap means the
  * identity and the actions cannot share a row; it must not mean the subtitle
  * would like more width. While the subtitle contributed its own content width,
