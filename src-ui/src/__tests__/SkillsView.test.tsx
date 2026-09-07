@@ -726,6 +726,19 @@ describe('SkillsView', () => {
    * bytes rather than against each other's imagination.
    */
   describe('the Save action follows the server writability decision', () => {
+    /**
+     * RESIDUAL, not a style choice: `any` on both parameters means no fixture
+     * in this file is typechecked against `SkillListing` or
+     * `SkillWriteRefusal`. That is the mechanism that let two fixtures keep
+     * pre-reword prose while a comment above them claimed they were what the
+     * server emits (round 8 fixed the instances; this names the class).
+     *
+     * It has a second live consequence: `packageDirectory` is REQUIRED on
+     * `SkillWriteRefusal` — deliberately de-optionalised, see its docblock in
+     * `catalog.ts` — and 4 of the 11 `writeRefusal` fixtures here omit it, so
+     * they encode a shape no server can produce. Typing these parameters is the
+     * fix; it is a separate change because it will red every fixture at once.
+     */
     function selectRow(row: any, detail?: any) {
       selectionState.selectedId = row.name;
       localSkillsMock = [row];

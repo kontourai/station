@@ -9,13 +9,16 @@
  * name before it ever looks at a root).
  *
  * A fixture can only reach a combination the filesystem can produce; this table
- * enumerates directly. `unsafe-name` aside, three conditions co-occur freely,
- * and all eight of their subsets appear below — so the ordering among them is
- * pinned rather than sampled. The `unsafe-name` rows then cover it against each
- * of the other three and against all of them at once. An earlier version of
- * this sentence claimed eight combinations while listing eight ROWS, which is
- * not the same count: four cells were unpinned under a docblock promising
- * completeness (review round 8).
+ * enumerates directly. All SIXTEEN subsets of the four conditions appear below
+ * — the full power set, relying on no claim about which conditions can
+ * co-occur, because two attempts to state such a claim were both wrong.
+ *
+ * What these rows are and are not: they complete the enumeration the docblock
+ * claims, and they are not additional test POWER. A review enumerated all 24
+ * permutations of the precedence list and all 65 ordered subsets and found no
+ * mutation caught by a new row that an older row does not already catch. The
+ * value is that the sentence above is now true, which is the property round 8
+ * and round 9 were both about.
  */
 import { describe, expect, test } from 'vitest';
 import type { SkillPackageDirectoryCondition } from '../../../domain/skill-paths.js';
@@ -25,10 +28,16 @@ import {
 } from '../skill-service.js';
 
 /**
- * `name-mismatch` is implied by `unsafe-name` in practice — a name that cannot
- * be a directory name cannot equal any basename — so the table varies the three
- * conditions that can occur in any combination and asserts what is SPOKEN
- * ABOUT, not merely that something was refused.
+ * The table asserts what is SPOKEN ABOUT, not merely that something was
+ * refused.
+ *
+ * It relies on NO implication between conditions. An earlier version claimed
+ * `unsafe-name` implies `name-mismatch` — "a name that cannot be a directory
+ * name cannot equal any basename" — and that is false: `isSafeSkillName` also
+ * refuses `__proto__`, `constructor`, `prototype`, whitespace-only and
+ * over-long names, every one of which is a legal directory basename. So the two
+ * come apart, and the four cells that premise excused were unpinned beneath a
+ * docblock promising completeness (review round 9).
  */
 const CASES: Array<{
   held: SkillPackageDirectoryCondition[];
@@ -95,6 +104,29 @@ const CASES: Array<{
     held: ['unsafe-name', 'name-mismatch', 'outside-writable-root'],
     spokenAbout: 'unsafe-name',
     why: 'renaming is still the first thing to fix when the root is also wrong',
+  },
+  // `unsafe-name` WITHOUT `name-mismatch`. Reachable, contrary to what this
+  // file used to assume: `__proto__` is refused as a skill name and is a
+  // perfectly ordinary directory basename, so the two conditions come apart.
+  {
+    held: ['unsafe-name'],
+    spokenAbout: 'unsafe-name',
+    why: 'a name a directory can carry but Station will not resolve',
+  },
+  {
+    held: ['unsafe-name', 'unreadable'],
+    spokenAbout: 'unsafe-name',
+    why: 'the name is answerable without reading anything',
+  },
+  {
+    held: ['unsafe-name', 'outside-writable-root'],
+    spokenAbout: 'unsafe-name',
+    why: 'an install cannot help a name the resolver refuses',
+  },
+  {
+    held: ['unsafe-name', 'unreadable', 'outside-writable-root'],
+    spokenAbout: 'unsafe-name',
+    why: 'nothing below the name is worth reporting while the name cannot resolve',
   },
 ];
 

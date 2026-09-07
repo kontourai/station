@@ -716,13 +716,23 @@ describe('Skill Routes', () => {
 /**
  * The 409 a user actually reads, produced by the real service.
  *
- * Every other DELETE assertion in this file takes `message` from a mock, so it
- * asserts the string the test itself supplied. That is exactly how a remove
- * refusal interpolating the whole refusal object — `Cannot remove 'x':
- * [object Object].` — survived three review rounds on the branch whose subject
- * is messages that assert an explanation they do not carry (round 8).
+ * What this adds is the STATUS-AND-BODY wiring: that the refusal reaches the
+ * client as a 409 whose `error` is the explanation. Every other DELETE
+ * assertion in this file takes `message` from a mock, so none of them can see
+ * what the service actually puts there.
  *
- * Power: against the `${refusal}` form this test fails on the `[object
+ * It is NOT what should have caught the `[object Object]` defect, and the
+ * earlier draft of this comment claimed it was. Two tests in
+ * `skill-service.test.ts` drive the real `removeSkill` and assert the fragment
+ * prose; both were RED at the published head `da33ad2a4`
+ * (`2 failed | 86 passed`, `Received: "Cannot remove 'served': [object
+ * Object]."`). The defect did not survive because no test could see it. It
+ * survived because that suite was not run, or its red was not read.
+ *
+ * The distinction matters more than the fix: a comment claiming the service
+ * suite has no power here is the prose that gets a covering test deleted.
+ *
+ * Power of THIS test: against the `${refusal}` form it fails on the `[object
  * Object]` assertion. Verified by injection, not by reasoning.
  */
 describe('DELETE /:name refusal body, through the real service', () => {
