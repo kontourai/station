@@ -43,6 +43,48 @@ function timestampFor(event: MonitoringEventRecord): number | null {
   return null;
 }
 
+const EVENT_FILE_DAY_PATTERN = /^events-(\d{4})-(\d{2})-(\d{2})\.ndjson$/;
+
+/**
+ * The exclusive upper bound of the UTC day a monitoring log file is named
+ * for, or `null` when the name carries no parseable calendar date.
+ *
+ * `RuntimeEventLog` picks the filename at APPEND time from
+ * `new Date().toISOString()`, so the day in the name is a UTC day and can
+ * never be EARLIER than the timestamp of any row inside it. A file whose day
+ * has already ended at the cutoff therefore cannot hold a single row this
+ * scan would keep, and opening and parsing it is pure cost — on a 14-day
+ * window with the default 30-day retention that is more than half the corpus.
+ *
+ * Returns `null` rather than guessing for anything that is not a date
+ * (`events-test.ndjson`, an operator's hand-placed export, a rolled-over
+ * `events-2026-13-01`): an unparseable name says nothing about its contents,
+ * so the caller must still read it and let the per-row `ts < cutoff` check
+ * decide. The day named for the cutoff itself straddles the cutoff instant
+ * and is likewise always read.
+ */
+function eventFileDayEndMs(name: string): number | null {
+  const match = EVENT_FILE_DAY_PATTERN.exec(name);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const dayStart = Date.UTC(year, month - 1, day);
+  // `Date.UTC` rolls invalid components over silently (month 13 becomes
+  // January of the next year), which would move a garbage name to a
+  // DIFFERENT real day and could skip a file that should be read. Round-trip
+  // the components and treat any name that does not survive as unparseable.
+  const roundTrip = new Date(dayStart);
+  if (
+    roundTrip.getUTCFullYear() !== year ||
+    roundTrip.getUTCMonth() !== month - 1 ||
+    roundTrip.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return dayStart + MS_PER_DAY;
+}
+
 function isHealthProbe(event: MonitoringEventRecord): boolean {
   const traceId = event[K.TRACE_ID];
   return (
@@ -262,6 +304,11 @@ export function createInsightsRoutes(
     for (const file of files.filter(
       (f) => f.startsWith('events-') && f.endsWith('.ndjson'),
     )) {
+      // Decide from the FILENAME, before any I/O: every row in a day that
+      // ended at or before the cutoff fails `ts < cutoff` below, so the open,
+      // the stream and the per-line `JSON.parse` all buy nothing.
+      const dayEndMs = eventFileDayEndMs(file);
+      if (dayEndMs !== null && dayEndMs <= cutoff) continue;
       try {
         const stream = createReadStream(join(monitoringDir, file));
         const rl = createInterface({ input: stream, crlfDelay: Infinity });
