@@ -1910,6 +1910,12 @@
   .app-toolbar__icon-btn {
     min-width: 44px;
     min-height: 44px;
+    /* station#1401: the 44px above is a FLOOR, so every glyph-only control in
+       this row is 44 whatever its padding — trimming theirs changes nothing.
+       The two content-sized members are what this reclaims from: the labelled
+       connection chip and the notifications button when it carries a badge.
+       Measured below, both give back 4px each. */
+    padding: 4px 6px;
   }
   .app-toolbar__conn-name,
   .app-toolbar__conn-note {
@@ -2252,8 +2258,8 @@
    left behind is the arithmetic below.
 
    THE BOUND. The widest the cluster can get: 126 (left side at its floor) +
-   116 (this chip — an 85px `max-width` label plus 31px of measured furniture:
-   button padding, the 7px dot, its gap) + 4 + 62 (notifications carrying its
+   112 (this chip — an 85px `max-width` label plus 27px of measured furniture:
+   button padding, the 7px dot, its gap) + 4 + 58 (notifications carrying its
    widest badge: 38px of button plus a 23.91px badge — that is "99"'s width,
    which the `9+` cap makes unrenderable (the cap's own string is 23.80px), so
    the budget is ~1px conservative rather than exact. These figures are macOS
@@ -2266,10 +2272,19 @@
    `tests/toolbar-reachability.spec.ts`. The two-character worst
    case that HeaderActions.tsx's "9+" cap creates — uncapped this member is
    unbounded and so is this paragraph) + 4 + 44 (More actions) + 4 + 44 (Open
-   settings) = 404px, of which the last control's own CENTRE sits at 382. At
-   382px and below that centre is outside the viewport and
+   settings) = 396px, of which the last control's own CENTRE sits at 374. At
+   374px and below that centre is outside the viewport and
    `document.elementFromPoint` returns null — unreachable rather than merely
    clipped, which is the defect.
+
+   station#1401: this bound was 404/382 until the mobile touch block trimmed
+   `.app-toolbar__icon-btn` padding from 8px to 6px. The 44px floor means that
+   trim changes nothing for the glyph-only controls; the two content-sized
+   members each give back 4px, measured in this fixture as chip 105 -> 101 and
+   badged notifications 62 -> 58, cluster content 267 -> 259. So the label now
+   survives eight more pixels of viewport, and 375-382 keeps a state the row
+   used to hide. It does not close #1401's own band — that still needs a
+   control to leave the row — it moves where it starts.
 
    382 is ARITHMETIC, not a swept width: it is where the worst case lands, and
    the worst case is a label at the 85px ceiling beside a two-character badge.
@@ -2295,7 +2310,7 @@
    this block cascades after the breakpoint above and would win a tie on order
    alone, and a tie decided by order is how the last owner of this cluster's
    flex behaviour was lost (archive#3766). */
-@media (max-width: 382px) {
+@media (max-width: 374px) {
   .app-toolbar__conn .app-toolbar__conn-state {
     display: none;
   }

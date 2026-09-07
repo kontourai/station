@@ -549,11 +549,11 @@ describe.skipIf(!chromiumAvailable)(
      * width rather than the cap's own "9+" (23.80px), so the budget is ~1px
      * conservative. The two-character
      * ceiling `HeaderActions.tsx`'s "9+" cap creates) + 4 + 44 + 4 + 44 = 404,
-     * putting `Open settings`'s centre at 382. The live sweep is narrower,
+     * putting `Open settings`'s centre at 374. The live sweep is narrower,
      * because the state it drove renders a 79px label beside a one-digit badge:
      * at 360px that centre is x=370 and `document.elementFromPoint` returns
      * null; at 375px and above, in that state, it resolves to the control
-     * itself. 382 is where the WORST case lands, so the label goes at 382 and
+     * itself. 374 is where the WORST case lands, so the label goes at 374 and
      * below.
      *
      * WHAT THIS FIXTURE CAN SEE: the chip's own box, the badge's box, and the
@@ -597,15 +597,17 @@ describe.skipIf(!chromiumAvailable)(
         }
       };
 
-      // 383px: the first width at which the last control keeps its centre in
-      // the worst case, so the label stays — #1401's release is what makes this
-      // the live state.
-      const held = await measure(383);
+      // 375px: the first width at which the last control keeps its centre in
+      // the worst case, so the label stays. Was 383 until station#1401's
+      // padding trim gave the row 8px back (chip 105 -> 101, badged
+      // notifications 62 -> 58, both measured); the floored controls are
+      // unchanged, which is why the trim buys exactly those two.
+      const held = await measure(375);
       expect(held.labelWidth).toBeGreaterThan(0);
       expect(held.labelText).toBe("Can't connect");
 
-      // 382px: the last width at which it does not, so the label goes.
-      const dropped = await measure(382);
+      // 374px: the last width at which it does not, so the label goes.
+      const dropped = await measure(374);
       expect(
         dropped.labelWidth,
         'the state label must not lay out below the breakpoint',
