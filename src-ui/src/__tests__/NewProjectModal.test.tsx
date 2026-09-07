@@ -789,15 +789,19 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
   });
 
   test('HIGH: a backdrop tap while browsing returns to the draft form instead of exiting the flow', () => {
-    const { container } = render(
-      <NewProjectModal isOpen onClose={onCloseMock} />,
-    );
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
     fireEvent.change(screen.getByPlaceholderText('My Project'), {
       target: { value: 'Draft Keeper' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
 
-    const overlay = container.querySelector('.responsive-surface-overlay')!;
+    // The browser step's OWN backdrop, reached through its panel rather than
+    // as the document's first overlay: this flow renders one surface today and
+    // the first-match form would silently tap the wrong one if a second were
+    // ever stacked.
+    const overlay = screen
+      .getByRole('dialog', { name: /Browse installed layouts/ })
+      .closest('.responsive-surface-overlay')!;
     fireEvent.pointerDown(overlay);
 
     expect(onCloseMock).not.toHaveBeenCalled();
@@ -857,9 +861,9 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
 
     onCloseMock.mockReset();
     const second = render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    const overlay = second.container.querySelector(
-      '.responsive-surface-overlay',
-    )!;
+    const overlay = screen
+      .getByRole('dialog', { name: 'New Project' })
+      .closest('.responsive-surface-overlay')!;
     fireEvent.pointerDown(overlay);
     expect(onCloseMock).toHaveBeenCalledTimes(1);
     second.unmount();

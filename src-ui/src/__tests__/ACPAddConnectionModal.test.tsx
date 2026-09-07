@@ -396,7 +396,7 @@ describe('ACPAddConnectionModal', () => {
 
   test('uses the shared dialog lifecycle for Escape and backdrop dismissal', () => {
     const onCancel = vi.fn();
-    const { container } = render(
+    render(
       <ACPAddConnectionModal
         registryEntries={[kiro]}
         onAdd={vi.fn()}
@@ -407,7 +407,7 @@ describe('ACPAddConnectionModal', () => {
 
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     fireEvent.pointerDown(
-      container.querySelector<HTMLElement>('.responsive-surface-overlay')!,
+      document.querySelector<HTMLElement>('.responsive-surface-overlay')!,
     );
     expect(onCancel).toHaveBeenCalledTimes(2);
   });

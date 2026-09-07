@@ -169,6 +169,7 @@ export function PluginModalStack({
 
       {removeConfirm && (
         <ResponsiveDialogSurface
+          layer="dialog"
           onClose={onCancelRemove}
           ariaLabelledBy="remove-plugin-title"
           overlayClassName="plugins__confirm-overlay"

@@ -27,6 +27,7 @@ export function InstallPreviewModal({
   );
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       ariaLabelledBy="install-preview-title"
       overlayClassName="plugins__modal-overlay"
