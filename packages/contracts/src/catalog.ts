@@ -173,11 +173,10 @@ export type SkillOrigin =
  * `origin` are close enough to be tempting and answer a different question: a
  * registry install living in a writable root is perfectly writable, and an
  * install record stating `source: 'local'` says nothing about which root the
- * package actually sits in. The rule has already moved once — in #1619 it
- * stopped meaning "this name resolves to this one directory" and started
- * meaning "this package sits in a root Station writes" — so a client
- * rebuilding it from those fields would have been wrong before that change and
- * wrong again after it.
+ * package actually sits in. The rule has moved once already: it stopped meaning
+ * "this name resolves to this one directory" and now means "this package sits
+ * in a root Station writes" (#1619) — so a client rebuilding it from those
+ * fields would have been wrong before that change and wrong again after it.
  */
 export type SkillWriteRefusalReason =
   /**
@@ -190,6 +189,16 @@ export type SkillWriteRefusalReason =
   | 'canonical-package'
   /** Its package sits in some other root, which Station does not write. */
   | 'outside-writable-root'
+  /**
+   * Discovery found its package in a directory whose NAME is not the skill's —
+   * by case, or because the frontmatter names it something else.
+   *
+   * Its own code because its remedy is unlike the others': the package is
+   * plainly the user's own and sits in a root Station writes, so "Station does
+   * not own this" would be a false explanation of a real refusal. What has to
+   * change is the directory name or the frontmatter name, so the two agree.
+   */
+  | 'directory-name-mismatch'
   /**
    * Its name cannot become a directory NAME, so Station cannot work out where
    * it would write this package. Discovery registers a frontmatter `name`
@@ -229,12 +238,16 @@ export interface SkillWriteRefusal {
    * this one and the place Station would have written instead, and a bare
    * `directory` reads just as easily as the latter.
    *
-   * Present for every refusal the rule currently produces, because the rule
-   * answers "writable" outright when no package was discovered, so a refusal
-   * always has a discovered location behind it. It stays OPTIONAL rather than
-   * required only because the rule itself is being widened in a sibling change
-   * (#1619) and a reader must not be forced to fabricate a path if some future
-   * reason has none. Do not read the optionality as a case that exists today.
+   * REQUIRED, because every refusal has one. The rule answers "writable"
+   * outright when no package was discovered, so a refusal always has a
+   * discovered location behind it, and each of its refusal branches reports it.
+   *
+   * It was optional for one release cycle, on the theory that #1619 might add a
+   * reason with no directory to report. It did not — checked against the landed
+   * rule, branch by branch, rather than assumed — and an optional marker that
+   * can never be absent is a documented case that does not exist, which is the
+   * defect this whole projection was written to remove. A reader must not have
+   * to handle an absence the server cannot produce.
    *
    * AUTHOR-CONTROLLED, every segment of it: a plugin chooses its directory
    * names and the last segment is usually the skill's own name. Surfaces must
@@ -242,7 +255,7 @@ export interface SkillWriteRefusal {
    * splice it into `detail`'s sentence, because text that borrows the grammar
    * of Station's explanation is read as Station speaking.
    */
-  packageDirectory?: string;
+  packageDirectory: string;
 }
 
 export interface Skill extends RegistryItem {

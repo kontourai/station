@@ -17,7 +17,7 @@ import {
   rename,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, extname, join, sep } from 'node:path';
+import { basename, dirname, extname, join, sep } from 'node:path';
 import type {
   GuidanceAsset,
   SkillCommand,
@@ -67,12 +67,14 @@ import { assertSkillCommandAllowed } from './skill-command-validation.js';
 import { withLocalSkillMutation } from './skill-local-mutation.js';
 import {
   assertSafeSkillName,
+  assertSkillPackageDirectory,
   readSkillCommand,
   readSkillLegacyIds,
   readSkillOrigin,
   readSkillVariables,
   resolveSkillDirectory,
   serializeSkillMarkdown,
+  skillsRootDir,
 } from './skill-metadata.js';
 import {
   expectedLocalSkillRevision,
@@ -240,13 +242,44 @@ export interface SkillListing {
 }
 
 /**
+ * What a remove answers, with WHY it refused where the reason changes how a
+ * caller must respond. `not-owned` is a package Station does not own — the
+ * skill exists and the request is understood, which is a different answer from
+ * a name nothing knows.
+ */
+export interface SkillRemovalResult {
+  success: boolean;
+  message: string;
+  reason?: 'not-owned';
+}
+
+/**
  * `getSkill`'s answer: the install record, plus what the declarations on disk
  * actually DO and — when they could not be read at all — why.
+ *
+ * `source` is OPTIONAL here where `SkillConfigRecord` makes it required (and
+ * `installedAt` is optional there for the same reason), because a package can
+ * be discovered without ever having been installed — a `SKILL.md` authored by hand, or dropped into a workspace — and
+ * for that package nothing states where it came from or when it arrived
+ * (#1614). The alternative was answering `'local'`, which is a value nothing
+ * derives asserted about an install that never happened. Absent says the true
+ * thing; `installRecordDiagnostic` says why it is absent.
  */
-export interface SkillDetail extends SkillConfig {
+export interface SkillDetail extends Omit<SkillConfig, 'source'> {
+  /** Absent when no install record claims this package. */
+  source?: SkillConfig['source'];
   commandDiagnostic?: string;
   /** Present only when `command`/`variables` did not come from `SKILL.md`. */
   declarationsDiagnostic?: string;
+  /**
+   * Why this answer carries no install record, when it carries none.
+   *
+   * A SEPARATE field from `declarationsDiagnostic`, deliberately: the two facts
+   * are independent and co-occur. A package can lack an install record AND have
+   * its `command`/`variables` come from somewhere other than its `SKILL.md`, and
+   * one field cannot say both without the name becoming a lie for one of them.
+   */
+  installRecordDiagnostic?: string;
   /** `isSkillWritable`'s answer, projected — see `SkillListing.writable`. */
   writable: boolean;
   /** Why `writable` is false; absent when it is true. */
@@ -262,6 +295,24 @@ export interface SkillDetail extends SkillConfig {
  * decorate, so a fifth answer cannot be added that forgets to.
  */
 type SkillDetailBody = Omit<SkillDetail, 'writable' | 'writeRefusal'>;
+
+/**
+ * The writability rule's answer in BOTH shapes its callers need, from one call.
+ *
+ * `refusal` is the published projection: a reason code plus prose Station owns,
+ * with the author-controlled path in its own field. `messageFragment` is the
+ * lowercase clause the write path slots into its own sentence, kept verbatim so
+ * that path's messages do not change.
+ *
+ * They travel together rather than being derived from each other, because the
+ * alternative is a caller parsing the other's prose to recover a fact the rule
+ * already knew. Nothing projects `messageFragment` into a read model: the read
+ * models take `.refusal`, explicitly.
+ */
+interface PackageOwnershipRefusal {
+  refusal: SkillWriteRefusal;
+  messageFragment: string;
+}
 
 /**
  * The identity record was published but an exact cleanup could not be made
@@ -308,6 +359,21 @@ export class SkillService {
    * derivation reads a `skill.json` per skill.
    */
   private legacyIdIndex = new Map<string, string>();
+  /**
+   * The scope the LAST discovery actually ran with.
+   *
+   * NOT a claim about which project is "active": nothing in the runtime knows
+   * that. The only slug it can offer is `getActiveRuntimeProjectSlug`
+   * (`listProjects()[0]?.slug` — the first project, not a chosen one), which is
+   * precisely the input #1619 refused to thread into writes. This is a memory
+   * of a real prior event: the roots the registry currently holds were scanned
+   * with these arguments, so a write that re-discovers afterwards can restore
+   * the same view instead of silently narrowing it.
+   */
+  private lastDiscoveryScope?: {
+    projectHomeDir: string;
+    projectSlug?: string;
+  };
 
   constructor(
     private configLoader: ConfigLoader,
@@ -349,6 +415,9 @@ export class SkillService {
     projectSlug?: string,
   ): Promise<void> {
     const start = Date.now();
+    // Recorded BEFORE the scan, because it describes the arguments this
+    // discovery runs with rather than its outcome.
+    this.lastDiscoveryScope = { projectHomeDir, projectSlug };
     this.registry.clear();
 
     // Canonical package sources scan FIRST so locally installed or
@@ -371,11 +440,18 @@ export class SkillService {
     }
 
     const dirs = [
-      join(projectHomeDir, 'skills'),
+      // The machine root through the same builder as the project one below: it
+      // takes no slug so building it by hand was harmless, and it contradicted
+      // the principle the comment there states (delta review 4, nit).
+      skillsRootDir(projectHomeDir),
       join(projectHomeDir, 'plugins'),
     ];
     if (projectSlug) {
-      dirs.unshift(join(projectHomeDir, 'projects', projectSlug, 'skills'));
+      // Through the BUILDER, which validates the slug (#1619, delta review 3
+      // L4). Building the same path by hand here meant the read path took a
+      // slug every write path refuses, so a traversal slug made discovery scan
+      // outside the home. A no-op for every valid slug.
+      dirs.unshift(skillsRootDir(projectHomeDir, projectSlug));
     }
 
     for (const dir of dirs) {
@@ -670,14 +746,27 @@ export class SkillService {
         if (existsSync(skillJsonPath)) {
           try {
             const config = JSON.parse(readFileSync(skillJsonPath, 'utf-8'));
-            source = config.source;
-            path = config.path;
-            version = config.version ?? version;
-            provenance = config.provenance;
-            legacyIds = readSkillLegacyIds(config.legacyIds);
-            recordedOrigin = readSkillOrigin(config.origin);
+            // THE SAME rule the detail read applies: a record answers only for
+            // the name it claims. Without this the listing reported another
+            // skill's source, version and provenance for a copied-and-renamed
+            // package — and fed its `legacyIds` into `rebuildLegacyIdIndex`,
+            // so that skill's ids resolved here (#1614, and the same class as
+            // #1602's disowned-record case).
+            if (skillRecordClaimsName(config, skill.name)) {
+              source = config.source;
+              path = config.path;
+              version = config.version ?? version;
+              provenance = config.provenance;
+              legacyIds = readSkillLegacyIds(config.legacyIds);
+              recordedOrigin = readSkillOrigin(config.origin);
+            }
           } catch {}
         }
+        // The directory the package was FOUND in, when no record states one. A
+        // path is a fact about a package that exists, so the listing and the
+        // detail (which derives the same fallback) cannot disagree about where
+        // a recordless package sits.
+        path ??= dirname(skill.location);
       }
       return {
         skill,
@@ -727,10 +816,12 @@ export class SkillService {
   private deriveOrigin(
     location: string | undefined,
     source: string | undefined,
+    /** The home to read the roots off; the ambient one when a caller has none. */
+    projectHomeDir?: string,
   ): SkillOrigin | undefined {
     if (location && this.canonicalSourceFor(location)) return 'package';
     if (location) {
-      const home = this.projectHomeDir();
+      const home = projectHomeDir ?? this.projectHomeDir();
       const pluginsRoot = join(home, 'plugins');
       if (location.startsWith(pluginsRoot)) return 'plugin';
       // `discoverSkills` scans exactly one project-scoped root,
@@ -741,6 +832,16 @@ export class SkillService {
       // that is what used to collapse the two into `user` (#1582 D6).
       if (home && location.startsWith(join(home, 'projects') + sep))
         return 'project';
+      // …and its pair. `user` and `project` differ ONLY in which writable root
+      // holds the package (`recordedOriginAgainstPath` says exactly that), so
+      // the machine root reads as `user` for the same reason the project root
+      // reads as `project`. Without this, only the project half was derivable
+      // from a path and a package with no record — which is every hand-authored
+      // one — reported no origin at all in `<home>/skills` while its workspace
+      // twin reported `project` (#1614). A record's own `source` still answers
+      // below for everything discovery never found.
+      if (home && location.startsWith(join(home, 'skills') + sep))
+        return 'user';
     }
     if (source === 'registry') return 'registry';
     if (source === 'plugin') return 'plugin';
@@ -763,116 +864,108 @@ export class SkillService {
    * plugin's, or another project's) — those must be installed into the
    * workspace before they can be edited.
    */
-  isSkillWritable(
-    name: string,
-    projectHomeDir: string,
-    projectSlug?: string,
-  ): boolean {
-    // Straight to the rule, every time. Nothing between this and the filesystem
-    // caches an answer, which is what keeps the write gate honest — see
-    // `skillWriteRefusal`.
-    return (
-      this.skillWriteRefusal(name, projectHomeDir, projectSlug) === undefined
-    );
+  isSkillWritable(name: string, projectHomeDir: string): boolean {
+    return this.packageOwnershipRefusal(name, projectHomeDir) === undefined;
   }
 
   /**
-   * THE writability rule, in the shape a read model and a message both need:
-   * the reason this package is not Station's to write, or `undefined` when it
-   * is. `isSkillWritable` is this same rule as a boolean, for the route.
+   * THE writability rule, in the shape a message needs: the reason a package is
+   * not Station's to write, or `undefined` when it is.
    *
-   * One rule, two shapes — deliberately, because a second copy of an
-   * authorization-shaped rule is how two readers end up disagreeing, and the
-   * read models (#1655) are now the third reader. It is the FUNCTION they
-   * call, not conditions they restate: the rule has already moved once (#1619)
-   * and every caller moved with it for free.
+   * `isSkillWritable` is this same rule as a boolean, for the route. One rule,
+   * two shapes — a second copy of it is how two callers end up disagreeing.
+   *
+   * It asks WHICH ROOT holds the package, not whether its name resolves to one
+   * particular directory. That comparison answered "not writable" for every
+   * workspace package, because the directory it compared against was derived
+   * from a slug the caller did not have (#1619). The floor is the containment
+   * `assertSkillPackageDirectory` states, and its message is carried through
+   * verbatim rather than flattened into "Station does not own this" — a
+   * directory whose name differs from the skill's only in case is a package
+   * plainly the user's own, and telling them Station does not own it is a
+   * false explanation of a real refusal (review low).
    */
-  private skillWriteRefusal(
+  private packageOwnershipRefusal(
     name: string,
     projectHomeDir: string,
-    projectSlug?: string,
-  ): SkillWriteRefusal | undefined {
+  ): PackageOwnershipRefusal | undefined {
     const registered = this.registry.get(name);
-    // Nothing discovered under this name: there is no package to refuse, and a
-    // create is what a caller asking about it is about to do.
     if (!registered?.location) return undefined;
     const directory = dirname(registered.location);
-    // NONE of these details interpolate ANY author-controlled text — not the
-    // name, and not the directory either. An earlier draft kept the name out
-    // and spliced the path in, which review showed was the same defect one
-    // level up: a plugin names its own directories, so a refusal could be made
-    // to read as a session-expiry notice pointing at another domain, from a
-    // bland frontmatter name alone. `detail` is prose Station owns; the path
-    // travels in `packageDirectory`, and surfaces render it as a path.
-    //
-    // A SOURCE serves this one in place; no directory Station owns holds it.
-    // Named apart from the root failure below because it has a different
-    // REMEDY — the plugin is the thing to change, and there is no registry
-    // entry to install.
-    if (registered.provided) {
+    if (registered.provided)
       return {
-        reason: 'served-in-place',
-        detail:
-          'A plugin serves it in place, from a directory Station does not own.',
-        packageDirectory: directory,
+        messageFragment: `it is served in place from ${directory}, which Station does not own`,
+        refusal: {
+          reason: 'served-in-place',
+          detail:
+            'A plugin serves it in place, from a directory Station does not own.',
+          packageDirectory: directory,
+        },
       };
-    }
-    if (this.canonicalSourceFor(registered.location)) {
+    if (this.canonicalSourceFor(registered.location))
       return {
-        reason: 'canonical-package',
-        detail: 'It is served from a package that ships read-only.',
-        packageDirectory: directory,
+        messageFragment: `it is served from the package at ${directory}, which Station does not own`,
+        refusal: {
+          reason: 'canonical-package',
+          detail: 'It is served from a package that ships read-only.',
+          packageDirectory: directory,
+        },
       };
-    }
-    // `resolveSkillDir` refuses a name that cannot become a path at all, and
-    // that refusal is a refusal to WRITE — carried through rather than thrown
-    // at a caller only asking whether a write is possible.
-    //
-    // Its own reason, and its own sentence. Discovery registers a frontmatter
-    // `name` unvalidated, so a name this rejects DOES reach here, and the
-    // underlying message names JavaScript prototype keys and path traversal —
-    // an internal validation diagnostic, correct for a log and meaningless as
-    // guidance to whoever is looking at the editor (review medium). The
-    // exception is logged; it is never concatenated into a field documented for
-    // display.
-    //
-    // What fails here is resolving the WRITE TARGET. The package's own
-    // directory is already in hand above and is reported like anywhere else: an
-    // earlier draft withheld it and told the reader to rename the package,
-    // which is not an instruction anyone can follow without knowing which
-    // package (review medium).
-    let writableDirectory: string;
+    // Named apart from the root failure below, because they are different
+    // facts with different remedies: a directory whose name differs from the
+    // skill's — by case, or because the frontmatter names it something else —
+    // is a package plainly the user's own, and "Station does not own this"
+    // would be a false explanation of a real refusal (review low).
+    if (basename(directory) !== name)
+      return {
+        messageFragment: `the package discovery found for it is ${directory}, whose directory name is not '${name}'`,
+        refusal: {
+          reason: 'directory-name-mismatch',
+          detail:
+            "The package discovery found for it sits in a directory whose name is not this skill's name.",
+          packageDirectory: directory,
+        },
+      };
     try {
-      writableDirectory = this.resolveSkillDir(
-        projectHomeDir,
-        name,
-        projectSlug,
-      );
-    } catch (error) {
-      // DEBUG, not warn: this is re-derived for every row of every listing, so
-      // one undiscoverable name would warn on each request forever. The
-      // condition is not lost — it reaches the caller as a refusal with its own
-      // reason code, which is the channel a reader can act on.
-      this.logger.debug('Skill name cannot resolve to a package directory', {
-        name,
-        error,
-      });
+      assertSkillPackageDirectory(projectHomeDir, name, directory);
+      return undefined;
+    } catch {
+      // ONE message for the caller, TWO reasons for the reader. The floor
+      // throws for several distinct conditions and the write path flattens
+      // them deliberately, but a name that cannot be a directory name at all
+      // has a different remedy from a package in the wrong root — a rename
+      // rather than an install — and the projection is where that difference
+      // has to survive. The name is re-tested rather than inferred from the
+      // message, so this reads the same condition the floor did instead of
+      // parsing its prose.
+      return {
+        messageFragment: `it is served from ${directory}, which is not a skills root Station writes`,
+        refusal: {
+          ...this.unwritableRootReason(name),
+          packageDirectory: directory,
+        },
+      };
+    }
+  }
+
+  /** Which of the floor's two reader-visible conditions refused this name. */
+  private unwritableRootReason(
+    name: string,
+  ): Pick<SkillWriteRefusal, 'reason' | 'detail'> {
+    try {
+      assertSafeSkillName(name);
+    } catch {
       return {
         reason: 'unresolvable-name',
         detail:
           'Its name cannot be used as a directory name, so Station cannot work out where it would write this package.',
-        packageDirectory: directory,
       };
     }
-    if (directory !== writableDirectory) {
-      return {
-        reason: 'outside-writable-root',
-        detail:
-          'It is served from a directory that is not a skills root Station writes.',
-        packageDirectory: directory,
-      };
-    }
-    return undefined;
+    return {
+      reason: 'outside-writable-root',
+      detail:
+        'It is served from a directory that is not a skills root Station writes.',
+    };
   }
 
   /**
@@ -883,9 +976,11 @@ export class SkillService {
    * call `createSkillRoutes`' `getProjectHomeDir` closure makes, on the same
    * `ConfigLoader` instance (`runtime-service-bootstrap.ts` hands both the
    * same one). A second resolution of the project root would be the same
-   * defect this projection exists to remove, one layer up. The slug is omitted
-   * for the same reason: the route's own call omits it, so the projection and
-   * the enforcement answer the same question about the same roots.
+   * defect this projection exists to remove, one layer up.
+   *
+   * There is no scope to omit or thread: the rule takes a name and a home and
+   * asks which root holds the package, so the projection and the enforcement
+   * cannot be handed different arguments.
    */
   private skillWritability(name: string): {
     writable: boolean;
@@ -923,18 +1018,21 @@ export class SkillService {
    * cache state named, and a "5ms for 100 packages" replacement repeats the
    * defect at a different magnitude.
    *
-   * NOTE the slug: this passes none, matching the route's gate.
-   * `updateLocalSkillOwned` DOES pass one to `isSkillWritable`, so the two
-   * sites are in lockstep only while no route supplies a slug. They must move
-   * together; if one starts resolving a scope the other does not, the
-   * projection and the enforcement answer different questions again (#1619
-   * threads a slug and is the change that will surface this).
+   * There is no scope to keep in lockstep. The rule takes a name and a home and
+   * asks which root holds the package, so this projection and the write gate
+   * cannot be handed different arguments and cannot answer different questions.
+   * An earlier draft of this comment predicted the opposite — that a sibling
+   * change would thread a slug — which was a claim about another branch stated
+   * as fact, and it was wrong. A comment describes the tree it ships on.
    */
   private writabilityAgainstHome(
     name: string,
     projectHomeDir: string,
   ): { writable: boolean; writeRefusal?: SkillWriteRefusal } {
-    const writeRefusal = this.skillWriteRefusal(name, projectHomeDir);
+    const writeRefusal = this.packageOwnershipRefusal(
+      name,
+      projectHomeDir,
+    )?.refusal;
     return writeRefusal
       ? { writable: false, writeRefusal }
       : { writable: true };
@@ -1090,7 +1188,9 @@ export class SkillService {
         // full `plugin:<ns>` string is carried by `legacyIds` and by the
         // listing, which is not constrained to the enum.
         source: 'plugin',
-        installedAt: '',
+        // No install date: a source serves this file in place, and nothing
+        // installed it. `''` used to stand in for that, which is a value
+        // pretending to be one.
         path: registered.location ? dirname(registered.location) : '',
         body: registered.body,
         origin: registered.provided.origin,
@@ -1120,7 +1220,7 @@ export class SkillService {
         name: registered.name,
         description: registered.description,
         source: canonical.label,
-        installedAt: '',
+        // Shipped with the package, never installed into this home.
         version: canonical.version,
         path: dirname(registered.location),
         body: registered.body,
@@ -1132,7 +1232,21 @@ export class SkillService {
         ...(variables.length > 0 ? { variables } : {}),
       };
     }
-    const config = await this.loadInstallRecord(name, registered?.location);
+    // A package DISCOVERY found answers from its own directory; a name
+    // discovery never saw can only be the install record resolved by name,
+    // which is `configLoader`'s derivation and throws when there is none.
+    const located = registered?.location;
+    const { record, absence } = located
+      ? await this.loadInstallRecord(name, located)
+      : { record: await this.configLoader.loadSkill(name), absence: undefined };
+    // THE PACKAGE ON DISK IS AN ANSWER, WITH OR WITHOUT A RECORD (#1614).
+    // `listSkills()` has always answered for a discovered package that nothing
+    // installed — deriving `origin` from its location and leaving the install
+    // fields undefined — while this read threw `Skill '<name>' not found` for
+    // the same name, so the pane 404'd on a skill the list showed. The identity
+    // fields stay ABSENT rather than invented; `installRecordDiagnostic` says
+    // which absence this is.
+    const config: SkillConfig | undefined = record;
     // The body DISCOVERY found, when it found one. `config.path` is the
     // record's own claim about where its package sits, which is the right
     // answer only when there is nothing better — a record whose path has gone
@@ -1140,14 +1254,19 @@ export class SkillService {
     // file is (and a project-scoped record written by an older build carries a
     // path nobody re-derives). Same directory as the record above, so the two
     // halves of this answer cannot come from two different packages.
-    const skillPath = registered?.location ?? join(config.path, 'SKILL.md');
+    const skillPath = located ?? join((config as SkillConfig).path, 'SKILL.md');
+    if (!config && !existsSync(skillPath)) {
+      // Neither a record nor a body: there is nothing left to answer FROM. The
+      // registry entry is a memory of a file that has since gone.
+      throw new Error(`Skill '${name}' not found`);
+    }
     if (!existsSync(skillPath)) {
       // The mirror is the ONLY thing left to read, so say so. A silent
       // fallback is what let a `command` deleted from SKILL.md keep answering
       // from a stale install record while the listing said it was gone
       // (review finding 5).
       return this.fromInstallRecordOnly(
-        config,
+        config as SkillConfig,
         `SKILL.md is missing at ${skillPath}; command and variables are shown from the install record and may be stale`,
       );
     }
@@ -1169,39 +1288,58 @@ export class SkillService {
         readSkillVariables(frontmatter.variables),
       );
       return {
+        // The record's fields when there is one; `name` and `path` are derived
+        // from the package itself when there is not, because both are facts
+        // about a directory that exists rather than claims a record makes.
         ...config,
+        name: config?.name ?? name,
+        path: config?.path ?? dirname(skillPath),
         body,
-        description: properties.description ?? config.description,
+        description: properties.description ?? config?.description,
         tags: Array.isArray(frontmatter.tags)
           ? (frontmatter.tags as string[])
-          : config.tags,
+          : config?.tags,
         category:
           typeof frontmatter.category === 'string'
             ? frontmatter.category
-            : config.category,
+            : config?.category,
         agent:
           typeof frontmatter.agent === 'string'
             ? frontmatter.agent
-            : config.agent,
+            : config?.agent,
         global:
           typeof frontmatter.global === 'boolean'
             ? frontmatter.global
-            : config.global,
-        provenance: config.provenance,
+            : config?.global,
+        provenance: config?.provenance,
         command: resolved.command,
         commandDiagnostic: resolved.commandDiagnostic,
         variables: variables.length > 0 ? variables : undefined,
-        legacyIds: readSkillLegacyIds(config.legacyIds),
+        legacyIds: readSkillLegacyIds(config?.legacyIds),
         origin:
           this.recordedOriginAgainstPath(
-            readSkillOrigin(config.origin),
+            readSkillOrigin(config?.origin),
             skillPath,
-          ) ?? this.deriveOrigin(skillPath, config.source),
+          ) ?? this.deriveOrigin(skillPath, config?.source),
+        ...(absence
+          ? {
+              installRecordDiagnostic: `Shown from the package on disk: ${absence}, so its source, version, install date and provenance are unknown.`,
+            }
+          : {}),
       };
     } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      if (!config) {
+        // No record to fall back to and a body that will not parse: there is
+        // nothing this read can answer FROM. Say which failure it was rather
+        // than reporting the package as absent, which it is not.
+        throw new Error(
+          `Skill '${name}' could not be read: no install record sits beside it and ${skillPath} could not be parsed (${reason})`,
+        );
+      }
       return this.fromInstallRecordOnly(
         config,
-        `SKILL.md at ${skillPath} could not be parsed (${error instanceof Error ? error.message : String(error)}); command and variables are shown from the install record and may be stale`,
+        `SKILL.md at ${skillPath} could not be parsed (${reason}); command and variables are shown from the install record and may be stale`,
       );
     }
   }
@@ -1304,11 +1442,15 @@ export class SkillService {
     projectHomeDir: string,
     projectSlug?: string,
   ): Promise<{ success: boolean; message: string }> {
-    return this.withLocalSkillMutation(
-      [input.name],
+    // A create's directory is name-derived: there is no discovered package to
+    // read one from, and `resolveSkillDirectory` owns that derivation.
+    const directory = this.resolveSkillDir(
       projectHomeDir,
+      input.name,
       projectSlug,
-      () => this.createLocalSkillOwned(input, projectHomeDir, projectSlug),
+    );
+    return this.withLocalSkillMutation([directory], () =>
+      this.createLocalSkillOwned(input, projectHomeDir, directory, projectSlug),
     );
   }
 
@@ -1316,6 +1458,8 @@ export class SkillService {
   private async createLocalSkillOwned(
     input: EditableSkillInput,
     projectHomeDir: string,
+    /** Resolved and LOCKED by the caller — never re-derived here (review M1). */
+    skillDir: string,
     projectSlug?: string,
   ): Promise<{ success: boolean; message: string }> {
     assertSafeSkillName(input.name);
@@ -1332,11 +1476,6 @@ export class SkillService {
       input.name,
       input.command,
       this.localWriteClashCandidates(),
-    );
-    const skillDir = this.resolveSkillDir(
-      projectHomeDir,
-      input.name,
-      projectSlug,
     );
     // Ordinary creation is also creation, not an implicit update.  This is
     // checked under the universal capability, so it cannot replace a setup
@@ -1362,15 +1501,29 @@ export class SkillService {
     //
     // The half-written state is already a modelled one: `getSkill` answers
     // from the install record and says why (`declarationsDiagnostic`).
-    const publication = this.projectLocalSkillPublication(
+    // The directory this create resolved and LOCKED, not a second derivation of
+    // it. They agree by construction today, so this is benign — but the
+    // parameter's own docblock says the directory is never re-derived here, and
+    // that sentence has to be true: a future caller handing in a rename
+    // destination or a discovered directory would write the body to one place
+    // while the record's `path` and `origin` describe another, which is the
+    // split-package shape #1619 exists to close (delta review F1).
+    const publication = this.projectLocalSkillPublicationAt(
       input,
       projectHomeDir,
-      projectSlug,
+      skillDir,
     );
     try {
       // These are the exact two canonical byte sequences projected above.
       // ConfigLoader's local save format is the same stable JSON encoder.
-      await this.configLoader.saveSkill(input.name, publication.config);
+      //
+      // Both into `skillDir`, the directory this create just made. The
+      // name-addressed save resolves `<home>/skills/<name>` with no slug, so a
+      // SCOPED create wrote the body into the project directory and the record
+      // into the machine root — the split package #1619's second finding
+      // names, and the one shape the read cannot reconcile because each half
+      // says the other is somewhere else.
+      await this.configLoader.saveSkillIn(skillDir, publication.config);
       await writeFile(
         join(skillDir, 'SKILL.md'),
         publication.skillMarkdown,
@@ -1380,14 +1533,16 @@ export class SkillService {
       // The record is intentionally first, but it is not a committed Skill
       // until its body is durable.  Under this capability no other local
       // writer can observe/reuse the directory while exact compensation runs.
+      // Compensation removes the directory this create made, for the same
+      // reason the writes went into it.
       try {
-        await this.configLoader.deleteSkill(input.name);
+        await this.configLoader.deleteSkillAt(input.name, skillDir);
       } catch (compensationError) {
         throw new SkillPublicationIndeterminateError(compensationError);
       }
       throw error;
     }
-    await this.discoverSkills(projectHomeDir, projectSlug);
+    await this.rediscoverAfterWrite(projectHomeDir, projectSlug);
     return { success: true, message: `Created ${input.name}` };
   }
 
@@ -1406,16 +1561,45 @@ export class SkillService {
     skillMarkdown: string;
     revision: string;
   } {
+    return this.projectLocalSkillPublicationAt(
+      input,
+      projectHomeDir,
+      this.resolveSkillDir(projectHomeDir, input.name, projectSlug),
+    );
+  }
+
+  /**
+   * The same projection for a caller that has already RESOLVED the package
+   * directory — the interrupted-package repair, which is handed the directory
+   * its lock was taken on and must describe that one rather than re-derive a
+   * second (review M1).
+   *
+   * `origin` follows the directory: it is the root that makes a package a
+   * workspace one, and stamping `user` while writing into
+   * `<home>/projects/<slug>/skills` made the recorded origin (which outranks
+   * the path derivation on read) contradict the path (#1582 D6).
+   */
+  projectLocalSkillPublicationAt(
+    input: EditableSkillInput,
+    /**
+     * The home `skillDir` belongs to. Passed rather than read off the loader:
+     * every caller agrees with the ambient home today, and a projection that
+     * depends on ambient state instead of its own argument is the defect one
+     * refactor away (delta review).
+     */
+    projectHomeDir: string,
+    skillDir: string,
+  ): {
+    input: EditableSkillInput;
+    config: SkillConfig;
+    skillMarkdown: string;
+    revision: string;
+  } {
     assertSafeSkillName(input.name);
     const stableInput = {
       ...input,
       installedAt: input.installedAt ?? new Date().toISOString(),
     };
-    const skillDir = this.resolveSkillDir(
-      projectHomeDir,
-      stableInput.name,
-      projectSlug,
-    );
     const config: SkillConfig = {
       name: stableInput.name,
       description: stableInput.description,
@@ -1431,11 +1615,16 @@ export class SkillService {
       command: stableInput.command,
       variables: stableInput.variables,
       legacyIds: stableInput.legacyIds,
-      // The writer knows the scope it is writing into — `skillDir` above is
-      // `<home>/projects/<slug>/skills/<name>` when a slug was passed. Stamping
-      // `user` there made the recorded origin (which outranks the path
-      // derivation on read) contradict the path (#1582 D6).
-      origin: stableInput.origin ?? (projectSlug ? 'project' : 'user'),
+      // Derived from the directory this package is written to, which is the
+      // only thing that decides whether it is a workspace package.
+      origin:
+        stableInput.origin ??
+        this.deriveOrigin(
+          join(skillDir, 'SKILL.md'),
+          'local',
+          projectHomeDir,
+        ) ??
+        'user',
     };
     const skillMarkdown = serializeSkillMarkdown(stableInput);
     return {
@@ -1472,18 +1661,27 @@ export class SkillService {
     projectSlug?: string,
     options: InterruptedLocalSkillPackageRepairOptions = {},
   ): Promise<InterruptedLocalSkillPackageCompletion> {
-    return this.withLocalSkillMutation(
-      [expectedIdentity.name],
+    // NAME-DERIVED, deliberately, and this is the one seam where that is the
+    // right answer. An interrupted package has no `SKILL.md` — that is what
+    // makes it interrupted — so discovery never registers it, and resolving
+    // through the registry hands back whatever OTHER package owns the name:
+    // the repair then reads a directory it did not write, reports "identity or
+    // contents are unavailable", and the half-written package is permanently
+    // unrepairable (delta review, reproduced). The package was created at a
+    // name-derived path, so the repair resolves the same way it was written.
+    const directory = this.resolveSkillDir(
       projectHomeDir,
+      expectedIdentity.name,
       projectSlug,
-      () =>
-        this.completeInterruptedLocalSkillPackageOwned(
-          input,
-          expectedIdentity,
-          projectHomeDir,
-          projectSlug,
-          options,
-        ),
+    );
+    return this.withLocalSkillMutation([directory], () =>
+      this.completeInterruptedLocalSkillPackageOwned(
+        input,
+        expectedIdentity,
+        projectHomeDir,
+        directory,
+        options,
+      ),
     );
   }
 
@@ -1491,7 +1689,8 @@ export class SkillService {
     input: EditableSkillInput,
     expectedIdentity: InterruptedLocalSkillPackageIdentity,
     projectHomeDir: string,
-    projectSlug?: string,
+    /** Resolved and LOCKED by the caller — never re-derived here (review M1). */
+    skillDir: string,
     options: InterruptedLocalSkillPackageRepairOptions = {},
   ): Promise<InterruptedLocalSkillPackageCompletion> {
     if (
@@ -1509,11 +1708,6 @@ export class SkillService {
       };
     }
     assertSafeSkillName(expectedIdentity.name);
-    const skillDir = this.resolveSkillDir(
-      projectHomeDir,
-      expectedIdentity.name,
-      projectSlug,
-    );
     let expectedDirectory: BoundDirectoryIdentity;
     try {
       const directory = await lstat(skillDir);
@@ -1532,10 +1726,12 @@ export class SkillService {
         message: 'Interrupted package record is unavailable',
       };
     }
-    const publication = this.projectLocalSkillPublication(
+    // The projection describes the package at `skillDir`, so it is given that
+    // directory rather than a slug it would re-derive one from.
+    const publication = this.projectLocalSkillPublicationAt(
       input,
       projectHomeDir,
-      projectSlug,
+      skillDir,
     );
     try {
       const initial = await enumerateBoundDirectory({
@@ -1653,7 +1849,7 @@ export class SkillService {
           message: 'Interrupted package changed during repair',
         };
       }
-      await this.discoverSkills(projectHomeDir, projectSlug);
+      await this.rediscoverAfterWrite(projectHomeDir);
       return {
         success: true,
         repaired,
@@ -1682,9 +1878,7 @@ export class SkillService {
     projectSlug?: string,
   ): Promise<{ success: boolean; message: string }> {
     return this.withLocalSkillMutation(
-      [input.name],
-      projectHomeDir,
-      projectSlug,
+      [this.resolveSkillDir(projectHomeDir, input.name, projectSlug)],
       async () => {
         const target = this.resolveSkillDir(
           projectHomeDir,
@@ -1698,7 +1892,12 @@ export class SkillService {
             message: `Skill '${input.name}' already exists`,
           };
         }
-        return this.createLocalSkillOwned(input, projectHomeDir, projectSlug);
+        return this.createLocalSkillOwned(
+          input,
+          projectHomeDir,
+          target,
+          projectSlug,
+        );
       },
     );
   }
@@ -1719,13 +1918,30 @@ export class SkillService {
     projectSlug?: string,
   ): Promise<{ success: boolean; message: string }> {
     // A rename touches both namespace identities. Acquire in path order before
-    // reading either so two opposing renames cannot deadlock or overwrite.
-    return this.withLocalSkillMutation(
-      [name, updates.name ?? name],
+    // reading either so two opposing renames cannot deadlock or overwrite —
+    // and acquire the DIRECTORIES this write will touch, which for a workspace
+    // package are in its own root rather than the machine one (#1619).
+    const directory = this.packageDirectoryFor(
+      name,
       projectHomeDir,
       projectSlug,
+    );
+    const nextName = updates.name ?? name;
+    return this.withLocalSkillMutation(
+      nextName === name
+        ? [directory]
+        : [
+            directory,
+            this.renameTargetDirectory(directory, nextName, projectHomeDir),
+          ],
       () =>
-        this.updateLocalSkillOwned(name, updates, projectHomeDir, projectSlug),
+        this.updateLocalSkillOwned(
+          name,
+          updates,
+          projectHomeDir,
+          directory,
+          projectSlug,
+        ),
     );
   }
 
@@ -1733,59 +1949,37 @@ export class SkillService {
     name: string,
     updates: Partial<EditableSkillInput>,
     projectHomeDir: string,
+    /** Resolved and LOCKED by the caller — never re-derived here (review M1). */
+    skillDir: string,
     projectSlug?: string,
   ): Promise<{ success: boolean; message: string }> {
     // A rename is a create under a new name: the same seam, the same refusal.
     if (updates.name !== undefined) assertSafeSkillName(updates.name);
-    const skillDir = this.resolveSkillDir(projectHomeDir, name, projectSlug);
-    // THE PACKAGE THIS WRITE WOULD TOUCH HAS TO BE THE ONE THE READ ANSWERED
-    // FROM.
+    // WRITABILITY FIRST, then the directory. A root Station does not own is
+    // refused for EVERY field rather than only when the request declares a
+    // command: that is what `isSkillWritable`'s docblock has always said
+    // ("those must be installed into the workspace before they can be
+    // edited"), and a description edit used to quietly publish a shadow
+    // package into the workspace instead. The predicate is shared with the
+    // route rather than restated, so one rule cannot drift into two answers —
+    // and it has to run before the resolution below, which REFUSES such a
+    // directory by throwing rather than by answering.
     //
-    // `getSkill` now resolves a project-scoped package's record (#1602), while
-    // this write still derives its directory from the name and the caller's
-    // slug — and no route passes one (`routes/agents/skills.ts:184-188`). So a
-    // PUT against a workspace skill read its content out of
-    // `<home>/projects/<slug>/skills/<name>` and wrote it to
-    // `<home>/skills/<name>`: a second package at a machine path, stamped with
-    // the workspace package's `origin`, the original body untouched, and the
-    // listing then showing the copy. Before #1602 the read threw first, so the
-    // write was unreachable; it is reachable now, and refusing is the honest
-    // answer until the slug is threaded through the route (#1619).
-    //
-    // `isSkillWritable` is the predicate, not a second copy of it: the route
-    // already refuses a command declaration on the same rule, and one rule that
-    // two callers share cannot drift into two answers.
-    //
-    // It also covers the root that predicate was written for — a canonical
-    // package's or a plugin's — so an edit to one of those now refuses for
-    // EVERY field rather than only when the request declares a command. That is
-    // what `isSkillWritable`'s own docblock has always said ("those must be
-    // installed into the workspace before they can be edited"); until now a
-    // description edit quietly published a shadow package into the workspace
-    // instead.
     // Read the registry entry here rather than inside the message: a package
-    // with no discovered location is writable by definition
-    // (`isSkillWritable` returns true for it), so this condition is exactly the
-    // predicate's own — with no unreachable "or else" to describe a case it
-    // cannot produce.
-    // LOCKSTEP: this passes `projectSlug`; the read-model projection
-    // (`writabilityAgainstHome`) passes none, matching the route's own gate.
-    // The two agree today only because no route supplies a slug, so the keys
-    // coincide. Whichever of the two starts resolving a scope the other does
-    // not, the projection stops reporting what this enforces — resolve the slug
-    // in one place, or move both.
-    const registered = this.registry.get(name);
-    if (
-      registered?.location &&
-      !this.isSkillWritable(name, projectHomeDir, projectSlug)
-    ) {
+    // with no discovered location is writable by definition, so this condition
+    // is exactly the predicate's own — with no unreachable "or else" to
+    // describe a case it cannot produce.
+    //
+    // `messageFragment`, not the projected refusal: this path states the reason
+    // in a sentence and the read models state it in a code plus prose that
+    // carries no author-controlled text. Same rule, same call, two shapes —
+    // which is the point. (The fragment does interpolate paths and the name;
+    // that is pre-existing and tracked in #1681, not introduced here.)
+    const refusal = this.packageOwnershipRefusal(name, projectHomeDir);
+    if (refusal) {
       return {
         success: false,
-        message: `Skill '${name}' is served from ${dirname(registered.location)}, which this update does not own; it would have ${
-          existsSync(skillDir)
-            ? `overwritten the package at ${skillDir}`
-            : `written a second copy to ${skillDir}`
-        }`,
+        message: `Cannot edit '${name}': ${refusal.messageFragment}.`,
       };
     }
     const current = await this.getSkill(name);
@@ -1808,7 +2002,11 @@ export class SkillService {
     // A rename MOVES the package, so the destination is resolved BEFORE the
     // record is built: the origin below is a fact about where this write lands.
     const nextName = updates.name ?? current.name;
-    const nextDir = this.resolveSkillDir(projectHomeDir, nextName, projectSlug);
+    const nextDir = this.renameTargetDirectory(
+      skillDir,
+      nextName,
+      projectHomeDir,
+    );
     const nextPath = join(nextDir, 'SKILL.md');
     const next: EditableSkillInput = {
       name: nextName,
@@ -1896,11 +2094,22 @@ export class SkillService {
       serializeSkillMarkdown(next, preservedFrontmatter),
       'utf-8',
     );
-    await this.configLoader.saveSkill(next.name, {
+    // Into the package's OWN directory, so the record and the body cannot end
+    // up in different roots (#1619): `configLoader.saveSkill` resolves the
+    // directory from the name and no slug, which for a workspace package put
+    // `skill.json` in `<home>/skills/<name>` while `SKILL.md` stayed in the
+    // project — one package in two places, each half describing the other.
+    await this.configLoader.saveSkillIn(nextDir, {
       ...current,
       name: next.name,
       description: next.description,
       source: 'local',
+      // `installedAt` is deliberately NOT restated here: `...current` already
+      // carries it, including its absence for a package nobody installed. The
+      // rule this write follows is that it never invents one — the moment a
+      // record is written is a fact about the record, not about a package that
+      // predates it — and the way to follow that rule is to not write the
+      // field at all.
       path: nextDir,
       body: next.body,
       tags: next.tags,
@@ -1913,7 +2122,7 @@ export class SkillService {
       legacyIds: next.legacyIds,
       origin: next.origin,
     });
-    await this.discoverSkills(projectHomeDir, projectSlug);
+    await this.rediscoverAfterWrite(projectHomeDir, projectSlug);
     return { success: true, message: `Updated ${next.name}` };
   }
 
@@ -1934,7 +2143,8 @@ export class SkillService {
       projectSlug,
       configLoader: this.configLoader,
       providers: getSkillRegistryProviders(),
-      rediscover: async () => this.discoverSkills(projectHomeDir, projectSlug),
+      rediscover: async () =>
+        this.rediscoverAfterWrite(projectHomeDir, projectSlug),
     });
   }
 
@@ -1942,26 +2152,65 @@ export class SkillService {
     name: string,
     projectHomeDir: string,
     projectSlug?: string,
-  ): Promise<{ success: boolean; message: string }> {
-    return this.withLocalSkillMutation(
-      [name],
+  ): Promise<SkillRemovalResult> {
+    const directory = this.packageDirectoryFor(
+      name,
       projectHomeDir,
       projectSlug,
-      () => this.removeSkillOwned(name, projectHomeDir, projectSlug),
+    );
+    return this.withLocalSkillMutation([directory], () =>
+      this.removeSkillOwned(name, projectHomeDir, directory, projectSlug),
     );
   }
 
   private async removeSkillOwned(
     name: string,
     projectHomeDir: string,
+    /** Resolved and LOCKED by the caller — never re-derived here (review H1). */
+    directory: string,
     projectSlug?: string,
-  ): Promise<{ success: boolean; message: string }> {
+  ): Promise<SkillRemovalResult> {
     skillOps.add(1, { operation: 'remove' });
+    // A remove deletes a package TREE, so a package Station does not own must
+    // not be one of them. `packageDirectoryFor` already guarantees that — it
+    // never answers with a foreign root — so what is left for this refusal is
+    // to SAY so, and only when there is nothing of ours to remove instead.
+    //
+    // That last clause is a regression fixed (review M2). A plugin package
+    // sharing a name overwrites the registry entry for the user's own
+    // `<home>/skills/<name>`, and refusing on the registry entry alone meant a
+    // user could not delete their own skill, with a message blaming a plugin
+    // they may never have heard of. Discovery's precedence is left exactly as
+    // it is — which body activates is a different question with its own rules
+    // — and the remove simply looks at whether a package of ours is there.
+    //
+    // The two callers deliberately differ on this existence check: an EDIT
+    // refuses whenever the package Station found is not one it owns, while a
+    // remove additionally asks whether a package of ours is sitting at the
+    // name-derived path. The measured consequence is a case-differing
+    // directory: on a case-insensitive volume `<home>/skills/Alpha` makes
+    // `existsSync` true for `alpha`, so an edit refuses it and a remove
+    // deletes it; on a case-sensitive volume both refuse. That asymmetry is
+    // the price of not blocking a user from deleting their own package, and it
+    // is recorded rather than papered over.
+    const refusal = this.packageOwnershipRefusal(name, projectHomeDir);
+    if (refusal && !existsSync(directory)) {
+      return {
+        success: false,
+        // STRUCTURED, not a message a caller has to parse: the route maps this
+        // to 409, and deriving that from the prose meant any rewording
+        // silently reverted every ownership refusal to a false 404 (delta
+        // review).
+        reason: 'not-owned',
+        message: `Cannot remove '${name}': ${refusal}.`,
+      };
+    }
     return removeInstalledSkill({
       name,
       projectHomeDir,
-      projectSlug,
-      rediscover: async () => this.discoverSkills(projectHomeDir, projectSlug),
+      targetDir: directory,
+      rediscover: async () =>
+        this.rediscoverAfterWrite(projectHomeDir, projectSlug),
     });
   }
 
@@ -1971,56 +2220,60 @@ export class SkillService {
     projectHomeDir: string,
     projectSlug?: string,
   ): Promise<string> {
-    return this.withLocalSkillMutation(
-      [name],
+    const directory = this.packageDirectoryFor(
+      name,
       projectHomeDir,
       projectSlug,
-      () => this.localSkillRevisionOwned(name, projectHomeDir, projectSlug),
+    );
+    return this.withLocalSkillMutation([directory], () =>
+      localSkillRevisionFromDirectory(directory),
     );
   }
 
-  private async localSkillRevisionOwned(
-    name: string,
-    projectHomeDir: string,
-    projectSlug?: string,
-  ): Promise<string> {
-    return localSkillRevisionFromDirectory(
-      this.resolveSkillDir(projectHomeDir, name, projectSlug),
-    );
-  }
-
-  /** Compare-and-delete: a changed Skill is retained for operator repair. */
+  /**
+   * Compare-and-delete: a changed Skill is retained for operator repair.
+   *
+   * ONE resolution, threaded. This verified `resolveSkillDir(home, name, slug)`
+   * — name-derived — and then called a remove that resolved through
+   * `packageDirectoryFor`, so it digested one tree and deleted another whenever
+   * those disagreed: a machine package whose frontmatter name differs from its
+   * directory (discovery keys on the frontmatter name) plus a discovered
+   * package genuinely of that name elsewhere is enough. Setup-import's rollback
+   * then recorded a successful compensation for a tree it never verified, and a
+   * package it never created was gone (review H1).
+   *
+   * Resolving once also makes the lock and the write the SAME read of a
+   * registry `discoverSkills` mutates without holding it (review M1): two
+   * independent reads could name two directories, and the one that got locked
+   * was not necessarily the one that got deleted.
+   */
   async removeSkillIfRevision(
     name: string,
     expectedRevision: string,
     projectHomeDir: string,
     projectSlug?: string,
   ): Promise<{ removed: boolean; conflict: boolean }> {
-    return this.withLocalSkillMutation(
-      [name],
+    const directory = this.packageDirectoryFor(
+      name,
       projectHomeDir,
       projectSlug,
-      async () => {
-        let current: string;
-        try {
-          current = await this.localSkillRevisionOwned(
-            name,
-            projectHomeDir,
-            projectSlug,
-          );
-        } catch {
-          return { removed: false, conflict: true };
-        }
-        if (current !== expectedRevision)
-          return { removed: false, conflict: true };
-        const result = await this.removeSkillOwned(
-          name,
-          projectHomeDir,
-          projectSlug,
-        );
-        return { removed: result.success, conflict: !result.success };
-      },
     );
+    return this.withLocalSkillMutation([directory], async () => {
+      let current: string;
+      try {
+        current = await localSkillRevisionFromDirectory(directory);
+      } catch {
+        return { removed: false, conflict: true };
+      }
+      if (current !== expectedRevision)
+        return { removed: false, conflict: true };
+      const result = await this.removeSkillOwned(
+        name,
+        projectHomeDir,
+        directory,
+      );
+      return { removed: result.success, conflict: !result.success };
+    });
   }
 
   getSkillCount(): number {
@@ -2039,6 +2292,34 @@ export class SkillService {
         location.startsWith(source.root),
       ) ?? null
     );
+  }
+
+  /**
+   * Re-discover after a write, in the scope the registry was BUILT with.
+   *
+   * `discoverSkills` clears the registry and re-scans exactly the roots its
+   * arguments name, so a write that re-discovered with the caller's slug —
+   * `undefined` from every route (`routes/agents/skills.ts`) — dropped the
+   * project root for everyone. After any skill PUT, workspace skills vanished
+   * from the listing until something else re-discovered with a slug, and the
+   * unscoped-update refusal became non-deterministic: the second PUT on the
+   * same package answered "not found" because the registry no longer held it
+   * (#1619).
+   *
+   * A caller that names a scope still wins — it knows something this does not.
+   * The remembered scope only applies to the same home it was recorded for.
+   */
+  private async rediscoverAfterWrite(
+    projectHomeDir: string,
+    projectSlug?: string,
+  ): Promise<void> {
+    const remembered = this.lastDiscoveryScope;
+    const slug =
+      projectSlug ??
+      (remembered?.projectHomeDir === projectHomeDir
+        ? remembered.projectSlug
+        : undefined);
+    await this.discoverSkills(projectHomeDir, slug);
   }
 
   /** THE one place a discovered skill's install record is located: beside its body. */
@@ -2072,27 +2353,26 @@ export class SkillService {
    */
   private async loadInstallRecord(
     name: string,
-    location: string | undefined,
-  ): Promise<SkillConfig> {
-    if (location) {
-      const recordPath = this.installRecordPath(location);
-      if (existsSync(recordPath)) {
-        const record = JSON.parse(
-          await readFile(recordPath, 'utf-8'),
-        ) as SkillConfig;
-        // A record answers only for the name it CLAIMS — the same rule
-        // `loadSkillConfig` applies to the record it resolves by path, shared
-        // rather than restated (see its docblock for what a disowned record
-        // hands a caller).
-        if (skillRecordClaimsName(record, name)) return record;
-      }
-      // Discovery found this package, so its own directory is the only place
-      // its record can be. A record next door under a name-derived path is
-      // another package's, and a disowned one is nobody's — both are the
-      // recordless case (#1614), which is what this says.
-      throw new Error(`Skill '${name}' not found`);
+    location: string,
+  ): Promise<{ record?: SkillConfig; absence?: string }> {
+    const recordPath = this.installRecordPath(location);
+    if (!existsSync(recordPath)) {
+      return {
+        absence: `no install record sits beside this package at ${dirname(location)}`,
+      };
     }
-    return this.configLoader.loadSkill(name);
+    const record = JSON.parse(
+      await readFile(recordPath, 'utf-8'),
+    ) as SkillConfig;
+    // A record answers only for the name it CLAIMS — the same rule
+    // `loadSkillConfig` applies to the record it resolves by path, shared
+    // rather than restated (see its docblock for what a disowned record hands
+    // a caller). A disowned record is not this package's record, and saying
+    // WHICH of the two absences this is costs one string.
+    if (skillRecordClaimsName(record, name)) return { record };
+    return {
+      absence: `the install record at ${recordPath} claims '${String(record.name)}', not '${name}'`,
+    };
   }
 
   private getScriptToolDefs(
@@ -2136,17 +2416,74 @@ export class SkillService {
   }
 
   /**
+   * THE directory a write touches: the one DISCOVERY found the package in.
+   *
+   * The read has resolved a package from its discovered location since #1602;
+   * the write kept deriving `<skills root>/<name>` from the name plus a
+   * `projectSlug` no route passes (`routes/agents/skills.ts`), and the only
+   * slug the runtime could offer is `listProjects()[0]?.slug` — the first
+   * project, not a chosen one. So a write either refused a workspace package or
+   * wrote a second one into the machine root. Reading the directory off the
+   * registry removes the guess entirely: the package a write edits is the
+   * package the read answered from, in whichever root it lives.
+   *
+   * A package discovery never found has no location to read, so a CREATE (and
+   * anything naming a package that does not exist yet) still derives its
+   * directory from the name — there is nothing else to derive it from, and
+   * `resolveSkillDirectory` owns that derivation and its guarantees.
+   *
+   * `assertSkillPackageDirectory` re-asserts those guarantees on the registry's
+   * directory, because a path that did not come from the resolver has not been
+   * through them.
+   */
+  private packageDirectoryFor(
+    name: string,
+    projectHomeDir: string,
+    projectSlug?: string,
+  ): string {
+    const location = this.registry.get(name)?.location;
+    // A package Station may not write (a canonical package's, a plugin's) is
+    // refused by the caller, with a message, before anything is written — so
+    // this must ANSWER for it rather than throw, or the refusal never gets to
+    // speak. What it answers is the name-derived directory, which is exactly
+    // the one that write would have touched, and which nothing then touches.
+    if (!location || !this.isSkillWritable(name, projectHomeDir)) {
+      return this.resolveSkillDir(projectHomeDir, name, projectSlug);
+    }
+    const directory = dirname(location);
+    // Defence, not the decision: `isSkillWritable` has already made this
+    // assertion pass. It is restated here so the guarantee lives at the
+    // resolver a writer reads, not only inside a predicate it happens to call.
+    assertSkillPackageDirectory(projectHomeDir, name, directory);
+    return directory;
+  }
+
+  /**
+   * The directory a package would MOVE to under a new name: its sibling in the
+   * root it already lives in. A rename does not change which root owns a
+   * package, so this is derived from the current package's own parent rather
+   * than from a slug.
+   */
+  private renameTargetDirectory(
+    currentDirectory: string,
+    nextName: string,
+    projectHomeDir: string,
+  ): string {
+    const directory = join(dirname(currentDirectory), nextName);
+    assertSkillPackageDirectory(projectHomeDir, nextName, directory);
+    return directory;
+  }
+
+  /**
    * Universal local Skill mutation authority. Every filesystem writer,
    * conditional reader and revision proof goes through this seam.  A rename
    * owns both identities in canonical path order, so it is safe across
    * Station processes without relying on a process-local mutex.
    */
   private async withLocalSkillMutation<T>(
-    names: string[],
-    projectHomeDir: string,
-    projectSlug: string | undefined,
+    directories: string[],
     effect: () => Promise<T>,
   ): Promise<T> {
-    return withLocalSkillMutation(names, projectHomeDir, projectSlug, effect);
+    return withLocalSkillMutation(directories, effect);
   }
 }

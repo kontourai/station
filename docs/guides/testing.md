@@ -157,7 +157,7 @@ npm run verify                    # broad diagnostic escalation when explicitly 
 npm run test:focused -- <file...> # pinned single-file runs (never ad hoc `npx vitest` — it can resolve a sibling worktree's config; see AGENTS.md)
 npm run test:coverage             # with coverage report
 npm run install:playwright        # install repo-local Chromium once (E2E specs AND test:full's BannerHost touch-target check)
-npm run install:playwright:ci     # install Chromium plus OS dependencies for CI runners
+npm run install:playwright:ci     # CI runners: Chromium into the ambient PLAYWRIGHT_BROWSERS_PATH, bounded retry, no root (station#1648)
 npm run test:e2e:product          # promoted product Playwright suite via ./station temp-home instance
 npm run test:e2e:starter-clean-install  # fresh-home Starter journey; inherited telemetry is disabled
 npm run test:e2e:smoke-live       # live app smoke via ./station temp-home instance
@@ -378,7 +378,13 @@ Baseline artifacts (both committed):
   the committed baseline — a last resort, not a first move. `screenshot:diff`
   then skips it **loudly** (named in the table as `skipped-volatile`),
   never silently folding it into "unchanged" and never failing the run over
-  it.
+  it. Such a screen gets no `<name>.png`: `screenshot:baseline` stores no
+  image for it and `screenshot:diff` never reads one. If you want a reference
+  purely for human eyeballing, hand-add it as
+  `tests/screenshots.baseline/<name>.reference.png` — a name no capture
+  writes, and the only one a full-run regeneration preserves (#1652). A file
+  at `<name>.png` for a volatile entry is an unclaimed leftover and the next
+  full-run regeneration deletes it; a partial run prunes nothing either way.
 
 Typical loop: `npm run test:e2e:screenshot -- --screens=<touched screens>`,
 then `npm run screenshot:diff -- --screens=<touched screens>` to see whether

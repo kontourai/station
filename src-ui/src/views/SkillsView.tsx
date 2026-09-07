@@ -70,6 +70,8 @@ const SKILL_WRITE_REMEDY: Record<SkillWriteRefusalReason, string> = {
   'canonical-package': 'Install it into your workspace to author it here.',
   'outside-writable-root': 'Install it into your workspace to author it here.',
   'unresolvable-name': 'Rename it to author it here.',
+  'directory-name-mismatch':
+    "Rename the directory, or the skill's own name, so the two match.",
 };
 
 /**

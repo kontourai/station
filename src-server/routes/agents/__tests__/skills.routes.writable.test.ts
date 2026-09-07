@@ -75,9 +75,11 @@ function writePackage(
  *   states `source: 'local'`. Station does not write that root. The retired
  *   derivation offered it a Save, and `PUT` answers 409.
  *
- * Neither answer changes under #1619, which widens writability to the
- * project-scoped root: a plugin root is not one, and a package already in
- * `<home>/skills` was writable before and after.
+ * Re-derived against the rule as it now stands rather than carried forward:
+ * the rule asks which root holds the package, and neither of these two moves.
+ * A plugins root is not one of the two writable shapes, and `<home>/skills` is.
+ * Both also pass the directory-name check the rule makes before the root check,
+ * because each package sits in a directory named for it.
  */
 function seedFixtures() {
   writePackage(join(home, 'skills', 'bought-in'), 'bought-in', {
@@ -115,7 +117,20 @@ const configLoader = {
       'utf-8',
     );
   }),
+  // The write path resolves the package's own directory and writes the record
+  // THERE (#1619) rather than deriving a path from the name. Stubbing this is
+  // not optional: without it every write throws after `SKILL.md` is already on
+  // disk, and the oracle's positive case passes on a half-completed write.
+  saveSkillIn: vi.fn(async (directory: string, config: unknown) => {
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      join(directory, 'skill.json'),
+      JSON.stringify(config, null, 2),
+      'utf-8',
+    );
+  }),
   deleteSkill: vi.fn(),
+  deleteSkillAt: vi.fn(),
   listSkills: vi.fn().mockResolvedValue([]),
   skillExists: vi.fn().mockResolvedValue(false),
 };
@@ -396,9 +411,13 @@ describe('the refusal sentence is Station speaking, not the package author', () 
     expect(refusal.reason).toBe('outside-writable-root');
   });
 
-  test('a name the path rule rejects is refused as unresolvable, with no diagnostic', async () => {
-    // Discovery registers a frontmatter `name` unvalidated, which is what makes
-    // this reachable at all. The directory is innocuous; the NAME is not a name.
+  // Discovery registers a frontmatter `name` unvalidated, so a name the write
+  // path rejects DOES reach the rule. Which refusal it lands on depends on
+  // whether the package's own directory is named for it, and those are two
+  // different remedies — a rename of the directory, or a rename of the skill.
+  test("a package whose directory is not named for it says so, and not 'Station does not own this'", async () => {
+    // The directory is innocuous and plainly the user's own; the frontmatter
+    // NAME is what disagrees with it.
     writeFileSync(
       join(home, 'skills', 'bought-in', 'SKILL.md'),
       '---\nname: ../../escape\ndescription: traversal\n---\nBody',
@@ -409,34 +428,62 @@ describe('the refusal sentence is Station speaking, not the package author', () 
     const row = (await listing(app)).get('../../escape');
     expect(row).toBeDefined();
     const refusal = refusalOf(row);
-    expect(refusal.reason).toBe('unresolvable-name');
-    // The PACKAGE's directory is reported here like anywhere else. What could
-    // not be resolved is the WRITE TARGET, and an earlier draft confused the two
-    // — documenting the field as absent and then telling the reader to rename a
-    // package it declined to identify (review medium). The remedy is only
-    // actionable with this.
+    // NOT `outside-writable-root`: the package sits in a root Station writes,
+    // so telling this user Station does not own it would be a false
+    // explanation of a real refusal.
+    expect(refusal.reason).toBe('directory-name-mismatch');
+    expect(refusal.detail).not.toMatch(/does not own|read-only/);
     expect(refusal.packageDirectory).toBe(join(home, 'skills', 'bought-in'));
-    // The underlying rejection names prototype keys and traversal. That is a
-    // log line, not guidance, and it must not reach a field documented for
-    // display.
-    expect(refusal.detail).not.toMatch(/__proto__|prototype|traversal|\.\./);
-    expect(refusal.detail).toContain('cannot be used as a directory name');
-    // The route ANSWERS the refusal rather than letting the rejection propagate.
+    // The name is author-controlled and must not reach the sentence.
+    expect(refusal.detail).not.toContain('../../escape');
     const res = await app.request(`/${encodeURIComponent('../../escape')}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ command: { enabled: true } }),
     });
     expect(res.status).toBe(409);
+  });
 
-    // The diagnostic still EXISTS, at debug. It was demoted from warn because
-    // it re-derives per row per listing, and a demotion nothing asserts is a
-    // deletion waiting to happen (review low): this pins both that it is
-    // emitted and that it is not a warning.
-    expect(logger.debug).toHaveBeenCalledWith(
-      'Skill name cannot resolve to a package directory',
-      expect.objectContaining({ name: '../../escape' }),
-    );
+  test('a name the path rule rejects is refused as unresolvable, with no diagnostic', async () => {
+    // Directory named EXACTLY for the skill, so the mismatch above cannot fire
+    // and the floor's own name assertion is what refuses. `__proto__` is one of
+    // the names it names.
+    writePackage(join(home, 'skills', '__proto__'), '__proto__', {
+      source: 'local',
+      installedAt: '2026-01-08T00:00:00.000Z',
+    });
+    const { app } = await setup();
+
+    const row = (await listing(app)).get('__proto__');
+    expect(row).toBeDefined();
+    const refusal = refusalOf(row);
+    expect(refusal.reason).toBe('unresolvable-name');
+    // The PACKAGE's directory is reported here like anywhere else. What could
+    // not be resolved is the WRITE TARGET, and an earlier draft confused the two
+    // — documenting the field as absent and then telling the reader to rename a
+    // package it declined to identify (review medium). The remedy is only
+    // actionable with this.
+    expect(refusal.packageDirectory).toBe(join(home, 'skills', '__proto__'));
+    // The underlying rejection names prototype keys and traversal. That is a
+    // log line, not guidance, and it must not reach a field documented for
+    // display.
+    expect(refusal.detail).not.toMatch(/__proto__|prototype|constructor/);
+    expect(refusal.detail).toContain('cannot be used as a directory name');
+    // The route ANSWERS the refusal rather than letting the rejection propagate.
+    const res = await app.request('/__proto__', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: { enabled: true } }),
+    });
+    expect(res.status).toBe(409);
+
+    // NO log line is asserted, and none is emitted. Review low asked for two
+    // things here: server-side coverage of this branch, which is this test, and
+    // that the condition stop being announced once per row per listing. The
+    // merged rule satisfies the second by not logging at all, and the reason
+    // CODE is the channel a reader acts on — which was the justification for
+    // demoting the log in the first place. Re-adding one now would be a second
+    // report of a fact this refusal already carries.
     expect(logger.warn).not.toHaveBeenCalledWith(
       'Skill name cannot resolve to a package directory',
       expect.anything(),
@@ -445,15 +492,19 @@ describe('the refusal sentence is Station speaking, not the package author', () 
 });
 
 /**
- * The residual: packages the user genuinely OWNS that the server refuses to
- * write anyway, because discovery is scope-aware and the route's predicate call
- * is not — it passes no project slug, so the writable directory resolves under
- * the machine root and never matches a project-scoped package (#1619).
+ * Packages in the project-scoped root, which the rule now WRITES: it asks which
+ * root holds the package and accepts `<home>/projects/<slug>/skills` by shape,
+ * so a package the user owns there is writable with no caller supplying a scope.
+ *
+ * The block's original premise was the opposite — that these were packages the
+ * user owned and the server refused anyway — and that premise fell with the
+ * mechanism it named. It survives as a fixture set because a name a plugin also
+ * holds is STILL refused: the residual is now the collision alone (#1687), not
+ * the project root.
  *
  * These assert AGREEMENT between the projected field and what `PUT` enforces,
- * not a literal `false`. The literal is what #1619 changes, and a test pinning
- * it would go red on a correct fix while saying nothing about the property that
- * actually matters: `writable` must report what the server WILL do, never what
+ * not a literal. A test pinning the literal would have gone red on the correct
+ * widening while saying nothing about the property that actually matters: `writable` must report what the server WILL do, never what
  * the user morally ought to be allowed to do. Under both trees the projection
  * and the gate call the same function with the same arguments, so agreement
  * holds whichever answer that function gives — and a projection re-derived from
@@ -592,8 +643,14 @@ describe('writable iff the write lands in that package and nowhere else', () => 
       // carries no install record, so the load throws before any disk write —
       // and every "nothing happened" assertion stayed green. This is what makes
       // that fixture discriminate.
+      //
+      // Keyed on the gate's own sentence OPENER, not on a phrase inside its
+      // variable clause. The first version matched "does not own", which is
+      // wording the rule owns and duly reworded — so the probe reported "not
+      // stopped by the gate" for writes the gate had stopped. A discriminator
+      // that parses prose it does not own is a discriminator with a shelf life.
       stoppedByTheOwnershipGate:
-        response.status === 400 && answer.includes('does not own'),
+        response.status === 400 && answer.includes(`Cannot edit '${name}':`),
       // A shadow package under the machine root is the specific damage the
       // refusal exists to prevent, so it is asserted rather than inferred from
       // the response.

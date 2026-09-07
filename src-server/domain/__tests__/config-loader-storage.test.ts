@@ -17,14 +17,14 @@ import { toolServerIntegrationMutationLockPath } from '../../services/plugins/to
 
 import {
   deleteIntegrationConfig,
-  deleteSkillConfig,
+  deleteSkillPackageAt,
   listIntegrationMetadata,
   loadACPConfigFile,
   loadIntegrationConfig,
   loadSkillConfig,
   saveACPConfigFile,
   saveIntegrationConfig,
-  saveSkillConfig,
+  saveSkillConfigIn,
   skillConfigExists,
   skillRecordClaimsName,
   wasIntegrationEnabledExplicit,
@@ -35,24 +35,28 @@ describe('skill config storage resolves names through the shared seam', () => {
     const root = createTempDir();
     try {
       for (const name of ['../escaped', 'a/b', '__proto__', '..']) {
-        await expect(
-          saveSkillConfig(root, name, {
-            name,
-            source: 'local',
-            installedAt: '',
-            path: 'x',
-          }),
-          name,
-        ).rejects.toThrow(/Invalid skill name/);
+        // The name-addressed writers are gone (#1619) — the surviving
+        // entry points are the two readers and the two DIRECTORY-addressed
+        // writers, which assert the same name through
+        // `assertSkillPackageDirectory`.
         await expect(loadSkillConfig(root, name), name).rejects.toThrow(
-          /Invalid skill name/,
-        );
-        await expect(deleteSkillConfig(root, name), name).rejects.toThrow(
           /Invalid skill name/,
         );
         expect(() => skillConfigExists(root, name), name).toThrow(
           /Invalid skill name/,
         );
+        await expect(
+          saveSkillConfigIn(root, join(root, 'skills', name), {
+            name,
+            source: 'local',
+            path: 'x',
+          }),
+          name,
+        ).rejects.toThrow(/Invalid skill name/);
+        await expect(
+          deleteSkillPackageAt(root, name, join(root, 'skills', name)),
+          name,
+        ).rejects.toThrow(/Invalid skill name/);
       }
       // Nothing was written anywhere under the home.
       expect(existsSync(join(root, 'skills'))).toBe(false);
@@ -96,15 +100,16 @@ describe('skill config storage resolves names through the shared seam', () => {
   test('an ordinary name still round-trips', async () => {
     const root = createTempDir();
     try {
-      await saveSkillConfig(root, 'alpha', {
+      const directory = join(root, 'skills', 'alpha');
+      await saveSkillConfigIn(root, directory, {
         name: 'alpha',
         source: 'local',
         installedAt: '2026-01-01',
-        path: join(root, 'skills', 'alpha'),
+        path: directory,
       });
       expect(skillConfigExists(root, 'alpha')).toBe(true);
       expect((await loadSkillConfig(root, 'alpha')).name).toBe('alpha');
-      await deleteSkillConfig(root, 'alpha');
+      await deleteSkillPackageAt(root, 'alpha', directory);
       expect(skillConfigExists(root, 'alpha')).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });

@@ -984,20 +984,21 @@ describe('SkillsView', () => {
       expect(path?.textContent ?? '').toContain('Package directory');
     });
 
-    // The server populates `packageDirectory` on every refusal it emits, so this
-    // is a server that did NOT — an older or non-conforming one. The view must
-    // render the refusal it can and no empty path furniture, rather than an
-    // element with a blank code block in it.
+    // `packageDirectory` is REQUIRED in the contract, so this shape is one no
+    // conforming server emits — an older build, or a proxy that dropped it. The
+    // view must still render the refusal it has and no empty path furniture,
+    // rather than an element wrapped round a blank code block. Cast, because the
+    // type correctly forbids what this test constructs on purpose.
     test('a refusal without the package directory renders no path element', () => {
       selectRow({
         name: 'weird/name',
         source: 'local',
         writable: false,
         writeRefusal: {
-          reason: 'unresolvable-name' as const,
+          reason: 'unresolvable-name',
           detail:
             'Its name cannot be used as a directory name, so Station cannot work out where it would write this package.',
-        },
+        } as never,
       });
 
       const { container } = render(<SkillsView />);
@@ -1059,6 +1060,41 @@ describe('SkillsView', () => {
       expect(text).not.toMatch(sourceShape);
       expect(text).not.toContain('undefined');
       expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    });
+
+    // The fifth reason code, added when the rule landed: the package is plainly
+    // the user's own and sits in a root Station writes, so the remedy is a
+    // rename of one side or the other — never "install it".
+    test('a directory-name mismatch is told to make the two names match', () => {
+      selectRow({
+        name: 'Bought-In',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: 'directory-name-mismatch' as const,
+          detail:
+            "The package discovery found for it sits in a directory whose name is not this skill's name.",
+          packageDirectory: '/station/skills/bought-in',
+        },
+      });
+
+      const { container } = render(<SkillsView />);
+
+      expect(
+        screen.getByText(/Rename the directory, or the skill's own name/),
+      ).toBeTruthy();
+      expect(screen.queryByText(/Install it into your workspace/)).toBeNull();
+      // Not "Station does not own this": it plainly does. The view's own
+      // "Read-only." opener is its framing of every refusal and is correct here
+      // — the package cannot be saved as things stand — so only the ownership
+      // claim is excluded, not the whole phrase.
+      const note = container.querySelector('.skill-detail__source-note');
+      expect(note?.textContent ?? '').not.toMatch(
+        /does not own|ships read-only/i,
+      );
+      expect(
+        container.querySelector('.skill-detail__source-path code')?.textContent,
+      ).toBe('/station/skills/bought-in');
     });
 
     test('Create is still offered while authoring a new skill', () => {
