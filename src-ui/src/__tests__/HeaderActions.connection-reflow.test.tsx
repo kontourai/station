@@ -91,8 +91,16 @@ let connectionReason: string | null = null;
 
 vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
+  // Sized, not bare: the real dot is 7px wide in every state (the alert
+  // branch's triangle takes the same `size`), and the row bound this file
+  // asserts against counts those 7px. A zero-width stand-in would leave the
+  // fixture's chip 7px lighter than the budget and quietly spend that slack.
   ConnectionStatusDot: ({ status }: { status: string }) => (
-    <span data-testid="connection-status" data-state={status} />
+    <span
+      data-testid="connection-status"
+      data-state={status}
+      style={{ display: 'inline-block', width: 7, height: 7 }}
+    />
   ),
   useConnectionStatus: () => ({
     status: connectionStatus,
@@ -602,18 +610,23 @@ describe.skipIf(!chromiumAvailable)(
      * Derived, not chosen, and ARITHMETIC rather than swept:
      * `.app-toolbar__actions` is `flex-shrink: 0` and the brand has bottomed
      * out, so the row's content width is viewport-independent and the left side
-     * ends at x=126. The widest the cluster can reach is 126 + 116 (this chip
-     * at its 85px label ceiling plus 31px of furniture) + 4 + 62 (notifications
-     * at their widest badge — 38px of button plus 23.91px, which is "99"'s
+     * ends at x=126. The widest the cluster can reach is 126 + 112 (this chip
+     * at its 85px label ceiling plus 27px of furniture) + 4 + 58 (notifications
+     * at their widest badge — 34px of button plus 23.91px, which is "99"'s
      * width rather than the cap's own "9+" (23.80px), so the budget is ~1px
      * conservative. The two-character
-     * ceiling `HeaderActions.tsx`'s "9+" cap creates) + 4 + 44 + 4 + 44 = 404,
-     * putting `Open settings`'s centre at 374. The live sweep is narrower,
-     * because the state it drove renders a 79px label beside a one-digit badge:
-     * at 360px that centre is x=370 and `document.elementFromPoint` returns
-     * null; at 375px and above, in that state, it resolves to the control
-     * itself. 374 is where the WORST case lands, so the label goes at 374 and
-     * below.
+     * ceiling `HeaderActions.tsx`'s "9+" cap creates) + 4 + 44 + 4 + 44 = 396,
+     * putting `Open settings`'s centre at 374. Every term above is post-#1401:
+     * that change trimmed this row's button padding by 2px a side, which the
+     * 44px floor absorbs for the glyph-only controls and the two content-sized
+     * members give back — the chip was 116 and notifications 62, for a 404
+     * total and a 382 centre.
+     *
+     * The live sweep is narrower, because the state it drove renders a 79px
+     * label beside a one-digit badge: at 360px that centre is x=362 and
+     * `document.elementFromPoint` returns null; at 367px and above, in that
+     * state, it resolves to the control itself. 374 is where the WORST case
+     * lands, so the label goes at 374 and below.
      *
      * WHAT THIS FIXTURE CAN SEE: the chip's own box, the badge's box, and the
      * button's accessible name, in a real Chromium page with the real

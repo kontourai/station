@@ -259,18 +259,16 @@
      the two halves are not alike. `font-size` only shrinks the glyph, which
      renders at `1em`. `padding` is NOT inert: the 768px block's 44px is a
      min-width FLOOR, and two controls in this row are content-sized past it —
-     the connection chip (~114px: 85px label plus 35px of its own furniture,
-     measured below) and the notifications button when it carries a badge
-     (~56-62px). Trimming 8px to 6px gives each of those back 4px, so roughly
-     8px of a `flex-shrink: 0` row, inside the 383-403px band #1401 measures
-     as over-subscribed.
+     the connection chip and the notifications button when it carries a badge.
+     Trimming 8px to 6px gives each of those back 4px, so 8px of a
+     `flex-shrink: 0` row.
 
-     That is real relief and it is still not the change #1401 is waiting for,
-     which is a control leaving the row. Taking it would move the 382px label
-     breakpoint derived in #1132 and buy a glyph two sizes smaller on a phone
-     — a visible cost with no owner behind it. So the row keeps what it
-     renders today, and the option is recorded on #1630 with these numbers
-     rather than taken silently here.
+     station#1401 has since TAKEN that padding half — the trim lives in the
+     mobile touch block below, where it applies, and it moved the label
+     breakpoint from 382 to 374. The font-size half stayed deleted: it only
+     shrinks the glyph, which is a visible cost with nothing to show for it.
+     So this block's two declarations are still correctly gone, and the row
+     they described is 8px narrower than when they were written.
 
      This rule is the block's live one: its base sits EARLIER in this sheet,
      so it wins the tie. A finger needs the same 44px floor the composer
@@ -1910,11 +1908,15 @@
   .app-toolbar__icon-btn {
     min-width: 44px;
     min-height: 44px;
-    /* station#1401: the 44px above is a FLOOR, so every glyph-only control in
-       this row is 44 whatever its padding — trimming theirs changes nothing.
-       The two content-sized members are what this reclaims from: the labelled
-       connection chip and the notifications button when it carries a badge.
-       Measured below, both give back 4px each. */
+    /* station#1401: the 44px above is a FLOOR, so every glyph-only control
+       carrying this class is 44 whatever its padding — trimming theirs changes
+       nothing, in this row or in the chat dock's mobile header, which uses the
+       same class for three glyph buttons. The two content-sized members are
+       what this reclaims from: the toolbar's labelled connection chip and its
+       notifications button when it carries a badge. Measured below, both give
+       back 4px each. The vertical 6px -> 4px is inert for the same reason
+       `min-height` floors it, and the dock's own connection chip overrides
+       padding entirely (`index.css`, `.chat-dock__mobile-conn`). */
     padding: 4px 6px;
   }
   .app-toolbar__conn-name,
@@ -2252,8 +2254,9 @@
    the state in which reaching Settings matters most. `.app-toolbar__actions` is
    `flex-shrink: 0` and `.app-toolbar__brand` bottoms out, so the row's left
    side ends at x=126 and the cluster's own width is viewport-independent: with
-   this chip labelled it measures 266px, putting `Open settings` at x=348..392
-   at EVERY viewport up to 402. #1401 released this chip's 116px `min-width`
+   this chip labelled it measures 259px, putting `Open settings` at x=340..384
+   at EVERY viewport up to 402 (266px and x=348..392 before station#1401's
+   padding trim, in the same `error` state). #1401 released this chip's 116px `min-width`
    reservation, and that is what keeps 390, 402 and 412 reachable today; what it
    left behind is the arithmetic below.
 
@@ -2290,8 +2293,8 @@
    the worst case is a label at the 85px ceiling beside a two-character badge.
    What was swept live, in the `error` state whose label is 79px and whose
    badge was one digit, is narrower: at 360px the `Open settings` centre is
-   x=370 and resolves to `null`; at 375px and above, in that state, it resolves
-   to itself. So this breakpoint engages a little above where the swept state
+   x=362 and resolves to `null` (x=370 before the padding trim); at 367px and
+   above, in that state, it resolves to itself. So this breakpoint engages a little above where the swept state
    alone would need it, which is what a bound is for.
 
    Dropping the label reclaims 66px (the chip falls to its 44px touch floor) and
@@ -2304,8 +2307,8 @@
    `flex-shrink: 0` stays — archive#3766's cluster that clipped ITSELF away
    while staying in the accessibility tree is not coming back.
 
-   Between 383 and 403px the row is still clipped at its right edge while every
-   control keeps its centre: the over-subscription #1401 describes, which needs
+   Between 375 and 395px the row is still clipped at its right edge while every
+   control keeps its centre (383-403 before station#1401's padding trim): the over-subscription #1401 describes, which needs
    a control to leave the row rather than a width tweak. Two classes, not one:
    this block cascades after the breakpoint above and would win a tie on order
    alone, and a tie decided by order is how the last owner of this cluster's
