@@ -288,6 +288,60 @@ describe.skipIf(!chromiumAvailable)(
       }
     }
 
+    /**
+     * station#1401. The breakpoint above is only correct while the widest
+     * cluster still FITS at the first width that keeps the label. Nothing tied
+     * those two together: the media query decides the label on its own, so
+     * removing the padding trim that bought the width would leave the
+     * breakpoint where it is and silently restore the over-subscription it was
+     * moved for. Removing that rule reddens this.
+     *
+     * Expressed as the row's own arithmetic rather than as transcribed pixels:
+     * the left side ends at its documented 126px floor, the trailing control's
+     * centre is 22px inside the cluster's right edge, and that centre has to
+     * land inside the viewport at 375.
+     */
+    test('the widest cluster still fits at the first width that keeps the label (#1401)', async () => {
+      const LEFT_SIDE_FLOOR_PX = 126;
+      const TRAILING_CONTROL_HALF_PX = 22;
+      const FIRST_LABELLED_WIDTH_PX = 375;
+
+      attentionPendingCount = 123; // the badge at its capped, widest form
+      // `awaiting-approval` is the longest label, so `max-width` clamps it and
+      // the chip sits at its ceiling — the state the bound is written for.
+      const markup = await renderMarkupForState('awaiting-approval');
+      const page = await browser.newPage({
+        viewport: { width: FIRST_LABELLED_WIDTH_PX, height: 200 },
+      });
+      try {
+        await page.setContent(buildFixtureHtml(markup));
+        const content = await page.evaluate(() => {
+          const cluster = document.querySelector<HTMLElement>(
+            '.app-toolbar__actions',
+          );
+          const boxes = Array.from(cluster?.children ?? [])
+            .map((child) => child.getBoundingClientRect())
+            .filter((box) => box.width > 0);
+          if (!boxes.length) throw new Error('no toolbar controls rendered');
+          return (
+            Math.max(...boxes.map((box) => box.right)) -
+            Math.min(...boxes.map((box) => box.left))
+          );
+        });
+        const trailingCentre =
+          LEFT_SIDE_FLOOR_PX + content - TRAILING_CONTROL_HALF_PX;
+        expect(
+          trailingCentre,
+          `the widest cluster puts the trailing control's centre at ` +
+            `${Math.round(trailingCentre)}, outside a ` +
+            `${FIRST_LABELLED_WIDTH_PX}px viewport — the breakpoint above ` +
+            `keeps the label at a width the row cannot hold`,
+        ).toBeLessThan(FIRST_LABELLED_WIDTH_PX);
+      } finally {
+        await page.close();
+      }
+    });
+
     test('the trailing control holds its position across every label-bearing state on a desktop-width toolbar', async () => {
       // Every visibly different label this chip can show — including the two
       // widest, "Needs re-pairing" and "Awaiting approval" — must not move any
