@@ -2270,9 +2270,11 @@
    25.34px on a Linux runner, where "+" is wider than a digit rather than
    narrower — so treat them as this platform's arithmetic. What holds
    everywhere is that the badge stops growing at the cap (pinned in
-   `HeaderActions.connection-reflow.test.tsx`); the reachability this protects
-   is enforced on CI's own renderer by the 360px case in
-   `tests/toolbar-reachability.spec.ts`. The two-character worst
+   `HeaderActions.connection-reflow.test.tsx`, in the COUNT rather than in
+   pixels). Its pixel size against this 23.91 allowance is enforced by
+   nothing: the e2e never renders a badge, and at its 360px case the label is
+   suppressed anyway, so the row there sits nowhere near this bound. That gap
+   is station#1721. The two-character worst
    case that HeaderActions.tsx's "9+" cap creates — uncapped this member is
    unbounded and so is this paragraph) + 4 + 44 (More actions) + 4 + 44 (Open
    settings) = 396px, of which the last control's own CENTRE sits at 374. At

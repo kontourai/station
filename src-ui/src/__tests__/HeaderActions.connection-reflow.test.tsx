@@ -91,10 +91,6 @@ let connectionReason: string | null = null;
 
 vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
-  // Sized, not bare: the real dot is 7px wide in every state (the alert
-  // branch's triangle takes the same `size`), and the row bound this file
-  // asserts against counts those 7px. A zero-width stand-in would leave the
-  // fixture's chip 7px lighter than the budget and quietly spend that slack.
   ConnectionStatusDot: ({
     status,
     size = 8,
@@ -342,9 +338,19 @@ describe.skipIf(!chromiumAvailable)(
       // platform claim — #1132's transcription trap, arriving through the
       // front door. What is left after the badge comes out is padding,
       // borders, gaps, the 44px floors and a label hard-clamped at its
-      // `max-width`: all CSS pixels, identical on any renderer. The badge's
-      // own bound is asserted by the "stops growing at the cap" test above,
-      // which is where a font-dependent member belongs.
+      // `max-width`: CSS pixels, identical on any renderer — with one term
+      // absorbed rather than excluded, the `⋯` glyph, which is glyph-driven
+      // but sits ~16px inside its 44px floor.
+      //
+      // This split is LOSSY, deliberately, and saying so is the point. The
+      // "stops growing at the cap" test above bounds the badge in the COUNT —
+      // constant past the cap — not in pixels; it says so in its own docblock,
+      // because two attempts to assert a pixel figure there both red on CI.
+      // So `members` fitting its budget does not prove the whole cluster fits
+      // 270: that also needs the badge's actual pixels to fit the 23.91
+      // allowance, which is a per-platform measurement nothing here asserts
+      // and which this file records as 25.34px on the Linux runner. Whether
+      // that over-runs the row is station#1721, not this assertion.
       const DOCUMENTED_BADGE_BUDGET_PX = 23.91;
       const FIRST_LABELLED_WIDTH_PX = 375;
 
@@ -763,8 +769,10 @@ describe.skipIf(!chromiumAvailable)(
      * badge STOPS GROWING: past the cap its width is the same whatever the
      * count, so a member that was unbounded in the count is now a constant.
      * The size of that constant is a per-platform measurement, recorded in
-     * `chat.css` as a macOS figure and enforced end to end on CI's own
-     * renderer by the 360px case in `tests/toolbar-reachability.spec.ts`.
+     * `chat.css` as a macOS figure. Nothing enforces that figure: the e2e
+     * never renders a badge at all, and at its 360px case the label is
+     * suppressed anyway, so the row there sits nowhere near the bound. That
+     * gap is station#1721.
      */
     test('the notification badge is bounded, so the row arithmetic is a bound (#1132)', async () => {
       const measureBadge = async (pendingCount: number) => {
