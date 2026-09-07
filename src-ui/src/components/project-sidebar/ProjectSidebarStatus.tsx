@@ -18,9 +18,9 @@ import './ProjectSidebarStatus.css';
 
 /**
  * Bottom-of-sidebar status line: open-chat count (clickable — opens a
- * popover listing the sessions), build identity, and a subtle ⌘K chip for
- * the command palette (desktop only — the chip advertises a keyboard
- * shortcut). Replaces the retired fixed bottom status bar
+ * popover listing the sessions), build identity, and a subtle chip carrying
+ * the command palette's chord (desktop only — the chip advertises a keyboard
+ * shortcut, and the registry spells it for the platform). Replaces the retired fixed bottom status bar
  * (`statusbar--app`), which forced the chat dock to lift itself above it.
  * Hidden entirely when the sidebar is collapsed (shared
  * `.sidebar--collapsed` rules).
