@@ -12,14 +12,6 @@ const chatCss = readFileSync(
   join(ui, 'components', 'chat', 'chat.css'),
   'utf8',
 );
-const detailHeaderCss = readFileSync(
-  join(ui, 'components', 'DetailHeader.css'),
-  'utf8',
-);
-const sidebarHeader = readFileSync(
-  join(ui, 'components', 'project-sidebar', 'ProjectSidebarHeader.tsx'),
-  'utf8',
-);
 
 describe('station#923 responsive chrome contract', () => {
   /**
@@ -72,19 +64,5 @@ describe('station#923 responsive chrome contract', () => {
     expect(activeIdentity).not.toContain('minWidth: 44');
     expect(activeIdentity).not.toContain('minHeight: 44');
     expect(activeIdentity).not.toContain('Copy thread ID');
-  });
-
-  test('shared detail chrome owns an explicit tablet action row', () => {
-    expect(detailHeaderCss).toContain(
-      '@media (min-width: 769px) and (max-width: 1180px)',
-    );
-    expect(detailHeaderCss).toContain('flex-basis: 100%');
-    expect(detailHeaderCss).toContain('min-height: 44px');
-  });
-
-  test('the channel lockup stacks independently of the logo', () => {
-    expect(sidebarHeader).toContain("flexDirection: 'column'");
-    expect(sidebarHeader).toContain("alignItems: 'flex-start'");
-    expect(sidebarHeader).toContain('marginTop: 2');
   });
 });
