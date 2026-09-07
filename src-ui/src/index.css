@@ -915,28 +915,46 @@ button:hover {
  * the component stamps from it, so the number a surface gets is the kind its
  * author named rather than whatever its feature stylesheet happened to say.
  *
- * The `!important` is load-bearing, measured rather than assumed: stripping
- * it from these three declarations and reading the computed layer in Chromium
- * drops four overlays from 10000 to 1000/35/30/20, below both `--layer-dock`
- * (9200) and `--layer-notification` (9400).
+ * The `!important` is load-bearing. Method, because the outcome alone does not
+ * establish the cause: for each overlay below, the computed z-index is read in
+ * Chromium twice — once as declared, once with `!important` stripped from
+ * these three declarations only — AND once on the feature class ALONE. That
+ * third reading is what discriminates. Without it, "unaffected by
+ * `!important`" is equally well explained by the feature rule never applying
+ * at that viewport, which is exactly the trap the last entry sits in.
  *
- * SIX overlays that carry this class set a z-index of their own below the
- * dock, and the `!important` arbitrates FIVE of them:
+ * SIX overlays that carry this class set a z-index of their own below the dock
+ * (`--layer-dock` 9200; `--layer-notification` 9400). The `!important`
+ * arbitrates FIVE:
  *
- *   .tool-call-batch-sheet__overlay  1000   later in the entry sheet
- *   .delegation-launcher__overlay      35   later in the entry sheet
- *   .command-launcher__overlay         30   later in the entry sheet
- *   .active-work-frame__overlay        20   later in the entry sheet
- *   .drill-down-overlay              1000   lazy chunk, appended after it
+ *   selector                          alone   +class   stripped
+ *   .tool-call-batch-sheet__overlay    1000    10000       1000
+ *   .delegation-launcher__overlay        35    10000         35
+ *   .command-launcher__overlay           30    10000         30
+ *   .active-work-frame__overlay          20    10000         20
+ *   .drill-down-overlay                1000    10000       1000
+ *
+ * The first four are later than this rule in the built entry stylesheet
+ * (measured: +24 to +55 KB past it) at equal specificity — single class
+ * against single class — so without `!important` source order hands them the
+ * feature value. `.drill-down-overlay` is not in the entry sheet at all; it
+ * rides a lazily loaded chunk, and the reading above composes that chunk
+ * AFTER the entry sheet, which is the order a dynamic import produces. That
+ * ordering is the condition for its row, so it is stated rather than implied.
  *
  * Every surface portals to the body now, so one reading its feature value
  * would land behind the dock entirely rather than being clamped by it.
  *
- * The sixth, `.mobile-task-switcher__overlay` (70), is unaffected either way
- * and is the exception to the mechanism above: its rule sits ~68 KB EARLIER
- * than this one in the built entry stylesheet, so at equal specificity this
- * rule already wins on source order. Order, not `!important`, decides that
- * one — do not cite it as justification for these declarations.
+ * The sixth, `.mobile-task-switcher__overlay`, is UNAFFECTED either way, and
+ * its cause is source order rather than `!important` — which took the third
+ * reading to establish. Its `z-index: 70` lives inside the mobile breakpoint
+ * (`@media (max-width: 768px), (max-height: 540px) and (pointer: coarse)`), so
+ * at a desktop viewport it does not apply at all and any conclusion drawn
+ * there is about a rule that was never in the cascade. Measured at 390x844,
+ * where it IS live: alone it computes 70, so the rule applies; with this class
+ * it computes 10000 both as declared and with `!important` stripped. Its rule
+ * sits ~68 KB EARLIER than this one, so at equal specificity this rule already
+ * wins on order. Do not cite it as justification for these declarations.
  *
  * One overlay, `.plugins__confirm-overlay`, asks for `--layer-dialog + 1` to
  * cover a sibling dialog. The `!important` already defeated that before the

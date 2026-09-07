@@ -51,8 +51,13 @@ type InitialFocusPolicy = 'always' | 'desktop' | 'panel';
  * - `CommandLauncher` and `ActiveWorkContextFrame` do NOT portal. They mount
  *   inside the dock, so the dialog layer they take is clamped by the dock's
  *   stacking context exactly as #1638 describes, and a notice covers them.
- *   Measured, not inferred. Pre-existing and untouched by this change —
- *   filed as #1684 rather than folded in here.
+ *   The mount point is established as the CAUSE rather than assumed: all four
+ *   were measured with identical markup, identical CSS and a marker at the
+ *   notice layer, varying only where the overlay mounts — the two inside the
+ *   dock hit the marker, the two outside hit their own control. Varying one
+ *   thing in both directions is what rules out the alternative that they are
+ *   covered for some reason of their own. Pre-existing and untouched by this
+ *   change — filed as #1684 rather than folded in here.
  *
  * #1686 proposes closing the boundary structurally, with a static gate that
  * only the shared surface may apply this class in markup and these four as
