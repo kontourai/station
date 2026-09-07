@@ -803,7 +803,7 @@ export class SkillService {
     // level up: a plugin names its own directories, so a refusal could be made
     // to read as a session-expiry notice pointing at another domain, from a
     // bland frontmatter name alone. `detail` is prose Station owns; the path
-    // travels in `directory`, and surfaces render it as a path.
+    // travels in `packageDirectory`, and surfaces render it as a path.
     //
     // A SOURCE serves this one in place; no directory Station owns holds it.
     // Named apart from the root failure below because it has a different
@@ -814,14 +814,14 @@ export class SkillService {
         reason: 'served-in-place',
         detail:
           'A plugin serves it in place, from a directory Station does not own.',
-        directory,
+        packageDirectory: directory,
       };
     }
     if (this.canonicalSourceFor(registered.location)) {
       return {
         reason: 'canonical-package',
         detail: 'It is served from a package that ships read-only.',
-        directory,
+        packageDirectory: directory,
       };
     }
     // `resolveSkillDir` refuses a name that cannot become a path at all, and
@@ -835,6 +835,12 @@ export class SkillService {
     // guidance to whoever is looking at the editor (review medium). The
     // exception is logged; it is never concatenated into a field documented for
     // display.
+    //
+    // What fails here is resolving the WRITE TARGET. The package's own
+    // directory is already in hand above and is reported like anywhere else: an
+    // earlier draft withheld it and told the reader to rename the package,
+    // which is not an instruction anyone can follow without knowing which
+    // package (review medium).
     let writableDirectory: string;
     try {
       writableDirectory = this.resolveSkillDir(
@@ -854,7 +860,8 @@ export class SkillService {
       return {
         reason: 'unresolvable-name',
         detail:
-          'Its name cannot be used as a directory name, so Station cannot locate a package of its own to write.',
+          'Its name cannot be used as a directory name, so Station cannot work out where it would write this package.',
+        packageDirectory: directory,
       };
     }
     if (directory !== writableDirectory) {
@@ -862,7 +869,7 @@ export class SkillService {
         reason: 'outside-writable-root',
         detail:
           'It is served from a directory that is not a skills root Station writes.',
-        directory,
+        packageDirectory: directory,
       };
     }
     return undefined;
@@ -900,11 +907,21 @@ export class SkillService {
    * parameter a future caller could thread into the write gate, which is
    * exactly how the round-one defect happened.
    *
-   * MEASURED after deleting it, so the cost claim is this tree's and not an
-   * inherited one: a 100-package home lists in 5.0ms median (4.7 min, 6.0 max,
-   * 20 runs after 5 warm-ups), the whole call. The memo's own docblock used to
-   * put the writability portion alone at ~8.3ms, which is the number to
-   * distrust — nothing here is hotter than the hoist it describes.
+   * MEASURED after deleting it, and stated PER ROW because that is the durable
+   * fact: 36-50us per row, WARM (25 runs after 5 warm-ups, median), and linear
+   * — per-row cost held within a few percent across 50, 100 and 200 rows, so
+   * the total is just that times the row count.
+   *
+   * The root the packages sit in moves it by about a third, and the direction is
+   * worth recording because it is not the one the mechanism suggests: rows in
+   * the WRITABLE root measured slower (44-50us) than rows outside it (36-37us),
+   * though both reach `resolveSkillDir`. Not chased further — the number is a
+   * scale check, not a budget.
+   *
+   * A bare total is what NOT to write here. The memo's own docblock claimed
+   * ~8.3ms for the writability portion with no fixture, no row count and no
+   * cache state named, and a "5ms for 100 packages" replacement repeats the
+   * defect at a different magnitude.
    *
    * NOTE the slug: this passes none, matching the route's gate.
    * `updateLocalSkillOwned` DOES pass one to `isSkillWritable`, so the two

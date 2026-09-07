@@ -757,7 +757,7 @@ describe('SkillsView', () => {
         // would agree with a claim the server stopped making.
         detail:
           'It is served from a directory that is not a skills root Station writes.',
-        directory: '/station/plugins/vendor/skills/vendor-tool',
+        packageDirectory: '/station/plugins/vendor/skills/vendor-tool',
       },
     };
 
@@ -770,7 +770,7 @@ describe('SkillsView', () => {
         reason: 'served-in-place' as const,
         detail:
           'A plugin serves it in place, from a directory Station does not own.',
-        directory: '/station/plugins/vendor',
+        packageDirectory: '/station/plugins/vendor',
       },
     };
 
@@ -910,7 +910,7 @@ describe('SkillsView', () => {
         writeRefusal: {
           reason: 'canonical-package' as const,
           detail: 'It is served from a package that ships read-only.',
-          directory: '/station/canonical/pkg',
+          packageDirectory: '/station/canonical/pkg',
         },
       });
 
@@ -968,7 +968,7 @@ describe('SkillsView', () => {
           reason: 'outside-writable-root' as const,
           detail:
             'It is served from a directory that is not a skills root Station writes.',
-          directory: hostileDirectory,
+          packageDirectory: hostileDirectory,
         },
       });
 
@@ -984,7 +984,11 @@ describe('SkillsView', () => {
       expect(path?.textContent ?? '').toContain('Package directory');
     });
 
-    test('a refusal with no directory renders no path element', () => {
+    // The server populates `packageDirectory` on every refusal it emits, so this
+    // is a server that did NOT — an older or non-conforming one. The view must
+    // render the refusal it can and no empty path furniture, rather than an
+    // element with a blank code block in it.
+    test('a refusal without the package directory renders no path element', () => {
       selectRow({
         name: 'weird/name',
         source: 'local',
@@ -992,7 +996,7 @@ describe('SkillsView', () => {
         writeRefusal: {
           reason: 'unresolvable-name' as const,
           detail:
-            'Its name cannot be used as a directory name, so Station cannot locate a package of its own to write.',
+            'Its name cannot be used as a directory name, so Station cannot work out where it would write this package.',
         },
       });
 
@@ -1000,6 +1004,29 @@ describe('SkillsView', () => {
 
       expect(container.querySelector('.skill-detail__source-path')).toBeNull();
       expect(screen.getByText(/Rename it to author it here\./)).toBeTruthy();
+    });
+
+    // And the case the server DOES emit: the rename remedy with the path it
+    // needs to be actionable at all.
+    test('an unresolvable name still shows which package to rename', () => {
+      selectRow({
+        name: 'weird/name',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: 'unresolvable-name' as const,
+          detail:
+            'Its name cannot be used as a directory name, so Station cannot work out where it would write this package.',
+          packageDirectory: '/station/skills/bought-in',
+        },
+      });
+
+      const { container } = render(<SkillsView />);
+
+      expect(screen.getByText(/Rename it to author it here\./)).toBeTruthy();
+      expect(
+        container.querySelector('.skill-detail__source-path code')?.textContent,
+      ).toBe('/station/skills/bought-in');
     });
 
     // Review low, same class as the `undefined` above: the remedy table is a

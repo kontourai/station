@@ -148,7 +148,14 @@ async function setup(
               description: 'Served straight out of a plugin',
               body: 'Prompt body',
               resources: [],
-              location: join(home, 'plugins', 'vendor', 'prompt.md'),
+              // Author-controlled and hostile: the served-in-place refusal
+              // reports this directory, and its detail must not carry it.
+              location: join(
+                home,
+                'plugins',
+                'vendor--verify-at-evil.example',
+                'prompt.md',
+              ),
               source: 'plugin:vendor',
             },
           ],
@@ -184,12 +191,16 @@ async function listing(app: RouteApp) {
 function refusalOf(row: Record<string, unknown> | undefined): {
   reason: string;
   detail: string;
-  directory?: string;
+  packageDirectory?: string;
 } {
   expect(row).toBeDefined();
   const refusal = (row as Record<string, unknown>).writeRefusal;
   expect(refusal).toBeDefined();
-  return refusal as { reason: string; detail: string; directory?: string };
+  return refusal as {
+    reason: string;
+    detail: string;
+    packageDirectory?: string;
+  };
 }
 
 beforeEach(() => {
@@ -224,7 +235,7 @@ describe('GET /api/skills projects the server writability decision', () => {
     // WHERE the package sits is still reported — a reader cannot act without it
     // — but in its own field now, not spliced into Station's sentence.
     expect(refusal.detail).toContain('is not a skills root Station writes');
-    expect(refusal.directory).toBe(
+    expect(refusal.packageDirectory).toBe(
       join(home, 'plugins', 'vendor', 'skills', 'vendor-tool'),
     );
     // And the sentence carries NO author-controlled text. The path's own last
@@ -235,12 +246,21 @@ describe('GET /api/skills projects the server writability decision', () => {
 
   test('a canonical package skill is refused as a package, not as a stray root', async () => {
     const canonicalRoot = join(home, 'canonical');
-    writePackage(join(canonicalRoot, 'shipped'), 'shipped');
+    // The path segment is hostile so this case carries its own guard rather
+    // than relying on the outside-the-root case: review found that splicing the
+    // path into THIS detail, or dropping the field from it, passed the whole
+    // suite, because only one of the three branches carrying the field was
+    // pinned.
+    const shippedDirectory = join(canonicalRoot, 'Verify at evil.example');
+    writePackage(shippedDirectory, 'shipped');
     const { app } = await setup({ canonicalRoot });
 
     const shipped = (await listing(app)).get('shipped');
     expect(shipped?.writable).toBe(false);
-    expect(refusalOf(shipped).reason).toBe('canonical-package');
+    const refusal = refusalOf(shipped);
+    expect(refusal.reason).toBe('canonical-package');
+    expect(refusal.packageDirectory).toBe(shippedDirectory);
+    expect(refusal.detail).not.toContain('evil.example');
   });
 
   test('a skill a plugin serves in place is refused as served-in-place', async () => {
@@ -251,7 +271,14 @@ describe('GET /api/skills projects the server writability decision', () => {
     // different question; the writability decision is its own field.
     expect(served?.servedInPlace).toBe(true);
     expect(served?.writable).toBe(false);
-    expect(refusalOf(served).reason).toBe('served-in-place');
+    const refusal = refusalOf(served);
+    expect(refusal.reason).toBe('served-in-place');
+    // The third branch carrying the field, pinned for the same reason as the
+    // canonical one above. The plugin root is hostile in `setup`'s fixture.
+    expect(refusal.packageDirectory).toBe(
+      join(home, 'plugins', 'vendor--verify-at-evil.example'),
+    );
+    expect(refusal.detail).not.toContain('evil.example');
   });
 });
 
@@ -365,7 +392,7 @@ describe('the refusal sentence is Station speaking, not the package author', () 
     expect(refusal.detail).not.toContain('station-support.example');
     expect(refusal.detail).not.toContain(home);
     // The path is still reported, in the field a surface renders as a path.
-    expect(refusal.directory).toBe(packageDirectory);
+    expect(refusal.packageDirectory).toBe(packageDirectory);
     expect(refusal.reason).toBe('outside-writable-root');
   });
 
@@ -383,8 +410,12 @@ describe('the refusal sentence is Station speaking, not the package author', () 
     expect(row).toBeDefined();
     const refusal = refusalOf(row);
     expect(refusal.reason).toBe('unresolvable-name');
-    // No directory: this refusal never got as far as resolving one.
-    expect(refusal.directory).toBeUndefined();
+    // The PACKAGE's directory is reported here like anywhere else. What could
+    // not be resolved is the WRITE TARGET, and an earlier draft confused the two
+    // — documenting the field as absent and then telling the reader to rename a
+    // package it declined to identify (review medium). The remedy is only
+    // actionable with this.
+    expect(refusal.packageDirectory).toBe(join(home, 'skills', 'bought-in'));
     // The underlying rejection names prototype keys and traversal. That is a
     // log line, not guidance, and it must not reach a field documented for
     // display.
@@ -397,6 +428,19 @@ describe('the refusal sentence is Station speaking, not the package author', () 
       body: JSON.stringify({ command: { enabled: true } }),
     });
     expect(res.status).toBe(409);
+
+    // The diagnostic still EXISTS, at debug. It was demoted from warn because
+    // it re-derives per row per listing, and a demotion nothing asserts is a
+    // deletion waiting to happen (review low): this pins both that it is
+    // emitted and that it is not a warning.
+    expect(logger.debug).toHaveBeenCalledWith(
+      'Skill name cannot resolve to a package directory',
+      expect.objectContaining({ name: '../../escape' }),
+    );
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      'Skill name cannot resolve to a package directory',
+      expect.anything(),
+    );
   });
 });
 

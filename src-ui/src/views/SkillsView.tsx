@@ -647,12 +647,14 @@ export function SkillsView({
                             read as a session-expiry notice pointing the reader
                             at another domain (#1655 review low). React escapes
                             markup; framing was the whole attack. */}
-                        {selected?.writeRefusal?.directory && (
+                        {selected?.writeRefusal?.packageDirectory && (
                           <p className="skill-detail__source-path">
                             <span className="skill-detail__source-path-label">
                               Package directory
                             </span>
-                            <code>{selected.writeRefusal.directory}</code>
+                            <code>
+                              {selected.writeRefusal.packageDirectory}
+                            </code>
                           </p>
                         )}
                       </>

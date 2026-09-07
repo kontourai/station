@@ -191,9 +191,13 @@ export type SkillWriteRefusalReason =
   /** Its package sits in some other root, which Station does not write. */
   | 'outside-writable-root'
   /**
-   * Its name cannot become a directory name, so there is no package of its own
-   * to write. Discovery registers a frontmatter `name` unvalidated, so this is
-   * reachable; the remedy is a rename, not an install.
+   * Its name cannot become a directory NAME, so Station cannot work out where
+   * it would write this package. Discovery registers a frontmatter `name`
+   * unvalidated, so this is reachable; the remedy is a rename, not an install.
+   *
+   * What could not be resolved is the WRITE TARGET. The package itself was
+   * discovered and its directory is known, so `packageDirectory` is populated
+   * here like anywhere else — a rename is not actionable without it.
    */
   | 'unresolvable-name';
 
@@ -214,14 +218,23 @@ export interface SkillWriteRefusal {
    * name and hostile prose one level up in the path.
    *
    * Where the package sits is a fact a reader needs, so it is carried in
-   * `directory` and rendered as its own element. What to DO about the refusal
+   * `packageDirectory` and rendered as its own element. What to DO about the refusal
    * belongs to `reason` — the remedies genuinely differ — so a reader switches
    * on the code for the remedy and renders this for the description.
    */
   detail: string;
   /**
-   * WHERE the package sits, when Station resolved one — absent for a refusal
-   * that never got as far as a directory (`unresolvable-name`).
+   * WHERE THE PACKAGE SITS — the directory the refused package was discovered
+   * in. Named for the package on purpose: a refusal involves two directories,
+   * this one and the place Station would have written instead, and a bare
+   * `directory` reads just as easily as the latter.
+   *
+   * Present for every refusal the rule currently produces, because the rule
+   * answers "writable" outright when no package was discovered, so a refusal
+   * always has a discovered location behind it. It stays OPTIONAL rather than
+   * required only because the rule itself is being widened in a sibling change
+   * (#1619) and a reader must not be forced to fabricate a path if some future
+   * reason has none. Do not read the optionality as a case that exists today.
    *
    * AUTHOR-CONTROLLED, every segment of it: a plugin chooses its directory
    * names and the last segment is usually the skill's own name. Surfaces must
@@ -229,7 +242,7 @@ export interface SkillWriteRefusal {
    * splice it into `detail`'s sentence, because text that borrows the grammar
    * of Station's explanation is read as Station speaking.
    */
-  directory?: string;
+  packageDirectory?: string;
 }
 
 export interface Skill extends RegistryItem {
