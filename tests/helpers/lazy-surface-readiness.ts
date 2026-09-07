@@ -210,6 +210,39 @@ export async function countVisibleLazyBoundaryErrors(
 }
 
 /**
+ * The first VISIBLE match across every candidate, filtering rather than sampling
+ * index zero.
+ *
+ * `locator.first()` picks the first match in document order and says nothing
+ * about whether it is visible, so a hidden earlier match masks a visible later
+ * one. Wherever a read DECIDES an outcome, that masking produces a sentence
+ * contradicting the page — the failure both of these waits exist to remove — so
+ * every deciding read in both adapters goes through here instead.
+ *
+ * SHARED rather than written twice. `route-view-readiness.ts` already imports
+ * this module for `LAZY_BOUNDARY_ERROR_SELECTOR`, and two copies of one
+ * filtering rule is how two adapters come to disagree about what "visible"
+ * means — the divergence this branch's own subject matter argues against.
+ *
+ * NOT for every `.first()`. The union pre-waits in both adapters sample index
+ * zero too, and stay that way deliberately: a masked union costs the budget and
+ * never a wrong sentence, and replacing an event-driven wait with a filtered
+ * poll would reintroduce the spin the lazy adapter's ternary exists to prevent.
+ * Presence questions (`anyPresent`) are not visibility questions and do not
+ * belong here either. Each of those is documented where it sits.
+ */
+export async function firstVisibleMatch(
+  locators: Locator[],
+): Promise<Locator | undefined> {
+  for (const locator of locators) {
+    for (const candidate of await locator.all()) {
+      if (await candidate.isVisible()) return candidate;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Browser adapter. Never clicks: the boundary's failure offers Retry and Reload,
  * and taking either would turn a reportable failure into a silent second attempt.
  */
@@ -232,8 +265,15 @@ export async function waitForLazySurface(
   // Surface first: a boundary elsewhere on the page can be in its failure state
   // while this surface mounted perfectly well, and this wait is only about this
   // surface. Then only a NEW failure counts — see `baselineUnavailableCount`.
+  //
+  // Both reads here are visibility decisions and neither samples index zero. The
+  // surface goes through `firstVisibleMatch`; the failure count goes through
+  // `countVisibleLazyBoundaryErrors`, which tests every match rather than the
+  // first. A `surface.first()` here masked a visible surface behind a hidden
+  // earlier match and reported the timeout sentence — "its lazy chunk neither
+  // resolved nor reported a failure" — with the surface on screen.
   const classifySettled = async (): Promise<SettledLazySurfaceScreen> => {
-    if (await surface.first().isVisible()) return 'ready';
+    if (await firstVisibleMatch([surface])) return 'ready';
     if ((await newUnavailableCount()) > 0) return 'unavailable';
     return 'pending';
   };
@@ -279,7 +319,14 @@ export async function waitForLazySurface(
         // across the interaction, so say that — and say how many were already up,
         // because a reader who sees a non-zero baseline should know this page had
         // other broken surfaces before we touched it.
-        const text = (await unavailable.first().innerText())
+        // Quote a VISIBLE failure, not index zero. `unavailable` is page-wide,
+        // so `.first()` could quote a HIDDEN boundary's words inside a sentence
+        // attributing one that APPEARED. That is invisible today only because
+        // every boundary renders the same constant string; #1712 is the change
+        // that would give the text identity, and this is the read that would
+        // then be quoting the wrong component by name.
+        const visibleFailure = await firstVisibleMatch([unavailable]);
+        const text = ((await visibleFailure?.innerText()) ?? '')
           .trim()
           .slice(0, 200);
         return (
@@ -291,15 +338,18 @@ export async function waitForLazySurface(
       },
       baselineDetail: async () => {
         if (baselineUnavailableCount < 1) return undefined;
-        // The sentence this trade was made to be able to say. On the timeout
-        // path the message above reports that no failure was seen, while these
-        // failures are visibly rendered on the page — they were simply not
-        // attributable to this surface. Naming them is what keeps "I could not
-        // tell" from reading as "nothing was wrong".
+        // The sentence this trade was made to be able to say, stated to exactly
+        // what the count establishes and no further. This number was captured
+        // BEFORE the interaction and is never re-read, so it cannot claim those
+        // failures are still on screen — the SAFE DIRECTION above is built on
+        // the case where one of them has cleared, which is precisely where such
+        // a claim would be false. What it can say is what was subtracted, that
+        // the subtraction holds for the whole wait, and that the subtraction is
+        // what makes the flat-count case unreadable.
         return (
-          `${baselineUnavailableCount} boundary failure(s) were already visible before this ` +
-          'interaction and are excluded from attribution, so a failure of this surface inside ' +
-          'that window cannot be told apart here from a chunk still in flight.'
+          `${baselineUnavailableCount} boundary failure(s) were visible before this interaction ` +
+          'and are excluded from attribution for the whole wait; if one of them cleared while ' +
+          "this surface's own boundary failed, the count stayed flat and this wait cannot tell."
         );
       },
       openStateDetail: async () => {

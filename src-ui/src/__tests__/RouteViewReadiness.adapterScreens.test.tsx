@@ -465,6 +465,86 @@ describe.skipIf(!chromiumAvailable)(
       }
     });
 
+    test('a visible surface between HIDDEN matches is still observed as ready', async () => {
+      const { page, close } = await pageWith(
+        '<div role="menu" aria-label="Chat actions" id="masking-first">Hidden first</div>' +
+          SHEET +
+          '<div role="menu" aria-label="Chat actions" id="masking-last">Hidden last</div>',
+        // Zero-size rather than `display: none`, and the distinction is the
+        // whole reachability question. `display: none` and `visibility: hidden`
+        // remove an element from the accessibility tree, so a `getByRole`
+        // locator — which is what both live call sites pass — would not match
+        // such a decoy at all and the masking could not arise. A zero-size
+        // element keeps its role and name while `isVisible()` reports false,
+        // which is the shape that IS reachable for the locators actually in use.
+        '#masking-first, #masking-last { width: 0; height: 0; overflow: hidden; }',
+      );
+      try {
+        const surface = page.getByRole('menu', { name: 'Chat actions' });
+        // The premise, asserted rather than assumed: three matches, the middle
+        // one the only visible one. If the role engine ever stopped matching
+        // zero-size elements this arrangement would silently stop testing
+        // anything, so it says so out loud first.
+        expect(await surface.count()).toBe(3);
+        expect(await surface.first().isVisible()).toBe(false);
+        expect(await surface.last().isVisible()).toBe(false);
+        expect(await surface.nth(1).isVisible()).toBe(true);
+
+        const observed = await waitForLazySurface(
+          page,
+          {
+            surfaceName: 'The fixture sheet',
+            surface,
+            baselineUnavailableCount: 0,
+          },
+          600,
+        );
+        expect(observed.screen).toBe('ready');
+      } finally {
+        await close();
+      }
+    });
+
+    test('the quoted failure text is a VISIBLE failure, not index zero', async () => {
+      const failure = await lazyBoundaryFailureMarkup();
+      // A decoy carrying DIFFERENT words, because otherwise this cannot be
+      // discriminated at all: every real boundary renders the same constant, so
+      // quoting index zero is unobservable today and becomes a wrong name the
+      // moment #1712 gives the failure an identity. The visible failure is the
+      // real component's markup; only the hidden decoy's text is synthetic, and
+      // it is synthetic precisely to stand in for the identity that does not
+      // exist yet.
+      const decoy = failure.replace(
+        'Unable to load this part of Station.',
+        'DECOY hidden boundary',
+      );
+      expect(decoy).toContain('DECOY hidden boundary');
+      const { page, close } = await pageWith(
+        decoy + failure,
+        '.lazy-boundary__error:first-of-type { display: none; }',
+      );
+      try {
+        // One visible failure, so it is attributable to this interaction.
+        expect(await countVisibleLazyBoundaryErrors(page)).toBe(1);
+
+        const observed = waitForLazySurface(
+          page,
+          {
+            surfaceName: 'The fixture sheet',
+            surface: page.getByRole('menu', { name: 'Chat actions' }),
+            baselineUnavailableCount: 0,
+          },
+          400,
+        );
+        await expect(observed).rejects.toThrow(
+          /appeared across this interaction, reading "Unable to load this part of Station\./s,
+        );
+        await expect(observed).rejects.not.toThrow(/DECOY/);
+      } finally {
+        await close();
+      }
+    });
+
     test('a boundary failure that APPEARED is reported as this surface unavailable', async () => {
       const failure = await lazyBoundaryFailureMarkup();
       const { page, close } = await pageWith(failure);
@@ -521,10 +601,22 @@ describe.skipIf(!chromiumAvailable)(
         // AND it waited rather than SPUN, which the duration above cannot tell.
         // With the boundary back in the settled union, the old error resolves it
         // instantly on every pass, each pass re-reads the count, and the loop
-        // burns the budget re-entering. Correct behaviour reaches `page.locator`
-        // a handful of times: the union's construction, and one classification
-        // on the way out.
-        expect(locatorCalls() - callsBefore).toBeLessThanOrEqual(8);
+        // burns the budget re-entering.
+        //
+        // Correct behaviour reaches `page.locator` exactly TWICE, and it is
+        // worth naming which two, because the union is not one of them: with a
+        // baseline the union IS `surface`, which the caller built. Call one is
+        // the unconditional `const unavailable = page.locator(...)` the adapter
+        // constructs and, on this branch, discards. Call two is the single
+        // `countVisibleLazyBoundaryErrors` in the one classification on the way
+        // out.
+        //
+        // Pinned exactly rather than bounded: `toBeLessThanOrEqual` passes for 0
+        // and 1 as readily as for 2, so a change that short-circuited
+        // `classifySettled` before `newUnavailableCount()` would drop the count
+        // and leave this green while measuring nothing. A spin is around 330 on
+        // this host — load-dependent, and two orders away from either number.
+        expect(locatorCalls() - callsBefore).toBe(2);
 
         // And the sentence names what it declined to attribute. Without this the
         // message says no failure was seen while a rendered boundary failure is
@@ -541,7 +633,7 @@ describe.skipIf(!chromiumAvailable)(
             300,
           ),
         ).rejects.toThrow(
-          /1 boundary failure\(s\) were already visible before this interaction and are excluded from attribution/,
+          /1 boundary failure\(s\) were visible before this interaction and are excluded from attribution for the whole wait; if one of them cleared while this surface's own boundary failed, the count stayed flat and this wait cannot tell\./,
         );
       } finally {
         await close();
