@@ -908,30 +908,46 @@ button:hover {
 
 /* Shared modal/drawer geometry. Surfaces opt in without changing their desktop
    presentation; the mobile rule binds them to the visual viewport so the
-   software keyboard cannot push actions below the reachable screen. */
-.responsive-surface-overlay {
-  --responsive-visual-viewport-height: 100dvh;
-  --responsive-visual-viewport-top: 0px;
-}
-
-/* #1638/#1662: the layer is the `layer` prop every consumer of
+   software keyboard cannot push actions below the reachable screen.
+ *
+ * #1638/#1662: the layer below is the `layer` prop every consumer of
  * `ResponsiveDialogSurface` is REQUIRED to declare, keyed off the attribute
  * the component stamps from it, so the number a surface gets is the kind its
  * author named rather than whatever its feature stylesheet happened to say.
  *
- * The `!important` still arbitrates and is not decoration: NINE feature
- * overlays set a z-index of their own and six resolve BELOW the dock
- * (`.tool-call-batch-sheet__overlay` and `.drill-down-overlay` to 1000,
- * `.mobile-task-switcher__overlay` 70, `.delegation-launcher__overlay` 35,
- * `.command-launcher__overlay` 30, `.active-work-frame__overlay` 20). Every
- * surface portals to the body now, so a surface reading its feature value
- * would land behind the dock entirely rather than being clamped by it. The
- * other two (`.new-project-layout-browser__overlay`,
- * `.plugins__confirm-overlay`) ask for `--layer-dialog + 1` to cover a
- * sibling dialog; this already defeated them before the portal, so they are
- * inert now exactly as they were then — a stacked confirm resolves against
- * its sibling by DOM order, which is what it already did. */
+ * The `!important` is load-bearing, measured rather than assumed: stripping
+ * it from these three declarations and reading the computed layer in Chromium
+ * drops four overlays from 10000 to 1000/35/30/20, below both `--layer-dock`
+ * (9200) and `--layer-notification` (9400).
+ *
+ * SIX overlays that carry this class set a z-index of their own below the
+ * dock, and the `!important` arbitrates FIVE of them:
+ *
+ *   .tool-call-batch-sheet__overlay  1000   later in the entry sheet
+ *   .delegation-launcher__overlay      35   later in the entry sheet
+ *   .command-launcher__overlay         30   later in the entry sheet
+ *   .active-work-frame__overlay        20   later in the entry sheet
+ *   .drill-down-overlay              1000   lazy chunk, appended after it
+ *
+ * Every surface portals to the body now, so one reading its feature value
+ * would land behind the dock entirely rather than being clamped by it.
+ *
+ * The sixth, `.mobile-task-switcher__overlay` (70), is unaffected either way
+ * and is the exception to the mechanism above: its rule sits ~68 KB EARLIER
+ * than this one in the built entry stylesheet, so at equal specificity this
+ * rule already wins on source order. Order, not `!important`, decides that
+ * one — do not cite it as justification for these declarations.
+ *
+ * One overlay, `.plugins__confirm-overlay`, asks for `--layer-dialog + 1` to
+ * cover a sibling dialog. The `!important` already defeated that before the
+ * portal, so it is inert now exactly as it was then — a stacked confirm
+ * resolves against its sibling by DOM order, which is what it already did.
+ *
+ * The remaining overlays that carry this class declare `--layer-dialog`
+ * itself, so there is nothing to arbitrate. */
 .responsive-surface-overlay {
+  --responsive-visual-viewport-height: 100dvh;
+  --responsive-visual-viewport-top: 0px;
   z-index: var(--layer-dialog) !important;
 }
 

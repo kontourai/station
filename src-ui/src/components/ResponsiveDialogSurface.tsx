@@ -37,6 +37,22 @@ type InitialFocusPolicy = 'always' | 'desktop' | 'panel';
  *                `NotificationContainer.css` states that only dialogs and
  *                system blockers supersede a notification.
  * - `system`   — an explicit system blocker; supersedes everything.
+ *
+ * THE BOUNDARY OF THAT GUARANTEE, because a required prop can only bind the
+ * callers that pass props. It covers consumers of THIS component. Four
+ * hand-rolled overlays in the dock apply `responsive-surface-overlay` as a
+ * literal class string instead, so they take `--layer-dialog` from the bare
+ * rule in `index.css` without declaring anything, and no compile-time check
+ * could ever have reached them. They split two ways, which matters:
+ *
+ * - `DelegationLauncher` (#1180) and `MobileTaskSwitcher` portal themselves,
+ *   so they already escape the dock and the free dialog layer is true for
+ *   them.
+ * - `CommandLauncher` and `ActiveWorkContextFrame` do NOT portal. They mount
+ *   inside the dock, so the dialog layer they take is clamped by the dock's
+ *   stacking context exactly as #1638 describes, and a notice covers them.
+ *   Measured, not inferred. Pre-existing and untouched by this change —
+ *   filed separately rather than folded in here.
  */
 type ResponsiveSurfaceLayer = 'dialog' | 'popover' | 'system';
 type DialogHistoryMode = 'entry' | 'route' | 'none';

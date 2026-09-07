@@ -82,7 +82,32 @@
      and system blockers still supersede both surfaces". A scrim-less popover
      is neither of those, so it sits above the dock and below every layer the
      shell keeps persistently over the dock: the floating action, navigation,
-     notifications, the palette and dialogs. */
+     notifications, the palette and dialogs.
+
+     WHAT THIS REVERSES, stated because it is a deliberate contract and not an
+     oversight. `BannerHost.css` puts the notice host — and under #920, a
+     blocking pairing/credential card's own item and cap — at
+     `calc(var(--layer-dock) + 1)`, i.e. 9201, expressly so that ONLY a
+     critical card crosses the dock layer. 9250 is above 9201, so an open
+     popover covers a critical card's control: measured on a phone viewport,
+     reachable on `origin/main`, unreachable here.
+
+     ACCEPTED, with the reasoning rather than an assertion. This occlusion is
+     user-initiated and dismissible, which is categorically different from the
+     click theft #1638 reports: there the user aims at a visible control and
+     something else receives the click, with no way to tell; here the user
+     opened the surface that covers it and closing it restores the card. That
+     is one extra interaction, not a lockout, and it is the right trade for
+     the ordinary popover case.
+
+     THE CONSTRAINT is what makes this a fork rather than a free choice: the
+     banner sits at dock + 1, so there is no value between the dock and the
+     banner for a popover to occupy. Putting popovers under the banner means
+     moving the BANNER, which is a shell layer-order decision wider than the
+     surface seam. Filed rather than decided here. The pin covers this
+     directly — see the popover-with-a-critical-card shape in
+     `BannerHost.dialog-stacking.test.tsx`, which asserts the accepted
+     behaviour, so a later change to it is a visible decision. */
   --layer-surface-popover: 9250;
   --layer-floating-action: 9300;
   --layer-navigation: 9350;
