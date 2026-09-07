@@ -133,33 +133,33 @@ async function installSkillFromRegistryOwned({
       }
       await rename(stagedSkillDir, skillDir);
 
+      // The best-effort half is the PROVIDER's metadata: a registry that
+      // cannot say what version it just served is not a failed install, and
+      // the package on disk is complete without it.
+      const items = await provider.listAvailable().catch(() => []);
+      const item = items.find((entry) => entry.id === name);
+      const version = item?.version ?? 'unknown';
+      const installedAt = new Date().toISOString();
       try {
-        const items = await provider.listAvailable().catch(() => []);
-        const item = items.find((entry) => entry.id === name);
-        const version = item?.version ?? 'unknown';
-        const installedAt = new Date().toISOString();
         await writeFile(
           join(skillDir, '.station-meta.json'),
-          JSON.stringify(
-            {
-              version,
-              installedAt,
-              source: 'registry',
-            },
-            null,
-            2,
-          ),
+          JSON.stringify({ version, installedAt, source: 'registry' }, null, 2),
         );
-        await configLoader.saveSkillIn(skillDir, {
-          name,
-          description: item?.description,
-          source: 'registry',
-          installedAt,
-          version,
-          path: skillDir,
-          origin: 'registry',
-        });
       } catch {}
+      // The RECORD is not best-effort, and its writer now asserts containment
+      // (#1619). Swallowing that throw meant an install that wrote a package
+      // outside the roots — or could not write its record at all — returned
+      // success with no manifest behind it (delta review 3, L3). A failure
+      // here is the install's failure.
+      await configLoader.saveSkillIn(skillDir, {
+        name,
+        description: item?.description,
+        source: 'registry',
+        installedAt,
+        version,
+        path: skillDir,
+        origin: 'registry',
+      });
 
       await rediscover();
       return result;

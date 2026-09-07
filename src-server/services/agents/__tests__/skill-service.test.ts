@@ -1234,6 +1234,24 @@ describe('SkillService', () => {
     expect(existsSync(join(testDir, 'skills', 'scoped'))).toBe(false);
   });
 
+  // Delta review 3, L4. Discovery built the project root by hand instead of
+  // going through the builder, so the READ path took a slug every write path
+  // refuses — and a traversal slug made it scan outside the home entirely.
+  test('discovery refuses a slug no write path would accept', async () => {
+    await expect(service.discoverSkills(testDir, '..')).rejects.toThrow(
+      /Invalid project slug/,
+    );
+    await expect(service.discoverSkills(testDir, 'a/b')).rejects.toThrow(
+      /Invalid project slug/,
+    );
+    // …and an ordinary slug still scans its root.
+    seedProjectSkill('scanned');
+    await service.discoverSkills(testDir, 'demo');
+    expect(service.listSkills().map((skill) => skill.name)).toContain(
+      'scanned',
+    );
+  });
+
   // #1619. `discoverSkills` clears the registry and re-scans exactly the roots
   // its arguments name. Every write re-discovered with the CALLER's slug, which
   // is `undefined` from every route, so any PUT dropped the project root and

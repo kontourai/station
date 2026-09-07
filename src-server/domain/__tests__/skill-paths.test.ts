@@ -1,5 +1,7 @@
 import {
+  chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
@@ -19,6 +21,29 @@ import {
 
 let home: string;
 let outside: string;
+
+/**
+ * Can this process be denied by mode 000? Root cannot, and some CI images run
+ * as root — there the permission fixture below denies nothing, so the case is
+ * skipped rather than passing for a reason that is not the one it names.
+ */
+function canDenyAccess(): boolean {
+  const probe = mkdtempSync(join(tmpdir(), 'skill-paths-probe-'));
+  try {
+    mkdirSync(join(probe, 'child'), { recursive: true });
+    chmodSync(probe, 0o000);
+    try {
+      lstatSync(join(probe, 'child'));
+      return false;
+    } catch {
+      return true;
+    } finally {
+      chmodSync(probe, 0o700);
+    }
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+}
 
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'skill-paths-'));
@@ -105,10 +130,14 @@ describe('resolveSkillDirectory refuses a symlinked-out skill directory', () => 
   });
 
   // Delta review F3, at the seam where the containment answer is the WHOLE
-  // answer: `resolveSkillDirectory` has no shape check to refuse first, so a
-  // root that exists and cannot be resolved reaches the containment predicate
-  // directly. Treating "cannot be resolved" as "does not exist yet" accepted
-  // it, and this is the name-derived writer every create and install uses.
+  // answer. `resolveSkillDirectory` is the only caller that ever hands this
+  // predicate an unresolvable ROOT — the package assertion resolves its root
+  // from a directory the registry found, and refuses a dangling one at the
+  // home-containment check on the CANDIDATE side long before the root is
+  // considered. That, not the shape check, is why removing the
+  // absent-versus-unreadable distinction is invisible there and visible here
+  // (delta review 3, L1). This is the name-derived writer every create and
+  // install uses.
   test('the write seam refuses a dangling skills root', () => {
     symlinkSync(join(outside, 'never-created'), join(home, 'skills'), 'dir');
 
@@ -272,6 +301,54 @@ describe('assertSkillPackageDirectory', () => {
     expect(() =>
       assertSkillPackageDirectory(home, 'alpha', join(home, 'skills', 'alpha')),
     ).toThrow();
+  });
+
+  // Delta review 3, M1. Catching every error made an unreadable component read
+  // as absent, so the walk climbed past it and both seams ACCEPTED a home whose
+  // permissions hid a live redirect out of the home — the very conflation the
+  // containment comment says must not happen. Only the same permission failure
+  // that hid the redirect stopped the write.
+  //
+  // Skipped where the process can read through mode 000 (running as root, as
+  // some CI images do), because there the fixture cannot deny anything and a
+  // green would prove nothing. The loop case below covers the same branch
+  // without depending on that.
+  test.skipIf(!canDenyAccess())(
+    'refuses a root whose ancestor cannot be read',
+    () => {
+      symlinkSync(outside, join(home, 'skills'), 'dir');
+      chmodSync(home, 0o000);
+      try {
+        expect(() =>
+          assertSkillPackageDirectory(
+            home,
+            'alpha',
+            join(home, 'skills', 'alpha'),
+          ),
+        ).toThrow();
+        expect(() => resolveSkillDirectory(home, 'alpha')).toThrow(
+          /resolves outside/,
+        );
+      } finally {
+        chmodSync(home, 0o700);
+      }
+    },
+  );
+
+  // The same branch without needing permissions: a component that exists and
+  // cannot be resolved. `lstat` succeeds on each link, so the walk stops here
+  // and the resolution fails — which must refuse, not accept.
+  test('refuses a skills root that is a symlink loop', () => {
+    symlinkSync(join(home, 'loop-b'), join(home, 'loop-a'), 'dir');
+    symlinkSync(join(home, 'loop-a'), join(home, 'loop-b'), 'dir');
+    symlinkSync(join(home, 'loop-a'), join(home, 'skills'), 'dir');
+
+    expect(() =>
+      assertSkillPackageDirectory(home, 'alpha', join(home, 'skills', 'alpha')),
+    ).toThrow();
+    expect(() => resolveSkillDirectory(home, 'alpha')).toThrow(
+      /resolves outside/,
+    );
   });
 
   test('refuses a package directory symlinked elsewhere inside the home', () => {

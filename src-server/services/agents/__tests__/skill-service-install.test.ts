@@ -132,6 +132,71 @@ describe('skill-service-install', () => {
     expect(existsSync(join(tempDir, 'skills', 'scoped-install'))).toBe(false);
   });
 
+  it('reports a failed record write instead of returning success', async () => {
+    // Delta review 3, L3. The record's writer asserts containment now (#1619),
+    // and its throw landed in an empty catch — so an install that could not
+    // write its record, or wrote a package outside the roots, returned success
+    // with no manifest behind it. The provider's own metadata stays
+    // best-effort; the record is not.
+    const saveSkillIn = vi
+      .fn()
+      .mockRejectedValue(new Error('containment refused'));
+    const provider = {
+      install: vi
+        .fn()
+        .mockImplementation(async (_name: string, targetDir: string) => {
+          mkdirSync(join(targetDir, 'deep-research'), { recursive: true });
+          writeFileSync(
+            join(targetDir, 'deep-research', 'SKILL.md'),
+            '# Research',
+          );
+          return { success: true, message: 'ok' };
+        }),
+      listAvailable: vi.fn().mockResolvedValue([]),
+    };
+
+    await expect(
+      installSkillFromRegistry({
+        name: 'deep-research',
+        projectHomeDir: tempDir,
+        configLoader: { saveSkillIn },
+        providers: [{ provider }] as any,
+        rediscover: vi.fn().mockResolvedValue(undefined),
+      }),
+    ).rejects.toThrow(/containment refused/);
+  });
+
+  it('still installs when the provider cannot say what it served', async () => {
+    // The other side of that line: the version metadata is genuinely
+    // best-effort, and a registry that cannot answer `listAvailable` is not a
+    // failed install.
+    const saveSkillIn = vi.fn().mockResolvedValue(undefined);
+    const provider = {
+      install: vi
+        .fn()
+        .mockImplementation(async (_name: string, targetDir: string) => {
+          mkdirSync(join(targetDir, 'quiet'), { recursive: true });
+          writeFileSync(join(targetDir, 'quiet', 'SKILL.md'), '# Quiet');
+          return { success: true, message: 'ok' };
+        }),
+      listAvailable: vi.fn().mockRejectedValue(new Error('registry offline')),
+    };
+
+    const result = await installSkillFromRegistry({
+      name: 'quiet',
+      projectHomeDir: tempDir,
+      configLoader: { saveSkillIn },
+      providers: [{ provider }] as any,
+      rediscover: vi.fn().mockResolvedValue(undefined),
+    });
+
+    expect(result.success).toBe(true);
+    expect(saveSkillIn).toHaveBeenCalledWith(
+      join(tempDir, 'skills', 'quiet'),
+      expect.objectContaining({ version: 'unknown' }),
+    );
+  });
+
   it('removes an installed skill directory and rediscoveries skills', async () => {
     const skillDir = join(tempDir, 'skills', 'deep-research');
     mkdirSync(skillDir, { recursive: true });

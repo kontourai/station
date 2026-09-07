@@ -73,6 +73,7 @@ import {
   readSkillVariables,
   resolveSkillDirectory,
   serializeSkillMarkdown,
+  skillsRootDir,
 } from './skill-metadata.js';
 import {
   expectedLocalSkillRevision,
@@ -399,7 +400,11 @@ export class SkillService {
       join(projectHomeDir, 'plugins'),
     ];
     if (projectSlug) {
-      dirs.unshift(join(projectHomeDir, 'projects', projectSlug, 'skills'));
+      // Through the BUILDER, which validates the slug (#1619, delta review 3
+      // L4). Building the same path by hand here meant the read path took a
+      // slug every write path refuses, so a traversal slug made discovery scan
+      // outside the home. A no-op for every valid slug.
+      dirs.unshift(skillsRootDir(projectHomeDir, projectSlug));
     }
 
     for (const dir of dirs) {

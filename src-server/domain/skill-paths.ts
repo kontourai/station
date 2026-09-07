@@ -138,9 +138,31 @@ function componentExists(candidate: string): boolean {
   try {
     lstatSync(candidate);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    // ONLY a missing path is absent. Catching every error made an unreadable
+    // or looping component read as "not there", so the walk climbed past it
+    // and the verdict was accept — while the comment in
+    // `isDirectoryPhysicallyWithin` promised the opposite ("I could not tell"
+    // must never read as "yes"). Constructed by the reviewer: a home at mode
+    // 000 holding a live symlink out of the home was accepted by both seams,
+    // and only the same permission failure that hid the redirect stopped the
+    // write. A present-but-unanswerable component is PRESENT, which makes the
+    // resolution below fail and the caller refuse (delta review 3, M1).
+    return !componentIsMissing(error);
   }
+}
+
+/**
+ * Is this error "there is nothing here", as opposed to "I cannot tell"?
+ *
+ * `ENOENT` is the path itself being absent; `ENOTDIR` is an ancestor that is
+ * not a directory, which makes everything below it absent for the same reason.
+ * Anything else — a permission denial, a symlink loop, an I/O error — means the
+ * component may well be there and this process cannot see it.
+ */
+function componentIsMissing(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return code === 'ENOENT' || code === 'ENOTDIR';
 }
 
 /**
