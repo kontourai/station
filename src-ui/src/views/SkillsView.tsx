@@ -72,6 +72,8 @@ const SKILL_WRITE_REMEDY: Record<SkillWriteRefusalReason, string> = {
   'unresolvable-name': 'Rename it to author it here.',
   'directory-name-mismatch':
     "Rename the directory, or the skill's own name, so the two match.",
+  'containment-unreadable':
+    'Check the path it sits at — a broken link or an unreadable folder is in the way.',
 };
 
 /**
@@ -79,8 +81,9 @@ const SKILL_WRITE_REMEDY: Record<SkillWriteRefusalReason, string> = {
  * chosen by the reason code.
  *
  * `reason` arrives over HTTP from a server that may be NEWER than this build —
- * this change itself adds a fourth reason code, so a desktop app on the
- * previous build meeting this server is the live case, not a hypothetical. Two
+ * this change itself adds reason codes the previous build does not know, so a
+ * desktop app on that build meeting this server is the live case, not a
+ * hypothetical. Two
  * ways an unrecognised code used to reach the reader as prose, both closed
  * here: a plain lookup rendered `undefined`, and a lookup for an INHERITED key
  * (`constructor`, `toString`) rendered JavaScript source — native-code strings

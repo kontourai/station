@@ -200,6 +200,16 @@ export type SkillWriteRefusalReason =
    */
   | 'directory-name-mismatch'
   /**
+   * Where a write to it would land could not be determined — a dangling link,
+   * an unreadable ancestor, a loop.
+   *
+   * Its own code because it is NOT "sits outside a writable root", and the
+   * remedy for that one is unfollowable here: the package may be sitting inside
+   * a root Station writes with a broken path, where installing it again repairs
+   * nothing. Station refuses because it cannot tell where the bytes would go.
+   */
+  | 'containment-unreadable'
+  /**
    * Its name cannot become a directory NAME, so Station cannot work out where
    * it would write this package. Discovery registers a frontmatter `name`
    * unvalidated, so this is reachable; the remedy is a rename, not an install.

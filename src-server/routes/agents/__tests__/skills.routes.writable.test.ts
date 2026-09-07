@@ -21,12 +21,14 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import type { ConfigLoader } from '../../../domain/config-loader.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   skillDiscoveries: { add: vi.fn() },
@@ -98,24 +100,31 @@ function seedFixtures() {
   );
 }
 
-const configLoader = {
+/**
+ * The subset of `ConfigLoader` the write path calls, TYPED — not `as never`.
+ *
+ * Review L6: an unconstrained cast is what let this stub drift. It predated
+ * `saveSkillIn`, so every write in the effect oracle threw AFTER `SKILL.md` was
+ * already on disk and the oracle's positive case passed on a half-completed
+ * write, with nothing on the type side to say so. Naming the members here makes
+ * a missing or misspelt one a compile error instead.
+ */
+type StubbedConfigLoader = Pick<
+  ConfigLoader,
+  | 'getProjectHomeDir'
+  | 'loadSkill'
+  | 'saveSkillIn'
+  | 'deleteSkillAt'
+  | 'listSkills'
+  | 'skillExists'
+>;
+
+const configLoader: StubbedConfigLoader = {
   getProjectHomeDir: () => home,
   loadSkill: vi.fn(async (name: string) => {
     const record = join(home, 'skills', name, 'skill.json');
     if (!existsSync(record)) throw new Error(`Skill '${name}' not found`);
     return JSON.parse(readFileSync(record, 'utf-8'));
-  }),
-  // Writes the record where the writer said it goes, as production does. The
-  // effect oracle below reads the filesystem back, so a stub that persisted
-  // nothing would make every write look like a refusal.
-  saveSkill: vi.fn(async (name: string, config: { path?: string }) => {
-    const directory = config.path ?? join(home, 'skills', name);
-    mkdirSync(directory, { recursive: true });
-    writeFileSync(
-      join(directory, 'skill.json'),
-      JSON.stringify(config, null, 2),
-      'utf-8',
-    );
   }),
   // The write path resolves the package's own directory and writes the record
   // THERE (#1619) rather than deriving a path from the name. Stubbing this is
@@ -129,7 +138,6 @@ const configLoader = {
       'utf-8',
     );
   }),
-  deleteSkill: vi.fn(),
   deleteSkillAt: vi.fn(),
   listSkills: vi.fn().mockResolvedValue([]),
   skillExists: vi.fn().mockResolvedValue(false),
@@ -143,40 +151,44 @@ async function setup(
     projectSlug?: string;
   } = {},
 ) {
-  const service = new SkillService(configLoader as never, logger, {
-    ...(options.canonicalRoot
-      ? {
-          canonicalSources: [
-            {
-              label: 'flow-agents' as const,
-              root: options.canonicalRoot,
-              version: '9.0.0',
-            },
-          ],
-        }
-      : {}),
-    ...(options.servedInPlace
-      ? {
-          pluginCommandSource: () => [
-            {
-              name: 'vendor-prompt',
-              description: 'Served straight out of a plugin',
-              body: 'Prompt body',
-              resources: [],
-              // Author-controlled and hostile: the served-in-place refusal
-              // reports this directory, and its detail must not carry it.
-              location: join(
-                home,
-                'plugins',
-                'vendor--verify-at-evil.example',
-                'prompt.md',
-              ),
-              source: 'plugin:vendor',
-            },
-          ],
-        }
-      : {}),
-  });
+  const service = new SkillService(
+    configLoader as unknown as ConfigLoader,
+    logger,
+    {
+      ...(options.canonicalRoot
+        ? {
+            canonicalSources: [
+              {
+                label: 'flow-agents' as const,
+                root: options.canonicalRoot,
+                version: '9.0.0',
+              },
+            ],
+          }
+        : {}),
+      ...(options.servedInPlace
+        ? {
+            pluginCommandSource: () => [
+              {
+                name: 'vendor-prompt',
+                description: 'Served straight out of a plugin',
+                body: 'Prompt body',
+                resources: [],
+                // Author-controlled and hostile: the served-in-place refusal
+                // reports this directory, and its detail must not carry it.
+                location: join(
+                  home,
+                  'plugins',
+                  'vendor--verify-at-evil.example',
+                  'prompt.md',
+                ),
+                source: 'plugin:vendor',
+              },
+            ],
+          }
+        : {}),
+    },
+  );
   // Discovery is scope-aware; the ROUTE is not. Passing a slug here and never
   // to the route is production's real shape, and it is what creates the
   // residual the last block below covers.
@@ -206,7 +218,10 @@ async function listing(app: RouteApp) {
 function refusalOf(row: Record<string, unknown> | undefined): {
   reason: string;
   detail: string;
-  packageDirectory?: string;
+  // REQUIRED, matching the contract: a refusal that omitted it would be a
+  // shape no conforming server emits, and typing it optional here would let
+  // this suite assert against one.
+  packageDirectory: string;
 } {
   expect(row).toBeDefined();
   const refusal = (row as Record<string, unknown>).writeRefusal;
@@ -214,7 +229,7 @@ function refusalOf(row: Record<string, unknown> | undefined): {
   return refusal as {
     reason: string;
     detail: string;
-    packageDirectory?: string;
+    packageDirectory: string;
   };
 }
 
@@ -415,9 +430,28 @@ describe('the refusal sentence is Station speaking, not the package author', () 
   // path rejects DOES reach the rule. Which refusal it lands on depends on
   // whether the package's own directory is named for it, and those are two
   // different remedies — a rename of the directory, or a rename of the skill.
-  test("a package whose directory is not named for it says so, and not 'Station does not own this'", async () => {
-    // The directory is innocuous and plainly the user's own; the frontmatter
-    // NAME is what disagrees with it.
+  test('a package whose directory is merely named differently is told to make the names match', async () => {
+    // A SAFE name that disagrees with its directory only in case — upstream's
+    // own motivating example. The package is plainly the user's own and sits in
+    // a root Station writes, which is what makes "rename one of them" the
+    // followable remedy and "Station does not own this" a false one.
+    writeFileSync(
+      join(home, 'skills', 'bought-in', 'SKILL.md'),
+      '---\nname: Bought-In\ndescription: cased\n---\nBody',
+      'utf-8',
+    );
+    const { app } = await setup();
+
+    const refusal = refusalOf((await listing(app)).get('Bought-In'));
+    expect(refusal.reason).toBe('directory-name-mismatch');
+    expect(refusal.detail).not.toMatch(/does not own|read-only/);
+    expect(refusal.packageDirectory).toBe(join(home, 'skills', 'bought-in'));
+  });
+
+  test('a name no directory could ever carry is a rename of the SKILL, not of the directory', async () => {
+    // Review M2: this fixture's own name can never match any directory name, so
+    // "rename the directory" would be unfollowable advice — for the very case
+    // that used to publish it. Where the package sits is fine; the name is not.
     writeFileSync(
       join(home, 'skills', 'bought-in', 'SKILL.md'),
       '---\nname: ../../escape\ndescription: traversal\n---\nBody',
@@ -428,10 +462,7 @@ describe('the refusal sentence is Station speaking, not the package author', () 
     const row = (await listing(app)).get('../../escape');
     expect(row).toBeDefined();
     const refusal = refusalOf(row);
-    // NOT `outside-writable-root`: the package sits in a root Station writes,
-    // so telling this user Station does not own it would be a false
-    // explanation of a real refusal.
-    expect(refusal.reason).toBe('directory-name-mismatch');
+    expect(refusal.reason).toBe('unresolvable-name');
     expect(refusal.detail).not.toMatch(/does not own|read-only/);
     expect(refusal.packageDirectory).toBe(join(home, 'skills', 'bought-in'));
     // The name is author-controlled and must not reach the sentence.
@@ -442,6 +473,36 @@ describe('the refusal sentence is Station speaking, not the package author', () 
       body: JSON.stringify({ command: { enabled: true } }),
     });
     expect(res.status).toBe(409);
+  });
+
+  test('a broken path INSIDE a writable root is not told it sits outside one', async () => {
+    // Review H1, probed: the floor refuses this because it cannot tell where a
+    // write would land, and an earlier draft published that as "not a skills
+    // root Station writes" with "install it into your workspace" as the remedy.
+    // Both false — the package is already in the right root, and installing
+    // cannot repair a broken link.
+    // The package is real when discovery registers it and its path breaks
+    // afterwards — a package moved or a link severed between a discovery and a
+    // read, which is the shape this reaches in practice. Building it broken
+    // does not work: discovery cannot register what it cannot read, so the
+    // condition would be unreachable and the test vacuous.
+    const packageDirectory = join(home, 'skills', 'ghost');
+    writePackage(packageDirectory, 'ghost', {
+      source: 'local',
+      installedAt: '2026-01-09T00:00:00.000Z',
+    });
+    const { app } = await setup();
+    expect((await listing(app)).get('ghost')?.writable).toBe(true);
+
+    rmSync(packageDirectory, { recursive: true, force: true });
+    symlinkSync(join(home, 'nowhere-at-all'), packageDirectory);
+
+    const row = (await listing(app)).get('ghost');
+    const refusal = refusalOf(row);
+    expect(refusal.reason).toBe('containment-unreadable');
+    // The two false statements the earlier draft published, both excluded.
+    expect(refusal.detail).not.toMatch(/skills root|does not own/);
+    expect(refusal.packageDirectory).toBe(packageDirectory);
   });
 
   test('a name the path rule rejects is refused as unresolvable, with no diagnostic', async () => {
@@ -511,7 +572,7 @@ describe('the refusal sentence is Station speaking, not the package author', () 
  * `source`/`origin` breaks it in exactly this population, which is why the
  * fixtures live here rather than beside the ones whose value is stable.
  */
-describe('a package the user owns that the server nonetheless refuses', () => {
+describe('packages in the project-scoped root, which the rule now writes', () => {
   /** Did the command-declaration gate let this write through? */
   async function gateAdmits(app: RouteApp, name: string) {
     const res = await app.request(`/${name}`, {
@@ -604,11 +665,19 @@ describe('writable iff the write lands in that package and nowhere else', () => 
   function effectPredictedBy(writable: unknown) {
     return writable === true
       ? {
+          // A grant must SUCCEED, not merely leave the right bytes behind. The
+          // status was computed and never asserted, so a clean write and a write
+          // that landed and then threw were identical under this tuple — which
+          // is exactly how a stub missing a method the write path calls passed
+          // this case for the wrong reason (review M5). Asserting it makes that
+          // class self-detecting rather than dependent on someone noticing.
+          succeeded: true,
           modifiedItsOwnPackage: true,
           shadowedUnderMachineRoot: false,
           stoppedByTheOwnershipGate: false,
         }
       : {
+          succeeded: false,
           modifiedItsOwnPackage: false,
           shadowedUnderMachineRoot: false,
           stoppedByTheOwnershipGate: true,
@@ -634,6 +703,7 @@ describe('writable iff the write lands in that package and nowhere else', () => 
     const answer = await response.text();
     return {
       status: response.status,
+      succeeded: response.ok,
       modifiedItsOwnPackage: readFileSync(own, 'utf-8') !== before,
       // WHY the write did nothing, not merely THAT it did nothing. A fixture
       // whose write dies on an unrelated error satisfies "nothing was written"
@@ -684,6 +754,7 @@ describe('writable iff the write lands in that package and nowhere else', () => 
     const effect = await writeEffect(app, 'scoped-tool', packageDirectory);
 
     expect({
+      succeeded: effect.succeeded,
       modifiedItsOwnPackage: effect.modifiedItsOwnPackage,
       shadowedUnderMachineRoot: effect.shadowedUnderMachineRoot,
       stoppedByTheOwnershipGate: effect.stoppedByTheOwnershipGate,
@@ -717,6 +788,7 @@ describe('writable iff the write lands in that package and nowhere else', () => 
     const effect = await writeEffect(app, 'shared-name', packageDirectory);
 
     expect({
+      succeeded: effect.succeeded,
       modifiedItsOwnPackage: effect.modifiedItsOwnPackage,
       shadowedUnderMachineRoot: effect.shadowedUnderMachineRoot,
       stoppedByTheOwnershipGate: effect.stoppedByTheOwnershipGate,
@@ -733,6 +805,7 @@ describe('writable iff the write lands in that package and nowhere else', () => 
     const effect = await writeEffect(app, 'bought-in', packageDirectory);
 
     expect(writable).toBe(true);
+    expect(effect.succeeded).toBe(true);
     expect(effect.modifiedItsOwnPackage).toBe(true);
     expect(effect.shadowedUnderMachineRoot).toBe(false);
   });

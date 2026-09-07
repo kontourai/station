@@ -924,8 +924,9 @@ describe('SkillsView', () => {
       expect(screen.getAllByDisplayValue(hostile).length).toBeGreaterThan(0);
     });
 
-    // This change adds a fourth reason code, so the previous desktop build
-    // talking to this server is exactly the case below — not a hypothetical.
+    // This change adds reason codes the previous desktop build does not know,
+    // so that build talking to this server is exactly the case below — not a
+    // hypothetical.
     // The remedy table is keyed by a closed union that only closes at COMPILE
     // time; `reason` itself arrives over HTTP.
     test('a reason code this build does not know drops the remedy, not into prose', () => {
@@ -1095,6 +1096,31 @@ describe('SkillsView', () => {
       expect(
         container.querySelector('.skill-detail__source-path code')?.textContent,
       ).toBe('/station/skills/bought-in');
+    });
+
+    // Review H1: this used to be published as `outside-writable-root`, which
+    // told the reader the package sat somewhere Station does not write and to
+    // install it into their workspace. Both false for a broken path inside a
+    // root Station DOES write — installing repairs no link.
+    test('an unreadable path is not told to install itself into the workspace', () => {
+      selectRow({
+        name: 'ghost',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: 'containment-unreadable' as const,
+          detail:
+            'Where a write to it would land could not be determined, so Station will not write it.',
+          packageDirectory: '/station/skills/ghost',
+        },
+      });
+
+      const { container } = render(<SkillsView />);
+
+      expect(screen.getByText(/Check the path it sits at/)).toBeTruthy();
+      expect(screen.queryByText(/Install it into your workspace/)).toBeNull();
+      const note = container.querySelector('.skill-detail__source-note');
+      expect(note?.textContent ?? '').not.toMatch(/skills root|does not own/);
     });
 
     test('Create is still offered while authoring a new skill', () => {

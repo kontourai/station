@@ -305,29 +305,104 @@ export function directoryContainmentVerdict(
  * may not): that is `SkillService.isSkillWritable`'s question, and this is the
  * floor beneath it.
  */
+/**
+ * WHY a directory is not the package for a name — every condition that holds,
+ * not just the first.
+ *
+ * `assertSkillPackageDirectory` is this same evaluation as a throw, and takes
+ * the FIRST failure in the order below so its message never changes. Callers
+ * that must tell the conditions apart read the report instead, and are free to
+ * order them differently: a caller publishing a REMEDY cares that the package
+ * sits in the wrong root before it cares what the directory is called, because
+ * "rename it" is unfollowable advice for a package in a root Station will never
+ * write. One evaluation, two precedences — deriving the conditions twice is how
+ * two callers end up disagreeing about the same directory.
+ */
+export type SkillPackageDirectoryCondition =
+  /** The NAME cannot be a directory name at all. */
+  | 'unsafe-name'
+  /** The directory exists and is fine, but is not named for this skill. */
+  | 'name-mismatch'
+  /**
+   * Where a write would land could not be determined — a dangling link, an
+   * unreadable ancestor, a loop. NOT the same as sitting outside a writable
+   * root, and its remedy is not an install: the path is broken, and it may well
+   * be broken INSIDE a root Station writes.
+   */
+  | 'unreadable'
+  /** It resolves somewhere Station does not write. */
+  | 'outside-writable-root';
+
+export interface SkillPackageDirectoryReport {
+  /** Every condition that holds, in assert order. Empty means it is the package. */
+  conditions: SkillPackageDirectoryCondition[];
+  /** What `assertSkillPackageDirectory` throws: the first failure's message. */
+  message?: string;
+}
+
+export function skillPackageDirectoryReport(
+  projectHomeDir: string,
+  name: string,
+  directory: string,
+): SkillPackageDirectoryReport {
+  const found: Array<{
+    condition: SkillPackageDirectoryCondition;
+    message: string;
+  }> = [];
+  try {
+    assertSafeSkillName(name);
+  } catch (error) {
+    found.push({
+      condition: 'unsafe-name',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+  const resolved = resolve(directory);
+  if (basename(resolved) !== name) {
+    found.push({
+      condition: 'name-mismatch',
+      message: `Skill directory ${JSON.stringify(directory)} is not the package for ${JSON.stringify(name)}`,
+    });
+  }
+  const homeVerdict = directoryContainmentVerdict(projectHomeDir, resolved);
+  if (homeVerdict === 'unanswerable') {
+    found.push({
+      condition: 'unreadable',
+      message: `Skill directory ${JSON.stringify(directory)} could not be read, so where a write would land is unknown`,
+    });
+  }
+  if (homeVerdict === 'outside') {
+    found.push({
+      condition: 'outside-writable-root',
+      message: `Skill directory ${JSON.stringify(directory)} resolves outside ${projectHomeDir}`,
+    });
+  }
+  const rest = skillPackageRootConditions(projectHomeDir, directory, resolved);
+  found.push(...rest);
+  return {
+    conditions: found.map((entry) => entry.condition),
+    ...(found.length > 0 ? { message: found[0].message } : {}),
+  };
+}
+
 export function assertSkillPackageDirectory(
   projectHomeDir: string,
   name: string,
   directory: string,
 ): void {
-  assertSafeSkillName(name);
-  const resolved = resolve(directory);
-  if (basename(resolved) !== name) {
-    throw new Error(
-      `Skill directory ${JSON.stringify(directory)} is not the package for ${JSON.stringify(name)}`,
-    );
-  }
-  const homeVerdict = directoryContainmentVerdict(projectHomeDir, resolved);
-  if (homeVerdict === 'unanswerable') {
-    throw new Error(
-      `Skill directory ${JSON.stringify(directory)} could not be read, so where a write would land is unknown`,
-    );
-  }
-  if (homeVerdict === 'outside') {
-    throw new Error(
-      `Skill directory ${JSON.stringify(directory)} resolves outside ${projectHomeDir}`,
-    );
-  }
+  const report = skillPackageDirectoryReport(projectHomeDir, name, directory);
+  if (report.message) throw new Error(report.message);
+}
+
+function skillPackageRootConditions(
+  projectHomeDir: string,
+  directory: string,
+  resolved: string,
+): Array<{ condition: SkillPackageDirectoryCondition; message: string }> {
+  const found: Array<{
+    condition: SkillPackageDirectoryCondition;
+    message: string;
+  }> = [];
   // A WRITABLE skills root, named exactly: `<home>/skills` or
   // `<home>/projects/<slug>/skills`, which are the two roots `skillsRootDir`
   // builds and the two `deriveOrigin` reads as `user` and `project`. "Its
@@ -355,9 +430,10 @@ export function assertSkillPackageDirectory(
     parent !== null &&
     (parent === 'skills' || /^projects\/[^/]+\/skills$/.test(parent));
   if (!inWritableRoot) {
-    throw new Error(
-      `Skill directory ${JSON.stringify(directory)} does not sit in a skills root Station writes (${projectHomeDir}/skills or ${projectHomeDir}/projects/<project>/skills)`,
-    );
+    found.push({
+      condition: 'outside-writable-root',
+      message: `Skill directory ${JSON.stringify(directory)} does not sit in a skills root Station writes (${projectHomeDir}/skills or ${projectHomeDir}/projects/<project>/skills)`,
+    });
   }
   // …and PHYSICALLY inside that root, which the checks above do not compose
   // into: a package directory that is a symlink redirecting elsewhere inside
@@ -368,15 +444,18 @@ export function assertSkillPackageDirectory(
   // derivation must not drop the guarantee that came with it (review H2).
   const rootVerdict = directoryContainmentVerdict(root, resolved);
   if (rootVerdict === 'unanswerable') {
-    throw new Error(
-      `Skill directory ${JSON.stringify(directory)} could not be read, so where a write would land is unknown`,
-    );
+    found.push({
+      condition: 'unreadable',
+      message: `Skill directory ${JSON.stringify(directory)} could not be read, so where a write would land is unknown`,
+    });
   }
   if (rootVerdict === 'outside') {
-    throw new Error(
-      `Skill directory ${JSON.stringify(directory)} resolves outside ${root}`,
-    );
+    found.push({
+      condition: 'outside-writable-root',
+      message: `Skill directory ${JSON.stringify(directory)} resolves outside ${root}`,
+    });
   }
+  return found;
 }
 
 /**

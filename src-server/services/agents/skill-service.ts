@@ -17,7 +17,7 @@ import {
   rename,
   writeFile,
 } from 'node:fs/promises';
-import { basename, dirname, extname, join, sep } from 'node:path';
+import { dirname, extname, join, sep } from 'node:path';
 import type {
   GuidanceAsset,
   SkillCommand,
@@ -74,6 +74,7 @@ import {
   readSkillVariables,
   resolveSkillDirectory,
   serializeSkillMarkdown,
+  skillPackageDirectoryReport,
   skillsRootDir,
 } from './skill-metadata.js';
 import {
@@ -911,60 +912,62 @@ export class SkillService {
           packageDirectory: directory,
         },
       };
-    // Named apart from the root failure below, because they are different
-    // facts with different remedies: a directory whose name differs from the
-    // skill's — by case, or because the frontmatter names it something else —
-    // is a package plainly the user's own, and "Station does not own this"
-    // would be a false explanation of a real refusal (review low).
-    if (basename(directory) !== name)
+    // The floor's OWN verdict, threaded out rather than re-derived. It
+    // distinguishes four conditions and an earlier draft collapsed three of
+    // them into "not a skills root Station writes", which published a false
+    // explanation twice over (review H1): a dangling link INSIDE a writable
+    // root was told it sat outside one and to install itself, and a name that
+    // can never be a directory name was told the same. Reading the conditions
+    // is the only way the projection can say which refusal this is without
+    // parsing the floor's prose.
+    //
+    // PRECEDENCE IS THIS CALLER'S, and deliberately not the assert's. Where the
+    // package sits outranks what its directory is called, because "rename the
+    // directory" is unfollowable advice for a package in a root Station will
+    // never write — the rename would change nothing (review M2). So
+    // `directory-name-mismatch` is published only once containment has
+    // succeeded, which is exactly what its docblock claims about it.
+    const report = skillPackageDirectoryReport(projectHomeDir, name, directory);
+    if (report.conditions.length === 0) return undefined;
+    const held = new Set(report.conditions);
+    if (held.has('unreadable'))
       return {
-        messageFragment: `the package discovery found for it is ${directory}, whose directory name is not '${name}'`,
+        messageFragment: `the package Station found for it at ${directory} could not be read, so where a write would land is unknown`,
         refusal: {
-          reason: 'directory-name-mismatch',
+          reason: 'containment-unreadable',
           detail:
-            "The package discovery found for it sits in a directory whose name is not this skill's name.",
+            'Where a write to it would land could not be determined, so Station will not write it.',
           packageDirectory: directory,
         },
       };
-    try {
-      assertSkillPackageDirectory(projectHomeDir, name, directory);
-      return undefined;
-    } catch {
-      // ONE message for the caller, TWO reasons for the reader. The floor
-      // throws for several distinct conditions and the write path flattens
-      // them deliberately, but a name that cannot be a directory name at all
-      // has a different remedy from a package in the wrong root — a rename
-      // rather than an install — and the projection is where that difference
-      // has to survive. The name is re-tested rather than inferred from the
-      // message, so this reads the same condition the floor did instead of
-      // parsing its prose.
+    if (held.has('outside-writable-root'))
       return {
         messageFragment: `it is served from ${directory}, which is not a skills root Station writes`,
         refusal: {
-          ...this.unwritableRootReason(name),
+          reason: 'outside-writable-root',
+          detail:
+            'It is served from a directory that is not a skills root Station writes.',
           packageDirectory: directory,
         },
       };
-    }
-  }
-
-  /** Which of the floor's two reader-visible conditions refused this name. */
-  private unwritableRootReason(
-    name: string,
-  ): Pick<SkillWriteRefusal, 'reason' | 'detail'> {
-    try {
-      assertSafeSkillName(name);
-    } catch {
+    if (held.has('unsafe-name'))
       return {
-        reason: 'unresolvable-name',
-        detail:
-          'Its name cannot be used as a directory name, so Station cannot work out where it would write this package.',
+        messageFragment: `its name cannot be used as a directory name, so Station cannot work out where it would write this package`,
+        refusal: {
+          reason: 'unresolvable-name',
+          detail:
+            'Its name cannot be used as a directory name, so Station cannot work out where it would write this package.',
+          packageDirectory: directory,
+        },
       };
-    }
     return {
-      reason: 'outside-writable-root',
-      detail:
-        'It is served from a directory that is not a skills root Station writes.',
+      messageFragment: `the package discovery found for it is ${directory}, whose directory name is not '${name}'`,
+      refusal: {
+        reason: 'directory-name-mismatch',
+        detail:
+          "The package discovery found for it sits in a directory whose name is not this skill's name.",
+        packageDirectory: directory,
+      },
     };
   }
 
