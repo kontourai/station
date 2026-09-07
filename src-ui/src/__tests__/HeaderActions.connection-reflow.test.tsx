@@ -637,16 +637,18 @@ describe.skipIf(!chromiumAvailable)(
      * is no wider than a two-character badge. A cap that rendered "9999+"
      * would pass the first and fail the second.
      *
-     * The box half is asserted against "99" MEASURED IN THIS PAGE, not against
-     * the px figure `chat.css` records. Glyph metrics are platform-specific:
-     * the numbers in that comment were measured on macOS, and the same badge
-     * renders 25.34px on CI's Linux runner, so a transcribed ceiling reds on
-     * a platform difference rather than on a defect — which is exactly what it
-     * did. What must hold everywhere is the RELATION the arithmetic depends
-     * on: whatever a two-character badge costs on this platform, the cap never
-     * costs more. The absolute budget in `chat.css` is a macOS measurement and
-     * says so; the reachability it exists to protect is enforced end to end at
-     * 360px by `tests/toolbar-reachability.spec.ts`, on CI's own renderer.
+     * No pixel figure is asserted here, and two attempts to assert one both
+     * red on CI. Glyph metrics are platform-specific: the badge is 23.80px on
+     * macOS and 25.34px on the Linux runner, and "+" is NARROWER than a digit
+     * on one and WIDER on the other, so even "no wider than two digits" is a
+     * platform claim rather than a property.
+     *
+     * What is a property, and is all the row arithmetic needs, is that the
+     * badge STOPS GROWING: past the cap its width is the same whatever the
+     * count, so a member that was unbounded in the count is now a constant.
+     * The size of that constant is a per-platform measurement, recorded in
+     * `chat.css` as a macOS figure and enforced end to end on CI's own
+     * renderer by the 360px case in `tests/toolbar-reachability.spec.ts`.
      */
     test('the notification badge is bounded, so the row arithmetic is a bound (#1132)', async () => {
       const measureBadge = async (pendingCount: number) => {
@@ -664,17 +666,11 @@ describe.skipIf(!chromiumAvailable)(
             );
             const bell = badge?.closest('button');
             if (!badge || !bell) throw new Error('no notification badge');
-            const rendered = badge.textContent;
-            const width = badge.getBoundingClientRect().width;
-            const accessibleName = bell.getAttribute('aria-label');
-            // The two-character reference, measured on the SAME element with
-            // the same computed style on whatever platform is running. The cap
-            // means the component can no longer produce two digits, so the
-            // ceiling has to be established here rather than rendered.
-            badge.textContent = '99';
-            const twoCharacterWidth = badge.getBoundingClientRect().width;
-            badge.textContent = rendered;
-            return { text: rendered, width, accessibleName, twoCharacterWidth };
+            return {
+              text: badge.textContent,
+              width: badge.getBoundingClientRect().width,
+              accessibleName: bell.getAttribute('aria-label'),
+            };
           });
         } finally {
           await page.close();
@@ -683,17 +679,22 @@ describe.skipIf(!chromiumAvailable)(
 
       const single = await measureBadge(3);
       expect(single.text).toBe('3');
-      expect(single.width).toBeLessThanOrEqual(single.twoCharacterWidth);
 
       const many = await measureBadge(123);
       expect(
         many.text,
         'a three-digit count must not reach this badge, or the row is unbounded',
       ).toBe('9+');
+
+      // The bound itself: past the cap the badge is a constant, so no count a
+      // person can accumulate moves `Open settings` any further right.
+      const far = await measureBadge(999999);
+      expect(far.text).toBe('9+');
       expect(
-        many.width,
-        'the capped badge must be no wider than the two-character badge the row budgets for',
-      ).toBeLessThanOrEqual(many.twoCharacterWidth);
+        far.width,
+        'the badge must stop growing at the cap, or the row arithmetic is not a bound',
+      ).toBe(many.width);
+      expect(single.width).toBeLessThanOrEqual(many.width);
 
       // The exact count is what the cap gives up on screen, so it must survive
       // in the accessible name — that is the trade this cap is allowed to make.
