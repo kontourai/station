@@ -287,6 +287,138 @@ test('attaches the required changed-test diagnostic to a ci-fast owner result', 
   expect(contents).not.toContain('fixture-ci-fast-secret');
 });
 
+test('retained ci-fast diagnostics accept resource groups and discovery preparation failures', () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-ci-fast-diagnostic-'));
+  roots.push(worktree);
+  const diagnosticRoot = join(worktree, '.kontourai/test-impact');
+  mkdirSync(diagnosticRoot, { recursive: true });
+  const provenance = {
+    repositoryId: 'a'.repeat(64),
+    headSha: 'b'.repeat(40),
+    workspaceDigest: 'c'.repeat(64),
+    environmentDigest: 'd'.repeat(64),
+    dependencyDigest: 'e'.repeat(64),
+  };
+  writeChangedDiagnosticBundle(diagnosticRoot, {
+    ...changedDiagnostic(provenance),
+    executions: [
+      {
+        ...changedDiagnostic(provenance).executions[0],
+        kind: 'combined',
+        resourceGroup: 'ordinary',
+      },
+    ],
+  });
+  const combined = __verificationCoordinatorInternals.attachCiFastDiagnostics(
+    {
+      lane: { id: 'ci-fast' },
+      before: { worktree, ...provenance },
+    },
+    { output: { stdout: { text: '' }, stderr: { text: '' } } },
+  );
+  expect(combined.unavailableAttachments).toBeUndefined();
+
+  writeChangedDiagnosticBundle(diagnosticRoot, {
+    ...changedDiagnostic(provenance),
+    complete: false,
+    incompleteReasons: ['related-discovery: discovery failed'],
+    counts: {
+      executed: 0,
+      passed: 0,
+      failed: 0,
+      skipped: 0,
+      todo: 0,
+      infrastructureErrors: 1,
+      parserErrors: 0,
+      emptyReports: 0,
+    },
+    preparation: {
+      phase: 'related-discovery',
+      childStarted: true,
+      infrastructureError: true,
+      error: 'discovery failed',
+      errorTruncated: false,
+    },
+    executions: [],
+  });
+  const discovery = __verificationCoordinatorInternals.attachCiFastDiagnostics(
+    {
+      lane: { id: 'ci-fast' },
+      before: { worktree, ...provenance },
+    },
+    { output: { stdout: { text: '' }, stderr: { text: '' } } },
+  );
+  expect(discovery.unavailableAttachments).toBeUndefined();
+
+  writeChangedDiagnosticBundle(diagnosticRoot, {
+    ...changedDiagnostic(provenance),
+    complete: false,
+    incompleteReasons: ['related-discovery: discovery failed'],
+    counts: {
+      executed: 0,
+      passed: 0,
+      failed: 0,
+      skipped: 0,
+      todo: 0,
+      infrastructureErrors: 1,
+      parserErrors: 0,
+      emptyReports: 0,
+    },
+    preparation: {
+      phase: 'related-discovery',
+      childStarted: 'yes',
+      infrastructureError: true,
+      error: 'discovery failed',
+      errorTruncated: false,
+    },
+    executions: [],
+  });
+  const malformed = __verificationCoordinatorInternals.attachCiFastDiagnostics(
+    {
+      lane: { id: 'ci-fast' },
+      before: { worktree, ...provenance },
+    },
+    { output: { stdout: { text: '' }, stderr: { text: '' } } },
+  );
+  expect(malformed.unavailableAttachments?.[0]?.reason).toContain(
+    'did not reconcile with its own executions',
+  );
+
+  writeChangedDiagnosticBundle(diagnosticRoot, {
+    ...changedDiagnostic(provenance),
+    complete: false,
+    incompleteReasons: [`resource-plan: ${'x'.repeat(2_049)}`],
+    counts: {
+      executed: 0,
+      passed: 0,
+      failed: 0,
+      skipped: 0,
+      todo: 0,
+      infrastructureErrors: 1,
+      parserErrors: 0,
+      emptyReports: 0,
+    },
+    preparation: {
+      phase: 'resource-plan',
+      childStarted: false,
+      infrastructureError: true,
+      error: 'x'.repeat(2_049),
+      errorTruncated: false,
+    },
+    executions: [],
+  });
+  const oversized = __verificationCoordinatorInternals.attachCiFastDiagnostics(
+    {
+      lane: { id: 'ci-fast' },
+      before: { worktree, ...provenance },
+    },
+    { output: { stdout: { text: '' }, stderr: { text: '' } } },
+  );
+  expect(oversized.unavailableAttachments?.[0]?.reason).toContain(
+    'did not reconcile with its own executions',
+  );
+});
+
 test('fails a ci-fast owner result closed when changed-test diagnostics are missing', () => {
   const worktree = mkdtempSync(join(tmpdir(), 'station-ci-fast-diagnostic-'));
   roots.push(worktree);

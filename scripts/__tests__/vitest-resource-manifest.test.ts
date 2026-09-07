@@ -24,6 +24,7 @@ import {
 
 const temporaryRoots: string[] = [];
 const REVIEWED_RESOURCE_HEAVY_VITEST_FILES = Object.freeze([
+  'scripts/__tests__/classify-ci-change.test.ts',
   'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts',
   'scripts/__tests__/verification-reporter.test.ts',
   'packages/cli/src/__tests__/service.test.ts',
@@ -214,6 +215,18 @@ describe('Vitest resource manifest', () => {
 
   it('classifies Play-upload ownership exactly once as process exclusive', () => {
     const file = 'scripts/__tests__/play-upload-retry.test.ts';
+    const groups = repositoryDiscovery.groups;
+    expect(groups.processExclusive.filter((entry) => entry === file)).toEqual([
+      file,
+    ]);
+    expect(groups.ordinary).not.toContain(file);
+    expect(groups.processHeavy).not.toContain(file);
+    expect(groups.sharedOutput).not.toContain(file);
+  }, 70_000);
+
+  it('classifies the multi-worker remote-home bootstrap exactly once as process exclusive', () => {
+    const file =
+      'src-server/routes/environments/__tests__/remote-home-transfer-decision.test.ts';
     const groups = repositoryDiscovery.groups;
     expect(groups.processExclusive.filter((entry) => entry === file)).toEqual([
       file,

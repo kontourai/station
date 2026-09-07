@@ -6,12 +6,16 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import {
+  getLocalUiSessionAttempt,
   recheckLocalUiSessionAfterPairing,
   resolveLocalUiSession,
+  subscribeLocalUiSessionAttempt,
 } from '../lib/local-ui-bootstrap';
+import { LOCAL_UI_SESSION_ATTEMPT_LIMIT } from '../lib/local-ui-session-retry';
 import { GuidedConnect } from './GuidedConnect';
 import { SkeletonBlock } from './state';
 
@@ -23,6 +27,25 @@ const UnpairedSampleWorkspace = lazy(async () => {
 interface LocalUiSessionGateProps {
   apiBase: string;
   children: ReactNode;
+}
+
+/**
+ * The retry the resolution is currently making, in both of the gate's pending
+ * treatments (#1639). Not a new surface: the wait already had a sentence and a
+ * degraded alert, and this says which attempt they are waiting on.
+ *
+ * Renders nothing on the first attempt, so an ordinary resolution reads exactly
+ * as it did. Only a real retry — a host that answered `unavailable` and is being
+ * asked again — puts a sentence on screen.
+ */
+function RetryAttempt({ attempt }: { attempt: number }) {
+  if (attempt <= 1) return null;
+  return (
+    <p>
+      Station&rsquo;s host was not ready. Asking again — attempt {attempt} of{' '}
+      {LOCAL_UI_SESSION_ATTEMPT_LIMIT}.
+    </p>
+  );
 }
 
 /**
@@ -42,6 +65,16 @@ export function LocalUiSessionGate({
     Awaited<ReturnType<typeof resolveLocalUiSession>>
   > | null>(null);
   const [sampleOpen, setSampleOpen] = useState(false);
+  // Deliberately NOT passed as `useDegradedQueryState`'s `resetKey`: the
+  // degraded window measures how long this browser has been waiting for ONE
+  // answer, and a retry does not restart that wait — it is part of it. Bumping
+  // it per attempt would let a resolution spend the whole ladder without ever
+  // admitting it was slow.
+  const identityAttempt = useSyncExternalStore(
+    subscribeLocalUiSessionAttempt,
+    getLocalUiSessionAttempt,
+    getLocalUiSessionAttempt,
+  );
   const accessCheck = useDegradedQueryState({ isPending: !resolution });
 
   useEffect(() => {
@@ -78,6 +111,7 @@ export function LocalUiSessionGate({
             Station is taking longer than expected to answer this
             browser&rsquo;s access check.
           </p>
+          <RetryAttempt attempt={identityAttempt} />
           <button type="button" onClick={() => window.location.reload()}>
             Try again
           </button>
@@ -85,7 +119,10 @@ export function LocalUiSessionGate({
       );
     }
     return (
-      <main aria-live="polite">Checking this browser's Station access…</main>
+      <main aria-live="polite">
+        <p>Checking this browser's Station access…</p>
+        <RetryAttempt attempt={identityAttempt} />
+      </main>
     );
   }
   if (resolution.kind === 'access-required') {
@@ -127,7 +164,8 @@ export function LocalUiSessionGate({
       <main className="local-ui-session-recovery" aria-live="polite">
         <h1>Reconnecting to this Station</h1>
         <p role="alert">
-          Station&rsquo;s host process is down or recovering. This
+          Station&rsquo;s host process is down or recovering — it answered that
+          way {LOCAL_UI_SESSION_ATTEMPT_LIMIT} times in a row. This
           browser&rsquo;s current access stays in place; reload after the host
           restarts.
         </p>
