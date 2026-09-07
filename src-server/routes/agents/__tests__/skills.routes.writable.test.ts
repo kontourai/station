@@ -507,6 +507,11 @@ describe('writable iff the write lands in that package and nowhere else', () => 
     });
     const { app } = await setup({ projectSlug: 'demo' });
     const writable = (await listing(app)).get('scoped-tool')?.writable;
+    // The fixture is present and STATED a decision. Without this, a listing
+    // that dropped the row would leave `writable` undefined, which
+    // `effectPredictedBy` reads as a refusal — the oracle would then be
+    // asserting a property of a package nobody reported.
+    expect(typeof writable).toBe('boolean');
 
     const effect = await writeEffect(app, 'scoped-tool', packageDirectory);
 
@@ -537,6 +542,8 @@ describe('writable iff the write lands in that package and nowhere else', () => 
     writePackage(packageDirectory, 'shared-name');
     const { app } = await setup({ projectSlug: 'demo' });
     const row = (await listing(app)).get('shared-name');
+    // Present and decided — see the sibling case above.
+    expect(typeof row?.writable).toBe('boolean');
 
     // The plugin's package is what answers to the name — that IS the residual.
     const effect = await writeEffect(app, 'shared-name', packageDirectory);
