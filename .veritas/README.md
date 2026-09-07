@@ -21,7 +21,6 @@ Readiness reports are generated under `.kontourai/veritas/evidence/`; Surface re
 - `verification-policy` (default): runs the executable selector-first verification-policy gate, so public lane wiring and agent guidance cannot drift silently. It is default-enforced, not a required evidence family.
 - `architecture-boundaries` / `ui-data-access` / `runtime-contracts`: candidate or advisory proof-family inventory entries. They remain visible for promotion work, but are not readiness routes until they execute assertions.
 - `connected-agents` (routed for src-server/**): behavioral integration proof for runtime changes.
-- `repo-guardrails`: transitional compatibility aggregator from the old convergence checks; not routed, not required.
 - `retired-surfaces` / `migration-tombstones`: candidate/advisory tombstone lanes with expiry requirements.
 - `static-verification` / `sdk-builds` / `app-builds`: declared for coverage; they run in `ci:fast`, not inside readiness.
 - `fallow-advisory`: external-tool advisory evidence; requires the `fallow` CLI and is not a default check.

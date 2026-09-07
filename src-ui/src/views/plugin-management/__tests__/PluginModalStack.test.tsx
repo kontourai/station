@@ -16,7 +16,7 @@ import { PluginModalStack } from '../PluginModalStack';
  * (`components/modals/FolderBrowserModal`), rendered directly by
  * `PluginModalStack` — the plugin-management-owned `FolderPickerModal.tsx`
  * wrapper this file used to target was deleted (a pure classNames adapter
- * with exactly one consumer; see `scripts/proof-repo-guardrails.mjs`). These
+ * with exactly one consumer). These
  * tests pin plugin management's own behaviour and markup as unchanged by
  * that move, exercised through the real seam it now lives behind: the same
  * `plugins__*` classnames the page's CSS already styles, the same title id,

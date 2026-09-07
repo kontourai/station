@@ -407,11 +407,7 @@ describe('changed verification selection', () => {
     ],
     [
       'src-server/runtime/frameworks/strands-message-sync.ts',
-      'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
-    ],
-    [
-      'scripts/proof-repo-guardrails.mjs',
-      'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
+      'src-server/runtime/frameworks/__tests__/strands-native-history.test.ts',
     ],
     [
       'src-ui/src/index.css',

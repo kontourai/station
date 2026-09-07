@@ -403,7 +403,6 @@ export function runRepoGovernanceChecks({
   const packageJson = readJson(resolve(rootDir, 'package.json'));
   for (const scriptName of [
     'proof:repo-governance',
-    'proof:repo-guardrails',
     'ci:fast',
     'ci:extended',
     'veritas:readiness',

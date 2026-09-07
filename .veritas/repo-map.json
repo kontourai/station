@@ -329,12 +329,6 @@
         "summary": "Default readiness check for selector-first verification guidance and exact coordinated lane policy."
       },
       {
-        "id": "repo-guardrails",
-        "command": "npm run proof:repo-guardrails",
-        "method": "validation",
-        "summary": "Transitional compatibility aggregator for the former convergence checks. Not the required gate."
-      },
-      {
         "id": "architecture-boundaries",
         "command": "npm run proof:architecture-boundaries",
         "method": "validation",
