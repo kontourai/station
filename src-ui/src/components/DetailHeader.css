@@ -61,10 +61,13 @@
  * actions stop fitting. The subtitle's 62ch cap bounds how wide the subtitle
  * RENDERS, and no longer has anything to do with where the wrap happens.
  *
- * `min-width: 0` deliberately STAYS: once the identity is alone on its row and
- * still narrower than its title, it is what makes the title ellipsize instead
- * of overflowing the region (a 396px title in a 500px region ran 96px past it
- * without it).
+ * `min-width: 0` deliberately STAYS: it is what makes a title too long for its
+ * row ellipsize rather than take its own content width. Removing it at a 500px
+ * region leaves a 396px title UNCLIPPED in a 470px identity — 18px past this
+ * header's 452px content box, though still inside the region — so what catches
+ * it is the ellipsis going missing, not an overflow measurement. The
+ * region-overflow figures elsewhere in this file belong to the phone block's
+ * `flex-wrap` pin below, not to this declaration.
  */
 .detail-header {
   display: flex;

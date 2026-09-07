@@ -189,8 +189,11 @@ function subtitledCompactActionsMarkup(): string {
  * product's own. The composed cascade carries the real `@font-face` rules, but
  * `page.setContent` gives the document no base URL, so the font files never
  * resolve: `document.fonts.check('16px "DM Sans"')` returns false and the
- * faces report status `error`. Chromium then lays the text out in the generic
- * sans-serif.
+ * faces report status `error`. The declared stack is
+ * `"DM Sans", system-ui, sans-serif`, and Chromium falls to the SECOND entry,
+ * not the generic keyword: with only the family overridden and size and weight
+ * held equal, the stack and `system-ui` measure the same string at 315.89px
+ * while `sans-serif` measures 316.78px.
  *
  * That is fine for what these assertions do — every one of them compares this
  * layout against another layout of the same text in the same face — but it is
@@ -302,8 +305,9 @@ describe.skipIf(!chromiumAvailable)(
      * is a real trade this file should name: an earlier revision covered that
      * band by wrapping (identity 614-640px, one subtitle line, a 144px
      * header), and moving the wrap decision off the subtitle gave it back.
-     * Below 662px the header wraps and the identity jumps to 592px+; above
-     * 688px it shares the row with room to spare.
+     * Below 662px the header wraps and the identity takes the full content box
+     * (552px at a 600px region, 612px at 660px); above 688px it shares the row
+     * with room to spare.
      *
      * So the widths here are chosen to sit clear of that band, not merely to
      * be narrow. 800 replaced an earlier 700, which passed with ZERO margin on
@@ -520,8 +524,10 @@ describe.skipIf(!chromiumAvailable)(
      * point at any width. But it does still bound how wide the subtitle
      * RENDERS, and therefore its line count and the header's height, once a
      * region is wide enough to offer more than the cap: at a 1300px region,
-     * deleting it takes the subtitle from 508px over two lines to 975px over
-     * one and the header from 97px to 78px.
+     * deleting it takes the subtitle from 508px over two lines to 1051px over
+     * one and the header from 97px to 78px. 1051px is not a font-dependent
+     * number: uncapped, the subtitle is a plain block and its width is exactly
+     * the identity's resolved width at that region.
      *
      * So the cap is load-bearing after all, just for a different property than
      * the one it used to serve, and this is where that shows.
@@ -530,7 +536,7 @@ describe.skipIf(!chromiumAvailable)(
       const m = await measure(1300, 1600, {
         markup: subtitledCompactActionsMarkup(),
       });
-      // 62ch measures ~508px here; uncapped this subtitle takes ~975px.
+      // 62ch measures 508px here; uncapped this subtitle takes 1051px.
       expect(m.subtitleWidth).toBeLessThan(600);
       expect(m.subtitleLines).toBe(2);
     }, 60_000);

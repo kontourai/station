@@ -1420,12 +1420,13 @@
        at <= 768px, so the 641-768px band is stacked only here and needs the
        same pin.
        What keeps it inert today is the `width: 100%` below, which holds both
-       children to the container whatever the wrapping does. With BOTH removed,
-       a title longer than the region puts the identity at 897px inside a 652px
-       content box — 221px past the edge at a 700px region, and 161px past at
-       760px. Two declarations in different rules are therefore the only thing
-       standing between this band and that overflow; this one says so locally
-       rather than depending on the other. */
+       children to the container whatever the wrapping does. Removing either
+       one alone still measures zero overflow; removing BOTH lets the identity
+       take its title's own width. How far past depends on the title — one
+       hundred-character title measured a 897px identity, which is 221px past a
+       700px region and 161px past a 760px one. Two declarations in different
+       rules are therefore jointly what stands between this band and that
+       overflow; this one says so locally rather than depending on the other. */
     flex-wrap: nowrap;
     align-items: stretch;
     gap: 0.75rem;
