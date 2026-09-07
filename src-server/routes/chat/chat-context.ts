@@ -4,10 +4,7 @@ import {
 } from '@kontourai/station-contracts/user-profile';
 import { feedbackOps } from '../../telemetry/metrics.js';
 import { composeAmbientTurnText } from '../../utils/ambient-context.js';
-import {
-  approxInjectedTokens,
-  userTextPart,
-} from './chat-context-injection.js';
+import { approxInjectedTokens } from './chat-context-injection.js';
 import type { ChatMessage } from './chat-request-preparation.js';
 
 interface RatingLike {
@@ -121,6 +118,65 @@ export function injectUserProfileContext(
 }
 
 /**
+ * Where the one text part these composers edit lives, resolved once so the
+ * copy below can rebuild exactly that path and nothing else.
+ *
+ * Deliberately identical to `userTextPart`'s reach: the FIRST `user` message,
+ * and within it the FIRST `text` part. A user message with no `parts` ends
+ * the search rather than falling through to a later user message — the
+ * uncaptioned-attachment drop the appliers report as `applied: false`
+ * (archive#2649) depends on that, and looking further would silently start
+ * composing into a turn the old code left alone.
+ */
+interface UserTextPartLocation {
+  readonly messageIndex: number;
+  readonly partIndex: number;
+  readonly text: string | undefined;
+}
+
+function locateUserTextPart(
+  input: ChatMessage[],
+): UserTextPartLocation | null {
+  const messageIndex = input.findIndex((message) => message.role === 'user');
+  if (messageIndex === -1) return null;
+  const parts = input[messageIndex]?.parts;
+  if (!parts) return null;
+  const partIndex = parts.findIndex((part) => part.type === 'text');
+  if (partIndex === -1) return null;
+  return { messageIndex, partIndex, text: parts[partIndex]?.text };
+}
+
+/**
+ * A copy of `input` in which only the located text part carries new text.
+ *
+ * These composers used to run `JSON.parse(JSON.stringify(input))` over the
+ * WHOLE history to edit one string. A turn's history routinely carries
+ * `file` parts whose `url` is a base64 data URL, so an image attachment made
+ * every composition re-serialise and re-parse megabytes of base64 that the
+ * edit never touches — twice, since both appliers run in sequence on the
+ * same turn.
+ *
+ * Four new objects: the array, the edited message, its parts array, and the
+ * edited part. Every other message and every other part — including that
+ * file part and its `url` — is carried over by reference, unread. The output
+ * shape is unchanged, and the caller's `input` is still never mutated, which
+ * is the property the persistence seams depend on (they keep passing the
+ * original `input` while the model gets this).
+ */
+function withUserTextPart(
+  input: ChatMessage[],
+  at: UserTextPartLocation,
+  text: string,
+): ChatMessage[] {
+  const message = input[at.messageIndex] as ChatMessage;
+  const parts = (message.parts ?? []).slice();
+  parts[at.partIndex] = { ...parts[at.partIndex], type: 'text', text };
+  const messages = input.slice();
+  messages[at.messageIndex] = { ...message, parts };
+  return messages;
+}
+
+/**
  * archive#685: compose the UI's out-of-band ambient context (timezone, geolocation)
  * into the model-facing input only. The persisted user turn keeps the typed
  * `input` — callers must keep passing the original `input` to the
@@ -141,13 +197,18 @@ export function applyAmbientContextToInput(
     };
   }
 
-  const clone = JSON.parse(JSON.stringify(input)) as ChatMessage[];
-  const textPart = userTextPart(clone);
-  if (textPart?.text === undefined) {
-    return { input: clone, applied: false };
+  const at = locateUserTextPart(input);
+  if (at?.text === undefined) {
+    return { input, applied: false };
   }
-  textPart.text = composeAmbientTurnText(ambientContext, textPart.text);
-  return { input: clone, applied: true };
+  return {
+    input: withUserTextPart(
+      input,
+      at,
+      composeAmbientTurnText(ambientContext, at.text),
+    ),
+    applied: true,
+  };
 }
 
 export function applyCombinedContextToInput(
@@ -165,11 +226,15 @@ export function applyCombinedContextToInput(
     return { input: `${combinedContext}\n\n${input}`, applied: true };
   }
 
-  const clone = JSON.parse(JSON.stringify(input)) as ChatMessage[];
-  const textPart = userTextPart(clone);
-  if (!textPart) {
-    return { input: clone, applied: false };
+  const at = locateUserTextPart(input);
+  if (!at) {
+    return { input, applied: false };
   }
-  textPart.text = `${combinedContext}\n\n${textPart.text}`;
-  return { input: clone, applied: true };
+  // `at.text` is deliberately interpolated even when it is `undefined`: a
+  // text part with no `text` produced the literal trailing `undefined`
+  // before this change, and this is a copy change, not a behaviour change.
+  return {
+    input: withUserTextPart(input, at, `${combinedContext}\n\n${at.text}`),
+    applied: true,
+  };
 }
