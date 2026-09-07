@@ -12,8 +12,8 @@
  *   - `tests/android/mobile-layout.spec.ts:11` hit-tests only the Settings
  *     action — the far-right control, never the covered one.
  *   - its touch-target floor: an overlapped 44px button still measures 44px.
- *   - `tests/android/app-load.spec.ts`'s
- *     `documentElement.scrollWidth > clientWidth` measures DOCUMENT overflow,
+ *   - the suite's usual overflow assertion,
+ *     `documentElement.scrollWidth > clientWidth`, measures DOCUMENT overflow,
  *     which is false in every one of these cases — the toolbar row clips, it
  *     does not scroll the document.
  *
