@@ -32,6 +32,7 @@ function observation(
       },
       unavailableDetail: async () => '"Unable to load this part of Station."',
       openStateDetail: async () => 'its trigger does report the surface open',
+      baselineDetail: async () => undefined,
       now: () => state.now,
       ...overrides,
     } satisfies LazySurfaceObservation,
@@ -148,35 +149,51 @@ describe('waitForLazySurfaceThrough', () => {
   });
 });
 
-describe('countVisibleLazyBoundaryErrors baseline', () => {
-  test('a pre-existing boundary failure is not attributed to this surface', async () => {
-    // The defect this closes: `LazyBoundary`'s failure text is one constant, so
-    // an unrelated boundary error anywhere on the page used to end this wait in
-    // milliseconds on a red naming the wrong surface. With the baseline counted
-    // before the interaction, an unchanged count is not this surface's failure —
-    // the wait reports that it could not tell, which is the honest answer.
+/**
+ * What replaced a `countVisibleLazyBoundaryErrors baseline` block here.
+ *
+ * That block never called `countVisibleLazyBoundaryErrors`, and could not: the
+ * function reads a page, and this file drives the pure core over a scripted
+ * port. One of its two cases passed an `unavailableDetail` override the timeout
+ * path never invokes and asserted a regex that holds for a timeout from any
+ * cause; the other hand-wrote the finished sentence into the port and asserted
+ * the message contained the string it had just written. Both were green under a
+ * deletion of the code they were named for, which is worse than not having them
+ * — they retired a question they never asked.
+ *
+ * The question is the ADAPTER's, and it is asked where it can be answered:
+ * `src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx` renders real
+ * `LazyBoundary` failures in a real browser, counts them, and drives the adapter
+ * with a non-zero baseline against a new failure. What stays here is the one
+ * part that IS this core's: whether it plumbs the baseline sentence into the
+ * timeout message at all.
+ */
+describe('the timeout says what it declined to attribute', () => {
+  test('a baseline detail reaches the message, after the open-state sentence', async () => {
     const { observation: port } = observation(['timeout'], {
-      unavailableDetail: async () => 'no failure state rendered',
+      baselineDetail: async () =>
+        '2 boundary failure(s) were already visible before this interaction and are excluded from attribution.',
     });
 
     await expect(waitForLazySurfaceThrough(port, 10_000)).rejects.toThrow(
-      /did not load within 1000ms/,
+      /did not load within 1000ms.*does report the surface open.*2 boundary failure\(s\) were already visible before this interaction and are excluded from attribution\./s,
     );
   });
 
-  test('a failure that appeared across the interaction says so, and how many were already up', async () => {
-    // The text alone identifies nothing, so the sentence has to carry the fact
-    // that makes it attributable: it APPEARED. And a non-zero baseline is
-    // reported, because a reader should know the page had other surfaces already
-    // failing before this interaction touched it.
-    const { observation: port } = observation(['unavailable'], {
-      unavailableDetail: async () =>
-        '1 boundary failure(s) appeared across this interaction, reading "Unable to load this part of Station."; 2 were already visible before it, so this page had other surfaces failing already',
+  test('and nothing is appended when nothing was excluded', async () => {
+    // The default port returns `undefined`, which is the ordinary case: no
+    // pre-existing failures, nothing withheld, and no sentence claiming there
+    // was.
+    const { observation: port } = observation(['timeout']);
+
+    let message = '';
+    await waitForLazySurfaceThrough(port, 10_000).catch((error: Error) => {
+      message = error.message;
     });
 
-    await expect(waitForLazySurfaceThrough(port, 10_000)).rejects.toThrow(
-      /appeared across this interaction.*2 were already visible before it/s,
-    );
+    expect(message).toContain('cannot distinguish a chunk still loading');
+    expect(message).not.toContain('excluded from attribution');
+    expect(message.endsWith('does report the surface open.')).toBe(true);
   });
 });
 

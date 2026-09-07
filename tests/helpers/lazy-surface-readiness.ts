@@ -41,6 +41,19 @@ export type LazySurfaceObservation = {
   unavailableDetail(): Promise<string>;
   /** What the trigger says about being open, for the timeout message. */
   openStateDetail(): Promise<string>;
+  /**
+   * What this wait EXCLUDED from attribution, for the timeout message, or
+   * `undefined` when it excluded nothing.
+   *
+   * The timeout sentence otherwise says "its lazy chunk neither resolved nor
+   * reported a failure" on a page that may be RENDERING a boundary failure —
+   * one this wait deliberately did not attribute to this surface because it was
+   * already visible before the interaction. Saying only the first half is the
+   * confident-sentence problem again, one level quieter: a reader is told
+   * nothing failed while a failure is on screen. Whatever a wait declines to
+   * attribute, it has to name.
+   */
+  baselineDetail(): Promise<string | undefined>;
   now(): number;
 };
 
@@ -52,11 +65,13 @@ async function ranOutMessage(
   observation: LazySurfaceObservation,
   startedAt: number,
 ): Promise<string> {
+  const excluded = await observation.baselineDetail();
   return (
     `${observation.surfaceName} did not load within ${elapsedMilliseconds(startedAt, observation.now())}: ` +
     'its lazy chunk neither resolved nor reported a failure. Its boundary renders nothing while the ' +
     'chunk is in flight (#1692), so this cannot distinguish a chunk still loading from one that never ' +
-    `started — ${await observation.openStateDetail()}.`
+    `started — ${await observation.openStateDetail()}.` +
+    (excluded ? ` ${excluded}` : '')
   );
 }
 
@@ -130,11 +145,36 @@ export type LazySurfaceScreens = {
    * different surface, while this surface's chunk was merely still in flight.
    *
    * Counting first and treating only an INCREASE as this surface's is the
-   * cheapest honest fix. Its cost is disclosed rather than hidden: a rejection
-   * that lands between the count and this call is attributed to nobody, so the
-   * wait spends its budget and reports that it is unsure. That is the right way
-   * round — a wait that says "I could not tell" is worth more than one that
-   * names the wrong component.
+   * cheapest available fix. It does NOT make attribution correct, and its two
+   * residual directions run opposite ways. An earlier version of this comment
+   * described only one of them, and described the wrong one as the cost — which
+   * reads as a promise that the confident wrong name is gone. It is narrowed,
+   * not gone.
+   *
+   * THE SAFE DIRECTION, a false NEGATIVE. If this surface's own boundary fails
+   * while the visible count stays FLAT, there is no increase, the wait
+   * classifies pending, spends its budget and says it could not tell. Holding
+   * the count flat takes a pre-existing failure clearing — an unmount, or a hide
+   * — in the same window as this one appearing. It costs time and it never names
+   * the wrong component, and `ranOutMessage`'s baseline clause is what stops it
+   * reading as "nothing failed" on a page that is rendering a failure.
+   *
+   * THE RESIDUAL, a false POSITIVE, and this is the unsafe one. The baseline is
+   * read BEFORE the interaction, so it excludes only what was already visible
+   * THEN. Any boundary failure that becomes visible afterwards — anywhere on the
+   * page, from any cause, at any point up to the deadline — raises the count
+   * above the baseline and is reported as THIS surface being unavailable.
+   * Concretely, and by the same mechanism described above: the host becomes
+   * unreachable partway through the journey rather than before it, the dock's
+   * prewarmed boundary rejects inside this allowance, and the wait names this
+   * surface for it while this surface's chunk was merely still in flight. The
+   * window is narrower than the whole page's history, which is the improvement;
+   * it is not closed.
+   *
+   * Closing it needs a failure this wait can tell apart from any other's.
+   * `LazyBoundary` publishes no per-boundary identity — no name, no owning
+   * surface, one constant string — so nothing here can do it, and the fix
+   * belongs in the component rather than in a wait that reads it.
    */
   baselineUnavailableCount: number;
   /**
@@ -210,6 +250,14 @@ export async function waitForLazySurface(
         // baseline, wait on the surface alone and let the catch path below
         // classify. A new failure is still reported as `unavailable`, just at the
         // deadline instead of immediately: slower, and still the right sentence.
+        //
+        // GUARDED, because this ternary reads like something to simplify away and
+        // an elapsed-time assertion cannot tell waiting from spinning — both
+        // versions end at the deadline with the same message. The harness's
+        // pre-existing-baseline arrangement drives this adapter through a `Page`
+        // that COUNTS `locator()` calls and pins that count at a handful: one
+        // blocking wait, one classification. Restore the union here and the count
+        // becomes one per re-entry for the whole budget, which is what a spin is.
         const settledUnion =
           baselineUnavailableCount > 0 ? surface : surface.or(unavailable);
         try {
@@ -239,6 +287,19 @@ export async function waitForLazySurface(
           (baselineUnavailableCount > 0
             ? `; ${baselineUnavailableCount} were already visible before it, so this page had other surfaces failing already`
             : '')
+        );
+      },
+      baselineDetail: async () => {
+        if (baselineUnavailableCount < 1) return undefined;
+        // The sentence this trade was made to be able to say. On the timeout
+        // path the message above reports that no failure was seen, while these
+        // failures are visibly rendered on the page — they were simply not
+        // attributable to this surface. Naming them is what keeps "I could not
+        // tell" from reading as "nothing was wrong".
+        return (
+          `${baselineUnavailableCount} boundary failure(s) were already visible before this ` +
+          'interaction and are excluded from attribution, so a failure of this surface inside ' +
+          'that window cannot be told apart here from a chunk still in flight.'
         );
       },
       openStateDetail: async () => {

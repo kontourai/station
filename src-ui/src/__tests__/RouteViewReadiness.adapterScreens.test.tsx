@@ -138,6 +138,46 @@ describe.skipIf(!chromiumAvailable)(
 
     const TARGET =
       '<button type="button" class="target-surface">Arrived</button>';
+
+    /**
+     * A `Page` that counts `locator()` calls, which is how RE-ENTRY becomes
+     * observable at all.
+     *
+     * The lazy adapter's anti-spin ternary cannot be guarded by elapsed time:
+     * spinning and waiting both end at the deadline with the same message, so a
+     * duration assertion passes either way and the ternary sits there reading
+     * like something to tidy up. What differs is how many times the loop is
+     * re-entered, and each re-entry re-reads the boundary count through
+     * `page.locator`. Counting those calls is the cheapest thing that
+     * distinguishes the two.
+     *
+     * Methods are bound to the real page, never to the proxy, so Playwright's
+     * own internals are untouched by the wrapper.
+     */
+    function countingPage(page: Page): {
+      page: Page;
+      locatorCalls: () => number;
+    } {
+      let locatorCalls = 0;
+      const counting = new Proxy(page, {
+        get(target, property) {
+          const value = Reflect.get(target, property);
+          if (typeof value !== 'function') return value;
+          if (property === 'locator') {
+            return (...args: unknown[]) => {
+              locatorCalls += 1;
+              return (value as (...rest: unknown[]) => unknown).apply(
+                target,
+                args,
+              );
+            };
+          }
+          return value.bind(target);
+        },
+      }) as Page;
+      return { page: counting, locatorCalls: () => locatorCalls };
+    }
+
     /** Real `RoutePendingSkeleton`, which is what publishes the named live region. */
     const PENDING = () => markupOf(<RoutePendingSkeleton />);
 
@@ -273,6 +313,31 @@ describe.skipIf(!chromiumAvailable)(
         await expect(
           waitForRouteViewTarget(routeScreens(page), 2_000),
         ).rejects.toThrow(/settled into a failure of its own.*Visible second/s);
+      } finally {
+        await close();
+      }
+    });
+
+    test('a visible target between HIDDEN matches is still observed as ready', async () => {
+      const { page, close } = await pageWith(
+        '<button type="button" class="target-surface" id="masking-first">Hidden first</button>' +
+          TARGET +
+          '<button type="button" class="target-surface" id="masking-last">Hidden last</button>',
+        '#masking-first, #masking-last { display: none; }',
+      );
+      try {
+        // The `target` half of the index-zero masking. Hidden matches on BOTH
+        // sides deliberately: an arrangement with only a hidden first match is
+        // satisfied by sampling the last one instead, which is not the property
+        // being pinned. Only filtering for visibility answers this, so the case
+        // fails under `target.first()` and under `target.last()` alike.
+        //
+        // A shorter budget than its siblings on purpose: the union's own
+        // `.first()` is masked here too, so it waits the budget out before the
+        // catch path classifies. That is the documented cost of the masking, and
+        // the outcome is still `ready`.
+        const observed = await waitForRouteViewTarget(routeScreens(page), 600);
+        expect(observed.screen).toBe('ready');
       } finally {
         await close();
       }
@@ -431,13 +496,15 @@ describe.skipIf(!chromiumAvailable)(
         // the dock's prewarmed boundary rejects exactly when the host is
         // unreachable, and these portaled sheets sort after it. A 20 s allowance
         // ended in milliseconds on a red naming the wrong component.
-        const baseline = await countVisibleLazyBoundaryErrors(page);
+        const { page: counting, locatorCalls } = countingPage(page);
+        const baseline = await countVisibleLazyBoundaryErrors(counting);
         expect(baseline).toBe(1);
+        const callsBefore = locatorCalls();
 
         const startedAt = Date.now();
         await expect(
           waitForLazySurface(
-            page,
+            counting,
             {
               surfaceName: 'The fixture sheet',
               surface: page.getByRole('menu', { name: 'Chat actions' }),
@@ -450,6 +517,61 @@ describe.skipIf(!chromiumAvailable)(
         // honest "I could not tell", which is worth more than a confident wrong
         // name. The pre-fix adapter returned in single-digit milliseconds.
         expect(Date.now() - startedAt).toBeGreaterThanOrEqual(350);
+
+        // AND it waited rather than SPUN, which the duration above cannot tell.
+        // With the boundary back in the settled union, the old error resolves it
+        // instantly on every pass, each pass re-reads the count, and the loop
+        // burns the budget re-entering. Correct behaviour reaches `page.locator`
+        // a handful of times: the union's construction, and one classification
+        // on the way out.
+        expect(locatorCalls() - callsBefore).toBeLessThanOrEqual(8);
+
+        // And the sentence names what it declined to attribute. Without this the
+        // message says no failure was seen while a rendered boundary failure is
+        // on the page — true about attribution, and read as a claim about the
+        // page.
+        await expect(
+          waitForLazySurface(
+            page,
+            {
+              surfaceName: 'The fixture sheet',
+              surface: page.getByRole('menu', { name: 'Chat actions' }),
+              baselineUnavailableCount: baseline,
+            },
+            300,
+          ),
+        ).rejects.toThrow(
+          /1 boundary failure\(s\) were already visible before this interaction and are excluded from attribution/,
+        );
+      } finally {
+        await close();
+      }
+    });
+
+    test('a failure that appeared BESIDE one already up reports both counts', async () => {
+      const failure = await lazyBoundaryFailureMarkup();
+      const { page, close } = await pageWith(failure + failure);
+      try {
+        // The arrangement neither suite had: a non-zero baseline AND a new
+        // failure at the same time. Every earlier case had one or the other, so
+        // the baseline clause of `unavailableDetail` was never reached and could
+        // be deleted with both suites still green. Two failures are on the page
+        // and one of them was already up when the interaction started.
+        expect(await countVisibleLazyBoundaryErrors(page)).toBe(2);
+
+        await expect(
+          waitForLazySurface(
+            page,
+            {
+              surfaceName: 'The fixture sheet',
+              surface: page.getByRole('menu', { name: 'Chat actions' }),
+              baselineUnavailableCount: 1,
+            },
+            400,
+          ),
+        ).rejects.toThrow(
+          /1 boundary failure\(s\) appeared across this interaction.*1 were already visible before it, so this page had other surfaces failing already/s,
+        );
       } finally {
         await close();
       }

@@ -177,14 +177,29 @@ export async function waitForRouteViewTarget(
    * sampling index zero.
    *
    * `locator.first()` picks the first match in document order and says nothing
-   * about whether it is visible, so a hidden earlier match used to mask a
-   * visible later one — and both of this adapter's decisions run through here.
-   * A visible failure behind a hidden earlier one was reported as "rendered
-   * neither a pending state nor a failure", contradicting the page; and the same
-   * shape in the pending list turned a view that WAS still pending into one
-   * reported as settled-without-target. Both are the false-sentence failure this
-   * helper exists to remove, so both are fixed at the one place that decided
-   * them.
+   * about whether it is visible, so a hidden earlier match masks a visible later
+   * one. On the failures side that produced a real false sentence: a visible
+   * failure behind a hidden earlier one was reported as "rendered neither a
+   * pending state nor a failure", contradicting the page.
+   *
+   * WHICH DECISIONS ROUTE THROUGH HERE, written out because an earlier version
+   * of this comment said "both of this adapter's decisions" and the adapter has
+   * three. The two VISIBILITY decisions do — `target` becoming `ready` and
+   * `failures` becoming `failed`, both in `classifySettled` — and so does the
+   * quote in `failureDetail`. The PENDING decision does not, and must not: it is
+   * a presence question, and it goes through `anyPresent` below for the reason
+   * that function documents.
+   *
+   * `target` is filtered here for the same shape rather than for an observed
+   * failure. No route read while writing this renders a hidden earlier match for
+   * a target locator, and the harness arrangement that pins it is constructed
+   * for the check rather than taken from a real page — so this half is REASONED,
+   * not reproduced from the product, and should not be read as a defect anyone
+   * has seen. It is nonetheless the same masking at the same decision point, and
+   * leaving one of two visibility decisions sampling index zero would be keeping
+   * the defect in whichever half nobody had happened to hit. The harness pins
+   * both halves, the `target` one with an arrangement that fails under `first()`
+   * and under `last()` alike.
    */
   const firstVisible = async (
     locators: Locator[],
@@ -236,7 +251,7 @@ export async function waitForRouteViewTarget(
   // over. Checking failures first would fail a view that had already succeeded
   // at what this wait is for.
   const classifySettled = async (): Promise<SettledRouteViewScreen> => {
-    if (await target.first().isVisible()) return 'ready';
+    if (await firstVisible([target])) return 'ready';
     if (await firstVisible(failures)) return 'failed';
     return 'pending';
   };
@@ -254,6 +269,12 @@ export async function waitForRouteViewTarget(
           // ambiguous on its own. Re-read the settled screens first — one can
           // have arrived while the union was giving up — and only then decide
           // which kind of running-out this was.
+          //
+          // This `.first()` samples index zero and is therefore maskable in the
+          // same way `firstVisible` above exists to prevent, but only as an
+          // optimisation: a hidden earlier match makes the union wait out the
+          // budget instead of resolving early, and this catch path then
+          // classifies correctly. It costs time; it never produces a sentence.
           const settled = await classifySettled();
           if (settled !== 'pending') return settled;
           return (await anyPresent(pending))
