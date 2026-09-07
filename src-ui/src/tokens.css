@@ -104,7 +104,7 @@
      banner sits at dock + 1, so there is no value between the dock and the
      banner for a popover to occupy. Putting popovers under the banner means
      moving the BANNER, which is a shell layer-order decision wider than the
-     surface seam. Filed rather than decided here. The pin covers this
+     surface seam. Filed as #1685, not decided here. The pin covers this
      directly — see the popover-with-a-critical-card shape in
      `BannerHost.dialog-stacking.test.tsx`, which asserts the accepted
      behaviour, so a later change to it is a visible decision. */
