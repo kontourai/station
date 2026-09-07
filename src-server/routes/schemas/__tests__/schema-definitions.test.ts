@@ -74,6 +74,13 @@ describe('schema definitions barrel', () => {
       );
     });
 
+    test('ships at 100,000 characters', () => {
+      // A literal, so widening the budget a user's authored work is refused
+      // at is a visible decision in a diff rather than a silent one. Every
+      // other assertion here is relative to the constant and moves with it.
+      expect(AUTHORED_ARTIFACT_MAX_CHARS).toBe(100_000);
+    });
+
     const cases = [
       {
         name: 'agentCreateSchema.prompt',
@@ -878,6 +885,10 @@ describe('schema definitions barrel', () => {
       // the user-prompt constant means lowering that constant later silently
       // drags an unrelated policy with it.
       expect(CHAT_INPUT_TOOL_PART_MAX_CHARS).not.toBe(CHAT_INPUT_MAX_CHARS);
+      // ...and the values as shipped, literally, so moving either bound is a
+      // visible decision. Distinctness alone survives both being doubled.
+      expect(CHAT_INPUT_MAX_CHARS).toBe(200_000);
+      expect(CHAT_INPUT_TOOL_PART_MAX_CHARS).toBe(400_000);
       // Tool text above the PROMPT limit but below the TOOL limit is fine —
       // if this ever throws, the two budgets have been fused.
       expect(() =>
