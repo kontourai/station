@@ -891,7 +891,7 @@ describe('CI verification workflow contracts', () => {
       [
         playwrightFull,
         'playwright-full',
-        'npx playwright install chromium --with-deps',
+        'node scripts/install-playwright-browsers.mjs chromium',
       ],
     ] as const) {
       const jobRunBody = extractRunBodies(job);
@@ -918,6 +918,19 @@ describe('CI verification workflow contracts', () => {
       // comment-stripped run bodies instead catches the block-scalar case
       // without being defeated by, or reddening on, prose.
       expect(jobRunBody, name).not.toContain('npm run install:playwright');
+      // station#1648: `--with-deps` apt-installs system libraries as root and
+      // the fleet's runner account has no passwordless sudo, so on this
+      // runner the flag could only fail — three identical times in half a
+      // second each, with `verify:e2e:full` never running once.
+      //
+      // This is the SECOND line of that guard, not the only one. A text scan
+      // over workflow YAML cannot see a folded scalar and passes on an empty
+      // value, so the real refusals live in code: `actionlint-gate.mjs`
+      // rejects the flag on any persistent self-hosted step (over the PARSED
+      // run string), and `install-playwright-browsers.mjs` refuses it before
+      // spawning anything. Asserted on the extracted run body so that the
+      // workflow's own comment explaining the flag's absence stays inert.
+      expect(jobRunBody, name).not.toContain('--with-deps');
       // station#3579 LOW-B: same move for the raw-path literal — a future
       // author explaining the constant in plain prose must not red this.
       expect(jobRunBody, name).not.toMatch(inNodeModulesPathZero);

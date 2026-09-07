@@ -1,3 +1,4 @@
+import { load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
 import {
   classifyActionlintEvaluation,
@@ -2416,6 +2417,144 @@ describe('persistent runner policy', () => {
     expect(widened.map(({ message }) => message)).toContain(
       'desktop-win jobs must reserve shared physical-host capacity',
     );
+  });
+
+  // station#1648. The flag apt-installs system libraries as root and the
+  // fleet's runner account has no passwordless sudo, so on these runners it
+  // can only fail. These cases mutate the REAL checked-in workflow rather
+  // than a synthetic fixture, so they prove the finding fires where the
+  // regression would actually be written.
+  describe('playwright --with-deps on a persistent runner', () => {
+    const withDepsMessage =
+      'persistent self-hosted steps must not pass --with-deps to playwright install: the fleet runner account has no passwordless sudo, so it can only fail. Install the system libraries on the runner image, and use scripts/install-playwright-browsers.mjs here';
+
+    function extendedWorkflow() {
+      const workflow = readWorkflowDocuments().find(
+        ({ file }) => file === '.github/workflows/ci-extended.yml',
+      );
+      if (!workflow)
+        throw new Error('Expected the checked-in ci-extended workflow.');
+      return {
+        file: workflow.file,
+        document: structuredClone(workflow.document) as {
+          jobs: Record<string, { steps: ParsedWorkflowStep[] }>;
+        },
+      };
+    }
+
+    function installStep(document: {
+      jobs: Record<string, { steps: ParsedWorkflowStep[] }>;
+    }) {
+      const step = document.jobs['playwright-full'].steps.find(
+        ({ name }) => name === 'Install Playwright browsers',
+      );
+      if (!step)
+        throw new Error(
+          "Expected playwright-full's Install Playwright browsers step.",
+        );
+      return step;
+    }
+
+    // The negative direction. Without this, every assertion below could pass
+    // against a tree that emits the finding unconditionally.
+    test('the checked-in corpus is clean', () => {
+      expect(
+        persistentRunnerPolicyFindings(readWorkflowDocuments()).map(
+          ({ message }) => message,
+        ),
+      ).not.toContain(withDepsMessage);
+      // Non-vacuity: the step this policy guards is really there to be read,
+      // and really does invoke the install script.
+      const { document } = extendedWorkflow();
+      expect(installStep(document).run).toContain(
+        'node scripts/install-playwright-browsers.mjs chromium',
+      );
+      expect(installStep(document).run).not.toContain('--with-deps');
+    });
+
+    test('rejects the flag re-added to the real install step', () => {
+      const { file, document } = extendedWorkflow();
+      const step = installStep(document);
+      step.run = `${String(step.run).trimEnd()} --with-deps\n`;
+
+      expect(
+        persistentRunnerPolicyFindings([{ file, document }]).map(
+          ({ message }) => message,
+        ),
+      ).toContain(withDepsMessage);
+    });
+
+    // The failure mode this repo has been bitten by: a text scan over
+    // workflow YAML cannot see a folded scalar, and passes. The gate reads
+    // the PARSED run string, so the fold is resolved before it looks.
+    test('sees the flag through a folded scalar a text scan would miss', () => {
+      const source = [
+        'jobs:',
+        '  playwright-full:',
+        '    runs-on: [self-hosted, Linux, X64, kontour-linux]',
+        "    if: github.event_name != 'pull_request'",
+        '    steps:',
+        '      - name: Install Playwright browsers',
+        '        run: >-',
+        '          npx playwright install chromium',
+        '          --with-deps',
+      ].join('\n');
+      // Proof the fold is what hides it: no single line of the source carries
+      // the whole command, which is exactly why a line-oriented scan for
+      // `playwright install chromium --with-deps` reads this file as clean.
+      expect(
+        source
+          .split('\n')
+          .some((line) => line.includes('install chromium --with-deps')),
+      ).toBe(false);
+
+      const document = load(source) as {
+        jobs: Record<string, { steps: ParsedWorkflowStep[] }>;
+      };
+      expect(document.jobs['playwright-full'].steps[0].run).toContain(
+        'install chromium --with-deps',
+      );
+      expect(
+        persistentRunnerPolicyFindings([
+          { file: '.github/workflows/folded.yml', document },
+        ]).map(({ message }) => message),
+      ).toContain(withDepsMessage);
+    });
+
+    test('a whole-line shell comment naming the flag is inert', () => {
+      const { file, document } = extendedWorkflow();
+      const step = installStep(document);
+      step.run = `# never pass --with-deps here: no passwordless sudo\n${String(step.run)}`;
+
+      expect(
+        persistentRunnerPolicyFindings([{ file, document }]).map(
+          ({ message }) => message,
+        ),
+      ).not.toContain(withDepsMessage);
+    });
+
+    // Scoped, not blanket: GitHub-hosted images do have passwordless sudo,
+    // so the flag is legitimate there and this policy must not claim
+    // otherwise.
+    test('leaves a github-hosted job alone', () => {
+      expect(
+        persistentRunnerPolicyFindings([
+          {
+            file: '.github/workflows/hosted.yml',
+            document: {
+              jobs: {
+                hosted: {
+                  'runs-on': 'ubuntu-22.04',
+                  steps: [
+                    { run: 'npx playwright install chromium --with-deps' },
+                  ],
+                },
+              },
+            },
+          },
+        ]).map(({ message }) => message),
+      ).not.toContain(withDepsMessage);
+    });
   });
 });
 
