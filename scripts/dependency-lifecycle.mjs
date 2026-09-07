@@ -522,13 +522,29 @@ export function verify({ cwd = root } = {}) {
   return { allowlist, purls: expectedLifecyclePurls(allowlist) };
 }
 
-function stationOwnedHooks() {
-  command(process.execPath, ['scripts/node-runtime-contract.mjs']);
-  if (existsSync(resolve(root, '.git')))
-    command(process.execPath, ['scripts/install-git-hooks.mjs']);
+export const BASIS_MCP_APP_GENERATOR = 'scripts/generate-basis-mcp-apps.mjs';
+
+/** Inject only execution; the phase order is the production order. */
+export function stationOwnedHooks({
+  run = command,
+  exists = existsSync,
+  log = console.log,
+} = {}) {
+  run(process.execPath, ['scripts/node-runtime-contract.mjs']);
+  if (exists(resolve(root, '.git')))
+    run(process.execPath, ['scripts/install-git-hooks.mjs']);
   else
-    console.log(
-      '[dependency-lifecycle] NOT_APPLICABLE git hooks outside a checkout',
+    log('[dependency-lifecycle] NOT_APPLICABLE git hooks outside a checkout');
+  // The Basis MCP app bundles are git-ignored build output that typecheck,
+  // vitest, and every bundler resolve as ordinary modules, so a fresh checkout
+  // has them from the moment its dependencies exist. The container's
+  // dependencies stage copies only manifests (no generator, no entries) and
+  // generates in its build stage instead.
+  if (exists(resolve(root, BASIS_MCP_APP_GENERATOR)))
+    run(process.execPath, [BASIS_MCP_APP_GENERATOR]);
+  else
+    log(
+      `[dependency-lifecycle] NOT_APPLICABLE Basis MCP app generation without ${BASIS_MCP_APP_GENERATOR}`,
     );
 }
 

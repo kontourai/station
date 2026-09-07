@@ -131,7 +131,11 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'channel-ports:check']],
       ['npm', ['run', 'gate:workflows']],
       ['npm', ['run', 'content:integrity']],
-      [process.execPath, ['scripts/check-basis-mcp-apps.mjs']],
+      // The git-ignored Basis MCP app bundles are generated, not checked:
+      // nothing is tracked, so the only freshness question is "does the
+      // generator succeed on this tree", and the typecheck aggregate below
+      // resolves its output.
+      [process.execPath, ['scripts/generate-basis-mcp-apps.mjs']],
       ['npm', ['run', 'verification:policy:gate']],
       // station#4273: the typecheck invariant, and `build:connect` as its
       // stated precondition (typecheck:ui resolves @kontourai/station-connect

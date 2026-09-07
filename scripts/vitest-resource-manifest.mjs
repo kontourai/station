@@ -231,6 +231,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // its exit STATUS is asserted, not just its pure decision functions — a
   // rejection path that has never executed is unproven.
   'scripts/__tests__/prepush-ui-bundle.test.ts',
+  // Asks git (`check-ignore`, `ls-files`) whether the generated Basis MCP app
+  // bundles are ignored and untracked, because .gitignore's text cannot say
+  // whether a rule still matches or a file was force-added. Two single-shot
+  // children, no wall-clock assertion.
+  'scripts/__tests__/basis-mcp-apps.test.ts',
   // #1459: runs the completion-gate summary reporter as a real child process
   // so its EXIT STATUS and its stdout annotations are what the assertions
   // read. Both are the contract — the reporter must never fail a job it only

@@ -121,3 +121,8 @@ app-universal-debug.apk
 /.codex-*.log
 /*.exit
 src-desktop/station-client-build.json
+
+# Basis MCP app bundles are build output, not source: scripts/generate-basis-mcp-apps.mjs
+# writes them from the *.browser.ts entries in scripts/basis-mcp-app-manifest.mjs
+# at dependency install, `build:basis-pane`, and the ci:fast static lane.
+packages/basis-pane/src/*.generated.ts

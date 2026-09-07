@@ -1,5 +1,13 @@
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
+import { BASIS_MCP_APP_MANIFEST } from '../basis-mcp-app-manifest.mjs';
+import {
+  BASIS_MCP_APP_GENERATOR,
+  stationOwnedHooks,
+} from '../dependency-lifecycle.mjs';
 import {
   biomeFormatterInvocation,
   generateBasisMcpApps,
@@ -86,13 +94,64 @@ describe('Basis MCP app generator', () => {
   });
 });
 
-describe('Basis MCP app freshness routing', () => {
-  test('keeps the mandatory check in both pre-push and ci-fast PR routing', () => {
-    expect(readFileSync('.githooks/pre-push', 'utf8')).toContain(
-      'node scripts/check-basis-mcp-apps.mjs',
+describe('Basis MCP app output routing', () => {
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+  const outputs = BASIS_MCP_APP_MANIFEST.map((app) => app.output);
+  const git = (args: string[], input?: string) =>
+    spawnSync('git', args, {
+      cwd: root,
+      input,
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+
+  test('every manifest output is git-ignored build output, not a tracked file', () => {
+    // Asked of git, not of .gitignore's text: a rule that no longer matches
+    // and a file re-added with `git add -f` are both invisible to a grep.
+    const ignored = git(['check-ignore', '--stdin'], `${outputs.join('\n')}\n`);
+    expect(ignored.status).toBe(0);
+    expect(ignored.stdout.trim().split('\n').sort()).toEqual(
+      [...outputs].sort(),
+    );
+    const tracked = git(['ls-files', '--', ...outputs]);
+    expect(tracked.status).toBe(0);
+    expect(tracked.stdout.trim()).toBe('');
+  });
+
+  test('dependency install generates the bundles when the generator is present', () => {
+    // Fresh checkouts get the bundles from `dependencies:ci`; a manifest-only
+    // tree (the container's dependencies stage) must not fail the install.
+    const generator = resolve(root, BASIS_MCP_APP_GENERATOR);
+    const run = vi.fn();
+    const log = vi.fn();
+    stationOwnedHooks({ run, exists: (path) => path === generator, log });
+    expect(run).toHaveBeenCalledWith(process.execPath, [
+      BASIS_MCP_APP_GENERATOR,
+    ]);
+
+    const absent = vi.fn();
+    const absentLog = vi.fn();
+    stationOwnedHooks({ run: absent, exists: () => false, log: absentLog });
+    expect(absent.mock.calls.flat(2)).not.toContain(BASIS_MCP_APP_GENERATOR);
+    expect(absentLog).toHaveBeenCalledWith(
+      expect.stringContaining('NOT_APPLICABLE Basis MCP app generation'),
+    );
+  });
+
+  test('generation runs where the readers of the output run', () => {
+    // Builds: build:basis-pane, and the container's build stage (its
+    // dependencies stage has no sources). ci:fast: as the typecheck
+    // aggregate's precondition, like build:connect.
+    expect(
+      JSON.parse(readFileSync('package.json', 'utf8')).scripts[
+        'build:basis-pane'
+      ],
+    ).toMatch(/^npm run basis:mcp:generate && /);
+    expect(readFileSync('Dockerfile', 'utf8')).toContain(
+      'RUN node scripts/generate-basis-mcp-apps.mjs\nRUN STATION_UI_BUNDLE_BUDGET=observe ./station build',
     );
     expect(readFileSync('scripts/run-ci-fast.mjs', 'utf8')).toContain(
-      "['scripts/check-basis-mcp-apps.mjs']",
+      "['scripts/generate-basis-mcp-apps.mjs']",
     );
   });
 });
