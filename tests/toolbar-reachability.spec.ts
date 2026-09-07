@@ -204,7 +204,12 @@ const REQUIRED_CONTROL_KEYS = [
  * band is exactly what either of those two fixes leaves behind if it stops
  * applying.
  */
-const TOOLBAR_WIDTHS: readonly number[] = [412, 402, 390, 360];
+const TOOLBAR_WIDTHS: readonly number[] = [412, 402, 390, 375, 360];
+// 375 is station#1401's own width: the first that keeps the connection label
+// after the padding trim moved the breakpoint to 374. Every other width here
+// behaved identically before and after that change — 390 and up already kept
+// the label, 360 already dropped it — so without this case the entire
+// user-visible effect of that change has no browser-level proof.
 
 /**
  * The news-carrying connection states this guard drives, each through the real

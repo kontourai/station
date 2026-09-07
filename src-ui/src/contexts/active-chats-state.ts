@@ -402,6 +402,8 @@ export type ChatUIState = {
    * queue with no explanation and no way to act on it.
    */
   queuedMessageFailure?: {
+    /** Local queue review required after an execution binding change. */
+    reviewReason?: 'execution-binding-changed';
     message: string;
     /** The server's own refusal code, when it supplied one. */
     code?: string;
@@ -521,6 +523,8 @@ export type PersistedActiveChat = {
    */
   queuedMessages?: string[];
   queuedMessageFailure?: {
+    /** Local queue review required after an execution binding change. */
+    reviewReason?: 'execution-binding-changed';
     message: string;
     code?: string;
     at: number;

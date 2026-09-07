@@ -7,6 +7,7 @@ import {
   type AgentSpec,
   isSupportedAgentIconToken,
 } from '@kontourai/station-contracts/agent';
+import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type {
   AttentionRequestInspection,
   AttentionRequestReference,
@@ -1670,7 +1671,31 @@ export class OrchestrationService {
             authority,
           );
         if (!detail) return null;
+        const session = detail.session;
+        const recordedConnection = this.readLatestSessionStartMetadata(
+          session.threadId,
+          detail.events,
+        )?.connectionId;
+        const connection = parseEngineConnectionId(recordedConnection);
+        const model = session.reportedModel ?? session.model;
         return {
+          sessionId: session.threadId,
+          ...(session.assignedAgentSlug
+            ? {
+                execution: {
+                  sessionId: session.threadId,
+                  agentId: publicAgentIdFromRuntimeKey(
+                    session.assignedAgentSlug,
+                  ),
+                  provider: session.provider,
+                  ...(connection ? { engineConnectionId: connection } : {}),
+                  ...(model ? { model } : {}),
+                  ...(session.appliedModel
+                    ? { acceptedModel: session.appliedModel }
+                    : {}),
+                },
+              }
+            : {}),
           messages: this.readSessionMessages(
             detail.session.threadId,
             authority,
@@ -3674,7 +3699,11 @@ export class OrchestrationService {
         ? { environmentId: query.conversation.environmentId }
         : {}),
     };
-    return this.conversationOpenResolver.resolve({ conversation, authority });
+    return this.conversationOpenResolver.resolve({
+      conversation,
+      authority,
+      expectedSessionId: currentSessionId,
+    });
   }
 
   appendConversationFork(event: CanonicalRuntimeEvent): void {
