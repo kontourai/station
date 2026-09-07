@@ -19,10 +19,10 @@
  *   COLLAPSE   the identity starved to nothing beside a wide actions block.
  *   OVERFLOW   `min-width: 0` removed to give the identity a floor — which
  *              stops a long title ellipsizing and runs it past the region.
- *   COLUMN     the wrap threshold expressed as a `flex-basis`, which is the
- *              MAIN size — a width while the header is a row, a HEIGHT once a
- *              responsive block stacks it, where it inflated a 23px identity
- *              to 320px.
+ *   COLUMN     the wrap threshold expressed as a `flex-basis` LENGTH, which is
+ *              the MAIN size — a width while the header is a row, a HEIGHT
+ *              once a responsive block stacks it, where 20rem inflated a 23px
+ *              identity to 320px on every consumer.
  *
  * Asserting a class name or a CSS declaration would not have caught any of
  * them: every declaration involved was "present" throughout every defect.
@@ -109,6 +109,40 @@ function longTitleMarkup(): string {
       <button type="button" className="editor-btn editor-btn--primary">
         Save
       </button>
+    </DetailHeader>,
+  );
+  const html = container.innerHTML;
+  unmount();
+  return html;
+}
+
+/**
+ * A short identity beside the wide actions — the shape that says whether the
+ * wrap point comes from CONTENT or from a number. These two can share a row at
+ * a 776px region and cannot at 600px, so a threshold pinned to a length wraps
+ * the first one too.
+ */
+function shortIdentityWideActionsMarkup(): string {
+  const { container, unmount } = render(
+    <DetailHeader title="Add model connection">
+      <div className="monitoring-summary">
+        <span className="stat-item">
+          <span className="stat-label">Active sessions:</span>
+          <span className="stat-value">0</span>
+        </span>
+        <span className="stat-item">
+          <span className="stat-label">Running turns:</span>
+          <span className="stat-value">0</span>
+        </span>
+      </div>
+      <div className="monitoring-header-actions">
+        <button type="button" className="button">
+          ● LIVE
+        </button>
+        <button type="button" className="button">
+          CLEAR ALL
+        </button>
+      </div>
     </DetailHeader>,
   );
   const html = container.innerHTML;
@@ -297,10 +331,15 @@ describe.skipIf(!chromiumAvailable)(
 
     /**
      * COLUMN. Every responsive block that stacks this header makes the main
-     * axis vertical, and the wrap threshold on `__left` is a `flex-basis` —
-     * the MAIN size. Unreset, 20rem stops being a wrap threshold and becomes
-     * 320px of height: a 23px identity measured 320px and a 108px phone header
-     * measured 405px, on every one of this primitive's consumers.
+     * axis vertical, and `flex-basis` is the MAIN size. `__left` keeps
+     * `flex-basis: auto` precisely so that stays content-derived in both
+     * directions; a LENGTH there would be 320px of height once stacked — a
+     * 23px identity in a 405px phone header, on every consumer, and it would
+     * need a reset inside every stacking rule to undo.
+     *
+     * So this is not pinning a reset — there is none to pin. It pins the
+     * property the resets would otherwise have had to restore, which is what
+     * makes reintroducing a length basis fail here instead of on a phone.
      *
      * Both stacking rules are covered, because they are in different files and
      * cover different bands: `DetailHeader.css` stacks at <= 640px, and
@@ -328,6 +367,34 @@ describe.skipIf(!chromiumAvailable)(
       },
       60_000,
     );
+
+    /**
+     * The wrap point is CONTENT, not a number. A short identity and a wide
+     * actions block fit together at a 776px region and do not at 600px, so
+     * this asserts both directions against the same fixture: a threshold
+     * pinned to a length (20rem measured 728px of identity and a 121px header
+     * at 776px) wraps the first case too, and reds here.
+     *
+     * The two-sided form is the point. "Does not wrap at 776" alone would also
+     * pass for a header that never wraps, which is the defect at the top of
+     * this file.
+     */
+    test('the wrap point comes from content, in both directions', async () => {
+      const markup = shortIdentityWideActionsMarkup();
+
+      // They fit: one row, the identity at its content width.
+      const shares = await measure(776, 1440, { markup });
+      expect(shares.identityWidth).toBeLessThan(450);
+      expect(shares.titleClipped).toBe(false);
+      expect(shares.overflow).toBe(0);
+
+      // They do not fit: the actions take their own row rather than starving
+      // the identity, which pre-fix measured 76px here.
+      const wraps = await measure(600, 1440, { markup });
+      expect(wraps.identityWidth).toBeGreaterThan(450);
+      expect(wraps.titleClipped).toBe(false);
+      expect(wraps.overflow).toBe(0);
+    }, 120_000);
   },
 );
 

@@ -1426,13 +1426,6 @@
 
   .monitoring-page > .detail-header .detail-header__left {
     align-items: flex-start;
-    /* This block turns the shared header into a column, and
-       `DetailHeader.css` gives `__left` a `flex-basis` that is a wrap
-       threshold on the ROW axis. On this axis it is a height, and it measured
-       320px against a 45px identity — a 159px header became 434px. This band
-       (641-768px) is below that file's own column breakpoint, so it is the
-       one place that reset has to be repeated. */
-    flex-basis: auto;
   }
 
   .monitoring-page > .detail-header .detail-header__left > div {
