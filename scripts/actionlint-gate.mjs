@@ -753,9 +753,38 @@ function reusableWorkflowPolicyFindings(file, jobId, job) {
   return findings;
 }
 
+/**
+ * station#1648: `playwright install --with-deps` apt-installs system
+ * libraries as root. The fleet's runner account has no passwordless sudo, so
+ * on a persistent self-hosted runner the flag cannot succeed — it failed
+ * three identical times in half a second each in ci-extended, and the job's
+ * real work never ran. GitHub-hosted images do have passwordless sudo, which
+ * is why this is scoped to persistent runners rather than banned outright.
+ *
+ * Asserted over the PARSED `run` string, so a block or folded scalar
+ * (`run: >-`) cannot hide the flag from it the way a whole-file text scan
+ * can. Whole-line shell comments are dropped first: a comment explaining why
+ * the flag is absent is inert and must not red a correct tree.
+ */
+export function refusesWithDepsOnPersistentRunner(run) {
+  if (typeof run !== 'string') return true;
+  const executable = run
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n');
+  return !/--with-deps/.test(executable);
+}
+
 function persistentStepPolicyFindings(file, jobId, steps) {
   const findings = [];
   for (const step of steps ?? []) {
+    if (!refusesWithDepsOnPersistentRunner(step?.run))
+      findings.push({
+        file,
+        jobId,
+        message:
+          'persistent self-hosted steps must not pass --with-deps to playwright install: the fleet runner account has no passwordless sudo, so it can only fail. Install the system libraries on the runner image, and use scripts/install-playwright-browsers.mjs here',
+      });
     if (
       typeof step?.uses === 'string' &&
       step.uses.startsWith('actions/checkout@') &&
