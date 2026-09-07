@@ -1023,8 +1023,9 @@ describe('SkillsView', () => {
 
       const { container } = render(<SkillsView />);
 
-      const text = container.querySelector('.skill-detail__source-note')
-        ?.textContent ?? '';
+      const text =
+        container.querySelector('.skill-detail__source-note')?.textContent ??
+        '';
       expect(text).toContain(
         'It is served from a root this Station does not write.',
       );

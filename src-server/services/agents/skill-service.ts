@@ -812,7 +812,8 @@ export class SkillService {
     if (registered.provided) {
       return {
         reason: 'served-in-place',
-        detail: 'A plugin serves it in place, from a directory Station does not own.',
+        detail:
+          'A plugin serves it in place, from a directory Station does not own.',
         directory,
       };
     }
