@@ -899,6 +899,12 @@ export class SkillService {
    * parameter a future caller could thread into the write gate, which is
    * exactly how the round-one defect happened.
    *
+   * MEASURED after deleting it, so the cost claim is this tree's and not an
+   * inherited one: a 100-package home lists in 5.0ms median (4.7 min, 6.0 max,
+   * 20 runs after 5 warm-ups), the whole call. The memo's own docblock used to
+   * put the writability portion alone at ~8.3ms, which is the number to
+   * distrust — nothing here is hotter than the hoist it describes.
+   *
    * NOTE the slug: this passes none, matching the route's gate.
    * `updateLocalSkillOwned` DOES pass one to `isSkillWritable`, so the two
    * sites are in lockstep only while no route supplies a slug. They must move
