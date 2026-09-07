@@ -302,8 +302,13 @@ describe.skipIf(!chromiumAvailable)(
      * land inside the viewport at 375.
      */
     test('the widest cluster still fits at the first width that keeps the label (#1401)', async () => {
+      // The two constants `chat.css`'s bound is written from, and the total it
+      // computes. What this asserts is that the RENDERED row still fits the
+      // width that arithmetic reserves — the breakpoint is only correct while
+      // it does.
       const LEFT_SIDE_FLOOR_PX = 126;
-      const TRAILING_CONTROL_HALF_PX = 22;
+      const DOCUMENTED_WIDEST_TOTAL_PX = 396;
+      const CLUSTER_BUDGET_PX = DOCUMENTED_WIDEST_TOTAL_PX - LEFT_SIDE_FLOOR_PX;
       const FIRST_LABELLED_WIDTH_PX = 375;
 
       attentionPendingCount = 123; // the badge at its capped, widest form
@@ -328,15 +333,15 @@ describe.skipIf(!chromiumAvailable)(
             Math.min(...boxes.map((box) => box.left))
           );
         });
-        const trailingCentre =
-          LEFT_SIDE_FLOOR_PX + content - TRAILING_CONTROL_HALF_PX;
         expect(
-          trailingCentre,
-          `the widest cluster puts the trailing control's centre at ` +
-            `${Math.round(trailingCentre)}, outside a ` +
-            `${FIRST_LABELLED_WIDTH_PX}px viewport — the breakpoint above ` +
-            `keeps the label at a width the row cannot hold`,
-        ).toBeLessThan(FIRST_LABELLED_WIDTH_PX);
+          content,
+          `the widest cluster measures ${Math.round(content)}px against the ` +
+            `${CLUSTER_BUDGET_PX}px chat.css reserves for it (its ` +
+            `${DOCUMENTED_WIDEST_TOTAL_PX}px bound less the ` +
+            `${LEFT_SIDE_FLOOR_PX}px left side). The label breakpoint is ` +
+            `derived from that bound, so a row this wide keeps its label at a ` +
+            `width it cannot hold — re-measure the row and move both together.`,
+        ).toBeLessThanOrEqual(CLUSTER_BUDGET_PX);
       } finally {
         await page.close();
       }
