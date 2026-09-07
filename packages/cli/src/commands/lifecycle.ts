@@ -70,6 +70,7 @@ import {
   type StationHomeBackupResult,
   type StationHomeRestoreResult,
 } from '@kontourai/station-shared/station-home-archive';
+import { inspectStationHomeRecovery } from '@kontourai/station-shared/station-home-recovery-preflight';
 import {
   ensureStationHomeSchemaSync,
   stationHomeSchemaNeedsReset,
@@ -4399,6 +4400,11 @@ export function homeVerify(options: CleanOptions = {}): HomeVerifyResult {
     results,
     exitCode: storeIntegrityExitCode(results),
   };
+}
+
+/** Explicit target only: no default-home resolution, announcement or bootstrap. */
+export function homeRecoveryPlan(projectHome: string) {
+  return inspectStationHomeRecovery({ homeDir: projectHome });
 }
 
 export function homeBackup(
