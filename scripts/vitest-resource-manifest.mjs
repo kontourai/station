@@ -711,6 +711,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // to measure real cascade-resolved flex geometry (which of the dock identity
   // row's parts truncates first, and whether any two of them overlap).
   'src-ui/src/__tests__/ChatDockActiveIdentity.overflow.test.tsx',
+  // #1666: same shape again — launches a real Chromium to measure the detail
+  // header's cascade-resolved flex geometry in a narrowed region, which is the
+  // only layer where a collapse-instead-of-wrap is observable at all.
+  'src-ui/src/__tests__/DetailHeaderRegionWidth.geometry.test.tsx',
   // #1536 F (review round): same shape again — launches a real Chromium to
   // hit-test the dock header's portalled More menu against the dock it now
   // paints over. `verification:policy:gate` keys on a `child_process` import

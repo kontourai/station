@@ -37,6 +37,9 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 const { SkillService } = await import('../skill-service.js');
+const { saveSkillConfigIn, deleteSkillPackageAt } = await import(
+  '../../../domain/config-loader-storage.js'
+);
 const { migratePlaybooksToSkills } = await import(
   '../playbook-skill-migration.js'
 );
@@ -81,6 +84,16 @@ const configLoader = {
       'utf-8',
     );
   }),
+  // The REAL directory-addressed pair (#1619), not an imitation: the
+  // containment they assert is the floor beneath every write, and a stub that
+  // only wrote a file would let this suite certify a write that escapes its
+  // root (review: test power).
+  saveSkillIn: vi.fn(async (directory: string, config: unknown) =>
+    saveSkillConfigIn(home, directory, config as never),
+  ),
+  deleteSkillAt: vi.fn(async (name: string, directory: string) =>
+    deleteSkillPackageAt(home, name, directory),
+  ),
   deleteSkill: vi.fn(),
   listSkills: vi.fn().mockResolvedValue([]),
   skillExists: vi.fn().mockResolvedValue(false),
