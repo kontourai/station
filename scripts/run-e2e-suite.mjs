@@ -2095,8 +2095,11 @@ async function main() {
       !grep &&
       specs.length === PR_BROWSER_SMOKE_CONTRACT.journeys.length;
     const reporter = [
-      process.env.PW_REPORTER || 'line',
-      ...(criticalSmoke ? ['./scripts/critical-browser-reporter.mjs'] : []),
+      ...new Set([
+        ...(process.env.PW_REPORTER || 'line').split(','),
+        'json',
+        ...(criticalSmoke ? ['./scripts/critical-browser-reporter.mjs'] : []),
+      ]),
     ].join(',');
     const phases =
       suite === 'product'
@@ -2130,6 +2133,7 @@ async function main() {
         {
           env: {
             ...process.env,
+            PLAYWRIGHT_JSON_OUTPUT_FILE: join(outputRoot, 'report.json'),
             PLAYWRIGHT_BROWSERS_PATH:
               process.env.PLAYWRIGHT_BROWSERS_PATH ?? '0',
             PW_BASE_URL: `http://localhost:${uiPort}`,
