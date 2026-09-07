@@ -2543,14 +2543,14 @@ describe('the real workflow corpus', () => {
   });
 
   test('uses one host-manifest lifetime that covers every admitted timeout without heartbeat renewal', () => {
-    let directCapacityJobs = 0;
+    const directCapacityJobs: string[] = [];
     let recoveryJobs = 0;
     let reusableCapacityJobs = 0;
 
-    for (const { document } of workflows) {
+    for (const { file, document } of workflows) {
       const jobs =
         (document as { jobs?: Record<string, ParsedWorkflowJob> }).jobs ?? {};
-      for (const job of Object.values(jobs)) {
+      for (const [jobId, job] of Object.entries(jobs)) {
         const capacityStep = job.steps?.find(
           (step) =>
             typeof step?.uses === 'string' &&
@@ -2559,7 +2559,7 @@ describe('the real workflow corpus', () => {
             ),
         );
         if (capacityStep) {
-          directCapacityJobs += 1;
+          directCapacityJobs.push(`${file}:${jobId}`);
           expect(String(capacityStep.with?.['owner-lifetime-seconds'])).toBe(
             '7800',
           );
@@ -2592,7 +2592,18 @@ describe('the real workflow corpus', () => {
       }
     }
 
-    expect(directCapacityJobs).toBe(9);
+    expect(directCapacityJobs.sort()).toEqual(
+      [
+        '.github/workflows/ci-extended.yml:coverage',
+        '.github/workflows/ci-extended.yml:playwright-full',
+        '.github/workflows/container-smoke.yml:smoke',
+        '.github/workflows/interactive-workspace-performance.yml:reference-performance',
+        '.github/workflows/interactive-workspace-performance.yml:one-hour-collaboration-reference',
+        '.github/workflows/interactive-workspace-performance.yml:one-hour-work-board-reference',
+        '.github/workflows/windows-verification.yml:portable-floor',
+        '.github/workflows/windows-vitest-diagnostic.yml:diagnostic',
+      ].sort(),
+    );
     expect(recoveryJobs).toBe(2);
     expect(reusableCapacityJobs).toBe(0);
   });
