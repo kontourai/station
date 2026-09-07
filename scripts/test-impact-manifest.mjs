@@ -239,6 +239,14 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     tests: Object.freeze(['scripts/__tests__/veritas-repo-map.test.ts']),
     reason: 'Veritas claims are governed as repository data',
   }),
+  Object.freeze({
+    pattern: 'scripts/mobile-css-baseline.json',
+    tests: Object.freeze(['scripts/__tests__/mobile-css-ratchet.test.ts']),
+    reason:
+      'the mobile-css ratchet baseline is read via readFileSync, not ' +
+      'imported, so Vitest related-file discovery cannot see the edge to ' +
+      'its own test on its own (station#1711)',
+  }),
 ]);
 
 /** Deterministic, reviewable edges the runtime dependency graph cannot see. */
