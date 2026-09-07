@@ -304,21 +304,32 @@ export async function waitForLocalUiAccessReadinessThrough(
  *
  * MAY NAVIGATE: when the gate reports its host away, this follows the recovery
  * screen's own instruction and reloads — which would be unsafe if that reload
- * could re-present a one-shot `#station-ui-bootstrap` token. It cannot.
- * `host-unavailable` is reachable only after `bootstrapLocalUiSession` returned
- * false, which is only when the capture DECLINED, and that happens for exactly
- * two reasons: no valid token was in the address, or the latch had already spent
- * one (in which case the fragment was stripped when it was spent). Either way
- * there is no token in the address for this reload to carry. A token that is
- * present and accepted resolves `authenticated` before the identity request is
- * made, and one that is refused throws to `access-required`, so neither reaches
- * this screen at all.
+ * could re-present a one-shot `#station-ui-bootstrap` token. It cannot, in all
+ * THREE ways `host-unavailable` is now reachable.
  *
- * This is the same terminal-bootstrap property `resolveLocalUiSession`
- * (`src-ui/src/lib/local-ui-bootstrap.ts`) documents, with the same two-case
- * enumeration. Keep them in step: an earlier revision of both derived "no token
- * was ever present" from the decline, which silently dropped case (b) — the one a
- * pairing recheck actually takes.
+ * Two of them are reached after `bootstrapLocalUiSession` returned false, which is
+ * only when the capture DECLINED, and that happens for exactly two reasons: no
+ * valid token was in the address, or the latch had already spent one (in which
+ * case the fragment was stripped when it was spent). Either way there is no token
+ * in the address for this reload to carry.
+ *
+ * The THIRD is new with station#1654 and is not covered by that reasoning at all:
+ * the exchange itself can fail to reach a responder, which now reports the host as
+ * away rather than asking this browser to pair. That reaches this screen with a
+ * token that WAS present and IS consumed. The reload is still safe, for a
+ * different reason: the fragment is stripped inside
+ * `captureLocalUiBootstrapToken`, BEFORE the exchange is attempted, so a failed
+ * exchange leaves the address bar already clean. A token that is present and
+ * accepted resolves `authenticated` before the identity request is made, and one
+ * that is REFUSED throws to `access-required`, so neither of those reaches this
+ * screen.
+ *
+ * This is the same enumeration `resolveLocalUiSession`
+ * (`src-ui/src/lib/local-ui-bootstrap.ts`) documents. Keep them in step: an
+ * earlier revision of both derived "no token was ever present" from the decline,
+ * which silently dropped the pairing-recheck case, and the revision before this
+ * one still said "only after `bootstrapLocalUiSession` returned false" after that
+ * had stopped being true.
  */
 export async function waitForLocalUiAccessReadiness(
   page: Page,

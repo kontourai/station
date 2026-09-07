@@ -62,6 +62,72 @@ function strangerGatewayTimeout(): Response {
   });
 }
 
+/**
+ * JSON on one of the two statuses, carrying ONE of the envelope's two fields.
+ *
+ * Not hypothetical: a Station route answers `ready:false` with a DIFFERENT
+ * `status` value, and this proxy relays an upstream response verbatim — so a body
+ * agreeing on one field is a real shape this can meet. Both halves of the envelope
+ * are load-bearing, and without a fixture like this, reducing the check to either
+ * field alone leaves the whole suite green.
+ */
+function halfEnvelope(field: 'ready' | 'status'): Response {
+  return Response.json(
+    field === 'ready'
+      ? { ready: false, status: 'starting' }
+      : { ready: true, status: 'unavailable' },
+    { status: 503 },
+  );
+}
+
+/**
+ * Headers that ARE the envelope, over a body that never completes.
+ *
+ * The body stream errors when the request signal aborts, which is what a real
+ * `fetch` does: the deadline tears the body down, and `json()` rejects rather than
+ * hanging. That is the property this fixture exists to model, and the reason it
+ * carries the signal at all — a fabricated `Response` whose stream ignored the
+ * signal would hang under a correct implementation too, and prove nothing.
+ */
+function envelopeWithBodyThatNeverCompletes(
+  signal: AbortSignal | undefined,
+): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      signal?.addEventListener('abort', () => {
+        controller.error(
+          new DOMException('The operation was aborted.', 'AbortError'),
+        );
+      });
+    },
+  });
+  return new Response(body, {
+    status: 504,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+/**
+ * Headers that ARE the envelope, over a body torn down mid-stream by the
+ * responder — no client abort involved.
+ *
+ * This is the production tail of an unbounded body read: the UI proxy's own
+ * inactivity timeout destroys the response it has already begun, and the browser
+ * sees a body it cannot read to the end. It must not be reported as a body which
+ * is not the envelope.
+ */
+function envelopeWithBodyTornDown(): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.error(new TypeError('network error'));
+    },
+  });
+  return new Response(body, {
+    status: 503,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 /** A fetch that never answers and rejects on abort, as a real fetch does. */
 function neverAnswers(signal: AbortSignal | undefined): Promise<Response> {
   return new Promise<Response>((_resolve, reject) => {
@@ -182,9 +248,104 @@ describe('the UI proxy’s timeout answer is the host being away (#1654)', () =>
     await settleForLongerThanTheLadder();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  test.each([
+    ['only the ready field', 'ready' as const],
+    ['only the status field', 'status' as const],
+  ])(
+    'a body carrying %s is not this proxy’s envelope, and still asks this browser to pair',
+    async (_label, field) => {
+      // Both halves are load-bearing, and each needs its own case: with only a
+      // full-envelope fixture and a non-JSON one, reducing the check to either
+      // field alone leaves every screen assertion in this file green.
+      const fetchMock = vi
+        .fn()
+        .mockImplementation(() => Promise.resolve(halfEnvelope(field)));
+      vi.stubGlobal('fetch', fetchMock);
+
+      renderGate(<div>Protected application mounted</div>);
+
+      await screen.findByRole('button', { name: 'Complete pairing' });
+      expect(
+        screen.queryByRole('heading', { name: 'Reconnecting to this Station' }),
+      ).toBeNull();
+      await settleForLongerThanTheLadder();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test('a response torn down mid-body is the host being away, not a browser without access', async () => {
+    // The production tail of an unbounded body read, and the door station#1654's
+    // fix has to close from the inside as well: the responder destroys a body it
+    // had begun, so the envelope cannot be read. Reporting that as "not the
+    // envelope" put a non-OK status on the pairing screen — the same
+    // misclassification, reached through the body instead of the status.
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(envelopeWithBodyTornDown()));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderGate(<div>Protected application mounted</div>);
+
+    await screen.findByRole(
+      'heading',
+      { name: 'Reconnecting to this Station' },
+      { timeout: PAST_THE_LADDER_MS },
+    );
+    expect(pairingOffered()).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(LOCAL_UI_SESSION_ATTEMPT_LIMIT);
+  });
 });
 
 describe('the gate’s own per-attempt deadline (#1661)', () => {
+  test('the deadline covers the BODY, not only the headers', async () => {
+    // The defect this pins: with the timer cleared the moment `fetch` resolved,
+    // headers that arrive as the envelope over a body that never completes left
+    // the read unbounded — the gate never settled and never climbed a rung, for
+    // as long as the body stayed open. The deadline has to cover the
+    // classification, not the handshake.
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockImplementationOnce((_url: string, init?: RequestInit) =>
+          Promise.resolve(
+            envelopeWithBodyThatNeverCompletes(init?.signal ?? undefined),
+          ),
+        )
+        .mockImplementation(() =>
+          Promise.resolve(new Response('{}', { status: 200 })),
+        );
+      const protectedMount = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      renderGate(<ProtectedDataProbe onMount={protectedMount} />);
+
+      // Headers have landed and the body is still open: nothing decided, and the
+      // rung has not been given up on.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS[0] - 1,
+        );
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(pairingOffered()).toBe(false);
+
+      // Crossing the deadline abandons the body read and climbs the rung, which
+      // is what an unbounded body read could never do.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          1 + LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS[0],
+        );
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(protectedMount).toHaveBeenCalled();
+      expect(pairingOffered()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('a read that outlives its deadline is retried, and a later attempt gets this browser in', async () => {
     vi.useFakeTimers();
     try {

@@ -168,17 +168,22 @@ test('phone first run recovers from no provider to a real streamed reply', async
   //
   // ALL of the growth is the readiness step; no other step's budget has moved
   // since the 117 s figure was measured. The ceiling rose from 150 s for the last
-  // term alone, which RESTORES margin this change consumes rather than adding
-  // headroom: 19.6 s (13.1%) before, 20.0 s (11.8%) after.
+  // term alone, and what that restores is the ABSOLUTE margin, not the fraction:
+  // 19.6 s (13.1%) before, 20.0 s (11.8%) after. It buys back the seconds this
+  // change consumes; it does not buy headroom.
   //
   // Raising it costs the same 20 s on a genuinely hung journey, and nothing else:
   // it is NOT a bound on the sum of the steps, whose declared budgets already
   // total ~195 s, so a run where several of them each spend theirs still ends
   // here. What it buys is that the ordinary slow-host failure arrives as the
   // failing assertion's own sentence rather than as a test timeout, which names
-  // nothing — and the readiness wait throws ITS own sentence at its own 53 s
-  // budget, roughly two minutes before this ceiling, so raising this delays no
-  // real failure report. No individual budget is relaxed by this.
+  // nothing — and the readiness wait throws ITS own sentence when its own 53 s
+  // budget expires. That wait is NOT the first step (server setup and navigation
+  // precede it), so the slack between its sentence and this ceiling is whatever
+  // the journey has already spent by then, not the difference between the two
+  // numbers. It is still slack: raising this ceiling cannot delay that sentence,
+  // because the wait's own budget is what produces it. No individual budget is
+  // relaxed by this.
   test.setTimeout(170_000);
 
   let ollamaServer: Server | null = null;

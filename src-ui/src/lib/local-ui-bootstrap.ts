@@ -85,9 +85,23 @@ export function captureLocalUiBootstrapToken(): string | undefined {
 export class LocalUiBootstrapRefusedError extends Error {}
 
 /**
- * NO ANSWER AT ALL: the request never reached a responder, or its deadline
- * expired. Says nothing about whether this browser has access, so it must not be
- * reported as a browser that needs to pair.
+ * NO ANSWER AT ALL: the launcher-token exchange never reached a responder. Says
+ * nothing about whether this browser has access, so it must not be reported as a
+ * browser that needs to pair.
+ *
+ * Thrown from ONE place, the exchange below, and deliberately says nothing about
+ * deadlines: the exchange has none. An earlier revision of this comment claimed it
+ * also covered an expired deadline, which nothing computed — the identity read
+ * owns its deadline and answers `host-unavailable` directly without constructing
+ * this.
+ *
+ * The exchange is deliberately unbounded, and the reason is that its token is
+ * ONE-SHOT: a deadline that fired on a slow-but-succeeding exchange would spend
+ * the token and leave the user needing a fresh start link, which is worse than
+ * waiting. The residual is a host that accepts the connection and never answers,
+ * where this browser stays on the gate's pending screen — not stranded, since the
+ * degraded window puts a reload control on that screen, but the wait is the
+ * host's to end rather than the gate's.
  */
 export class LocalUiHostUnreachableError extends Error {}
 
@@ -135,8 +149,18 @@ export async function bootstrapLocalUiSession(
  * longer rung.
  *
  * An owned `AbortController` rather than `AbortSignal.timeout`, matching
- * `probeServerConnection` in `serverHealth.ts`: the timer is cleared when the
- * read settles, so nothing outlives the request it belonged to.
+ * `probeServerConnection` in `serverHealth.ts`: the timer is cleared once this
+ * read is CLASSIFIED, so nothing outlives the request it belonged to.
+ *
+ * The deadline covers the CLASSIFICATION, not just the headers, and the try
+ * below is drawn around both for that reason. An earlier revision cleared the
+ * timer the moment `fetch` resolved and then awaited the envelope check outside
+ * any catch — so a response whose headers arrived and whose body never completed
+ * was unbounded: the gate never settled and never climbed a rung. In production
+ * its residual bound was the proxy's own inactivity timeout tearing the stream
+ * down, which surfaced as an unreadable body beside a non-OK status and landed on
+ * the PAIRING screen — the misclassification this change exists to remove,
+ * reached through the body instead of the status.
  */
 async function readLocalUiIdentity(
   apiBase: string,
@@ -147,32 +171,37 @@ async function readLocalUiIdentity(
     () => controller.abort(),
     localUiSessionIdentityDeadlineMs(attemptIndex),
   );
-  let response: Response;
   try {
-    response = await fetch(`${apiBase}/api/system/identity`, {
+    const response = await fetch(`${apiBase}/api/system/identity`, {
       credentials: 'include',
       headers: { Accept: 'application/json' },
       signal: controller.signal,
     });
+    if (await isStationUiProxyUnavailableResponse(response)) {
+      // The Station-owned UI proxy answered, but its sibling host could not.
+      // That says nothing about whether this browser's existing HttpOnly
+      // session is valid, so preserve the access context rather than
+      // demoting the browser to first-run pairing.
+      return { kind: 'host-unavailable' };
+    }
+    return response.ok
+      ? { kind: 'authenticated' }
+      : { kind: 'access-required' };
   } catch {
     // #1654: a thrown fetch used to share one outcome — and one message — with a
     // REFUSED launcher token, so being offline, or having no route to the host,
     // rendered the pairing screen. Nothing was answered here, so nothing was
     // decided about this browser; this is the same statement the proxy's
-    // readiness envelope makes, and it is retried on the same rungs. The deadline
-    // above lands here too.
+    // readiness envelope makes, and it is retried on the same rungs.
+    //
+    // Three failures land here, and all three are "no answer": the request never
+    // reached a responder, this attempt's deadline expired, or a body that had
+    // begun could not be read to the end (the envelope check rethrows that case
+    // rather than reporting it as a body which is not the envelope).
     return { kind: 'host-unavailable' };
   } finally {
     clearTimeout(deadline);
   }
-  if (await isStationUiProxyUnavailableResponse(response)) {
-    // The Station-owned UI proxy answered, but its sibling host could not.
-    // That says nothing about whether this browser's existing HttpOnly
-    // session is valid, so preserve the access context rather than
-    // demoting the browser to first-run pairing.
-    return { kind: 'host-unavailable' };
-  }
-  return response.ok ? { kind: 'authenticated' } : { kind: 'access-required' };
 }
 
 /**
@@ -192,7 +221,13 @@ async function readLocalUiIdentity(
  *  - the identity read threw: offline, no route, a refused connection. Nothing
  *    answered, so nothing was decided about this browser;
  *  - this attempt's deadline expired (#1661), which is the same statement with a
- *    clock behind it.
+ *    clock behind it — including a deadline that expired DURING the body, which
+ *    the envelope check rethrows rather than reporting as a body that is not the
+ *    envelope;
+ *  - the launcher-token exchange itself could not reach a responder
+ *    (`LocalUiHostUnreachableError`). This is the one route that reaches
+ *    `host-unavailable` WITHOUT an identity read, and it is the case the readiness
+ *    wait's enumeration has to know about — see below.
  *
  * Every other outcome is a decision ABOUT this browser, and none is retried:
  *
@@ -225,9 +260,19 @@ async function readLocalUiIdentity(
  *      declined and the fragment is already gone. This is the live case — it is
  *      what a pairing recheck does, and what the test named below drives.
  *
- * Moving the exchange INSIDE the ladder therefore changes nothing in either
- * case: there is no token to re-POST, because there never was one (a) or because
- * it is already spent (b). This invariant has no observable mutation through the
+ *   c. NEW with #1654, and the reason this enumeration moved: the exchange itself
+ *      could not reach a responder, so `host-unavailable` is reached with a token
+ *      that WAS present and IS now consumed — no identity read involved. The
+ *      recovery screen's reload is still safe, and the property that holds it is
+ *      not the one (a) and (b) rely on: the fragment is stripped inside
+ *      `captureLocalUiBootstrapToken`, BEFORE the exchange is attempted, so a
+ *      failed exchange leaves the address bar already clean. The reload carries no
+ *      token because capture stripped it, not because the exchange succeeded.
+ *
+ * Moving the exchange INSIDE the ladder therefore changes nothing in any of the
+ * three: there is no token to re-POST, because there never was one (a), because it
+ * is already spent (b), or because it was consumed on the attempt that failed (c).
+ * This invariant has no observable mutation through the
  * gate — the capture reads only the URL fragment, is called from exactly one
  * production place (the exchange), and nothing writes the `station-ui-bootstrap`
  * key after boot (`src-ui/src/components/chat-dock/ChatDock.tsx` and

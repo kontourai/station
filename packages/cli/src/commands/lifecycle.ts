@@ -486,14 +486,34 @@ export function uiRequestHandler(deps: UiServerDeps) {
   // where esbuild's own `__name` runtime helper does not exist. Do not
   // remove that shim under the assumption that avoiding named bindings here
   // is sufficient on its own — it is not.
+  // The readiness envelope this proxy answers with whenever it is up and its
+  // sibling host is not: 503 when the upstream request errored or no internal
+  // token exists yet, 504 when the upstream request timed out (station#1654 —
+  // that path used to answer `text/plain` "Gateway Timeout", which no client
+  // could tell from any intermediary's 504).
+  //
+  // A same-function local, which is what makes it possible at all: an IMPORTED or
+  // module-scope binding would be `undefined` in the spawned `node -e` UI process
+  // this handler is serialized into, but a local of `uiRequestHandler` is carried
+  // with it — the same empirically verified property `HOP_BY_HOP_HEADERS` and
+  // `PROXY_UPSTREAM_TIMEOUT_MS` above rely on. So the bytes cannot come from
+  // `@kontourai/station-contracts`, but they need not be repeated per call site.
+  // `src-ui/src/lib/station-ui-proxy.ts` is the consumer, and
+  // `lifecycle.test.ts` pins these exact bytes on both statuses.
+  const answerHostUnavailable = (
+    res: import('node:http').ServerResponse,
+    status: number,
+  ) => {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ready: false, status: 'unavailable' }));
+  };
   const proxyToBackend = (
     req: import('node:http').IncomingMessage,
     res: import('node:http').ServerResponse,
     tenantId?: string,
   ) => {
     if (!internalApiToken) {
-      res.writeHead(503, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ready: false, status: 'unavailable' }));
+      answerHostUnavailable(res, 503);
       return;
     }
     const tailscaleIngress = trustedTailscaleIdentity(req);
@@ -616,19 +636,10 @@ export function uiRequestHandler(deps: UiServerDeps) {
         // below has always sent: both statuses mean "this proxy is up, its
         // sibling host could not answer", and the status is what separates the
         // causes. Nothing derives a `reason` field, so there is none.
-        //
-        // Literal rather than a shared constant BY NECESSITY: this handler is
-        // serialized into the spawned UI process via `Function.prototype`
-        // `.toString()` (see `buildUiServerScript`), where an imported binding
-        // is `undefined` — the same hazard the `HOP_BY_HOP_HEADERS` comment
-        // above records. The consumer's fixture is pinned to these exact bytes
-        // by `lifecycle.test.ts` instead.
-        res.writeHead(504, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ready: false, status: 'unavailable' }));
+        answerHostUnavailable(res, 504);
         return;
       }
-      res.writeHead(503, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ready: false, status: 'unavailable' }));
+      answerHostUnavailable(res, 503);
     });
     // Propagate a client-initiated disconnect upstream. `stream.pipe()`
     // only forwards data one direction — it never tears down the *source*
