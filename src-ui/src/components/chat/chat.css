@@ -245,15 +245,36 @@
 }
 
 @media (max-width: 480px) {
-  .app-toolbar__icon-btn {
-    padding: 4px 6px;
-    font-size: var(--text-md);
-  }
-  .app-toolbar__workspace-btn {
-    display: none;
-  }
-  /* A finger needs the same 44px floor the composer controls get; the glyph
-     does not grow. */
+  /* station#1630: two declarations lived here that never applied — an
+     `.app-toolbar__icon-btn` padding/font-size pair and an
+     `.app-toolbar__workspace-btn { display: none }` — because the base rules
+     redeclare the same properties LATER at equal specificity, and source
+     order decides a tie. They stated an intent that computed nothing.
+
+     `.app-toolbar__workspace-btn` had no consumer anywhere in the app, so
+     hiding it was never a change anyone could see and its whole rule set went
+     with it.
+
+     The icon-button pair was deleted rather than moved after the base, and
+     the two halves are not alike. `font-size` only shrinks the glyph, which
+     renders at `1em`. `padding` is NOT inert: the 768px block's 44px is a
+     min-width FLOOR, and two controls in this row are content-sized past it —
+     the connection chip (~114px: 85px label plus 35px of its own furniture,
+     measured below) and the notifications button when it carries a badge
+     (~56-62px). Trimming 8px to 6px gives each of those back 4px, so roughly
+     8px of a `flex-shrink: 0` row, inside the 383-403px band #1401 measures
+     as over-subscribed.
+
+     That is real relief and it is still not the change #1401 is waiting for,
+     which is a control leaving the row. Taking it would move the 382px label
+     breakpoint derived in #1132 and buy a glyph two sizes smaller on a phone
+     — a visible cost with no owner behind it. So the row keeps what it
+     renders today, and the option is recorded on #1630 with these numbers
+     rather than taken silently here.
+
+     This rule is the block's live one: its base sits EARLIER in this sheet,
+     so it wins the tie. A finger needs the same 44px floor the composer
+     controls get; the glyph does not grow. */
   .app-toolbar__region-btn {
     width: 44px;
     height: 44px;
@@ -344,34 +365,6 @@
 }
 
 /* ── Header Buttons ── */
-.app-toolbar__workspace-btn {
-  font-family: var(--font-sans);
-  font-size: var(--text-md);
-  font-weight: 600;
-  padding: 4px 10px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  border: 1px solid var(--border-secondary);
-  border-radius: 8px;
-  color: var(--text-primary);
-  cursor: pointer;
-  transition:
-    background-color var(--motion-fast) var(--ease-standard),
-    border-color var(--motion-fast) var(--ease-standard),
-    opacity var(--motion-fast) var(--ease-standard);
-}
-
-.app-toolbar__workspace-btn:hover:not(:disabled) {
-  border-color: var(--accent-primary);
-  background: var(--bg-tertiary);
-}
-
-.app-toolbar__workspace-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
 
 .app-toolbar__icon-btn {
   font-family: var(--font-sans);
