@@ -8,6 +8,7 @@ import {
   type SettledLocalUiAccessScreen,
   waitForLocalUiAccessReadinessThrough,
 } from '../../tests/helpers/local-ui-access-readiness.js';
+import { PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS } from '../../tests/helpers/playwright-test-timeout.js';
 
 /**
  * The gate's settled screens arrive after real elapsed time, so every fake
@@ -46,6 +47,7 @@ function observation(
         state.reloads += 1;
         state.now += 1_000;
       },
+      perTestTimeoutMs: () => undefined,
       now: () => state.now,
       ...overrides,
     } satisfies LocalUiAccessObservation,
@@ -77,11 +79,48 @@ describe('readiness refuses a test timeout it cannot fit inside', () => {
     expect(refusal).toContain('test.setTimeout');
   });
 
-  test('the live default IS the refused case, so this is not a hypothetical', () => {
-    // Pins the premise the guard exists for: `playwright.config.ts` ships
-    // `timeout: 30_000`, and the budget is above it. If the budget ever drops
-    // below the config default the guard becomes dead code, and this reds.
-    expect(LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS).toBeGreaterThan(30_000);
+  test("the live runner default IS the refused case, read from the config's own constant", () => {
+    // Pins the premise the guard exists for, against the SAME constant
+    // `playwright.config.ts` sets — not a transcribed literal. A transcribed
+    // `30_000` would stay green if someone raised the runner default, while the
+    // guard silently stopped firing for the default caller: the pin could only
+    // see the budget shrinking, never the default growing.
+    expect(LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS).toBeGreaterThan(
+      PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS,
+    );
+    expect(
+      readinessTestTimeoutRefusal(
+        PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS,
+        LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS,
+      ),
+    ).toBeDefined();
+  });
+
+  test('the wait itself refuses before it observes anything', async () => {
+    // The decision, not the predicate: this drives the real
+    // `waitForLocalUiAccessReadinessThrough` through the same fixture every test
+    // above uses, so the refusal is EXECUTED rather than read. A `ready` screen
+    // is queued deliberately — the refusal must win over a gate that would have
+    // succeeded, and no wait may be spent before it.
+    const { observation: port, state } = observation(['ready'], {
+      perTestTimeoutMs: () => PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS,
+    });
+
+    await expect(waitForLocalUiAccessReadinessThrough(port)).rejects.toThrow(
+      'Local UI access readiness cannot run under this test',
+    );
+    expect(state.waits).toEqual([]);
+    expect(state.reloads).toBe(0);
+  });
+
+  test('an unknown per-test timeout is waited through, not refused', async () => {
+    // Outside a Playwright worker the adapter supplies `undefined`, and the vitest
+    // fixture defaults to it. That must not become a refusal.
+    const { observation: port } = observation(['ready']);
+
+    await expect(waitForLocalUiAccessReadinessThrough(port)).resolves.toEqual({
+      hostRecoveryReloads: 0,
+    });
   });
 
   test('a timeout with room to spare passes', () => {

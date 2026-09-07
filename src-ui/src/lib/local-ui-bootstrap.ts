@@ -141,19 +141,26 @@ async function readLocalUiIdentity(
  * WITHIN one resolution, the exchange cannot run twice, and that holds because
  * `bootstrapLocalUiSession` is TERMINAL whenever a token exists: it returns true
  * or it throws, never false. So the identity read below is reachable only when
- * the capture found no valid token — which also means the latch was never set
- * and the fragment was never stripped. Moving the exchange INSIDE the ladder
- * therefore changes nothing: a second iteration is reachable only on a page that
- * had no token to spend, and the re-entered capture reads the same empty
- * fragment. Neither the latch nor the strip is engaged on that path, and this
- * invariant has no observable mutation through the gate — the capture reads only
- * the URL fragment, is called from exactly one production place (the exchange),
- * and nothing writes the `station-ui-bootstrap` key after boot (`ChatDock.tsx`
- * and `views/share/share-token.ts` write a fragment, but their own keys, and the
- * capture reads its key by name). The readiness wait
+ * the capture DECLINED, which it does for exactly two reasons — and they are
+ * different mechanisms, so enumerate rather than derive:
+ *
+ *   a. the page never carried a valid token, so the latch is off and nothing was
+ *      stripped; or
+ *   b. an earlier resolution already spent one, so the latch is precisely what
+ *      declined and the fragment is already gone. This is the live case — it is
+ *      what a pairing recheck does, and what the test named below drives.
+ *
+ * Moving the exchange INSIDE the ladder therefore changes nothing in either
+ * case: there is no token to re-POST, because there never was one (a) or because
+ * it is already spent (b). This invariant has no observable mutation through the
+ * gate — the capture reads only the URL fragment, is called from exactly one
+ * production place (the exchange), and nothing writes the `station-ui-bootstrap`
+ * key after boot (`src-ui/src/components/chat-dock/ChatDock.tsx` and
+ * `src-ui/src/views/share/share-token.ts` do write a fragment, but their own
+ * keys, and the capture reads its key by name). The readiness wait
  * (`tests/helpers/local-ui-access-readiness.ts`) reasons from this same terminal
  * property to conclude its reload is unreachable on a token-bearing entry, so it
- * is the second consumer of it; keep the two in step.
+ * is the second consumer of it; keep the two in step, enumeration included.
  *
  * ACROSS resolutions, a SPENT token must never be re-POSTed — a pairing recheck
  * resolves again on a page whose token is already gone. THAT is what the latch
@@ -169,10 +176,12 @@ export function resolveLocalUiSession(
     // A pairing recheck or a test reset replaces the memoized promise while this
     // ladder may still be mid-backoff. A superseded resolution DOES still have an
     // awaiter — `main.tsx`'s boot-payload seed holds the promise object it got at
-    // call time, not whatever is memoized now — so the early return below is a
-    // contract, not a discard: answer the last real observation rather than climb
-    // rungs whose result nobody can act on. What it protects is the attempt
-    // counter, which is module-level and shared: the abandoned ladder's
+    // call time, not whatever is memoized now — and a continuing ladder WOULD
+    // eventually resolve it. So the early return below is about when and at what
+    // cost: answer that awaiter NOW with the last real observation, rather than
+    // make it wait out a ladder whose gate has already been replaced. What the
+    // guard protects is the requests those remaining rungs would spend, and the
+    // attempt counter, which is module-level and shared: the abandoned ladder's
     // `setIdentityAttempt` writes would otherwise clobber the live one the gate
     // is rendering from.
     //
