@@ -1,10 +1,8 @@
 /**
  * archive#3354 — shared chrome for a code block: language header + copy
  * button, then highlighted HTML or a plain <pre>. Lives in its own module so
- * both the async markdown renderer's code component
- * (`HighlightedCodeBlock`) and the streaming open-fence block
- * (`StreamingOpenFence`) share it WITHOUT pulling either into the entry
- * chunk.
+ * the async markdown renderer's code component (`HighlightedCodeBlock`) can
+ * use it WITHOUT pulling either into the entry chunk.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { copyToClipboard } from '../../lib/clipboard';

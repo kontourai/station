@@ -4309,14 +4309,16 @@ button.background-tasks-banner:focus-visible {
   clip: rect(0 0 0 0);
 }
 
-/* #1130/#1170 sweep: `CollaborativeEditorPane.tsx` (remote-cursor-count and
-   working-revision live regions) and `OutboundQueuedMessages.tsx` (offline
-   queue announcement) both reached for a bare `className="sr-only"` — a name
-   no stylesheet in this repo defined, so the "visually-hidden" text rendered
-   fully visible instead. Every other call site above scopes its own
-   feature-named class to this identical clip technique rather than sharing
-   one; these two independently reached for a shared generic name instead, so
-   this is that shared utility rather than a fifth near-identical copy. */
+/* #1130/#1170 sweep: several call sites reached for a bare
+   `className="sr-only"` — a name no stylesheet in this repo defined, so the
+   "visually-hidden" text rendered fully visible instead. Every other call
+   site above scopes its own feature-named class to this identical clip
+   technique rather than sharing one; these independently reached for a shared
+   generic name instead, so this is that shared utility rather than a fifth
+   near-identical copy. (One of the two originally named here,
+   `CollaborativeEditorPane.tsx`, was never mounted and has been deleted; the
+   rule stays because `OutboundQueuedMessages.tsx` and three other live
+   surfaces still use the class.) */
 .sr-only {
   position: absolute;
   width: 1px;

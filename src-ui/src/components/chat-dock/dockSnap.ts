@@ -3,9 +3,11 @@
  *
  * The dock's top edge is draggable. While dragging the height tracks the
  * pointer; on release the height snaps to the nearest of three discrete states
- * — Collapsed (header only) / Half / Full (maximized). This mirrors the mobile
- * file-tree pattern in `coding-layout/treeSnap.ts` and is kept intentionally
- * pure (no React, no DOM) so the snap math is unit-testable in isolation.
+ * — Collapsed (header only) / Half / Full (maximized). It is kept
+ * intentionally pure (no React, no DOM) so the snap math is unit-testable in
+ * isolation. A parallel `coding-layout/treeSnap.ts` once carried the same
+ * three-state shape for the mobile file tree; nothing mounted it and it has
+ * been deleted, so this is the only snap implementation in the UI.
  *
  * Pixel resolution depends on the live viewport, so heights are resolved
  * against `viewportHeight` (and a toolbar offset for the Full state, which can
