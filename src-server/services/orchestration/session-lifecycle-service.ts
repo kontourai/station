@@ -10,12 +10,12 @@ import type {
   SessionLifecycleState,
   SessionTransitionReason,
   SessionTransitionSource,
-} from '../../../packages/contracts/src/session-lifecycle.js';
+} from '@kontourai/station-contracts/session-lifecycle';
 import {
   canSessionLifecycleStateResume,
   isSessionLifecycleStateStopped,
   validateSessionLifecycleTransition,
-} from '../../../packages/contracts/src/session-lifecycle.js';
+} from '@kontourai/station-contracts/session-lifecycle';
 
 interface LifecycleProjection {
   lifecycleState: SessionLifecycleState;

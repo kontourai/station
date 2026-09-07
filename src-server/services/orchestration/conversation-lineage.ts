@@ -11,13 +11,13 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
-import { isSessionReadAuthority } from '@kontourai/station-contracts/tenancy';
-import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import {
   foldedSessionLifecycleState,
   isSessionLifecycleStateStopped,
-} from '../../../packages/contracts/src/session-lifecycle.js';
+} from '@kontourai/station-contracts/session-lifecycle';
+import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
+import { isSessionReadAuthority } from '@kontourai/station-contracts/tenancy';
+import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { conversationContinuationOutcomes } from '../../telemetry/metrics.js';
 import { projectConversationContextBoundary } from './conversation-context-boundary-module.js';

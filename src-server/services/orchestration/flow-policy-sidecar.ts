@@ -9,9 +9,9 @@ import type {
   FlowGateVerdictEvent,
   FlowRunFreshness,
 } from '@kontourai/station-contracts/runtime-events';
+import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import type { SessionBuilderRunView } from '@kontourai/station-contracts/workflow';
-import type { SessionLifecycleState } from '../../../packages/contracts/src/session-lifecycle.js';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 // IMPORTANT (T12): the suite vi.mocks '../../../telemetry/metrics.js' by
 // resolved module id; from this directory the compliant specifier is
