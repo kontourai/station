@@ -82,7 +82,7 @@
     "@kontourai/flow-agents": "6.2.0",
     "@kontourai/station-contracts": "^0.7.0",
     "@kontourai/station-shared": "^0.7.0",
-    "@kontourai/surface": "^3.0.0",
+    "@kontourai/surface": "^3.2.0",
     "@kontourai/thread": "0.5.0",
     "@kontourai/ui": "^1.12.0"
   },
