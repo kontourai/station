@@ -201,9 +201,17 @@ export function useDockShellChrome({
   /** See the `registersDockShortcuts` paragraph above. */
   registersDockShortcuts: boolean;
   regionId?: DockMode;
-  /** `null` regionId is the legacy single-shell mount (`regionId` unset). */
+  /**
+   * Always keyed by the RENDERED region, including on the legacy
+   * single-shell mount (`regionId` unset, no `RegionModelProvider` above —
+   * `RegionShells.tsx`'s no-model branch). That mount knows which region it
+   * renders, and reporting it is what let the single-side width alias be
+   * retired: that pre-#928 alias SURVIVED only because this call used to
+   * discard the placement, leaving the reducer nothing to name but "the
+   * side" (#1374).
+   */
   onRenderedRegionGeometryChange?: (
-    regionId: DockMode | null,
+    regionId: DockMode,
     geometry: DockSlotGeometry | null,
   ) => void;
 }): DockShellChrome {
@@ -563,15 +571,9 @@ export function useDockShellChrome({
       width: dockWidth,
       liveDragHeight,
     });
-    onRenderedRegionGeometryChange?.(
-      regionId ? effectiveDockSlotPlacement : null,
-      geometry,
-    );
+    onRenderedRegionGeometryChange?.(effectiveDockSlotPlacement, geometry);
     return () => {
-      onRenderedRegionGeometryChange?.(
-        regionId ? effectiveDockSlotPlacement : null,
-        null,
-      );
+      onRenderedRegionGeometryChange?.(effectiveDockSlotPlacement, null);
     };
   }, [
     effectiveDockSlotPlacement,
@@ -580,7 +582,6 @@ export function useDockShellChrome({
     dockHeight,
     liveDragHeight,
     publishesDockSlotClearance,
-    regionId,
     onRenderedRegionGeometryChange,
   ]);
 

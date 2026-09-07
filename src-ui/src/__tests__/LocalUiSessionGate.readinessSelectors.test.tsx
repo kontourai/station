@@ -20,6 +20,7 @@ import { LocalUiSessionGate } from '../components/LocalUiSessionGate';
 import { ApiBaseProvider } from '../contexts/ApiBaseContext';
 import { DEGRADED_QUERY_TIMEOUT_MS } from '../hooks/useDegradedQueryState';
 import { resetLocalUiBootstrapForTests } from '../lib/local-ui-bootstrap';
+import { LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS } from '../lib/local-ui-session-retry';
 import { PlatformBootstrap } from '../platform/PlatformProfileContext';
 
 /**
@@ -150,10 +151,18 @@ describe('local UI access readiness screens map to the gate one-to-one', () => {
   ])(
     'a %s resolution matches exactly one settled screen',
     async (_resolution, answer, expected) => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(answer()));
+      // A fresh Response per call, and a budget past the gate's bounded retry
+      // ladder: an `unavailable` answer is now retried before it settles
+      // (#1639), so this screen arrives after the ladder rather than at once.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(() => Promise.resolve(answer())),
+      );
 
       renderGate();
-      await waitFor(() => expect(present(SETTLED_PROBES)).toEqual([expected]));
+      await waitFor(() => expect(present(SETTLED_PROBES)).toEqual([expected]), {
+        timeout: LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS + 750,
+      });
 
       // The gate's pending output is gone once it has an answer, so the wait
       // can never read a settled screen as "still working".
@@ -166,16 +175,20 @@ describe('local UI access readiness screens map to the gate one-to-one', () => {
       'fetch',
       vi
         .fn()
-        .mockResolvedValue(
-          Response.json(
-            { ready: false, status: 'unavailable' },
-            { status: 503 },
+        .mockImplementation(() =>
+          Promise.resolve(
+            Response.json(
+              { ready: false, status: 'unavailable' },
+              { status: 503 },
+            ),
           ),
         ),
     );
 
     renderGate();
-    await waitFor(() => expect(HOST_RECOVERY.present()).toBe(true));
+    await waitFor(() => expect(HOST_RECOVERY.present()).toBe(true), {
+      timeout: LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS + 750,
+    });
 
     // Scoped inside the recovery screen and read by accessible name, which is
     // how the adapter finds it — not by `textContent`, which an added

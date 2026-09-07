@@ -103,35 +103,40 @@ jobs:
 
       - run: npm run dependencies:ci
 
-      # Bound + retry the browser install: it occasionally wedges on the CDN /
-      # apt deps, and with no timeout it ran toward the 6h job default. Each
-      # attempt is capped so a hang dies fast and self-heals on retry.
+      # Bound + classify the browser install: it occasionally wedges on the
+      # CDN, and with no timeout it ran toward the 6h job default. Each
+      # attempt is capped so a hang dies fast and self-heals on retry — but
+      # only a transient or unrecognised failure is retried now, because the
+      # previous inline loop retried everything. It apt-installed system
+      # libraries as root, the fleet's runner account has no passwordless
+      # sudo, and so all three attempts failed identically in about half a
+      # second each while the warning called that permanent condition
+      # retryable. `verify:e2e:full` below had therefore never run once
+      # (station#1648, measured on run 33970282053).
+      #
+      # The system libraries are already on this host, so no root is needed:
+      # the container-smoke lane installs this same repo-pinned Chromium
+      # without the removed flag, on this same runner, and launches it for
+      # real browser tests that pass. `scripts/install-playwright-browsers.mjs`
+      # refuses the flag outright so it cannot come back, and a missing system
+      # library would now be reported as a runner-image change rather than
+      # retried three times.
       #
       # Installed to the persistent runner's `$HOME/.cache/ms-playwright`,
       # exported job-wide via `$GITHUB_ENV` — same convention as `browser-smoke` and
       # `full-regression`'s Chromium install in ci.yml (station#3517).
       # The install is idempotent and ensures the repo-pinned revision exists.
-      # `npm run install:playwright:ci` hardcodes an in-`node_modules`
+      # `npm run install:playwright` hardcodes an in-`node_modules`
       # browsers path as a package.json prefix, which would override the
-      # exported path, so this calls `playwright install --with-deps`
-      # directly instead. `verify:e2e:full` below (via
-      # `scripts/run-e2e-suite.mjs`) honors any already-set
-      # `PLAYWRIGHT_BROWSERS_PATH` rather than forcing `0`, so it resolves
-      # the same path this step installs to.
+      # exported path, so this calls the install script directly instead.
+      # `verify:e2e:full` below (via `scripts/run-e2e-suite.mjs`) honors any
+      # already-set `PLAYWRIGHT_BROWSERS_PATH` rather than forcing `0`, so it
+      # resolves the same path this step installs to.
       - name: Install Playwright browsers
         timeout-minutes: 20
         run: |
           echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
-          for attempt in 1 2 3; do
-            echo "Playwright install attempt $attempt"
-            if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium --with-deps; then
-              exit 0
-            fi
-            echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
-            sleep 15
-          done
-          echo "::error::Playwright install failed after 3 attempts"
-          exit 1
+          PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" node scripts/install-playwright-browsers.mjs chromium
 
       - name: Run coordinated full Playwright coverage
         run: npm run verify:e2e:full
