@@ -325,6 +325,19 @@ export async function waitForLazySurface(
         // every boundary renders the same constant string; #1712 is the change
         // that would give the text identity, and this is the read that would
         // then be quoting the wrong component by name.
+        //
+        // WHAT THIS STILL DOES NOT ESTABLISH, because it is easy to over-read as
+        // "the quote is the failure being attributed". It is not. This adapter's
+        // decision is a COUNT DELTA, not an element selection, so there is no
+        // attributed element to quote — unlike the route adapter, whose
+        // `failureDetail` re-runs the very predicate that decided `'failed'`.
+        // With a non-zero baseline the visible failure found here can be one of
+        // the pre-existing failures this wait explicitly EXCLUDED from
+        // attribution. All this read guarantees is that the words come from a
+        // failure someone is actually being shown. Closing the gap needs the
+        // per-boundary identity #1712 tracks; nothing pins it today because
+        // every boundary's text is the same string, so no assertion could tell
+        // the two apart.
         const visibleFailure = await firstVisibleMatch([unavailable]);
         const text = ((await visibleFailure?.innerText()) ?? '')
           .trim()
@@ -356,7 +369,21 @@ export async function waitForLazySurface(
         if (!openIndicator) {
           return "this surface's trigger publishes no open state, so nothing here says whether the click was taken";
         }
-        return (await openIndicator.first().isVisible())
+        // Filtered, not sampled, for the same reason `surface` above is: this is
+        // a visibility read that DECIDES a sentence, and the two sentences send a
+        // reader to different components — the chunk, or the trigger that may
+        // never have taken the click. A hidden earlier match would pick the
+        // second while the trigger was in fact reporting open.
+        //
+        // Reachability here is reasoned, not observed — the product renders one
+        // matching trigger — which is precisely the ground on which `target` was
+        // filtered. Resolving two identically-reasoned sites two different ways
+        // is what teaches the next reader to distrust both. The union pre-waits
+        // are the one documented exception, and they are exceptions on a
+        // different ground: filtering those would replace an event-driven wait
+        // with a poll and reintroduce the spin the ternary above prevents. No
+        // such cost exists on a plain read like this one.
+        return (await firstVisibleMatch([openIndicator]))
           ? 'its trigger does report the surface open, so the click was taken and the chunk is what did not arrive'
           : 'its trigger does not report the surface open, so the click may not have been taken at all';
       },

@@ -333,6 +333,18 @@ describe.skipIf(!chromiumAvailable)(
         '#masking-first, #masking-last { display: none; }',
       );
       try {
+        // THE PREMISE, asserted before anything is tested. Renaming these decoys
+        // so `target` stops matching them leaves this test green while it tests
+        // nothing at all — the same silent-vacuity failure its lazy sibling's
+        // guard was built against, and made load-bearing by the comment above
+        // declaring the decoys deliberate. Three matches, the middle one the
+        // only visible one.
+        const target = page.locator('.target-surface');
+        expect(await target.count()).toBe(3);
+        expect(await target.first().isVisible()).toBe(false);
+        expect(await target.last().isVisible()).toBe(false);
+        expect(await target.nth(1).isVisible()).toBe(true);
+
         // The `target` half of the index-zero masking. Hidden matches on BOTH
         // sides deliberately: an arrangement with only a hidden first match is
         // satisfied by sampling the last one instead, which is not the property
@@ -477,8 +489,9 @@ describe.skipIf(!chromiumAvailable)(
         '<div role="menu" aria-label="Chat actions" id="masking-first">Hidden first</div>' +
           SHEET +
           '<div role="menu" aria-label="Chat actions" id="masking-last">Hidden last</div>',
-        // Zero-size rather than `display: none`, and the distinction is the
-        // whole reachability question. `display: none` and `visibility: hidden`
+        // Zero-size rather than `display: none` — the opposite choice from the
+        // route arrangement above, and the distinction is the whole reachability
+        // question rather than a preference. `display: none` and `visibility: hidden`
         // remove an element from the accessibility tree, so a `getByRole`
         // locator — which is what both live call sites pass — would not match
         // such a decoy at all and the masking could not arise. A zero-size
@@ -531,7 +544,18 @@ describe.skipIf(!chromiumAvailable)(
         '.lazy-boundary__error:first-of-type { display: none; }',
       );
       try {
-        // One visible failure, so it is attributable to this interaction.
+        // THE PREMISE. `countVisibleLazyBoundaryErrors === 1` is satisfied
+        // identically by a page carrying one failure and NO decoy, which would
+        // make the `not.toThrow(/DECOY/)` below vacuous — it would pass because
+        // there was nothing to quote wrongly. So assert the decoy is present,
+        // hidden, and carries the discriminating words. `textContent` rather than
+        // `innerText`: the latter respects rendering and returns empty for a
+        // hidden node.
+        const boundaries = page.locator(LAZY_BOUNDARY_ERROR_SELECTOR);
+        expect(await boundaries.count()).toBe(2);
+        expect(await boundaries.first().isVisible()).toBe(false);
+        expect(await boundaries.first().textContent()).toContain('DECOY');
+        // One VISIBLE failure, so it is attributable to this interaction.
         expect(await countVisibleLazyBoundaryErrors(page)).toBe(1);
 
         const observed = waitForLazySurface(
@@ -690,6 +714,45 @@ describe.skipIf(!chromiumAvailable)(
               openIndicator: page.locator(
                 'button[aria-label="Chat actions"][aria-expanded="true"]',
               ),
+              baselineUnavailableCount: 0,
+            },
+            300,
+          ),
+        ).rejects.toThrow(/its trigger does report the surface open/);
+      } finally {
+        await close();
+      }
+    });
+
+    test('the open state is read from a VISIBLE trigger, so a hidden earlier one cannot say the click was missed', async () => {
+      const OPEN_TRIGGER =
+        '<button aria-label="Chat actions" aria-expanded="true">open</button>';
+      const { page, close } = await pageWith(
+        `<span id="masking-trigger">${OPEN_TRIGGER}</span>${OPEN_TRIGGER}`,
+        // `display: none` is correct here, unlike the surface arrangement above:
+        // `openIndicator` is a CSS locator, which matches hidden elements.
+        '#masking-trigger { display: none; }',
+      );
+      try {
+        const openIndicator = page.locator(
+          'button[aria-label="Chat actions"][aria-expanded="true"]',
+        );
+        // The premise: two matches, the first hidden. Drop the decoy and this
+        // arrangement stops distinguishing anything.
+        expect(await openIndicator.count()).toBe(2);
+        expect(await openIndicator.first().isVisible()).toBe(false);
+        expect(await openIndicator.last().isVisible()).toBe(true);
+
+        // The two sentences send a reader to different components — the chunk
+        // that did not arrive, or a trigger that may never have taken the click
+        // — so sampling index zero here reports the wrong one with confidence.
+        await expect(
+          waitForLazySurface(
+            page,
+            {
+              surfaceName: 'The fixture sheet',
+              surface: page.getByRole('menu', { name: 'Chat actions' }),
+              openIndicator,
               baselineUnavailableCount: 0,
             },
             300,
