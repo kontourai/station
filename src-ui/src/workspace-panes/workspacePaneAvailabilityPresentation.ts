@@ -75,6 +75,10 @@ const REASON_LABELS: Record<WorkspacePaneAvailabilityReasonCode, string> = {
   ready: 'This pane is ready to open.',
   'coming-soon': 'This pane has not rolled out yet.',
   'rollout-unknown': 'This pane’s rollout status has not been confirmed.',
+  'installation-pending':
+    'Plugin activation is pending. Review recovery in Plugins.',
+  'installation-unavailable':
+    'The plugin installation is unavailable. Check its status in Plugins.',
   'distribution-disabled': 'This pane is disabled by its distribution policy.',
   'distribution-policy-unknown':
     'This pane’s distribution policy has not been confirmed.',
