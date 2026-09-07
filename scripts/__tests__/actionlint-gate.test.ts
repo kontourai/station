@@ -2521,10 +2521,26 @@ describe('persistent runner policy', () => {
       ).toContain(withDepsMessage);
     });
 
+    // The false-positive control. Built from a synthetic step rather than the
+    // real one on purpose: derived from the checked-in workflow, this case
+    // would also red the moment the real step gained the flag, which is a
+    // different fault entirely and would make this control unreadable.
     test('a whole-line shell comment naming the flag is inert', () => {
-      const { file, document } = extendedWorkflow();
-      const step = installStep(document);
-      step.run = `# never pass --with-deps here: no passwordless sudo\n${String(step.run)}`;
+      const file = '.github/workflows/commented.yml';
+      const document = {
+        jobs: {
+          'playwright-full': {
+            'runs-on': ['self-hosted', 'Linux', 'X64', 'kontour-linux'],
+            if: "github.event_name != 'pull_request'",
+            steps: [
+              {
+                name: 'Install Playwright browsers',
+                run: '# never pass --with-deps here: no passwordless sudo\nnode scripts/install-playwright-browsers.mjs chromium\n',
+              },
+            ],
+          },
+        },
+      };
 
       expect(
         persistentRunnerPolicyFindings([{ file, document }]).map(
