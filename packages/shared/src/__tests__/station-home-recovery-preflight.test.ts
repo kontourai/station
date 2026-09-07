@@ -237,7 +237,10 @@ describe('read-only home recovery preflight', () => {
         'payload-not-inspected',
       ]),
     );
-    expect(opened).toHaveLength(4);
+    // Each selected payload is opened once for inspection and once more for
+    // the closing content re-verification; nothing else is opened.
+    expect(new Set(opened).size).toBe(4);
+    expect(opened).toHaveLength(8);
     expect(JSON.stringify(plan)).not.toMatch(
       /synthetic-|codex|credentials.json|station-recovery-plan-/,
     );
@@ -658,6 +661,43 @@ describe('read-only home recovery preflight', () => {
     });
     expect(plan.inspection).toBe('refused');
     expect(plan.codes).toContain('changed-during-inspection');
+  });
+  it('refuses a same-size in-place rewrite whose timestamps the filesystem left unchanged', () => {
+    const home = fixture();
+    const marker = join(home, STATION_HOME_SCHEMA_FILE);
+    const realLstat = fs.lstatSync;
+    const realFstat = fs.fstatSync;
+    const frozen = realLstat(marker);
+    // Coarse-grained kernel timestamps (ext4 jiffies) can absorb a rewrite
+    // into the same tick as the inventory lstat: same inode, same size, same
+    // mtime/ctime, different bytes. Freeze the marker's stats at their
+    // pre-rewrite values so that exact case reproduces on every platform
+    // instead of depending on the host clock's granularity.
+    vi.spyOn(fs, 'lstatSync').mockImplementation((...args) =>
+      args[0] === marker ? frozen : realLstat(...args),
+    );
+    vi.spyOn(fs, 'fstatSync').mockImplementation((...args) => {
+      const stats = realFstat(...args);
+      return stats.dev === frozen.dev && stats.ino === frozen.ino
+        ? frozen
+        : stats;
+    });
+    syncBuiltinESMExports();
+    const rewritten = JSON.stringify({ version: 2 });
+    const plan = inspectStationHomeRecovery({
+      homeDir: home,
+      hooks: { afterInventory: () => fs.writeFileSync(marker, rewritten) },
+    });
+    vi.restoreAllMocks();
+    syncBuiltinESMExports();
+    // Prove the fixture is the stat-invisible case: only the bytes differ.
+    const after = fs.lstatSync(marker);
+    expect([after.ino, after.size]).toEqual([frozen.ino, frozen.size]);
+    expect(fs.readFileSync(marker, 'utf8')).toBe(rewritten);
+    expect(plan).toMatchObject({
+      inspection: 'refused',
+      codes: ['changed-during-inspection'],
+    });
   });
   it('reports live PID presence but never proves exact ownership or legacy exclusion', () => {
     const home = fixture();

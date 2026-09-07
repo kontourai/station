@@ -4,6 +4,7 @@
  * deliberately not opened. No bootstrap, lease, process launch or writer lives
  * here. Pathname checks detect observed changes, not an atomic filesystem view.
  */
+import { createHash } from 'node:crypto';
 import { constants, lstatSync, opendirSync, type Stats } from 'node:fs';
 import { dirname, join, parse, resolve } from 'node:path';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
@@ -156,6 +157,9 @@ function same(left: Stats, right: Stats): boolean {
     left.ctimeMs === right.ctimeMs
   );
 }
+function digest(raw: string): string {
+  return createHash('sha256').update(raw).digest('hex');
+}
 
 /** No raw names, ids, paths, errors, transcript text or credential values escape. */
 export function inspectStationHomeRecovery(
@@ -257,6 +261,18 @@ export function inspectStationHomeRecovery(
       fail('unsafe-path');
     }
     if (home !== requested) fail('unsafe-path');
+    // A non-cooperating writer can substitute a FIFO after pathname checks.
+    // Open without waiting for its writer, then let the shared descriptor
+    // checks refuse the non-regular file before any read.
+    const openFlags =
+      constants.O_RDONLY |
+      (constants.O_NOFOLLOW ?? 0) |
+      (constants.O_NONBLOCK ?? 0);
+    // Content digest of every payload consumed, keyed by path. Filesystems
+    // with coarse timestamps (ext4 jiffies) can absorb an in-place same-size
+    // rewrite into the same mtime/ctime tick as the inventory lstat, so a
+    // stat comparison alone cannot see it. Re-verify by content at the end.
+    const digests = new Map<string, string>();
     const check = (leaf?: string) => {
       const paths: string[] = [];
       if (leaf) {
@@ -286,6 +302,24 @@ export function inspectStationHomeRecovery(
         )
           fail('changed-during-inspection');
       }
+      if (leaf) return;
+      // Final pass only: one extra read per payload, bounded by the per-file
+      // ceiling it already satisfied. It re-reads bytes the budget already
+      // admitted, so it does not draw on the cumulative budget again.
+      for (const [path, expected] of digests) {
+        let raw: string;
+        try {
+          raw = readRegularFileNoFollow(home, path, {
+            maxBytes: limits.fileBytes,
+            openFlags,
+            beforeOpen: () => check(path),
+          });
+        } catch (error) {
+          if (error instanceof Refusal) throw error;
+          fail('changed-during-inspection');
+        }
+        if (digest(raw) !== expected) fail('changed-during-inspection');
+      }
     };
     let entries = 0;
     let bytes = 0;
@@ -301,13 +335,7 @@ export function inspectStationHomeRecovery(
       try {
         raw = readRegularFileNoFollow(home, path, {
           maxBytes: remaining,
-          // A non-cooperating writer can substitute a FIFO after pathname
-          // checks. Open without waiting for its writer, then let the shared
-          // descriptor checks refuse the non-regular file before any read.
-          openFlags:
-            constants.O_RDONLY |
-            (constants.O_NOFOLLOW ?? 0) |
-            (constants.O_NONBLOCK ?? 0),
+          openFlags,
           beforeOpen: () => {
             options.hooks?.beforeRead?.(segments.join('/'));
             check(path);
@@ -319,6 +347,7 @@ export function inspectStationHomeRecovery(
         fail('unavailable');
       }
       bytes += Buffer.byteLength(raw);
+      digests.set(path, digest(raw));
       check(path);
       try {
         return JSON.parse(raw);
