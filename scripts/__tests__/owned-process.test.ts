@@ -1,7 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { describe, expect, test } from 'vitest';
 import {
-  appendWindowsSettlementEvidence,
   captureOwnedProcessOutput,
   executeOwnedCommand,
   executeOwnedProcess,
@@ -502,26 +501,6 @@ describe('owned process lifecycle', () => {
         settlementProven: false,
       },
     });
-    const output = {
-      stdout: {
-        text: '',
-        sourceBytes: 0,
-        retainedBytes: 0,
-        truncated: false,
-        invalidUtf8: false,
-      },
-      stderr: {
-        text: '',
-        sourceBytes: 0,
-        retainedBytes: 0,
-        truncated: false,
-        invalidUtf8: false,
-      },
-    };
-    appendWindowsSettlementEvidence(output, evidence);
-    const line = output.stderr.text.trim().split('] ')[1];
-    expect(JSON.parse(line)).toEqual(evidence);
-
     child.emit('message', {
       type: 'owned-command-bound',
       pid: 6161,
@@ -540,18 +519,6 @@ describe('owned process lifecycle', () => {
     const barrier = waitForOwnedOutputEOF(child, 1);
     child.stdout.emit('error', new Error('raw output failure'));
     await expect(barrier).rejects.toThrow(/raw output failure/);
-  });
-
-  test('keeps diagnostic serialization best-effort', () => {
-    const evidence: Record<string, unknown> = {
-      kind: 'windows-owned-settlement',
-    };
-    evidence.cycle = evidence;
-    const output = {
-      stderr: { text: 'original', sourceBytes: 8, retainedBytes: 8 },
-    };
-    expect(appendWindowsSettlementEvidence(output, evidence)).toBe(output);
-    expect(output.stderr.text).toBe('original');
   });
 
   test('does not coerce an object into a diagnostic start identity', () => {

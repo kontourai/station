@@ -12,8 +12,6 @@ const TERMINATION_FORCE_MS = 5_000;
 const DEFAULT_OUTPUT_CAP_BYTES = 3 * 1024 * 1024;
 const WINDOWS_OUTPUT_EOF_TIMEOUT_MS = 5_000;
 const WINDOWS_TREE_SETTLEMENT_TIMEOUT_MS = 5_000;
-const WINDOWS_SETTLEMENT_EVIDENCE_PREFIX =
-  '[station-windows-owned-settlement] ';
 let coordinatorGuard;
 
 function prepareCoordinatorGuard(prepareGuard) {
@@ -244,30 +242,6 @@ function settlementIdentity(value, { allowUnknownStart = false } = {}) {
   if (typeof value?.start === 'string' && isWindowsRoundTripUtcIso(value.start))
     return { pid: value.pid, start: value.start };
   return allowUnknownStart ? { pid: value.pid, start: null } : null;
-}
-
-/** Adds one bounded, schema-shaped diagnostic line to captured stderr. */
-export function appendWindowsSettlementEvidence(output, evidence) {
-  if (
-    evidence?.kind !== 'windows-owned-settlement' ||
-    !output?.stderr ||
-    typeof output.stderr.text !== 'string'
-  )
-    return output;
-  try {
-    const line = `${WINDOWS_SETTLEMENT_EVIDENCE_PREFIX}${JSON.stringify(evidence)}\n`;
-    const bytes = Buffer.byteLength(line);
-    if (bytes > 8 * 1024) return output;
-    // Keep the diagnostic at the retained prefix even when child stderr already
-    // consumed its full cap. The reporter re-bounds and marks that stream
-    // truncated rather than silently dropping the settlement evidence.
-    output.stderr.text = line + output.stderr.text;
-    output.stderr.sourceBytes += bytes;
-    output.stderr.retainedBytes += bytes;
-  } catch {
-    // Diagnostic serialization cannot change the command terminal result.
-  }
-  return output;
 }
 
 function deferred() {

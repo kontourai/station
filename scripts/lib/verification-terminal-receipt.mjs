@@ -4,6 +4,7 @@ import { createVerificationReceipt } from './verification-receipt.mjs';
 import { redactVerificationOutput } from './verification-redaction.mjs';
 import {
   persistPlaywrightAttachments,
+  persistVerificationDiagnosticAttachment,
   persistVerificationOutput,
   summarizeVerificationOutput,
 } from './verification-reporter.mjs';
@@ -11,6 +12,8 @@ import {
 // A changed-verification diagnostic retains at most twenty named failures.
 // Keep their short heads in the terminal handoff alongside the causal note.
 const SUMMARY_ENVELOPE_CAP = 24 * 1024;
+const WINDOWS_SETTLEMENT_EVIDENCE_PREFIX =
+  '[station-windows-owned-settlement] ';
 
 function boundedText(value, maxBytes = 256) {
   const redacted = redactVerificationOutput(String(value ?? ''));
@@ -206,6 +209,23 @@ export function reportExecution({ raw, result, cleanup, worktree, request }) {
             attachments: approved,
           }),
         );
+    }
+    if (raw?.windowsSettlementEvidence) {
+      try {
+        artifacts.push(
+          persistVerificationDiagnosticAttachment({
+            root: worktree,
+            requestKey: request.key,
+            contents: `${WINDOWS_SETTLEMENT_EVIDENCE_PREFIX}${JSON.stringify(raw.windowsSettlementEvidence)}\n`,
+            artifacts,
+          }),
+        );
+      } catch {
+        attachmentOmissions.push({
+          name: 'windows-owned-settlement',
+          reason: 'diagnostic_unavailable',
+        });
+      }
     }
     return {
       result: reportedResult,

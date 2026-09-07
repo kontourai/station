@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import {
   mkdirSync,
   mkdtempSync,
@@ -51,33 +52,75 @@ const INNOCENT_PASSING_PHASE_TEST_FILE =
 const PASSING_PHASE_ECHOED_FAIL_STDERR = `${ESC}[41m${ESC}[1m FAIL ${ESC}[22m${ESC}[49m ${INNOCENT_PASSING_PHASE_TEST_FILE}${ESC}[2m > ${ESC}[22mechoes a captured banner`;
 
 describe('verification status projection', () => {
-  test('retains Windows settlement evidence in a failed receipt artifact', () => {
+  test('keeps owned Windows settlement evidence separate from captured streams', async () => {
+    const stdout = new EventEmitter();
+    const stderr = new EventEmitter();
+    const evidence = {
+      kind: 'windows-owned-settlement',
+      barriers: { stderrEof: false, acknowledged: false },
+    };
+    const runner = createOwnedRunner({
+      lane: { id: 'test-prepush' },
+      worktree: '/fixture',
+      outputLock: '/fixture/output',
+      owner: {},
+      outputOwned: false,
+      now: Date.now,
+      currentLease: () => ({}),
+      updateLease: () => true,
+      privateCommand: () => ['fixture', []],
+      processIdentity: () => null,
+      writeOwnedLease: () => true,
+      env: {},
+      executeCommand: (() => ({
+        child: { stdout, stderr },
+        promise: new Promise((resolve) => {
+          setImmediate(() => {
+            stderr.emit('data', Buffer.from('child stderr'));
+            stdout.emit('end');
+            stderr.emit('end');
+            resolve({ status: 0 });
+          });
+        }),
+        isAlive: () => false,
+        settlementEvidence: () => evidence,
+      })) as never,
+    });
+
+    const raw = await runner();
+    expect(raw.output.stderr.text).toBe('child stderr');
+    expect(raw.windowsSettlementEvidence).toEqual(evidence);
+  });
+
+  test('keeps complete near-cap stderr passing while retaining separate Windows settlement evidence', () => {
     const worktree = mkdtempSync(join(tmpdir(), 'station-windows-evidence-'));
     const key = '9'.repeat(64);
     try {
-      const evidence =
-        '[station-windows-owned-settlement] {"barriers":{"stderrEof":false,"acknowledged":false}}\n';
       const secret = `ghp_${'a'.repeat(40)}`;
+      const stderrText = 'x'.repeat(DEFAULT_OUTPUT_BYTE_CAP);
       const reported = reportExecution({
         raw: {
           output: {
             stdout: { text: '' },
-            stderr: {
-              text: `${evidence}${secret}${'x'.repeat(DEFAULT_OUTPUT_BYTE_CAP)}`,
-            },
+            stderr: { text: stderrText },
+          },
+          windowsSettlementEvidence: {
+            kind: 'windows-owned-settlement',
+            barriers: { stderrEof: false, acknowledged: false },
+            note: secret,
           },
         },
         result: {
-          status: 'infrastructure_error',
-          exitCode: null,
+          status: 'completed',
+          exitCode: 0,
           counts: {
             executed: 1,
-            passed: 0,
+            passed: 1,
             failed: 0,
-            infrastructureErrors: 1,
+            infrastructureErrors: 0,
           },
         },
-        cleanup: { status: 'failed', survivingOwnedChildren: 1 },
+        cleanup: { status: 'passed', survivingOwnedChildren: 0 },
         worktree,
         request: { key },
       });
@@ -86,13 +129,95 @@ describe('verification status projection', () => {
       );
       expect(stderr).toBeDefined();
       const retained = readFileSync(join(worktree, stderr!.path), 'utf8');
-      expect(retained.startsWith(evidence)).toBe(true);
-      expect(retained).not.toContain(secret);
-      expect(Buffer.byteLength(retained)).toBeLessThanOrEqual(
-        DEFAULT_OUTPUT_BYTE_CAP,
+      expect(retained).toBe(stderrText);
+      expect(Buffer.byteLength(retained)).toBe(DEFAULT_OUTPUT_BYTE_CAP);
+      const attachment = reported.artifacts.find((artifact) =>
+        artifact.path.includes('/attachment-'),
       );
+      expect(attachment).toBeDefined();
+      const diagnostic = readFileSync(join(worktree, attachment!.path), 'utf8');
+      expect(diagnostic).toContain('[station-windows-owned-settlement]');
+      expect(diagnostic).toContain('[REDACTED]');
+      expect(diagnostic).not.toContain(secret);
+      expect(reported.outputTruncated).toBe(false);
+      expect(reported.result.status).toBe('completed');
+    } finally {
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps an original stderr overflow nonpassing with separate settlement evidence', () => {
+    const worktree = mkdtempSync(join(tmpdir(), 'station-windows-overflow-'));
+    try {
+      const reported = reportExecution({
+        raw: {
+          output: {
+            stdout: { text: '' },
+            stderr: { text: 'x'.repeat(DEFAULT_OUTPUT_BYTE_CAP + 1) },
+          },
+          windowsSettlementEvidence: {
+            kind: 'windows-owned-settlement',
+            barriers: { stderrEof: true, acknowledged: true },
+          },
+        },
+        result: {
+          status: 'completed',
+          exitCode: 0,
+          counts: {
+            executed: 1,
+            passed: 1,
+            failed: 0,
+            infrastructureErrors: 0,
+          },
+        },
+        cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+        worktree,
+        request: { key: '8'.repeat(64) },
+      });
       expect(reported.outputTruncated).toBe(true);
       expect(reported.result.status).toBe('infrastructure_error');
+      expect(
+        reported.artifacts.some((artifact) =>
+          artifact.path.includes('/attachment-'),
+        ),
+      ).toBe(true);
+    } finally {
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps diagnostic attachment serialization best-effort', () => {
+    const worktree = mkdtempSync(join(tmpdir(), 'station-windows-diag-'));
+    const evidence: Record<string, unknown> = {
+      kind: 'windows-owned-settlement',
+    };
+    evidence.cycle = evidence;
+    try {
+      const reported = reportExecution({
+        raw: {
+          output: { stdout: { text: '' }, stderr: { text: 'complete' } },
+          windowsSettlementEvidence: evidence,
+        },
+        result: {
+          status: 'completed',
+          exitCode: 0,
+          counts: {
+            executed: 1,
+            passed: 1,
+            failed: 0,
+            infrastructureErrors: 0,
+          },
+        },
+        cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+        worktree,
+        request: { key: '7'.repeat(64) },
+      });
+      expect(reported.result.status).toBe('completed');
+      expect(reported.outputTruncated).toBe(false);
+      expect(reported.attachmentOmissions).toContainEqual({
+        name: 'windows-owned-settlement',
+        reason: 'diagnostic_unavailable',
+      });
     } finally {
       rmSync(worktree, { recursive: true, force: true });
     }

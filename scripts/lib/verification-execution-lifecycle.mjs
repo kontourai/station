@@ -3,7 +3,6 @@ import {
   CI_FAST_OWNER_INFRASTRUCTURE_PREFIX,
 } from '../run-ci-fast.mjs';
 import {
-  appendWindowsSettlementEvidence,
   captureOwnedProcessOutput,
   executeOwnedCommand,
   terminateSuiteExecution,
@@ -182,43 +181,42 @@ export function createOwnedRunner({
     abortSignal?.addEventListener('abort', () => void cancel(), { once: true });
     const result = await execution.promise;
     const captured = output.finish();
-    const capturedWithSettlementEvidence = () =>
-      appendWindowsSettlementEvidence(
-        captured,
-        execution.settlementEvidence?.(),
-      );
+    const withSettlementEvidence = (raw) => {
+      const evidence = execution.settlementEvidence?.();
+      return evidence ? { ...raw, windowsSettlementEvidence: evidence } : raw;
+    };
     if (captured.invalidUtf8)
-      return {
+      return withSettlementEvidence({
         status: null,
         error: new Error('verification output was not valid UTF-8'),
-        output: capturedWithSettlementEvidence(),
+        output: captured,
         cleanup: { status: 'failed', survivingOwnedChildren: 0 },
-      };
+      });
     const cleanup = cleanupPromise
       ? await cleanupPromise
       : execution.isAlive()
         ? await cancel()
         : null;
     if (cleanup?.settled === false)
-      return {
+      return withSettlementEvidence({
         status: null,
         error: new Error('owned verification process survived cleanup'),
-        output: capturedWithSettlementEvidence(),
+        output: captured,
         cleanup: { status: 'failed', survivingOwnedChildren: 1 },
-      };
+      });
     if (cleanup?.errors.length)
-      return {
+      return withSettlementEvidence({
         ...result,
-        output: capturedWithSettlementEvidence(),
+        output: captured,
         cleanup: { status: 'failed', survivingOwnedChildren: 0 },
-      };
+      });
     const ciFastInfrastructure =
       lane.id === 'ci-fast' &&
       result.status === CI_FAST_INFRASTRUCTURE_EXIT_CODE;
     const infrastructureCause = ciFastInfrastructure
       ? ciFastInfrastructureCause(captured)
       : undefined;
-    return {
+    return withSettlementEvidence({
       ...result,
       ...(ciFastInfrastructure
         ? {
@@ -226,11 +224,11 @@ export function createOwnedRunner({
             ...(infrastructureCause ? { infrastructureCause } : {}),
           }
         : {}),
-      output: capturedWithSettlementEvidence(),
+      output: captured,
       cleanup: {
         status: cleanup ? 'passed' : 'not_required',
         survivingOwnedChildren: 0,
       },
-    };
+    });
   };
 }
