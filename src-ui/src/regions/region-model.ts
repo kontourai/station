@@ -172,7 +172,10 @@ export function syncRegionArrangementFromDock(
  *
  * - into a dock region, the displaced surface relocates — back into the
  *   region the incoming surface vacated when it may occupy it (a swap), else
- *   into the first free dock region, else it is unplaced;
+ *   into its own registered `defaultRegion` when that is free, else into the
+ *   first free region it declares, the opposite side first when a side is
+ *   what it is leaving (see the ordered candidate list below), else it is
+ *   unplaced;
  * - into `main`, the displaced surface is UNPLACED, never relocated. `main`
  *   is the primary area: replacing what it shows must not spawn a dock panel
  *   the user did not ask for (#928 C2a, owner decision).
@@ -226,8 +229,40 @@ export function placeSurface(
       maximized: false,
     });
   }
-  const freeRegion = firstFreeDockRegion(next, regionId);
-  if (freeRegion && surfaceMayOccupy(displacedSurface, freeRegion)) {
+  // Where the displaced surface goes, in order: its own registered
+  // `defaultRegion` — the region it would have been revealed into had nothing
+  // placed it — then, when a SIDE is what it is leaving, the OTHER side, since
+  // a surface pushed out of `left` landing in `bottom` reshapes the whole
+  // workspace to move something sideways; then the historical order. The
+  // region the displaced surface just lost is not a candidate: the placer
+  // holds it now. (The region the PLACER vacated is a candidate — that is the
+  // swap above.)
+  //
+  // Every candidate must be a free dock region the surface DECLARES, so a
+  // relocation can never put one somewhere it does not declare and `main` is
+  // never a destination — the primary area is only ever handed to a surface
+  // placed there deliberately, even when its `defaultRegion` IS `main`.
+  //
+  // #1386: this was `firstFreeDockRegion(next, regionId)`, whose `preferred`
+  // argument was the region the PLACER had just taken. That region is occupied
+  // by definition here, so the preference could never fire and the fallback
+  // order decided every relocation.
+  const freeRegion = (
+    [
+      REGION_SURFACE_REGISTRY.get(displacedSurface)?.defaultRegion,
+      regionId === 'left' ? 'right' : regionId === 'right' ? 'left' : undefined,
+      'bottom',
+      'right',
+      'left',
+    ] as const
+  ).find(
+    (id): id is DockRegionId =>
+      id !== undefined &&
+      isDockRegion(id) &&
+      next[id].occupant === null &&
+      surfaceMayOccupy(displacedSurface, id),
+  );
+  if (freeRegion) {
     return updateRegion(next, freeRegion, {
       occupant: displacedSurface,
       visible: displacedVisible,
