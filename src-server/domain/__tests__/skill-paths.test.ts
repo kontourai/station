@@ -104,6 +104,19 @@ describe('resolveSkillDirectory refuses a symlinked-out skill directory', () => 
     );
   });
 
+  // Delta review F3, at the seam where the containment answer is the WHOLE
+  // answer: `resolveSkillDirectory` has no shape check to refuse first, so a
+  // root that exists and cannot be resolved reaches the containment predicate
+  // directly. Treating "cannot be resolved" as "does not exist yet" accepted
+  // it, and this is the name-derived writer every create and install uses.
+  test('the write seam refuses a dangling skills root', () => {
+    symlinkSync(join(outside, 'never-created'), join(home, 'skills'), 'dir');
+
+    expect(() => resolveSkillDirectory(home, 'alpha')).toThrow(
+      /resolves outside/,
+    );
+  });
+
   test('an ordinary name still resolves', () => {
     expect(resolveSkillDirectory(home, 'alpha')).toBe(
       join(home, 'skills', 'alpha'),
