@@ -23,6 +23,12 @@
  *              the MAIN size — a width while the header is a row, a HEIGHT
  *              once a responsive block stacks it, where 20rem inflated a 23px
  *              identity to 320px on every consumer.
+ *   SUBTITLE   the wrap decision taking the subtitle's content width into
+ *              account, so the header spent a whole second row widening a
+ *              subtitle that wrapped to the same line count either way — 61px
+ *              taller across 217 region widths, nothing clipped, nothing
+ *              overflowing. A wrap must mean the identity and the actions
+ *              cannot share a row.
  *
  * Asserting a class name or a CSS declaration would not have caught any of
  * them: every declaration involved was "present" throughout every defect.
@@ -143,6 +149,34 @@ function shortIdentityWideActionsMarkup(): string {
           CLEAR ALL
         </button>
       </div>
+    </DetailHeader>,
+  );
+  const html = container.innerHTML;
+  unmount();
+  return html;
+}
+
+/**
+ * A subtitle-bearing consumer with a compact action cluster — the shape that
+ * says whether the SUBTITLE is allowed to influence the wrap. Its subtitle is
+ * longer than the 62ch cap, so the cap binds and the text needs two lines at
+ * any width this header can offer.
+ */
+function subtitledCompactActionsMarkup(): string {
+  const { container, unmount } = render(
+    <DetailHeader
+      title="Issue tracker"
+      subtitle={
+        'Connect this project to an external issue tracker and keep its task ' +
+        'state in sync across every workspace and device that opens it later on'
+      }
+    >
+      <button type="button" className="editor-btn">
+        Disconnect
+      </button>
+      <button type="button" className="editor-btn editor-btn--primary">
+        Save
+      </button>
     </DetailHeader>,
   );
   const html = container.innerHTML;
@@ -288,14 +322,22 @@ describe.skipIf(!chromiumAvailable)(
      * the same region width.
      */
     test('the same region width lays out identically across viewports', async () => {
-      // 1440, 1000 and 700 all sit outside the 769-1180 tablet band, which
+      // 1440, 1200 and 700 all sit OUTSIDE the 769-1180 tablet band, which
       // deliberately gives the actions their own row as a property of the
       // viewport class rather than of this header's width. Everywhere else,
       // one region width must mean one layout.
+      //
+      // 1200 replaced an earlier 1000, which is inside that band: there
+      // `__left` resolves to a band-forced `flex-basis: 100%` rather than to
+      // anything this fix decides, and the comparison passed only because a
+      // 600px region is one of the few widths where the forced and the
+      // content-derived layouts coincide. At a 900px region it is false. The
+      // pin is meant to be tight by construction, so it must not depend on
+      // that coincidence.
       const wide = await measure(600, 1440);
-      const mid = await measure(600, 1000);
+      const alsoAboveBand = await measure(600, 1200);
       const narrowViewport = await measure(600, 700);
-      expect(mid).toEqual(wide);
+      expect(alsoAboveBand).toEqual(wide);
       expect(narrowViewport).toEqual(wide);
     }, 120_000);
 
@@ -304,12 +346,19 @@ describe.skipIf(!chromiumAvailable)(
      * cannot come back: dropping `min-width: 0` from `__left` stops a long
      * title ellipsizing and pushes the identity past its region.
      *
-     * `titleClipped` is the discriminator, not decoration. `overflow === 0`
-     * alone would also pass for a fixture whose title simply fit, so this
-     * additionally asserts that the title IS being truncated at these widths —
-     * i.e. the region really is the binding constraint and ellipsis is what
-     * absorbs it. Both are needed: the floor-based variant made `titleClipped`
-     * false and `overflow` large at exactly these two widths.
+     * The two assertions are discriminated by DIFFERENT injections, which is
+     * why both are here:
+     *
+     *   `overflow === 0`     reds when the phone block's `flex-wrap: nowrap`
+     *                        is removed (390px case: the identity measures
+     *                        470px inside a 390px region, 96px past its edge).
+     *   `titleClipped`       reds when `min-width: 0` is removed from `__left`
+     *                        (500px case: the title stops ellipsizing and the
+     *                        identity simply takes its own row instead).
+     *
+     * Restoring the whole floor-based variant reds both. Neither assertion
+     * alone would catch both injections, and `overflow === 0` on its own would
+     * also pass for a fixture whose title merely fit.
      */
     test.each([
       // Phone, where the header stacks into a column.
@@ -395,6 +444,39 @@ describe.skipIf(!chromiumAvailable)(
       expect(wraps.titleClipped).toBe(false);
       expect(wraps.overflow).toBe(0);
     }, 120_000);
+
+    /**
+     * SUBTITLE. A wrap means the identity and the actions cannot share a row.
+     * It must not mean the subtitle would like more width.
+     *
+     * At a 700px region this title and these two buttons fit together with
+     * room to spare, so the header must stay one row. While the subtitle
+     * counted toward the wrap decision it did not: the header took a second
+     * row (identity 652px, header 158px) to give the subtitle 508px, and the
+     * subtitle then wrapped to two lines exactly as it does at 451px. 61px of
+     * height, the same line count, nothing clipped and nothing overflowing —
+     * measured across 217 region widths on shapes like this one, and the same
+     * complaint #1678 makes about the tablet band.
+     *
+     * This also stands in for the subtitle's `max-width: 62ch`. That cap used
+     * to set the wrap point, so a typography change could move it; now the
+     * subtitle is out of the decision entirely, and removing the cap changes
+     * only how wide the subtitle RENDERS. Asserting the cap here would pass
+     * with or without it, so the property worth pinning is this one.
+     */
+    test('the subtitle does not buy a second row it cannot use', async () => {
+      const m = await measure(700, 1440, {
+        markup: subtitledCompactActionsMarkup(),
+      });
+
+      // Wrapped, the identity would be the region's full 652px content box.
+      expect(m.identityWidth).toBeLessThan(550);
+      expect(m.titleClipped).toBe(false);
+      expect(m.overflow).toBe(0);
+      // And it is still a legible subtitle, not a starved one.
+      expect(m.subtitleLines).toBeLessThanOrEqual(2);
+      expect(m.subtitleWidth).toBeGreaterThan(300);
+    }, 60_000);
   },
 );
 
