@@ -305,6 +305,16 @@ interface Shape {
    * goes red and the reasoning in `tokens.css` has to be revisited.
    */
   readonly expectsCriticalBannerCoveredByPopover: boolean;
+  /**
+   * Whether to mount the transient toast chrome. On for every shape that
+   * measures it; OFF for the popover-over-critical-card shape, because the
+   * toast sits over the notice host's own band and would be what covers a
+   * critical control there — which would satisfy "covered" without the
+   * popover's layer having anything to do with it. Measured: with the toast
+   * mounted, two of three host controls hit
+   * `header.notification-card__header` rather than the popover.
+   */
+  readonly renderChrome: boolean;
 }
 
 const BOTTOM_DOCK = 'chat-dock chat-dock--bottom';
@@ -320,6 +330,7 @@ const SHAPES: readonly Shape[] = [
     expectsNoticeOverlap: true,
     expectsChromeReachable: false,
     expectsCriticalBannerCoveredByPopover: false,
+    renderChrome: true,
   },
   {
     name: "a maximized dock's sheet under #920's critical card",
@@ -330,6 +341,7 @@ const SHAPES: readonly Shape[] = [
     expectsNoticeOverlap: true,
     expectsChromeReachable: false,
     expectsCriticalBannerCoveredByPopover: false,
+    renderChrome: true,
   },
   {
     // MEASURED, and the reason this shape asserts only the portal property:
@@ -351,6 +363,7 @@ const SHAPES: readonly Shape[] = [
     expectsNoticeOverlap: false,
     expectsChromeReachable: false,
     expectsCriticalBannerCoveredByPopover: false,
+    renderChrome: true,
   },
   {
     name: 'two region docks, the dialog in one of them',
@@ -364,6 +377,7 @@ const SHAPES: readonly Shape[] = [
     expectsNoticeOverlap: false,
     expectsChromeReachable: false,
     expectsCriticalBannerCoveredByPopover: false,
+    renderChrome: true,
   },
   {
     name: 'a desktop region-grid dock, the dialog inside it',
@@ -374,6 +388,7 @@ const SHAPES: readonly Shape[] = [
     expectsNoticeOverlap: false,
     expectsChromeReachable: false,
     expectsCriticalBannerCoveredByPopover: false,
+    renderChrome: true,
   },
   {
     name: 'only a scrim-less popover open: the toast stays reachable',
@@ -384,6 +399,7 @@ const SHAPES: readonly Shape[] = [
     expectsNoticeOverlap: false,
     expectsChromeReachable: true,
     expectsCriticalBannerCoveredByPopover: false,
+    renderChrome: true,
   },
   {
     // The mirror of the second shape above, which pairs #920's critical card
@@ -398,6 +414,7 @@ const SHAPES: readonly Shape[] = [
     expectsNoticeOverlap: false,
     expectsChromeReachable: false,
     expectsCriticalBannerCoveredByPopover: true,
+    renderChrome: false,
   },
 ];
 
@@ -420,7 +437,7 @@ function buildFixtureHtml(shape: Shape): string {
           ))}
         </div>
       </div>
-      <Chrome />
+      {shape.renderChrome ? <Chrome /> : null}
     </>,
   );
   // The surface portals to `document.body`, so the body IS the shape under
@@ -468,6 +485,7 @@ interface Measured {
     hit: string;
     hitsItself: boolean;
     underOverlay: boolean;
+    critical: boolean;
   }[];
 }
 
@@ -574,6 +592,15 @@ describe.skipIf(!chromiumAvailable)(
             const point = entry.point;
             return {
               ...entry,
+              // #920 raises ONLY a critical card's own item/cap to
+              // `calc(--layer-dock + 1)`. Every other host control sits at the
+              // host's own layer, which a popover outranks on `main` too, so
+              // only these discriminate.
+              critical: Boolean(
+                control.closest(
+                  '.banner-host__item--critical-chrome, .banner-host__cap--critical-chrome',
+                ),
+              ),
               underOverlay: Boolean(
                 overlayBox &&
                   point.x >= overlayBox.left &&
@@ -704,24 +731,25 @@ describe.skipIf(!chromiumAvailable)(
         const measured = await measure(shape);
         assertTheDockWouldStillTrapASurface(measured);
 
-        // Power guard 1: the host has to have rendered a control at all.
-        expect(
-          measured.bannerControls.length,
-          'the notice host rendered no control that takes pointer events, so ' +
-            'this shape cannot observe whether a popover covers it.',
-        ).toBeGreaterThan(0);
-
-        // Power guard 2: "covered" is only meaningful where the popover's
-        // overlay is actually over the control. Without this, a host that
-        // simply moved out from under the popover would read as covered.
+        // POWER GUARD, and it is a geometry check on purpose. Only a #920
+        // critical card's own item/cap is raised to `calc(--layer-dock + 1)`;
+        // every other host control sits lower and is covered by a popover on
+        // `main` too, so a guard that accepted any control would pass whatever
+        // the layer order said. Keeping the guard on GEOMETRY rather than on
+        // the outcome is what makes the assertion below discriminate: move the
+        // popover under the banner and the guard still holds while the
+        // assertion goes red, which is the signal wanted.
         const under = measured.bannerControls.filter(
-          (entry) => entry.underOverlay,
+          (entry) => entry.critical && entry.underOverlay,
         );
         expect(
           under.length,
-          "the popover's overlay does not cover any notice-host control, so " +
-            'this measurement proves nothing about layer order. The geometry ' +
-            'moved — restore the overlap rather than deleting the test.',
+          "the popover's overlay does not cover any CRITICAL notice-host " +
+            'control, so this measurement proves nothing about layer order. ' +
+            'Either the critical card stopped rendering a control (#920 marks ' +
+            'it with `banner-host__item--critical-chrome`) or the geometry ' +
+            'moved. Restore the overlap rather than deleting the test. ' +
+            `Measured: ${JSON.stringify(measured.bannerControls)}`,
         ).toBeGreaterThan(0);
 
         // The accepted reversal, asserted so a later change to it is visible.
