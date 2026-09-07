@@ -83,6 +83,31 @@ function headerMarkup(): string {
   return html;
 }
 
+/**
+ * A long title with actions — the shape `min-width: 0` on `__left` exists to
+ * serve. A fix that removes that floor makes this OVERFLOW its region instead
+ * of ellipsizing, on desktop and on a phone, which is why it is measured here
+ * rather than assumed.
+ */
+function longTitleMarkup(): string {
+  const { container, unmount } = render(
+    <DetailHeader
+      title="Reduce default toolbar clutter in the chat dock"
+      badge={{ label: 'unsaved', variant: 'warning' }}
+    >
+      <button type="button" className="editor-btn editor-btn--danger">
+        Delete
+      </button>
+      <button type="button" className="editor-btn editor-btn--primary">
+        Save
+      </button>
+    </DetailHeader>,
+  );
+  const html = container.innerHTML;
+  unmount();
+  return html;
+}
+
 function fixtureHtml(markup: string, regionWidth: number): string {
   const css = CSS_PATHS.map((path) => resolveCssImports(path)).join('\n');
   assertNoImportsSurvive(css);
@@ -106,12 +131,16 @@ describe.skipIf(!chromiumAvailable)(
     });
     afterEach(() => cleanup());
 
-    async function measure(regionWidth: number, viewportWidth: number) {
+    async function measure(
+      regionWidth: number,
+      viewportWidth: number,
+      markup: string = headerMarkup(),
+    ) {
       const page = await browser!.newPage({
         viewport: { width: viewportWidth, height: 900 },
       });
       try {
-        await page.setContent(fixtureHtml(headerMarkup(), regionWidth));
+        await page.setContent(fixtureHtml(markup, regionWidth));
         return await page.evaluate(() => {
           const pick = (selector: string) =>
             document.querySelector(selector) as HTMLElement | null;
@@ -130,6 +159,16 @@ describe.skipIf(!chromiumAvailable)(
             ),
             titleWidth: Math.round(title.getBoundingClientRect().width),
             titleClipped: title.scrollWidth > title.clientWidth + 1,
+            // How far the identity runs past its region's content box.
+            overflow: Math.round(
+              Math.max(
+                0,
+                left.getBoundingClientRect().right -
+                  (
+                    document.getElementById('region') as HTMLElement
+                  ).getBoundingClientRect().right,
+              ),
+            ),
           };
         });
       } finally {
@@ -143,9 +182,17 @@ describe.skipIf(!chromiumAvailable)(
      * be what makes these pass. 500 and 600 are the region widths at which the
      * pre-fix header measured 0px and 76px of identity respectively.
      *
-     * The literals are pinned rather than derived from the rendered width: a
-     * threshold computed from the same layout it is checking would move with
-     * the defect.
+     * These four are the GUARDRAIL: literals with deliberate headroom between
+     * pass and fail, chosen against the pre-fix measurements (0px identity,
+     * 32px title, six lines) so they stay robust across renderer differences
+     * rather than tracking one engine's pixel rounding. They are derived from
+     * nothing in the layout, because a threshold computed from the same layout
+     * it checks would move with the defect.
+     *
+     * The PIN is the viewport-agreement test below: it compares measurements
+     * to each other rather than to any chosen number, so it is tight by
+     * construction and states the actual property — layout is a function of
+     * the region, not the window.
      */
     test.each([
       [500, 1440],
@@ -181,11 +228,33 @@ describe.skipIf(!chromiumAvailable)(
      * viewports that straddle every breakpoint in this file must agree, given
      * the same region width.
      */
-    test('the same region width lays out identically either side of the breakpoints', async () => {
+    test('the same region width lays out identically across viewports', async () => {
+      // 1440 and 700 both sit outside the 769-1180 tablet band, which
+      // deliberately gives the actions their own row as a property of the
+      // viewport class rather than of this header's width. Everywhere else,
+      // one region width must mean one layout.
       const wide = await measure(600, 1440);
-      const tablet = await measure(600, 1000);
-      expect(tablet).toEqual(wide);
+      const narrowViewport = await measure(600, 700);
+      expect(narrowViewport).toEqual(wide);
     }, 120_000);
+
+    /**
+     * The regression a floor-based fix introduces, pinned so it cannot come
+     * back: removing `min-width: 0` from `__left` stops a long title
+     * ellipsizing and pushes the identity past its region — measured at 470px
+     * inside a 390px phone region, and 470px inside a 500px desktop region.
+     */
+    test.each([
+      [390, 390],
+      [500, 1440],
+    ])(
+      'a long title ellipsizes rather than overflowing a %ipx region',
+      async (regionWidth, viewportWidth) => {
+        const m = await measure(regionWidth, viewportWidth, longTitleMarkup());
+        expect(m.overflow).toBe(0);
+      },
+      60_000,
+    );
   },
 );
 
