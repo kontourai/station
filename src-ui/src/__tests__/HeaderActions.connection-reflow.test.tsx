@@ -95,11 +95,28 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   // branch's triangle takes the same `size`), and the row bound this file
   // asserts against counts those 7px. A zero-width stand-in would leave the
   // fixture's chip 7px lighter than the budget and quietly spend that slack.
-  ConnectionStatusDot: ({ status }: { status: string }) => (
+  ConnectionStatusDot: ({
+    status,
+    size = 8,
+  }: {
+    status: string;
+    size?: number;
+  }) => (
     <span
       data-testid="connection-status"
       data-state={status}
-      style={{ display: 'inline-block', width: 7, height: 7 }}
+      // Sized from the prop, not from a literal: the real dot is `size` wide
+      // in every state (the alert branch's triangle takes the same `size`),
+      // and the row bound this file asserts against counts it. A zero-width
+      // stand-in would leave the fixture's chip lighter than the budget and
+      // quietly spend that slack; a hardcoded 7 would stop tracking the call
+      // site the moment it changed. `flexShrink` mirrors the real component.
+      style={{
+        display: 'inline-block',
+        width: size,
+        height: size,
+        flexShrink: 0,
+      }}
     />
   ),
   useConnectionStatus: () => ({
@@ -317,6 +334,18 @@ describe.skipIf(!chromiumAvailable)(
       const LEFT_SIDE_FLOOR_PX = 126;
       const DOCUMENTED_WIDEST_TOTAL_PX = 396;
       const CLUSTER_BUDGET_PX = DOCUMENTED_WIDEST_TOTAL_PX - LEFT_SIDE_FLOOR_PX;
+      // The badge is measured OUT of both sides. It is the only member whose
+      // width depends on glyph metrics, and those differ by renderer: this
+      // file's own note records the capped badge at 23.80px on macOS and
+      // 25.34px on the Linux runner. Comparing a whole-cluster measurement
+      // against a budget derived on one platform makes the assertion a
+      // platform claim — #1132's transcription trap, arriving through the
+      // front door. What is left after the badge comes out is padding,
+      // borders, gaps, the 44px floors and a label hard-clamped at its
+      // `max-width`: all CSS pixels, identical on any renderer. The badge's
+      // own bound is asserted by the "stops growing at the cap" test above,
+      // which is where a font-dependent member belongs.
+      const DOCUMENTED_BADGE_BUDGET_PX = 23.91;
       const FIRST_LABELLED_WIDTH_PX = 375;
 
       attentionPendingCount = 123; // the badge at its capped, widest form
@@ -328,7 +357,7 @@ describe.skipIf(!chromiumAvailable)(
       });
       try {
         await page.setContent(buildFixtureHtml(markup));
-        const content = await page.evaluate(() => {
+        const measured = await page.evaluate(() => {
           const cluster = document.querySelector<HTMLElement>(
             '.app-toolbar__actions',
           );
@@ -336,20 +365,33 @@ describe.skipIf(!chromiumAvailable)(
             .map((child) => child.getBoundingClientRect())
             .filter((box) => box.width > 0);
           if (!boxes.length) throw new Error('no toolbar controls rendered');
-          return (
-            Math.max(...boxes.map((box) => box.right)) -
-            Math.min(...boxes.map((box) => box.left))
+          const badge = document.querySelector<HTMLElement>(
+            '.app-toolbar__notification-badge',
           );
+          if (!badge) throw new Error('no notification badge rendered');
+          return {
+            content:
+              Math.max(...boxes.map((box) => box.right)) -
+              Math.min(...boxes.map((box) => box.left)),
+            badge: badge.getBoundingClientRect().width,
+          };
         });
+        const withoutBadge = measured.content - measured.badge;
+        const budgetWithoutBadge =
+          CLUSTER_BUDGET_PX - DOCUMENTED_BADGE_BUDGET_PX;
         expect(
-          content,
-          `the widest cluster measures ${Math.round(content)}px against the ` +
-            `${CLUSTER_BUDGET_PX}px chat.css reserves for it (its ` +
-            `${DOCUMENTED_WIDEST_TOTAL_PX}px bound less the ` +
-            `${LEFT_SIDE_FLOOR_PX}px left side). The label breakpoint is ` +
-            `derived from that bound, so a row this wide keeps its label at a ` +
-            `width it cannot hold — re-measure the row and move both together.`,
-        ).toBeLessThanOrEqual(CLUSTER_BUDGET_PX);
+          withoutBadge,
+          `the widest cluster's platform-independent members measure ` +
+            `${withoutBadge.toFixed(2)}px against the ` +
+            `${budgetWithoutBadge.toFixed(2)}px chat.css reserves for them ` +
+            `(its ${DOCUMENTED_WIDEST_TOTAL_PX}px bound, less the ` +
+            `${LEFT_SIDE_FLOOR_PX}px left side, less the ` +
+            `${DOCUMENTED_BADGE_BUDGET_PX}px budgeted for the badge, which is ` +
+            `measured out because its width is font-dependent). The label ` +
+            `breakpoint is derived from that bound, so a row this wide keeps ` +
+            `its label at a width it cannot hold — re-measure the row and ` +
+            `move both together.`,
+        ).toBeLessThanOrEqual(budgetWithoutBadge);
       } finally {
         await page.close();
       }

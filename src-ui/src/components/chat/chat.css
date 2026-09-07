@@ -2263,7 +2263,7 @@
    THE BOUND. The widest the cluster can get: 126 (left side at its floor) +
    112 (this chip — an 85px `max-width` label plus 27px of measured furniture:
    button padding, the 7px dot, its gap) + 4 + 58 (notifications carrying its
-   widest badge: 38px of button plus a 23.91px badge — that is "99"'s width,
+   widest badge: 34px of button plus a 23.91px badge — that is "99"'s width,
    which the `9+` cap makes unrenderable (the cap's own string is 23.80px), so
    the budget is ~1px conservative rather than exact. These figures are macOS
    measurements and glyph metrics differ by platform — the same capped badge is
@@ -2292,9 +2292,12 @@
    382 is ARITHMETIC, not a swept width: it is where the worst case lands, and
    the worst case is a label at the 85px ceiling beside a two-character badge.
    What was swept live, in the `error` state whose label is 79px and whose
-   badge was one digit, is narrower: at 360px the `Open settings` centre is
-   x=362 and resolves to `null` (x=370 before the padding trim); at 367px and
-   above, in that state, it resolves to itself. So this breakpoint engages a little above where the swept state
+   badge was one digit, is narrower: that sweep read the `Open settings` centre
+   at x=370 at 360px, resolving to `null`, and station#1401's padding trim
+   moves it 8px left — DERIVED from the trim, not re-swept. What is measured
+   rather than computed is the 375px case in
+   `tests/toolbar-reachability.spec.ts`, which drives the real app at the
+   first width this breakpoint admits. So this breakpoint engages a little above where the swept state
    alone would need it, which is what a bound is for.
 
    Dropping the label reclaims 66px (the chip falls to its 44px touch floor) and
