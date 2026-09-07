@@ -830,22 +830,34 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
         const marker = (chat?.messages ?? []).find(
           (message) => message.turnId === 'turn-a',
         );
-        // station#1701. Distinguish "the handler wrote something wrong" from
-        // "the handler wrote nothing": `updateChat` resolves its key through
-        // `getChatKeyForExecutionSession` and RETURNS SILENTLY when that
-        // misses, so a no-op write reaches this helper as a missing marker —
-        // and, being a precondition, reports against whichever test called
-        // it. Twice on CI that read as `expected undefined to match object
-        // { role: 'user' }` on a tool-outcome test that was never involved.
+        // station#1701. A missing marker used to reach the assertion below as
+        // `expected undefined to match object { role: 'user' }`, which — being
+        // a precondition — reported against whichever test called this helper.
+        // Twice on CI that pointed a reader at tool-outcome logic that was
+        // never involved.
+        //
+        // The message below DERIVES which case it is from the store rather
+        // than naming one: the key list separates "this test is reading a
+        // store the handler never wrote to" from "the write resolved no key"
+        // from "the marker changed shape". One cause the investigation did
+        // rule out: `handleRuntimeErrorEvent` is synchronous end to end, so a
+        // not-yet-settled dispatch is not among them.
         if (marker === undefined) {
+          const storeKeys = Object.keys(activeChatsStore.getSnapshot());
           throw new Error(
-            `handleRuntimeErrorEvent wrote no turn-a marker for "${threadId}". ` +
-              `The chat is ${chat ? 'present' : 'ABSENT'} in the store and holds ` +
-              `${chat?.messages?.length ?? 0} message(s). An absent chat means ` +
-              `updateChat's key lookup missed and the write was a silent no-op ` +
-              `(station#1701); a present chat with messages means the marker's ` +
-              `shape changed. Either way this is setup, not the behaviour the ` +
-              `calling test names.`,
+            `handleRuntimeErrorEvent left no readable turn-a marker for ` +
+              `"${threadId}". Store keys: [${storeKeys.join(', ')}]; the chat ` +
+              `is ${chat ? 'present' : 'ABSENT'} and holds ` +
+              `${chat?.messages?.length ?? 0} message(s).\n` +
+              `- No keys at all: this test is reading a store the handler ` +
+              `never wrote to (handler and test resolved different module ` +
+              `instances — the station#1045 class).\n` +
+              `- Keys present but not "${threadId}": updateChat's key lookup ` +
+              `missed and it returned silently (active-chats-store.ts), or it ` +
+              `resolved a DIFFERENT key and wrote there.\n` +
+              `- The chat present: the marker's turnId or role changed.\n` +
+              `Look at this helper and handleRuntimeErrorEvent, not at the ` +
+              `behaviour the calling test names.`,
           );
         }
         // The precondition this test exists for: the only message carrying
