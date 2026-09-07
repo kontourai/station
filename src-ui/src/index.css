@@ -947,10 +947,13 @@ button:hover {
  *
  * The sixth, `.mobile-task-switcher__overlay`, is UNAFFECTED either way, and
  * its cause is source order rather than `!important` — which took the third
- * reading to establish. Its `z-index: 70` lives inside the mobile breakpoint
- * (`@media (max-width: 768px), (max-height: 540px) and (pointer: coarse)`), so
- * at a desktop viewport it does not apply at all and any conclusion drawn
- * there is about a rule that was never in the cascade. Measured at 390x844,
+ * reading to establish. Its `z-index: 70` lives inside the shell mobile
+ * breakpoint (the one `useIsMobile` keeps in lockstep: max-width 768px, or a
+ * coarse pointer under 540px tall — spelled out rather than quoted verbatim,
+ * because the lockstep scanner reads this file as source text and cannot tell
+ * a quoted at-rule in prose from a real one). At a desktop viewport it does
+ * not apply at all, so any conclusion drawn there is about a rule that was
+ * never in the cascade. Measured at 390x844,
  * where it IS live: alone it computes 70, so the rule applies; with this class
  * it computes 10000 both as declared and with `!important` stripped. Its rule
  * sits ~68 KB EARLIER than this one, so at equal specificity this rule already
@@ -961,8 +964,16 @@ button:hover {
  * portal, so it is inert now exactly as it was then — a stacked confirm
  * resolves against its sibling by DOM order, which is what it already did.
  *
- * The remaining overlays that carry this class declare `--layer-dialog`
- * itself, so there is nothing to arbitrate. */
+ * The remaining overlays that carry this class have nothing to arbitrate, but
+ * not for the reason an earlier draft of this comment gave: it said they
+ * declare `--layer-dialog` themselves, and seven of them declare no z-index at
+ * all (`.request-inspection-overlay`, `.composer-popover-overlay`,
+ * `.background-tasks-sheet-overlay`, `.first-run-chapter__overlay`,
+ * `.agent-actions-overlay`, `.learning-source-overlay`,
+ * `.basis-pane-fallback-overlay`). They compute automatically and take
+ * whatever these rules give them, which is a different fact with the same
+ * consequence. The rest do declare `--layer-dialog`, so they agree with these
+ * rules by coincidence rather than by arbitration. */
 .responsive-surface-overlay {
   --responsive-visual-viewport-height: 100dvh;
   --responsive-visual-viewport-top: 0px;
