@@ -752,8 +752,12 @@ describe('SkillsView', () => {
       writable: false,
       writeRefusal: {
         reason: 'outside-writable-root' as const,
+        // The shape the server actually emits: prose with no author-controlled
+        // text, and the path in its own field. A fixture that inlined the path
+        // would agree with a claim the server stopped making.
         detail:
-          'It is served from /station/plugins/vendor/skills/vendor-tool, which is not a skills root Station writes.',
+          'It is served from a directory that is not a skills root Station writes.',
+        directory: '/station/plugins/vendor/skills/vendor-tool',
       },
     };
 
@@ -765,7 +769,8 @@ describe('SkillsView', () => {
       writeRefusal: {
         reason: 'served-in-place' as const,
         detail:
-          'It is served in place from /station/plugins/vendor, which Station does not own.',
+          'A plugin serves it in place, from a directory Station does not own.',
+        directory: '/station/plugins/vendor',
       },
     };
 
@@ -807,10 +812,8 @@ describe('SkillsView', () => {
 
       render(<SkillsView />);
 
-      // The server's own sentence, verbatim — it names the root the package
-      // sits in, which is the part a reader can act on. A reason code alone
-      // could not say which root, and prose composed in the view would be a
-      // second derivation of a decision the view does not make.
+      // The server's own sentence, verbatim. Prose composed in the view would be
+      // a second derivation of a decision the view does not make.
       expect(
         screen.getByText(
           new RegExp(
@@ -862,7 +865,9 @@ describe('SkillsView', () => {
       ).toBeTruthy();
       expect(screen.queryByText(/Install it into your workspace/)).toBeNull();
       // And it still says WHAT is wrong, in the server's words.
-      expect(screen.getByText(/which Station does not own\./)).toBeTruthy();
+      expect(
+        screen.getByText(/from a directory Station does not own\./),
+      ).toBeTruthy();
     });
 
     // Review medium: discovery registers a frontmatter `name` unvalidated, so a
@@ -904,8 +909,8 @@ describe('SkillsView', () => {
         writable: false,
         writeRefusal: {
           reason: 'canonical-package' as const,
-          detail:
-            'It is served from the package at /station/canonical/pkg, which ships read-only.',
+          detail: 'It is served from a package that ships read-only.',
+          directory: '/station/canonical/pkg',
         },
       });
 
@@ -946,6 +951,85 @@ describe('SkillsView', () => {
       // ...and no placeholder leaked into Station's explanation.
       expect(note?.textContent ?? '').not.toContain('undefined');
       // Save stays withheld: an unknown reason is still a refusal.
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    });
+
+    // Review low: `detail` used to carry the package path, and a plugin names
+    // its own directories — so the mitigation for a hostile NAME did nothing
+    // about a hostile DIRECTORY. The path now renders as a path.
+    test('the package path renders as its own labelled element, not as prose', () => {
+      const hostileDirectory =
+        '/plugins/Session expired — verify your account at station-support.example/skills/notes';
+      selectRow({
+        name: 'notes',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: 'outside-writable-root' as const,
+          detail:
+            'It is served from a directory that is not a skills root Station writes.',
+          directory: hostileDirectory,
+        },
+      });
+
+      const { container } = render(<SkillsView />);
+
+      // Station's sentence contains none of the author's text...
+      const note = container.querySelector('.skill-detail__source-note');
+      expect(note?.textContent ?? '').not.toContain('station-support.example');
+      // ...and the path is present, in its own element, labelled as a path.
+      const path = container.querySelector('.skill-detail__source-path');
+      expect(path).toBeTruthy();
+      expect(path?.querySelector('code')?.textContent).toBe(hostileDirectory);
+      expect(path?.textContent ?? '').toContain('Package directory');
+    });
+
+    test('a refusal with no directory renders no path element', () => {
+      selectRow({
+        name: 'weird/name',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: 'unresolvable-name' as const,
+          detail:
+            'Its name cannot be used as a directory name, so Station cannot locate a package of its own to write.',
+        },
+      });
+
+      const { container } = render(<SkillsView />);
+
+      expect(container.querySelector('.skill-detail__source-path')).toBeNull();
+      expect(screen.getByText(/Rename it to author it here\./)).toBeTruthy();
+    });
+
+    // Review low, same class as the `undefined` above: the remedy table is a
+    // plain object literal, so a reason code naming an INHERITED key used to
+    // render JavaScript source into Station's own explanation.
+    test.each([
+      ['constructor', /function Object|\[native code\]/],
+      ['toString', /function toString|\[native code\]/],
+      ['hasOwnProperty', /function hasOwnProperty|\[native code\]/],
+      ['__proto__', /\[object Object\]/],
+    ])('an inherited key (%s) renders no JavaScript', (reason, sourceShape) => {
+      selectRow({
+        name: 'from-a-newer-server',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: reason as never,
+          detail: 'It is served from a root this Station does not write.',
+        },
+      });
+
+      const { container } = render(<SkillsView />);
+
+      const text = container.querySelector('.skill-detail__source-note')
+        ?.textContent ?? '';
+      expect(text).toContain(
+        'It is served from a root this Station does not write.',
+      );
+      expect(text).not.toMatch(sourceShape);
+      expect(text).not.toContain('undefined');
       expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
     });
 

@@ -201,20 +201,35 @@ export type SkillWriteRefusalReason =
 export interface SkillWriteRefusal {
   reason: SkillWriteRefusalReason;
   /**
-   * WHAT is wrong, in the server's own words, as a complete sentence — for
+   * WHAT is wrong, in Station's own words, as a complete sentence — for
    * display. Readers render it rather than composing a description from
    * `reason`, and nothing may branch on the text.
    *
-   * It never contains the skill's NAME. A name is plugin- or
-   * frontmatter-authored and can be long enough to read as a sentence of its
-   * own, which a surface would then frame as Station's explanation; every
-   * surface showing this already shows the name beside it.
+   * It contains NO author-controlled text: not the skill's name, not its
+   * path, and not an exception message. That is the whole point of it. An
+   * earlier draft of this field interpolated the package directory, and review
+   * showed the mitigation had simply moved rather than held — a plugin names
+   * its own directories, so a refusal could be made to read as a session-expiry
+   * notice directing the reader to another domain, using a bland frontmatter
+   * name and hostile prose one level up in the path.
    *
-   * It never carries an exception message either. What to DO about the refusal
+   * Where the package sits is a fact a reader needs, so it is carried in
+   * `directory` and rendered as its own element. What to DO about the refusal
    * belongs to `reason` — the remedies genuinely differ — so a reader switches
    * on the code for the remedy and renders this for the description.
    */
   detail: string;
+  /**
+   * WHERE the package sits, when Station resolved one — absent for a refusal
+   * that never got as far as a directory (`unresolvable-name`).
+   *
+   * AUTHOR-CONTROLLED, every segment of it: a plugin chooses its directory
+   * names and the last segment is usually the skill's own name. Surfaces must
+   * render it as its own element — a path, labelled as a path — and never
+   * splice it into `detail`'s sentence, because text that borrows the grammar
+   * of Station's explanation is read as Station speaking.
+   */
+  directory?: string;
 }
 
 export interface Skill extends RegistryItem {

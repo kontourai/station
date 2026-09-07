@@ -73,20 +73,28 @@ const SKILL_WRITE_REMEDY: Record<SkillWriteRefusalReason, string> = {
 };
 
 /**
- * The refusal sentence: WHAT is wrong, in the server's own words, then WHAT TO
- * DO, chosen by the reason code.
+ * The refusal sentence: WHAT is wrong, in Station's own words, then WHAT TO DO,
+ * chosen by the reason code.
  *
- * The lookup is guarded because `reason` arrives over HTTP from a server that
- * may be NEWER than this build — this change itself adds a fourth reason code,
- * so a desktop app on the previous build meeting this server is the live
- * instance of that, not a hypothetical. An unrecognised code drops the remedy
- * rather than rendering `undefined` inside a paragraph the reader takes for
- * Station's own explanation; the server's sentence still says what is wrong,
- * and Save is withheld either way. The `Record` above is what keeps the union
- * exhaustive at COMPILE time, which this guard does not weaken.
+ * `reason` arrives over HTTP from a server that may be NEWER than this build —
+ * this change itself adds a fourth reason code, so a desktop app on the
+ * previous build meeting this server is the live case, not a hypothetical. Two
+ * ways an unrecognised code used to reach the reader as prose, both closed
+ * here: a plain lookup rendered `undefined`, and a lookup for an INHERITED key
+ * (`constructor`, `toString`) rendered JavaScript source — native-code strings
+ * and an object constructor, straight into a paragraph the reader takes for
+ * Station's explanation. `Object.hasOwn` is what makes the table's own keys the
+ * only ones that answer; the `Record` type keeps the union exhaustive at
+ * COMPILE time, and neither guard weakens that.
+ *
+ * An unrecognised code drops the remedy and keeps the description. Save is
+ * withheld either way — `editableLocal` reads `writable === true` and never
+ * this text.
  */
 function skillWriteRefusalNote(refusal: SkillWriteRefusal): string {
-  const remedy: string | undefined = SKILL_WRITE_REMEDY[refusal.reason];
+  const remedy = Object.hasOwn(SKILL_WRITE_REMEDY, refusal.reason)
+    ? SKILL_WRITE_REMEDY[refusal.reason]
+    : undefined;
   return remedy
     ? `Read-only. ${refusal.detail} ${remedy}`
     : `Read-only. ${refusal.detail}`;
@@ -624,11 +632,30 @@ export function SkillsView({
                         server that stated no decision: Save is still withheld,
                         and saying so without a reason beats inventing one. */}
                     {!editableLocal && (
-                      <p className="skill-detail__source-note">
-                        {selected?.writeRefusal
-                          ? skillWriteRefusalNote(selected.writeRefusal)
-                          : 'This skill is read-only here. Browse Registry to discover or install skills; create a new workspace skill to author one.'}
-                      </p>
+                      <>
+                        <p className="skill-detail__source-note">
+                          {selected?.writeRefusal
+                            ? skillWriteRefusalNote(selected.writeRefusal)
+                            : 'This skill is read-only here. Browse Registry to discover or install skills; create a new workspace skill to author one.'}
+                        </p>
+                        {/* The path is AUTHOR-CONTROLLED — a plugin names its
+                            own directories and the last segment is usually the
+                            skill's name — so it gets its own element, labelled
+                            as a path and set in a monospace face. Spliced into
+                            the sentence above it borrowed the grammar of
+                            Station's own explanation, and review built one that
+                            read as a session-expiry notice pointing the reader
+                            at another domain (#1655 review low). React escapes
+                            markup; framing was the whole attack. */}
+                        {selected?.writeRefusal?.directory && (
+                          <p className="skill-detail__source-path">
+                            <span className="skill-detail__source-path-label">
+                              Package directory
+                            </span>
+                            <code>{selected.writeRefusal.directory}</code>
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 )}

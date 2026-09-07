@@ -184,11 +184,12 @@ async function listing(app: RouteApp) {
 function refusalOf(row: Record<string, unknown> | undefined): {
   reason: string;
   detail: string;
+  directory?: string;
 } {
   expect(row).toBeDefined();
   const refusal = (row as Record<string, unknown>).writeRefusal;
   expect(refusal).toBeDefined();
-  return refusal as { reason: string; detail: string };
+  return refusal as { reason: string; detail: string; directory?: string };
 }
 
 beforeEach(() => {
@@ -220,12 +221,16 @@ describe('GET /api/skills projects the server writability decision', () => {
     expect(vendor?.writable).toBe(false);
     const refusal = refusalOf(vendor);
     expect(refusal.reason).toBe('outside-writable-root');
-    // The reason names the actual root, which is the only part of it a reader
-    // can act on.
+    // WHERE the package sits is still reported — a reader cannot act without it
+    // — but in its own field now, not spliced into Station's sentence.
     expect(refusal.detail).toContain('is not a skills root Station writes');
-    expect(refusal.detail).toContain(
+    expect(refusal.directory).toBe(
       join(home, 'plugins', 'vendor', 'skills', 'vendor-tool'),
     );
+    // And the sentence carries NO author-controlled text. The path's own last
+    // segment is the skill name, so asserting the path is absent asserts both.
+    expect(refusal.detail).not.toContain(home);
+    expect(refusal.detail).not.toContain('vendor-tool');
   });
 
   test('a canonical package skill is refused as a package, not as a stray root', async () => {
@@ -330,6 +335,68 @@ describe('the decision does not outlive the registry that made it', () => {
     expect(row?.writable).toBe(false);
     // And the route's own gate agrees, from the same derivation.
     expect(service.isSkillWritable('movable', home)).toBe(false);
+  });
+});
+
+/**
+ * The refusal is displayed prose, and everything a plugin authors is hostile
+ * input to it. Review low: an earlier draft kept the skill NAME out of `detail`
+ * and interpolated the package PATH, which is the same exposure one level up —
+ * a plugin names its own directories. These drive the real service, so unlike
+ * the view's hand-written fixtures they cannot agree with a claim the server
+ * does not keep.
+ */
+describe('the refusal sentence is Station speaking, not the package author', () => {
+  test('a hostile directory name cannot borrow the grammar of the explanation', async () => {
+    // Bland frontmatter name; the prose is one level UP, in the directory.
+    const hostile =
+      'Session expired — verify your account at station-support.example to continue';
+    const packageDirectory = join(home, 'plugins', hostile, 'skills', 'notes');
+    writePackage(packageDirectory, 'notes', {
+      source: 'local',
+      installedAt: '2026-01-07T00:00:00.000Z',
+    });
+    const { app } = await setup();
+
+    const refusal = refusalOf((await listing(app)).get('notes'));
+
+    // The sentence is Station's, in full, with none of the author's text in it.
+    expect(refusal.detail).not.toContain(hostile);
+    expect(refusal.detail).not.toContain('station-support.example');
+    expect(refusal.detail).not.toContain(home);
+    // The path is still reported, in the field a surface renders as a path.
+    expect(refusal.directory).toBe(packageDirectory);
+    expect(refusal.reason).toBe('outside-writable-root');
+  });
+
+  test('a name the path rule rejects is refused as unresolvable, with no diagnostic', async () => {
+    // Discovery registers a frontmatter `name` unvalidated, which is what makes
+    // this reachable at all. The directory is innocuous; the NAME is not a name.
+    writeFileSync(
+      join(home, 'skills', 'bought-in', 'SKILL.md'),
+      '---\nname: ../../escape\ndescription: traversal\n---\nBody',
+      'utf-8',
+    );
+    const { app } = await setup();
+
+    const row = (await listing(app)).get('../../escape');
+    expect(row).toBeDefined();
+    const refusal = refusalOf(row);
+    expect(refusal.reason).toBe('unresolvable-name');
+    // No directory: this refusal never got as far as resolving one.
+    expect(refusal.directory).toBeUndefined();
+    // The underlying rejection names prototype keys and traversal. That is a
+    // log line, not guidance, and it must not reach a field documented for
+    // display.
+    expect(refusal.detail).not.toMatch(/__proto__|prototype|traversal|\.\./);
+    expect(refusal.detail).toContain('cannot be used as a directory name');
+    // The route ANSWERS the refusal rather than letting the rejection propagate.
+    const res = await app.request(`/${encodeURIComponent('../../escape')}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: { enabled: true } }),
+    });
+    expect(res.status).toBe(409);
   });
 });
 
@@ -595,8 +662,14 @@ describe('writable iff the write lands in that package and nowhere else', () => 
  * decides against an empty registry — where no name resolves to a package and
  * every name therefore reads writable. That transient answer is correct-ish and
  * harmless as long as it is transient; the first cut of #1655 memoised it for
- * the whole registry generation, and because the write gate consulted the same
- * memo, an ordinary listing armed a durable grant on a read-only package.
+ * the whole registry generation and had the write gate read the same memo, so
+ * one question asked inside the window became a durable grant on a read-only
+ * package.
+ *
+ * Which question, exactly, matters for this test's power: NOT a listing. With
+ * the registry empty a listing emits no row for the name and never asks. It is
+ * a call to the write-gate predicate itself that arms it — see the comments in
+ * the body, which name the one load-bearing line.
  */
 describe('a decision made while discovery is in flight does not outlive it', () => {
   test('a canonical package is refused after a read landed mid-rediscovery', async () => {
@@ -607,11 +680,29 @@ describe('a decision made while discovery is in flight does not outlive it', () 
 
     // Not awaited: the registry is empty from here until the scans finish.
     const discovery = service.discoverSkills(home);
-    // The window itself, asserted so the test says what it is exercising. This
-    // answer is not the defect — outliving the window is.
+
+    // THIS IS THE ARMING READ, and the only one — do not delete it, and do not
+    // read it as merely describing the window. Under the round-one memo it is
+    // the single call that stores the wrong answer; removing it leaves this
+    // test GREEN with the grant fully reintroduced, while removing the two
+    // read-model calls below leaves it red. Measured that way, one line at a
+    // time, against a faithful reproduction (the memo CLEARED at discovery, not
+    // a never-cleared one — the never-cleared shape is a different bug).
+    //
+    // The transient `true` is not the defect; outliving the window is. It is
+    // asserted because a window that had silently stopped existing would make
+    // everything after this vacuous.
     expect(service.isSkillWritable('shipped', home)).toBe(true);
-    // And an ordinary read lands in it, which is what armed the grant.
-    await listing(app);
+
+    // And NEITHER read model can arm it, which is why the predicate above has
+    // to. Mid-window the registry is empty, so the listing emits no row for the
+    // name and never asks the question, and the detail read rejects before
+    // writability is evaluated. Asserted rather than assumed: an earlier
+    // version of this test performed a bare listing here and credited it with
+    // arming the grant, and it was inert.
+    const midWindow = await listing(app);
+    expect(midWindow.has('shipped')).toBe(false);
+    expect((await app.request('/shipped')).status).toBe(404);
     await discovery;
 
     // THE DAMAGE IS ASSERTED FIRST, so a regression's failure text names the

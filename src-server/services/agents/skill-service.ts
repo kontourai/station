@@ -264,18 +264,6 @@ export interface SkillDetail extends SkillConfig {
 type SkillDetailBody = Omit<SkillDetail, 'writable' | 'writeRefusal'>;
 
 /**
- * Writability decisions memoised for the duration of ONE call, then dropped.
- *
- * Deliberately a value a caller creates and passes down, never a field on the
- * service: the rule reads the filesystem AND the registry, and `discoverSkills`
- * rebuilds the registry behind an await. Anything that outlives a single call
- * can therefore hold an answer computed against a registry that no longer
- * exists — and because the write gate consults the same rule, a stale
- * affirmative is not a stale label but a granted write. See `writeRefusalFor`.
- */
-type SkillWritabilityMemo = Map<string, SkillWriteRefusal | null>;
-
-/**
  * The identity record was published but an exact cleanup could not be made
  * durable.  Callers must retain this as an operator-recoverable state rather
  * than flattening it into an ordinary failed create.
@@ -575,10 +563,6 @@ export class SkillService {
     // root through `realpathSync`), and every row would otherwise re-resolve
     // the same home.
     const projectHomeDir = this.projectHomeDir();
-    // Scoped to this call and dropped with it. It only ever coalesces a repeat
-    // of the SAME name within one listing, which is why it can share nothing
-    // with the write gate and cannot survive a rediscovery.
-    const writability: SkillWritabilityMemo = new Map();
     // Declarations become behaviour in ONE place, across every root: a command
     // word nobody can type, or one two skills both claim, is reported disabled
     // with the reason rather than listed as enabled and doing nothing. Origin
@@ -622,7 +606,7 @@ export class SkillService {
         ...(install.legacyIds ? { legacyIds: install.legacyIds } : {}),
         ...(origin ? { origin } : {}),
         ...(s.provided ? { servedInPlace: true as const } : {}),
-        ...this.writabilityAgainstHome(s.name, projectHomeDir, writability),
+        ...this.writabilityAgainstHome(s.name, projectHomeDir),
       };
     });
   }
@@ -784,49 +768,12 @@ export class SkillService {
     projectHomeDir: string,
     projectSlug?: string,
   ): boolean {
-    // No memo: the write gate asks once, and it must ask the filesystem as it
-    // is NOW. See `SkillWritabilityMemo` for why nothing durable sits here.
+    // Straight to the rule, every time. Nothing between this and the filesystem
+    // caches an answer, which is what keeps the write gate honest — see
+    // `skillWriteRefusal`.
     return (
-      this.writeRefusalFor(name, projectHomeDir, projectSlug) === undefined
+      this.skillWriteRefusal(name, projectHomeDir, projectSlug) === undefined
     );
-  }
-
-  /**
-   * The rule, optionally memoised for the duration of ONE call.
-   *
-   * The memo is created by a caller, passed down, and dropped when that call
-   * returns — it is never a field. The first cut of this cached decisions for a
-   * whole registry generation and had both the projection and the route's write
-   * gate read through it, which review found to be a write-authorization
-   * failure rather than a cache: `discoverSkills` clears the registry
-   * synchronously and then AWAITS its scans, so anything landing in that window
-   * decides against a partial (or empty) registry, where no name resolves to a
-   * package and every name therefore reads writable. Memoised, that transient
-   * wrong answer became durable and an ordinary listing armed it; the gate then
-   * admitted a write to a canonical package and published a shadow copy under
-   * the machine root — the exact outcome the gate exists to prevent. Recomputing
-   * makes the window transient again, as it was before #1655.
-   *
-   * One derivation shared by every reader is the point of this projection. One
-   * MEMO shared with the authorization gate is what turned a read-side race
-   * into a write-side grant, so the two are deliberately not the same thing.
-   */
-  private writeRefusalFor(
-    name: string,
-    projectHomeDir: string,
-    projectSlug?: string,
-    memo?: SkillWritabilityMemo,
-  ): SkillWriteRefusal | undefined {
-    if (!memo) return this.skillWriteRefusal(name, projectHomeDir, projectSlug);
-    // NUL-joined: no path or skill name can contain it, so two different
-    // (home, slug, name) triples can never collide on one key.
-    const key = [projectHomeDir, projectSlug ?? '', name].join('\u0000');
-    const memoised = memo.get(key);
-    if (memoised !== undefined) return memoised ?? undefined;
-    const refusal =
-      this.skillWriteRefusal(name, projectHomeDir, projectSlug) ?? null;
-    memo.set(key, refusal);
-    return refusal ?? undefined;
   }
 
   /**
@@ -850,12 +797,13 @@ export class SkillService {
     // create is what a caller asking about it is about to do.
     if (!registered?.location) return undefined;
     const directory = dirname(registered.location);
-    // NONE of these details interpolate the skill NAME, deliberately. The name
-    // is plugin- or frontmatter-authored, up to 128 characters, and `detail` is
-    // documented for display — a name reading as a sentence would be framed by
-    // the surface as Station's own explanation of the refusal (review low). The
-    // row and the heading already show the name; the server states only the
-    // part it owns, which is where the package sits.
+    // NONE of these details interpolate ANY author-controlled text — not the
+    // name, and not the directory either. An earlier draft kept the name out
+    // and spliced the path in, which review showed was the same defect one
+    // level up: a plugin names its own directories, so a refusal could be made
+    // to read as a session-expiry notice pointing at another domain, from a
+    // bland frontmatter name alone. `detail` is prose Station owns; the path
+    // travels in `directory`, and surfaces render it as a path.
     //
     // A SOURCE serves this one in place; no directory Station owns holds it.
     // Named apart from the root failure below because it has a different
@@ -864,13 +812,15 @@ export class SkillService {
     if (registered.provided) {
       return {
         reason: 'served-in-place',
-        detail: `It is served in place from ${directory}, which Station does not own.`,
+        detail: 'A plugin serves it in place, from a directory Station does not own.',
+        directory,
       };
     }
     if (this.canonicalSourceFor(registered.location)) {
       return {
         reason: 'canonical-package',
-        detail: `It is served from the package at ${directory}, which ships read-only.`,
+        detail: 'It is served from a package that ships read-only.',
+        directory,
       };
     }
     // `resolveSkillDir` refuses a name that cannot become a path at all, and
@@ -892,7 +842,11 @@ export class SkillService {
         projectSlug,
       );
     } catch (error) {
-      this.logger.warn('Skill name cannot resolve to a package directory', {
+      // DEBUG, not warn: this is re-derived for every row of every listing, so
+      // one undiscoverable name would warn on each request forever. The
+      // condition is not lost — it reaches the caller as a refusal with its own
+      // reason code, which is the channel a reader can act on.
+      this.logger.debug('Skill name cannot resolve to a package directory', {
         name,
         error,
       });
@@ -905,7 +859,9 @@ export class SkillService {
     if (directory !== writableDirectory) {
       return {
         reason: 'outside-writable-root',
-        detail: `It is served from ${directory}, which is not a skills root Station writes.`,
+        detail:
+          'It is served from a directory that is not a skills root Station writes.',
+        directory,
       };
     }
     return undefined;
@@ -933,25 +889,28 @@ export class SkillService {
   /**
    * `skillWritability` with the home resolved once, for a whole listing.
    *
-   * `memo` — when a caller supplies one — lives exactly as long as that
-   * caller's own call. NOTE the slug: this passes none, matching the route's
-   * gate. `updateLocalSkillOwned` DOES pass one to `isSkillWritable`, so the
-   * two sites are in lockstep only while no route supplies a slug. They must
-   * move together; if one starts resolving a scope the other does not, the
+   * The hoist is the ONLY thing saved across rows, and it is the part that was
+   * worth saving: `projectHomeDir()` resolves the skills root through
+   * `realpathSync`, and every row would otherwise redo it. The decision itself
+   * is recomputed per row on purpose. A memo lived here briefly and was
+   * deleted: the registry is keyed by name, so one listing never asks about the
+   * same name twice and it could not fire — a trip-wire throwing on any hit ran
+   * 173 tests across seven suites without one. What it did carry was a
+   * parameter a future caller could thread into the write gate, which is
+   * exactly how the round-one defect happened.
+   *
+   * NOTE the slug: this passes none, matching the route's gate.
+   * `updateLocalSkillOwned` DOES pass one to `isSkillWritable`, so the two
+   * sites are in lockstep only while no route supplies a slug. They must move
+   * together; if one starts resolving a scope the other does not, the
    * projection and the enforcement answer different questions again (#1619
    * threads a slug and is the change that will surface this).
    */
   private writabilityAgainstHome(
     name: string,
     projectHomeDir: string,
-    memo?: SkillWritabilityMemo,
   ): { writable: boolean; writeRefusal?: SkillWriteRefusal } {
-    const writeRefusal = this.writeRefusalFor(
-      name,
-      projectHomeDir,
-      undefined,
-      memo,
-    );
+    const writeRefusal = this.skillWriteRefusal(name, projectHomeDir);
     return writeRefusal
       ? { writable: false, writeRefusal }
       : { writable: true };
