@@ -243,19 +243,44 @@ describe('the gate’s own per-attempt deadline (#1661)', () => {
         await vi.advanceTimersByTimeAsync(0);
       });
 
-      // Each rung: its own deadline, then its backoff. Asserting the request
-      // count at every step is what pins the ESCALATION — a schedule collapsed to
-      // one value would advance on the wrong tick.
+      // Each rung is crossed at ITS OWN deadline, one millisecond at a time, and
+      // that is what pins the ESCALATION through the gate. Advancing by the whole
+      // rung and only counting requests does NOT: a schedule collapsed to one
+      // value, or a call site that asks for the wrong attempt's deadline, still
+      // reaches the same count by the end (proven — that injection passed a
+      // version of this test that only counted). What discriminates is that
+      // NOTHING has been abandoned one tick before the deadline the schedule
+      // declares for this rung: the last rung's 16 s is observable only as the
+      // absence of a settled screen at 10 s.
       for (
         let attempt = 0;
         attempt < LOCAL_UI_SESSION_ATTEMPT_LIMIT;
         attempt += 1
       ) {
+        const deadline = LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS[attempt];
+        const lastRung = attempt === LOCAL_UI_SESSION_ATTEMPT_LIMIT - 1;
+        expect(fetchMock).toHaveBeenCalledTimes(attempt + 1);
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(deadline - 1);
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(attempt + 1);
+        expect(
+          screen.queryByRole('heading', {
+            name: 'Reconnecting to this Station',
+          }),
+        ).toBeNull();
+
+        // Crossing it abandons the read.
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1);
+        });
+        if (lastRung) break;
+        // The next attempt is not spent until its backoff elapses.
         expect(fetchMock).toHaveBeenCalledTimes(attempt + 1);
         await act(async () => {
           await vi.advanceTimersByTimeAsync(
-            LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS[attempt] +
-              (LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS[attempt] ?? 0),
+            LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS[attempt],
           );
         });
       }
