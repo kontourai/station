@@ -2913,7 +2913,7 @@ describe('Orchestration Routes', () => {
     );
   });
 
-  test('GET /sessions/read-model reconciles peer delegation evidence before publishing Activity (#847)', async () => {
+  test('GET /sessions/read-model starts peer delegation reconciliation under the caller principal (#847)', async () => {
     const refreshDelegatedTaskActivity = vi.fn().mockResolvedValue(undefined);
     const service = {
       listSessionReadModel: vi.fn().mockResolvedValue([
@@ -2954,12 +2954,133 @@ describe('Orchestration Routes', () => {
         }),
       ],
     });
+    // The scoping half of archive#847, unchanged: reconciliation runs under
+    // the CALLER's principal, never a default or another user's.
     expect(refreshDelegatedTaskActivity).toHaveBeenCalledWith({
       userId: ROUTE_TEST_USER_ID,
     });
+    // Still kicked off before the read model is built. It is no longer
+    // AWAITED first — the refresh reads each live peer delegation over HTTP
+    // with a 1.5s timeout apiece, so its result reaches Activity through the
+    // store on the next poll rather than by blocking this one. The
+    // non-blocking half is proven directly by the two tests below.
     expect(
       refreshDelegatedTaskActivity.mock.invocationCallOrder[0],
     ).toBeLessThan(service.listSessionReadModel.mock.invocationCallOrder[0]);
+  });
+
+  test('GET /sessions/read-model answers while a peer refresh is still outstanding (#847)', async () => {
+    // A peer that never answers. Awaiting the refresh would hang this
+    // request until the suite's own timeout — which is exactly what a
+    // genuinely unreachable peer did to every poll behind it.
+    const refreshDelegatedTaskActivity = vi.fn(
+      () => new Promise<void>(() => {}),
+    );
+    const service = {
+      listSessionReadModel: vi
+        .fn()
+        .mockResolvedValue([{ threadId: 'thread-1', isLoaded: false }]),
+    };
+    const app = createOrchestrationRoutes(service as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+      refreshDelegatedTaskActivity,
+    });
+
+    const startedAt = Date.now();
+    const response = await app.request('/sessions/read-model');
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(response.status).toBe(200);
+    expect(await readJson(response)).toEqual({
+      success: true,
+      data: [expect.objectContaining({ threadId: 'thread-1' })],
+    });
+    expect(refreshDelegatedTaskActivity).toHaveBeenCalledTimes(1);
+    // The local store read is all this request waits on. Generous enough that
+    // host load cannot red it, and unreachable for a request that waits on a
+    // promise with no resolution path at all.
+    expect(elapsedMs).toBeLessThan(1_000);
+  });
+
+  test('concurrent read-model polls share one peer refresh, and a later poll starts a fresh one (#847)', async () => {
+    let releaseRefresh: (() => void) | undefined;
+    const refreshDelegatedTaskActivity = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseRefresh = resolve;
+        }),
+    );
+    const service = {
+      listSessionReadModel: vi.fn().mockResolvedValue([]),
+    };
+    const app = createOrchestrationRoutes(service as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+      refreshDelegatedTaskActivity,
+    });
+
+    const responses = await Promise.all([
+      app.request('/sessions/read-model'),
+      app.request('/sessions/read-model'),
+      app.request('/sessions/read-model'),
+    ]);
+
+    expect(responses.map((response) => response.status)).toEqual([
+      200, 200, 200,
+    ]);
+    // Every poll answered; only one of them opened peer connections. Without
+    // the single flight, a 3-second poll interval and a refresh slower than
+    // it stack a new fan-out per poll forever.
+    expect(refreshDelegatedTaskActivity).toHaveBeenCalledTimes(1);
+    expect(service.listSessionReadModel).toHaveBeenCalledTimes(3);
+
+    // The latch must CLEAR, not stick: a single flight that never released
+    // would mean peer evidence is reconciled exactly once per process.
+    releaseRefresh?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect((await app.request('/sessions/read-model')).status).toBe(200);
+    expect(refreshDelegatedTaskActivity).toHaveBeenCalledTimes(2);
+  });
+
+  test('one caller\'s outstanding refresh does not suppress another caller\'s (#847)', async () => {
+    // The single flight is keyed by principal. A global latch would let the
+    // first poller on a shared Station hold every other user's peer
+    // reconciliation for as long as its own peers stay slow — their
+    // delegations would simply stop updating, with nothing to see.
+    const refreshDelegatedTaskActivity = vi.fn(
+      () => new Promise<void>(() => {}),
+    );
+    const service = { listSessionReadModel: vi.fn().mockResolvedValue([]) };
+    const principals = {
+      alice: { id: 'human:alice', kind: 'human' as const, display: 'Alice' },
+      bob: { id: 'human:bob', kind: 'human' as const, display: 'Bob' },
+    };
+    let caller: keyof typeof principals = 'alice';
+    const app = createOrchestrationRoutes(service as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      resolvePrincipal: () => principals[caller],
+      refreshDelegatedTaskActivity,
+    });
+
+    expect((await app.request('/sessions/read-model')).status).toBe(200);
+    expect((await app.request('/sessions/read-model')).status).toBe(200);
+    expect(refreshDelegatedTaskActivity).toHaveBeenCalledTimes(1);
+
+    caller = 'bob';
+    expect((await app.request('/sessions/read-model')).status).toBe(200);
+
+    expect(refreshDelegatedTaskActivity).toHaveBeenCalledTimes(2);
+    expect(refreshDelegatedTaskActivity).toHaveBeenNthCalledWith(1, {
+      userId: principals.alice.id,
+    });
+    expect(refreshDelegatedTaskActivity).toHaveBeenNthCalledWith(2, {
+      userId: principals.bob.id,
+    });
   });
 
   // archive#4466: the test above mocks `OrchestrationService` entirely, so

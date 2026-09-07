@@ -988,6 +988,46 @@ export function createOrchestrationRoutes(
       getTenantRequestContext(c.req.raw),
       deps.hostedTenantRegistry,
     );
+  /**
+   * One in-flight peer-delegation reconciliation per caller.
+   *
+   * `refreshDelegatedTaskActivity` builds its own read model, takes the last
+   * 20 live peer delegations and `Promise.allSettled`s a remote HTTP read per
+   * delegation, each with a 1.5s timeout
+   * (`station-control-delegation.ts`'s `refreshPeerDelegationActivity`).
+   * `GET /sessions/read-model` is polled, so awaiting that in the response
+   * path put up to 1.5s of peer network latency plus a second full read-model
+   * build in front of data the local store already had, and a slow peer
+   * stalled every subsequent poll behind its own predecessor.
+   *
+   * Keyed by userId, never shared: a poll from one caller must not suppress
+   * another caller's reconciliation, whose peer set and authority are
+   * different. The entry is cleared in `finally`, so a completed (or failed)
+   * refresh does not stop the next poll from starting a fresh one.
+   */
+  const delegationActivityRefreshes = new Map<string, Promise<void>>();
+  const startDelegatedTaskActivityRefresh = (userId: string): void => {
+    const refresh = deps.refreshDelegatedTaskActivity;
+    if (!refresh) return;
+    if (delegationActivityRefreshes.has(userId)) return;
+    const settled = (async () => {
+      try {
+        await refresh({ userId });
+      } catch (error) {
+        // Never rethrown: this is a background reconciliation, and an
+        // unhandled rejection here would take down the process for a peer
+        // that happened to be unreachable.
+        (deps.logger.warn ?? deps.logger.debug)(
+          'Peer delegation activity refresh failed',
+          { error: error instanceof Error ? error.message : String(error) },
+        );
+      } finally {
+        delegationActivityRefreshes.delete(userId);
+      }
+    })();
+    delegationActivityRefreshes.set(userId, settled);
+  };
+
   const toolResultUnavailable = (c: Context, status: 404 | 503 = 404) => {
     c.header('Cache-Control', 'private, no-store');
     return c.json({ success: false, error: 'Tool result unavailable' }, status);
@@ -1063,11 +1103,12 @@ export function createOrchestrationRoutes(
 
   app.get('/sessions/read-model', async (c) => {
     const authority = readAuthorityFor(c);
-    if (deps.refreshDelegatedTaskActivity) {
-      await deps.refreshDelegatedTaskActivity({
-        userId: resolveActorPrincipal(deps, c).userId,
-      });
-    }
+    // Started under the caller's own principal, exactly as before, but no
+    // longer awaited: what the refresh learns is written to the local store
+    // and published by the NEXT read rather than this one. archive#847 asked
+    // that peer evidence reach Activity, not that a poll block on a peer's
+    // network round trip to do it.
+    startDelegatedTaskActivityRefresh(resolveActorPrincipal(deps, c).userId);
     const data = await orchestrationService.listSessionReadModel(authority);
     return c.json({ success: true, data });
   });
