@@ -419,12 +419,6 @@
     opacity: 0.7;
   }
 
-  .coding-terminal .xterm-helper-textarea {
-    /* Prevent Safari from zooming the viewport when xterm requests its hidden
-       keyboard textarea, while keeping xterm's own offscreen geometry. */
-    font-size: 16px;
-  }
-
   .coding-terminal-command-executor__input {
     font-size: 16px !important;
   }

@@ -21,13 +21,7 @@ import {
 
 function ControlledPathAutocomplete({ initial }: { initial: string }) {
   const [value, setValue] = useState(initial);
-  return (
-    <PathAutocomplete
-      value={value}
-      onChange={setValue}
-      browsable
-    />
-  );
+  return <PathAutocomplete value={value} onChange={setValue} browsable />;
 }
 
 /**
@@ -137,13 +131,9 @@ describe('the suggestion list follows its input out of a scrollport', () => {
       }),
     });
 
-    render(
-      <PathAutocomplete
-        value="~/Do"
-        onChange={vi.fn()}
-      />,
-      { container: scroller },
-    );
+    render(<PathAutocomplete value="~/Do" onChange={vi.fn()} />, {
+      container: scroller,
+    });
     const input = scroller.querySelector('input');
     if (!input) throw new Error('the field did not render');
     let inputTop = 200;
@@ -203,12 +193,7 @@ describe('PathAutocomplete', () => {
     });
     const onChange = vi.fn();
 
-    render(
-      <PathAutocomplete
-        value="~/Do"
-        onChange={onChange}
-      />,
-    );
+    render(<PathAutocomplete value="~/Do" onChange={onChange} />);
 
     expect(browseMock).toHaveBeenCalledWith('~', { enabled: true });
     expect(screen.getByText('Documents')).toBeTruthy();
@@ -229,12 +214,7 @@ describe('PathAutocomplete', () => {
       },
     });
 
-    render(
-      <PathAutocomplete
-        value="~/de"
-        onChange={vi.fn()}
-      />,
-    );
+    render(<PathAutocomplete value="~/de" onChange={vi.fn()} />);
 
     // Prefix matches present.
     expect(screen.getByText('dev')).toBeTruthy();
@@ -257,12 +237,7 @@ describe('PathAutocomplete', () => {
       },
     });
 
-    render(
-      <PathAutocomplete
-        value="~/demo"
-        onChange={vi.fn()}
-      />,
-    );
+    render(<PathAutocomplete value="~/demo" onChange={vi.fn()} />);
 
     const options = screen.getAllByRole('button');
     expect(options.length).toBe(8);
@@ -282,12 +257,7 @@ describe('PathAutocomplete', () => {
     });
     const onChange = vi.fn();
 
-    render(
-      <PathAutocomplete
-        value="/tmp/pro"
-        onChange={onChange}
-      />,
-    );
+    render(<PathAutocomplete value="/tmp/pro" onChange={onChange} />);
 
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Tab' });
 
@@ -314,12 +284,7 @@ describe('PathAutocomplete', () => {
     });
     const onChange = vi.fn();
 
-    render(
-      <PathAutocomplete
-        value="/tmp/project"
-        onChange={onChange}
-      />,
-    );
+    render(<PathAutocomplete value="/tmp/project" onChange={onChange} />);
 
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
 
@@ -337,12 +302,7 @@ describe('PathAutocomplete', () => {
       },
     }));
 
-    render(
-      <PathAutocomplete
-        value="~/"
-        onChange={vi.fn()}
-      />,
-    );
+    render(<PathAutocomplete value="~/" onChange={vi.fn()} />);
 
     expect(browseMock).toHaveBeenCalledWith('~', { enabled: true });
 
@@ -357,12 +317,7 @@ describe('PathAutocomplete', () => {
   test('auto-focuses the input on mount', () => {
     browseMock.mockReturnValue({ data: undefined });
 
-    render(
-      <PathAutocomplete
-        value="/tmp"
-        onChange={vi.fn()}
-      />,
-    );
+    render(<PathAutocomplete value="/tmp" onChange={vi.fn()} />);
 
     const input = screen.getByRole('textbox');
     expect(input).toBe(document.activeElement);
@@ -378,10 +333,7 @@ describe('PathAutocomplete', () => {
     const outsideAction = vi.fn();
     render(
       <>
-        <PathAutocomplete
-          value="/tmp/pro"
-          onChange={vi.fn()}
-        />
+        <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />
         <button type="button" onClick={outsideAction}>
           Outside action
         </button>
@@ -410,12 +362,7 @@ describe('PathAutocomplete', () => {
       },
     });
     const onChange = vi.fn();
-    render(
-      <PathAutocomplete
-        value="/tmp/pro"
-        onChange={onChange}
-      />,
-    );
+    render(<PathAutocomplete value="/tmp/pro" onChange={onChange} />);
 
     fireEvent.pointerDown(screen.getByRole('button', { name: /project/ }));
     expect(onChange).toHaveBeenCalledWith('/tmp/project/');
@@ -433,10 +380,7 @@ describe('PathAutocomplete', () => {
     });
     render(
       <>
-        <PathAutocomplete
-          value="/tmp/pro"
-          onChange={vi.fn()}
-        />
+        <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />
         <button type="button">Next field</button>
       </>,
     );
@@ -460,14 +404,8 @@ describe('PathAutocomplete', () => {
     });
     render(
       <>
-        <PathAutocomplete
-          value="/tmp/pro"
-          onChange={vi.fn()}
-        />
-        <PathAutocomplete
-          value="/tmp/pro"
-          onChange={vi.fn()}
-        />
+        <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />
+        <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />
       </>,
     );
 
@@ -493,10 +431,7 @@ describe('PathAutocomplete', () => {
     });
     const remove = vi.spyOn(document, 'removeEventListener');
     const view = render(
-      <PathAutocomplete
-        value="/tmp/pro"
-        onChange={vi.fn()}
-      />,
+      <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />,
     );
     view.unmount();
 
@@ -516,10 +451,7 @@ describe('PathAutocomplete', () => {
     }));
     const view = render(
       <>
-        <PathAutocomplete
-          value="/tmp/pro"
-          onChange={vi.fn()}
-        />
+        <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />
         <button type="button">Outside</button>
       </>,
     );
@@ -534,10 +466,7 @@ describe('PathAutocomplete', () => {
     ];
     view.rerender(
       <>
-        <PathAutocomplete
-          value="/tmp/pro"
-          onChange={vi.fn()}
-        />
+        <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />
         <button type="button">Outside</button>
       </>,
     );
@@ -550,21 +479,13 @@ describe('PathAutocomplete', () => {
       data: { path: '/tmp', entries },
     }));
     const view = render(
-      <PathAutocomplete
-        value="/tmp/pro"
-        onChange={vi.fn()}
-      />,
+      <PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />,
     );
 
     fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
 
     entries = [{ name: 'project', isDirectory: true }];
-    view.rerender(
-      <PathAutocomplete
-        value="/tmp/pro"
-        onChange={vi.fn()}
-      />,
-    );
+    view.rerender(<PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />);
 
     expect(screen.queryByText('project')).toBeNull();
   });
@@ -572,12 +493,7 @@ describe('PathAutocomplete', () => {
   test('renders no Browse button by default (opt-in only)', () => {
     browseMock.mockReturnValue({ data: undefined });
 
-    render(
-      <PathAutocomplete
-        value="/tmp"
-        onChange={vi.fn()}
-      />,
-    );
+    render(<PathAutocomplete value="/tmp" onChange={vi.fn()} />);
 
     expect(
       screen.queryByRole('button', { name: 'Browse for a folder' }),
@@ -589,13 +505,7 @@ describe('PathAutocomplete', () => {
       data: { path: '/tmp', entries: [{ name: 'project', isDirectory: true }] },
     });
 
-    render(
-      <PathAutocomplete
-        value="/tmp"
-        onChange={vi.fn()}
-        browsable
-      />,
-    );
+    render(<PathAutocomplete value="/tmp" onChange={vi.fn()} browsable />);
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Browse for a folder' }),
@@ -610,13 +520,7 @@ describe('PathAutocomplete', () => {
     });
     const onChange = vi.fn();
 
-    render(
-      <PathAutocomplete
-        value="/tmp"
-        onChange={onChange}
-        browsable
-      />,
-    );
+    render(<PathAutocomplete value="/tmp" onChange={onChange} browsable />);
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Browse for a folder' }),
@@ -693,12 +597,7 @@ describe('PathAutocomplete', () => {
           entries: [{ name: 'project', isDirectory: true }],
         },
       });
-      render(
-        <PathAutocomplete
-          value="/tmp/pro"
-          onChange={vi.fn()}
-        />,
-      );
+      render(<PathAutocomplete value="/tmp/pro" onChange={vi.fn()} />);
       const input = screen.getByRole('textbox');
       expect(screen.getByText('project')).toBeTruthy();
 

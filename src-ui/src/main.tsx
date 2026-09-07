@@ -284,9 +284,7 @@ function renderApp(): void {
                                     <AnalyticsProvider>
                                       <PreviewProvider>
                                         <LocaleProvider
-                                          developmentLocale={
-                                            developmentLocale
-                                          }
+                                          developmentLocale={developmentLocale}
                                         >
                                           <RegionModelProvider>
                                             <App />
