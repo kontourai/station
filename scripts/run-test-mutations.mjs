@@ -134,6 +134,66 @@ export const MUTATIONS = [
       },
     ],
   },
+  // The two #1642 entries below are a different CATEGORY from the rest of this
+  // list, deliberately, and the distinction is why they are here at all. Every
+  // other entry injects a defect into SOURCE and proves a test notices. These
+  // two inject a defect into a FIXTURE and prove its premise assertion notices.
+  //
+  // `RouteViewReadiness.adapterScreens.test.tsx` pins its adapters with
+  // arrangements built on decoy elements — a hidden match before a visible one —
+  // and every one of those arrangements is only as good as the decoys still
+  // being matched by the locator under test. Break a decoy and the arrangement
+  // does not fail; it passes while testing nothing, and it still looks like
+  // coverage. That happened: renaming the route decoys left the suite green at
+  // exit 0 until a premise assertion was added.
+  //
+  // WHAT BEING IN THIS LIST DOES AND DOES NOT MEAN, stated because "registered
+  // in the mutation lane" reads as enforcement and is not. Nothing invokes this
+  // list: `test:mutation:smoke` is referenced by documentation and by hand, and
+  // `scripts/__tests__/test-mutations.test.ts` — the one thing a gate does run —
+  // exercises this driver's own logic and never touches `MUTATIONS`. So an entry
+  // here is a hand-runnable check and an executable record of the exact defect
+  // and the exact assertion that catches it. It is not a guard, and nothing
+  // notices if the property it describes stops holding.
+  //
+  // Which is also why the seven per-read mutations this file's #1642 arrangements
+  // were verified against are absent rather than "covered by these two": all nine
+  // are report-verified, and only these two are additionally re-runnable by
+  // anyone. Registering the rest would add executable records, not protection.
+  //
+  // COST, for whoever registers the next Chromium-backed case: each entry runs
+  // its target file three times — baseline, injected, restored, all three
+  // load-bearing, since a catch cannot be claimed without a green baseline and a
+  // green restore. A ~9 s suite therefore costs ~27 s per case.
+  {
+    id: 'readiness-route-decoys-unmatched',
+    test: 'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+    failure:
+      'a visible target between HIDDEN matches is still observed as ready',
+    files: [
+      {
+        path: 'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+        change: (source) =>
+          exactReplace(
+            source,
+            'class="target-surface" id="masking-first"',
+            'class="decoy-renamed" id="masking-first"',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'readiness-lazy-decoy-absent',
+    test: 'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+    failure: 'the quoted failure text is a VISIBLE failure, not index zero',
+    files: [
+      {
+        path: 'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+        change: (source) =>
+          exactReplace(source, 'decoy + failure,', 'failure,'),
+      },
+    ],
+  },
   {
     id: 'engine-fixture-identity',
     test: 'scripts/__tests__/connection-fixtures.test.ts',
