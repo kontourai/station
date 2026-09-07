@@ -1054,7 +1054,7 @@ test.describe('Ambient chat dock host at 390x844', () => {
     await expect(page.locator('.chat-dock')).toHaveCount(1);
     await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
 
-    await showRegionThroughOverflowMenu(page, 'Show Activity');
+    await showRegionThroughOverflowMenu(page, 'Show Activity in the dock');
 
     // One slot still, and Activity holds it: Chat's shell is not rendered at
     // all, which is the phone fold rather than a hidden Chat.
@@ -1076,8 +1076,9 @@ test.describe('Ambient chat dock host at 390x844', () => {
     // Hidden through the docked pane's OWN header control, which is what a
     // phone user reaches for and which writes the region's visibility
     // (`useDockShellChrome`'s `applyDockSnap('collapsed')` →
-    // `setRegion({ visible: false })`). Scoped to the pane, because the ⋯
-    // menu carries a row of the same name.
+    // `setRegion({ visible: false })`). Still scoped to the pane, though the
+    // ⋯ menu's row no longer shares this name: since #1386 it says "Hide
+    // Activity from the dock".
     await surfaceDockShell(page, 'Activity')
       .getByRole('button', { name: 'Hide Activity', exact: true })
       .click();
