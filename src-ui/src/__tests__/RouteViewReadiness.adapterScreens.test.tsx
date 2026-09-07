@@ -323,6 +323,13 @@ describe.skipIf(!chromiumAvailable)(
         '<button type="button" class="target-surface" id="masking-first">Hidden first</button>' +
           TARGET +
           '<button type="button" class="target-surface" id="masking-last">Hidden last</button>',
+        // `display: none` is safe HERE and only here, because `routeScreens`
+        // gives `target` a CSS locator, which matches hidden elements. Its lazy
+        // sibling below deliberately does NOT use it: that arrangement's surface
+        // is a `getByRole` locator, and hiding an element removes it from the
+        // accessibility tree, so the decoy would not be matched at all and the
+        // masking could not arise. Do not harmonise the two — the direction that
+        // looks tidier is the one that silently stops testing anything.
         '#masking-first, #masking-last { display: none; }',
       );
       try {
