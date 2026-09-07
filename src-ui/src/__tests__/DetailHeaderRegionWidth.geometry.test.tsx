@@ -184,6 +184,20 @@ function subtitledCompactActionsMarkup(): string {
   return html;
 }
 
+/**
+ * Every measurement in this file is taken on the FALLBACK face, not the
+ * product's own. The composed cascade carries the real `@font-face` rules, but
+ * `page.setContent` gives the document no base URL, so the font files never
+ * resolve: `document.fonts.check('16px "DM Sans"')` returns false and the
+ * faces report status `error`. Chromium then lays the text out in the generic
+ * sans-serif.
+ *
+ * That is fine for what these assertions do — every one of them compares this
+ * layout against another layout of the same text in the same face — but it is
+ * why the literal thresholds need real margin rather than tight ones: a
+ * different fallback face on another platform shifts every width here by a few
+ * percent, and a threshold with no headroom would fail for that alone.
+ */
 function fixtureHtml(
   markup: string,
   regionWidth: number,
@@ -275,12 +289,28 @@ describe.skipIf(!chromiumAvailable)(
      * viewport-keyed can be what makes these pass. 500 and 600 are the region
      * widths at which the pre-fix header measured 0px and 76px of identity.
      *
-     * These four are the GUARDRAIL: literals with deliberate headroom between
-     * pass and fail, chosen against the pre-fix measurements (0px identity,
-     * 32px title, six lines) so they stay robust across renderer differences
-     * rather than tracking one engine's pixel rounding. They are derived from
-     * nothing in the layout, because a threshold computed from the same layout
-     * it checks would move with the defect.
+     * These four are the GUARDRAIL: literals chosen against the pre-fix
+     * measurements (0px identity, 32px title, six lines), derived from nothing
+     * in the layout, because a threshold computed from the same layout it
+     * checks would move with the defect.
+     *
+     * They do NOT hold at every width, and saying they did was wrong. Between
+     * a 662px and a 688px region this header shares its row and the identity
+     * is 138-164px with a 2-3 line subtitle — `subtitleLines <= 2` and
+     * `subtitleWidth > 120` are both false across part of that band. HEAD is
+     * byte-identical to origin/main there, so it is not a regression, but it
+     * is a real trade this file should name: an earlier revision covered that
+     * band by wrapping (identity 614-640px, one subtitle line, a 144px
+     * header), and moving the wrap decision off the subtitle gave it back.
+     * Below 662px the header wraps and the identity jumps to 592px+; above
+     * 688px it shares the row with room to spare.
+     *
+     * So the widths here are chosen to sit clear of that band, not merely to
+     * be narrow. 800 replaced an earlier 700, which passed with ZERO margin on
+     * the line count and 12px on the subtitle width and sat 10px above a
+     * failing band — a small metric difference on another platform would have
+     * turned it red, and the red would have read as a defect to whoever
+     * inherited it. At 800 the margins are 126px, 112px and a whole line.
      *
      * The PIN is the viewport-agreement test below: it compares measurements
      * to each other rather than to any chosen number, so it is tight by
@@ -290,7 +320,7 @@ describe.skipIf(!chromiumAvailable)(
     test.each([
       [500, 1440],
       [600, 1440],
-      [700, 1440],
+      [800, 1440],
       // The 641-768px band had no wrap rule at all before this change and
       // collapsed by the identical mechanism.
       [600, 700],
@@ -322,7 +352,7 @@ describe.skipIf(!chromiumAvailable)(
      * the same region width.
      */
     test('the same region width lays out identically across viewports', async () => {
-      // 1440, 1200 and 700 all sit OUTSIDE the 769-1180 tablet band, which
+      // 1440 and 1200 both sit ABOVE the 769-1180 tablet band, which
       // deliberately gives the actions their own row as a property of the
       // viewport class rather than of this header's width. Everywhere else,
       // one region width must mean one layout.
@@ -331,14 +361,22 @@ describe.skipIf(!chromiumAvailable)(
       // `__left` resolves to a band-forced `flex-basis: 100%` rather than to
       // anything this fix decides, and the comparison passed only because a
       // 600px region is one of the few widths where the forced and the
-      // content-derived layouts coincide. At a 900px region it is false. The
-      // pin is meant to be tight by construction, so it must not depend on
-      // that coincidence.
+      // content-derived layouts coincide. At a 900px region it does not: 376px
+      // of identity against 852px. So 900 is compared too — it is the width
+      // that would have shown the earlier mistake on sight, and a region where
+      // the header shares its row rather than wrapping.
       const wide = await measure(600, 1440);
-      const alsoAboveBand = await measure(600, 1200);
-      const narrowViewport = await measure(600, 700);
-      expect(alsoAboveBand).toEqual(wide);
-      expect(narrowViewport).toEqual(wide);
+      const wideAbove = await measure(900, 1440);
+      expect(await measure(600, 1200)).toEqual(wide);
+      expect(await measure(900, 1200)).toEqual(wideAbove);
+
+      // The 700px viewport is a WEAKER leg and is kept as one deliberately: it
+      // is below the 768px breakpoint where the actions cluster restyles, so
+      // its tuple matches the wide one only at region widths where the header
+      // wraps and the actions stop sharing the identity's row — 500 and 600
+      // here, and not 700 or above. It says a narrow window does not disturb a
+      // wrapped layout; it cannot say anything about an unwrapped one.
+      expect(await measure(600, 700)).toEqual(wide);
     }, 120_000);
 
     /**
@@ -458,11 +496,9 @@ describe.skipIf(!chromiumAvailable)(
      * measured across 217 region widths on shapes like this one, and the same
      * complaint #1678 makes about the tablet band.
      *
-     * This also stands in for the subtitle's `max-width: 62ch`. That cap used
-     * to set the wrap point, so a typography change could move it; now the
-     * subtitle is out of the decision entirely, and removing the cap changes
-     * only how wide the subtitle RENDERS. Asserting the cap here would pass
-     * with or without it, so the property worth pinning is this one.
+     * This test is also the ONLY thing guarding the containment half of the
+     * fix. Delete it and `contain: inline-size` becomes unreferenced by any
+     * assertion, and the whole property goes with it.
      */
     test('the subtitle does not buy a second row it cannot use', async () => {
       const m = await measure(700, 1440, {
@@ -476,6 +512,27 @@ describe.skipIf(!chromiumAvailable)(
       // And it is still a legible subtitle, not a starved one.
       expect(m.subtitleLines).toBeLessThanOrEqual(2);
       expect(m.subtitleWidth).toBeGreaterThan(300);
+    }, 60_000);
+
+    /**
+     * The subtitle's `max-width: 62ch` no longer has anything to do with where
+     * the header wraps — that was checked, and deleting the cap moves no wrap
+     * point at any width. But it does still bound how wide the subtitle
+     * RENDERS, and therefore its line count and the header's height, once a
+     * region is wide enough to offer more than the cap: at a 1300px region,
+     * deleting it takes the subtitle from 508px over two lines to 975px over
+     * one and the header from 97px to 78px.
+     *
+     * So the cap is load-bearing after all, just for a different property than
+     * the one it used to serve, and this is where that shows.
+     */
+    test('the subtitle stays capped where the region could give it more', async () => {
+      const m = await measure(1300, 1600, {
+        markup: subtitledCompactActionsMarkup(),
+      });
+      // 62ch measures ~508px here; uncapped this subtitle takes ~975px.
+      expect(m.subtitleWidth).toBeLessThan(600);
+      expect(m.subtitleLines).toBe(2);
     }, 60_000);
   },
 );

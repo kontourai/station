@@ -1413,18 +1413,19 @@
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .monitoring-page > .detail-header {
     flex-direction: column;
-    /* Defensive, and currently inert — say so rather than imply it is load
-       bearing. `DetailHeader.css` wraps this row unconditionally, and on a
-       COLUMN container `flex-wrap: wrap` wraps into additional COLUMNS; that
-       file pins `nowrap` in its own <= 640px column block, where removing the
-       pin measurably overflows (a 470px identity in a 390px region). This
-       block is the only thing that stacks the header in the 641-768px band,
-       so it is the only place that could need the same pin.
-       Today it does not: with this line removed, and with the `width: 100%`
-       below ALSO removed, a 68-character nowrap title still measured 652px in
-       a 652px content box with zero overflow at 700px and 760px. So the pin
-       protects a case this file cannot currently produce, and nothing here
-       states that it will stay that way. */
+    /* `DetailHeader.css` wraps this row unconditionally, and on a COLUMN
+       container `flex-wrap: wrap` wraps into additional COLUMNS, sizing each
+       child to its own content instead of the container. That file pins
+       `nowrap` in its own <= 640px column block; this block stacks the header
+       at <= 768px, so the 641-768px band is stacked only here and needs the
+       same pin.
+       What keeps it inert today is the `width: 100%` below, which holds both
+       children to the container whatever the wrapping does. With BOTH removed,
+       a title longer than the region puts the identity at 897px inside a 652px
+       content box — 221px past the edge at a 700px region, and 161px past at
+       760px. Two declarations in different rules are therefore the only thing
+       standing between this band and that overflow; this one says so locally
+       rather than depending on the other. */
     flex-wrap: nowrap;
     align-items: stretch;
     gap: 0.75rem;
