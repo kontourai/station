@@ -32,7 +32,6 @@ function renderFolderPicker(
 ) {
   return render(
     <PluginModalStack
-      apiBase="http://localhost:3000"
       showInstallModal={false}
       showFolderPicker
       previewData={null}

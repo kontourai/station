@@ -18,7 +18,6 @@ import { Button } from '../components/Button';
 import { PageCallout, PageCalloutStack } from '../components/PageCallout';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
-import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import { useGitLog, useGitStatus } from '../hooks/useGitStatus';
@@ -47,7 +46,6 @@ import './project-page-frame.css';
 import './ProjectPage.css';
 
 export function ProjectPage({ slug }: { slug: string }) {
-  const { apiBase } = useApiBase();
   const { setLayout, setConversation, navigate, setDockState } =
     useNavigation();
 
@@ -267,7 +265,6 @@ export function ProjectPage({ slug }: { slug: string }) {
     <div className="project-page">
       <div className="project-page__inner">
         <ProjectPageHeader
-          apiBase={apiBase}
           project={project}
           gitStatus={gitStatus}
           editingDir={editingDir}
@@ -423,7 +420,6 @@ export function ProjectPage({ slug }: { slug: string }) {
         />
 
         <ProjectKnowledgeSection
-          apiBase={apiBase}
           slug={slug}
           projectWorkingDirectory={project.workingDirectory}
           docs={docs}

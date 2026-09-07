@@ -5,7 +5,6 @@ import { PathAutocomplete } from '../PathAutocomplete';
 export { EnvironmentPicker as NewProjectEnvironmentPicker } from '../EnvironmentPicker';
 
 interface DirectoryFieldProps {
-  apiBase: string;
   directory: string;
   /** The server's reason this exact directory was refused (4-HOME-008). */
   error?: string | null;
@@ -19,7 +18,6 @@ interface DirectoryFieldProps {
 }
 
 export function NewProjectDirectoryField({
-  apiBase,
   directory,
   error,
   notice,
@@ -35,7 +33,6 @@ export function NewProjectDirectoryField({
           </label>
           <PathAutocomplete
             id="new-project-directory"
-            apiBase={apiBase}
             value={directory}
             onChange={onDirectoryChange}
             placeholder="/path/to/project"

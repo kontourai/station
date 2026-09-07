@@ -25,7 +25,6 @@ function ControlledPathAutocomplete({ initial }: { initial: string }) {
     <PathAutocomplete
       value={value}
       onChange={setValue}
-      apiBase="http://localhost:3000"
       browsable
     />
   );
@@ -142,7 +141,6 @@ describe('the suggestion list follows its input out of a scrollport', () => {
       <PathAutocomplete
         value="~/Do"
         onChange={vi.fn()}
-        apiBase="http://localhost:3000"
       />,
       { container: scroller },
     );
@@ -209,7 +207,6 @@ describe('PathAutocomplete', () => {
       <PathAutocomplete
         value="~/Do"
         onChange={onChange}
-        apiBase="http://localhost:3000"
       />,
     );
 
@@ -236,7 +233,6 @@ describe('PathAutocomplete', () => {
       <PathAutocomplete
         value="~/de"
         onChange={vi.fn()}
-        apiBase="http://localhost:3000"
       />,
     );
 
@@ -265,7 +261,6 @@ describe('PathAutocomplete', () => {
       <PathAutocomplete
         value="~/demo"
         onChange={vi.fn()}
-        apiBase="http://localhost:3000"
       />,
     );
 
@@ -291,7 +286,6 @@ describe('PathAutocomplete', () => {
       <PathAutocomplete
         value="/tmp/pro"
         onChange={onChange}
-        apiBase="http://localhost:3000"
       />,
     );
 
@@ -324,7 +318,6 @@ describe('PathAutocomplete', () => {
       <PathAutocomplete
         value="/tmp/project"
         onChange={onChange}
-        apiBase="http://localhost:3000"
       />,
     );
 
@@ -348,7 +341,6 @@ describe('PathAutocomplete', () => {
       <PathAutocomplete
         value="~/"
         onChange={vi.fn()}
-        apiBase="http://localhost:3000"
       />,
     );
 
@@ -369,7 +361,6 @@ describe('PathAutocomplete', () => {
       <PathAutocomplete
         value="/tmp"
         onChange={vi.fn()}
-        apiBase="http://localhost:3000"
       />,
     );
 
@@ -390,7 +381,6 @@ describe('PathAutocomplete', () => {
         <PathAutocomplete
           value="/tmp/pro"
           onChange={vi.fn()}
-          apiBase="http://localhost:3000"
         />
         <button type="button" onClick={outsideAction}>
           Outside action
@@ -424,7 +414,6 @@ describe('PathAutocomplete', () => {
       <PathAutocomplete
         value="/tmp/pro"
         onChange={onChange}
-        apiBase="http://localhost:3000"
       />,
     );
 
@@ -447,7 +436,6 @@ describe('PathAutocomplete', () => {
         <PathAutocomplete
           value="/tmp/pro"
           onChange={vi.fn()}
-          apiBase="http://localhost:3000"
         />
         <button type="button">Next field</button>
       </>,
@@ -475,12 +463,10 @@ describe('PathAutocomplete', () => {
         <PathAutocomplete
           value="/tmp/pro"
           onChange={vi.fn()}
-          apiBase="http://localhost:3000"
         />
         <PathAutocomplete
           value="/tmp/pro"
           onChange={vi.fn()}
-          apiBase="http://localhost:3000"
         />
       </>,
     );
@@ -510,7 +496,6 @@ describe('PathAutocomplete', () => {
       <PathAutocomplete
         value="/tmp/pro"
         onChange={vi.fn()}
-        apiBase="http://localhost:3000"
       />,
     );
     view.unmount();
@@ -534,7 +519,6 @@ describe('PathAutocomplete', () => {
         <PathAutocomplete
           value="/tmp/pro"
           onChange={vi.fn()}
-          apiBase="http://localhost:3000"
         />
         <button type="button">Outside</button>
       </>,
@@ -553,7 +537,6 @@ describe('PathAutocomplete', () => {
         <PathAutocomplete
           value="/tmp/pro"
           onChange={vi.fn()}
-          apiBase="http://localhost:3000"
         />
         <button type="button">Outside</button>
       </>,
@@ -570,7 +553,6 @@ describe('PathAutocomplete', () => {
       <PathAutocomplete
         value="/tmp/pro"
         onChange={vi.fn()}
-        apiBase="http://localhost:3000"
       />,
     );
 
@@ -581,7 +563,6 @@ describe('PathAutocomplete', () => {
       <PathAutocomplete
         value="/tmp/pro"
         onChange={vi.fn()}
-        apiBase="http://localhost:3000"
       />,
     );
 
@@ -595,7 +576,6 @@ describe('PathAutocomplete', () => {
       <PathAutocomplete
         value="/tmp"
         onChange={vi.fn()}
-        apiBase="http://localhost:3000"
       />,
     );
 
@@ -613,7 +593,6 @@ describe('PathAutocomplete', () => {
       <PathAutocomplete
         value="/tmp"
         onChange={vi.fn()}
-        apiBase="http://localhost:3000"
         browsable
       />,
     );
@@ -635,7 +614,6 @@ describe('PathAutocomplete', () => {
       <PathAutocomplete
         value="/tmp"
         onChange={onChange}
-        apiBase="http://localhost:3000"
         browsable
       />,
     );
@@ -719,7 +697,6 @@ describe('PathAutocomplete', () => {
         <PathAutocomplete
           value="/tmp/pro"
           onChange={vi.fn()}
-          apiBase="http://localhost:3000"
         />,
       );
       const input = screen.getByRole('textbox');

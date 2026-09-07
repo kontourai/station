@@ -8,7 +8,6 @@ import { copyToClipboard } from '../../lib/clipboard';
 import { triggerHaptic } from '../../platform/native/haptics';
 
 export function ProjectPageHeader({
-  apiBase,
   project,
   gitStatus,
   editingDir,
@@ -18,7 +17,6 @@ export function ProjectPageHeader({
   updateWorkingDirectory,
   navigateToSettings,
 }: {
-  apiBase: string;
   project: {
     icon?: string;
     name: string;
@@ -174,7 +172,6 @@ export function ProjectPageHeader({
       {editingDir && (
         <div className="project-page__dir-inline">
           <PathAutocomplete
-            apiBase={apiBase}
             autoFocus
             value={dirDraft}
             onChange={setDirDraft}
