@@ -1,10 +1,7 @@
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
+import { Button } from '../components/Button';
+import { Dialog } from '../components/Dialog';
 import { PageCallout } from '../components/PageCallout';
-import {
-  ResponsiveDialogCloseButton,
-  ResponsiveDialogSurface,
-  ResponsiveSurfaceActions,
-} from '../components/ResponsiveDialogSurface';
 import { Empty, ErrorState, SkeletonList } from '../components/state';
 import type { ResolvedWorkspacePaneCatalogEntry } from './resolvedWorkspacePaneCatalog';
 import { WorkspacePaneAvailabilityList } from './WorkspacePaneAvailabilityList';
@@ -81,6 +78,31 @@ function CatalogContents({
   );
 }
 
+/**
+ * The pane picker, mounted from BOTH `views/ProjectPage.tsx` and
+ * `app-shell/ProjectLayoutRenderer.tsx` — two separately lazy-loaded routes.
+ *
+ * #1616: it used to hand `ResponsiveDialogSurface` the project page's own
+ * `project-page__modal-overlay`/`project-page__modal` classes, which are
+ * defined in `views/ProjectPage.css` — a stylesheet only `ProjectPage.tsx`
+ * imports, so Vite emits it in the project-page chunk. On
+ * `/projects/:slug/layouts/:layout` that chunk never loads, and the overlay
+ * fell back to `.responsive-surface-overlay` alone, which sets no `position`:
+ * measured `position: static`, `display: block`, transparent background, laid
+ * out at x=240 inside the pane instead of covering the 1440x900 viewport. The
+ * catalog rendered inline and unstyled, shoving the layout down the page.
+ *
+ * `scripts/dialog-surface-class-guard.mjs` could not see it: that gate proves
+ * a class is DEFINED in some stylesheet under `src-ui/src`, which says nothing
+ * about whether the defining chunk is LOADED where the component renders.
+ *
+ * So this composes `Dialog` instead. Its `station-dialog__*` chrome lives in
+ * the eagerly loaded `index.css` precisely so a dialog cannot depend on a
+ * lazily imported stylesheet reaching it first — the reason given verbatim in
+ * `Dialog`'s own docblock and in `ResponsiveDialogHeader`'s. Every route that
+ * mounts this picker gets the overlay geometry by construction, and no rule
+ * is duplicated to achieve it.
+ */
 export function ProjectWorkspacePaneModal({
   show,
   onClose,
@@ -99,26 +121,14 @@ export function ProjectWorkspacePaneModal({
 }) {
   if (!show) return null;
   return (
-    <ResponsiveDialogSurface
-      layer="dialog"
+    <Dialog
+      title="Add workspace pane"
+      subtitle="Every known pane is listed. Available panes open directly; the others carry their state as a badge with the next step."
+      closeLabel="Close pane picker"
+      size="lg"
       onClose={onClose}
-      ariaLabelledBy="project-add-pane-title"
-      overlayClassName="project-page__modal-overlay"
-      panelClassName="project-page__modal"
+      footer={<Button onClick={onClose}>Cancel</Button>}
     >
-      <div className="project-page__modal-header">
-        <h3 id="project-add-pane-title" className="project-page__modal-title">
-          Add workspace pane
-        </h3>
-        <ResponsiveDialogCloseButton
-          label="Close pane picker"
-          onClick={onClose}
-        />
-      </div>
-      <p className="project-page__modal-description">
-        Every known pane is listed. Available panes open directly; the others
-        carry their state as a badge with the next step.
-      </p>
       {notice ? (
         <PageCallout
           calloutId="workspace-pane-open-refused"
@@ -136,15 +146,6 @@ export function ProjectWorkspacePaneModal({
         </PageCallout>
       ) : null}
       <CatalogContents {...catalog} />
-      <ResponsiveSurfaceActions className="project-page__modal-cancel">
-        <button
-          type="button"
-          className="project-page__add-btn"
-          onClick={onClose}
-        >
-          Cancel
-        </button>
-      </ResponsiveSurfaceActions>
-    </ResponsiveDialogSurface>
+    </Dialog>
   );
 }
