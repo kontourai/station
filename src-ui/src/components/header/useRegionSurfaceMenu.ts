@@ -75,8 +75,9 @@ export interface RegionPlacementSegment {
    * What choosing this segment does to the region's CURRENT occupant, worded
    * from what `placeSurface` will actually do rather than from a guess about
    * it — the model relocates a displaced surface into the region the incoming
-   * one vacates, else the first free dock region, else nowhere. `undefined`
-   * when nothing is displaced.
+   * one vacates, else its own default region, else the first free one in the
+   * model's search order, else nowhere. `undefined` when nothing is
+   * displaced.
    */
   displaces?: string;
   onSelect: () => void;
@@ -234,7 +235,8 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
    *
    * This is the honest form of what the retired verb list called "Swap in X".
    * The rules are not obvious (a swap back into the vacated region, else the
-   * first free dock region, else unplaced; and into `main` the displaced surface
+   * displaced surface's own default region, else the model's search order,
+   * else unplaced; and into `main` the displaced surface
    * is always unplaced), and a hand-written sentence about them is a claim
    * nothing derives — the class of defect this arc exists to remove. Pure
    * function, no state touched.
@@ -334,9 +336,24 @@ export function useRegionSurfaceMenu(): RegionSurfaceMenu {
           const shown = Boolean(
             occupied && occupied === foldedRegion && regions[occupied].visible,
           );
+          // "… the dock", like the `main`-occupant row above, and for the
+          // same reason it is honest here: these rows exist only on a
+          // BOTTOM-ONLY device (`availablePlacements`: a coarse pointer or a
+          // viewport at or under 768px, so a narrow desktop window too), where
+          // the fold gives the whole shell one dock slot.
+          //
+          // #1386: the bare `Hide Activity` was the accessible name of the
+          // SHELL HEADER's own visibility control at the same time — two
+          // buttons, one name, both on screen (pinned by
+          // `RegionShellParity.test.tsx`, and the reason
+          // `project-architecture.spec.ts` has to scope its query to the
+          // pane). The shell's control is the one a user points at, so the
+          // row is what says which shell it means.
           return {
             key: surface.id,
-            label: `${shown ? 'Hide' : 'Show'} ${surface.title}`,
+            label: shown
+              ? `Hide ${surface.title} from the dock`
+              : `Show ${surface.title} in the dock`,
             icon: surface.icon,
             checked: shown,
             onSelect: () => toggleSurface(surface),
