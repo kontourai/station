@@ -1,9 +1,38 @@
 /* ── DetailHeader — shared sticky header for detail panels ── */
 
+/*
+ * The identity keeps its intrinsic floor and the actions take a second row
+ * when they no longer fit beside it (#1666).
+ *
+ * This used to be `flex-wrap: nowrap` with `min-width: 0` on `__left`, and a
+ * `@media (min-width: 769px) and (max-width: 1180px)` block that wrapped the
+ * row. `min-width: 0` removes a flex child's automatic min-content floor, so
+ * `__left` absorbed the whole shortfall against a `flex-shrink: 0` actions
+ * block and was driven to ZERO rather than truncating — measured on Developer
+ * -> Telemetry, whose actions are intrinsically 452px: at a 600px region the
+ * title clipped to 32px and the subtitle wrapped one word per line down six
+ * lines; at 500px both reached 0px wide.
+ *
+ * The media query could not save it, because a media query sees the VIEWPORT
+ * while this header's width is set by its REGION — a docked Activity pane
+ * narrows the main region inside a 1440px window, so the query never matched
+ * however narrow the header got. `ChatDockActiveIdentity.overflow.test.tsx`
+ * records the same class on the dock ("a 280px side dock lives in a 1456px
+ * window").
+ *
+ * So the zero floor moves to the one element that needs it — `__title`, which
+ * is what ellipsizes — and `__left` keeps the automatic floor that makes the
+ * row wrap instead of collapse. The wrap point is now derived from content:
+ * the identity's own min-content plus the actions' intrinsic width, with no
+ * threshold in this file to be wrong on a surface nobody measured. One rule
+ * covers every width, including the 641-768px band that had no wrap rule at
+ * all and collapsed identically.
+ */
 .detail-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 24px;
   padding: 16px 24px;
   border-bottom: 1px solid var(--border-primary);
@@ -18,12 +47,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  min-width: 0;
   flex: 1;
-}
-
-.detail-header__identity {
-  min-width: 0;
 }
 
 .detail-header__icon {
@@ -34,10 +58,11 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 0;
 }
 
 .detail-header__title {
+  /* The one element that ellipsizes, so the one that gets the zero floor. */
+  min-width: 0;
   margin: 0;
   font-size: 1.125rem;
   line-height: 1.25;
@@ -99,24 +124,11 @@
   display: none;
 }
 
-/* Tablet is neither the phone sheet nor a wide desktop detail pane. Keep the
-   identity readable, then give its actions a deliberate second row instead
-   of squeezing the title down to one character. This is shared detail chrome,
-   so every SplitPaneLayout consumer gets the same intermediate contract. */
+/* Tablet is neither the phone sheet nor a wide desktop detail pane. The second
+   row this block used to arrange is now unconditional and content-derived
+   above, so only the touch-target floor remains here — that one IS a property
+   of the viewport class, not of the header's width. */
 @media (min-width: 769px) and (max-width: 1180px) {
-  .detail-header {
-    flex-wrap: wrap;
-  }
-
-  .detail-header__left {
-    flex-basis: 100%;
-  }
-
-  .detail-header__actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
-
   .detail-header__actions > :is(button, a) {
     min-height: 44px;
   }
