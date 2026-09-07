@@ -54,7 +54,7 @@ log = "0.4"
 # for a double-clicked .app with no terminal), stdout preserved for terminal
 # launches, and mobile support (android/ios "full" per its own platform
 # metadata) so this stays in the shared table rather than a desktop-only one.
-tauri-plugin-log = "=2.9.0"
+tauri-plugin-log = "=2.9.1"
 # Mirrors tauri's own (desktop-target) app_log_dir() resolution — home_dir()/
 # data_local_dir() — so the log-directory writability pre-check in run() can
 # run before an AppHandle exists (already resolved transitively by tauri
