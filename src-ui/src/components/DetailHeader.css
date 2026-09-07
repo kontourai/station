@@ -47,13 +47,17 @@
  * identity and the actions cannot share a row; it must not mean the subtitle
  * would like more width. While the subtitle contributed its own content width,
  * the header took a second row purely to widen a subtitle that then wrapped to
- * the same line count anyway — measured across 217 region widths on
- * subtitle-bearing consumers with compact actions, 61px taller than before
- * with identical line count, nothing clipped and nothing overflowing. That is
- * the same complaint #1678 makes about the tablet band, reintroduced on every
- * consumer, so `__subtitle` takes `contain: inline-size`: its inline size stops
- * depending on its text, so it contributes nothing to the wrap decision and
- * still fills whatever width the identity ends up with.
+ * the same line count anyway. Swept on a 4px grid from a 520px to a 1000px
+ * region, across five subtitle lengths and two action clusters — 1210 samples:
+ * 217 of them were taller than origin/main, every one by exactly 61px, every
+ * one with identical subtitle line count, nothing clipped and nothing
+ * overflowing. The same sweep against this rule measures 0. That is the
+ * complaint #1678 makes about the tablet band — a wrap decided by something
+ * other than whether the identity and the actions can share a row — arriving
+ * on every consumer instead of one viewport band, so `__subtitle` takes
+ * `contain: inline-size`: its inline size stops depending on its text, so it
+ * contributes nothing to the wrap decision and still fills whatever width the
+ * identity ends up with.
  *
  * The base size is therefore the TITLE's, and the title is `nowrap` with no
  * maximum — so it is NOT bounded, and the wrap point moves with title length.

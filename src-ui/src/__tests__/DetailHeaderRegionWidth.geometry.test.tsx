@@ -26,9 +26,9 @@
  *   SUBTITLE   the wrap decision taking the subtitle's content width into
  *              account, so the header spent a whole second row widening a
  *              subtitle that wrapped to the same line count either way — 61px
- *              taller across 217 region widths, nothing clipped, nothing
- *              overflowing. A wrap must mean the identity and the actions
- *              cannot share a row.
+ *              taller across 217 of 1210 sampled region widths, nothing
+ *              clipped, nothing overflowing. A wrap must mean the identity
+ *              and the actions cannot share a row.
  *
  * Asserting a class name or a CSS declaration would not have caught any of
  * them: every declaration involved was "present" throughout every defect.
@@ -496,9 +496,15 @@ describe.skipIf(!chromiumAvailable)(
      * counted toward the wrap decision it did not: the header took a second
      * row (identity 652px, header 158px) to give the subtitle 508px, and the
      * subtitle then wrapped to two lines exactly as it does at 451px. 61px of
-     * height, the same line count, nothing clipped and nothing overflowing —
-     * measured across 217 region widths on shapes like this one, and the same
-     * complaint #1678 makes about the tablet band.
+     * height, the same line count, nothing clipped and nothing overflowing.
+     * The sweep behind that: a 4px grid from a 520px to a 1000px region,
+     * five subtitle lengths, two action clusters — 1210 samples, of which 217
+     * were taller than origin/main by exactly 61px with the line count
+     * unchanged. The same sweep against the current rule measures 0.
+     *
+     * It is also the complaint #1678 makes about the tablet band — a wrap
+     * decided by something other than whether the identity and the actions
+     * can share a row — except on every consumer rather than one band.
      *
      * This test is also the ONLY thing guarding the containment half of the
      * fix. Delete it and `contain: inline-size` becomes unreferenced by any
