@@ -836,12 +836,23 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
         // Twice on CI that pointed a reader at tool-outcome logic that was
         // never involved.
         //
-        // The message below DERIVES which case it is from the store rather
-        // than naming one: the key list separates "this test is reading a
-        // store the handler never wrote to" from "the write resolved no key"
-        // from "the marker changed shape". One cause the investigation did
-        // rule out: `handleRuntimeErrorEvent` is synchronous end to end, so a
-        // not-yet-settled dispatch is not among them.
+        // The discriminator is the MESSAGE COUNT, not the key list: this
+        // block's `beforeEach` calls `initChat(threadId)` on the same binding
+        // the helper reads, so `threadId` is always a key here and only
+        // "chat present" is reachable.
+        //
+        // Present-with-0-messages is the interesting one, and it has exactly
+        // one cause. `getChatKeyForExecutionSession` returns immediately when
+        // `chats[sessionId]` exists, and it does exist here, so a lookup miss
+        // in THIS store is impossible — the handler must be holding a
+        // different module instance (the station#1045 class). The silent
+        // `updateChat` no-op is not a competing explanation but how that looks
+        // from the other side: the handler's store never saw `initChat`, so
+        // its own lookup finds nothing and returns.
+        //
+        // One cause the investigation ruled out: `handleRuntimeErrorEvent` is
+        // synchronous end to end, so a not-yet-settled dispatch is not among
+        // them.
         if (marker === undefined) {
           const storeKeys = Object.keys(activeChatsStore.getSnapshot());
           throw new Error(
@@ -849,13 +860,16 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
               `"${threadId}". Store keys: [${storeKeys.join(', ')}]; the chat ` +
               `is ${chat ? 'present' : 'ABSENT'} and holds ` +
               `${chat?.messages?.length ?? 0} message(s).\n` +
-              `- No keys at all: this test is reading a store the handler ` +
-              `never wrote to (handler and test resolved different module ` +
-              `instances — the station#1045 class).\n` +
-              `- Keys present but not "${threadId}": updateChat's key lookup ` +
-              `missed and it returned silently (active-chats-store.ts), or it ` +
-              `resolved a DIFFERENT key and wrote there.\n` +
-              `- The chat present: the marker's turnId or role changed.\n` +
+              `- Present, 0 messages: the write never reached THIS store. A ` +
+              `key miss here is impossible (the chat exists, so the lookup ` +
+              `returns its key directly), so the handler is holding a ` +
+              `different module instance and its own updateChat found no ` +
+              `chat and returned silently — the station#1045 class.\n` +
+              `- Present, >=1 messages: the write landed here and the ` +
+              `marker's turnId or role changed.\n` +
+              `- ABSENT: beforeEach's initChat did not take on the instance ` +
+              `this helper reads. That should not be reachable; treat it as a ` +
+              `harness bug.\n` +
               `Look at this helper and handleRuntimeErrorEvent, not at the ` +
               `behaviour the calling test names.`,
           );

@@ -492,9 +492,7 @@ describe('ProjectTasksSection', () => {
         },
       }),
     );
-    // #1633's pattern: the text is derived from the dispatch RESULT and
-    // renders after two awaits, so waiting on the call says nothing about it.
-    expect(await screen.findByText(/spawned session/)).toBeTruthy();
+    expect(screen.getByText(/spawned session/)).toBeTruthy();
   });
 
   test('keeps non-repository values unavailable while retaining the exact working directory', async () => {
