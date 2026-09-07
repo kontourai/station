@@ -424,6 +424,28 @@ describe('a package the user owns that the server nonetheless refuses', () => {
  * do — whichever answer the rule gives, the effect has to match it.
  */
 describe('writable iff the write lands in that package and nowhere else', () => {
+  /**
+   * The effect a `writable` value PREDICTS, as a whole tuple.
+   *
+   * Not `writable === (modified && !shadowed)`. That form is satisfied by a
+   * refusal that published a shadow package anyway — `modified` is already
+   * `false`, so the conjunction is `false` whatever the shadow did, and the
+   * oracle goes blind on exactly the outcome the gate exists to prevent.
+   * Proven, not reasoned: with the enforcement in `updateLocalSkillOwned`
+   * deleted, both project-scoped cases stayed GREEN under the collapsed form
+   * while a second package appeared under the machine root.
+   *
+   * A refusal must mean the write landed NOWHERE — not merely "not in that
+   * package". Whichever way the rule resolves these fixtures, including after
+   * #1619 widens it, the effect has to match this.
+   */
+  function effectPredictedBy(writable: unknown) {
+    return {
+      modifiedItsOwnPackage: writable === true,
+      shadowedUnderMachineRoot: false,
+    };
+  }
+
   /** What a write through the route actually DID, read off the disk. */
   async function writeEffect(
     app: RouteApp,
@@ -470,9 +492,10 @@ describe('writable iff the write lands in that package and nowhere else', () => 
 
     const effect = await writeEffect(app, 'scoped-tool', packageDirectory);
 
-    expect(writable).toBe(
-      effect.modifiedItsOwnPackage && !effect.shadowedUnderMachineRoot,
-    );
+    expect({
+      modifiedItsOwnPackage: effect.modifiedItsOwnPackage,
+      shadowedUnderMachineRoot: effect.shadowedUnderMachineRoot,
+    }).toEqual(effectPredictedBy(writable));
   });
 
   test('a project-scoped package whose name a plugin also holds', async () => {
@@ -499,9 +522,10 @@ describe('writable iff the write lands in that package and nowhere else', () => 
     // The plugin's package is what answers to the name — that IS the residual.
     const effect = await writeEffect(app, 'shared-name', packageDirectory);
 
-    expect(row?.writable).toBe(
-      effect.modifiedItsOwnPackage && !effect.shadowedUnderMachineRoot,
-    );
+    expect({
+      modifiedItsOwnPackage: effect.modifiedItsOwnPackage,
+      shadowedUnderMachineRoot: effect.shadowedUnderMachineRoot,
+    }).toEqual(effectPredictedBy(row?.writable));
   });
 
   test('the oracle can distinguish: a machine-root package writes and is reported writable', async () => {
