@@ -1,23 +1,40 @@
 /**
  * The precedence contract, tested at the layer that owns it.
  *
- * Fixtures reach almost none of this space. Measured, not estimated, by
- * recording every condition set this picker is handed during a run: the route
- * suite reaches ONE combination (`outside-writable-root`), and across all 107
- * other suites in the related set the fixtures between them reach SIX of the
- * sixteen: the empty set (writable), each of the four conditions alone, and
- * exactly one pair — `unsafe-name` with `name-mismatch`. Ten combinations,
- * every one of them a co-occurrence, are reached by nothing but the table
- * below.
+ * Fixtures reach a fraction of this space, and ONE FILE carries nearly all of
+ * it. Measured by recording every condition set this picker is handed during a
+ * run, per file rather than in aggregate:
  *
- * One of those ten is where an inverted ordering survived a review round: an
+ *   - `skills.routes.writable.test.ts` — SIX combinations: the empty set
+ *     (writable), each of the four conditions alone, and one pair
+ *     (`unsafe-name` with `name-mismatch`).
+ *   - `skills.routes.test.ts` — ONE (`outside-writable-root`).
+ *   - the other 106 suites in the related set, between them — TWO, both
+ *     already in the six above. They add NOTHING.
+ *
+ * Two earlier versions of this paragraph got this wrong in opposite
+ * directions. The first said "four of the eight", where the eight came from a
+ * premise since disproved and nobody had measured the four. The second said
+ * "the route suite reaches one" — true only of `skills.routes.test.ts`, while
+ * the phrase had always meant the writability suite, which reaches all six —
+ * and then credited those six to "all 107 other suites … between them", which
+ * attributed the richest fixture reach in the repo to an anonymous corpus that
+ * contributes none of it. Name the file (round 11).
+ *
+ * Ten of the sixteen are reached by no fixture ANYWHERE in this corpus, and are
+ * exercised only by the table below.
+ *
+ * "Reached by no fixture" is a fact about THIS CORPUS, not about the
+ * filesystem. The measurement cannot tell "no filesystem state produces this
+ * combination" from "nobody has written a fixture for it", and the sentence
+ * below about what a fixture can produce must not be read as the former. Two
+ * rounds on this branch shipped a wrong reachability claim about exactly this
+ * space, both times by asserting an impossibility that was only an absence.
+ *
+ * One of the ten is where an inverted ordering survived a review round: an
  * unsafe name co-occurring with a containment failure, published as the
  * containment refusal, advising an install that the resolver refuses on the
  * name before it ever looks at a root. No fixture reaches that cell.
- *
- * (An earlier version of this paragraph said "four of the eight". Both numbers
- * were wrong: the eight came from a premise since disproved, and nobody had
- * ever measured the four. Round 10.)
  *
  * A fixture can only reach a combination the filesystem can produce; this table
  * enumerates directly. All SIXTEEN subsets of the four conditions appear below

@@ -749,18 +749,31 @@ describe('SkillsView', () => {
      *
      * On `packageDirectory`, which the contract REQUIRES (deliberately
      * de-optionalised — see its docblock in `catalog.ts`): 5 of the 12
-     * `writeRefusal` fixtures here omit it, and the omissions are not one
-     * thing. THREE are deliberate and correct — the unknown-reason-code test,
-     * the 'renders no path element' test, and the inherited-key table all cast
-     * `as never` precisely because the type forbids what they construct on
-     * purpose (a server one release ahead, a build that dropped the field,
-     * prototype keys). Typing these helpers would not red them, and "fixing"
-     * them would delete their premise. TWO are drift: the same two named
-     * above.
+     * `writeRefusal` fixtures IN THIS FILE omit it. The scope is the file, not
+     * this describe — one of the twelve sits outside it (and it is one of the
+     * five omissions), so a reader counting from inside this describe finds
+     * eleven. (Round 10 widened the scope with the number and left the word
+     * "here" behind; round 11 says which.)
      *
-     * So typing the helpers is not simply "the fix" — it would catch the two
-     * drifted fixtures and would have to preserve the three deliberate casts.
-     * Nobody has measured what else it reds.
+     * Only ONE of the five omissions is deliberate. The casts are not the same
+     * cast, and the difference decides it:
+     *   - 'a refusal without the package directory renders no path element'
+     *     casts the WHOLE `writeRefusal` object (`} as never`). The omission is
+     *     the point of the test, and the cast is what expresses it.
+     *   - the unknown-reason-code test and the inherited-key table cast only
+     *     the REASON (`reason: … as never`). That cast is deliberate about the
+     *     reason, which is orthogonal; their missing `packageDirectory` is
+     *     incidental and compiles today only because these helpers take `any`.
+     *     A type probe against the real contract reds that shape with
+     *     TS2741 — `Property 'packageDirectory' is missing` — while the
+     *     whole-object cast passes.
+     * So: 1 deliberate, 4 incidental. An earlier version of this note said
+     * 3 and 2, by treating "casts `as never`" as one category.
+     *
+     * Typing the helpers would therefore red FOUR of the five, not two, and
+     * would have to preserve exactly one deliberate cast. That is a larger
+     * change than "the fix" suggests, and nobody has measured what else it
+     * reds.
      */
     function selectRow(row: any, detail?: any) {
       selectionState.selectedId = row.name;
