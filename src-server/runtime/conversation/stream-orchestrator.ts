@@ -191,16 +191,23 @@ export function startSSEKeepalive(streamWriter: any): () => void {
 }
 
 /**
- * Write SSE chunk to stream
+ * Write SSE chunk to stream.
+ *
+ * The awaited write is the whole contract. This used to append
+ * `await new Promise((r) => setTimeout(r, 0))` under a comment claiming a
+ * `setTimeout` flushes network buffers — it does not. Nothing in Node's
+ * stream/socket path is driven by a timer expiring; the write is handed to
+ * the transport by `write()` itself and `cork`/`uncork` (or the response
+ * body's own backpressure) is what defers it. What the timer actually
+ * bought was a full macrotask turn per SSE frame, so a turn emitting N
+ * token deltas paid N event-loop round trips (≥1ms each, `setTimeout(0)`
+ * being clamped to 1ms) purely to wait.
  */
 export async function writeSSEChunk(
   streamWriter: any,
   chunk: any,
 ): Promise<void> {
   await streamWriter.write(`data: ${JSON.stringify(chunk)}\n\n`);
-  // Force flush by yielding to event loop with setTimeout(0)
-  // setImmediate doesn't flush network buffers, but setTimeout does
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 /**

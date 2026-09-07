@@ -3,6 +3,7 @@ import {
   createElicitationCallback,
   SSE_KEEPALIVE_INTERVAL_MS,
   startSSEKeepalive,
+  writeSSEChunk,
   writeSSEError,
 } from '../stream-orchestrator.js';
 
@@ -44,6 +45,59 @@ describe('createElicitationCallback', () => {
         }),
       }),
     );
+  });
+});
+
+describe('writeSSEChunk', () => {
+  test('resolves in the same macrotask turn as the write — no per-frame event-loop round trip', async () => {
+    const writes: string[] = [];
+    const streamWriter = {
+      write: vi.fn((chunk: string) => {
+        writes.push(chunk);
+        return Promise.resolve();
+      }),
+    };
+
+    // Queued BEFORE the call, so it is ahead of anything `writeSSEChunk`
+    // could schedule. A `setTimeout` inside the function therefore lands
+    // behind this one, and the write only resolves after it fires.
+    const order: string[] = [];
+    const preQueuedMacrotask = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        order.push('pre-queued-macrotask');
+        resolve();
+      }, 0);
+    });
+
+    await writeSSEChunk(streamWriter, { type: 'text-delta', text: 'hi' });
+    order.push('writeSSEChunk-resolved');
+    // Awaited so the timer's entry is actually recorded before the
+    // comparison — otherwise the assertion reads a one-element array and
+    // passes or fails on the array LENGTH rather than on the ordering.
+    await preQueuedMacrotask;
+
+    expect(writes).toEqual(['data: {"type":"text-delta","text":"hi"}\n\n']);
+    // The discriminating assertion: awaiting the writer is microtask work,
+    // and microtasks drain before the next timer callback. With the removed
+    // `await new Promise((r) => setTimeout(r, 0))` this reads
+    // ['pre-queued-macrotask', 'writeSSEChunk-resolved'].
+    expect(order).toEqual(['writeSSEChunk-resolved', 'pre-queued-macrotask']);
+  });
+
+  test('1000 sequential frames cost no event-loop turns — a per-frame setTimeout(0) could not finish this fast', async () => {
+    const streamWriter = { write: () => Promise.resolve() };
+
+    const startedAt = Date.now();
+    for (let index = 0; index < 1000; index += 1) {
+      await writeSSEChunk(streamWriter, { type: 'text-delta', text: index });
+    }
+    const elapsedMs = Date.now() - startedAt;
+
+    // `setTimeout(0)` is clamped to 1ms, so a per-frame yield puts a hard
+    // floor of ~1000ms on this loop regardless of how fast the host is. The
+    // bound is 4x below that floor so host load cannot turn a real pass into
+    // a red, while no amount of host speed can make the timer version pass.
+    expect(elapsedMs).toBeLessThan(250);
   });
 });
 
