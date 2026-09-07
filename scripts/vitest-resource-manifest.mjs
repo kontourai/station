@@ -682,6 +682,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // identity/project-context geometry (unclipped overflow and wrapped
   // one-line labels) at a squeezed and a comfortable width.
   'src-ui/src/__tests__/ChatDockHeader.identityGeometry.test.tsx',
+  // #1642 (review round): same shape again — launches a real Chromium via
+  // `@playwright/test` to prove the readiness adapters classify a real page
+  // into the outcome they report, with the stylesheet resolved so the
+  // presence-not-visibility guardrail is exercised rather than assumed.
+  'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
   // #1536 B2: same shape again — launches a real Chromium via
   // `@playwright/test` to prove the Task picker's dialog is not trapped by the
   // animating message row it opens from (containing block and stacking
