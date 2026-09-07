@@ -195,7 +195,7 @@ async function setup(
   await service.discoverSkills(home, options.projectSlug);
   // The SAME resolution the production wiring gives the route: one closure over
   // one `ConfigLoader`, which is also the one the service holds.
-  const app = createSkillRoutes(service as never, () =>
+  const app = createSkillRoutes(service, () =>
     configLoader.getProjectHomeDir(),
   );
   return { app, service };
@@ -264,7 +264,14 @@ describe('GET /api/skills projects the server writability decision', () => {
     expect(refusal.reason).toBe('outside-writable-root');
     // WHERE the package sits is still reported — a reader cannot act without it
     // — but in its own field now, not spliced into Station's sentence.
-    expect(refusal.detail).toContain('is not a skills root Station writes');
+    // Worded for every population sharing this code, not just this one. It also
+    // covers a package directory that REDIRECTS somewhere Station does not
+    // write while the directory it names sits in a writable root — knowingly
+    // folded in here rather than given a code of its own (#1702), so the
+    // sentence must not claim the package itself sits outside a writable root.
+    expect(refusal.detail).toContain(
+      'Station does not write the directory this package resolves to',
+    );
     expect(refusal.packageDirectory).toBe(
       join(home, 'plugins', 'vendor', 'skills', 'vendor-tool'),
     );

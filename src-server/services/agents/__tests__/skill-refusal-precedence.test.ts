@@ -1,0 +1,97 @@
+/**
+ * The precedence contract, tested at the layer that owns it.
+ *
+ * The route suite exercises this through fixtures, which reaches four of the
+ * eight condition combinations and left the other four unpinned — and one of
+ * those unpinned cells is where an inverted ordering survived a review round
+ * (an unsafe name co-occurring with a containment failure was published as the
+ * containment refusal, advising an install that the resolver refuses on the
+ * name before it ever looks at a root).
+ *
+ * A fixture can only reach a combination the filesystem can produce; this table
+ * enumerates all eight directly, so the ordering is pinned rather than sampled.
+ */
+import { describe, expect, test } from 'vitest';
+import type { SkillPackageDirectoryCondition } from '../../../domain/skill-paths.js';
+import {
+  SKILL_REFUSAL_STATEMENT,
+  worstSkillPackageCondition,
+} from '../skill-service.js';
+
+/**
+ * `name-mismatch` is implied by `unsafe-name` in practice — a name that cannot
+ * be a directory name cannot equal any basename — so the table varies the three
+ * conditions that can occur in any combination and asserts what is SPOKEN
+ * ABOUT, not merely that something was refused.
+ */
+const CASES: Array<{
+  held: SkillPackageDirectoryCondition[];
+  spokenAbout: SkillPackageDirectoryCondition | undefined;
+  why: string;
+}> = [
+  { held: [], spokenAbout: undefined, why: 'it is the package' },
+  {
+    held: ['name-mismatch'],
+    spokenAbout: 'name-mismatch',
+    why: 'somewhere writable and readable, just named differently',
+  },
+  {
+    held: ['outside-writable-root'],
+    spokenAbout: 'outside-writable-root',
+    why: 'where it sits is the whole problem',
+  },
+  {
+    held: ['outside-writable-root', 'name-mismatch'],
+    spokenAbout: 'outside-writable-root',
+    why: 'renaming the directory changes nothing in a root Station never writes',
+  },
+  {
+    held: ['unreadable'],
+    spokenAbout: 'unreadable',
+    why: 'no claim about which root holds it is safe to make',
+  },
+  {
+    held: ['unreadable', 'outside-writable-root'],
+    spokenAbout: 'unreadable',
+    why: 'every unreadable case also raises outside-root; ranking it first is what makes the spurious claim unreachable',
+  },
+  {
+    held: ['unsafe-name', 'name-mismatch'],
+    spokenAbout: 'unsafe-name',
+    why: 'renaming the skill is always possible and always necessary first',
+  },
+  {
+    held: [
+      'unsafe-name',
+      'name-mismatch',
+      'unreadable',
+      'outside-writable-root',
+    ],
+    spokenAbout: 'unsafe-name',
+    why: 'the resolver refuses on the name before it looks at a root, so any install advice is guaranteed to fail',
+  },
+];
+
+describe('which condition a refusal speaks about', () => {
+  test.each(CASES)('$why', ({ held, spokenAbout }) => {
+    expect(worstSkillPackageCondition(held)).toBe(spokenAbout);
+  });
+
+  test('order of the reported conditions does not change the answer', () => {
+    for (const { held, spokenAbout } of CASES) {
+      expect(worstSkillPackageCondition([...held].reverse())).toBe(spokenAbout);
+    }
+  });
+
+  test('every condition has a statement, and no two share a reason code', () => {
+    const reasons = Object.values(SKILL_REFUSAL_STATEMENT).map((s) => s.reason);
+    expect(new Set(reasons).size).toBe(reasons.length);
+    // No statement carries a path or an interpolation: where the package sits is
+    // `packageDirectory`'s job, and prose carrying author-controlled text is
+    // what this branch exists to remove. Apostrophes are prose ("this skill's
+    // name") and are not the thing being excluded.
+    for (const statement of Object.values(SKILL_REFUSAL_STATEMENT)) {
+      expect(statement.detail).not.toMatch(/\$\{|[/\\]/);
+    }
+  });
+});

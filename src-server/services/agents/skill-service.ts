@@ -47,6 +47,7 @@ import {
 } from 'agent-skills-ts-sdk';
 import type { ConfigLoader, SkillConfig } from '../../domain/config-loader.js';
 import { skillRecordClaimsName } from '../../domain/config-loader-storage.js';
+import type { SkillPackageDirectoryCondition } from '../../domain/skill-paths.js';
 import {
   canonicalSkillsDiscovered,
   skillActivationDuration,
@@ -314,6 +315,90 @@ interface PackageOwnershipRefusal {
   refusal: SkillWriteRefusal;
   messageFragment: string;
 }
+
+/**
+ * Which condition a refusal SPEAKS ABOUT when several hold at once.
+ *
+ * The floor reports every condition; this decides which one the reader is told
+ * about, and the ordering is a claim about REMEDIES rather than about severity.
+ * Read it as "which of these must be fixed first, and is fixing it something
+ * this reader can actually do":
+ *
+ * 1. `unsafe-name` — renaming the skill is always possible and always
+ *    necessary, and nothing else can succeed until it happens: the resolver
+ *    refuses on the name before it looks at anything else, so advising an
+ *    install here advises something guaranteed to fail (review M1). The
+ *    assertion has always had this order; an earlier draft of THIS mapping
+ *    inverted it.
+ * 2. `unreadable` — the path cannot be followed, so no claim about which root
+ *    holds the package is safe to make.
+ * 3. `outside-writable-root` — where it sits is the problem, which outranks
+ *    what it is called: "rename the directory" changes nothing for a package in
+ *    a root Station will never write.
+ * 4. `name-mismatch` — reached only once the package is somewhere Station
+ *    writes and its path is readable, which is exactly what its remedy assumes.
+ *
+ * NOT a fallthrough. An earlier draft ended in an unconditional `return` for
+ * the name mismatch, so a fifth condition added to the union would have been
+ * published as one — silently, with a remedy telling the reader to rename a
+ * directory, and no test able to see it. That is the defect this projection
+ * exists to prevent, in the mechanism that prevents it. The `satisfies` below
+ * makes the next addition a compile error instead.
+ */
+const SKILL_CONDITION_PRECEDENCE = [
+  'unsafe-name',
+  'unreadable',
+  'outside-writable-root',
+  'name-mismatch',
+] as const satisfies readonly SkillPackageDirectoryCondition[];
+
+export function worstSkillPackageCondition(
+  conditions: readonly SkillPackageDirectoryCondition[],
+): SkillPackageDirectoryCondition | undefined {
+  const held = new Set(conditions);
+  return SKILL_CONDITION_PRECEDENCE.find((candidate) => held.has(candidate));
+}
+
+/** What Station SAYS about each condition — prose it owns, no author text. */
+export const SKILL_REFUSAL_STATEMENT = {
+  'unsafe-name': {
+    reason: 'unresolvable-name',
+    detail:
+      'Its name cannot be used as a directory name, so Station cannot work out where it would write this package.',
+  },
+  unreadable: {
+    reason: 'containment-unreadable',
+    detail:
+      'Where a write to it would land could not be determined, so Station will not write it.',
+  },
+  'outside-writable-root': {
+    reason: 'outside-writable-root',
+    detail: 'Station does not write the directory this package resolves to.',
+  },
+  'name-mismatch': {
+    reason: 'directory-name-mismatch',
+    detail:
+      "The package discovery found for it sits in a directory whose name is not this skill's name.",
+  },
+} as const satisfies Record<
+  SkillPackageDirectoryCondition,
+  Pick<SkillWriteRefusal, 'reason' | 'detail'>
+>;
+
+/** The clause the write path slots into its own sentence, kept verbatim. */
+const SKILL_REFUSAL_FRAGMENT = {
+  'unsafe-name': (_name: string, _directory: string) =>
+    'its name cannot be used as a directory name, so Station cannot work out where it would write this package',
+  unreadable: (_name: string, directory: string) =>
+    `the package Station found for it at ${directory} could not be read, so where a write would land is unknown`,
+  'outside-writable-root': (_name: string, directory: string) =>
+    `it is served from ${directory}, which is not a skills root Station writes`,
+  'name-mismatch': (name: string, directory: string) =>
+    `the package discovery found for it is ${directory}, whose directory name is not '${name}'`,
+} as const satisfies Record<
+  SkillPackageDirectoryCondition,
+  (name: string, directory: string) => string
+>;
 
 /**
  * The identity record was published but an exact cleanup could not be made
@@ -879,12 +964,16 @@ export class SkillService {
    * It asks WHICH ROOT holds the package, not whether its name resolves to one
    * particular directory. That comparison answered "not writable" for every
    * workspace package, because the directory it compared against was derived
-   * from a slug the caller did not have (#1619). The floor is the containment
-   * `assertSkillPackageDirectory` states, and its message is carried through
-   * verbatim rather than flattened into "Station does not own this" — a
-   * directory whose name differs from the skill's only in case is a package
-   * plainly the user's own, and telling them Station does not own it is a
-   * false explanation of a real refusal (review low).
+   * from a slug the caller did not have (#1619).
+   *
+   * The floor is `skillPackageDirectoryReport`, which names every condition that
+   * holds; this picks the one to speak about. Messages are no longer carried
+   * through from the floor verbatim — that shape could only say ONE thing, so
+   * three distinct conditions arrived wearing the same explanation. Each
+   * condition now has a statement Station owns and a remedy keyed to its reason
+   * code, and `SKILL_CONDITION_PRECEDENCE` records why the ordering is what it
+   * is: a refusal must speak about the thing the reader has to fix first, and
+   * has to be able to fix at all.
    */
   private packageOwnershipRefusal(
     name: string,
@@ -928,44 +1017,12 @@ export class SkillService {
     // `directory-name-mismatch` is published only once containment has
     // succeeded, which is exactly what its docblock claims about it.
     const report = skillPackageDirectoryReport(projectHomeDir, name, directory);
-    if (report.conditions.length === 0) return undefined;
-    const held = new Set(report.conditions);
-    if (held.has('unreadable'))
-      return {
-        messageFragment: `the package Station found for it at ${directory} could not be read, so where a write would land is unknown`,
-        refusal: {
-          reason: 'containment-unreadable',
-          detail:
-            'Where a write to it would land could not be determined, so Station will not write it.',
-          packageDirectory: directory,
-        },
-      };
-    if (held.has('outside-writable-root'))
-      return {
-        messageFragment: `it is served from ${directory}, which is not a skills root Station writes`,
-        refusal: {
-          reason: 'outside-writable-root',
-          detail:
-            'It is served from a directory that is not a skills root Station writes.',
-          packageDirectory: directory,
-        },
-      };
-    if (held.has('unsafe-name'))
-      return {
-        messageFragment: `its name cannot be used as a directory name, so Station cannot work out where it would write this package`,
-        refusal: {
-          reason: 'unresolvable-name',
-          detail:
-            'Its name cannot be used as a directory name, so Station cannot work out where it would write this package.',
-          packageDirectory: directory,
-        },
-      };
+    const condition = worstSkillPackageCondition(report.conditions);
+    if (!condition) return undefined;
     return {
-      messageFragment: `the package discovery found for it is ${directory}, whose directory name is not '${name}'`,
+      messageFragment: SKILL_REFUSAL_FRAGMENT[condition](name, directory),
       refusal: {
-        reason: 'directory-name-mismatch',
-        detail:
-          "The package discovery found for it sits in a directory whose name is not this skill's name.",
+        ...SKILL_REFUSAL_STATEMENT[condition],
         packageDirectory: directory,
       },
     };

@@ -334,12 +334,40 @@ export type SkillPackageDirectoryCondition =
   | 'outside-writable-root';
 
 export interface SkillPackageDirectoryReport {
-  /** Every condition that holds, in assert order. Empty means it is the package. */
+  /**
+   * Each condition that holds, ONCE, in the order first met. Empty means the
+   * directory is this name's package.
+   *
+   * Deduplicated because several checks can raise the same condition — three
+   * separate ones can each mean "resolves somewhere Station does not write" —
+   * and a caller reading this as a set should not have to care how many times a
+   * condition was reached.
+   */
   conditions: SkillPackageDirectoryCondition[];
   /** What `assertSkillPackageDirectory` throws: the first failure's message. */
   message?: string;
 }
 
+/**
+ * EVERY check runs, deliberately — this no longer returns at the first failure.
+ *
+ * A traded property, recorded rather than absorbed (review L5): the previous
+ * shape refused an unsafe name before touching the filesystem, and a name
+ * mismatch before resolving containment. It cannot short-circuit now, because
+ * the caller that picks WHICH refusal to speak about needs to know whether the
+ * other conditions hold — the ordering is a claim about remedies, and a remedy
+ * cannot be chosen from a condition set that stopped being collected early.
+ *
+ * What that costs: the listing evaluates containment for every row rather than
+ * skipping rows that fail earlier, so the work is bounded by rows rather than by
+ * rows-that-get-that-far. Both calls are `realpathSync` on paths already being
+ * `stat`ed by discovery. What it does NOT open: nothing here is reachable
+ * without a package already discovered under the caller's own home, so the
+ * inputs are the same-user filesystem the caller already reads.
+ *
+ * If this ever needs to short-circuit again, the fix is to make the caller ask
+ * for one condition rather than to make this function guess which one it wants.
+ */
 export function skillPackageDirectoryReport(
   projectHomeDir: string,
   name: string,
@@ -380,7 +408,7 @@ export function skillPackageDirectoryReport(
   const rest = skillPackageRootConditions(projectHomeDir, directory, resolved);
   found.push(...rest);
   return {
-    conditions: found.map((entry) => entry.condition),
+    conditions: [...new Set(found.map((entry) => entry.condition))],
     ...(found.length > 0 ? { message: found[0].message } : {}),
   };
 }
@@ -391,7 +419,18 @@ export function assertSkillPackageDirectory(
   directory: string,
 ): void {
   const report = skillPackageDirectoryReport(projectHomeDir, name, directory);
-  if (report.message) throw new Error(report.message);
+  // On the CONDITIONS, not on whether the message is a non-empty string. This
+  // is the enforcement path, and a truthiness test standing in for a presence
+  // test is the one shape in which it and the projection could disagree about
+  // whether a write is refused at all rather than about why (review L2). A
+  // condition whose message was ever empty would be silently admitted here and
+  // refused there.
+  if (report.conditions.length > 0) {
+    throw new Error(
+      report.message ??
+        `Skill directory ${JSON.stringify(directory)} is not the package for ${JSON.stringify(name)}`,
+    );
+  }
 }
 
 function skillPackageRootConditions(
