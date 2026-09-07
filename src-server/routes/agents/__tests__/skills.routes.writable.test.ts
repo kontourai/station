@@ -440,10 +440,17 @@ describe('writable iff the write lands in that package and nowhere else', () => 
    * #1619 widens it, the effect has to match this.
    */
   function effectPredictedBy(writable: unknown) {
-    return {
-      modifiedItsOwnPackage: writable === true,
-      shadowedUnderMachineRoot: false,
-    };
+    return writable === true
+      ? {
+          modifiedItsOwnPackage: true,
+          shadowedUnderMachineRoot: false,
+          stoppedByTheOwnershipGate: false,
+        }
+      : {
+          modifiedItsOwnPackage: false,
+          shadowedUnderMachineRoot: false,
+          stoppedByTheOwnershipGate: true,
+        };
   }
 
   /** What a write through the route actually DID, read off the disk. */
@@ -462,9 +469,20 @@ describe('writable iff the write lands in that package and nowhere else', () => 
         body: 'Edited body',
       }),
     });
+    const answer = await response.text();
     return {
       status: response.status,
       modifiedItsOwnPackage: readFileSync(own, 'utf-8') !== before,
+      // WHY the write did nothing, not merely THAT it did nothing. A fixture
+      // whose write dies on an unrelated error satisfies "nothing was written"
+      // without the gate ever running, and then proves nothing about it.
+      // Measured, not assumed: with the ownership gate deleted, the
+      // plugin-collision fixture answered 400 "not found" — its plugin package
+      // carries no install record, so the load throws before any disk write —
+      // and every "nothing happened" assertion stayed green. This is what makes
+      // that fixture discriminate.
+      stoppedByTheOwnershipGate:
+        response.status === 400 && answer.includes('does not own'),
       // A shadow package under the machine root is the specific damage the
       // refusal exists to prevent, so it is asserted rather than inferred from
       // the response.
@@ -495,6 +513,7 @@ describe('writable iff the write lands in that package and nowhere else', () => 
     expect({
       modifiedItsOwnPackage: effect.modifiedItsOwnPackage,
       shadowedUnderMachineRoot: effect.shadowedUnderMachineRoot,
+      stoppedByTheOwnershipGate: effect.stoppedByTheOwnershipGate,
     }).toEqual(effectPredictedBy(writable));
   });
 
@@ -525,6 +544,7 @@ describe('writable iff the write lands in that package and nowhere else', () => 
     expect({
       modifiedItsOwnPackage: effect.modifiedItsOwnPackage,
       shadowedUnderMachineRoot: effect.shadowedUnderMachineRoot,
+      stoppedByTheOwnershipGate: effect.stoppedByTheOwnershipGate,
     }).toEqual(effectPredictedBy(row?.writable));
   });
 
@@ -558,6 +578,7 @@ describe('writable iff the write lands in that package and nowhere else', () => 
     expect(writable).toBe(false);
     expect(effect.modifiedItsOwnPackage).toBe(false);
     expect(effect.shadowedUnderMachineRoot).toBe(false);
+    expect(effect.stoppedByTheOwnershipGate).toBe(true);
   });
 });
 
