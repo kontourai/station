@@ -1792,21 +1792,11 @@ for (const requiredHelper of ['export function isAutoApproved']) {
   }
 }
 
-const toolExecutionUsage = readRequiredSource(
-  '../src-server/runtime/tools/tool-execution-usage.ts',
-);
-for (const requiredHelper of [
-  'export async function recordToolExecutionUsage',
-  "logger.info('[Usage Stats]'",
-  "logger.info('[Token Breakdown]'",
-  'await memory.updateConversation(',
-  'otelContextTokens.add(',
-  "logger.error('Failed to enrich message with model metadata'",
-]) {
-  if (!toolExecutionUsage.includes(requiredHelper)) {
-    errors.push(`tool-execution-usage.ts must include ${requiredHelper}.`);
-  }
-}
+// tool-execution-usage.ts is DELETED. The extraction it held was orphaned when
+// the only call site was removed from tool-executor.ts, so the "must include"
+// half of this pair guarded a module nothing imported. The half that carries
+// the real rule survives above: tool-executor.ts must not inline those usage
+// helpers, asserted directly against tool-executor.ts.
 
 const agentHooks = readRequiredSource(
   '../src-server/runtime/agents/agent-hooks.ts',
@@ -2593,10 +2583,7 @@ for (const [relativePath, requiredImport] of [
     '../src-server/services/scheduling/scheduler-service.ts',
     '../providers/provider-interfaces.js',
   ],
-  [
-    '../src-server/services/plugins/template-service.ts',
-    '../providers/provider-interfaces.js',
-  ],
+  // template-service.ts is DELETED: nothing outside its own test imported it.
   [
     '../src-server/services/scheduling/builtin-scheduler.ts',
     '../providers/provider-interfaces.js',
