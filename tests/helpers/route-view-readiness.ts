@@ -151,9 +151,6 @@ export type RouteViewScreens = {
   pending: Locator[];
 };
 
-/** Where the app mounts: a visible child means the page rendered something. */
-const APP_ROOT_CHILD_SELECTOR = '#root > *';
-
 /**
  * Browser adapter binding a view's screens to their real locators.
  *
@@ -164,7 +161,6 @@ const APP_ROOT_CHILD_SELECTOR = '#root > *';
  * attempt the journey never asked for.
  */
 export async function waitForRouteViewTarget(
-  page: Page,
   screens: RouteViewScreens,
   timeoutMs: number,
 ): Promise<{ screen: 'ready'; elapsedMs: number }> {
@@ -176,11 +172,60 @@ export async function waitForRouteViewTarget(
     target,
   );
 
+  /**
+   * The first VISIBLE match across every candidate, filtering rather than
+   * sampling index zero.
+   *
+   * `locator.first()` picks the first match in document order and says nothing
+   * about whether it is visible, so a hidden earlier match used to mask a
+   * visible later one — and both of this adapter's decisions run through here.
+   * A visible failure behind a hidden earlier one was reported as "rendered
+   * neither a pending state nor a failure", contradicting the page; and the same
+   * shape in the pending list turned a view that WAS still pending into one
+   * reported as settled-without-target. Both are the false-sentence failure this
+   * helper exists to remove, so both are fixed at the one place that decided
+   * them.
+   */
   const firstVisible = async (
     locators: Locator[],
   ): Promise<Locator | undefined> => {
     for (const locator of locators) {
-      if (await locator.first().isVisible()) return locator;
+      for (const candidate of await locator.all()) {
+        if (await candidate.isVisible()) return candidate;
+      }
+    }
+    return undefined;
+  };
+
+  /**
+   * Whether any candidate is PRESENT in the document, visible or not.
+   *
+   * Presence, deliberately, and not visibility — this is the question "is the
+   * view still telling us it is working?", and painting is incidental to that.
+   * The concrete reason: `SkeletonList` renders empty `div`s whose every
+   * dimension comes from the stylesheet, so a visibility check here depends on
+   * the stylesheet resolving a box. If that ever went zero-size, a view that was
+   * merely SLOW would be reported as one whose surface is ABSENT — the two
+   * sentences this helper works hardest to keep apart — silently, through a
+   * stylesheet edit nobody would connect to a test helper, and invisibly to both
+   * this code and its unit tests.
+   *
+   * A visibility check reads more naturally here and is what someone will
+   * "simplify" this back to. The suppressed-sizing arrangement in
+   * `RouteViewReadiness.adapterScreens.test.tsx` is what CATCHES that: it renders
+   * the real skeleton with its sizing removed and asserts this still classifies
+   * pending. Removing the coupling and catching its return are different
+   * guarantees, and this change carries both on purpose.
+   *
+   * Visibility stays correct for `target` and `failures`, where it is
+   * load-bearing: a surface the user cannot see has not arrived, and a failure
+   * that is not painted is not being shown to anyone.
+   */
+  const anyPresent = async (
+    locators: Locator[],
+  ): Promise<Locator | undefined> => {
+    for (const locator of locators) {
+      if ((await locator.count()) > 0) return locator;
     }
     return undefined;
   };
@@ -211,7 +256,7 @@ export async function waitForRouteViewTarget(
           // which kind of running-out this was.
           const settled = await classifySettled();
           if (settled !== 'pending') return settled;
-          return (await firstVisible(pending))
+          return (await anyPresent(pending))
             ? 'timeout'
             : 'settled-without-target';
         }
@@ -223,9 +268,21 @@ export async function waitForRouteViewTarget(
         return `"${(await failed.first().innerText()).trim().slice(0, 200)}"`;
       },
       pendingDetail: async () => {
-        const rendered = page.locator(APP_ROOT_CHILD_SELECTOR).first();
-        if (!(await rendered.isVisible())) return 'nothing the view rendered';
-        return `"${(await rendered.innerText()).trim().slice(0, 200)}"`;
+        // The VIEW's pending state, not the shell's first child: quoting
+        // `#root > *` returned the whole application chrome — header, dock,
+        // sidebar — in which the one thing a reader needed was buried or absent.
+        // The pending locator is present by construction whenever a `timeout` is
+        // reported, since that classification is what `anyPresent(pending)`
+        // decides, so this is the accurate thing to quote and the only case where
+        // it is empty is the one that reports `settled-without-target` instead.
+        const pendingUp = await anyPresent(pending);
+        if (!pendingUp) return 'no pending state of its own';
+        const text = (await pendingUp.first().innerText()).trim();
+        // A skeleton is deliberately textless, so say what it IS rather than
+        // quoting an empty string and reading as if nothing were there.
+        return text
+          ? `its pending state, reading "${text.slice(0, 200)}"`
+          : 'its pending state, which renders no text of its own';
       },
       now: () => Date.now(),
     },
@@ -292,9 +349,13 @@ const NAVIGATION_AND_RENDER_ALLOWANCE_MS = 4_000;
  * permits.
  *
  * A DOCUMENTED UPSTREAM TIMEOUT, not a sample: `proxyToBackend` sets
- * `PROXY_UPSTREAM_TIMEOUT_MS = 30_000` as an idle timeout on the upstream
- * socket's connection and header phase and answers 504 when it fires
- * (`packages/cli/src/commands/lifecycle.ts`). The e2e runner serves the page from
+ * `PROXY_UPSTREAM_TIMEOUT_MS = 30_000` as an idle timeout on the upstream socket
+ * and answers 504 when it fires (`packages/cli/src/commands/lifecycle.ts`). It
+ * stays armed through the response body for a non-streaming answer like this one
+ * — it is disarmed only once a streaming content type is confirmed — so it bounds
+ * the whole read rather than just its connection and header phase, which is what
+ * an earlier version of this comment said. The number and the 504 were right; the
+ * phrase described a narrower timer than the code arms. The e2e runner serves the page from
  * that proxy on its own port, so every `/api` read the browser makes — including
  * the layout read below — is bounded by it and by nothing tighter.
  */

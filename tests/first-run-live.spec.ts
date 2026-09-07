@@ -3,7 +3,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from './helpers/authenticated-request';
 import { LAZY_CHUNK_ALLOWANCE_MS } from './helpers/lazy-chunk-allowance';
-import { waitForLazySurface } from './helpers/lazy-surface-readiness';
+import {
+  countVisibleLazyBoundaryErrors,
+  waitForLazySurface,
+} from './helpers/lazy-surface-readiness';
 import { waitForLocalUiAccessReadiness } from './helpers/local-ui-access-readiness';
 import {
   closeFixtureServer,
@@ -31,7 +34,11 @@ const REPLY = 'First live Station chat works on mobile.';
  * means bounding a real provider round trip through the runtime, which is its own
  * piece of work rather than a side effect of #1642. It is carried forward
  * unchanged here, labelled, instead of being quietly reused as if it were
- * evidence.
+ * evidence. #1697 says what would derive it — a label with no route to evidence
+ * eventually reads as settled rather than unexamined, which is why it has one.
+ *
+ * Note that it now governs a PAIR: the poll below is derived as a relation to it,
+ * so their combined worst case is twice this number.
  */
 const STREAMED_REPLY_TIMEOUT_MS = 30_000;
 
@@ -44,11 +51,18 @@ const STREAMED_REPLY_TIMEOUT_MS = 30_000;
  * is no state to wait on and no measurement to cite. What IS certain is the
  * ordering: the streamed reply cannot render before the request that produces it
  * has been received, so this wait can be given exactly the budget of the step it
- * precedes without extending the journey's reach by a millisecond. It was running
- * on the runner's implicit 5 s expect default, inside a journey whose very next
- * assertion is allowed 30 s — so a provider that answered at 6 s failed here and
- * was reported as "expected 1, received 0", which reads like the request was
- * never made.
+ * precedes. It was running on the runner's implicit 5 s expect default, inside a
+ * journey whose very next assertion is allowed 30 s — so a provider that answered
+ * at 6 s failed here and was reported as "expected 1, received 0", which reads
+ * like the request was never made.
+ *
+ * It DOES cost wall-clock, and an earlier version of this comment wrongly claimed
+ * otherwise. The ordering means this wait resolves before the reply's own budget
+ * starts, but the pair's worst case moves from 5 + 30 to 30 + 30 — a slow request
+ * followed by a slow render is now 60 s rather than 35 s. `test.setTimeout` covers
+ * that with room, and the alternative was failing correct runs, but "extends the
+ * journey's reach by not a millisecond" was false and is the kind of claim this
+ * branch exists to stop making.
  *
  * It hides nothing: a duplicate request is not this wait's to catch — it stops at
  * one — and `expect(chatRequests).toHaveLength(1)` after the reply is what holds
@@ -330,7 +344,6 @@ test('phone first run recovers from no provider to a real streamed reply', async
     // to something unrenderable is reported by its own words at once, and the
     // budget below bounds only a layout read still in flight.
     await waitForRouteViewTarget(
-      page,
       {
         viewName: 'The Coding layout view',
         target: chatDock,
@@ -374,7 +387,6 @@ test('phone first run recovers from no provider to a real streamed reply', async
       .locator('.page__actions')
       .getByRole('button', { name: 'Add model connection', exact: true });
     await waitForRouteViewTarget(
-      page,
       {
         viewName: 'The Connections → Models view',
         target: addModelConnection,
@@ -444,7 +456,6 @@ test('phone first run recovers from no provider to a real streamed reply', async
     // runner's default covers. A budget kept here would be funding the same wait
     // twice and would hide which of the two actually ran long.
     await waitForRouteViewTarget(
-      page,
       {
         viewName: 'The Coding layout view, reopened',
         target: chatDock,
@@ -461,6 +472,12 @@ test('phone first run recovers from no provider to a real streamed reply', async
       exact: true,
     });
     await expect(chatActions).toBeVisible();
+    // Counted BEFORE the click: `LazyBoundary`'s failure text is the same constant
+    // everywhere, so only a failure that APPEARS across this interaction can be
+    // attributed to this sheet. The dock's own prewarmed boundary rejects exactly
+    // when the host is unreachable, and it sorts before these portaled sheets.
+    const boundaryErrorsBeforeChatActions =
+      await countVisibleLazyBoundaryErrors(page);
     await chatActions.click();
     const chatActionsMenu = page.getByRole('menu', { name: 'Chat actions' });
     // The sheet is a lazily imported chunk (`ChatDockMobileOverflowSheet`,
@@ -482,6 +499,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
         openIndicator: page.locator(
           'button[aria-label="Chat actions"][aria-expanded="true"]',
         ),
+        baselineUnavailableCount: boundaryErrorsBeforeChatActions,
       },
       LAZY_CHUNK_ALLOWANCE_MS,
     );
@@ -511,12 +529,16 @@ test('phone first run recovers from no provider to a real streamed reply', async
     // so there is deliberately no `openIndicator` here and the wait's timeout
     // says as much rather than implying it knows the click landed.
     const openTaskSwitcher = async (occasion: string) => {
+      // Counted before each click, for the same reason as the sheet above: only a
+      // boundary failure that appears across THIS interaction is this sheet's.
+      const boundaryErrorsBefore = await countVisibleLazyBoundaryErrors(page);
       await taskSwitcher.click();
       await waitForLazySurface(
         page,
         {
           surfaceName: `The Switch task sheet (${occasion})`,
           surface: taskDialog,
+          baselineUnavailableCount: boundaryErrorsBefore,
         },
         LAZY_CHUNK_ALLOWANCE_MS,
       );
@@ -546,8 +568,14 @@ test('phone first run recovers from no provider to a real streamed reply', async
     // its own — but nothing here used to say so, and the next two steps re-open
     // it and then act on rows INSIDE it with no precondition of their own. A
     // reopen that failed or lagged was therefore reported as a row locator, which
-    // names the wrong thing; and a row index captured before a reopen was being
-    // reused across a re-render that is free to reorder the list.
+    // names the wrong thing. That missing precondition is what this closes.
+    //
+    // An earlier version of this comment also claimed the reused `currentTaskIndex`
+    // was racing a re-render free to reorder the list. Review traced that as
+    // unreachable in this journey — selecting a row touches no field the group
+    // comparator orders on — so the claim is withdrawn rather than left standing as
+    // a hazard nobody can reproduce. Keying the row on a stable identifier would
+    // earn it back; asserting it without that would be inventing a danger.
     //
     // Asserting the close is also what makes the reopen a real reopen. It carries
     // no budget deliberately: the close is a synchronous state change with no

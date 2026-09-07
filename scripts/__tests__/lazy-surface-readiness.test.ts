@@ -148,6 +148,38 @@ describe('waitForLazySurfaceThrough', () => {
   });
 });
 
+describe('countVisibleLazyBoundaryErrors baseline', () => {
+  test('a pre-existing boundary failure is not attributed to this surface', async () => {
+    // The defect this closes: `LazyBoundary`'s failure text is one constant, so
+    // an unrelated boundary error anywhere on the page used to end this wait in
+    // milliseconds on a red naming the wrong surface. With the baseline counted
+    // before the interaction, an unchanged count is not this surface's failure —
+    // the wait reports that it could not tell, which is the honest answer.
+    const { observation: port } = observation(['timeout'], {
+      unavailableDetail: async () => 'no failure state rendered',
+    });
+
+    await expect(waitForLazySurfaceThrough(port, 10_000)).rejects.toThrow(
+      /did not load within 1000ms/,
+    );
+  });
+
+  test('a failure that appeared across the interaction says so, and how many were already up', async () => {
+    // The text alone identifies nothing, so the sentence has to carry the fact
+    // that makes it attributable: it APPEARED. And a non-zero baseline is
+    // reported, because a reader should know the page had other surfaces already
+    // failing before this interaction touched it.
+    const { observation: port } = observation(['unavailable'], {
+      unavailableDetail: async () =>
+        '1 boundary failure(s) appeared across this interaction, reading "Unable to load this part of Station."; 2 were already visible before it, so this page had other surfaces failing already',
+    });
+
+    await expect(waitForLazySurfaceThrough(port, 10_000)).rejects.toThrow(
+      /appeared across this interaction.*2 were already visible before it/s,
+    );
+  });
+});
+
 describe('LAZY_CHUNK_ALLOWANCE_MS', () => {
   test('lowers none of the budgets the sites using it already carried', () => {
     // The three sites this replaces carried 20_000 (the Switch task dialog),
