@@ -134,6 +134,50 @@ export const MUTATIONS = [
       },
     ],
   },
+  // The two #1642 entries below are a different CATEGORY from the rest of this
+  // list, deliberately, and the distinction is why they are here at all. Every
+  // other entry injects a defect into SOURCE and proves a test notices. These
+  // two inject a defect into a FIXTURE and prove its premise assertion notices.
+  //
+  // `RouteViewReadiness.adapterScreens.test.tsx` pins its adapters with
+  // arrangements built on decoy elements — a hidden match before a visible one —
+  // and every one of those arrangements is only as good as the decoys still
+  // being matched by the locator under test. Break a decoy and the arrangement
+  // does not fail; it passes while testing nothing, and it still looks like
+  // coverage. That happened: renaming the route decoys left the suite green at
+  // exit 0. So these two guard the META-property, and their survival is what
+  // lets the seven per-read mutations in that file stay unregistered — if a
+  // premise dies, all seven go green while proving nothing, and one of these two
+  // is what says so.
+  {
+    id: 'readiness-route-decoys-unmatched',
+    test: 'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+    failure:
+      'a visible target between HIDDEN matches is still observed as ready',
+    files: [
+      {
+        path: 'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+        change: (source) =>
+          exactReplace(
+            source,
+            'class="target-surface" id="masking-first"',
+            'class="decoy-renamed" id="masking-first"',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'readiness-lazy-decoy-absent',
+    test: 'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+    failure: 'the quoted failure text is a VISIBLE failure, not index zero',
+    files: [
+      {
+        path: 'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+        change: (source) =>
+          exactReplace(source, 'decoy + failure,', 'failure,'),
+      },
+    ],
+  },
   {
     id: 'engine-fixture-identity',
     test: 'scripts/__tests__/connection-fixtures.test.ts',
