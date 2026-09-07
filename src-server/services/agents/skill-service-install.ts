@@ -173,11 +173,12 @@ async function installSkillFromRegistryOwned({
         origin: 'registry',
       });
 
+      // Nothing failed, so a rediscovery that fails is the only thing that
+      // went wrong and is reported as itself. Deliberately NOT in the
+      // `finally` below: a throw from there overwrites the return.
+      await rediscover();
       return result;
-    } finally {
-      // `stagingParent` is ours by mkdtemp construction. Never clean the live
-      // target on provider failure or publication conflict.
-      await rm(stagingParent, { recursive: true, force: true });
+    } catch (error) {
       // REDISCOVER WHATEVER HAPPENED AFTER THE RENAME. The package is on disk
       // from that moment, and this branch makes a recordless package
       // answerable from discovery (#1614) — so a failed record write that
@@ -186,7 +187,25 @@ async function installSkillFromRegistryOwned({
       // ran (delta review 4, L1). Deleting the published tree instead would be
       // wrong for the containment case, where the tree is outside the roots
       // and Station has just refused to touch it.
-      if (published) await rediscover();
+      //
+      // Its failure is SWALLOWED here, and this is the whole point: an
+      // exception from a `finally` — or from this path — replaces the one in
+      // flight, so a rediscovery that fails on an unrelated unreadable
+      // directory turned a containment refusal into an errno about somewhere
+      // else, the same wrong-explanation defect fixed one layer in as M3
+      // (delta review 5, F1). Discovery reads directories unguarded at every
+      // depth, so any unreadable one in the skills or plugins tree reaches it.
+      // The install's own error is what a caller needs.
+      if (published) {
+        try {
+          await rediscover();
+        } catch {}
+      }
+      throw error;
+    } finally {
+      // `stagingParent` is ours by mkdtemp construction. Never clean the live
+      // target on provider failure or publication conflict.
+      await rm(stagingParent, { recursive: true, force: true });
     }
   }
   return {

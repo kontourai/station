@@ -363,6 +363,19 @@ describe('assertSkillPackageDirectory', () => {
     expect(() => resolveSkillDirectory(cycleHome, 'alpha')).toThrow(
       /could not be read/,
     );
+    // The package assertion refuses it too, and this shape is the only way its
+    // unreadable throw EXECUTES without permissions: the test this replaced
+    // carried the assertion, and dropping it left that refusal reachable only
+    // through mode-000 fixtures, which never run on a superuser image (delta
+    // review 5, F3). No power is added — it refuses under both variants — but
+    // the throw is now unconditionally exercised.
+    expect(() =>
+      assertSkillPackageDirectory(
+        cycleHome,
+        'alpha',
+        join(cycleHome, 'skills', 'alpha'),
+      ),
+    ).toThrow(/could not be read/);
   });
 
   test.skipIf(!canDenyAccess())(

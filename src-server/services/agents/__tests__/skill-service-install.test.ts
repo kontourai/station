@@ -177,6 +177,65 @@ describe('skill-service-install', () => {
     expect(rediscover).toHaveBeenCalled();
   });
 
+  it('reports the install failure, not a rediscovery failure that follows it', async () => {
+    // Delta review 5, F1. An exception thrown from a `finally` REPLACES the one
+    // in flight, so a rediscovery that fails — and discovery reads directories
+    // unguarded at every depth, so one unreadable directory anywhere in the
+    // skills or plugins tree does it — turned a containment refusal into an
+    // errno about somewhere else entirely. Same wrong-explanation defect as M3,
+    // one layer out.
+    const saveSkillIn = vi
+      .fn()
+      .mockRejectedValue(new Error('containment refused'));
+    const provider = {
+      install: vi
+        .fn()
+        .mockImplementation(async (_name: string, targetDir: string) => {
+          mkdirSync(join(targetDir, 'masked'), { recursive: true });
+          writeFileSync(join(targetDir, 'masked', 'SKILL.md'), '# Masked');
+          return { success: true, message: 'ok' };
+        }),
+      listAvailable: vi.fn().mockResolvedValue([]),
+    };
+
+    await expect(
+      installSkillFromRegistry({
+        name: 'masked',
+        projectHomeDir: tempDir,
+        configLoader: { saveSkillIn },
+        providers: [{ provider }] as any,
+        rediscover: vi
+          .fn()
+          .mockRejectedValue(new Error('EACCES: permission denied, scandir')),
+      }),
+    ).rejects.toThrow(/containment refused/);
+  });
+
+  it('reports a rediscovery failure when there is no install failure to preserve', async () => {
+    // The other half: with nothing in flight, a rediscovery that fails is the
+    // only thing that went wrong and must not be swallowed.
+    const provider = {
+      install: vi
+        .fn()
+        .mockImplementation(async (_name: string, targetDir: string) => {
+          mkdirSync(join(targetDir, 'lonely'), { recursive: true });
+          writeFileSync(join(targetDir, 'lonely', 'SKILL.md'), '# Lonely');
+          return { success: true, message: 'ok' };
+        }),
+      listAvailable: vi.fn().mockResolvedValue([]),
+    };
+
+    await expect(
+      installSkillFromRegistry({
+        name: 'lonely',
+        projectHomeDir: tempDir,
+        configLoader: { saveSkillIn: vi.fn().mockResolvedValue(undefined) },
+        providers: [{ provider }] as any,
+        rediscover: vi.fn().mockRejectedValue(new Error('scandir failed')),
+      }),
+    ).rejects.toThrow(/scandir failed/);
+  });
+
   // The other side of that line: the version metadata is genuinely
   // best-effort, and a registry that cannot answer `listAvailable` is not a
   // failed install — for EVERY way it can fail to answer. Narrowed to
