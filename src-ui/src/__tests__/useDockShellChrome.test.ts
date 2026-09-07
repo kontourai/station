@@ -218,6 +218,22 @@ describe('useDockShellChrome', () => {
       });
     });
 
+    // #1386 delta review: the model-less mount hands `shellOccupant` the
+    // literal 'chat', not null, so a fallback chained off the occupant reads
+    // the lowercase id and the header says "Hide chat". Nothing asserted
+    // `surfaceTitle` from this hook at all, which is why that shipped green
+    // for a round. Two cases have no occupant to name and both are Chat's.
+    test('the model-less mount names Chat, not its occupant id', async () => {
+      const useDockShellChrome = await freshUseDockShellChrome();
+      const { result } = renderHook(() =>
+        useDockShellChrome({
+          publishesDockSlotClearance: true,
+          registersDockShortcuts: true,
+        }),
+      );
+      expect(result.current.surfaceTitle).toBe('Chat');
+    });
+
     test('a fullscreen Chat placement does not publish phantom dock-slot clearance', async () => {
       const useDockShellChrome = await freshUseDockShellChrome();
       const onGeometryChange = vi.fn();
