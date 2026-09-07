@@ -215,20 +215,6 @@ const isMac =
   typeof navigator !== 'undefined' &&
   navigator.platform.toUpperCase().indexOf('MAC') >= 0;
 
-const MAC_MODIFIER_SYMBOLS: Record<ShortcutModifier, string> = {
-  cmd: '⌘',
-  ctrl: '⌃',
-  shift: '⇧',
-  alt: '⌥',
-};
-
-const PORTABLE_MODIFIER_LABELS: Record<ShortcutModifier, string> = {
-  cmd: 'Ctrl+',
-  ctrl: 'Ctrl+',
-  shift: 'Shift+',
-  alt: 'Alt+',
-};
-
 /**
  * Spell a chord the way the platform the user is on presses it.
  *
@@ -244,10 +230,13 @@ export function formatShortcutChord(
   key: string,
   mac: boolean = isMac,
 ): string {
-  const symbols = modifiers.map(
-    (modifier) =>
-      (mac ? MAC_MODIFIER_SYMBOLS : PORTABLE_MODIFIER_LABELS)[modifier] ?? '',
-  );
+  const symbols = modifiers.map((modifier) => {
+    if (modifier === 'cmd') return mac ? '⌘' : 'Ctrl+';
+    if (modifier === 'ctrl') return mac ? '⌃' : 'Ctrl+';
+    if (modifier === 'shift') return mac ? '⇧' : 'Shift+';
+    if (modifier === 'alt') return mac ? '⌥' : 'Alt+';
+    return '';
+  });
   return symbols.join('') + key.toUpperCase();
 }
 
