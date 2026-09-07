@@ -52,7 +52,11 @@ type InitialFocusPolicy = 'always' | 'desktop' | 'panel';
  *   inside the dock, so the dialog layer they take is clamped by the dock's
  *   stacking context exactly as #1638 describes, and a notice covers them.
  *   Measured, not inferred. Pre-existing and untouched by this change —
- *   filed separately rather than folded in here.
+ *   filed as #1684 rather than folded in here.
+ *
+ * #1686 proposes closing the boundary structurally, with a static gate that
+ * only the shared surface may apply this class in markup and these four as
+ * dated exceptions, so the next borrowed class is a build failure.
  */
 type ResponsiveSurfaceLayer = 'dialog' | 'popover' | 'system';
 type DialogHistoryMode = 'entry' | 'route' | 'none';
