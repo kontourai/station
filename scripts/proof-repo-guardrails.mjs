@@ -559,7 +559,7 @@ if (!configContext.includes('useUpdateConfigMutation')) {
 const agentsContext = readRequiredSource(
   '../src-ui/src/contexts/AgentsContext.tsx',
 );
-if (agentsContext.includes('fetch(')) {
+if (hasRawFetchCall(agentsContext)) {
   errors.push('AgentsContext must not issue raw fetch() calls.');
 }
 for (const requiredHook of [
@@ -1954,10 +1954,12 @@ for (const requiredHelper of [
 const strandsMessageSync = readRequiredSource(
   '../src-server/runtime/frameworks/strands-message-sync.ts',
 );
+// This checks the extracted helper boundary, not its delta algorithm. Native
+// history uses SDK tracking identities; strands-native-history.test.ts proves
+// inherited rows are excluded and fresh rows persist once after compaction.
 for (const requiredHelper of [
   'export function mapStrandsContentBlocksToParts',
   'export async function syncStrandsMessagesToMemory',
-  'const delta = agentMessages.slice(existing?.length || 0);',
   'await memoryAdapter.addMessage(',
 ]) {
   if (!strandsMessageSync.includes(requiredHelper)) {

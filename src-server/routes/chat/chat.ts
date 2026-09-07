@@ -1,3 +1,4 @@
+import { NativeMemoryContinuityUnavailableError } from '../../services/orchestration/native-memory-continuity.js';
 /**
  * Chat Routes - POST /:slug/chat SSE streaming endpoint
  * Extracted from station-runtime.ts lines 1940-2800
@@ -19,6 +20,7 @@ import {
   INTERNAL_TURN_CORRELATION_HEADER,
   readAuthorizedTurnCorrelationHandoff,
   readNativeForegroundRelayCompanion,
+  readNativeMemoryRelayCompanion,
   readNativeOutputRelayCompanion,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
 import {
@@ -144,6 +146,9 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
     const turnCorrelation = trustedRelay
       ? readAuthorizedTurnCorrelationHandoff(relayHandoff)
       : undefined;
+    const nativeMemory = trustedRelay
+      ? readNativeMemoryRelayCompanion(relayHandoff)
+      : undefined;
     const nativeOutputRelay = trustedRelay
       ? readNativeOutputRelayCompanion(relayHandoff)
       : undefined;
@@ -182,6 +187,8 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
     }
 
     try {
+      if (trustedRelay && relayHandoff && !turnCorrelation)
+        throw new NativeMemoryContinuityUnavailableError();
       const {
         input,
         ambientContext,
@@ -225,6 +232,13 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         capturedWorkspaceRoot: nativeWorkspace?.workspaceRoot,
       });
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
+      if (
+        nativeMemory &&
+        (!nativeMemory.ownsRuntimeAgentKey(slug) ||
+          nativeMemory.currentSessionId !== options.conversationId ||
+          nativeMemory.currentSessionId !== turnCorrelation?.sessionId)
+      )
+        throw new NativeMemoryContinuityUnavailableError();
       const ragContext = preparedRagContext;
 
       logDebugChatImages(ctx.logger, input as string | ChatMessage[]);
@@ -327,6 +341,7 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         // is recognized even after a server restart — see chat-turn-dedup.ts.
         dedupStore: getChatTurnDedupStore(ctx.orchestrationEventStore),
         turnCorrelation,
+        ...(nativeMemory ? { nativeMemory } : {}),
         ...(nativeOutputGrant ? { nativeOutputGrant } : {}),
         ...(nativeWorkspace ? { nativeWorkspace } : {}),
         ...(nativeForeground
@@ -570,6 +585,7 @@ async function launchPersistedAgentWithOverride({
       usageAggregator: ctx.usageAggregator,
     });
     const agent = await ctx.framework.createTempAgent({
+      agentId: slug,
       name: slug,
       instructions: () => {
         const parts = [

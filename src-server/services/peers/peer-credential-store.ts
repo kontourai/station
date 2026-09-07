@@ -117,6 +117,16 @@ export interface PeerCredentialStoreOptions {
   writeOperations?: Partial<PeerCredentialWriteOperations>;
 }
 
+/** Server-owned current-authority recheck for externally reachable mutations. */
+export type PeerCredentialMutationAuthorizer = () => boolean;
+
+export class PeerCredentialMutationAuthorizationError extends Error {
+  constructor() {
+    super('Peer credential mutation is not authorized');
+    this.name = 'PeerCredentialMutationAuthorizationError';
+  }
+}
+
 function hasControlCharacters(value: string): boolean {
   return [...value].some((character) => {
     const code = character.charCodeAt(0);
@@ -305,13 +315,16 @@ export class PeerCredentialStore {
     return record ? { ...record } : null;
   }
 
-  async upsert(input: {
-    environmentId: string;
-    apiBase: string;
-    scope: string;
-    credential: string;
-    label?: string;
-  }): Promise<PeerCredentialSummary> {
+  async upsert(
+    input: {
+      environmentId: string;
+      apiBase: string;
+      scope: string;
+      credential: string;
+      label?: string;
+    },
+    authorize?: PeerCredentialMutationAuthorizer,
+  ): Promise<PeerCredentialSummary> {
     const environmentId = safeEnvironmentId(input.environmentId);
     const apiBase = safeApiBase(input.apiBase);
     const scope = safeScope(input.scope);
@@ -340,10 +353,13 @@ export class PeerCredentialStore {
         result: toSummary(record),
         next: { schemaVersion: SCHEMA_VERSION, peers },
       };
-    });
+    }, authorize);
   }
 
-  async remove(environmentId: string): Promise<boolean> {
+  async remove(
+    environmentId: string,
+    authorize?: PeerCredentialMutationAuthorizer,
+  ): Promise<boolean> {
     return this.#mutate((document) => {
       const peers = document.peers.filter(
         (peer) => peer.environmentId !== environmentId,
@@ -353,7 +369,7 @@ export class PeerCredentialStore {
         result: true,
         next: { schemaVersion: SCHEMA_VERSION, peers },
       };
-    });
+    }, authorize);
   }
 
   /**
@@ -366,9 +382,24 @@ export class PeerCredentialStore {
       result: T;
       next?: PeerCredentialDocument;
     },
+    authorize?: PeerCredentialMutationAuthorizer,
   ): Promise<T> {
     const release = await this.#acquireMutationLock(`${this.#file}.mutation`);
     try {
+      if (authorize !== undefined) {
+        if (typeof authorize !== 'function') {
+          throw new PeerCredentialMutationAuthorizationError();
+        }
+        try {
+          const decision: unknown = authorize();
+          if (decision !== true) {
+            void Promise.resolve(decision).catch(() => {});
+            throw new PeerCredentialMutationAuthorizationError();
+          }
+        } catch {
+          throw new PeerCredentialMutationAuthorizationError();
+        }
+      }
       const outcome = mutation(this.#read());
       if (outcome.next) this.#write(outcome.next);
       return outcome.result;

@@ -77,6 +77,7 @@ export function ComposerActionsMenu({
       </button>
       {isOpen && (
         <ResponsiveDialogSurface
+          layer="popover"
           ariaLabel="Composer actions"
           onClose={close}
           historyMode="entry"

@@ -5,7 +5,10 @@ import type {
   SDKMessage,
   TerminalReason,
 } from '@anthropic-ai/claude-agent-sdk';
-import { ENGINE_SESSION_BINDING_DEAD_CODE } from '@kontourai/station-contracts/provider';
+import {
+  ENGINE_SESSION_BINDING_DEAD_CODE,
+  ENGINE_TURN_FAILED_CODE,
+} from '@kontourai/station-contracts/provider';
 import type {
   CanonicalRuntimeEvent,
   ToolOutputReceipt,
@@ -256,7 +259,7 @@ export interface ClaudeMessageState {
    */
   settledToolCalls?: Map<string, ClaudeActiveToolCall>;
   /**
-   * archive#1827: set when a `result` message classified `terminal`
+   * Set when a failed result was classified independently of native binding state
    * (`classifyClaudeResultOutcome`) has already been published as a
    * `runtime.error` for this record. The SDK re-throws the SAME failure a
    * moment later as a generic wrapped Error once the underlying `claude`
@@ -265,7 +268,9 @@ export interface ClaudeMessageState {
    * near-duplicate isn't published a second time as an unrelated raw-text
    * `runtime.error`.
    */
-  terminalResultObserved?: boolean;
+  terminalResultObserved?: 'failed' | 'binding-dead';
+  /** Captured at query start, never replaced by an init/result session_id. */
+  attemptedResumeCursor?: string;
   /**
    * archive#3457: the assistant message currently streaming content blocks,
    * taken from the last `message_start` stream event's `message.id` (the
@@ -673,18 +678,15 @@ export function mapClaudeSdkMessage({
         ? { reportedCostUsd: message.total_cost_usd }
         : {}),
     });
-    // archive#1827: `is_error` is the SDK's own structured protocol flag on
-    // this message — set from its message shape, never from parsing the
-    // engine's English (see `classifyClaudeResultOutcome`'s doc comment).
-    // Folding a `terminal` result into `turn.completed` (as this branch
-    // used to, unconditionally) discarded the ONE structured sighting of
-    // the failure and rendered the engine's raw error text as if it were a
-    // normal assistant reply — the STRUCTURED signal `consumeMessages`'
-    // catch (`claude-adapter.ts`) never sees, because by the time the SDK
-    // re-throws, the underlying is_error flag is gone. Publishing
-    // `runtime.error` here instead lets the caller mark this binding dead
-    // exactly once, from the exact signal that proves it.
-    if (classifyClaudeResultOutcome(message) === 'terminal') {
+    // A structured error result ends the query/turn, never a successful
+    // response. Preserve it once before the SDK throws its wrapper. Only
+    // cursor-matched missing-session evidence disproves the native binding;
+    // refusals, limits and other query failures do not make that claim.
+    const outcome = classifyClaudeResultOutcome(
+      message,
+      record.attemptedResumeCursor,
+    );
+    if (outcome !== 'ok') {
       const turnId = record.activeTurnId;
       const interruptingTurnId = record.interruptingTurnId;
       if (interruptingTurnId) {
@@ -706,7 +708,8 @@ export function mapClaudeSdkMessage({
         });
         return;
       }
-      record.terminalResultObserved = true;
+      record.terminalResultObserved = outcome;
+      record.session.status = outcome === 'binding-dead' ? 'dead' : 'error';
       clearClaudeDispatchedTurn(record);
       publish({
         eventId: crypto.randomUUID(),
@@ -716,7 +719,10 @@ export function mapClaudeSdkMessage({
         turnId,
         method: 'runtime.error',
         severity: 'error',
-        code: ENGINE_SESSION_BINDING_DEAD_CODE,
+        code:
+          outcome === 'binding-dead'
+            ? ENGINE_SESSION_BINDING_DEAD_CODE
+            : ENGINE_TURN_FAILED_CODE,
         retriable: false,
         message: claudeResultFailureText(message),
       });

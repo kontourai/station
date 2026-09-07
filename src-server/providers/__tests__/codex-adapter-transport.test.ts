@@ -722,6 +722,78 @@ describe('CodexAdapterTransport', () => {
       expect(transport.hasSession('thread-unconfirmed-open-tool')).toBe(true);
     });
 
+    /**
+     * station#1586 (item 3): a record the thread no longer owns used to
+     * publish NOTHING, so an open row on it would run forever. Its tool
+     * terminals are turn-keyed (PR #1560 puts the issuing turnId on each one,
+     * PR #1570 has both folds attribute by turn), so they land on that
+     * record's own turn and never over a successor's. Only the thread-keyed
+     * facts stay withheld.
+     *
+     * The state is constructed directly because production cannot reach it
+     * with an open call today — `registerSession` throws while the old record
+     * is still registered, so no restart lands mid-drain — which is why the
+     * branch is documented as defensive in `finalizeUnexpectedExit` (fix
+     * round, M3). This pins the decision the branch encodes; it is not
+     * evidence of a live leak.
+     */
+    test('a superseded record settles its own open calls, without session.exited', async () => {
+      const { transport, processHandle, record } = recordWithOpenCall(
+        'thread-superseded-open-tool',
+      );
+      // The restart: the old record is replaced and a successor now owns this
+      // thread id, while the old process is still on its way out.
+      transport.unregisterSession(record);
+      const successor = createCodexSessionRecord({
+        externalThreadId: 'thread-superseded-open-tool',
+        process: new FakeCodexProcess(),
+        provider: 'codex',
+        threadId: 'thread-superseded-open-tool',
+        model: 'gpt-5-codex',
+        nowIso: () => '2026-04-11T00:00:02Z',
+      });
+      transport.registerSession(successor);
+      expect(transport.hasSession('thread-superseded-open-tool')).toBe(true);
+      const iterator = transport.streamEvents()[Symbol.asyncIterator]();
+
+      processHandle.emit('exit', 1, null);
+
+      const events = await drainEvents(iterator);
+      // Exactly one event: the old record's own tool row, on the turn that
+      // issued it. No `session.exited` (the thread is live again, and a
+      // client reads that as this thread's session ending) and no
+      // orphaned-turn `runtime.error` (the turn it names is not the one in
+      // flight).
+      expect(events.map((event) => event.method)).toEqual(['tool.completed']);
+      expect(events[0]).toMatchObject({
+        toolCallId: 'item-open',
+        toolName: 'shell',
+        status: 'unresolved',
+        turnId: 'turn-open',
+        output:
+          'No result was reported before the session ended; whether the tool ran is unknown.',
+      });
+      // The successor is untouched and still owns the thread.
+      expect(transport.hasSession('thread-superseded-open-tool')).toBe(true);
+      expect(record.openToolCalls.size).toBe(0);
+      expect(successor.openToolCalls.size).toBe(0);
+    });
+
+    test('a stopped record publishes nothing here — stopSession owns its settle', async () => {
+      // The discriminating control for the branch above: the guard that
+      // remains is `record.stopped`, not supersession.
+      const { transport, processHandle, record } = recordWithOpenCall(
+        'thread-stopped-open-tool',
+      );
+      record.stopped = true;
+      const iterator = transport.streamEvents()[Symbol.asyncIterator]();
+
+      processHandle.emit('exit', 1, null);
+
+      expect(await drainEvents(iterator)).toEqual([]);
+      expect(record.openToolCalls.size).toBe(1);
+    });
+
     test('a call that already completed is not settled again', async () => {
       // The discriminating control: the settle iterates observed open calls,
       // not every tool the session ever ran.

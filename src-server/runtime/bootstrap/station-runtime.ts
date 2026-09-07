@@ -226,6 +226,7 @@ export async function loadStablePreToolPolicySpec(options: {
   return { spec, revision };
 }
 
+import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
 import { adoptDetectedNativeEngines } from './native-engine-adoption.js';
 import { isHostedTenantExecutionRequired } from './runtime-tenant-context.js';
 
@@ -520,6 +521,23 @@ export class StationRuntime {
   private reconciliationChurnWindowStartMs = 0;
   private reconciliationChurnCount = 0;
   private readonly nativeEngineAdoptionAbort = new AbortController();
+  /**
+   * station#1586 (item 6, fix round M2): aborted on shutdown so the boot-time
+   * prerequisite priming settles instead of outliving the runtime, exactly
+   * like the adoption window beside it.
+   *
+   * What it bounds is the PRIMING, not the child process. `ClaudeAdapter`
+   * deliberately does not forward a caller's signal into its shared
+   * `--version` probe (one caller abandoning readiness must not abort an
+   * observation another is awaiting — see `versionProbe`'s comment), so a
+   * probe already spawned still runs to `runCliCommand`'s own 10s ceiling.
+   * Nor does it cut a prime already under way: the signal is read once,
+   * before the first await, and the adapter drops it on the way to
+   * `runCommand`. What it does, exactly and only, is prevent a prime from
+   * STARTING after shutdown. Killing the child, or interrupting a prime in
+   * flight, would need a change in the adapter's shared-probe contract.
+   */
+  private readonly enginePrerequisitePrimingAbort = new AbortController();
   private configurationSourceUnsubscribers: Array<() => void> = [];
   private schedulerService?: SchedulerService;
   private kitLifecycleReady: Promise<void> = Promise.resolve();
@@ -944,12 +962,6 @@ export class StationRuntime {
       this.orchestrationEventStore = openedEventStore = new EventStore(
         orchestrationDatabasePath,
       );
-      this.pluginInstallationHost =
-        options.pluginInstallationHost ??
-        createLocalPluginInstallationHost(
-          join(projectHomeDir, 'plugins'),
-          this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
-        );
       this.operationalEventPublisher =
         this.orchestrationEventStore.createOperationalEventPublisher({
           appended: ({ journalSequence, event }) => {
@@ -999,6 +1011,15 @@ export class StationRuntime {
         this.logger,
       );
       this.bindFleetConsumerProbesPreview();
+      // Journal consumers wire after the quarantine notice: the runtime must
+      // report a recorded corruption before anything asks the store for more
+      // than its publisher.
+      this.pluginInstallationHost =
+        options.pluginInstallationHost ??
+        createLocalPluginInstallationHost(
+          join(projectHomeDir, 'plugins'),
+          this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
+        );
       this.pluginOperationalEventSubscriptions =
         createPluginOperationalEventSubscriptionService({
           packageMcpJournal:
@@ -2601,9 +2622,22 @@ export class StationRuntime {
   private captureSelectedPackageFingerprint(
     composition?: PluginActivationComposition,
   ): string | null {
+    // A runtime with no package-admission capability at all — no event store,
+    // or a store that does not provide the journal — has nothing that could
+    // have been admitted, so its selected set is verifiably EMPTY: the same
+    // fingerprint the loop below yields for zero installations. This is not
+    // the fail-closed case: a journal that exists but reports `unavailable`
+    // (unreadable, id mismatch, corrupt) still returns null and blocks the
+    // reload, because THAT set is genuinely unverifiable.
+    if (
+      typeof this.orchestrationEventStore?.createPackageMcpAdmissionJournal !==
+      'function'
+    ) {
+      return createHash('sha256').update(JSON.stringify([])).digest('hex');
+    }
     try {
       const journal =
-        this.orchestrationEventStore?.createPackageMcpAdmissionJournal();
+        this.orchestrationEventStore.createPackageMcpAdmissionJournal();
       const selected = journal?.selectedInstallations();
       if (
         selected?.state !== 'observed' ||
@@ -3219,6 +3253,24 @@ export class StationRuntime {
       logger: this.logger,
       timers: this.timers,
       signal: this.nativeEngineAdoptionAbort.signal,
+    });
+
+    // station#1586 (item 6): warm the Claude executable resolution and its
+    // `claude --version` probe now, instead of inside whichever session
+    // happens to be the first in this process. Readiness is otherwise
+    // resolved only by the `/status` route, so a user who starts a session
+    // before any surface fetched status paid the probe's 10s ceiling in their
+    // first turn. Fire-and-forget, like the adoption above: the probe is
+    // memoized per `command + args`, so a session starting while this is
+    // still in flight awaits the same probe rather than spawning a second.
+    //
+    // Signalled like the adoption above (station#1586 M2). Read
+    // `enginePrerequisitePrimingAbort`'s doc for what that does and does not
+    // stop: it bounds this priming, not a probe child already spawned.
+    void primeEnginePrerequisites({
+      adapters: [this.claudeAdapter],
+      logger: this.logger,
+      signal: this.enginePrerequisitePrimingAbort.signal,
     });
   }
 
@@ -3996,6 +4048,10 @@ export class StationRuntime {
     // Optional-chained: prototype-built test doubles (Object.create) have no
     // constructor-initialized fields, and shutdown must never throw for them.
     this.nativeEngineAdoptionAbort?.abort();
+    // Same moment, same reason (station#1586 M2), same optional chaining for
+    // prototype-built doubles: the boot-time prerequisite priming must settle
+    // rather than outlive the runtime.
+    this.enginePrerequisitePrimingAbort?.abort();
     // Early, before the shutdown-promise guard: a store probe in flight is a child process, and
     // `gracefulShutdown` ends in `process.exit`. Same optional-chaining
     // reason as the line above — prototype-built doubles have no fields.

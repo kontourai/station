@@ -739,6 +739,7 @@ describe('ui-bundle:budget rejects its known-bad build output', {
   it('accepts a build inside the budget — the negative control', () => {
     const dir = scratchRepo({
       script: SCRIPT,
+      libs: ['pnpm-lockfile.mjs', 'workspace-dependency-satisfaction.mjs'],
       extraScripts: ['workspace-dependency-provenance.mjs'],
       files: buildOutput(1024),
       git: false,
@@ -752,6 +753,7 @@ describe('ui-bundle:budget rejects its known-bad build output', {
   it('refuses to print a measurement when node_modules belongs to another worktree', () => {
     const dir = scratchRepo({
       script: SCRIPT,
+      libs: ['pnpm-lockfile.mjs', 'workspace-dependency-satisfaction.mjs'],
       extraScripts: ['workspace-dependency-provenance.mjs'],
       files: buildOutput(1024),
       git: false,
@@ -781,6 +783,7 @@ describe('ui-bundle:budget rejects its known-bad build output', {
     // costume of a gate.
     const dir = scratchRepo({
       script: SCRIPT,
+      libs: ['pnpm-lockfile.mjs', 'workspace-dependency-satisfaction.mjs'],
       extraScripts: ['workspace-dependency-provenance.mjs'],
       files: buildOutput(8192),
       git: false,
@@ -796,6 +799,7 @@ describe('ui-bundle:budget rejects its known-bad build output', {
     // matching just the first asset would report clean here.
     const dir = scratchRepo({
       script: SCRIPT,
+      libs: ['pnpm-lockfile.mjs', 'workspace-dependency-satisfaction.mjs'],
       extraScripts: ['workspace-dependency-provenance.mjs'],
       files: buildOutput(3072),
       git: false,

@@ -78,6 +78,7 @@ export function UsageDrillDownModal({
 
     return (
       <ResponsiveDialogSurface
+        layer="dialog"
         onClose={onClose}
         ariaLabelledBy="model-usage-title"
         overlayClassName="drill-down-overlay"
@@ -271,6 +272,7 @@ export function UsageDrillDownModal({
 
     return (
       <ResponsiveDialogSurface
+        layer="dialog"
         onClose={onClose}
         ariaLabelledBy="agent-usage-title"
         overlayClassName="drill-down-overlay"

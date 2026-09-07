@@ -433,6 +433,61 @@ export function projectRuntimeEventsToMessages(
         break;
       }
       case 'tool.started': {
+        // station#1586 (fix round, A): a start belongs to the turn it NAMES,
+        // the same rule `tool.completed` already applies. Position-folding it
+        // put a late start — one for a turn whose message was already emitted
+        // — into whichever turn happens to be open, so a reload disagreed
+        // with the live view (`streamHandlers.ts`'s `handleToolStartedEvent`,
+        // fix round M1) about which turn ran the tool.
+        //
+        // Deliberately BEFORE `turnOpen`/`turnSessionId`/the flushes: a late
+        // start is not activity on the open turn, and marking that turn open
+        // (or flushing its buffers around a row it does not own) is the same
+        // misattribution by another route.
+        const startNamedTurnKey =
+          ev.turnId === undefined ? undefined : turnKey(ev.threadId, ev.turnId);
+        const startCurrentTurnKey = turnKey(
+          turnSessionId ?? ev.threadId,
+          turnIdentity,
+        );
+        const startNamedTurnIndex =
+          startNamedTurnKey === undefined ||
+          startNamedTurnKey === startCurrentTurnKey
+            ? undefined
+            : assistantMessageIndexByTurn.get(startNamedTurnKey);
+        if (startNamedTurnIndex !== undefined) {
+          // The named turn's row is already emitted, so the part goes onto it
+          // and is registered as CARRIED — the same slot an open call gets
+          // when its turn ends. That is what makes the completion resolve
+          // there: `tool.completed` consults `toolsByCallId` (this turn)
+          // first, so registering it there would let the OPEN turn claim a
+          // row that belongs to an earlier one.
+          const lateEntry = carriedToolsByCallId.get(ev.toolCallId);
+          const lateExisting =
+            lateEntry && lateEntry.turnKey === startNamedTurnKey
+              ? lateEntry.part
+              : undefined;
+          if (lateExisting) {
+            // Same upsert-by-call-id rule as the ordinary path below.
+            if (ev.toolName !== undefined) lateExisting.toolName = ev.toolName;
+            if (ev.arguments !== undefined) lateExisting.args = ev.arguments;
+            lateExisting.state = 'call';
+            break;
+          }
+          const latePart: MessagePart = {
+            type: 'tool-invocation',
+            toolCallId: ev.toolCallId,
+            toolName: ev.toolName,
+            args: ev.arguments,
+            state: 'call',
+          };
+          messages[startNamedTurnIndex]!.parts.push(latePart);
+          carriedToolsByCallId.set(ev.toolCallId, {
+            part: latePart,
+            turnKey: startNamedTurnKey,
+          });
+          break;
+        }
         turnSessionId ??= ev.threadId;
         turnOpen = true;
         flushText();

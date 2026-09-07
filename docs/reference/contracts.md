@@ -22,7 +22,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
 | `@kontourai/station-contracts/catalog` | Registry items, install results, skills, guidance assets |
-| `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
+| `@kontourai/station-contracts/cloud-move` | Cloud preparation target/inventory, enrolled target observations, unavailable-transfer projection, and workspace package capture/inspection/verification receipts |
 | `@kontourai/station-contracts/config` | App config and template variables |
 | `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
@@ -93,6 +93,16 @@ built-in scheduler now emits.
 `@kontourai/station-shared` still re-exports many of these types so older code can compile during convergence. That is a compatibility layer, not the canonical ownership model. New code should import the owning `@kontourai/station-contracts/*` module directly.
 
 Server-only provider interfaces now live directly in `src-server/providers/provider-interfaces.ts`, `src-server/providers/provider-contracts.ts`, and `src-server/providers/llm/model-provider-types.ts`. The old `src-server/providers/types.ts` barrel was removed during convergence.
+
+### Conversation measurements
+
+Per-model rows in `ConversationStatsResponse.modelStats` use optional token,
+context, and cost measurements, matching the conversation-level response.
+`turns` and `toolCalls` remain required counts. Clients that previously required
+every model measurement must handle absence as unreported, distinct from a
+measured zero. The server projects the stored null cost marker to an omitted
+wire field; supplied null, negative, or non-finite wire measurements remain
+invalid under `parseConversationStatsResponse` in the `runtime` subpath.
 
 ### Source-only learning inspection
 

@@ -117,12 +117,26 @@ describe('OpenSSH remote worker probe', () => {
 });
 
 describe('remote worker listener identity', () => {
-  test.each(['direct', '/.well-known/station/v1', '/api/system/identity'])(
+  test.each([
+    'direct',
+    '/.well-known/station/v1',
+    '/api/system/identity',
+    'unauthorized',
+    'forbidden',
+  ])(
     'executes the shipped worker against %s responses',
     async (redirectPath) => {
       let redirectedRequests = 0;
       const server = createServer((request, response) => {
         const url = new URL(request.url ?? '/', 'http://localhost');
+        if (
+          url.pathname === '/api/system/identity' &&
+          ['unauthorized', 'forbidden'].includes(redirectPath)
+        ) {
+          response.writeHead(redirectPath === 'unauthorized' ? 401 : 403);
+          response.end();
+          return;
+        }
         if (url.searchParams.has('redirected')) redirectedRequests += 1;
         if (
           url.pathname === redirectPath &&
@@ -201,6 +215,10 @@ describe('remote worker listener identity', () => {
             sha: RESULT.sha,
             bootId: RESULT.bootId,
           });
+        } else if (['unauthorized', 'forbidden'].includes(redirectPath)) {
+          await expect(result).rejects.toThrow(
+            'station-authentication-required',
+          );
         } else {
           await expect(result).rejects.toThrow('station-unavailable');
         }

@@ -177,6 +177,7 @@ const VERBS: Record<string, VerbSpec> = {
     summary: 'Prepare cloud environments and copy encrypted Git workspaces',
     actions: [
       'preview',
+      'verify-target',
       'template',
       'keygen',
       'pack-workspace',
@@ -187,6 +188,7 @@ const VERBS: Record<string, VerbSpec> = {
     ],
     usage: [
       'station cloud preview --home=<path> --provider=<aws-ec2|gcp-compute> --region=<region> --instance-type=<type> [--json]',
+      'station cloud verify-target --station=<enrolled-target> [--json]',
       'station cloud template --provider=aws-ec2 --region=<region> --instance-type=<type> --image=<digest-pinned-image> --output=<new-file>',
       'station cloud keygen --output=<new-key-file>',
       'station cloud pack-workspace --workspace=<checkout-root> --key-file=<key> --output=<new-package> --source-paused',
@@ -621,7 +623,7 @@ const VERBS: Record<string, VerbSpec> = {
   },
   delegate: {
     group: 'Core Workspace',
-    summary: 'Delegate a Task and headlessly supervise it',
+    summary: 'Delegate tasks or continue conversations',
     targets: true,
     usage: [
       'station delegate --agent=<slug> [--on=<environment>] [options] <prompt|--data=<text>|--file=<path>|stdin>',
@@ -674,11 +676,14 @@ const VERBS: Record<string, VerbSpec> = {
       '',
       'create/continue dispatch is fire-and-forget (no live wait), so',
       '--on-request=fail makes one follow-up status check right after dispatch:',
-      'if the task already shows a pending request, it prints the request and',
-      'the exact station delegate respond command and exits 4 instead of the',
+      'if a request is pending, it prints the request and the matching',
+      'approvals/delegate respond command and exits 4 instead of the',
       'ordinary success output; --on-request=wait (default) skips that check.',
       'status/events always surface a pendingRequest with its respond command',
       'when one is open, regardless of --on-request.',
+      '--session accepts a Conversation created by chat or delegation; it',
+      'does not create a Task. Task supervision verbs remain task-bound.',
+      'Unavailable post-dispatch observation is a warning, never a retry.',
       '',
       'Exit codes (delegate only): 0 success, 1 usage error, 2 transport',
       'failure (Station unreachable/timed out), 3 delegation rejection (bad',

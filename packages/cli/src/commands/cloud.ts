@@ -11,6 +11,7 @@ import {
   verifyWorkspacePackage,
 } from '@kontourai/station-shared/workspace-package';
 import { runCloudProjectImport } from './cloud-project-import.js';
+import { runCloudTargetVerification } from './cloud-target.js';
 import { parseCoreArgs } from './core-api.js';
 
 export function runCloudCommand(args: string[]): void | Promise<void> {
@@ -18,6 +19,7 @@ export function runCloudCommand(args: string[]): void | Promise<void> {
   const { flags, positionals } = parsed;
   const action = positionals[0];
   const actionOptions: Record<string, string[]> = {
+    'verify-target': ['station', 'api-base', 'json'],
     preview: ['provider', 'region', 'instance-type', 'home', 'json'],
     template: ['provider', 'region', 'instance-type', 'image', 'output'],
     keygen: ['output'],
@@ -51,12 +53,13 @@ export function runCloudCommand(args: string[]): void | Promise<void> {
   };
   if (positionals.length !== 1 || !Object.hasOwn(actionOptions, action))
     throw new Error(
-      'Usage: station cloud <preview|template|keygen|pack-workspace|inspect-workspace|unpack-workspace|verify-workspace|import-project> [options]',
+      'Usage: station cloud <preview|verify-target|template|keygen|pack-workspace|inspect-workspace|unpack-workspace|verify-workspace|import-project> [options]',
     );
   const allowed = new Set(actionOptions[action]);
   for (const flag of Object.keys(flags))
     if (!allowed.has(flag))
       throw new Error(`Unsupported cloud ${action} option: --${flag}`);
+  if (action === 'verify-target') return runCloudTargetVerification(parsed);
   if (action === 'import-project') return runCloudProjectImport(parsed);
   const required = (key: string) => {
     const value = flags[key];

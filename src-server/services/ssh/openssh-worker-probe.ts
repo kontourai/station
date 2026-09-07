@@ -87,6 +87,9 @@ const main = async () => {
       fetch(base + '/.well-known/station/v1', options),
       fetch(base + '/api/system/identity', options),
     ]);
+    if ([handshakeResponse.status, identityResponse.status].some(status => status === 401 || status === 403)) {
+      fail('station-authentication-required');
+    }
     if (!handshakeResponse.ok || !identityResponse.ok) fail('station-unavailable');
     handshake = await handshakeResponse.json();
     identity = await identityResponse.json();

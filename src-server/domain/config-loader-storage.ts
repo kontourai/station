@@ -22,7 +22,10 @@ import {
   toolServerIntegrationMutationLockPath,
 } from '../services/plugins/tool-server-credential-store.js';
 import { publishJsonFileWithOwnedLock } from './file-storage-helpers.js';
-import { resolveSkillDirectory } from './skill-paths.js';
+import {
+  assertSkillPackageDirectory,
+  resolveSkillDirectory,
+} from './skill-paths.js';
 
 /**
  * Defense-in-depth (repo review, 2026-07-26; loosened same day after a
@@ -54,7 +57,17 @@ export interface SkillConfigRecord {
     | 'plugin'
     | 'flow-agents'
     | `agent-plugin:${string}`;
-  installedAt: string;
+  /**
+   * When this package was INSTALLED, by whatever installed it.
+   *
+   * Optional because a package can be discovered without ever having been
+   * installed — a `SKILL.md` authored by hand, or dropped into a workspace
+   * (#1614) — and the honest answer to "when was this installed" for such a
+   * package is nothing at all. A writer that has no install to date must leave
+   * it absent rather than stamp the moment it happened to write a record,
+   * which would date the record and read as the package.
+   */
+  installedAt?: string;
   version?: string;
   path: string;
   body?: string;
@@ -401,36 +414,78 @@ export async function listSkillConfigs(
   return results;
 }
 
+/**
+ * Does this install record answer for `name`?
+ *
+ * A package copied into a new directory carries the record it was copied with,
+ * and that record's `legacyIds`, `provenance` and `installedAt` belong to the
+ * skill it was written for. Answering the new name with them hands a caller
+ * another skill's identity — `resolveSkillName` would route that skill's legacy
+ * ids to it, and an update reads `name` back off the record, so a record
+ * claiming `foo` under `<home>/skills/bar` renamed `bar` to `foo` on a request
+ * that asked for no rename at all (review round 2, L3).
+ *
+ * THE rule, exported so both readers share it rather than restate it: this
+ * loader, and `SkillService`'s read of the record beside a discovered body.
+ */
+export function skillRecordClaimsName(
+  record: Pick<SkillConfigRecord, 'name'>,
+  name: string,
+): boolean {
+  return record.name === name;
+}
+
 export async function loadSkillConfig(
   projectHomeDir: string,
   name: string,
 ): Promise<SkillConfigRecord> {
   const path = join(resolveSkillDirectory(projectHomeDir, name), 'skill.json');
   if (!existsSync(path)) throw new Error(`Skill '${name}' not found`);
-  return JSON.parse(await readFile(path, 'utf-8'));
+  const record = JSON.parse(await readFile(path, 'utf-8')) as SkillConfigRecord;
+  // A record that names another skill is not this skill's record; a name with
+  // no record of its own is the same answer either way.
+  if (!skillRecordClaimsName(record, name))
+    throw new Error(`Skill '${name}' not found`);
+  return record;
 }
 
-export async function saveSkillConfig(
+/**
+ * Write a package's record INTO the package's own directory.
+ *
+ * The name-addressed `saveSkillConfig`/`deleteSkillConfig` this replaced
+ * resolved that directory from the name and a project slug they were never
+ * given, so a scoped write put `SKILL.md` in the project directory and
+ * `skill.json` in `<home>/skills/<name>` — one package in two roots, each half
+ * telling a different story about where the other is (#1619). They are gone
+ * rather than left for the next writer to reach for: the caller that already
+ * knows the directory passes it, which is the only way the two files cannot
+ * diverge. It asserts containment through
+ * `assertSkillPackageDirectory`, because a directory that did not come from
+ * `resolveSkillDirectory` has not been through its guarantees.
+ */
+export async function saveSkillConfigIn(
   projectHomeDir: string,
-  name: string,
+  directory: string,
   config: SkillConfigRecord,
 ): Promise<void> {
-  const dir = resolveSkillDirectory(projectHomeDir, name);
-  await mkdir(dir, { recursive: true });
+  assertSkillPackageDirectory(projectHomeDir, config.name, directory);
+  await mkdir(directory, { recursive: true });
   await writeFile(
-    join(dir, 'skill.json'),
+    join(directory, 'skill.json'),
     JSON.stringify(config, null, 2),
     'utf-8',
   );
 }
 
-export async function deleteSkillConfig(
+/** Remove a package by its own directory. See `saveSkillConfigIn`. */
+export async function deleteSkillPackageAt(
   projectHomeDir: string,
   name: string,
+  directory: string,
 ): Promise<void> {
-  const dir = resolveSkillDirectory(projectHomeDir, name);
-  if (!existsSync(dir)) throw new Error(`Skill '${name}' not found`);
-  await rm(dir, { recursive: true, force: true });
+  assertSkillPackageDirectory(projectHomeDir, name, directory);
+  if (!existsSync(directory)) throw new Error(`Skill '${name}' not found`);
+  await rm(directory, { recursive: true, force: true });
 }
 
 export function skillConfigExists(

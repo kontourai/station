@@ -1,3 +1,5 @@
+import type { ProjectTaskRoomCheckpoint } from './project-task-room.js';
+
 /** Public preview only. A plan never grants permission to transfer or execute. */
 export interface CloudMoveTarget {
   providerId: string;
@@ -67,3 +69,119 @@ export interface WorkspacePackageVerification extends WorkspacePackageReceipt {
   gitObjectValidation: 'performed-in-isolated-import';
   executableModeVerification: 'passed' | 'unavailable-on-windows';
 }
+
+/** Observation of an enrolled process, never a transferable ownership grant. */
+export interface CloudMoveTargetObservation {
+  schemaVersion: 'station.cloud-target-observation/v1';
+  targetOrigin: string;
+  environmentId: string;
+  instanceId: string;
+  bootId: string;
+  sha: string;
+  observedAt: string;
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+}
+
+/** Controller-local enrollment observation, never a lease or physical-home proof. */
+export interface PairedHomeIdentityObservation {
+  schemaVersion: 'station.paired-home-identity/v1';
+  controllerEnvironmentId: string;
+  pairedDeviceId: string;
+  scope: 'personal';
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+}
+
+/** Personal controller decisions only: these records never enable execution. */
+export type PersonalHomeDecisionObservation = {
+  schemaVersion: 'station.personal-home-decision/v1';
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+} & (
+  | {
+      kind: 'owner-binding';
+      channelId: string;
+      homeRef: string;
+      policyRevision: string;
+      revision: number;
+    }
+  | {
+      kind: 'transfer-decision';
+      channelId: string;
+      operationId: string;
+      sourceHomeRef: string;
+      targetHomeRef: string;
+      policyRevision: string;
+      expectedRevision: number;
+      phase: 'prepared' | 'source-closed' | 'target-ready' | 'committed';
+    }
+);
+
+/** Authenticated personal room observation. Not a lease or hardware attestation. */
+export interface HomeTransferRoomIdentityObservation {
+  schemaVersion: 'station.home-transfer-room-identity/v1';
+  environmentId: string;
+  pairedDeviceId: string;
+  taskId: string;
+  channelId: string;
+  nonce: string;
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+}
+
+/** Operator-approved personal mapping, revalidated against a live remote probe. */
+export interface HomeTransferRoomBindingObservation {
+  schemaVersion: 'station.home-transfer-room-binding/v1';
+  channelId: string;
+  controllerEnvironmentId: string;
+  controllerDeviceId: string;
+  remoteEnvironmentId: string;
+  remoteTaskId: string;
+  remotePairedDeviceId: string;
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+}
+
+/** Source-side closing proof. This receipt grants no target authority. */
+export interface HomeTransferClosingSeal {
+  operationId: string;
+  sourceHomeRef: string;
+  targetHomeRef: string;
+  checkpoint: ProjectTaskRoomCheckpoint;
+  workingStateDigest: string;
+}
+
+/** Authenticated read-only observation of the source room's closing state. */
+export type HomeTransferRoomSealObservation = {
+  schemaVersion: 'station.home-transfer-room-seal/v1';
+  environmentId: string;
+  pairedDeviceId: string;
+  taskId: string;
+  channelId: string;
+  nonce: string;
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+} & ({ kind: 'sealed'; seal: HomeTransferClosingSeal } | { kind: 'unsealed' });
+
+/** A durable metadata decision; target execution remains unavailable. */
+export type HomeTransferDecisionAdvanceObservation = {
+  schemaVersion: 'station.home-transfer-decision-advance/v1';
+  decision: Extract<
+    PersonalHomeDecisionObservation,
+    { kind: 'transfer-decision' }
+  >;
+  executionAuthorityTransferred: false;
+  executionResumeAvailable: false;
+} & (
+  | { outcome: 'decision-committed' }
+  | {
+      outcome: 'pending';
+      reason:
+        | 'source-not-closed'
+        | 'publication-pending'
+        | 'execution-pending'
+        | 'target-unavailable'
+        | 'admission-pending';
+    }
+);

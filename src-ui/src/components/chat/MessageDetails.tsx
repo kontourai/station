@@ -29,6 +29,7 @@ export function MessageDetails({
       {open &&
         createPortal(
           <ResponsiveDialogSurface
+            layer="popover"
             ariaLabel={label}
             onClose={() => setOpen(false)}
             historyMode="entry"

@@ -43,8 +43,71 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
   ]),
 );
 
-/** Repository data read directly by tests, invisible to import analysis. */
+/** Repository data readers and explicit runtime seams supplementing import analysis. */
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
+  {
+    pattern: 'packages/contracts/src/engine-capability-matrix.ts',
+    related: true,
+    tests: [
+      'packages/contracts/src/__tests__/engine-capability-matrix.test.ts',
+      'src-server/services/orchestration/__tests__/attached-session-adoption.test.ts',
+      'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
+    ],
+    reason:
+      'engine continuation declarations control adoption command admission',
+  },
+  {
+    pattern: 'src-server/services/orchestration/attached-session-adoption.ts',
+    related: true,
+    tests: [
+      'src-server/services/orchestration/__tests__/attached-session-adoption.test.ts',
+      'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
+    ],
+    reason:
+      'adoption support, model planning, and adapter readiness must compose',
+  },
+  {
+    pattern: 'src-server/runtime/frameworks/strands-message-sync.ts',
+    related: true,
+    tests: [
+      'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
+      'src-server/runtime/frameworks/__tests__/strands-message-sync.test.ts',
+      'src-server/runtime/frameworks/__tests__/strands-native-history.test.ts',
+    ],
+    reason:
+      'source-reading helper boundary plus actual native history persistence',
+  },
+  {
+    pattern: 'scripts/proof-repo-guardrails.mjs',
+    related: true,
+    tests: ['scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts'],
+    reason:
+      'the proof runner is executed as a child, outside Vitest import analysis',
+  },
+  {
+    pattern: 'src-ui/src/index.css',
+    related: true,
+    tests: ['src-ui/src/__tests__/ChatDockActiveIdentity.overflow.test.tsx'],
+    reason:
+      'the identity browser fixture reads the complete stylesheet as data',
+  },
+  {
+    pattern: 'packages/sdk/src/client/**',
+    related: true,
+    tests: ['packages/sdk/src/__tests__/client-entry-portability.test.ts'],
+    reason:
+      'portable client dependency scan reads source outside the import graph',
+  },
+  {
+    pattern: 'packages/cli/src/commands/session-client.ts',
+    related: true,
+    tests: [
+      'packages/cli/src/__tests__/core.test.ts',
+      'packages/cli/src/__tests__/core-http.test.ts',
+    ],
+    reason:
+      'accepted-turn observation must preserve command and HTTP contracts',
+  },
   {
     pattern: 'src-ui/src/components/modals/useNewChatSetupReturn.ts',
     tests: [
@@ -176,10 +239,51 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     tests: Object.freeze(['scripts/__tests__/veritas-repo-map.test.ts']),
     reason: 'Veritas claims are governed as repository data',
   }),
+  Object.freeze({
+    pattern: 'scripts/mobile-css-baseline.json',
+    tests: Object.freeze(['scripts/__tests__/mobile-css-ratchet.test.ts']),
+    reason:
+      'the mobile-css ratchet baseline is read via readFileSync, not ' +
+      'imported, so Vitest related-file discovery cannot see the edge to ' +
+      'its own test on its own (station#1711)',
+  }),
 ]);
 
 /** Deterministic, reviewable edges the runtime dependency graph cannot see. */
 export const TEST_IMPACT_MANIFEST = Object.freeze([
+  {
+    pattern: 'src-desktop/Cargo.toml',
+    tests: ['scripts/__tests__/tauri-webdriver-boundary.test.ts'],
+    reason: 'embedded WebDriver dependency boundary',
+  },
+  {
+    pattern: 'src-desktop/tauri.webdriver.conf.json',
+    tests: ['scripts/__tests__/tauri-webdriver-boundary.test.ts'],
+    reason: 'embedded WebDriver application identity boundary',
+  },
+  {
+    pattern: 'tests/tauri-shell/direct-webdriver.ts',
+    tests: ['scripts/__tests__/tauri-webdriver-boundary.test.ts'],
+    reason: 'embedded WebDriver test harness boundary',
+  },
+  {
+    pattern: 'src-server/runtime/routes/runtime-routes.ts',
+    tests: [
+      'src-server/runtime/routes/__tests__/runtime-routes-hosted-mcp-composition.test.ts',
+      'src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts',
+    ],
+    reason: 'runtime route composition and hosted MCP capability coverage',
+  },
+  {
+    pattern:
+      'src-server/services/orchestration/completed-task-dispatch-recovery.ts',
+    tests: [
+      'src-server/runtime/routes/__tests__/runtime-routes-hosted-mcp-composition.test.ts',
+      'src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts',
+      'src-server/services/orchestration/__tests__/completed-task-dispatch-recovery.test.ts',
+    ],
+    reason: 'boot-time dispatch recovery must compose with runtime routes',
+  },
   {
     pattern:
       'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
@@ -529,7 +633,10 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
   },
   {
     pattern: 'src-desktop/src/lib.rs',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
+    tests: [
+      'scripts/__tests__/native-recovery-docs.test.ts',
+      'scripts/__tests__/tauri-webdriver-boundary.test.ts',
+    ],
     reason: 'native window, logging, and activation documentation source seam',
   },
   {

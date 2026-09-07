@@ -21,6 +21,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
+  ENGINE_TURN_FAILED_CODE,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
@@ -225,23 +226,18 @@ export function projectOrchestrationEventToReadModel(options: {
       };
       break;
     case 'runtime.error':
-      // archive#1827: a `runtime.error` carrying this code is a provider
-      // adapter's STRUCTURED report that the underlying engine binding this
-      // session holds can never resume — not a generic/possibly-transient
-      // failure. Marking the session `dead` (never `closed`) is the whole
-      // fix: `closed` would run `markSessionClosed` below, which NULLs
-      // `resumeCursor` — the exact archive#1090 data loss this must not
-      // repeat — and every OTHER `runtime.error` (no code, or a different
-      // code, e.g. `SESSION_RECOVERY_FAILED_CODE`) intentionally changes
-      // nothing here, preserving archive#1090's contract byte-for-byte: a
-      // recoverable failure keeps its `status` untouched by this event and
-      // stays in the recovery set.
+      // Explicit missing-binding evidence is distinct from a failed turn.
+      // Neither outcome closes the durable conversation or erases its last
+      // reported cursor. A generic turn failure remains error/unknown, not
+      // dead or ready. Other legacy/config errors keep their existing policy.
       nextSession =
         event.code === ENGINE_SESSION_BINDING_DEAD_CODE
           ? { ...baseSession, status: 'dead', updatedAt: event.createdAt }
-          : existing
-            ? { ...existing, updatedAt: event.createdAt }
-            : null;
+          : event.code === ENGINE_TURN_FAILED_CODE
+            ? { ...baseSession, status: 'error', updatedAt: event.createdAt }
+            : existing
+              ? { ...existing, updatedAt: event.createdAt }
+              : null;
       break;
     default:
       nextSession = existing

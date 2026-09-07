@@ -85,6 +85,32 @@
   outline-offset: 2px !important;
 }
 
+/*
+ * The tone scale, in ONE place (#1582 C4).
+ *
+ * `BannerHost.css` and `PageCallout.css` both resolve their borders through
+ * these, so a banner and a page callout cannot end up disagreeing about what
+ * "warning" looks like. Declared against the theme-scoped colour variables
+ * rather than literals, so `color-mix` resolves per theme at use.
+ */
+:root {
+  --tone-border-info: color-mix(
+    in srgb,
+    var(--accent-primary, #3b82f6) 45%,
+    transparent
+  );
+  --tone-border-warning: color-mix(
+    in srgb,
+    var(--warning-text, #fbbf24) 45%,
+    transparent
+  );
+  --tone-border-error: color-mix(
+    in srgb,
+    var(--error-text, #f87171) 55%,
+    transparent
+  );
+}
+
 :root {
   --chat-dock-header-height: 38px;
   --app-toolbar-height: 46px;
@@ -308,6 +334,51 @@
   --border-dashed: var(--k-line);
   --overlay-modal: rgba(0, 0, 0, 0.7);
   --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.5);
+  /* Overlay elevation + radius come from the shared @kontourai/ui token layer
+     (--k-*), so every product tunes lift/roundness in one place, and the local
+     aliases keep Station's call sites (var(--elevation-overlay)) stable.
+
+     They are declared ONCE, here, and that is not the same reason --error-fill
+     and --accent-acp are: those are literal values that happen to suit both
+     themes. These two are an INDIRECTION. `var(--k-elevation-overlay)` is not
+     resolved where it is written — it is resolved on the element that reads
+     it, against whichever --k-* declaration wins there. Console Kit ships
+     --k-elevation-overlay twice (`:root` and its own `[data-theme="light"]`
+     override), so one alias declaration yields the dark shadow on a dark root
+     and the light shadow on a light one. Duplicating it per theme would be
+     noise, not safety.
+
+     #1637: both lived inside [data-theme="light"] instead, under a comment
+     saying no per-theme override was needed. That was true of the value and
+     false of the placement. `main.tsx` stamps `data-theme` on the root before
+     first render (dark by default), and a `data-theme="dark"` root matches
+     neither `[data-theme="light"]` nor anything else that declared these — so
+     both names were undefined, `var()` with no fallback is invalid at
+     computed-value time, and every rule reading them was dropped: every
+     .station-dialog (i.e. every Dialog), .command-palette, .modal-dialog,
+     .agent-selector__menu and .acp-add-dialog rendered square and flat.
+     (`.toast` at :1029 reads --elevation-overlay too but has no live surface;
+     the notification card is `.toast-card`, which sets its own shadow.)
+
+     `:root` is the half of this selector that carries the fix, and it carries
+     it for EVERY theme: it matches unconditionally, so one declaration here
+     covers dark, light, and the unstamped first frame. `[data-theme="dark"]`
+     is redundant beside it — it only re-matches a subset — and is present
+     because it is this block's existing selector, not because it guards
+     anything. Both halves were removed in a live browser and re-read to settle
+     it rather than argue it: dropping `[data-theme="dark"]` changed nothing in
+     any of the three states; dropping `:root` left dark correct and returned
+     `""` under `[data-theme="light"]` and on an unstamped root — the same
+     defect, mirrored. So narrowing this selector is as dangerous as deleting
+     the lines, and it fails in the theme you are least likely to be looking at.
+
+     What does NOT restore the defect is re-adding the pair to the light block
+     on top of this one; that is duplication and renders identically.
+     tests/overlay-elevation-tokens.spec.ts covers all of it — the real
+     `data-theme="dark"` document as the primary case, then light and the
+     unstamped frame, so a narrowed selector reds as loudly as a deletion. */
+  --elevation-overlay: var(--k-elevation-overlay);
+  --radius-overlay: var(--k-radius-overlay);
   --accent-subtle: color-mix(in srgb, var(--k-brand) 6%, transparent);
   --accent-border: color-mix(in srgb, var(--k-brand) 30%, transparent);
 }
@@ -439,13 +510,14 @@
   --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.2);
   --shadow-xl: 0 18px 40px rgba(0, 0, 0, 0.12);
   --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.3);
-  /* Overlay elevation + radius now come from the shared @kontourai/ui token
-     layer (--k-*), so every product tunes lift/roundness in one place. The
-     local aliases keep Station's call sites (var(--elevation-overlay)) stable;
-     --k-elevation-overlay carries its own light/dark variants, so no per-theme
-     override is needed here. */
-  --elevation-overlay: var(--k-elevation-overlay);
-  --radius-overlay: var(--k-radius-overlay);
+  /* --elevation-overlay / --radius-overlay are deliberately absent here. They
+     alias --k-* tokens that resolve on the reading element, and Console Kit
+     already overrides --k-elevation-overlay under this same selector, so the
+     `:root` declaration above resolves to the light shadow on a light root —
+     measured. Re-adding them here would render identically; it is duplication,
+     not a fix. #1637 was the opposite shape: they were declared ONLY here, so a
+     `data-theme="dark"` root (what `main.tsx` stamps by default) matched no
+     declaration at all and every overlay lost its radius and its lift. */
 
   /* Semantic aliases */
   --color-bg: var(--bg-primary);
@@ -572,20 +644,6 @@ button:hover {
   padding-top: var(--safe-top);
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
-}
-
-/* macOS overlay title bar (archive#3316): in the single-column layout the
-   toolbar spans the window's full width, so its first control (the
-   hamburger) sat under the native traffic lights. --titlebar-inset-left is
-   stamped on the root by PlatformBootstrap (80px on the macOS desktop
-   shell, unset everywhere else); max() keeps the normal 14px gutter for
-   browsers and non-mac shells. The two-column desktop layout is covered by
-   the sidebar's own is-desktop-mac rules (ProjectSidebar.css), which inset
-   the corner the sidebar occupies instead. */
-.header-divider {
-  width: 1px;
-  height: 16px;
-  background: var(--border-primary);
 }
 
 /* ── Mobile shared utilities ──
@@ -836,11 +894,80 @@ button:hover {
 
 /* Shared modal/drawer geometry. Surfaces opt in without changing their desktop
    presentation; the mobile rule binds them to the visual viewport so the
-   software keyboard cannot push actions below the reachable screen. */
+   software keyboard cannot push actions below the reachable screen.
+ *
+ * #1638/#1662: the layer below is the `layer` prop every consumer of
+ * `ResponsiveDialogSurface` is REQUIRED to declare, keyed off the attribute
+ * the component stamps from it, so the number a surface gets is the kind its
+ * author named rather than whatever its feature stylesheet happened to say.
+ *
+ * The `!important` is load-bearing. Method, because the outcome alone does not
+ * establish the cause: for each overlay below, the computed z-index is read in
+ * Chromium twice — once as declared, once with `!important` stripped from
+ * these three declarations only — AND once on the feature class ALONE. That
+ * third reading is what discriminates. Without it, "unaffected by
+ * `!important`" is equally well explained by the feature rule never applying
+ * at that viewport, which is exactly the trap the last entry sits in.
+ *
+ * SIX overlays that carry this class set a z-index of their own below the dock
+ * (`--layer-dock` 9200; `--layer-notification` 9400). The `!important`
+ * arbitrates FIVE:
+ *
+ *   selector                          alone   +class   stripped
+ *   .tool-call-batch-sheet__overlay    1000    10000       1000
+ *   .delegation-launcher__overlay        35    10000         35
+ *   .command-launcher__overlay           30    10000         30
+ *   .active-work-frame__overlay          20    10000         20
+ *   .drill-down-overlay                1000    10000       1000
+ *
+ * The first four are later than this rule in the built entry stylesheet
+ * (measured: +24 to +55 KB past it) at equal specificity — single class
+ * against single class — so without `!important` source order hands them the
+ * feature value. `.drill-down-overlay` is not in the entry sheet at all; it
+ * rides a lazily loaded chunk, and the reading above composes that chunk
+ * AFTER the entry sheet, which is the order a dynamic import produces. That
+ * ordering is the condition for its row, so it is stated rather than implied.
+ *
+ * Every surface portals to the body now, so one reading its feature value
+ * would land behind the dock entirely rather than being clamped by it.
+ *
+ * The sixth, `.mobile-task-switcher__overlay`, is UNAFFECTED either way, and
+ * its cause is source order rather than `!important` — which took the third
+ * reading to establish. Its `z-index: 70` lives inside the shell mobile
+ * breakpoint (the one `useIsMobile` keeps in lockstep: max-width 768px, or a
+ * coarse pointer under 540px tall — spelled out rather than quoted verbatim,
+ * because the lockstep scanner reads this file as source text and cannot tell
+ * a quoted at-rule in prose from a real one). At a desktop viewport it does
+ * not apply at all, so any conclusion drawn there is about a rule that was
+ * never in the cascade. Measured at 390x844,
+ * where it IS live: alone it computes 70, so the rule applies; with this class
+ * it computes 10000 both as declared and with `!important` stripped. Its rule
+ * sits ~68 KB EARLIER than this one, so at equal specificity this rule already
+ * wins on order. Do not cite it as justification for these declarations.
+ *
+ * One overlay, `.plugins__confirm-overlay`, asks for `--layer-dialog + 1` to
+ * cover a sibling dialog. The `!important` already defeated that before the
+ * portal, so it is inert now exactly as it was then — a stacked confirm
+ * resolves against its sibling by DOM order, which is what it already did.
+ *
+ * The remaining overlays that carry this class have nothing to arbitrate, but
+ * not for the reason an earlier draft of this comment gave: it said they
+ * declare `--layer-dialog` themselves, and seven of them declare no z-index at
+ * all (`.request-inspection-overlay`, `.composer-popover-overlay`,
+ * `.background-tasks-sheet-overlay`, `.first-run-chapter__overlay`,
+ * `.agent-actions-overlay`, `.learning-source-overlay`,
+ * `.basis-pane-fallback-overlay`). They compute automatically and take
+ * whatever these rules give them, which is a different fact with the same
+ * consequence. The rest do declare `--layer-dialog`, so they agree with these
+ * rules by coincidence rather than by arbitration. */
 .responsive-surface-overlay {
   --responsive-visual-viewport-height: 100dvh;
   --responsive-visual-viewport-top: 0px;
   z-index: var(--layer-dialog) !important;
+}
+
+.responsive-surface-overlay[data-responsive-layer="popover"] {
+  z-index: var(--layer-surface-popover) !important;
 }
 
 .responsive-surface-overlay[data-responsive-layer="system"] {
@@ -1433,6 +1560,8 @@ button:hover {
    of the viewport — the S4 lesson), and an `overflow: auto` on the shell
    root would clip that menu at the dock's top edge. */
 .dock-slot__body {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
@@ -1525,16 +1654,6 @@ button:hover {
 .chat-dock__resize-handle:hover::after,
 .chat-dock__resize-handle:focus-visible::after {
   background: var(--text-inverted);
-}
-
-.chat-dock__resize-handle--horizontal {
-  top: 0;
-  bottom: 0;
-  left: 0;
-  right: auto;
-  width: 6px;
-  height: auto;
-  cursor: ew-resize;
 }
 
 /* Rotated grip for the side-panel (width) handle. */
@@ -5604,10 +5723,36 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   margin-bottom: 6px;
 }
 
-.usage-telemetry-disclosure__lede {
+.usage-telemetry-disclosure__lede,
+.usage-telemetry-disclosure__summary {
   color: var(--text-secondary);
   line-height: 1.6;
   margin-bottom: 20px;
+}
+
+/*
+ * #1600: the standalone disclosure holds the inventory behind the same
+ * collapsed summary the first-run step does, and offers the same two named
+ * decisions. Its rules live here rather than in `FirstRunHomeChapter.css`
+ * because this surface is mounted by `OnboardingGate` and by Settings, neither
+ * of which loads the chapter's stylesheet.
+ */
+.usage-telemetry-disclosure__inventory {
+  margin-bottom: 16px;
+}
+
+.usage-telemetry-disclosure__inventory > summary {
+  cursor: pointer;
+  padding: 8px 0;
+  color: var(--text-secondary);
+}
+
+.usage-telemetry-disclosure__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 16px;
 }
 
 .usage-telemetry-disclosure__event + .usage-telemetry-disclosure__event {
@@ -6443,6 +6588,14 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     flex-direction: column;
   }
 
+  /* macOS overlay title bar (archive#3316): in the single-column layout the
+     toolbar spans the window's full width, so its first control (the
+     hamburger) sat under the native traffic lights. --titlebar-inset-left is
+     stamped on the root by PlatformBootstrap (80px on the macOS desktop
+     shell, unset everywhere else); max() keeps the normal 14px gutter for
+     browsers and non-mac shells. The two-column desktop layout is covered by
+     the sidebar's own is-desktop-mac rules (ProjectSidebar.css), which inset
+     the corner the sidebar occupies instead. */
   .app-toolbar {
     padding-left: max(14px, var(--titlebar-inset-left, 0px));
   }
@@ -7660,15 +7813,16 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     grid-template-rows: auto minmax(0, 1fr) var(--region-bottom-track, 0);
   }
 
+  /* Each side track reads its OWN width. A single-side width alias used to
+     sit in this fallback chain naming one width for both sides, so it
+     DECLARED one side's number as the other side's fallback; it is retired
+     (#1374). The literal is the `chatDockWidth` device-setting default. */
   .app__main:has(> [data-region="left"]) {
-    --region-left-track: var(--region-left-size, var(--chat-dock-width, 400px));
+    --region-left-track: var(--region-left-size, 400px);
   }
 
   .app__main:has(> [data-region="right"]) {
-    --region-right-track: var(
-      --region-right-size,
-      var(--chat-dock-width, 400px)
-    );
+    --region-right-track: var(--region-right-size, 400px);
   }
 
   .app__main:has(> [data-region="bottom"]) {

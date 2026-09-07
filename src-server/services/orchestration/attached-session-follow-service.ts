@@ -34,7 +34,7 @@ const MAX_SEEN_EVENT_IDS = 2_048;
 interface FollowState {
   ownership: 'attached' | 'collision';
   seen: Map<string, true>;
-  cursors: Map<string, { sourceHandle: string; cursor: AttachedSessionCursor }>;
+  cursors: Map<string, AttachedSessionCursorOwner>;
   /**
    * The attribution the PERSISTED log already expresses, read once when this
    * thread is first followed in this process. Without it the fingerprinted
@@ -63,6 +63,13 @@ const ATTACHED_SESSION_CURSOR_KIND = 'station.attached-session-cursor/v1';
 interface PersistedAttachedSessionCursor {
   kind: typeof ATTACHED_SESSION_CURSOR_KIND;
   provider: string;
+  sourceHandle: string;
+  cursor: AttachedSessionCursor;
+}
+
+interface AttachedSessionCursorOwner {
+  provider: string;
+  sourceKind: string;
   sourceHandle: string;
   cursor: AttachedSessionCursor;
 }
@@ -227,6 +234,7 @@ export class AttachedSessionFollowService {
   private readonly adoptionLedger: AdoptionLedger;
 
   constructor(private readonly options: AttachedSessionFollowServiceOptions) {
+    assertUniqueAttachedSessionSourceKinds(options.sources);
     this.adoptionLedger =
       options.adoptionLedger ?? options.eventStore.createAdoptionLedger();
     this.pollIntervalMs = boundedPollInterval(
@@ -305,6 +313,13 @@ export class AttachedSessionFollowService {
       });
       let followedSessions = 0;
       for (const session of discovered.sessions) {
+        if (session.provider !== source.provider) {
+          attachedSessionDiscovery.add(1, {
+            source: sourceLabel(source),
+            outcome: 'rejected_candidate',
+          });
+          continue;
+        }
         const attribution = resolveAttachedProjectRoot(
           session.cwd,
           projectRoots,
@@ -335,7 +350,7 @@ export class AttachedSessionFollowService {
     descriptor: AttachedSessionDescriptor,
     attribution: Exclude<AttachedProjectAttribution, { state: 'unattributed' }>,
   ): Promise<void> {
-    const state = this.followState(descriptor);
+    const state = this.followState(source, descriptor);
     // archive#1997: one persisted-sessions snapshot for both the ownership
     // check and the alias lookup — this ran up to four separate full
     // `readSessions()` scans per followed session per 2s tick (two here, up
@@ -375,36 +390,41 @@ export class AttachedSessionFollowService {
       state.storedAttribution = fingerprint;
     }
 
-    const priorCursor = state.cursors.get(source.provider);
+    const priorCursor = state.cursors.get(sourceCursorKey(source));
+    const reusableCursor = cursorMatchesSource(priorCursor, source, descriptor)
+      ? priorCursor.cursor
+      : undefined;
     let read: AttachedSessionReadResult;
     try {
-      read = await source.read(
-        descriptor,
-        priorCursor?.sourceHandle === descriptor.sourceHandle
-          ? priorCursor.cursor
-          : undefined,
-      );
+      read = await source.read(descriptor, reusableCursor);
+      if (!validAttachedSessionCursor(read.cursor)) {
+        throw new Error('Attached session source returned an invalid cursor.');
+      }
+      if (
+        read.events.some(
+          (event) =>
+            event.provider !== source.provider ||
+            event.threadId !== descriptor.threadId,
+        )
+      ) {
+        throw new Error(
+          'Attached session source returned an out-of-scope event.',
+        );
+      }
     } catch {
       // Preserve an already durable cursor even when this observation fails.
       // A later successful poll can continue without replaying the source.
-      this.persistAttachedSession(descriptor, priorCursor?.cursor);
+      this.persistAttachedSession(source, descriptor, reusableCursor);
       attachedSessionDiscovery.add(1, {
         source: sourceLabel(source),
         outcome: 'unknown_source',
       });
       return;
     }
-    state.cursors.set(source.provider, {
-      sourceHandle: descriptor.sourceHandle,
-      cursor: read.cursor,
-    });
-    // The source cursor used to be process-local. A cold restart therefore
-    // reparsed every bounded transcript page from every attached session,
-    // repeatedly issuing indexed duplicate lookups until it caught up. Persist
-    // the opaque offset together with the discovery snapshot's opaque handle;
-    // a moved/replaced source gets a different handle and safely restarts from
-    // its bounded recent window (archive#1997).
-    this.persistAttachedSession(descriptor, read.cursor);
+    // Persist attachment metadata before importing, but advance neither durable
+    // nor in-memory progress until the whole page is stored. An interrupted
+    // page then replays through existing event-id deduplication without loss.
+    this.persistAttachedSession(source, descriptor, reusableCursor);
     // Legacy rows and a source whose opaque handle changed still replay one
     // bounded transcript window. Discard durable ids with one indexed read per
     // batch instead of making each duplicate enter appendEventIfAbsent's
@@ -437,9 +457,19 @@ export class AttachedSessionFollowService {
         await yieldEventLoop();
       }
     }
+    this.persistAttachedSession(source, descriptor, read.cursor);
+    state.cursors.set(sourceCursorKey(source), {
+      provider: source.provider,
+      sourceKind: source.kind,
+      sourceHandle: descriptor.sourceHandle,
+      cursor: read.cursor,
+    });
   }
 
-  private followState(descriptor: AttachedSessionDescriptor): FollowState {
+  private followState(
+    source: AttachedSessionSource,
+    descriptor: AttachedSessionDescriptor,
+  ): FollowState {
     const cached = this.followStates.get(descriptor.threadId);
     if (cached) {
       const persistedSessions = this.options.eventStore.readSessions();
@@ -495,7 +525,7 @@ export class AttachedSessionFollowService {
           ? 'collision'
           : 'attached',
       seen: new Map(),
-      cursors: restoredAttachedSessionCursors(persisted, descriptor),
+      cursors: restoredAttachedSessionCursors(persisted, source, descriptor),
       ...persistedEnvelopeFacts(configuredEvents, {
         latestEventAt: this.options.eventStore.latestEventCreatedAtByThread(
           descriptor.threadId,
@@ -533,11 +563,12 @@ export class AttachedSessionFollowService {
   }
 
   private persistAttachedSession(
+    source: AttachedSessionSource,
     descriptor: AttachedSessionDescriptor,
     cursor?: AttachedSessionCursor,
   ): void {
     const attached = {
-      kind: 'claude-transcript',
+      kind: source.kind,
       externalSessionId: descriptor.sessionId,
     };
     const session = {
@@ -591,6 +622,7 @@ export class AttachedSessionFollowService {
 
 function restoredAttachedSessionCursors(
   persisted: ProviderSession | undefined,
+  source: AttachedSessionSource,
   descriptor: AttachedSessionDescriptor,
 ): FollowState['cursors'] {
   const cursors: FollowState['cursors'] = new Map();
@@ -606,16 +638,50 @@ function restoredAttachedSessionCursors(
   if (
     record.kind !== ATTACHED_SESSION_CURSOR_KIND ||
     record.provider !== descriptor.provider ||
+    persisted.attachedSource?.kind !== source.kind ||
     record.sourceHandle !== descriptor.sourceHandle ||
     !validAttachedSessionCursor(record.cursor)
   ) {
     return cursors;
   }
-  cursors.set(descriptor.provider, {
+  cursors.set(sourceCursorKey(source), {
+    provider: source.provider,
+    sourceKind: source.kind,
     sourceHandle: descriptor.sourceHandle,
     cursor: record.cursor,
   });
   return cursors;
+}
+
+function sourceCursorKey(source: AttachedSessionSource): string {
+  return JSON.stringify([source.provider, source.kind]);
+}
+
+function assertUniqueAttachedSessionSourceKinds(
+  sources: readonly AttachedSessionSource[],
+): void {
+  const seen = new Set<string>();
+  for (const source of sources) {
+    const key = JSON.stringify([source.provider, source.kind]);
+    if (seen.has(key)) {
+      throw new Error(
+        `Duplicate attached session source implementation: ${source.provider}/${source.kind}`,
+      );
+    }
+    seen.add(key);
+  }
+}
+
+function cursorMatchesSource(
+  cursor: AttachedSessionCursorOwner | undefined,
+  source: AttachedSessionSource,
+  descriptor: AttachedSessionDescriptor,
+): cursor is AttachedSessionCursorOwner {
+  return (
+    cursor?.provider === source.provider &&
+    cursor.sourceKind === source.kind &&
+    cursor.sourceHandle === descriptor.sourceHandle
+  );
 }
 
 function validAttachedSessionCursor(
@@ -638,11 +704,56 @@ function validAttachedSessionCursor(
       value.usageAggregationVersion === 1) &&
     (value.usageDeferred === undefined ||
       typeof value.usageDeferred === 'boolean') &&
+    validSourceCursorState(value.sourceState) &&
     validUsageAccumulator(value.usage) &&
     (value.turnId === undefined ||
       value.usage === undefined ||
       (value.usage as { turnId: string }).turnId === value.turnId)
   );
+}
+
+/** Bound opaque source codec state without teaching the follower provider formats. */
+function validSourceCursorState(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  let values = 0;
+  let bytes = 0;
+  const visit = (entry: unknown, depth: number): boolean => {
+    if (++values > 1024 || depth > 8) return false;
+    if (entry === null || typeof entry === 'boolean') {
+      bytes += 5;
+      return true;
+    }
+    if (typeof entry === 'number') {
+      bytes += 24;
+      return Number.isFinite(entry);
+    }
+    if (typeof entry === 'string') {
+      bytes += Buffer.byteLength(entry, 'utf8') * 6 + 2;
+      return bytes <= 128 * 1024;
+    }
+    if (!entry || typeof entry !== 'object') return false;
+    if (Array.isArray(entry)) {
+      if (entry.length > 1024) return false;
+      bytes += entry.length + 2;
+      return entry.every((item) => visit(item, depth + 1));
+    }
+    if (
+      Object.getPrototypeOf(entry) !== Object.prototype &&
+      Object.getPrototypeOf(entry) !== null
+    )
+      return false;
+    const keys = Object.keys(entry);
+    if (keys.length > 128) return false;
+    bytes += keys.length * 3 + 2;
+    return keys.every(
+      (key) =>
+        key.length <= 128 &&
+        visit(key, depth + 1) &&
+        visit((entry as Record<string, unknown>)[key], depth + 1),
+    );
+  };
+  return visit(value, 0) && bytes <= 128 * 1024;
 }
 
 function validUsageAccumulator(value: unknown): boolean {
@@ -1148,7 +1259,7 @@ function isContainedBy(candidate: string, root: string): boolean {
 }
 
 function sourceLabel(source: AttachedSessionSource): string {
-  return source.provider === 'claude' ? 'claude-transcript' : 'unknown';
+  return source.kind;
 }
 
 function rememberEvent(

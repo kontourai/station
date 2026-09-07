@@ -562,7 +562,8 @@ type ClaudeSessionRecord = {
    * (`claude-adapter-events.ts`) — same object at runtime, declared here too
    * so `consumeMessages`' catch can read it. See that field's docblock.
    */
-  terminalResultObserved?: boolean;
+  terminalResultObserved?: 'failed' | 'binding-dead';
+  attemptedResumeCursor?: string;
 };
 
 function adoptionTitle(threadId: string): string {
@@ -1083,6 +1084,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
     const record: ClaudeSessionRecord = {
       session,
+      attemptedResumeCursor:
+        typeof input.resumeCursor === 'string' ? input.resumeCursor : undefined,
       promptQueue,
       query: sdkQuery,
       pendingRequests: new Map(),
@@ -1195,6 +1198,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
     const record = this.requireSession(input.threadId);
+    if (record.session.status === 'error' || record.session.status === 'dead') {
+      throw new ProviderTurnEndedError();
+    }
     const turnId = crypto.randomUUID();
     record.activeTurnId = turnId;
     // archive#1182: a fresh turn has not reported anything yet — clear the
@@ -1340,7 +1346,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       }
     }
 
-    record.promptQueue.push({
+    const enqueued = record.promptQueue.push({
       type: 'user',
       message: {
         role: 'user',
@@ -1351,6 +1357,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       uuid: turnId,
       timestamp: new Date().toISOString(),
     });
+    if (!enqueued) throw new ProviderTurnEndedError();
     // An allocated ID is not enough to attribute an inbound SDK result: a
     // resume/init handshake can arrive while async setup above is in flight.
     // Arm completion provenance only after this turn's prompt is queued.
@@ -2275,12 +2282,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   ): Promise<void> {
     try {
       for await (const message of record.query) {
-        // `interruptedResultObserved` suppresses only the iterator rejection
+        // Result markers suppress only the iterator rejection
         // immediately following the consumed result. If the iterator yields
         // another message instead, that proves there was no wrapper to
         // suppress and the marker must not leak into a later failure.
         record.interruptedResultObserved = false;
+        record.terminalResultObserved = undefined;
         this.mapMessage(record, message);
+        if (record.terminalResultObserved) record.promptQueue.close();
       }
       record.interruptedResultObserved = false;
     } catch (error) {
@@ -2293,7 +2302,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         return;
       }
       // archive#1827: once `mapMessage` has already published a structured
-      // `runtime.error` for a `terminal`-classified `result` message
+      // `runtime.error` for a failed `result` message
       // (`classifyClaudeResultOutcome`, `claude-adapter-events.ts`), the SDK
       // re-throws the SAME underlying failure a moment later as a generic
       // wrapped Error when the `claude` CLI process exits (its own
@@ -2303,9 +2312,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // again" shape this ticket exists to fix — skip it here; the
       // structured event already told the caller everything this generic
       // catch would, and (unlike this catch) also carried the terminal
-      // classification the recovery path acts on.
+      // query-versus-binding classification.
       if (record.terminalResultObserved) {
-        record.session.status = 'dead';
+        record.session.status =
+          record.terminalResultObserved === 'binding-dead' ? 'dead' : 'error';
         return;
       }
       const detail = error instanceof Error ? error.message : String(error);
@@ -2322,6 +2332,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         message,
       });
       record.session.status = 'error';
+      record.promptQueue.close();
     }
   }
 

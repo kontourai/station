@@ -135,6 +135,7 @@ export function LayoutsSection({ slug }: { slug: string }) {
 
       {showAdd && (
         <ResponsiveDialogSurface
+          layer="dialog"
           onClose={() => setShowAdd(false)}
           ariaLabelledBy="project-settings-add-layout-title"
           overlayClassName="project-dashboard__modal-overlay"

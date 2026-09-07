@@ -55,6 +55,7 @@ clearly mark the stale document.
 - **[Architecture](architecture/)** — current module boundaries and ownership.
 - **[Cloud move](design/cloud-move.md)** — setup preview, AWS preparation, and
   the staged path to verified execution handoff.
+- **[Personal transfer controller](guides/home-transfer-controller.md)** — explicit pairing, authenticated remote room bindings, and current preparation limits.
 - **[Workspace packages](guides/workspace-packages.md)** — encrypted Git checkout copies between hosts, supported content, and recovery.
 - **[Private cloud environment](design/private-cloud-environment.md)** — working
   single-VM deployment and execution design.

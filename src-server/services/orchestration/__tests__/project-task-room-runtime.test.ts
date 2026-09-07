@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { HomeTransferClosingSeal } from '@kontourai/station-contracts/cloud-move';
 import type {
   ProjectTaskRoomAuthority,
   ProjectTaskRoomGrant,
@@ -20,8 +21,10 @@ import {
   LiveWorkSession,
 } from '../../../domain/live-work-session.js';
 import { SharedWorkingState } from '../../../domain/shared-working-state.js';
+import { TaskGraphService } from '../../projects/task-graph-service.js';
 import { EventStore } from '../event-store.js';
 import { projectTaskRoomDocumentId } from '../project-task-room-document-id.js';
+import { projectTaskRoomChannelId } from '../project-task-room-history.js';
 import {
   canCollectLiveActivityRoom,
   LIVE_ACTIVITY_MAX_ROOM_SCAN,
@@ -336,6 +339,10 @@ function fixture(
       | { kind: 'unavailable' }
     >;
     requestAuthority?: ProjectTaskRoomRequestAuthority;
+    readSourceSeal?: () => Promise<
+      | { kind: 'sealed'; seal: HomeTransferClosingSeal }
+      | { kind: 'unsealed' | 'denied' | 'unavailable' }
+    >;
   } = {},
 ) {
   const calls: unknown[] = [];
@@ -345,7 +352,12 @@ function fixture(
   let watches = 0;
   let unwatches = 0;
   let revoked = false;
-  const room: ProjectTaskRoomAuthority = {
+  const readSourceSeal = options.readSourceSeal
+    ? vi.fn(options.readSourceSeal)
+    : undefined;
+  const room: ProjectTaskRoomAuthority & {
+    readSourceSeal?: NonNullable<typeof readSourceSeal>;
+  } = {
     open: async () => ({
       kind: 'opened',
       scope: {
@@ -394,6 +406,7 @@ function fixture(
       };
     },
     close: async () => ({ kind: 'closed' }),
+    ...(readSourceSeal ? { readSourceSeal } : {}),
   };
   const runtime = new ProjectTaskRoomRuntime({
     taskGraph: { readTaskView: (id) => (id === task.id ? task : null) },
@@ -484,10 +497,402 @@ function fixture(
     recoveryValues: () => recoveryValues,
     watches: () => watches,
     unwatches: () => unwatches,
+    readSourceSeal,
   };
 }
 
 describe('ProjectTaskRoomRuntime', () => {
+  test('inspects exact transfer room identity without opening or publishing the room', async () => {
+    const inspectionFixture = async (
+      mode:
+        | 'granted'
+        | 'revoked'
+        | 'absent'
+        | 'changed-principal'
+        | 'moved-scope' = 'granted',
+      hosted = false,
+    ) => {
+      const root = mkdtempSync(join(tmpdir(), 'station-room-inspection-'));
+      directories.push(root);
+      const graph = new TaskGraphService(root, {
+        projectService: {
+          getProject: (slug) => ({
+            id: slug,
+            slug,
+            name: slug,
+            workingDirectory: root,
+            createdAt: '2026-09-06T00:00:00.000Z',
+            updatedAt: '2026-09-06T00:00:00.000Z',
+          }),
+        },
+      });
+      const record = await graph.createTask(
+        { projectId: 'project-1', title: 'Transfer room' },
+        undefined,
+        '11111111-1111-4111-8111-111111111111',
+      );
+      let projectSlug = 'project';
+      let resolutions = 0;
+      const seenRequests: Request[] = [];
+      const historyEffects = {
+        open: vi.fn(async () => ({ kind: 'unavailable' as const })),
+        read: vi.fn(async () => ({ kind: 'unavailable' as const })),
+        append: vi.fn(async () => ({ kind: 'unavailable' as const })),
+        sealSource: vi.fn(async () => ({ kind: 'unavailable' as const })),
+        close: vi.fn(async () => ({ kind: 'closed' as const })),
+      };
+      const publicationEffects = {
+        settle: vi.fn(async () => ({ kind: 'unavailable' as const })),
+        recovery: vi.fn(async () => 'unavailable' as const),
+        markRevisionPublication: vi.fn(async () => 'unavailable' as const),
+        removeRevisionPublication: vi.fn(async () => 'unavailable' as const),
+        agentLifecycle: vi.fn(async () => 'unavailable' as const),
+        removeAgentLifecycle: vi.fn(async () => 'unavailable' as const),
+      };
+      const runtime = new ProjectTaskRoomRuntime({
+        taskGraph: graph,
+        projectForId: (id) =>
+          id === record.projectId
+            ? { id: record.projectId, slug: projectSlug }
+            : undefined,
+        history: () => historyEffects,
+        working: {
+          read: vi.fn(async () => ({ kind: 'unavailable' as const })),
+          settle: publicationEffects.settle,
+          receipt: vi.fn(async () => ({ kind: 'missing' as const })),
+          readRevisionPublication: vi.fn(async () => ({
+            kind: 'missing' as const,
+          })),
+          markRevisionPublication: publicationEffects.markRevisionPublication,
+          removeRevisionPublication:
+            publicationEffects.removeRevisionPublication,
+          recovery: publicationEffects.recovery,
+          readRecovery: vi.fn(async () => ({ kind: 'unavailable' as const })),
+          privateSnapshot: vi.fn(async () => undefined),
+          agentLifecycle: publicationEffects.agentLifecycle,
+          readAgentLifecycles: vi.fn(async () => []),
+          removeAgentLifecycle: publicationEffects.removeAgentLifecycle,
+          watch: vi.fn(() => () => {}),
+          close: vi.fn(async () => {}),
+        },
+        hosted: () => hosted,
+        requestAuthority: {
+          resolve: async (request) => {
+            seenRequests.push(request);
+            resolutions += 1;
+            if (mode === 'revoked') return { kind: 'revoked' as const };
+            if (mode === 'absent') return { kind: 'unavailable' as const };
+            if (mode === 'moved-scope' && resolutions === 2)
+              projectSlug = 'moved-project';
+            return {
+              kind: 'granted' as const,
+              operatorId: 'operator-1',
+              deviceId:
+                mode === 'changed-principal' && resolutions === 2
+                  ? 'device-2'
+                  : 'device-1',
+              policyRevision: 'pairing-v1',
+            };
+          },
+        },
+      });
+      return {
+        historyEffects,
+        publicationEffects,
+        record,
+        request: new Request('http://station.test/transfer-room'),
+        runtime,
+        seenRequests,
+      };
+    };
+
+    const granted = await inspectionFixture();
+    await expect(
+      granted.runtime.inspectTransferRoom({
+        taskId: granted.record.id,
+        request: granted.request,
+      }),
+    ).resolves.toEqual({
+      kind: 'available',
+      taskId: granted.record.id,
+      channelId: projectTaskRoomChannelId({
+        projectId: granted.record.projectId,
+        projectSlug: 'project',
+        taskId: granted.record.id,
+      }),
+    });
+    expect(granted.seenRequests).toEqual([granted.request, granted.request]);
+    await expect(
+      granted.runtime.inspectTransferRoom({
+        taskId: 'unknown-task',
+        request: granted.request,
+      }),
+    ).resolves.toEqual({ kind: 'not-found' });
+
+    const moved = await inspectionFixture('moved-scope');
+    await expect(
+      moved.runtime.inspectTransferRoom({
+        taskId: moved.record.id,
+        request: moved.request,
+      }),
+    ).resolves.toEqual({ kind: 'not-found' });
+
+    const inspected = [granted, moved];
+    for (const mode of ['revoked', 'absent', 'changed-principal'] as const) {
+      const denied = await inspectionFixture(mode);
+      inspected.push(denied);
+      await expect(
+        denied.runtime.inspectTransferRoom({
+          taskId: denied.record.id,
+          request: denied.request,
+        }),
+      ).resolves.toEqual({ kind: 'denied' });
+    }
+
+    const hosted = await inspectionFixture('granted', true);
+    await expect(
+      hosted.runtime.inspectTransferRoom({
+        taskId: hosted.record.id,
+        request: hosted.request,
+      }),
+    ).resolves.toEqual({ kind: 'unavailable' });
+    expect(hosted.seenRequests).toEqual([]);
+    inspected.push(hosted);
+
+    const closed = await inspectionFixture();
+    await closed.runtime.close();
+    await expect(
+      closed.runtime.inspectTransferRoom({
+        taskId: closed.record.id,
+        request: closed.request,
+      }),
+    ).resolves.toEqual({ kind: 'unavailable' });
+    expect(closed.seenRequests).toEqual([]);
+    inspected.push(closed);
+
+    for (const item of inspected) {
+      expect(item.historyEffects.open).not.toHaveBeenCalled();
+      expect(item.historyEffects.read).not.toHaveBeenCalled();
+      expect(item.historyEffects.append).not.toHaveBeenCalled();
+      expect(item.historyEffects.sealSource).not.toHaveBeenCalled();
+      for (const effect of Object.values(item.publicationEffects))
+        expect(effect).not.toHaveBeenCalled();
+    }
+  });
+
+  test('observes only an exact source seal and revalidates request authority after the read', async () => {
+    const channelId = projectTaskRoomChannelId({
+      projectId: task.projectId,
+      projectSlug: 'project',
+      taskId: task.id,
+    });
+    const seal: HomeTransferClosingSeal = {
+      operationId: 'operation-1',
+      sourceHomeRef: 'home:source',
+      targetHomeRef: 'home:target',
+      checkpoint: {
+        channelId,
+        epoch: 0,
+        throughSeq: 0,
+        checkpointDigest: 'a'.repeat(64),
+        retainedAnchorSeq: 0,
+        retainedAnchorDigest: 'b'.repeat(64),
+      },
+      workingStateDigest: 'c'.repeat(64),
+    };
+    const input = {
+      taskId: task.id,
+      request: new Request('http://station.test/source-seal'),
+      channelId,
+      operationId: seal.operationId,
+      sourceHomeRef: seal.sourceHomeRef,
+      targetHomeRef: seal.targetHomeRef,
+    };
+
+    const exact = fixture({
+      readSourceSeal: async () => ({ kind: 'sealed', seal }),
+    });
+    await expect(exact.runtime.readTransferSourceSeal(input)).resolves.toEqual({
+      kind: 'sealed',
+      seal,
+    });
+    expect(exact.readSourceSeal).toHaveBeenCalledTimes(1);
+
+    for (const changed of [
+      { operationId: 'operation-2' },
+      { sourceHomeRef: 'home:elsewhere' },
+      { targetHomeRef: 'home:elsewhere' },
+    ]) {
+      const mismatch = fixture({
+        readSourceSeal: async () => ({ kind: 'sealed', seal }),
+      });
+      await expect(
+        mismatch.runtime.readTransferSourceSeal({ ...input, ...changed }),
+      ).resolves.toEqual({ kind: 'conflict' });
+    }
+
+    const wrongChannel = fixture({
+      readSourceSeal: async () => ({ kind: 'sealed', seal }),
+    });
+    await expect(
+      wrongChannel.runtime.readTransferSourceSeal({
+        ...input,
+        channelId: 'wrong-channel',
+      }),
+    ).resolves.toEqual({ kind: 'conflict' });
+    expect(wrongChannel.readSourceSeal).not.toHaveBeenCalled();
+
+    const unsealed = fixture({
+      readSourceSeal: async () => ({ kind: 'unsealed' }),
+    });
+    await expect(
+      unsealed.runtime.readTransferSourceSeal(input),
+    ).resolves.toEqual({ kind: 'unsealed' });
+
+    let resolveCalls = 0;
+    const revoked = fixture({
+      readSourceSeal: async () => ({ kind: 'sealed', seal }),
+      requestAuthority: {
+        resolve: async () =>
+          ++resolveCalls <= 2
+            ? {
+                kind: 'granted' as const,
+                operatorId: 'operator-1',
+                deviceId: 'device-1',
+                policyRevision: 'pairing-v1',
+              }
+            : { kind: 'revoked' as const },
+      },
+    });
+    await expect(
+      revoked.runtime.readTransferSourceSeal(input),
+    ).resolves.toEqual({ kind: 'denied' });
+
+    await expect(
+      fixture().runtime.readTransferSourceSeal(input),
+    ).resolves.toEqual({ kind: 'unavailable' });
+    await expect(
+      fixture({ revoked: true }).runtime.readTransferSourceSeal(input),
+    ).resolves.toEqual({ kind: 'denied' });
+    await expect(
+      fixture({ hosted: true }).runtime.readTransferSourceSeal(input),
+    ).resolves.toEqual({ kind: 'unavailable' });
+    await expect(
+      exact.runtime.readTransferSourceSeal({
+        ...input,
+        taskId: 'missing-task',
+      }),
+    ).resolves.toEqual({ kind: 'not-found' });
+  });
+
+  test('reads the durable source seal through the runtime without changing history', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-runtime-source-seal-'));
+    directories.push(root);
+    const graph = new TaskGraphService(root, {
+      projectService: {
+        getProject: (slug) => ({
+          id: slug,
+          slug,
+          name: slug,
+          workingDirectory: root,
+          createdAt: '2026-09-06T00:00:00.000Z',
+          updatedAt: '2026-09-06T00:00:00.000Z',
+        }),
+      },
+    });
+    const record = await graph.createTask(
+      { projectId: 'project-1', title: 'Sealed source room' },
+      undefined,
+      '22222222-2222-4222-8222-222222222222',
+    );
+    const store = new EventStore(join(root, 'orchestration.sqlite'));
+    const scope = {
+      projectId: record.projectId,
+      projectSlug: 'project',
+      taskId: record.id,
+    };
+    const grant = <K extends ProjectTaskRoomGrantKind>(capability: K) =>
+      Object.freeze({
+        schemaVersion: 'station.project-task-room-grant/v1',
+        capability,
+        opaqueToken: `sealer-${capability}`,
+      }) as ProjectTaskRoomGrant<K>;
+    const source = store.createProjectTaskRoomHistory({
+      capabilities: {
+        resolve: async ({ required }) => ({
+          kind: 'granted' as const,
+          receipt: {
+            receiptId: `sealer-${required}`,
+            capability: required,
+            scope,
+            principal: {
+              kind: 'operator' as const,
+              operatorId: 'operator-1',
+              deviceId: 'device-1',
+            },
+            policyRevision: 'pairing-v1',
+          },
+        }),
+      },
+    });
+    const working = store.createProjectTaskRoomWorkingState();
+    const runtime = new ProjectTaskRoomRuntime({
+      taskGraph: graph,
+      projectForId: (id) =>
+        id === record.projectId ? { id, slug: 'project' } : undefined,
+      history: (authority) =>
+        store.createProjectTaskRoomHistory({
+          capabilities: authority.capabilities,
+          agents: authority.agents,
+        }),
+      working,
+      requestAuthority: {
+        resolve: async () => ({
+          kind: 'granted' as const,
+          operatorId: 'operator-1',
+          deviceId: 'device-1',
+          policyRevision: 'pairing-v1',
+        }),
+      },
+    });
+    try {
+      await expect(
+        source.open({ grant: grant('discover') }),
+      ).resolves.toMatchObject({ kind: 'opened' });
+      const sealed = await source.sealSource({
+        grant: grant('home-transfer'),
+        operationId: 'durable-operation',
+        sourceHomeRef: 'home:source',
+        targetHomeRef: 'home:target',
+      });
+      expect(sealed.kind).toBe('sealed');
+      if (sealed.kind !== 'sealed') throw new Error('Expected source seal');
+      const historyBefore = await source.read({ grant: grant('history-read') });
+
+      await expect(
+        runtime.readTransferSourceSeal({
+          taskId: record.id,
+          request: new Request('http://station.test/source-seal'),
+          channelId: projectTaskRoomChannelId(scope),
+          operationId: 'durable-operation',
+          sourceHomeRef: 'home:source',
+          targetHomeRef: 'home:target',
+        }),
+      ).resolves.toEqual({ kind: 'sealed', seal: sealed.seal });
+
+      expect(await source.read({ grant: grant('history-read') })).toEqual(
+        historyBefore,
+      );
+      expect(
+        await source.readSourceSeal({ grant: grant('history-read') }),
+      ).toEqual(sealed);
+    } finally {
+      await runtime.close();
+      await source.close();
+      store.close();
+    }
+  });
+
   test.each(['stored', 'unavailable'] as const)(
     'agent publication preparation requires the actual %s persistence result',
     async (outcome) => {
