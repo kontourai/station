@@ -20,6 +20,7 @@ import {
   showRegionThroughOverflowMenu,
   surfaceDockShell,
 } from './helpers/region-placement';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 const STATUS_READY = JSON.stringify({
   ready: true,
@@ -100,7 +101,11 @@ const PROVIDERS = [
   },
 ];
 
-function seedRoutes(page: import('@playwright/test').Page) {
+async function seedRoutes(page: import('@playwright/test').Page) {
+  await page.route('**/api/**', async (route) => {
+    if (await fulfillStationShellRead(route)) return;
+    await route.fallback();
+  });
   return Promise.all([
     page.addInitScript(SEED_STORAGE),
     page.route('**/api/system/status', (r) =>

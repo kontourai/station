@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 const runId = 'schedule:built-in:daily-report:log-1';
 const outputRef = {
@@ -13,6 +14,10 @@ async function mockScheduleRunsApi(
   page: import('@playwright/test').Page,
   runOverrides: Record<string, unknown> = {},
 ) {
+  await page.route('**/api/**', async (route) => {
+    if (await fulfillStationShellRead(route)) return;
+    await route.fallback();
+  });
   const job = {
     name: 'daily-report',
     provider: 'built-in',

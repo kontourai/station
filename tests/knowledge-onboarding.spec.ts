@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { openHeaderSettings } from './helpers/orchestration';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -86,6 +87,10 @@ async function mockKnowledgeReadRoutes(
   page: import('@playwright/test').Page,
   options: { status: string; roots: unknown[] },
 ): Promise<void> {
+  await page.route('**/api/**', async (route) => {
+    if (await fulfillStationShellRead(route)) return;
+    await route.fallback();
+  });
   await page.route('**/api/system/status', (route) =>
     route.fulfill({
       status: 200,

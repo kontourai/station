@@ -14,6 +14,7 @@
 import { expect, type Locator, test } from '@playwright/test';
 import { requireE2EOperatorCredential } from './helpers/e2e-operator-credential';
 import { dismissSetupLauncher } from './helpers/orchestration';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 /**
  * Per-connection actions (Edit/Check/Forget) live behind a "More actions"
@@ -75,6 +76,10 @@ function seedConnection(
 
 test.describe('Connection Manager Modal', () => {
   test.beforeEach(async ({ page }) => {
+    await page.route('**/api/**', async (route) => {
+      if (await fulfillStationShellRead(route)) return;
+      await route.fallback();
+    });
     await page.addInitScript(seedConnection());
     await page.route('**/api/system/status', (route) =>
       route.fulfill({
