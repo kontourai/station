@@ -141,8 +141,9 @@ const REGION_ARRANGEMENT_PERSIST_DELAY_MS = 150;
  *
  * 1. A URL deep link, for Chat only: `dockSlotPlacement` PLACES Chat there
  *    (`placeSurface`, relocating whatever held the region by the model's own
- *    rule — the previous Chat region when it may, else the first free dock
- *    region), and `dock=open` shows it. Read from the URL itself, not from
+ *    rule — the previous Chat region when it may, else the displaced
+ *    surface's own default region, else the model's search order), and
+ *    `dock=open` shows it. Read from the URL itself, not from
  *    navigation's blended `dockMode`, which falls back to the device setting.
  * 2. The `regionArrangement` record: every surface's placement, every size,
  *    every visibility — Chat's included when the URL says nothing. A record
