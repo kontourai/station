@@ -205,6 +205,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Drives the changed-verification CLI through spawnSync against a real
   // fixture worktree to prove its dependency and selection behavior.
   'scripts/__tests__/changed-verification.test.ts',
+  // Builds a disposable diverged Git graph and runs real Git commands to
+  // distinguish candidate-only changes from base-only and direct-push ranges.
+  'scripts/__tests__/classify-ci-change.test.ts',
   // #3033: runs the pre-push UI-bundle guardrail as a real child process so
   // its exit STATUS is asserted, not just its pure decision functions — a
   // rejection path that has never executed is unproven.
@@ -713,6 +716,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fix tied on specificity with a rule 90 lines below it and lost on source
   // order while the declaration read correct.
   'src-ui/src/__tests__/menu-primitive.cascade.test.tsx',
+  // #1616: same shape again — launches a real Chromium to measure whether the
+  // workspace pane picker's overlay is taken out of flow using only the entry
+  // stylesheet every route loads. jsdom computes no layout and would report
+  // the pre-fix inline overlay and the fixed one identically.
+  'src-ui/src/workspace-panes/__tests__/ProjectWorkspacePaneCatalog.overlay.test.tsx',
   // #1636: launches a real Chromium to measure whether the workspace pane
   // route's page frame survives on a route that lacks the project-page chunk,
   // composing only the entry stylesheet and the sheets the route's own module

@@ -90,7 +90,13 @@ capacity. The cancellation group supersedes stale runs for the same candidate.
 The macOS job builds an unsigned iOS 26.5 simulator app, installs it on an
 iPhone 17 Pro simulator, and uses native XCUITest against the packaged
 WKWebView accessibility tree. A clean install must leave the startup surface
-and expose the actionable connection screen within 30 seconds. The lane always
+and expose the actionable connection screen within the existing 90-second
+startup budget. Notification-sheet discovery and dismissal share a two-second
+budget; the test reactivates Station only after a sheet was actually dismissed.
+The same bounded post-shell and post-tap checks handle late sheets. A later
+activation failure does not qualify for the initial-launch-only retry policy.
+Screenshot capture is registered before launch and runs before app termination.
+The lane always
 retains its screenshot, Station/unified logs, process snapshot, Xcode result
 bundle, and machine-readable receipt bound to the tested pull-request head,
 merge-group head, or push SHA. No Apple signing identity or developer account
