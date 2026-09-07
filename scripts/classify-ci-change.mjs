@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -33,10 +34,32 @@ const DEPENDENCY_FILES = new Set([
   '.npmrc',
   'package.json',
   'package-lock.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
   'npm-shrinkwrap.json',
 ]);
 
+const IOS_VERIFICATION_FILES = new Set([
+  '.github/workflows/build-ios.yml',
+  'scripts/classify-ci-change.mjs',
+  'scripts/ios-simulator-runtime-smoke.mjs',
+  'scripts/__tests__/ios-simulator-runtime-smoke.test.ts',
+  'package.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
+]);
+const IOS_VERIFICATION_PREFIXES = Object.freeze([
+  'src-desktop/',
+  'src-ui/',
+  'packages/connect/',
+  'packages/contracts/',
+  'packages/sdk/',
+  'tests/ios-runtime-smoke/',
+  'patches/',
+]);
+
 function isDependencyInput(changedPath) {
+  if (changedPath.startsWith('patches/')) return true;
   if (changedPath === 'scripts/dependency-advisory-exceptions.json')
     return true;
   const base = changedPath.slice(changedPath.lastIndexOf('/') + 1);
@@ -63,7 +86,13 @@ function scopesForDependencyInput(changedPath) {
   if (changedPath === 'scripts/dependency-advisory-exceptions.json')
     return null;
   const base = changedPath.slice(changedPath.lastIndexOf('/') + 1);
-  if (base === '.npmrc') return null;
+  if (
+    changedPath.startsWith('patches/') ||
+    base === '.npmrc' ||
+    base === 'pnpm-lock.yaml' ||
+    base === 'pnpm-workspace.yaml'
+  )
+    return null;
   const directory = changedPath.slice(0, changedPath.lastIndexOf('/') + 1);
   for (const [scope, root] of Object.entries(DEPENDENCY_SCOPE_ROOTS)) {
     if (directory === root) return [scope];
@@ -115,6 +144,72 @@ export function classifyChangedPaths(paths) {
   };
 }
 
+export function changedPathsForGitRange({
+  before,
+  after,
+  mode = 'direct',
+  cwd = process.cwd(),
+  gitCommand = execFileSync,
+}) {
+  if (!SHA.test(before) || !SHA.test(after) || before === ZERO_SHA)
+    throw new Error(
+      'before and after must be existing full lowercase Git SHAs',
+    );
+  if (!['candidate', 'direct'].includes(mode))
+    throw new Error('Git change range mode must be candidate or direct');
+  const start =
+    mode === 'candidate'
+      ? gitCommand('git', ['merge-base', '--', before, after], {
+          cwd,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true,
+        }).trim()
+      : before;
+  if (!SHA.test(start)) throw new Error('Git change range has no merge base');
+  const output = gitCommand(
+    'git',
+    ['diff', '--no-renames', '--name-only', '-z', `${start}..${after}`, '--'],
+    {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      // GitHub's Compare API and native path filters expose at most 300 files.
+      // The full checkout is authoritative; an unexpectedly huge diff fails
+      // closed at this explicit memory bound instead of silently truncating.
+      maxBuffer: 16 * 1024 * 1024,
+      windowsHide: true,
+    },
+  );
+  return [...new Set(output.split('\0').filter(Boolean))].sort();
+}
+
+export function classifyIosChangedPaths(paths) {
+  const normalized = [...new Set(paths.filter(Boolean))];
+  return {
+    relevant: normalized.some(
+      (path) =>
+        IOS_VERIFICATION_FILES.has(path) ||
+        IOS_VERIFICATION_PREFIXES.some((prefix) => path.startsWith(prefix)),
+    ),
+    classification: 'classified',
+    changedFiles: normalized.length,
+  };
+}
+
+export function classifyIosGitRange(options) {
+  try {
+    return classifyIosChangedPaths(changedPathsForGitRange(options));
+  } catch (error) {
+    return {
+      relevant: true,
+      classification: 'classifier-error-fail-closed',
+      changedFiles: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 export function classifyGitRange({ before, after, cwd = process.cwd() }) {
   if (!SHA.test(before) || !SHA.test(after))
     throw new Error('before and after must be full lowercase Git SHAs');
@@ -127,15 +222,9 @@ export function classifyGitRange({ before, after, cwd = process.cwd() }) {
       classification: 'missing-before-fail-closed',
       changedFiles: null,
     };
-  const output = execFileSync(
-    'git',
-    ['diff', '--name-only', '-z', before, after, '--'],
-    // GitHub's Compare API and native path filters expose at most 300 files.
-    // The full checkout is authoritative; an unexpectedly huge diff fails
-    // closed at this explicit memory bound instead of silently truncating.
-    { cwd, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
+  return classifyChangedPaths(
+    changedPathsForGitRange({ before, after, mode: 'direct', cwd }),
   );
-  return classifyChangedPaths(output.split('\0'));
 }
 
 function argumentValue(args, name) {
@@ -154,6 +243,16 @@ export function renderGithubOutputs(result) {
 }
 
 function main(args) {
+  if (argumentValue(args, '--scope') === 'ios') {
+    const result = classifyIosGitRange({
+      before: argumentValue(args, '--before') ?? '',
+      after: argumentValue(args, '--after') ?? '',
+      mode: argumentValue(args, '--mode') ?? '',
+    });
+    if (result.error) console.error(`iOS CI classification: ${result.error}`);
+    console.log(`relevant=${result.relevant}`);
+    return;
+  }
   let result;
   try {
     result = classifyGitRange({
@@ -176,5 +275,12 @@ function main(args) {
   console.log(renderGithubOutputs(result));
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
-  main(process.argv.slice(2));
+let isMain = false;
+try {
+  isMain =
+    realpathSync(resolve(process.argv[1] ?? '')) ===
+    realpathSync(fileURLToPath(import.meta.url));
+} catch {
+  // A missing entry path cannot be this module's executable invocation.
+}
+if (isMain) main(process.argv.slice(2));

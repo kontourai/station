@@ -363,3 +363,121 @@ test.describe('Notifications at 390x844', () => {
     ).toBe(true);
   });
 });
+
+// Controlled provider + real Hono/OrchestrationService/EventStore behind the
+// managed app. These cases exercise the browser command and stale-event guard
+// together, without an external account or a second runtime authority.
+for (const viewport of [
+  { label: 'desktop', width: 1280, height: 900 },
+  { label: 'mobile', width: 390, height: 844 },
+]) {
+  test(`exact request inspector records one decision on ${viewport.label}`, async ({
+    page,
+  }, testInfo) => {
+    const { exactRequestBackend } = await import(
+      './helpers/exact-request-backend'
+    );
+    const backend = await exactRequestBackend(
+      page,
+      testInfo.outputPath('exact-request.sqlite'),
+    );
+    try {
+      await page.setViewportSize(viewport);
+      await expect.poll(() => backend.current().state).toBe('found');
+      await page.goto('/notifications');
+      await page
+        .getByRole('button', { name: 'Inspect request', exact: true })
+        .click();
+      const dialog = page.getByRole('dialog', {
+        name: 'Inspect request',
+        exact: true,
+      });
+      const approve = dialog.getByRole('button', {
+        name: 'Approve once',
+        exact: true,
+      });
+      await expect(approve).toBeEnabled();
+      await expect(dialog).toHaveCSS('opacity', '1');
+      await page.screenshot({
+        path: testInfo.outputPath(`request-inspector-${viewport.label}.png`),
+        animations: 'disabled',
+      });
+      await approve.click();
+      await expect.poll(() => backend.effects.length).toBe(1);
+      await expect
+        .poll(
+          () =>
+            backend
+              .receipts()
+              .filter(
+                (receipt) =>
+                  receipt.commandType === 'respondToRequest' &&
+                  receipt.status === 'accepted',
+              ).length,
+        )
+        .toBe(1);
+    } finally {
+      await backend.close();
+    }
+  });
+}
+
+test('exact request inspector refuses a same-ID request reopened after inspection', async ({
+  page,
+}, testInfo) => {
+  const { exactRequestBackend } = await import(
+    './helpers/exact-request-backend'
+  );
+  const backend = await exactRequestBackend(
+    page,
+    testInfo.outputPath('exact-request.sqlite'),
+  );
+  try {
+    await expect.poll(() => backend.current().state).toBe('found');
+    await page.goto('/notifications');
+    await page
+      .getByRole('button', { name: 'Inspect request', exact: true })
+      .click();
+    const dialog = page.getByRole('dialog', {
+      name: 'Inspect request',
+      exact: true,
+    });
+    await expect(
+      dialog.getByRole('button', { name: 'Approve once' }),
+    ).toBeEnabled();
+    backend.reopen();
+    await expect
+      .poll(() => {
+        const value = backend.current();
+        return value.state === 'found' ? value.event.id : null;
+      })
+      .toBe('browser-opened-b');
+    await dialog.getByRole('button', { name: 'Approve once' }).click();
+    await expect(
+      dialog.getByText("Couldn't confirm the decision"),
+    ).toBeVisible();
+    expect(backend.effects).toHaveLength(0);
+    expect(
+      backend
+        .receipts()
+        .some(
+          (receipt) =>
+            receipt.commandType === 'respondToRequest' &&
+            receipt.status === 'rejected',
+        ),
+    ).toBe(true);
+    await dialog.getByRole('button', { name: 'Check request again' }).click();
+    await expect(
+      dialog.getByText(/changed after the attention item/),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Approve once' }),
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: testInfo.outputPath('request-inspector-stale.png'),
+      animations: 'disabled',
+    });
+  } finally {
+    await backend.close();
+  }
+});

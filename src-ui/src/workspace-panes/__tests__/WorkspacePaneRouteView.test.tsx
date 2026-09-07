@@ -416,7 +416,21 @@ describe('WorkspacePaneRouteView', () => {
         },
         instance: {
           instanceId: 'third-party-issues-1',
-          boundContext: { contribution },
+          boundContext: {
+            contribution: {
+              provenance: {
+                pluginId: contribution.provenance.pluginId,
+                origin: contribution.provenance.origin,
+              },
+              sourceIdentity: {
+                source: contribution.sourceIdentity.source,
+                kind: contribution.sourceIdentity.kind,
+                id: contribution.sourceIdentity.id,
+              },
+              version: contribution.version,
+              id: contribution.id,
+            },
+          },
         },
         selectedRenderer: {
           source: 'primary',

@@ -1024,7 +1024,7 @@
      anchoring above it tracks every dock state. The named floating-action
      layer sits above .chat-dock (index.css) as a belt for transient states
      before the CSS var is first written — Save must never render behind the
-     dock. Guarded by settings-save-pill-occlusion.test.ts. */
+     dock. Browser coverage: tests/settings.spec.ts, "Save remains clickable above an open resized dock". */
   bottom: calc(1.5rem + var(--safe-bottom, 0px) + var(--dock-slot-size, 0px));
   left: 50%;
   transform: translateX(-50%);

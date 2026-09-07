@@ -12,10 +12,9 @@ afterEach(cleanup);
 function renderStep(
   overrides: Partial<Parameters<typeof AboutYouStep>[0]> = {},
 ) {
-  const onSave = vi.fn();
-  const onSkip = vi.fn();
-  render(<AboutYouStep onSave={onSave} onSkip={onSkip} {...overrides} />);
-  return { onSave, onSkip };
+  const onComplete = vi.fn();
+  render(<AboutYouStep onComplete={onComplete} {...overrides} />);
+  return { onComplete };
 }
 
 describe('AboutYouStep — nothing is assumed', () => {
@@ -28,31 +27,22 @@ describe('AboutYouStep — nothing is assumed', () => {
     expect(screen.getByTestId('first-run-profile-preview-empty')).toBeTruthy();
   });
 
-  test('Save is unavailable until something is actually answered', () => {
-    renderStep();
-    const save = screen.getByRole('button', { name: 'Save and finish' });
-    expect((save as HTMLButtonElement).disabled).toBe(true);
+  test.each([
+    ['Start your first chat', 'chat'],
+    ['Take the tour', 'tour'],
+  ] as const)('%s leaves unanswered questions absent', (label, destination) => {
+    const { onComplete } = renderStep();
+    fireEvent.click(screen.getByRole('button', { name: label }));
+    expect(onComplete).toHaveBeenCalledWith(undefined, destination);
   });
 
-  test('skipping persists no profile at all — not an empty or default one', () => {
-    const { onSave, onSkip } = renderStep();
-    fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
-    expect(onSkip).toHaveBeenCalledTimes(1);
-    // The whole honesty property: a skip must reach the server as ABSENT.
-    // Persisting `{}` here would still be absent-equivalent today, but
-    // persisting a default role would be a fabricated observation, and this
-    // asserts the save path was not taken at all.
-    expect(onSave).not.toHaveBeenCalled();
-  });
-
-  test('a programmatic click cannot save an unanswered profile', () => {
-    const { onSave } = renderStep();
-    const save = screen.getByRole('button', { name: 'Save and finish' });
-    // Bypass the disabled attribute the way a stray script or a test-id-driven
-    // automation would.
-    save.removeAttribute('disabled');
-    fireEvent.click(save);
-    expect(onSave).not.toHaveBeenCalled();
+  test('both exits are disabled while answers are saving', () => {
+    const { onComplete } = renderStep({ saving: true });
+    for (const button of screen.getAllByRole('button')) {
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.click(button);
+    }
+    expect(onComplete).not.toHaveBeenCalled();
   });
 });
 
@@ -74,11 +64,17 @@ describe('AboutYouStep — the preview is the payload', () => {
     );
   });
 
-  test('saves only the questions that were answered', () => {
-    const { onSave } = renderStep();
+  test.each([
+    ['Start your first chat', 'chat'],
+    ['Take the tour', 'tour'],
+  ] as const)('%s saves only answered questions', (label, destination) => {
+    const { onComplete } = renderStep();
     fireEvent.click(screen.getByRole('radio', { name: 'Researcher' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save and finish' }));
-    expect(onSave).toHaveBeenCalledWith({ role: 'researcher' });
+    fireEvent.click(screen.getByRole('button', { name: label }));
+    expect(onComplete).toHaveBeenCalledWith(
+      { role: 'researcher' },
+      destination,
+    );
   });
 
   test('restores previously persisted answers when revisited', () => {

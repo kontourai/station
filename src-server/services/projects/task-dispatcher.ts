@@ -9,6 +9,10 @@ import type {
   EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
+import type {
+  SessionStartBoundaryClaim,
+  TaskDispatchBoundaryClaim,
+} from '../orchestration/session-turn-boundary.js';
 
 /**
  * The sole public intent for the remote task-dispatch vertical. Cancellation
@@ -139,10 +143,20 @@ export interface TaskDispatchRemoteSessions {
   startOrSeed(
     reservation: TaskDispatchReservation,
     intent: DispatchIntent,
+    admission?: SessionStartBoundaryClaim,
   ): Promise<{
     session: ProviderSession;
     outcome: TaskDispatchRecord['outcome'];
   }>;
+}
+
+export interface TaskDispatchExecutionAuthority {
+  claim(
+    reservation: TaskDispatchReservation,
+  ): Promise<
+    | { kind: 'owner'; claim: TaskDispatchBoundaryClaim }
+    | { kind: 'busy' | 'unavailable' }
+  >;
 }
 
 export interface TaskDispatchTelemetry {
@@ -176,6 +190,7 @@ class TaskDispatcherImplementation implements TaskDispatcher {
     private readonly remoteSessions: TaskDispatchRemoteSessions,
     private readonly telemetry: TaskDispatchTelemetry,
     private readonly liveWorkPublisher?: TaskDispatchLiveWorkPublisher,
+    private readonly execution?: TaskDispatchExecutionAuthority,
   ) {}
 
   async dispatch(
@@ -223,6 +238,18 @@ class TaskDispatcherImplementation implements TaskDispatcher {
     let claimAttempted = false;
     let blocked = false;
     let providerStartAttempted = false;
+    let execution: TaskDispatchBoundaryClaim | undefined;
+    let effectsBegan = false;
+    let executionHandled = false;
+    const finishExecution = (known: boolean) => {
+      if (!execution) return;
+      const outcome = known
+        ? effectsBegan
+          ? execution.settled()
+          : execution.notInvoked()
+        : execution.indeterminate(new Date().toISOString());
+      executionHandled = outcome.kind === 'applied';
+    };
     try {
       const readiness = this.remoteSessions.readiness(reservation);
       if (readiness.kind === 'unavailable') {
@@ -240,6 +267,15 @@ class TaskDispatcherImplementation implements TaskDispatcher {
         return cleanup.kind === 'indeterminate'
           ? cleanup
           : { kind: 'aborted', reason: cancelled, retryable: true };
+      }
+      if (this.execution) {
+        const admitted = await this.execution.claim(reservation);
+        if (admitted.kind !== 'owner')
+          throw new Error('Room dispatch admission is unavailable.');
+        execution = admitted.claim;
+        if (execution.beginEffects(new Date().toISOString()).kind !== 'applied')
+          throw new Error('Room dispatch admission could not be recorded.');
+        effectsBegan = true;
       }
       await this.graph.markProviderStarting(reservation);
       claimAttempted = true;
@@ -265,7 +301,11 @@ class TaskDispatcherImplementation implements TaskDispatcher {
       }
       providerStartAttempted = this.remoteSessions.mayHaveStarted(reservation);
       const remote = await awaitDispatchPhase(
-        this.remoteSessions.startOrSeed(reservation, intent),
+        this.remoteSessions.startOrSeed(
+          reservation,
+          intent,
+          execution?.sessionStart,
+        ),
         signal,
         intent.timeoutMs,
       );
@@ -274,12 +314,15 @@ class TaskDispatcherImplementation implements TaskDispatcher {
         outcome: remote.outcome,
         claim: claimResult,
       });
+      let publicationPrepared = false;
       try {
         await this.liveWorkPublisher?.prepareAgentStarted?.(result);
+        publicationPrepared = true;
         await this.liveWorkPublisher?.publishAgentStarted(result);
       } catch {
         // The remote session and graph association are durable already.
       }
+      finishExecution(publicationPrepared);
       this.reportSuccess(reservation, result, startedAt);
       return { kind: 'dispatched', result };
     } catch (error) {
@@ -309,6 +352,7 @@ class TaskDispatcherImplementation implements TaskDispatcher {
         ? undefined
         : await this.releaseReservation(reservation);
       this.reportFailure(reservation, startedAt, blocked);
+      finishExecution(!indeterminate && cleanup?.kind !== 'indeterminate');
       if (cleanup?.kind === 'indeterminate') return cleanup;
       if (indeterminate) {
         return {
@@ -330,6 +374,8 @@ class TaskDispatcherImplementation implements TaskDispatcher {
         kind: blocked ? 'contended' : 'failed',
         reason: errorMessage(error),
       };
+    } finally {
+      if (execution && !executionHandled) finishExecution(false);
     }
   }
 
@@ -484,6 +530,7 @@ export function createTaskDispatcher(
   remoteSessions: TaskDispatchRemoteSessions,
   telemetry: TaskDispatchTelemetry,
   liveWorkPublisher?: TaskDispatchLiveWorkPublisher,
+  execution?: TaskDispatchExecutionAuthority,
 ): TaskDispatcher {
   return new TaskDispatcherImplementation(
     graph,
@@ -491,5 +538,6 @@ export function createTaskDispatcher(
     remoteSessions,
     telemetry,
     liveWorkPublisher,
+    execution,
   );
 }

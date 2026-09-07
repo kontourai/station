@@ -70,7 +70,7 @@ describe('notification history filters', () => {
   test('matches all query terms across copy and source', () => {
     const result = filterNotificationHistory([attention], [notification], {
       ...EMPTY_NOTIFICATION_HISTORY_FILTERS,
-      query: 'pixel device',
+      query: '  PIXEL \t device  ',
     });
 
     expect(result.items).toEqual([]);

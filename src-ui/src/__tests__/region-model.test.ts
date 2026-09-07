@@ -2,17 +2,21 @@
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
-  DEFAULT_DEVICE_REGION_LAYOUT,
+  DEFAULT_DEVICE_REGION_ARRANGEMENT,
   dockMirrorDiff,
   firstFreeDockRegion,
   foldedDockRegion,
   occupiedDockRegion,
+  occupiedRegion,
   placeSurface,
+  REGION_IDS,
   REGION_SURFACE_REGISTRY,
   revealSurface,
-  seedRegionLayoutFromDock,
+  seedRegionArrangementFromDock,
   showSurfaceAlone,
-  syncRegionLayoutFromDock,
+  surfaceMayOccupy,
+  syncRegionArrangementFromDock,
+  toggleSurface,
   updateRegion,
 } from '../regions/region-model';
 
@@ -23,43 +27,50 @@ describe('region model', () => {
   });
 
   test('a region has one occupant and assigning another replaces it', () => {
-    const first = updateRegion(DEFAULT_DEVICE_REGION_LAYOUT, 'bottom', {
+    const first = updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'bottom', {
       occupant: 'chat',
     });
     const second = updateRegion(first, 'bottom', { occupant: 'activity' });
 
     expect(second.bottom.occupant).toBe('activity');
-    expect(Object.keys(second.bottom)).toEqual(['visible', 'size', 'occupant']);
+    expect(Object.keys(second.bottom)).toEqual([
+      'visible',
+      'size',
+      'occupant',
+      'maximized',
+    ]);
   });
 
   test('finds the dock region occupied by any surface', () => {
-    const layout = placeSurface(
-      DEFAULT_DEVICE_REGION_LAYOUT,
+    const arrangement = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
       'fixture',
       'right',
     );
 
-    expect(occupiedDockRegion(layout, 'fixture')).toBe('right');
-    expect(occupiedDockRegion(layout, 'missing')).toBeUndefined();
+    expect(occupiedDockRegion(arrangement, 'fixture')).toBe('right');
+    expect(occupiedDockRegion(arrangement, 'missing')).toBeUndefined();
   });
 
   test('hiding a region retains its occupant and size', () => {
-    const sized = updateRegion(DEFAULT_DEVICE_REGION_LAYOUT, 'bottom', {
+    const sized = updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'bottom', {
       visible: true,
       size: 444,
       occupant: 'chat',
+      maximized: false,
     });
 
     expect(updateRegion(sized, 'bottom', { visible: false }).bottom).toEqual({
       visible: false,
       size: 444,
       occupant: 'chat',
+      maximized: false,
     });
   });
 
   test('the coarse fold chooses the most recently shown occupied region and falls back to Chat', () => {
     const withActivity = placeSurface(
-      DEFAULT_DEVICE_REGION_LAYOUT,
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
       'activity',
       'right',
     );
@@ -74,7 +85,7 @@ describe('region model', () => {
 
   test('the coarse fold chooses lastShownRegion when two occupied regions are visible', () => {
     const bothVisible = updateRegion(
-      placeSurface(DEFAULT_DEVICE_REGION_LAYOUT, 'activity', 'right'),
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'right'),
       'bottom',
       { visible: true },
     );
@@ -84,11 +95,11 @@ describe('region model', () => {
   });
 
   test('a homeless surface prefers a free default and otherwise takes the first free dock region', () => {
-    expect(firstFreeDockRegion(DEFAULT_DEVICE_REGION_LAYOUT, 'right')).toBe(
-      'right',
-    );
+    expect(
+      firstFreeDockRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'right'),
+    ).toBe('right');
     const chatAtRight = placeSurface(
-      DEFAULT_DEVICE_REGION_LAYOUT,
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
       'chat',
       'right',
     );
@@ -97,7 +108,7 @@ describe('region model', () => {
 
   test('revealSurface makes an occupied hidden surface visible without moving it', () => {
     const hidden = updateRegion(
-      placeSurface(DEFAULT_DEVICE_REGION_LAYOUT, 'activity', 'right'),
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'right'),
       'right',
       { visible: false },
     );
@@ -105,22 +116,22 @@ describe('region model', () => {
     const shown = revealSurface(hidden, 'activity', 'left');
 
     expect(shown.region).toBe('right');
-    expect(shown.layout.right).toMatchObject({
+    expect(shown.arrangement.right).toMatchObject({
       occupant: 'activity',
       visible: true,
     });
-    expect(shown.layout.left).toEqual(hidden.left);
+    expect(shown.arrangement.left).toEqual(hidden.left);
   });
 
   test('revealSurface uses the preferred free region', () => {
     const shown = revealSurface(
-      DEFAULT_DEVICE_REGION_LAYOUT,
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
       'activity',
       'right',
     );
 
     expect(shown.region).toBe('right');
-    expect(shown.layout.right).toMatchObject({
+    expect(shown.arrangement.right).toMatchObject({
       occupant: 'activity',
       visible: true,
     });
@@ -128,7 +139,7 @@ describe('region model', () => {
 
   test('revealSurface uses the first free region when the preferred region is occupied', () => {
     const occupiedPreferred = placeSurface(
-      DEFAULT_DEVICE_REGION_LAYOUT,
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
       'fixture',
       'right',
     );
@@ -136,23 +147,23 @@ describe('region model', () => {
     const shown = revealSurface(occupiedPreferred, 'activity', 'right');
 
     expect(shown.region).toBe('left');
-    expect(shown.layout.left.occupant).toBe('activity');
+    expect(shown.arrangement.left.occupant).toBe('activity');
   });
 
   test('revealSurface puts Activity in bottom when Chat occupies right', () => {
     const shown = revealSurface(
-      placeSurface(DEFAULT_DEVICE_REGION_LAYOUT, 'chat', 'right'),
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'chat', 'right'),
       'activity',
       'right',
     );
 
     expect(shown.region).toBe('bottom');
-    expect(shown.layout.bottom.occupant).toBe('activity');
+    expect(shown.arrangement.bottom.occupant).toBe('activity');
   });
 
   test('showSurfaceAlone leaves the revealed surface as the only visible dock region', () => {
     const visible = updateRegion(
-      placeSurface(DEFAULT_DEVICE_REGION_LAYOUT, 'fixture', 'left'),
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'fixture', 'left'),
       'bottom',
       { visible: true },
     );
@@ -162,18 +173,191 @@ describe('region model', () => {
     expect(shown.region).toBe('right');
     expect(
       ['left', 'right', 'bottom'].filter(
-        (id) => shown.layout[id as 'left' | 'right' | 'bottom'].visible,
+        (id) => shown.arrangement[id as 'left' | 'right' | 'bottom'].visible,
       ),
     ).toEqual(['right']);
   });
 
-  test('registers Chat and Activity with their default regions', () => {
+  /**
+   * #1523: the one decision behind a surface's chord and its folded-menu row.
+   * The dock cases are what `useRegionSurfaceMenu.toggleSurface` used to
+   * decide itself; the `main` cases are what it could not see.
+   */
+  describe('toggleSurface', () => {
+    const fine = { lastShownRegion: null, bottomOnly: false };
+    const activityDefault =
+      REGION_SURFACE_REGISTRY.get('activity')!.defaultRegion;
+
+    test('a visible dock occupant is hidden and a hidden one is revealed in place', () => {
+      const visible = placeSurface(
+        DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        'activity',
+        'right',
+      );
+      const hidden = toggleSurface(visible, 'activity', activityDefault, fine);
+      expect(hidden).toMatchObject({ kind: 'arrangement', shownRegion: null });
+      if (hidden.kind !== 'arrangement') throw new Error('unreachable');
+      expect(hidden.arrangement.right).toEqual({
+        ...visible.right,
+        visible: false,
+      });
+
+      const shown = toggleSurface(
+        hidden.arrangement,
+        'activity',
+        activityDefault,
+        fine,
+      );
+      expect(shown).toMatchObject({
+        kind: 'arrangement',
+        shownRegion: 'right',
+      });
+      if (shown.kind !== 'arrangement') throw new Error('unreachable');
+      expect(shown.arrangement.right).toEqual(visible.right);
+    });
+
+    test('an unplaced surface is a show, left to showSurface', () => {
+      expect(
+        toggleSurface(
+          DEFAULT_DEVICE_REGION_ARRANGEMENT,
+          'activity',
+          activityDefault,
+          fine,
+        ),
+      ).toEqual({ kind: 'show' });
+    });
+
+    test('a main occupant moves to its default dock region, visible, and main empties to Home', () => {
+      const activityInMain = placeSurface(
+        DEFAULT_DEVICE_REGION_ARRANGEMENT,
+        'activity',
+        'main',
+      );
+      expect(activityInMain.main.occupant).toBe('activity');
+
+      const toggled = toggleSurface(
+        activityInMain,
+        'activity',
+        activityDefault,
+        fine,
+      );
+      expect(toggled).toMatchObject({
+        kind: 'arrangement',
+        shownRegion: 'right',
+      });
+      if (toggled.kind !== 'arrangement') throw new Error('unreachable');
+      expect(toggled.arrangement.right).toMatchObject({
+        occupant: 'activity',
+        visible: true,
+      });
+      // An emptied `main` is Home on screen and stays visible.
+      expect(toggled.arrangement.main).toEqual({
+        visible: true,
+        size: 0,
+        maximized: false,
+        occupant: null,
+      });
+      // Chat's dock placement is untouched by a relocation into another region.
+      expect(toggled.arrangement.bottom).toEqual(activityInMain.bottom);
+    });
+
+    test('on a coarse device a main occupant returning to the dock is the only visible dock region', () => {
+      const activityInMain = updateRegion(
+        placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'main'),
+        'bottom',
+        { visible: true },
+      );
+      const toggled = toggleSurface(
+        activityInMain,
+        'activity',
+        activityDefault,
+        {
+          lastShownRegion: 'bottom',
+          bottomOnly: true,
+        },
+      );
+      if (toggled.kind !== 'arrangement') throw new Error('unreachable');
+      expect(toggled.arrangement.right).toMatchObject({
+        occupant: 'activity',
+        visible: true,
+      });
+      expect(toggled.arrangement.bottom).toMatchObject({
+        occupant: 'chat',
+        visible: false,
+      });
+      expect(toggled.shownRegion).toBe('right');
+    });
+
+    test('on a coarse device a visible surface that is not the folded region is a show, not a hide', () => {
+      // Two visible occupied dock regions with Chat's `bottom` the folded one
+      // (`lastShownRegion`). Activity in `right` is visible too, so a guard
+      // reading only `visible` would HIDE it; the coarse rule is that only the
+      // folded region hides, and anything else is shown alone via showSurface.
+      // Review-round fixture (#1523): dropping `occupied === folded &&` from
+      // the guard stayed green without this case.
+      const twoVisible = placeSurface(
+        updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'bottom', {
+          visible: true,
+        }),
+        'activity',
+        'right',
+        true,
+      );
+      expect(twoVisible.right.visible).toBe(true);
+      expect(foldedDockRegion(twoVisible, 'bottom')).toBe('bottom');
+
+      expect(
+        toggleSurface(twoVisible, 'activity', activityDefault, {
+          lastShownRegion: 'bottom',
+          bottomOnly: true,
+        }),
+      ).toEqual({ kind: 'show' });
+    });
+
+    test('Home in main toggles to nothing: its default region is main', () => {
+      expect(
+        toggleSurface(
+          DEFAULT_DEVICE_REGION_ARRANGEMENT,
+          'home',
+          REGION_SURFACE_REGISTRY.get('home')!.defaultRegion,
+          fine,
+        ),
+      ).toEqual({ kind: 'none' });
+    });
+
+    test('on a coarse device only the folded visible region hides; any other placed surface is a show', () => {
+      // Activity placed in `right` but not the folded region (Chat in `bottom`
+      // is): its toggle SHOWS it (alone, via showSurface), never hides it.
+      const both = placeSurface(
+        updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'bottom', {
+          visible: true,
+        }),
+        'activity',
+        'right',
+        false,
+      );
+      const coarse = { lastShownRegion: 'bottom' as const, bottomOnly: true };
+      expect(toggleSurface(both, 'activity', activityDefault, coarse)).toEqual({
+        kind: 'show',
+      });
+      const chatHidden = toggleSurface(both, 'chat', 'bottom', coarse);
+      expect(chatHidden).toMatchObject({
+        kind: 'arrangement',
+        shownRegion: null,
+      });
+      if (chatHidden.kind !== 'arrangement') throw new Error('unreachable');
+      expect(chatHidden.arrangement.bottom.visible).toBe(false);
+    });
+  });
+
+  test('registers Chat, Activity and Home with their default regions and the regions each declares', () => {
     expect([...REGION_SURFACE_REGISTRY.values()]).toEqual([
       expect.objectContaining({
         id: 'chat',
         title: 'Chat',
         icon: 'chat',
         shortcut: { id: 'dock.toggle', key: 'd', modifiers: ['cmd'] },
+        regions: ['left', 'right', 'bottom'],
         defaultRegion: 'bottom',
       }),
       expect.objectContaining({
@@ -185,14 +369,162 @@ describe('region model', () => {
           key: 'a',
           modifiers: ['cmd', 'shift'],
         },
+        regions: ['main', 'left', 'right', 'bottom'],
         defaultRegion: 'right',
       }),
+      expect.objectContaining({
+        id: 'home',
+        title: 'Home',
+        icon: 'home',
+        regions: ['main'],
+        defaultRegion: 'main',
+      }),
     ]);
+    expect(REGION_SURFACE_REGISTRY.get('home')?.shortcut).toBeUndefined();
+  });
+
+  test('Home is the default main occupant and the legacy dock seed preserves it', () => {
+    expect(DEFAULT_DEVICE_REGION_ARRANGEMENT.main).toEqual({
+      visible: true,
+      size: 0,
+      occupant: 'home',
+      maximized: false,
+    });
+    const seeded = seedRegionArrangementFromDock(
+      { chatDockHeight: 320, chatDockWidth: 400 },
+      'right',
+      true,
+    );
+    expect(seeded.main).toEqual(DEFAULT_DEVICE_REGION_ARRANGEMENT.main);
+  });
+
+  // #928 C2a: `main` is the primary area. A surface taking it replaces what
+  // it shows; the replaced surface must not turn into a dock panel nobody
+  // asked for.
+  test('placing a surface into main unplaces the previous main occupant instead of relocating it', () => {
+    const placed = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'activity',
+      'main',
+    );
+
+    expect(placed.main).toEqual({
+      visible: true,
+      size: 0,
+      occupant: 'activity',
+      maximized: false,
+    });
+    expect(occupiedRegion(placed, 'home')).toBeUndefined();
+    expect(placed.left.occupant).toBeNull();
+    expect(placed.right.occupant).toBeNull();
+    expect(placed.bottom).toEqual(DEFAULT_DEVICE_REGION_ARRANGEMENT.bottom);
+  });
+
+  test('placing a surface into main from a dock region vacates that dock region and still unplaces the displaced occupant', () => {
+    const activityAtRight = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'activity',
+      'right',
+    );
+    const placed = placeSurface(activityAtRight, 'activity', 'main');
+
+    expect(placed.main.occupant).toBe('activity');
+    expect(placed.right).toEqual({
+      visible: false,
+      size: 400,
+      occupant: null,
+      maximized: false,
+    });
+    expect(occupiedRegion(placed, 'home')).toBeUndefined();
+  });
+
+  test('a surface leaving main for a dock region leaves main empty and visible, and the displaced dock occupant relocates', () => {
+    const activityInMain = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'activity',
+      'main',
+    );
+    const moved = placeSurface(activityInMain, 'activity', 'bottom');
+
+    expect(moved.main).toEqual({
+      visible: true,
+      size: 0,
+      occupant: null,
+      maximized: false,
+    });
+    expect(moved.bottom).toMatchObject({ occupant: 'activity', visible: true });
+    // Chat, displaced from bottom, follows the homeless rule — it does not
+    // jump into `main`, which it does not declare.
+    expect(moved.right).toMatchObject({ occupant: 'chat' });
+  });
+
+  test('placing a surface into a region it does not declare is a no-op', () => {
+    expect(surfaceMayOccupy('home', 'right')).toBe(false);
+    expect(surfaceMayOccupy('chat', 'main')).toBe(false);
+    expect(surfaceMayOccupy('activity', 'main')).toBe(true);
+
+    expect(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'home', 'right'),
+    ).toBe(DEFAULT_DEVICE_REGION_ARRANGEMENT);
+    expect(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'chat', 'main'),
+    ).toBe(DEFAULT_DEVICE_REGION_ARRANGEMENT);
+    // An unregistered surface may take a dock region (fixtures rely on it)
+    // but never `main`.
+    expect(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'fixture', 'main'),
+    ).toBe(DEFAULT_DEVICE_REGION_ARRANGEMENT);
+  });
+
+  test('dock swaps still relocate the displaced occupant into the vacated dock region', () => {
+    const activityAtRight = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'activity',
+      'right',
+    );
+    const swapped = placeSurface(activityAtRight, 'activity', 'bottom');
+
+    expect(swapped.bottom.occupant).toBe('activity');
+    expect(swapped.right.occupant).toBe('chat');
+    expect(swapped.main.occupant).toBe('home');
+  });
+
+  test('revealSurface targets main for Home and reveals a main occupant in place', () => {
+    const shown = revealSurface(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'main'),
+      'home',
+      REGION_SURFACE_REGISTRY.get('home')!.defaultRegion,
+    );
+
+    expect(shown.region).toBe('main');
+    expect(shown.arrangement.main.occupant).toBe('home');
+    expect(occupiedRegion(shown.arrangement, 'activity')).toBeUndefined();
+
+    const alreadyThere = revealSurface(shown.arrangement, 'home', 'main');
+    expect(alreadyThere.region).toBe('main');
+    expect(alreadyThere.arrangement).toBe(shown.arrangement);
+  });
+
+  test('showSurfaceAlone with a main target does not hide the dock regions', () => {
+    const chatVisible = updateRegion(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'main'),
+      'bottom',
+      { visible: true },
+    );
+
+    const shown = showSurfaceAlone(chatVisible, 'home', 'main');
+
+    expect(shown.region).toBe('main');
+    expect(shown.arrangement.main.occupant).toBe('home');
+    expect(shown.arrangement.bottom).toMatchObject({
+      occupant: 'chat',
+      visible: true,
+    });
   });
 
   test('placing an already-mounted surface swaps occupants without moving region sizes', () => {
     const withActivity = placeSurface(
-      DEFAULT_DEVICE_REGION_LAYOUT,
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
       'activity',
       'right',
     );
@@ -202,18 +534,20 @@ describe('region model', () => {
       visible: true,
       size: 320,
       occupant: 'activity',
+      maximized: false,
     });
     expect(swapped.right).toEqual({
       visible: false,
       size: 400,
       occupant: 'chat',
+      maximized: false,
     });
   });
 
   test('a swap carries the displaced occupant visibility and reveals the incoming surface', () => {
     const hiddenActivity = updateRegion(
       updateRegion(
-        placeSurface(DEFAULT_DEVICE_REGION_LAYOUT, 'activity', 'right'),
+        placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'right'),
         'right',
         { visible: false },
       ),
@@ -231,7 +565,7 @@ describe('region model', () => {
 
   test('placing a homeless surface relocates the displaced occupant to the first free dock region', () => {
     const placed = placeSurface(
-      DEFAULT_DEVICE_REGION_LAYOUT,
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
       'activity',
       'bottom',
     );
@@ -240,20 +574,144 @@ describe('region model', () => {
     expect(placed.right).toMatchObject({ occupant: 'chat', visible: false });
   });
 
-  test('placing a homeless surface vacates the displaced occupant when no dock region is free', () => {
-    const fullLayout = {
-      ...structuredClone(DEFAULT_DEVICE_REGION_LAYOUT),
-      left: { visible: true, size: 400, occupant: 'left-surface' },
-      right: { visible: true, size: 400, occupant: 'right-surface' },
+  /**
+   * #1386 (b). The displacement used to pass the region the PLACER had just
+   * taken as `firstFreeDockRegion`'s `preferred`, which is occupied by
+   * definition, so the preference branch could never fire and the fallback
+   * order `['bottom','right','left']` decided every relocation.
+   *
+   * Activity is pushed out of `left` with both `bottom` and `right` free. Its
+   * registered `defaultRegion` is `right` — where a reveal would have put it —
+   * and that is where it goes. The old order would have said `bottom`.
+   */
+  test('a displaced surface takes its own default region when that is free', () => {
+    const activityAtLeft = {
+      ...structuredClone(DEFAULT_DEVICE_REGION_ARRANGEMENT),
+      left: {
+        visible: true,
+        size: 400,
+        occupant: 'activity',
+        maximized: false,
+      },
+      bottom: { visible: false, size: 320, occupant: null, maximized: false },
     };
-    const placed = placeSurface(fullLayout, 'activity', 'bottom');
+    const placed = placeSurface(activityAtLeft, 'chat', 'left');
+
+    expect(placed.left.occupant).toBe('chat');
+    expect(REGION_SURFACE_REGISTRY.get('activity')?.defaultRegion).toBe(
+      'right',
+    );
+    expect(placed.right).toMatchObject({ occupant: 'activity' });
+    expect(placed.bottom.occupant).toBeNull();
+  });
+
+  /**
+   * #1386 (c). A surface the registry does not hold has no default region, so
+   * the search order decides — and a side gives its occupant to the OTHER
+   * side before reshaping the workspace through `bottom`, which is the
+   * complaint the issue names.
+   */
+  test('a displaced surface with no registered default prefers the opposite side', () => {
+    const fixtureAtLeft = {
+      ...structuredClone(DEFAULT_DEVICE_REGION_ARRANGEMENT),
+      left: { visible: true, size: 400, occupant: 'fixture', maximized: false },
+      bottom: { visible: false, size: 320, occupant: null, maximized: false },
+    };
+    expect(REGION_SURFACE_REGISTRY.get('fixture')).toBeUndefined();
+
+    const fromLeft = placeSurface(fixtureAtLeft, 'chat', 'left');
+    expect(fromLeft.right).toMatchObject({ occupant: 'fixture' });
+    expect(fromLeft.bottom.occupant).toBeNull();
+
+    // And mirrored, so the rule is the pair rather than a hardcoded `right`.
+    const fixtureAtRight = {
+      ...structuredClone(DEFAULT_DEVICE_REGION_ARRANGEMENT),
+      right: {
+        visible: true,
+        size: 400,
+        occupant: 'fixture',
+        maximized: false,
+      },
+      bottom: { visible: false, size: 320, occupant: null, maximized: false },
+    };
+    const fromRight = placeSurface(fixtureAtRight, 'chat', 'right');
+    expect(fromRight.left).toMatchObject({ occupant: 'fixture' });
+    expect(fromRight.bottom.occupant).toBeNull();
+
+    // `bottom` has no opposite: it keeps the historical order, so a surface
+    // leaving it still lands in `right`.
+    const fixtureAtBottom = {
+      ...structuredClone(DEFAULT_DEVICE_REGION_ARRANGEMENT),
+      bottom: {
+        visible: true,
+        size: 320,
+        occupant: 'fixture',
+        maximized: false,
+      },
+    };
+    const fromBottom = placeSurface(fixtureAtBottom, 'chat', 'bottom');
+    expect(fromBottom.right).toMatchObject({ occupant: 'fixture' });
+    expect(fromBottom.left.occupant).toBeNull();
+  });
+
+  /**
+   * The preference never outranks what the surface DECLARES: Home's only
+   * region is `main`, so a Home that somehow held a dock region is unplaced
+   * rather than relocated.
+   *
+   * The second case is the one that exercises the `isDockRegion` filter. With
+   * `main` occupied — as the default arrangement has it — the free-region
+   * predicate rejects `main` on its own and the guard is unobservable, so the
+   * fixture empties `main` first. Home's registry `defaultRegion` IS `main`,
+   * so without the filter the default-region step places it there.
+   */
+  test('a displaced surface is unplaced rather than relocated somewhere it does not declare', () => {
+    const homeAtLeft = {
+      ...structuredClone(DEFAULT_DEVICE_REGION_ARRANGEMENT),
+      left: { visible: true, size: 400, occupant: 'home', maximized: false },
+      bottom: { visible: false, size: 320, occupant: null, maximized: false },
+    };
+    const placed = placeSurface(homeAtLeft, 'chat', 'left');
+
+    expect(placed.left.occupant).toBe('chat');
+    expect(occupiedDockRegion(placed, 'home')).toBeUndefined();
+
+    const homeAtLeftWithEmptyMain = {
+      ...homeAtLeft,
+      main: { visible: true, size: 0, occupant: null, maximized: false },
+    };
+    const intoEmptyMain = placeSurface(homeAtLeftWithEmptyMain, 'chat', 'left');
+
+    expect(intoEmptyMain.left.occupant).toBe('chat');
+    expect(intoEmptyMain.main.occupant).toBeNull();
+    expect(occupiedDockRegion(intoEmptyMain, 'home')).toBeUndefined();
+    expect(placed.main.occupant).toBe('home');
+  });
+
+  test('placing a homeless surface vacates the displaced occupant when no dock region is free', () => {
+    const fullArrangement = {
+      ...structuredClone(DEFAULT_DEVICE_REGION_ARRANGEMENT),
+      left: {
+        visible: true,
+        size: 400,
+        occupant: 'left-surface',
+        maximized: false,
+      },
+      right: {
+        visible: true,
+        size: 400,
+        occupant: 'right-surface',
+        maximized: false,
+      },
+    };
+    const placed = placeSurface(fullArrangement, 'activity', 'bottom');
 
     expect(placed.bottom.occupant).toBe('activity');
     expect(occupiedDockRegion(placed, 'chat')).toBeUndefined();
   });
 
   test('seeds the in-memory model from resolved navigation placement and persisted sizes', () => {
-    const layout = seedRegionLayoutFromDock(
+    const arrangement = seedRegionArrangementFromDock(
       {
         chatDockHeight: 417,
         chatDockWidth: 389,
@@ -262,21 +720,23 @@ describe('region model', () => {
       true,
     );
 
-    expect(layout.bottom).toEqual({
+    expect(arrangement.bottom).toEqual({
       visible: false,
       size: 417,
       occupant: null,
+      maximized: false,
     });
-    expect(layout.left.size).toBe(389);
-    expect(layout.right).toEqual({
+    expect(arrangement.left.size).toBe(389);
+    expect(arrangement.right).toEqual({
       visible: true,
       size: 389,
       occupant: 'chat',
+      maximized: false,
     });
   });
 
   test('a same-visibility move mirrors placement only', () => {
-    const before = updateRegion(DEFAULT_DEVICE_REGION_LAYOUT, 'bottom', {
+    const before = updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'bottom', {
       visible: true,
     });
     const after = placeSurface(before, 'chat', 'right');
@@ -292,7 +752,7 @@ describe('region model', () => {
 
   test("a Chat move mirrors the entered region's size and the next inbound sync preserves it", () => {
     const sizedRight = updateRegion(
-      placeSurface(DEFAULT_DEVICE_REGION_LAYOUT, 'activity', 'right'),
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'right'),
       'right',
       { size: 600 },
     );
@@ -300,7 +760,7 @@ describe('region model', () => {
     const diff = dockMirrorDiff(sizedRight, swapped);
 
     expect(diff).toEqual({ placement: 'right', size: { right: 600 } });
-    const synced = syncRegionLayoutFromDock(
+    const synced = syncRegionArrangementFromDock(
       swapped,
       {
         chatDockHeight: 320,
@@ -313,9 +773,13 @@ describe('region model', () => {
   });
 
   test('placing into a region while hidden mirrors the reveal', () => {
-    const after = placeSurface(DEFAULT_DEVICE_REGION_LAYOUT, 'chat', 'right');
+    const after = placeSurface(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'chat',
+      'right',
+    );
 
-    expect(dockMirrorDiff(DEFAULT_DEVICE_REGION_LAYOUT, after)).toEqual({
+    expect(dockMirrorDiff(DEFAULT_DEVICE_REGION_ARRANGEMENT, after)).toEqual({
       placement: 'right',
       size: { right: 400 },
       visible: true,
@@ -323,12 +787,17 @@ describe('region model', () => {
   });
 
   test('sync preserves the size of a region occupied by a second surface', () => {
-    const withActivity = updateRegion(DEFAULT_DEVICE_REGION_LAYOUT, 'right', {
-      occupant: 'activity',
-      visible: true,
-      size: 517,
-    });
-    const synced = syncRegionLayoutFromDock(
+    const withActivity = updateRegion(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'right',
+      {
+        occupant: 'activity',
+        visible: true,
+        size: 517,
+        maximized: false,
+      },
+    );
+    const synced = syncRegionArrangementFromDock(
       withActivity,
       { chatDockHeight: 333, chatDockWidth: 444 },
       false,
@@ -339,16 +808,21 @@ describe('region model', () => {
       occupant: 'activity',
       visible: true,
       size: 517,
+      maximized: false,
     });
     expect(synced.bottom.visible).toBe(false);
   });
 
   test('sync never evicts a second occupant when dockMode names its region', () => {
-    const withActivity = updateRegion(DEFAULT_DEVICE_REGION_LAYOUT, 'right', {
-      occupant: 'activity',
-      visible: true,
-    });
-    const synced = syncRegionLayoutFromDock(
+    const withActivity = updateRegion(
+      DEFAULT_DEVICE_REGION_ARRANGEMENT,
+      'right',
+      {
+        occupant: 'activity',
+        visible: true,
+      },
+    );
+    const synced = syncRegionArrangementFromDock(
       withActivity,
       { chatDockHeight: 320, chatDockWidth: 400 },
       true,
@@ -360,8 +834,119 @@ describe('region model', () => {
     expect(synced.bottom.visible).toBe(true);
   });
 
+  // #928 slice iii / #1385: maximize is a region attribute with invariants.
+  describe('maximize is a region attribute', () => {
+    const chatOpenActivityRight = updateRegion(
+      placeSurface(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'activity', 'right'),
+      'bottom',
+      { visible: true },
+    );
+
+    test('at most one region is maximized: maximizing one restores every other', () => {
+      const chatMax = updateRegion(chatOpenActivityRight, 'bottom', {
+        maximized: true,
+      });
+      expect(chatMax.bottom.maximized).toBe(true);
+
+      const activityMax = updateRegion(chatMax, 'right', { maximized: true });
+
+      expect(activityMax.right.maximized).toBe(true);
+      expect(activityMax.bottom.maximized).toBe(false);
+      expect(REGION_IDS.filter((id) => activityMax[id].maximized)).toEqual([
+        'right',
+      ]);
+    });
+
+    test('hiding a region clears its maximize; main, a hidden region and an empty region never maximize', () => {
+      const chatMax = updateRegion(chatOpenActivityRight, 'bottom', {
+        maximized: true,
+      });
+      expect(
+        updateRegion(chatMax, 'bottom', { visible: false }).bottom,
+      ).toMatchObject({ visible: false, maximized: false });
+      expect(
+        updateRegion(chatOpenActivityRight, 'main', { maximized: true }).main
+          .maximized,
+      ).toBe(false);
+      // Hidden: Activity's right region is placed hidden-by-default here.
+      const hiddenRight = updateRegion(chatOpenActivityRight, 'right', {
+        visible: false,
+      });
+      expect(
+        updateRegion(hiddenRight, 'right', { maximized: true }).right.maximized,
+      ).toBe(false);
+      expect(
+        updateRegion(chatOpenActivityRight, 'left', {
+          visible: true,
+          maximized: true,
+        }).left.maximized,
+      ).toBe(false);
+      // A no-op patch keeps the reference.
+      expect(updateRegion(chatMax, 'main', { maximized: true })).toBe(chatMax);
+    });
+
+    test('placeSurface clears maximize on both ends of a move and of a swap (the #1385 shape)', () => {
+      const chatMax = updateRegion(chatOpenActivityRight, 'bottom', {
+        maximized: true,
+      });
+
+      // Swap: Activity into Chat's maximized bottom, Chat back into right.
+      const swapped = placeSurface(chatMax, 'activity', 'bottom');
+      expect(swapped.bottom).toMatchObject({
+        occupant: 'activity',
+        maximized: false,
+      });
+      expect(swapped.right).toMatchObject({
+        occupant: 'chat',
+        visible: true,
+        maximized: false,
+      });
+
+      // Move: maximized Chat into an empty left.
+      const moved = placeSurface(chatMax, 'chat', 'left');
+      expect(moved.left).toMatchObject({ occupant: 'chat', maximized: false });
+      expect(moved.bottom).toMatchObject({ occupant: null, maximized: false });
+      expect(REGION_IDS.some((id) => moved[id].maximized)).toBe(false);
+    });
+
+    test('dockMirrorDiff emits maximized for Chat only when Chat’s maximize changed', () => {
+      const chatMax = updateRegion(chatOpenActivityRight, 'bottom', {
+        maximized: true,
+      });
+      expect(dockMirrorDiff(chatOpenActivityRight, chatMax)).toEqual({
+        maximized: true,
+      });
+      expect(dockMirrorDiff(chatMax, chatOpenActivityRight)).toEqual({
+        maximized: false,
+      });
+      // A hide is a visibility change, not a maximize change: the provider
+      // forwards the maximize it closed from so `lastDockMaximized` survives.
+      expect(
+        dockMirrorDiff(
+          chatMax,
+          updateRegion(chatMax, 'bottom', { visible: false }),
+        ),
+      ).toEqual({ visible: false });
+      // Activity's maximize is never Chat's.
+      expect(
+        dockMirrorDiff(
+          chatOpenActivityRight,
+          updateRegion(chatOpenActivityRight, 'right', { maximized: true }),
+        ),
+      ).toEqual({});
+      // A relocation that clears Chat's maximize mirrors the clear with the move.
+      expect(
+        dockMirrorDiff(chatMax, placeSurface(chatMax, 'chat', 'left')),
+      ).toEqual({
+        placement: 'left',
+        size: { left: 400 },
+        maximized: false,
+      });
+    });
+  });
+
   test('mirror ignores size changes from a region Activity occupies', () => {
-    const before = updateRegion(DEFAULT_DEVICE_REGION_LAYOUT, 'right', {
+    const before = updateRegion(DEFAULT_DEVICE_REGION_ARRANGEMENT, 'right', {
       occupant: 'activity',
       visible: true,
     });

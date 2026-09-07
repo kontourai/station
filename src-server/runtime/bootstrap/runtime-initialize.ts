@@ -50,6 +50,7 @@ import {
   registerSkillRegistryProvider,
 } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
+import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { publicIdentityAgentSetView } from '../../routes/agents/runtime-agent-identity.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
 import { getCachedUser } from '../../routes/system/auth.js';
@@ -196,6 +197,8 @@ export interface InitializeRuntimeDeps {
   resolveBuiltinEngineBinding?: (
     appConfig: AppConfig,
   ) => Promise<BuiltinAgentEngineBinding | null>;
+  /** Reconcile the built-in role after background ACP readiness settles. */
+  onACPConnectionsReady?: () => void | Promise<void>;
   orchestrationEventStore: EventStore;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -297,10 +300,11 @@ interface InitializeRuntimeResult {
 export function initializeRuntimeBackgroundTasks(
   deps: Pick<
     InitializeRuntimeDeps,
-    'timers' | 'logger' | 'configLoader' | 'acpBridge'
+    'timers' | 'logger' | 'configLoader' | 'acpBridge' | 'onACPConnectionsReady'
   >,
 ): void {
-  const { timers, logger, configLoader, acpBridge } = deps;
+  const { timers, logger, configLoader, acpBridge, onACPConnectionsReady } =
+    deps;
 
   scheduleRuntimeEngineSpawnTmpReaping({ timers, logger });
   startRuntimeACPConnections({
@@ -311,6 +315,7 @@ export function initializeRuntimeBackgroundTasks(
     },
     acpBridge,
     logger,
+    onReady: onACPConnectionsReady,
   });
 }
 
@@ -622,7 +627,10 @@ export async function initializeRuntime(
     homeDir: configLoader.getProjectHomeDir(),
   });
   const attachedSessionFollowService = new AttachedSessionFollowService({
-    sources: [new ClaudeTranscriptSessionSource()],
+    sources: [
+      new ClaudeTranscriptSessionSource(),
+      new CodexRolloutSessionSource(),
+    ],
     eventStore: orchestrationEventStore,
     adoptionLedger,
     eventBus,
@@ -992,6 +1000,7 @@ export async function initializeRuntime(
     logger,
     configLoader,
     acpBridge,
+    onACPConnectionsReady: deps.onACPConnectionsReady,
   });
 
   scheduleRuntimePluginUpdateCheck({

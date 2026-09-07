@@ -129,6 +129,7 @@ export type OrchestrationCommandInput =
       type: 'respondToRequest';
       threadId: string;
       requestId: string;
+      expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
     }
   | {

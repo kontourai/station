@@ -77,7 +77,7 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate }),
 }));
 
-import { APP_SURFACE_REGISTRY } from '../app-shell/surface-registry';
+import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
 import { NotificationsPage } from '../pages/NotificationsPage';
 
 function renderPage() {
@@ -110,10 +110,12 @@ function renderPage() {
  * than against a number restated in the test.
  */
 function bellBadgeCount(): number | null {
-  const surface = APP_SURFACE_REGISTRY.get('notifications');
-  if (!surface) throw new Error('Notifications surface is not registered');
+  const destination = APP_DESTINATION_REGISTRY.get('notifications');
+  if (!destination)
+    throw new Error('Notifications destination is not registered');
   return (
-    surface.badge?.({ attentionCount: attention.pendingCount })?.count ?? null
+    destination.badge?.({ attentionCount: attention.pendingCount })?.count ??
+    null
   );
 }
 
@@ -557,6 +559,64 @@ describe('NotificationsPage', () => {
 
     expect(screen.getAllByText('Active approval')).toHaveLength(1);
     expect(screen.getByText('Resolved approval')).toBeTruthy();
+  });
+
+  /**
+   * #1536 D8 review M1: "Dismiss all" mapped EVERY item to the acknowledge
+   * route, including the standing "Station cannot run yet" row — which is
+   * still true after the dismissal, which the server now refuses, and whose
+   * refusal would have reported the whole batch as partly failed.
+   */
+  test('bulk dismissal skips a standing notice the server refuses to acknowledge', async () => {
+    const timestamp = new Date().toISOString();
+    attention = {
+      pendingCount: 2,
+      items: [
+        {
+          id: 'review_pending:thread-review',
+          kind: 'review_pending',
+          title: 'Review pending',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          openHref: '/?surface=activity&session=thread-review',
+          source: { threadId: 'thread-review' },
+        },
+        {
+          id: 'setup-incomplete:model-connection:station',
+          kind: 'setup-incomplete',
+          title: 'Station cannot run yet',
+          body: 'No enabled LLM provider connection is configured.',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          openHref: '/connections/models',
+          source: {
+            requirement: 'model-connection',
+            agentSlug: 'station',
+          },
+        },
+      ],
+    };
+
+    renderPage();
+
+    fireEvent.click(screen.getByText('Dismiss all attention items'));
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Dismiss all attention items',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(sdkMocks.acknowledgeAttentionItem).toHaveBeenCalledTimes(1),
+    );
+    expect(sdkMocks.acknowledgeAttentionItem).toHaveBeenCalledWith(
+      'review_pending:thread-review',
+      'http://station.test',
+    );
+    expect(sdkMocks.acknowledgeAttentionItem).not.toHaveBeenCalledWith(
+      'setup-incomplete:model-connection:station',
+      expect.anything(),
+    );
   });
 
   test('bulk dismissal confirms and dismisses only attention items', async () => {

@@ -1,11 +1,12 @@
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, type Page, type Route, test } from '@playwright/test';
+import { expect, type Page, type Route } from '@playwright/test';
 import {
   e2eOperatorAuthorizationHeaders,
   readE2EOperatorCredential,
 } from './helpers/e2e-operator-credential';
+import { test } from './helpers/fixture-audit';
 import {
   allocateLiveStation,
   createProject,
@@ -149,6 +150,102 @@ test.describe
           `Failed to stop isolated Station instance ${live.instance}; preserved diagnostic home ${live.home}`,
           { cause: stopError },
         );
+    });
+
+    test('shows an actual server refusal before an explicit successful Join', async ({
+      page,
+    }, testInfo) => {
+      await page.goto(`${live.ui}/#station-ui-bootstrap=${bootstrapToken}`);
+      await page.evaluate(() =>
+        localStorage.setItem('station:onboarding-setup-dismissed', '1'),
+      );
+      const telemetry = page.getByRole('dialog', {
+        name: 'What Station sends',
+      });
+      if (await telemetry.isVisible())
+        await telemetry.getByRole('button', { name: 'Not now' }).click();
+      const repository = join(fixtureRoot, 'refusal-worktree');
+      await createRepository(repository, 'room-refusal');
+      await createProject(page, 'room-refusal', repository);
+      const taskId = await createTaskFromProject(
+        page,
+        live,
+        'room-refusal',
+        'Live room refusal',
+        repository,
+        'room-refusal',
+      );
+      await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
+      await expect(page.getByText('Live room connected.')).toBeVisible({
+        timeout: 15_000,
+      });
+      const pattern = `**/api/tasks/${encodeURIComponent(taskId)}/room/live`;
+      let refused = 0;
+      // Deliberate command-transport fault: before any membership exists, ask
+      // the real server to announce. Forward its canonical forbidden receipt
+      // unchanged; do not fabricate success, a snapshot, or membership.
+      await page.route(pattern, async (route) => {
+        if (
+          route.request().method() !== 'POST' ||
+          route.request().postDataJSON().command !== 'join' ||
+          refused
+        ) {
+          await route.continue();
+          return;
+        }
+        refused += 1;
+        const response = await route.fetch({
+          postData: { command: 'announce' },
+        });
+        expect(response.status()).toBe(200);
+        expect(await response.json()).toMatchObject({
+          success: true,
+          data: { kind: 'available', result: { outcome: 'forbidden' } },
+        });
+        await route.fulfill({ response });
+      });
+      try {
+        await page.getByRole('button', { name: 'Join room' }).click();
+        const alert = page.getByRole('alert').filter({
+          hasText: 'This live collaboration action is not allowed.',
+        });
+        await expect(alert).toBeVisible();
+        await expect(
+          page.getByRole('button', { name: 'Announce work' }),
+        ).toBeDisabled();
+        await expect(
+          page.getByRole('button', { name: 'Leave room' }),
+        ).toBeDisabled();
+        expect(refused).toBe(1);
+        const visualRoot = mkdtempSync(
+          join(process.cwd(), '.kontourai', 'live-refusal-browser-'),
+        );
+        console.log(`[live-refusal-browser] ${visualRoot}`);
+        for (const width of [1280, 390]) {
+          await page.setViewportSize({ width, height: 900 });
+          await alert.scrollIntoViewIfNeeded();
+          await expect(alert).toBeInViewport();
+          await page.screenshot({
+            path: testInfo.outputPath(`live-refusal-${width}.png`),
+            fullPage: true,
+          });
+          copyFileSync(
+            testInfo.outputPath(`live-refusal-${width}.png`),
+            join(visualRoot, `live-refusal-${width}.png`),
+          );
+        }
+        await clickLiveCommand(page, 'Join room', ['joined', 'refreshed']);
+        await expect(alert).toHaveCount(0);
+        await expect(
+          page.getByRole('button', { name: 'Announce work' }),
+        ).toBeEnabled();
+        await expect(
+          page.getByRole('button', { name: 'Leave room' }),
+        ).toBeEnabled();
+        expect(refused).toBe(1);
+      } finally {
+        await page.unroute(pattern);
+      }
     });
 
     test('joins, announces, watches, follows, edits, revokes, and restores through the shipped UI', async ({

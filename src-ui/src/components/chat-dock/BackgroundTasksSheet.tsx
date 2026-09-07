@@ -78,6 +78,9 @@ const KIND_LABEL: Record<BackgroundTaskEntry['kind'], string> = {
 const OUTCOME_LABEL: Partial<Record<BackgroundTaskState, string>> = {
   completed: 'Completed',
   stopped: 'Stopped',
+  // station#1558: not "Stopped" and not "Failed" — the session ended before
+  // any result arrived, and whether the tool ran is unknown.
+  unresolved: 'No result',
   failed: 'Failed',
 };
 
@@ -258,6 +261,7 @@ export function BackgroundTasksSheet({
 
   return (
     <ResponsiveDialogSurface
+      layer="popover"
       onClose={onClose}
       ariaLabel="Background tasks"
       overlayClassName="background-tasks-sheet-overlay background-tasks-sheet-overlay--start"

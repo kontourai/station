@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir, platform as hostPlatform } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readPnpmLock } from './lib/pnpm-lockfile.mjs';
 
 const GUIDES_URL = 'https://v2.tauri.app/_llms-txt/guides.txt';
 const REFERENCE_URL = 'https://v2.tauri.app/_llms-txt/reference.txt';
@@ -400,8 +401,13 @@ export function buildContextReport(root, selectedPlatform = 'all') {
   const desktopRoot = dirname(cargoPath);
   const cargoToml = readFileSync(cargoPath, 'utf8');
   const packageJson = readJson(join(root, 'package.json'));
-  const packageLock = readJson(join(root, 'package-lock.json'));
-  const npmPackages = packageLock.packages ?? {};
+  const packageLock = readPnpmLock(root);
+  const importer = packageLock.importers['.'];
+  const npmPackages = {
+    ...importer.dependencies,
+    ...importer.devDependencies,
+    ...importer.optionalDependencies,
+  };
   const rustNames = [
     'tauri',
     'tauri-build',
@@ -430,7 +436,7 @@ export function buildContextReport(root, selectedPlatform = 'all') {
         requested:
           packageJson.dependencies?.[name] ??
           packageJson.devDependencies?.[name],
-        installed: npmPackages[`node_modules/${name}`]?.version,
+        installed: npmPackages[name]?.version?.split('(')[0],
       },
     ]),
   );

@@ -114,65 +114,77 @@ export function ProviderStackOverview({
     <div className="provider-overview">
       <div className="provider-overview__header">
         <h3 className="provider-overview__title">Station model connections</h3>
+        {/* #1536 D7: this read "Engine connections appear in Connections."
+            while the reader was standing in Connections — a sentence that
+            resolves to itself. The Engines tab is where they are. */}
         <p className="provider-overview__desc">
-          Connections used by Station's engine. Engine connections appear in
-          Connections.
+          Connections used by Station's engine. Engine connections are under the
+          Engines tab.
         </p>
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-          marginBottom: '24px',
-        }}
-      >
-        <ProviderOverviewSection
-          title="LLM"
-          emptyText="No language model connection configured"
-          providers={llmProviders}
-          onSelect={onSelect}
-          icon={
-            <svg
-              aria-hidden="true"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-          }
-        />
-        <ProviderOverviewSection
-          title="Embedding"
-          emptyText="No embedding connection — required for knowledge search"
-          providers={embeddingProviders}
-          onSelect={onSelect}
-          icon={
-            <svg
-              aria-hidden="true"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="2" y1="12" x2="22" y2="12" />
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-            </svg>
-          }
-        />
-      </div>
+      {/* #1536 D7: the per-capability breakdown of an EMPTY set restated the
+          list pane's "No model connections yet" twice more ("No language
+          model connection configured", "No embedding connection …") beside it.
+          It earns its place only once something exists to break down — an
+          LLM connected and no embedding one is a real distinction; nothing
+          connected is one fact, said once, by the list. Quick Setup below is
+          the fix, and it stays. */}
+      {providers.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            marginBottom: '24px',
+          }}
+        >
+          <ProviderOverviewSection
+            title="LLM"
+            emptyText="No language model connection configured"
+            providers={llmProviders}
+            onSelect={onSelect}
+            icon={
+              <svg
+                aria-hidden="true"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+            }
+          />
+          <ProviderOverviewSection
+            title="Embedding"
+            emptyText="No embedding connection — required for knowledge search"
+            providers={embeddingProviders}
+            onSelect={onSelect}
+            icon={
+              <svg
+                aria-hidden="true"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg>
+            }
+          />
+        </div>
+      )}
 
       {providers.length === 0 && (
         <div className="provider-overview__quickstart">

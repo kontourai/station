@@ -1,3 +1,4 @@
+import { load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
 import {
   classifyActionlintEvaluation,
@@ -1312,6 +1313,46 @@ describe('persistent runner policy', () => {
     },
   );
 
+  test('admits the reviewed browser evidence commands but still rejects an extra candidate command', () => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('fast-checks', () => {}),
+      ),
+    ).toEqual([]);
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiJobFixture('fast-checks', (job) => {
+          (job.steps as Array<Record<string, unknown>>).push({
+            name: 'Unreviewed extra command',
+            run: 'echo unreviewed',
+          });
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fast-checks',
+      message:
+        'pull_request_target router jobs must not add unreviewed shell execution',
+    });
+  });
+
+  test('the always-on workflow gate rejects removal of required browser smoke', () => {
+    const findings = persistentRunnerPolicyFindings(
+      primaryCiJobFixture('fast-checks', (job) => {
+        job.steps = (job.steps as Array<Record<string, unknown>>).filter(
+          (step) =>
+            step.name !== 'Verify critical browser journeys before merge',
+        );
+      }),
+    );
+    expect(findings).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fast-checks',
+      message:
+        'Required browser smoke must execute once, unconditionally, with its real exit status inside fast-checks.',
+    });
+  });
+
   test('rejects unreviewed fork shell execution', () => {
     expect(
       persistentRunnerPolicyFindings(
@@ -1337,6 +1378,31 @@ describe('persistent runner policy', () => {
           (forkSmoke.steps as Array<Record<string, unknown>>).push({
             uses: 'example/unreviewed-action@full-sha',
           });
+        }),
+      ),
+    ).toContainEqual({
+      file: '.github/workflows/ci.yml',
+      jobId: 'fork-smoke',
+      message:
+        'pull_request_target router jobs must not add unreviewed custom actions',
+    });
+  });
+
+  test.each([
+    { with: { install: true } },
+    { with: undefined },
+    { with: { version: 'latest' } },
+    { uses: 'pnpm/setup@v2' },
+    { env: { NODE_OPTIONS: '--require=./candidate.js' } },
+  ])('rejects changing the pinned pnpm bootstrap contract: %j', (mutation) => {
+    expect(
+      persistentRunnerPolicyFindings(
+        primaryCiFixture((forkSmoke) => {
+          const setup = (
+            forkSmoke.steps as Array<Record<string, unknown>>
+          ).find((step) => step.name === 'Setup pinned pnpm');
+          if (!setup) throw new Error('Expected pinned pnpm bootstrap.');
+          Object.assign(setup, mutation);
         }),
       ),
     ).toContainEqual({
@@ -2352,6 +2418,160 @@ describe('persistent runner policy', () => {
       'desktop-win jobs must reserve shared physical-host capacity',
     );
   });
+
+  // station#1648. The flag apt-installs system libraries as root and the
+  // fleet's runner account has no passwordless sudo, so on these runners it
+  // can only fail. These cases mutate the REAL checked-in workflow rather
+  // than a synthetic fixture, so they prove the finding fires where the
+  // regression would actually be written.
+  describe('playwright --with-deps on a persistent runner', () => {
+    const withDepsMessage =
+      'persistent self-hosted steps must not pass --with-deps to playwright install: the fleet runner account has no passwordless sudo, so it can only fail. Install the system libraries on the runner image, and use scripts/install-playwright-browsers.mjs here';
+
+    function extendedWorkflow() {
+      const workflow = readWorkflowDocuments().find(
+        ({ file }) => file === '.github/workflows/ci-extended.yml',
+      );
+      if (!workflow)
+        throw new Error('Expected the checked-in ci-extended workflow.');
+      return {
+        file: workflow.file,
+        document: structuredClone(workflow.document) as {
+          jobs: Record<string, { steps: ParsedWorkflowStep[] }>;
+        },
+      };
+    }
+
+    function installStep(document: {
+      jobs: Record<string, { steps: ParsedWorkflowStep[] }>;
+    }) {
+      const step = document.jobs['playwright-full'].steps.find(
+        ({ name }) => name === 'Install Playwright browsers',
+      );
+      if (!step)
+        throw new Error(
+          "Expected playwright-full's Install Playwright browsers step.",
+        );
+      return step;
+    }
+
+    // The negative direction. Without this, every assertion below could pass
+    // against a tree that emits the finding unconditionally.
+    test('the checked-in corpus is clean', () => {
+      expect(
+        persistentRunnerPolicyFindings(readWorkflowDocuments()).map(
+          ({ message }) => message,
+        ),
+      ).not.toContain(withDepsMessage);
+      // Non-vacuity: the step this policy guards is really there to be read,
+      // and really does invoke the install script.
+      const { document } = extendedWorkflow();
+      expect(installStep(document).run).toContain(
+        'node scripts/install-playwright-browsers.mjs chromium',
+      );
+      expect(installStep(document).run).not.toContain('--with-deps');
+    });
+
+    test('rejects the flag re-added to the real install step', () => {
+      const { file, document } = extendedWorkflow();
+      const step = installStep(document);
+      step.run = `${String(step.run).trimEnd()} --with-deps\n`;
+
+      expect(
+        persistentRunnerPolicyFindings([{ file, document }]).map(
+          ({ message }) => message,
+        ),
+      ).toContain(withDepsMessage);
+    });
+
+    // The failure mode this repo has been bitten by: a text scan over
+    // workflow YAML cannot see a folded scalar, and passes. The gate reads
+    // the PARSED run string, so the fold is resolved before it looks.
+    test('sees the flag through a folded scalar a text scan would miss', () => {
+      const source = [
+        'jobs:',
+        '  playwright-full:',
+        '    runs-on: [self-hosted, Linux, X64, kontour-linux]',
+        "    if: github.event_name != 'pull_request'",
+        '    steps:',
+        '      - name: Install Playwright browsers',
+        '        run: >-',
+        '          npx playwright install chromium',
+        '          --with-deps',
+      ].join('\n');
+      // Proof the fold is what hides it: no single line of the source carries
+      // the whole command, which is exactly why a line-oriented scan for
+      // `playwright install chromium --with-deps` reads this file as clean.
+      expect(
+        source
+          .split('\n')
+          .some((line) => line.includes('install chromium --with-deps')),
+      ).toBe(false);
+
+      const document = load(source) as {
+        jobs: Record<string, { steps: ParsedWorkflowStep[] }>;
+      };
+      expect(document.jobs['playwright-full'].steps[0].run).toContain(
+        'install chromium --with-deps',
+      );
+      expect(
+        persistentRunnerPolicyFindings([
+          { file: '.github/workflows/folded.yml', document },
+        ]).map(({ message }) => message),
+      ).toContain(withDepsMessage);
+    });
+
+    // The false-positive control. Built from a synthetic step rather than the
+    // real one on purpose: derived from the checked-in workflow, this case
+    // would also red the moment the real step gained the flag, which is a
+    // different fault entirely and would make this control unreadable.
+    test('a whole-line shell comment naming the flag is inert', () => {
+      const file = '.github/workflows/commented.yml';
+      const document = {
+        jobs: {
+          'playwright-full': {
+            'runs-on': ['self-hosted', 'Linux', 'X64', 'kontour-linux'],
+            if: "github.event_name != 'pull_request'",
+            steps: [
+              {
+                name: 'Install Playwright browsers',
+                run: '# never pass --with-deps here: no passwordless sudo\nnode scripts/install-playwright-browsers.mjs chromium\n',
+              },
+            ],
+          },
+        },
+      };
+
+      expect(
+        persistentRunnerPolicyFindings([{ file, document }]).map(
+          ({ message }) => message,
+        ),
+      ).not.toContain(withDepsMessage);
+    });
+
+    // Scoped, not blanket: GitHub-hosted images do have passwordless sudo,
+    // so the flag is legitimate there and this policy must not claim
+    // otherwise.
+    test('leaves a github-hosted job alone', () => {
+      expect(
+        persistentRunnerPolicyFindings([
+          {
+            file: '.github/workflows/hosted.yml',
+            document: {
+              jobs: {
+                hosted: {
+                  'runs-on': 'ubuntu-22.04',
+                  steps: [
+                    { run: 'npx playwright install chromium --with-deps' },
+                  ],
+                },
+              },
+            },
+          },
+        ]).map(({ message }) => message),
+      ).not.toContain(withDepsMessage);
+    });
+  });
 });
 
 describe('the real workflow corpus', () => {
@@ -2391,13 +2611,14 @@ describe('the real workflow corpus', () => {
 
   test('uses one host-manifest lifetime that covers every admitted timeout without heartbeat renewal', () => {
     let directCapacityJobs = 0;
+    const capacityFiles: string[] = [];
     let recoveryJobs = 0;
     let reusableCapacityJobs = 0;
 
-    for (const { document } of workflows) {
+    for (const { file, document } of workflows) {
       const jobs =
         (document as { jobs?: Record<string, ParsedWorkflowJob> }).jobs ?? {};
-      for (const job of Object.values(jobs)) {
+      for (const [jobId, job] of Object.entries(jobs)) {
         const capacityStep = job.steps?.find(
           (step) =>
             typeof step?.uses === 'string' &&
@@ -2407,6 +2628,7 @@ describe('the real workflow corpus', () => {
         );
         if (capacityStep) {
           directCapacityJobs += 1;
+          capacityFiles.push(`${file}#${jobId}`);
           expect(String(capacityStep.with?.['owner-lifetime-seconds'])).toBe(
             '7800',
           );
@@ -2439,7 +2661,22 @@ describe('the real workflow corpus', () => {
       }
     }
 
-    expect(directCapacityJobs).toBe(9);
+    // 9 until #1668 moved `nightly-gallery` off the fleet and onto a hosted
+    // container, which removed its capacity step and left this pin behind —
+    // `main` went red on this line, not on the change that tripped it. A bare
+    // count names whoever gates next rather than whoever moved it; the
+    // contributing files are listed below so the next removal says which one.
+    expect(directCapacityJobs).toBe(8);
+    expect(capacityFiles.sort()).toEqual([
+      '.github/workflows/ci-extended.yml#coverage',
+      '.github/workflows/ci-extended.yml#playwright-full',
+      '.github/workflows/container-smoke.yml#smoke',
+      '.github/workflows/interactive-workspace-performance.yml#one-hour-collaboration-reference',
+      '.github/workflows/interactive-workspace-performance.yml#one-hour-work-board-reference',
+      '.github/workflows/interactive-workspace-performance.yml#reference-performance',
+      '.github/workflows/windows-verification.yml#portable-floor',
+      '.github/workflows/windows-vitest-diagnostic.yml#diagnostic',
+    ]);
     expect(recoveryJobs).toBe(2);
     expect(reusableCapacityJobs).toBe(0);
   });

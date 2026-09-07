@@ -57,9 +57,13 @@ const fixtures = vi.hoisted(() => ({
     | undefined,
 }));
 
-vi.mock('../contexts/open-chats-store', () => ({
-  useOpenChats: () =>
-    Object.entries(fixtures.chats).map(([id, chat]: [string, any]) => ({
+vi.mock('../contexts/open-chats-store', async () => {
+  // #1582 B9: the work selector shares the store's own predicate rather than
+  // restating it, so this double cannot disagree with production about which
+  // chats Home may name.
+  const { activeChatHasWork } = await import('../contexts/active-chats-state');
+  const map = (entries: [string, any][]) =>
+    entries.map(([id, chat]: [string, any]) => ({
       id: chat.conversationId ?? id,
       chatSessionId: id,
       kind: 'chat',
@@ -73,16 +77,25 @@ vi.mock('../contexts/open-chats-store', () => ({
         ...(chat.messages ?? []).map((message: any) => message.timestamp ?? 0),
       ),
       lifecycleLabel: chat.status === 'sending' ? 'Running' : 'Recent',
-    })),
-  openChatsStore: {
-    focus: vi.fn(),
-    openCollection: vi.fn(),
-    registerNavigation: ({ focus }: any) => {
-      openChatsStore.focus = focus;
-      return vi.fn();
+    }));
+  return {
+    useOpenChats: () => map(Object.entries(fixtures.chats) as [string, any][]),
+    useOpenWorkChats: () =>
+      map(
+        (Object.entries(fixtures.chats) as [string, any][]).filter(([, chat]) =>
+          activeChatHasWork(chat),
+        ),
+      ),
+    openChatsStore: {
+      focus: vi.fn(),
+      openCollection: vi.fn(),
+      registerNavigation: ({ focus }: any) => {
+        openChatsStore.focus = focus;
+        return vi.fn();
+      },
     },
-  },
-}));
+  };
+});
 
 vi.mock('@kontourai/station-sdk', () => ({
   // archive#3122: Home resolves its Workspace Pane renderer through
@@ -357,6 +370,43 @@ describe('HomeView', () => {
     expect(fixtures.inventoryRefetch).toHaveBeenCalledTimes(1);
   });
 
+  // #1582 B9: a chat created and never typed into is not work. It produced a
+  // "Continue most recent work → New chat" card that a reload erased, because
+  // Home read the same unfiltered selection the inboxes do. Home takes
+  // `useOpenWorkChats`; swapping it back for `useOpenChats` reddens this.
+  test('a chat nothing has been put into produces no continue-work card', () => {
+    fixtures.chats = {
+      'claude:1788672912443': {
+        agentSlug: 'codex-agent',
+        agentName: 'Codex',
+        title: 'New chat',
+      },
+    };
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    expect(
+      screen.queryByRole('button', { name: /Continue most recent work/i }),
+    ).toBeNull();
+  });
+
+  test('the same chat produces the card once its first turn promotes it', () => {
+    // The discriminating pair: identical fixture but for the conversation id
+    // the first successful turn assigns, so the absence above is the predicate
+    // and not an empty Home.
+    fixtures.chats = {
+      'claude:1788672912443': {
+        conversationId: 'conversation-1',
+        agentSlug: 'codex-agent',
+        agentName: 'Codex',
+        title: 'New chat',
+      },
+    };
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    expect(
+      screen.getByRole('button', { name: /Continue most recent work/i })
+        .textContent,
+    ).toContain('New chat');
+  });
+
   test('orders real timestamps and focuses an active chat continuation', () => {
     fixtures.sessions = [
       {
@@ -557,9 +607,24 @@ describe('HomeView', () => {
     expect(container.querySelector('.home-view__empty')).toBeNull();
     expect(container.querySelector('.empty.empty--prominent')).toBeTruthy();
     expect(screen.getByText('Ready for your first direct chat')).toBeTruthy();
+  });
+
+  /**
+   * #1536 C2: three doors to one room. Home offered the "Start direct chat"
+   * action card, a "Start your first chat" button inside this empty state, and
+   * the dock's own "Start a chat". The empty state now names the card instead
+   * of being a third one.
+   */
+  test('the first-work empty state points at the start card rather than duplicating it', () => {
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+
     expect(
-      screen.getByRole('button', { name: 'Start your first chat' }),
-    ).toBeTruthy();
+      screen.queryByRole('button', { name: 'Start your first chat' }),
+    ).toBeNull();
+    expect(screen.getByText(/Use Start direct chat above/)).toBeTruthy();
+    // The card it names is the one that stays.
+    expect(screen.getByText('Start direct chat')).toBeTruthy();
+    expect(screen.getByText('Write a message and begin')).toBeTruthy();
   });
 
   test('separates Active now from terminal Recently finished work with counts and compact cwd metadata', () => {

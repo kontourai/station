@@ -10,13 +10,16 @@ import {
 import { useMemo, useReducer } from 'react';
 import { useAgents, useAgentsLoaded } from '../../contexts/AgentsContext';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { openChatsStore, useOpenChats } from '../../contexts/open-chats-store';
+import {
+  openChatsStore,
+  useOpenWorkChats,
+} from '../../contexts/open-chats-store';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import type { NavigationView } from '../../types';
 import { runtimeCatalogVisibleModels } from '../../utils/execution';
-import { modelDisplayLabel } from '../../utils/modelCapabilities';
+import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import { buildHomeWorkItems, type HomeWorkItem } from './home-view-model';
 import {
   focusChatEventDetailForAction,
@@ -85,9 +88,11 @@ function useHomeWorkData(): HomeWorkData {
       ...(pickerCatalog?.modelConnections ?? []),
     ].flatMap((connection) => runtimeCatalogVisibleModels(connection));
     return (modelId: string | null | undefined) =>
-      modelDisplayLabel(modelId, catalog);
+      modelIdentityLabel(modelId, catalog);
   }, [pickerCatalog?.agentConnections, pickerCatalog?.modelConnections]);
-  const openChatItems = useOpenChats(
+  // #1582 B9: Home names WORK, so a chat nothing has been put into is not one
+  // of its items. The inboxes keep `useOpenChats` — see `useOpenWorkChats`.
+  const openChatItems = useOpenWorkChats(
     agents,
     sessions.data ?? [],
     resolveModelLabel,

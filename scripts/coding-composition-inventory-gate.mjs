@@ -60,7 +60,14 @@ const expectedDependencies = new Map(
     // sentence per unavailable reason, not a receipt the composition emits.
     'src-ui/src/app-shell/codingEvidenceUnavailableCopy.ts': 'presentation',
     'src-ui/src/components/chat-dock/ChatDock.tsx': 'chat-handoff',
-    'src-ui/src/components/chat-dock/ChatDockProjectContext.tsx': 'navigation',
+    // `ChatDockProjectContext.tsx` was declared here for its
+    // `codingLayoutSlug` prop: the project row's directory segment doubled as
+    // a link into the session's Coding layout. #1536 F retired that segment
+    // (it was leaving the conversation title beside it about one character
+    // wide) and the route moved to `ChatDock.tsx`'s own "Open code layout"
+    // menu row, which is already declared above. The row itself now names a
+    // project and a branch and knows nothing about Coding, so it is no longer
+    // a Coding dependency to declare.
     'src-ui/src/components/chat-dock/dockSnap.ts': 'presentation',
     'src-ui/src/components/chat-dock/useChatDockViewModel.ts': 'navigation',
     'src-ui/src/components/coding-layout/CodingInspectorPanel.css':
@@ -137,6 +144,9 @@ const semantic =
 function walk(root, dir, includeTests = false) {
   const paths = [];
   for (const name of readdirSync(resolve(root, dir))) {
+    // Installed dependencies are not repository source or owned test proof.
+    // Skip before stat: pnpm links may be dangling or lead back into packages.
+    if (name === 'node_modules') continue;
     const relative = `${dir}/${name}`;
     const stat = statSync(resolve(root, relative));
     if (stat.isDirectory()) paths.push(...walk(root, relative, includeTests));

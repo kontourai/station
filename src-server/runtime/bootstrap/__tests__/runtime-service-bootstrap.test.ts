@@ -45,6 +45,8 @@ describe('createRuntimeServiceBundle', () => {
           voiceTurnRunAuthority: vi.fn(() => ({})),
         } as any,
         environmentSecurityService: {
+          authorizeCredential: vi.fn(() => false),
+          credentialLocality: vi.fn(() => undefined),
           verifyCredential: vi.fn(() => true),
           resolveGrantedScope: vi.fn(() => DEFAULT_GRANT_PAIRING_SCOPE),
         },
@@ -229,6 +231,8 @@ describe('createRuntimeServiceBundle', () => {
           voiceTurnRunAuthority: vi.fn(() => ({})),
         } as any,
         environmentSecurityService: {
+          authorizeCredential: vi.fn(() => false),
+          credentialLocality: vi.fn(() => undefined),
           verifyCredential: vi.fn(() => true),
           resolveGrantedScope: vi.fn(() => DEFAULT_GRANT_PAIRING_SCOPE),
         },
@@ -298,6 +302,8 @@ describe('createRuntimeServiceBundle', () => {
           voiceTurnRunAuthority: vi.fn(() => ({})),
         } as any,
         environmentSecurityService: {
+          authorizeCredential: vi.fn(() => false),
+          credentialLocality: vi.fn(() => undefined),
           verifyCredential: vi.fn(() => true),
           resolveGrantedScope: vi.fn(() => DEFAULT_GRANT_PAIRING_SCOPE),
         },

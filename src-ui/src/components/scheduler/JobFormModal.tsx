@@ -2,24 +2,42 @@ import type {
   SchedulerJob,
   SchedulerSchedule,
 } from '@kontourai/station-contracts/scheduler';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useAgentCatalogRead, useAgents } from '../../contexts/AgentsContext';
 import type { SchedulerProviderInfo } from '../../hooks/useScheduler';
 import { useAddJob, useEditJob } from '../../hooks/useScheduler';
 import { errorText } from '../../utils/errorText';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
+import { SkeletonList } from '../state';
 import { Toggle } from '../Toggle';
 import { AgentPicker } from './AgentPicker';
 import { CronPreview } from './CronEditor';
 import { ScheduleModeEditor } from './ScheduleModeEditor';
 import {
+  SCHEDULER_ENGINE_AGENT_NOTE,
+  schedulerAgentOptions,
+  schedulerAgentRunnability,
+} from './schedulerAgentOptions';
+import {
+  browserTimeZone,
   datetimeLocalValue,
   type ExactIntervalUnit,
   intervalToMs,
   scheduleEquals,
   scheduleForJob,
   splitEveryMs,
+  WEEKDAY_MORNING_CRON,
+  weekdayMorningSchedule,
 } from './scheduleValue';
+
+/**
+ * The one catalog-failure message both Agent fields describe themselves by
+ * (#1536 S1). Named here so the element and every reference to it move
+ * together — a hardcoded id in the picker is how the monitor branch ended up
+ * pointing at something that was not rendered.
+ */
+const AGENT_CATALOG_ERROR_ID = 'schedule-agent-catalog-error';
 
 export function JobFormModal({
   job,
@@ -48,12 +66,24 @@ export function JobFormModal({
   const extraFields: SchedulerProviderInfo['formFields'] =
     activeProvider?.formFields || [];
   const init = prefill || {};
+  const agents = useAgents();
+  const {
+    loaded: agentsLoaded,
+    settled: agentsSettled,
+    failed: agentsFailed,
+    retrying: agentsRetrying,
+    retry: retryAgents,
+  } = useAgentCatalogRead();
+  const agentOptions = useMemo(() => schedulerAgentOptions(agents), [agents]);
+  // Weekdays 8:00 AM, not `* * * * *`. A default nobody reads must be the
+  // schedule a reasonable person would have chosen, not the one that runs
+  // every minute of every day.
   const initialSchedule: SchedulerSchedule = job
     ? scheduleForJob(job)
-    : (init.schedule ?? {
-        kind: 'cron',
-        expr: init.cron || '* * * * *',
-      });
+    : (init.schedule ??
+      (init.cron
+        ? { kind: 'cron', expr: init.cron }
+        : weekdayMorningSchedule()));
   const initialInterval = splitEveryMs(
     initialSchedule.kind === 'every' ? initialSchedule.everyMs : 60_000,
   );
@@ -82,7 +112,10 @@ export function JobFormModal({
   }>({
     name: job?.name || init.name || '',
     scheduleKind: initialSchedule.kind,
-    cron: initialSchedule.kind === 'cron' ? initialSchedule.expr : '* * * * *',
+    cron:
+      initialSchedule.kind === 'cron'
+        ? initialSchedule.expr
+        : WEEKDAY_MORNING_CRON,
     everyValue: initialInterval.value,
     everyUnit: initialInterval.unit,
     atTime:
@@ -94,7 +127,7 @@ export function JobFormModal({
         ? (initialSchedule.deleteAfterRun ?? true)
         : true,
     prompt: job?.prompt || init.prompt || '',
-    agent: job?.agent || init.agent || 'station',
+    agent: job?.agent || init.agent || agentOptions.defaultSlug || 'station',
     retryCount: job?.retryCount ?? 0,
     retryDelaySecs: job?.retryDelaySecs ?? 60,
     monitorTarget:
@@ -121,6 +154,56 @@ export function JobFormModal({
     ...Object.fromEntries(extraFields.map((f) => [f.key, job?.[f.key] || ''])),
   });
   const [cronInput, setCronInput] = useState(form.cron);
+  // #1536 D1/D8: the zone the form's expression is written in — an edited job's
+  // own, or (for a new one) the default schedule's, which is the reader's. The
+  // preview and the field label both read it, so what the form SAYS and what it
+  // will SUBMIT cannot disagree.
+  //
+  // #1536 R4/S2, stated as the three cases it actually decides — it is keyed on
+  // what the form OPENED with, not on the tab currently selected:
+  //   - opened on a zoned cron        → that cron keeps its own zone;
+  //   - opened on a legacy UNZONED cron → stays UTC, because changing an
+  //     existing job's meaning is not this field's business;
+  //   - opened on anything else (`every`/`at`, or a new job) → the reader's
+  //     zone, so a cron the Calendar tab mints is not silently zoneless. That
+  //     last case is the fix: reading `initialSchedule.timezone` alone left such
+  //     an expression with no zone, so an hour the reader typed as local was
+  //     saved, previewed and labelled as UTC.
+  const cronTimezone =
+    initialSchedule.kind === 'cron'
+      ? initialSchedule.timezone
+      : browserTimeZone();
+
+  // The catalog can arrive after this form mounts, so the runnable default
+  // cannot be settled at first render alone. Correct it once the catalog has
+  // answered, and never after the person has chosen: an auto-correction that
+  // overrides a deliberate pick is worse than a bad default.
+  const agentPickedRef = useRef(false);
+  useEffect(() => {
+    if (isEdit || init.agent || agentPickedRef.current || !agentsLoaded) return;
+    const runnableDefault = agentOptions.defaultSlug;
+    if (!runnableDefault) return;
+    setForm((current) =>
+      schedulerAgentRunnability(agents, current.agent).runnable
+        ? current
+        : { ...current, agent: runnableDefault },
+    );
+  }, [agents, agentOptions.defaultSlug, agentsLoaded, init.agent, isEdit]);
+
+  const jobAgentRunnability = schedulerAgentRunnability(agents, form.agent);
+  const monitorAgentRunnability = schedulerAgentRunnability(
+    agents,
+    form.monitorAgentId,
+  );
+  const namedAgentRunnability =
+    form.monitorType === 'none' ? jobAgentRunnability : monitorAgentRunnability;
+  // #1536 H1-2: `useAgents()` is `[]` while the catalog is arriving AND when it
+  // failed, so every runnability answer above is "no Agent named that" until it
+  // has actually answered. Reporting that as the Agent's own fault — and
+  // refusing to submit on it — blamed a missing Agent for a read that had not
+  // happened, permanently once the read had failed. Nothing derived from an
+  // unanswered catalog may reach the reader.
+  const agentRunnabilityKnown = agentsLoaded;
 
   const scheduleFromForm = (): SchedulerSchedule => {
     if (form.scheduleKind === 'every') {
@@ -141,12 +224,14 @@ export function JobFormModal({
         deleteAfterRun: form.deleteAfterRun,
       };
     }
+    // The zone travels with the expression: a local weekday rule has no
+    // correct fixed-UTC spelling (#1536 L1). An edited job keeps whatever zone
+    // it was created with; a new one inherits the default schedule's, which is
+    // the reader's own.
     return {
       kind: 'cron',
       expr: form.cron,
-      ...(initialSchedule.kind === 'cron' && initialSchedule.timezone
-        ? { timezone: initialSchedule.timezone }
-        : {}),
+      ...(cronTimezone ? { timezone: cronTimezone } : {}),
     };
   };
 
@@ -228,7 +313,10 @@ export function JobFormModal({
         {
           name: form.name,
           provider: selectedProvider,
-          ...(nextSchedule.kind === 'cron'
+          // #1536 L1: a bare `cron` string cannot carry a timezone, so sending
+          // one silently dropped the zone the expression depends on. The
+          // `schedule` shape carries both and the server accepts either.
+          ...(nextSchedule.kind === 'cron' && !nextSchedule.timezone
             ? { cron: nextSchedule.expr }
             : { schedule: nextSchedule }),
           prompt: form.prompt,
@@ -285,7 +373,20 @@ export function JobFormModal({
             pending={pending}
             pendingLabel="Saving…"
             disabled={
-              !scheduleValid || !monitorValid || (!isEdit && !form.name.trim())
+              !scheduleValid ||
+              !monitorValid ||
+              // A new job is refused while it names an Agent that cannot run
+              // it, or has no instructions: both produce a job whose first
+              // run fails. An EDIT is deliberately still saveable — an
+              // existing job whose Agent went unrunnable must stay
+              // reschedulable and repointable.
+              //
+              // The runnability half waits for the catalog to answer: an
+              // unanswered catalog cannot refuse anything (#1536 H1-2).
+              (!isEdit &&
+                (!form.name.trim() ||
+                  !form.prompt.trim() ||
+                  (agentRunnabilityKnown && !namedAgentRunnability.runnable)))
             }
           >
             {isEdit ? 'Save Changes' : 'Add Job'}
@@ -329,13 +430,51 @@ export function JobFormModal({
             )}
           </label>
         )}
+        {/* #1536 S1: the catalog READ's state is one fact about one catalog, so
+            it is stated once — above whichever Agent field this form is
+            showing. It used to live inside the non-monitor branch only, which
+            left a monitor job with no account of a failed read at all AND a
+            trigger describing itself by an id that was not on the page.
+            The loading vocabulary names the wait in the skeleton's `label`; a
+            new sentence is the eleven-treatments problem SHELL-13 removed, and
+            `check-prepush-static-gates` refuses it. */}
+        {!agentsSettled && <SkeletonList count={1} label="Loading agents" />}
+        {agentsFailed && (
+          <span className="schedule__field-error" id={AGENT_CATALOG_ERROR_ID}>
+            Station could not load the Agent catalog.{' '}
+            {/* #1536 D7: a retry that looks idle while it is in flight invites a
+                second click at the one moment a second request helps least. */}
+            <button
+              type="button"
+              className="schedule__field-retry"
+              onClick={retryAgents}
+              disabled={agentsRetrying}
+            >
+              {agentsRetrying ? 'Trying…' : 'Try again'}
+            </button>
+          </span>
+        )}
         {form.monitorType === 'none' && (
           <div className="schedule__field">
             <span className="schedule__field-label">Agent</span>
             <AgentPicker
               value={form.agent}
-              onChange={(v) => setForm((f) => ({ ...f, agent: v }))}
+              catalogErrorId={agentsFailed ? AGENT_CATALOG_ERROR_ID : undefined}
+              onChange={(v) => {
+                agentPickedRef.current = true;
+                setForm((f) => ({ ...f, agent: v }));
+              }}
             />
+            {agentRunnabilityKnown && !jobAgentRunnability.runnable && (
+              <span className="schedule__field-error">
+                {jobAgentRunnability.reason}
+              </span>
+            )}
+            {agentOptions.excludedEngineAgents.length > 0 && (
+              <span className="schedule__field-hint">
+                {SCHEDULER_ENGINE_AGENT_NOTE}
+              </span>
+            )}
           </div>
         )}
         <label className="schedule__field">
@@ -353,10 +492,20 @@ export function JobFormModal({
               <span className="schedule__field-label">Monitor Agent</span>
               <AgentPicker
                 value={form.monitorAgentId}
+                catalogErrorId={
+                  agentsFailed ? AGENT_CATALOG_ERROR_ID : undefined
+                }
                 onChange={(value) =>
                   setForm((current) => ({ ...current, monitorAgentId: value }))
                 }
               />
+              {agentRunnabilityKnown &&
+                form.monitorAgentId.trim().length > 0 &&
+                !monitorAgentRunnability.runnable && (
+                  <span className="schedule__field-error">
+                    {monitorAgentRunnability.reason}
+                  </span>
+                )}
             </div>
             <label className="schedule__field">
               <span className="schedule__field-label">
@@ -459,8 +608,32 @@ export function JobFormModal({
         )}
         <div className="schedule__form-divider" />
         <div className="schedule__field">
-          <span className="schedule__field-label" id="schedule-mode-label">
+          {/* `id` retired: it was declared and never referenced — a label
+              nothing consumed. The mode fieldset below names itself
+              ("Schedule model"), which is the right name for a tab group and
+              not this field's. */}
+          <span className="schedule__field-label">
             Schedule
+            {form.scheduleKind === 'cron' && (
+              // #1536 D8: a calendar time is meaningless without its zone, and
+              // this is the zone the job will actually be evaluated in.
+              //
+              // #1536 R6/R7: ONE zone vocabulary in the panel's text — the IANA
+              // name, here and in the human sentence below, because that is what
+              // the schedule actually carries and what an operator would type.
+              // The short abbreviation appears only in the instant list, where
+              // it labels a moment in the reader's own zone. And it is NAMED:
+              // read on its own, "· America/Denver" says nothing about what it
+              // qualifies, so it carries its own label rather than leaning on
+              // the visual adjacency.
+              <span className="schedule__field-hint">
+                {' '}
+                <span className="sr-only">
+                  — evaluated in {cronTimezone ?? 'UTC'}
+                </span>
+                <span aria-hidden="true">· {cronTimezone ?? 'UTC'}</span>
+              </span>
+            )}
           </span>
           <fieldset
             className="schedule-mode-editor__tabs"
@@ -495,7 +668,13 @@ export function JobFormModal({
                 value={form.cron}
                 onChange={(v) => setForm((f) => ({ ...f, cron: v }))}
               />
-              <CronPreview cron={cronInput} />
+              <CronPreview
+                schedule={{
+                  kind: 'cron',
+                  expr: cronInput,
+                  ...(cronTimezone ? { timezone: cronTimezone } : {}),
+                }}
+              />
             </>
           )}
           {form.scheduleKind === 'every' && (

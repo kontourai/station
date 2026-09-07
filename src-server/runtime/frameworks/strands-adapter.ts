@@ -1,3 +1,8 @@
+import type { UIMessage } from 'ai';
+import {
+  publicAgentIdFromRuntimeKey,
+  runtimeAgentKey,
+} from '../../routes/agents/runtime-agent-identity.js';
 /**
  * Strands Agents SDK adapter — maps Strands API to the framework-agnostic interfaces.
  *
@@ -15,17 +20,24 @@
 
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
+  AfterInvocationEvent,
   type AgentResult,
   type McpClient,
+  type Message,
   Agent as StrandsAgent,
 } from '@strands-agents/sdk';
 import type { StorageAdapter } from '@voltagent/core';
+import { createLogger } from '../../utils/logger.js';
 import {
   currentScheduledPrincipal,
   currentScheduledRunId,
 } from '../agents/scheduled-principal-context.js';
-import { currentAuthorizedTurnCorrelation } from '../conversation/authorized-turn-correlation.js';
+import {
+  currentAuthorizedTurnCorrelation,
+  currentNativeMemoryHistory,
+} from '../conversation/authorized-turn-correlation.js';
 import { createConfiguredDispatchModel } from '../conversation/dispatch-model-policy.js';
+import type { NativeMemoryHistoryCompanion } from '../conversation/native-memory-history.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
 import { resolveManagedModelBinding } from '../plugins/runtime-provider-resolution.js';
 import { getLoadedMCPToolProvenance } from '../tools/mcp-tool-names.js';
@@ -49,9 +61,15 @@ import {
 } from './framework-model-factory.js';
 import {
   bindStrandsInvocationContext,
+  resolveStrandsInvocationContext,
   wireStrandsAgentHooks,
   wireStrandsToolGate,
 } from './strands-agent-hooks.js';
+import {
+  bindStrandsNativeHistory,
+  nativeHistoryToStrands,
+  syncStrandsMessagesToMemory,
+} from './strands-message-sync.js';
 import { mapStrandsStreamEvent } from './strands-stream-events.js';
 import {
   createStrandsFunctionTools,
@@ -93,6 +111,18 @@ class StrandsAgentWrapper implements IAgent {
     memory: IMemory | null,
     invocationCtx: InvocationContext,
     tools: ITool[] = [],
+    private readonly native?: {
+      agentKey?: string;
+      adapter?: StorageAdapter;
+      fork?: (
+        history: Message[],
+        companion: NativeMemoryHistoryCompanion | undefined,
+        invocation: InvocationContext,
+        isCurrent: () => Promise<boolean>,
+      ) => StrandsAgentWrapper;
+      companion?: NativeMemoryHistoryCompanion;
+      isHistoryCurrent?: () => Promise<boolean>;
+    },
   ) {
     this.strandsAgent = strandsAgent;
     this.memory = memory;
@@ -168,7 +198,87 @@ class StrandsAgentWrapper implements IAgent {
     };
   }
 
+  private async nativeInvocation(options?: {
+    conversationId?: string;
+    userId?: string;
+  }) {
+    const conversationId = options?.conversationId;
+    if (!this.native?.fork || !conversationId) return undefined;
+    const companion = currentNativeMemoryHistory();
+    const adapter = this.native.adapter;
+    if (!adapter) {
+      if (
+        companion &&
+        this.native.agentKey &&
+        companion.ownsRuntimeAgentKey(this.native.agentKey) &&
+        companion.currentSessionId === conversationId
+      )
+        throw new Error('Native Strands history storage is unavailable.');
+      return undefined;
+    }
+    const agentKey = this.native.agentKey;
+    if (!agentKey)
+      throw new Error(
+        'Memory-backed Strands conversation requires its canonical Agent identity.',
+      );
+    const userId = options?.userId ?? '';
+    let messages: UIMessage[];
+    let isCurrent: () => Promise<boolean>;
+    if (companion) {
+      if (
+        !companion.ownsRuntimeAgentKey(agentKey) ||
+        companion.currentSessionId !== conversationId
+      )
+        throw new Error(
+          'Native Strands history does not belong to this Agent invocation.',
+        );
+      messages = await companion.read(adapter, userId, conversationId);
+      isCurrent = () => companion.isCurrent();
+    } else {
+      const original = await adapter.getConversation(conversationId);
+      const matches = (value: NonNullable<typeof original>) =>
+        value.id === conversationId &&
+        value.userId === userId &&
+        publicAgentIdFromRuntimeKey(value.resourceId) ===
+          publicAgentIdFromRuntimeKey(agentKey);
+      if (original && !matches(original))
+        throw new Error(
+          'Direct Strands conversation ownership is unavailable.',
+        );
+      isCurrent = async () => {
+        try {
+          const current = await adapter.getConversation(conversationId);
+          return current ? matches(current) : !original;
+        } catch {
+          return false;
+        }
+      };
+      messages = original
+        ? await adapter.getMessages(userId, conversationId)
+        : [];
+      if (!(await isCurrent()))
+        throw new Error('Direct Strands conversation ownership changed.');
+    }
+    const invocationState = this.invocationOptions(options).invocationState;
+    const invocation = Object.freeze({
+      ...resolveStrandsInvocationContext(invocationState, this._invocationCtx),
+    });
+    return this.native.fork(
+      nativeHistoryToStrands(messages),
+      companion,
+      invocation,
+      isCurrent,
+    );
+  }
+
   async generateText(prompt: string, _options?: any): Promise<IGenerateResult> {
+    const owned = await this.nativeInvocation(_options);
+    if (owned) return owned.generateText(prompt, _options);
+    if (
+      this.native?.isHistoryCurrent &&
+      !(await this.native.isHistoryCurrent())
+    )
+      throw new Error('Native Strands history changed before invocation.');
     // Use stream() internally to capture usage from modelMetadataEvent
     let fullText = '';
     let reasoning = '';
@@ -202,6 +312,8 @@ class StrandsAgentWrapper implements IAgent {
   }
 
   async streamText(input: string, _options?: any): Promise<IStreamResult> {
+    const owned = await this.nativeInvocation(_options);
+    if (owned) return owned.streamText(input, _options);
     // Per-request identity is WeakMap-bound to this invocation's state object
     // identity (never stored in the tool-writable bag, never a shared mutable
     // object — archive#1834 rounds 3-4); see invocationOptions.
@@ -225,55 +337,72 @@ class StrandsAgentWrapper implements IAgent {
 
     async function* streamGenerator(): AsyncIterable<IStreamChunk> {
       let fullText = '';
-      const _emittedStart = false;
-      let emittedTextStart = false;
-      const stream = agent.stream(input, invokeOptions);
       const accUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
-      self._lastStreamUsage = null;
+      let observedUsage = false;
+      try {
+        if (
+          self.native?.isHistoryCurrent &&
+          !(await self.native.isHistoryCurrent())
+        )
+          throw new Error('Native Strands history changed before invocation.');
 
-      // Emit synthetic start events (VoltAgent emits these, UI expects them)
-      yield { type: 'start', id: '0' };
-      yield { type: 'start-step', id: '0' };
+        const _emittedStart = false;
+        let emittedTextStart = false;
+        const stream = agent.stream(input, invokeOptions);
 
-      for await (const event of stream) {
-        if (event.type === 'agentResultEvent') {
-          const agentResult = (event as any).result as AgentResult;
-          resolveText(agentResult.toString());
-          resolveFinish(agentResult.stopReason || 'end_turn');
-          resolveUsage(accUsage);
-          continue;
+        self._lastStreamUsage = null;
+
+        // Emit synthetic start events (VoltAgent emits these, UI expects them)
+        yield { type: 'start', id: '0' };
+        yield { type: 'start-step', id: '0' };
+
+        for await (const event of stream) {
+          if (event.type === 'agentResultEvent') {
+            const agentResult = (event as any).result as AgentResult;
+            resolveText(agentResult.toString());
+            resolveFinish(agentResult.stopReason || 'end_turn');
+            resolveUsage(accUsage);
+            continue;
+          }
+
+          const mapped = mapStrandsStreamEvent(event);
+          if (mapped) {
+            // Accumulate usage from metadata events
+            if (mapped.type === 'usage') {
+              observedUsage = true;
+              accUsage.promptTokens += (mapped as any).promptTokens || 0;
+              accUsage.completionTokens +=
+                (mapped as any).completionTokens || 0;
+              accUsage.totalTokens =
+                accUsage.promptTokens + accUsage.completionTokens;
+              self._lastStreamUsage = {
+                promptTokens: accUsage.promptTokens,
+                completionTokens: accUsage.completionTokens,
+              };
+            }
+            // Emit synthetic text-start before first text-delta
+            if (mapped.type === 'text-delta' && !emittedTextStart) {
+              yield { type: 'text-start', id: '0' };
+              emittedTextStart = true;
+            }
+            if (mapped.type === 'text-delta') fullText += mapped.text || '';
+            yield mapped;
+          }
         }
 
-        const mapped = mapStrandsStreamEvent(event);
-        if (mapped) {
-          // Accumulate usage from metadata events
-          if (mapped.type === 'usage') {
-            accUsage.promptTokens += (mapped as any).promptTokens || 0;
-            accUsage.completionTokens += (mapped as any).completionTokens || 0;
-            accUsage.totalTokens =
-              accUsage.promptTokens + accUsage.completionTokens;
-            self._lastStreamUsage = {
-              promptTokens: accUsage.promptTokens,
-              completionTokens: accUsage.completionTokens,
-            };
-          }
-          // Emit synthetic text-start before first text-delta
-          if (mapped.type === 'text-delta' && !emittedTextStart) {
-            yield { type: 'text-start', id: '0' };
-            emittedTextStart = true;
-          }
-          if (mapped.type === 'text-delta') fullText += mapped.text || '';
-          yield mapped;
-        }
+        // Emit synthetic boundary events
+        if (emittedTextStart) yield { type: 'text-end', id: '0' };
+        yield { type: 'finish-step', id: '0' };
+
+        resolveText(fullText);
+        resolveFinish('end_turn');
+        resolveUsage(accUsage);
+      } catch (error) {
+        resolveText(fullText);
+        resolveFinish('error');
+        resolveUsage(observedUsage ? accUsage : undefined);
+        throw error;
       }
-
-      // Emit synthetic boundary events
-      if (emittedTextStart) yield { type: 'text-end', id: '0' };
-      yield { type: 'finish-step', id: '0' };
-
-      resolveText(fullText);
-      resolveFinish('end_turn');
-      resolveUsage(accUsage);
     }
 
     return {
@@ -362,45 +491,71 @@ export class StrandsFramework {
 
     // Shared denial record (toolUseId -> reason) — BeforeToolCallEvent
     // records denials, FunctionTool wrappers surface them as tool errors.
-    const deniedToolCalls = new Map<string, ToolCallDenial>();
+    const makeWrapper = (
+      history?: Message[],
+      companion?: NativeMemoryHistoryCompanion,
+      ownedInvocation?: InvocationContext,
+      isHistoryCurrent?: () => Promise<boolean>,
+    ): StrandsAgentWrapper => {
+      const deniedToolCalls = new Map<string, ToolCallDenial>();
 
-    const resolvedPrompt =
-      typeof opts.processedPrompt === 'function'
-        ? opts.processedPrompt()
-        : opts.processedPrompt;
-    const strandsAgent = new StrandsAgent({
-      model,
-      systemPrompt: resolvedPrompt,
-      tools: createStrandsFunctionTools(tools, deniedToolCalls),
-    });
+      const resolvedPrompt =
+        typeof opts.processedPrompt === 'function'
+          ? opts.processedPrompt()
+          : opts.processedPrompt;
+      const strandsAgent = new StrandsAgent({
+        model,
+        messages: history,
+        systemPrompt: resolvedPrompt,
+        tools: createStrandsFunctionTools(tools, deniedToolCalls),
+      });
 
-    const invocationCtx: InvocationContext = { agentSlug: slug };
+      const invocationCtx: InvocationContext = ownedInvocation ?? {
+        agentSlug: slug,
+      };
 
-    // Wrap in IAgent — pass memory adapter so conversations persist
-    const wrapper = new StrandsAgentWrapper(
-      strandsAgent,
-      slug,
-      slug,
-      model,
-      opts.memoryAdapter as unknown as IMemory,
-      invocationCtx,
-      tools,
-    );
-    wireStrandsAgentHooks({
-      strandsAgent,
-      hooks: conformAgentHooks('strands', config.hooks),
-      deniedToolCalls,
-      invocationCtx,
-      memoryAdapter: opts.memoryAdapter as unknown as IMemory,
-      logger: opts.logger,
-      resolvedModel,
-      getLastStreamUsage: () => wrapper._lastStreamUsage,
-      findMCPToolProvenance: (runtimeName) =>
-        tools
-          .filter((tool) => tool.name === runtimeName)
-          .map(getLoadedMCPToolProvenance)
-          .find((provenance) => provenance !== undefined),
-    });
+      // Wrap in IAgent — pass memory adapter so conversations persist
+      const wrapper = new StrandsAgentWrapper(
+        strandsAgent,
+        slug,
+        slug,
+        model,
+        opts.memoryAdapter as unknown as IMemory,
+        invocationCtx,
+        tools,
+        {
+          agentKey: slug,
+          adapter: opts.memoryAdapter,
+          companion,
+          isHistoryCurrent,
+          fork:
+            history === undefined
+              ? (messages, owner, invocation, current) =>
+                  makeWrapper(messages, owner, invocation, current)
+              : undefined,
+        },
+      );
+      if (history)
+        bindStrandsNativeHistory(strandsAgent, strandsAgent.messages);
+      wireStrandsAgentHooks({
+        strandsAgent,
+        hooks: conformAgentHooks('strands', config.hooks),
+        deniedToolCalls,
+        invocationCtx,
+        memoryAdapter: opts.memoryAdapter as unknown as IMemory,
+        logger: opts.logger,
+        resolvedModel,
+        getLastStreamUsage: () => wrapper._lastStreamUsage,
+        findMCPToolProvenance: (runtimeName) =>
+          tools
+            .filter((tool) => tool.name === runtimeName)
+            .map(getLoadedMCPToolProvenance)
+            .find((provenance) => provenance !== undefined),
+      });
+
+      return wrapper;
+    };
+    const wrapper = makeWrapper();
 
     return {
       agent: wrapper,
@@ -456,6 +611,7 @@ export class StrandsFramework {
 
   async createTempAgent(opts: {
     name: string;
+    agentId?: string;
     instructions: string | (() => string);
     model: any;
     tools?: ITool[];
@@ -467,47 +623,90 @@ export class StrandsFramework {
       typeof opts.instructions === 'function'
         ? opts.instructions()
         : opts.instructions;
-    const deniedToolCalls = new Map<string, ToolCallDenial>();
-    const agent = new StrandsAgent({
-      model: opts.model,
-      systemPrompt: resolved,
-      tools: createStrandsFunctionTools(opts.tools || [], deniedToolCalls),
-    });
-    // Agent-scoped BASE identity shared by the gate and the wrapper
-    // (mirrors createAgent) — agentSlug only, never mutated. Per-request
-    // identity (conversationId/userId/delegation) travels per invocation:
-    // the wrapper binds a fresh trusted context to each stream's
-    // `invocationState` object in a module-private WeakMap, and the gate
-    // resolves THIS invocation's context from the event's state-object
-    // identity, falling back to this base. That is what lets a
-    // conversation-scoped approval requester be found for exactly the
-    // invocation that owns it — even with interleaved streams — while
-    // giving tool implementations (which may write to the bag freely)
-    // nothing to spoof.
-    const invocationCtx: InvocationContext = { agentSlug: opts.name };
-    // archive#1834: temp agents used to get NO tool gate at all — the
-    // default agent (and every scheduler//invoke/CLI call riding it)
-    // executed tools without ever evaluating beforeToolCall. Only the gate
-    // is wired here (not message-sync/usage): temp-agent persistence is
-    // owned by StrandsAgentWrapper below.
-    wireStrandsToolGate({
-      strandsAgent: agent,
-      hooks: conformAgentHooks('strands', opts.hooks),
-      deniedToolCalls,
-      invocationCtx,
-    });
-    // archive#914: `createAgent` above passes the adapter into this slot "so
-    // conversations persist"; passing null here gave temp agents no
-    // conversation memory at all, the same gap the VoltAgent path had.
-    return new StrandsAgentWrapper(
-      agent,
-      opts.name,
-      opts.name,
-      opts.model,
-      (opts.memoryAdapter as unknown as IMemory) ?? null,
-      invocationCtx,
-      opts.tools,
-    );
+    const makeWrapper = (
+      history?: Message[],
+      companion?: NativeMemoryHistoryCompanion,
+      ownedInvocation?: InvocationContext,
+      isHistoryCurrent?: () => Promise<boolean>,
+    ): StrandsAgentWrapper => {
+      const deniedToolCalls = new Map<string, ToolCallDenial>();
+      const agent = new StrandsAgent({
+        model: opts.model,
+        messages: history,
+        systemPrompt: resolved,
+        tools: createStrandsFunctionTools(opts.tools || [], deniedToolCalls),
+      });
+      // Agent-scoped BASE identity shared by the gate and the wrapper
+      // (mirrors createAgent) — agentSlug only, never mutated. Per-request
+      // identity (conversationId/userId/delegation) travels per invocation:
+      // the wrapper binds a fresh trusted context to each stream's
+      // `invocationState` object in a module-private WeakMap, and the gate
+      // resolves THIS invocation's context from the event's state-object
+      // identity, falling back to this base. That is what lets a
+      // conversation-scoped approval requester be found for exactly the
+      // invocation that owns it — even with interleaved streams — while
+      // giving tool implementations (which may write to the bag freely)
+      // nothing to spoof.
+      const invocationCtx: InvocationContext = ownedInvocation ?? {
+        agentSlug: opts.agentId
+          ? runtimeAgentKey(publicAgentIdFromRuntimeKey(opts.agentId))
+          : opts.name,
+      };
+      // archive#1834: temp agents used to get NO tool gate at all — the
+      // default agent (and every scheduler//invoke/CLI call riding it)
+      // executed tools without ever evaluating beforeToolCall. Only the gate
+      // is wired here (not message-sync/usage): temp-agent persistence is
+      // owned by StrandsAgentWrapper below.
+      wireStrandsToolGate({
+        strandsAgent: agent,
+        hooks: conformAgentHooks('strands', opts.hooks),
+        deniedToolCalls,
+        invocationCtx,
+      });
+      // archive#914: `createAgent` above passes the adapter into this slot "so
+      // conversations persist"; passing null here gave temp agents no
+      // conversation memory at all, the same gap the VoltAgent path had.
+      const wrapper = new StrandsAgentWrapper(
+        agent,
+        opts.name,
+        opts.name,
+        opts.model,
+        (opts.memoryAdapter as unknown as IMemory) ?? null,
+        invocationCtx,
+        opts.tools,
+        {
+          agentKey: opts.agentId,
+          adapter: opts.memoryAdapter,
+          companion,
+          isHistoryCurrent,
+          fork:
+            history === undefined
+              ? (messages, owner, invocation, current) =>
+                  makeWrapper(messages, owner, invocation, current)
+              : undefined,
+        },
+      );
+      if (history && opts.memoryAdapter) {
+        bindStrandsNativeHistory(agent, agent.messages);
+        agent.addHook(AfterInvocationEvent, async (event) => {
+          const invocation = resolveStrandsInvocationContext(
+            event.invocationState,
+            invocationCtx,
+          );
+          await syncStrandsMessagesToMemory({
+            agent,
+            agentMessages: agent.messages,
+            invocation,
+            memoryAdapter: opts.memoryAdapter!,
+            logger: createLogger({ name: 'strands-native-memory' }),
+            resolvedModel:
+              typeof opts.model?.modelId === 'string' ? opts.model.modelId : '',
+          });
+        });
+      }
+      return wrapper;
+    };
+    return makeWrapper();
   }
 
   async shutdown(): Promise<void> {

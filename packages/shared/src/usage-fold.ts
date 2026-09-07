@@ -500,8 +500,8 @@ function readSessionConfiguredModel(
  *   errors before completing is not counted — mirrors what the legacy
  *   memory-store hook counted).
  * - `toolCalls` counts `tool.completed` events, regardless of `status`
- *   (success/error/cancelled all count as a completed call, matching how
- *   the issue describes "every engine emits them").
+ *   (success/error/cancelled/unresolved all count as a completed call,
+ *   matching how the issue describes "every engine emits them").
  * - `lastModelId` is the last non-empty model carried by a
  *   `session.configured` event (`metadata.effectiveModel`, falling back to
  *   the event's own `model` field) — the latest one wins, matching how the
@@ -659,6 +659,19 @@ export function foldUsageEvents(
         break;
       }
       case 'tool.completed': {
+        // station#1558: an `unresolved` completion counts here like every
+        // other status. This counter is a count of tool calls the session
+        // MADE — it already includes calls that failed and calls that were
+        // cancelled, neither of which produced a useful result either. The
+        // unresolved one was dispatched to the engine exactly the same way;
+        // only its outcome is unknown. Excluding it would make the number
+        // disagree with the transcript, which shows the row, and with
+        // `turn-provenance-fold.ts`, which counts the same event — and it
+        // would quietly under-report sessions that ended mid-tool, the
+        // exact population this status exists to make visible. What the
+        // count must NOT be read as is "tool calls that produced a result";
+        // the per-turn envelope's `succeeded`/`failed`/`cancelled`/
+        // `unresolved` breakdown is where that distinction lives.
         aggregate.toolCalls += 1;
         break;
       }

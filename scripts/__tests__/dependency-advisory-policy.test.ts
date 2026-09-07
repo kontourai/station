@@ -1,9 +1,21 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { minimatch } from 'minimatch';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ALL_DEPENDENCY_SCOPES } from '../classify-ci-change.mjs';
+import {
+  ALL_DEPENDENCY_SCOPES,
+  classifyChangedPaths,
+} from '../classify-ci-change.mjs';
 import {
   AUDIT_SCOPES,
   collectAudits,
@@ -15,6 +27,15 @@ import {
   selectAuditScopes,
   withAuditRetries,
 } from '../dependency-advisory-policy.mjs';
+import { validateInstalledRemediationGraph } from '../lib/installed-remediation-graph.mjs';
+import {
+  collectPnpmAudits,
+  normalizePnpmAudit,
+} from '../lib/pnpm-advisory.mjs';
+import {
+  pnpmDependencyGraph,
+  pnpmImporterManifest,
+} from '../lib/pnpm-dependency-graph.mjs';
 
 const NOW = new Date('2026-07-10T00:00:00.000Z');
 
@@ -311,32 +332,131 @@ function productionLowDocument() {
   };
 }
 
-// #1019: the contract-validation case runs the real remediation graph
-// (~2.2s quiet) — under parallel workers or a sibling session the 5s default
-// budget starves. Cap, not expectation.
-describe('dependency advisory policy', { timeout: 20_000 }, () => {
+describe('dependency advisory policy', () => {
   it('keeps the patched brace-expansion graph behaviorally compatible', () => {
     expect(minimatch('app.ts', '{app,test}.ts')).toBe(true);
   });
 
   it('keeps the remediated dependency graph contract-valid', () => {
-    const npmArgs = [
-      'ls',
-      'glob',
-      'test-exclude',
-      'minimatch',
-      'brace-expansion',
-      '--all',
-    ];
-    const executable =
-      process.platform === 'win32' ? (process.env.ComSpec ?? 'cmd.exe') : 'npm';
-    const args =
-      process.platform === 'win32'
-        ? ['/d', '/s', '/c', 'npm.cmd', ...npmArgs]
-        : npmArgs;
-    expect(() =>
-      execFileSync(executable, args, { encoding: 'utf8', windowsHide: true }),
-    ).not.toThrow();
+    const edges = validateInstalledRemediationGraph(process.cwd());
+    for (const directory of new Set(
+      edges
+        .filter((edge) => edge.name === 'minimatch')
+        .map((edge) => edge.directory),
+    )) {
+      const installed = createRequire(path.join(directory, 'package.json'))(
+        directory,
+      );
+      const match =
+        typeof installed === 'function' ? installed : installed.minimatch;
+      expect(match('app.ts', '{app,test}.ts')).toBe(true);
+      expect(match('other.ts', '{app,test}.ts')).toBe(false);
+    }
+
+    expect(
+      edges.some(
+        (edge) =>
+          edge.parent === 'minimatch' && edge.name === 'brace-expansion',
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects broken installed edges even when configuration is unchanged', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'station-remediation-'));
+    const put = (directory: string, manifest: object) => {
+      mkdirSync(path.join(root, directory), { recursive: true });
+      writeFileSync(
+        path.join(root, directory, 'package.json'),
+        JSON.stringify(manifest),
+      );
+    };
+    const child =
+      'node_modules/glob/node_modules/minimatch/node_modules/brace-expansion';
+    try {
+      writeFileSync(
+        path.join(root, 'pnpm-workspace.yaml'),
+        `packages: []
+nodeLinker: hoisted
+overrides:
+  minimatch@^10.0.0>brace-expansion: ^5.0.9
+  brace-expansion@^2.0.2: ^2.1.4
+`,
+      );
+      put('.', {
+        name: 'fixture',
+        dependencies: { glob: '^10.0.0', 'test-exclude': '^7.0.0' },
+      });
+      put('node_modules/glob', {
+        name: 'glob',
+        version: '10.5.0',
+        dependencies: { minimatch: '^9.0.0' },
+      });
+      put('node_modules/test-exclude', {
+        name: 'test-exclude',
+        version: '7.0.0',
+        dependencies: { minimatch: '^10.0.0' },
+      });
+      put('node_modules/minimatch', {
+        name: 'minimatch',
+        version: '10.2.5',
+        dependencies: { 'brace-expansion': '^4.0.0' },
+      });
+      put('node_modules/brace-expansion', {
+        name: 'brace-expansion',
+        version: '5.0.9',
+      });
+      put('node_modules/glob/node_modules/minimatch', {
+        name: 'minimatch',
+        version: '9.0.9',
+        dependencies: { 'brace-expansion': '^2.0.2' },
+      });
+      put(child, { name: 'brace-expansion', version: '2.1.4' });
+      expect(validateInstalledRemediationGraph(root)).toHaveLength(6);
+      put(child, { name: 'brace-expansion', version: '5.0.9' });
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'Invalid installed dependency',
+      );
+      put(child, { name: 'brace-expansion', version: '2.0.2' });
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'Unremediated',
+      );
+      put(child, { name: 'wrong-package', version: '2.1.4' });
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'Invalid installed dependency',
+      );
+      rmSync(path.join(root, child), { recursive: true });
+      // A missing nested copy must not silently accept an incompatible hoist.
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'Invalid installed dependency',
+      );
+      const decoy = 'node_modules/glob/node_modules/node_modules';
+      put(decoy, { name: 'decoy-container', version: '1.0.0' });
+      put(`${decoy}/brace-expansion`, {
+        name: 'brace-expansion',
+        version: '2.1.4',
+      });
+      const actualResolver = createRequire(
+        path.join(
+          root,
+          'node_modules/glob/node_modules/minimatch/package.json',
+        ),
+      );
+      expect(actualResolver.resolve('brace-expansion/package.json')).toBe(
+        realpathSync(
+          path.join(root, 'node_modules/brace-expansion/package.json'),
+        ),
+      );
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'Invalid installed dependency',
+      );
+      rmSync(path.join(root, decoy), { recursive: true });
+      rmSync(path.join(root, 'node_modules/test-exclude'), { recursive: true });
+      expect(() => validateInstalledRemediationGraph(root)).toThrow(
+        'Missing installed dependency',
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('rejects an unaccepted high advisory and names it in the production report', () => {
@@ -812,6 +932,206 @@ describe('dependency advisory policy', { timeout: 20_000 }, () => {
   });
 });
 
+describe('scoped audit policy composition', () => {
+  function committedConfig() {
+    return JSON.parse(
+      readFileSync(
+        new URL('../dependency-advisory-exceptions.json', import.meta.url),
+        'utf8',
+      ),
+    );
+  }
+
+  function cleanAudit() {
+    return {
+      auditReportVersion: 2,
+      vulnerabilities: {},
+      metadata: {
+        vulnerabilities: {
+          info: 0,
+          low: 0,
+          moderate: 0,
+          high: 0,
+          critical: 0,
+          total: 0,
+        },
+      },
+    };
+  }
+
+  async function partialDocuments(scopes: string[]) {
+    const decision = dependencyAuditDecision({
+      env: {
+        GITHUB_ACTIONS: 'true',
+        GITHUB_EVENT_NAME: 'pull_request',
+        GITHUB_EVENT_PATH: '/event.json',
+      },
+      loadEvent: () => ({
+        pull_request: { base: { sha: 'a' }, head: { sha: 'b' } },
+      }),
+      // The event uses synthetic identities; compose the real path classifier
+      // below, but substitute the merge-base Git I/O just like the event I/O.
+      resolveMergeBase: ({ before, after }) => {
+        expect({ before, after }).toEqual({ before: 'a', after: 'b' });
+        return 'fixture-merge-base';
+      },
+      classifyRange: ({ before, after }) => {
+        expect({ before, after }).toEqual({
+          before: 'fixture-merge-base',
+          after: 'b',
+        });
+        return classifyChangedPaths(
+          scopes.map((scope) => `packages/${scope}/package-lock.json`),
+        );
+      },
+    });
+    const selected = selectAuditScopes(decision);
+    expect(selected.map((entry) => entry.scope)).toEqual(scopes);
+    return collectAudits(
+      selected,
+      async () => cleanAudit(),
+      () => ({}),
+    );
+  }
+
+  it.each([
+    { scopes: ['sdk'] },
+    { scopes: ['shared'] },
+    { scopes: ['sdk', 'shared'] },
+  ])(
+    'evaluates a clean narrowed $scopes scan with the committed root residuals',
+    async ({ scopes }) => {
+      const documents = await partialDocuments(scopes);
+      const result = evaluateAuditPolicy(documents, committedConfig(), {
+        now: NOW,
+      });
+      expect(result.exceptionErrors).toEqual([]);
+      expect(result.ok).toBe(true);
+      expect(Object.keys(result.scopes)).toEqual(
+        scopes.flatMap((scope) => [`${scope}/full`, `${scope}/production`]),
+      );
+    },
+  );
+
+  it.each([
+    ['exceptions', { scope: 'rooot' }, 'unknown scope'],
+    ['residuals', { scope: 'rooot' }, 'unknown scope'],
+    ['exceptions', { owner: '' }, 'owner must be a non-empty string'],
+    ['residuals', { controls: '' }, 'controls must be a non-empty string'],
+    ['exceptions', { expires: '2026-07-09' }, 'is expired'],
+    ['residuals', { expires: '2026-07-09' }, 'is expired'],
+    ['exceptions', { surprise: true }, 'unknown field'],
+    ['residuals', { surprise: true }, 'unknown field'],
+  ])(
+    'validates unscanned global %s rules: %j',
+    async (kind, override, message) => {
+      const config = committedConfig();
+      config.exceptions.push(validException());
+      Object.assign(config[kind as string][0], override);
+      const result = evaluateAuditPolicy(
+        await partialDocuments(['sdk']),
+        config,
+        { now: NOW },
+      );
+      expect(result.ok).toBe(false);
+      expect(result.exceptionErrors.join('\n')).toContain(message);
+      expect(result.exceptionErrors.join('\n')).not.toContain('unused');
+    },
+  );
+
+  it('still rejects unused exceptions and residuals in the audited scope', async () => {
+    const config = committedConfig();
+    config.exceptions.push(validException({ scope: 'sdk' }));
+    config.residuals.push(validResidual({ scope: 'sdk' }));
+    const result = evaluateAuditPolicy(
+      await partialDocuments(['sdk']),
+      config,
+      { now: NOW },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.exceptionErrors).toEqual([
+      expect.stringContaining('unused exception for sdk:'),
+      expect.stringContaining('unused residual for sdk:'),
+    ]);
+  });
+
+  it.each(['high', 'critical'])(
+    'blocks an unaccepted %s in a narrowed scan',
+    async (severity) => {
+      const documents = await partialDocuments(['sdk']);
+      const audit = auditWithHighAdvisory();
+      audit.vulnerabilities.axios.severity = severity;
+      audit.vulnerabilities.axios.via[0].severity = severity;
+      audit.metadata.vulnerabilities.high = severity === 'high' ? 1 : 0;
+      audit.metadata.vulnerabilities.critical = severity === 'critical' ? 1 : 0;
+      documents[0].audit = audit;
+      const result = evaluateAuditPolicy(documents, committedConfig(), {
+        now: NOW,
+      });
+      expect(result.exceptionErrors).toEqual([]);
+      expect(result.ok).toBe(false);
+      expect(result.blockingFindings).toEqual([
+        expect.objectContaining({ scope: 'sdk', severity, package: 'axios' }),
+      ]);
+    },
+  );
+
+  it('blocks an untracked production residual in a narrowed scan', async () => {
+    const documents = await partialDocuments(['shared']);
+    Object.assign(documents[1], productionLowDocument(), { scope: 'shared' });
+    const result = evaluateAuditPolicy(documents, committedConfig(), {
+      now: NOW,
+    });
+    expect(result.exceptionErrors).toEqual([]);
+    expect(result.ok).toBe(false);
+    expect(result.untrackedResiduals).toEqual([
+      expect.objectContaining({ scope: 'shared', severity: 'low' }),
+    ]);
+  });
+
+  it('does not report production residuals unused after only a full-graph audit', () => {
+    const result = evaluateAuditPolicy(
+      [{ scope: 'root', reachability: 'full', audit: cleanAudit() }],
+      committedConfig(),
+      { now: NOW },
+    );
+    expect(result.exceptionErrors).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
+  it('still enforces every committed residual on full scheduled audits', async () => {
+    const decision = dependencyAuditDecision({
+      env: { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'schedule' },
+    });
+    const documents = await collectAudits(
+      selectAuditScopes(decision),
+      async () => cleanAudit(),
+      () => ({}),
+    );
+    expect(documents).toHaveLength(6);
+    const config = committedConfig();
+    config.exceptions.push(validException());
+    const result = evaluateAuditPolicy(documents, config, { now: NOW });
+    expect(result.ok).toBe(false);
+    expect(result.exceptionErrors).toEqual([
+      expect.stringContaining('unused exception for root:'),
+      ...config.residuals.map(() =>
+        expect.stringContaining('unused residual for root:'),
+      ),
+    ]);
+  });
+
+  it('refuses an unknown audit document scope, even with no configured rules', () => {
+    expect(() =>
+      evaluateAuditPolicy(
+        [{ scope: 'rooot', audit: cleanAudit() }],
+        { version: 2, exceptions: [], residuals: [] },
+        { now: NOW },
+      ),
+    ).toThrow('unknown audit document scope: rooot');
+  });
+});
+
 /**
  * The selection is the ENFORCEMENT point of #1417's narrowing: the classifier
  * only declares which scopes changed, and every test of that declaration
@@ -888,7 +1208,8 @@ describe('selectAuditScopes', () => {
     for (const cwd of Object.values(byScope)) {
       expect(path.isAbsolute(cwd)).toBe(true);
       expect(cwd).not.toContain('..');
-      expect(existsSync(path.join(cwd, 'package-lock.json'))).toBe(true);
+      expect(existsSync(path.join(cwd, 'package.json'))).toBe(true);
+      expect(existsSync(path.join(process.cwd(), 'pnpm-lock.yaml'))).toBe(true);
     }
   });
 });
@@ -1017,4 +1338,215 @@ describe('runPolicyCli reports the range it decided from (#1442)', () => {
     // A placeholder that reads like a range is the failure mode this guards.
     expect(text).not.toMatch(/[0-9a-f]{8}\.\.[0-9a-f]{8}/);
   });
+});
+
+describe('pnpm lock-backed advisory projection', () => {
+  const lock = () => ({
+    importers: {
+      '.': {
+        dependencies: { lib: { version: '1.0.0(peer@2.0.0)' } },
+        devDependencies: { tool: { version: '1.0.0' } },
+      },
+      'packages/sdk': { dependencies: { lib: { version: '2.0.0' } } },
+      'packages/shared': { dependencies: {} },
+    },
+    packages: {
+      'lib@1.0.0': {},
+      'lib@2.0.0': {},
+      'tool@1.0.0': {},
+      'peer@2.0.0': {},
+    },
+    snapshots: {
+      'lib@1.0.0(peer@2.0.0)': { dependencies: { peer: '2.0.0' } },
+      'lib@2.0.0': {},
+      'tool@1.0.0': {},
+      'peer@2.0.0': {},
+    },
+  });
+  const response = () => ({
+    advisories: {
+      one: {
+        module_name: 'lib',
+        severity: 'high',
+        github_advisory_id: 'GHSA-abcd-1234-5678',
+        findings: [{ version: '1.0.0', paths: ['.>lib'] }],
+      },
+      two: {
+        module_name: 'tool',
+        severity: 'moderate',
+        github_advisory_id: 'GHSA-efgh-1234-5678',
+        findings: [{ version: '1.0.0', paths: ['.>tool'] }],
+      },
+    },
+    metadata: {
+      vulnerabilities: { info: 0, low: 0, moderate: 1, high: 1, critical: 0 },
+    },
+  });
+
+  it('uses one registry response for all selected scopes and both reachability views', async () => {
+    const run = vi.fn(async () => response());
+    const audits = await collectPnpmAudits(
+      [{ scope: 'root' }, { scope: 'sdk' }, { scope: 'shared' }],
+      { root: '/fixture', run, graph: pnpmDependencyGraph(lock()) },
+    );
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(audits).toHaveLength(6);
+    const full = audits.find(
+      (a) => a.scope === 'root' && a.reachability === 'full',
+    )!;
+    const prod = audits.find(
+      (a) => a.scope === 'root' && a.reachability === 'production',
+    )!;
+    expect(Object.keys(full.audit.vulnerabilities)).toEqual(['lib', 'tool']);
+    expect(Object.keys(prod.audit.vulnerabilities)).toEqual(['lib']);
+    expect(prod.resolvedVersions['lib@1.0.0(peer@2.0.0)']).toBe('1.0.0');
+    expect(
+      audits
+        .filter((a) => a.scope === 'sdk')
+        .every((a) => Object.keys(a.audit.vulnerabilities).length === 0),
+    ).toBe(true);
+    const result = evaluateAuditPolicy(
+      audits,
+      { version: 2, exceptions: [], residuals: [] },
+      NOW,
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it('fails closed for malformed or truncated advisory records', () => {
+    const bad = response();
+    bad.metadata.vulnerabilities.high = 0;
+    expect(() =>
+      normalizePnpmAudit(bad, pnpmDependencyGraph(lock()), '.', true),
+    ).toThrow(/count/);
+    expect(() =>
+      normalizePnpmAudit(
+        { advisories: {} },
+        pnpmDependencyGraph(lock()),
+        '.',
+        true,
+      ),
+    ).toThrow();
+  });
+
+  it('rejects a missing dependency snapshot instead of dropping it from production', () => {
+    const bad = lock();
+    delete (bad.snapshots as Record<string, unknown>)['peer@2.0.0'];
+    expect(() => pnpmDependencyGraph(bad).closure('.', true)).toThrow(
+      /Unresolved dependency/,
+    );
+  });
+
+  it('follows workspace links but excludes that workspace development dependencies', () => {
+    const linked = lock();
+    (linked.importers['.'].dependencies as Record<string, unknown>).sdk = {
+      version: 'link:packages/sdk',
+    };
+    const graph = pnpmDependencyGraph(linked);
+    expect(graph.closure('.', true).has('lib@2.0.0')).toBe(true);
+    (linked.importers['.'].dependencies as Record<string, unknown>).sdk = {
+      version: 'link:../other',
+    };
+    expect(() => pnpmDependencyGraph(linked).closure('.', true)).toThrow(
+      /Escaping/,
+    );
+  });
+});
+
+describe('pnpm workspace-wide root audit coverage', () => {
+  it('includes a vulnerable production dependency owned only by an unlinked CLI workspace', () => {
+    const graph = pnpmDependencyGraph({
+      importers: {
+        '.': {},
+        'packages/cli': {
+          dependencies: { native: { version: '1.0.0' } },
+          devDependencies: { tool: { version: '1.0.0' } },
+        },
+      },
+      packages: { 'native@1.0.0': {}, 'tool@1.0.0': {} },
+      snapshots: { 'native@1.0.0': {}, 'tool@1.0.0': {} },
+    });
+    const raw = {
+      advisories: {
+        issue: {
+          module_name: 'native',
+          severity: 'high',
+          github_advisory_id: 'GHSA-abcd-1234-5678',
+          findings: [{ version: '1.0.0', paths: ['packages/cli>native'] }],
+        },
+      },
+      metadata: {
+        vulnerabilities: { info: 0, low: 0, moderate: 0, high: 1, critical: 0 },
+      },
+    };
+    expect(
+      normalizePnpmAudit(raw, graph, '.', true).audit.metadata.vulnerabilities
+        .high,
+    ).toBe(1);
+  });
+});
+
+describe('portable pnpm importer paths', () => {
+  it.each([
+    'C:\\outside',
+    'packages\\..\\..\\outside',
+    '//server/share',
+    'D:outside',
+  ])(
+    'refuses native absolute or traversal spelling %s before filesystem reads',
+    (importer) => {
+      expect(() =>
+        pnpmDependencyGraph({
+          importers: { [importer]: {} },
+          packages: {},
+          snapshots: {},
+        }),
+      ).toThrow(/Invalid pnpm importer/);
+      expect(() => pnpmImporterManifest('/fixture', importer)).toThrow(
+        /Invalid importer path/,
+      );
+    },
+  );
+});
+
+it('rejects an absolute link before POSIX join can disguise it as a nested relative path', () => {
+  const graph = pnpmDependencyGraph({
+    importers: {
+      '.': {},
+      'packages/cli': {
+        dependencies: { outside: { version: 'link:/outside' } },
+      },
+      'packages/cli/outside': {},
+    },
+    packages: {},
+    snapshots: {},
+  });
+  expect(() => graph.closure('packages/cli')).toThrow(
+    /Escaping workspace link/,
+  );
+});
+
+it('treats a package named constructor as data in advisory projection', () => {
+  const graph = pnpmDependencyGraph({
+    importers: { '.': { dependencies: { constructor: { version: '1.0.0' } } } },
+    packages: { 'constructor@1.0.0': {} },
+    snapshots: { 'constructor@1.0.0': {} },
+  });
+  const raw = {
+    advisories: {
+      one: {
+        module_name: 'constructor',
+        severity: 'high',
+        github_advisory_id: 'GHSA-abcd-1234-5678',
+        findings: [{ version: '1.0.0', paths: ['.>constructor'] }],
+      },
+    },
+    metadata: {
+      vulnerabilities: { info: 0, low: 0, moderate: 0, high: 1, critical: 0 },
+    },
+  };
+  expect(
+    normalizePnpmAudit(raw, graph, '.', true).audit.metadata.vulnerabilities
+      .high,
+  ).toBe(1);
 });

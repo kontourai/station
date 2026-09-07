@@ -59,7 +59,7 @@ export interface PendingRequestNotice {
  * points at — the decision itself is left as a placeholder for the operator
  * to fill in, since only they know which of the four is correct.
  */
-function buildApprovalsRespondCommand(
+export function buildApprovalsRespondCommand(
   threadId: string,
   requestId: string,
 ): string {
@@ -385,15 +385,18 @@ async function sendOrchestrationChat(
     );
   }
 
+  let acceptedSessionId = threadId;
+  let acceptedConversationId = threadId;
+  let acceptedTurnId: string | undefined;
+  let observationError: unknown;
   let finishReason: string | undefined;
   let accumulatedText = '';
   let lifecycleState: string | undefined;
   let pendingRequest: PendingRequestNotice | undefined;
   let onRequestFailTriggered = false;
 
-  const eventsTask = consumeOrchestrationEvents({
+  const observation = consumeOrchestrationEvents({
     response,
-    threadId,
     signal: abortController.signal,
     onTextDelta: (delta) => {
       accumulatedText += delta;
@@ -413,7 +416,7 @@ async function sendOrchestrationChat(
     },
     onRequestOpened: (info) => {
       pendingRequest = info;
-      printPendingRequestNotice({ ...info, threadId });
+      printPendingRequestNotice({ ...info, threadId: acceptedSessionId });
       if (onRequest === 'fail') {
         onRequestFailTriggered = true;
         abortController.abort();
@@ -422,28 +425,58 @@ async function sendOrchestrationChat(
       return undefined;
     },
   });
+  // Observe errors immediately even while the HTTP acceptance is pending.
+  const eventsTask = observation.done.catch((error: unknown) => {
+    observationError = error;
+    abortController.abort();
+  });
 
   try {
+    let receipt: Awaited<ReturnType<typeof sendExecutionMessage>>;
     if (conversationId) {
       if (executionTarget.workspace) {
         throw new Error(
           'A resumed conversation retains its workspace binding; omit workspace flags or start a new chat.',
         );
       }
-      await continueExecutionMessage(apiBase, threadId, {
+      receipt = await continueExecutionMessage(apiBase, threadId, {
         environment: executionTarget.environment,
         message,
         ...(executionTarget.model ? { model: executionTarget.model } : {}),
       });
     } else {
-      await sendExecutionMessage(apiBase, {
+      receipt = await sendExecutionMessage(apiBase, {
         target: executionTarget,
         message,
         conversationId: threadId,
       });
     }
 
+    const child = receipt.sessionId;
+    if (
+      typeof child !== 'string' ||
+      !child.trim() ||
+      typeof receipt.conversationId !== 'string' ||
+      !receipt.conversationId.trim() ||
+      typeof receipt.providerTurnId !== 'string' ||
+      !receipt.providerTurnId.trim()
+    ) {
+      throw new Error(
+        'Chat acceptance lacked its Session identity. Inspect the conversation; do not retry automatically.',
+      );
+    }
+    acceptedSessionId = child;
+    acceptedConversationId = receipt.conversationId;
+    acceptedTurnId = receipt.providerTurnId;
+    if (observationError) throw observationError;
+    observation.bind(child, receipt.providerTurnId);
     await eventsTask;
+    if (observationError) throw observationError;
+    if (!observation.finished() && !onRequestFailTriggered) {
+      throw new Error(
+        `Chat observation ended before accepted turn ${acceptedTurnId} completed in Session ${child}. Inspect the Session; do not retry automatically.`,
+      );
+    }
   } finally {
     // Always close this invocation's event stream. Deliberately do NOT stop
     // the Station session: its provider cursor is the durable continuation
@@ -456,14 +489,15 @@ async function sendOrchestrationChat(
     if (jsonMode) {
       printJson({
         agent: agentSlug,
-        sessionId: threadId,
-        conversationId: threadId,
+        sessionId: acceptedSessionId,
+        providerTurnId: acceptedTurnId,
+        conversationId: acceptedConversationId,
         pendingRequest: {
           requestId: pendingRequest.requestId,
           requestType: pendingRequest.requestType,
           title: pendingRequest.title,
           respondCommand: buildApprovalsRespondCommand(
-            threadId,
+            acceptedSessionId,
             pendingRequest.requestId,
           ),
         },
@@ -477,8 +511,9 @@ async function sendOrchestrationChat(
   if (jsonMode) {
     printJson({
       agent: agentSlug,
-      sessionId: threadId,
-      conversationId: threadId,
+      sessionId: acceptedSessionId,
+      providerTurnId: acceptedTurnId,
+      conversationId: acceptedConversationId,
       finishReason,
       text: accumulatedText,
       ...(pendingRequest
@@ -488,7 +523,7 @@ async function sendOrchestrationChat(
               requestType: pendingRequest.requestType,
               title: pendingRequest.title,
               respondCommand: buildApprovalsRespondCommand(
-                threadId,
+                acceptedSessionId,
                 pendingRequest.requestId,
               ),
             },
@@ -502,7 +537,7 @@ async function sendOrchestrationChat(
   if (accumulatedText.length > 0) {
     process.stdout.write('\n');
   }
-  printResumeHint({ agentSlug, sessionId: threadId });
+  printResumeHint({ agentSlug, sessionId: acceptedConversationId });
 }
 
 function createRuntimeSessionClient(
@@ -799,9 +834,8 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
-async function consumeOrchestrationEvents({
+function consumeOrchestrationEvents({
   response,
-  threadId,
   signal,
   onTextDelta,
   onFinish,
@@ -810,7 +844,6 @@ async function consumeOrchestrationEvents({
   onSessionState,
 }: {
   response: Response;
-  threadId: string;
   signal: AbortSignal;
   onTextDelta: (delta: string) => void;
   onFinish: (reason?: string) => void;
@@ -827,67 +860,139 @@ async function consumeOrchestrationEvents({
   /** station#979 AC7: the latest `sessionState` seen on any frame this turn. */
   onSessionState?: (state: string) => void;
 }) {
-  await consumeSseFrames({
-    response,
-    threadId,
-    signal,
-    onFrame: (event) => {
-      if (typeof event.sessionState === 'string') {
-        onSessionState?.(event.sessionState);
-      }
+  let accepted: { sessionId: string; turnId: string } | undefined;
+  let terminal = false;
+  const early: Array<Record<string, unknown>> = [];
+  let bufferedBytes = 0;
+  const dispatch = (event: Record<string, unknown>): boolean | undefined => {
+    if (!accepted || event.threadId !== accepted.sessionId) return;
+    if (typeof event.turnId === 'string' && event.turnId !== accepted.turnId)
+      return;
+    if (
+      ['content.text-delta', 'turn.completed', 'turn.aborted'].includes(
+        String(event.method),
+      ) &&
+      event.turnId !== accepted.turnId
+    )
+      return;
+    if (typeof event.sessionState === 'string') {
+      onSessionState?.(event.sessionState);
+    }
 
-      if (
-        event.method === 'content.text-delta' &&
-        typeof event.delta === 'string'
-      ) {
-        onTextDelta(event.delta);
+    if (
+      event.method === 'content.text-delta' &&
+      typeof event.delta === 'string'
+    ) {
+      onTextDelta(event.delta);
+      return;
+    }
+
+    if (event.method === 'runtime.error') {
+      onError(
+        typeof event.message === 'string'
+          ? event.message
+          : 'Connected runtime failed',
+      );
+    }
+
+    if (event.method === 'session.exited') {
+      onError(
+        'The accepted Session ended before its turn completion was observed. Inspect the Session; do not retry automatically.',
+      );
+    }
+
+    if (event.method === 'turn.aborted') {
+      onError(
+        typeof event.reason === 'string'
+          ? event.reason
+          : 'Connected runtime turn aborted',
+      );
+    }
+
+    if (event.method === 'request.opened') {
+      const requestId =
+        typeof event.requestId === 'string' ? event.requestId : undefined;
+      if (!requestId || !onRequestOpened) {
         return;
       }
+      return (
+        onRequestOpened({
+          requestId,
+          requestType:
+            typeof event.requestType === 'string'
+              ? event.requestType
+              : 'unknown',
+          title: typeof event.title === 'string' ? event.title : '',
+        }) === true
+      );
+    }
 
-      if (event.method === 'runtime.error') {
-        onError(
-          typeof event.message === 'string'
-            ? event.message
-            : 'Connected runtime failed',
-        );
-      }
-
-      if (event.method === 'turn.aborted') {
-        onError(
-          typeof event.reason === 'string'
-            ? event.reason
-            : 'Connected runtime turn aborted',
-        );
-      }
-
-      if (event.method === 'request.opened') {
-        const requestId =
-          typeof event.requestId === 'string' ? event.requestId : undefined;
-        if (!requestId || !onRequestOpened) {
-          return;
+    if (event.method === 'turn.completed') {
+      terminal = true;
+      onFinish(
+        typeof event.finishReason === 'string' ? event.finishReason : undefined,
+      );
+      return true;
+    }
+  };
+  const done = consumeSseFrames({
+    response,
+    signal,
+    onFrame: (raw) => {
+      if (accepted) return dispatch(raw);
+      // Keep only presentation fields, never arbitrary global event payloads.
+      const event: Record<string, unknown> = {};
+      let bytes = 0;
+      for (const key of [
+        'method',
+        'threadId',
+        'turnId',
+        'delta',
+        'message',
+        'reason',
+        'sessionState',
+        'requestId',
+        'requestType',
+        'title',
+        'finishReason',
+      ]) {
+        if (typeof raw[key] === 'string') {
+          event[key] = raw[key];
+          bytes += Buffer.byteLength(raw[key], 'utf8');
         }
-        return (
-          onRequestOpened({
-            requestId,
-            requestType:
-              typeof event.requestType === 'string'
-                ? event.requestType
-                : 'unknown',
-            title: typeof event.title === 'string' ? event.title : '',
-          }) === true
+      }
+      if (
+        ![
+          'content.text-delta',
+          'turn.completed',
+          'turn.aborted',
+          'runtime.error',
+          'request.opened',
+          'session.state-changed',
+          'session.exited',
+        ].includes(String(event.method))
+      )
+        return;
+      if (early.length >= 512 || bufferedBytes + bytes > 1024 * 1024) {
+        throw new Error(
+          'Chat observation exceeded its early-event buffer before acceptance. Inspect the conversation; do not retry automatically.',
         );
       }
-
-      if (event.method === 'turn.completed') {
-        onFinish(
-          typeof event.finishReason === 'string'
-            ? event.finishReason
-            : undefined,
-        );
-        return true;
-      }
+      bufferedBytes += bytes;
+      early.push(event);
     },
   });
+  return {
+    done,
+    finished: () => terminal,
+    bind(sessionId: string, turnId: string) {
+      accepted = { sessionId, turnId };
+      for (const event of early.splice(0)) {
+        if (dispatch(event) === true || signal.aborted) break;
+      }
+      bufferedBytes = 0;
+    },
+  };
 }
 
 export interface ConsumeSseFramesOptions {

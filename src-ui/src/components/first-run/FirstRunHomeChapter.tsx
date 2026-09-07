@@ -23,8 +23,8 @@
  * 3. **HOW IT ENDS.** "Not now" is a decision and is written down, so the
  *    chapter does not re-open by itself; Home keeps a card offering it until
  *    it is completed. Completing it writes the same durable fact and hands off
- *    to the tour (`FirstRunFlow`), which is the one part of the guided run
- *    that is genuinely cross-route by design.
+ *    to New Chat, or to the tour when explicitly chosen. New Chat owns
+ *    readiness, Agent/Model selection, and the current workspace context.
  */
 
 import type { UserProfileSettings } from '@kontourai/station-contracts/user-profile';
@@ -39,10 +39,14 @@ import {
   useOnboardingSetupState,
 } from '../../contexts/onboarding-setup-store';
 import { useSystemStatus } from '../../hooks/useSystemStatus';
+import { Button } from '../Button';
+import { LazyBoundary } from '../LazyBoundary';
+import { PageCallout } from '../PageCallout';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
+import { SkeletonBlock } from '../state';
 import {
   dismissUsageTelemetryDisclosure,
   UsageTelemetryDisclosureStep,
@@ -65,6 +69,11 @@ import {
   useFirstRunProgress,
 } from './first-run-store';
 
+const loadFirstRunEnginePicker = () =>
+  import('../EnginePicker').then((module) => ({
+    default: module.EnginePicker,
+  }));
+
 /**
  * The run's steps, in order.
  *
@@ -77,23 +86,47 @@ import {
  * same disclosure, the same acknowledgement and the same "Not now" live
  * instead.
  */
-type ChapterStep = 'disclosure' | 'engines' | 'about-you';
+type ChapterStep = 'disclosure' | 'engines' | 'engine-role' | 'about-you';
 
 /**
- * The run WITHOUT the disclosure, for a home that has already acknowledged it
- * (or whose host cannot answer for it). The step counter reads from whichever
- * of these two the run actually opened with, so "Step 1 of 3" is never a
- * promise of a step that will not happen.
+ * The steps this run will actually show, in order — the counter's ONLY source,
+ * so it can never promise a step that will not happen or omit one that will.
+ *
+ * Both optional steps are conditions the chapter can read before it opens: an
+ * outstanding usage-telemetry disclosure, and an unanswered "which engine powers
+ * Station?" role. #1536 A8: the role screen was NOT in this list, so a run that
+ * showed it printed "Step 1 of 3", "Step 2 of 3", an unnumbered "Choose what
+ * powers Station", then "Step 3 of 3" — four screens for three steps, and the
+ * one with no number reading as something that had escaped the run.
  */
-const CHAPTER_STEPS: ChapterStep[] = ['engines', 'about-you'];
-const CHAPTER_STEPS_WITH_DISCLOSURE: ChapterStep[] = [
-  'disclosure',
-  ...CHAPTER_STEPS,
-];
+export function planFirstRunChapterSteps(input: {
+  disclosureOutstanding: boolean;
+  engineRoleUnanswered: boolean;
+}): ChapterStep[] {
+  return [
+    ...(input.disclosureOutstanding ? (['disclosure'] as const) : []),
+    'engines' as const,
+    ...(input.engineRoleUnanswered ? (['engine-role'] as const) : []),
+    'about-you' as const,
+  ];
+}
+
+/**
+ * `undefined` for a step this run is not showing, so a stale target can never
+ * be rendered as "Step 0 of 3".
+ */
+export function firstRunStepCounterLabel(
+  steps: readonly ChapterStep[],
+  target: ChapterStep,
+): string | undefined {
+  const index = steps.indexOf(target);
+  return index === -1 ? undefined : `Step ${index + 1} of ${steps.length}`;
+}
 
 const STEP_TITLES: Record<ChapterStep, string> = {
   disclosure: 'What Station sends',
   engines: 'Which agents do you use?',
+  'engine-role': 'Choose what powers Station',
   'about-you': 'Two questions, and the next answer is tuned to you',
 };
 
@@ -107,29 +140,20 @@ const STEP_TITLES: Record<ChapterStep, string> = {
  */
 function FirstRunHomeCard({ onOpen }: { onOpen: () => void }) {
   return (
-    // A <p>, not a heading: this card renders ABOVE Home's own <h1>, and a
-    // heading there either outranks the page title or lands out of order.
-    // `aria-label` gives the region its name without inventing a level.
-    <section
-      className="first-run-home-card"
-      aria-label="Finish setting up Station"
+    <PageCallout
+      calloutId="first-run-setup"
+      ariaLabel="Finish setting up Station"
       data-testid="first-run-home-card"
+      title="Finish setting up Station"
+      action={
+        <Button variant="primary" onClick={onOpen}>
+          Set up Station
+        </Button>
+      }
     >
-      <div>
-        <p className="first-run-home-card__title">Finish setting up Station</p>
-        <p className="first-run-home-card__body">
-          Pick the agent CLIs you use and tell Station how you like your
-          answers. Two minutes, and you can change everything later.
-        </p>
-      </div>
-      <button
-        type="button"
-        className="editor-btn editor-btn--primary"
-        onClick={onOpen}
-      >
-        Set up Station
-      </button>
-    </section>
+      Pick the agent CLIs you use and tell Station how you like your answers.
+      Two minutes, and you can change everything later.
+    </PageCallout>
   );
 }
 
@@ -168,9 +192,31 @@ export function FirstRunHomeChapter() {
   } = useUsageTelemetryDisclosureState();
 
   const [open, setOpen] = useState(false);
-  const [steps, setSteps] = useState<ChapterStep[]>(CHAPTER_STEPS);
+  /**
+   * The engine-role step's own title, when the picker resolves a different
+   * one. #1582 A5 moved that step inside this dialog, so the shared header
+   * prints the step title — and "Choose what powers Station" over a panel
+   * that says nothing here CAN power Station is a question the screen cannot
+   * answer. The picker reports the title it actually rendered.
+   */
+  const [roleTitle, setRoleTitle] = useState<string | undefined>(undefined);
+  const stepRegionRef = useRef<HTMLDivElement>(null);
+  const [steps, setSteps] = useState<ChapterStep[]>(() =>
+    planFirstRunChapterSteps({
+      disclosureOutstanding: false,
+      engineRoleUnanswered: false,
+    }),
+  );
   const [step, setStep] = useState<ChapterStep>('engines');
   const [saving, setSaving] = useState(false);
+  const completionInFlight = useRef(false);
+  const completionGeneration = useRef(0);
+  useEffect(
+    () => () => {
+      completionGeneration.current += 1;
+    },
+    [],
+  );
   const [saveError, setSaveError] = useState<string | null>(null);
 
   // Opening decides the run's shape ONCE, from an answered disclosure query.
@@ -178,9 +224,11 @@ export function FirstRunHomeChapter() {
   // deciding it from an unanswered query would either skip a disclosure that
   // was outstanding or promise a step that is not coming.
   const openChapter = useCallback(() => {
-    const plan = disclosureOutstanding
-      ? CHAPTER_STEPS_WITH_DISCLOSURE
-      : CHAPTER_STEPS;
+    const plan = planFirstRunChapterSteps({
+      disclosureOutstanding,
+      engineRoleUnanswered:
+        config?.builtinAgentEngineConnectionId === undefined,
+    });
     const resumedStep =
       progress.chapter === 'about-you'
         ? 'about-you'
@@ -191,7 +239,11 @@ export function FirstRunHomeChapter() {
     setStep(resumedStep);
     setSaveError(null);
     setOpen(true);
-  }, [disclosureOutstanding, progress.chapter]);
+  }, [
+    config?.builtinAgentEngineConnectionId,
+    disclosureOutstanding,
+    progress.chapter,
+  ]);
 
   // Auto-open is a ONE-SHOT per mount, latched on a ref rather than driven by
   // `offer.autoOpen` every render. Without the latch, closing the dialog while
@@ -265,6 +317,24 @@ export function FirstRunHomeChapter() {
   useEffect(() => {
     firstRunChapterPresence.set(open);
   }, [open]);
+
+  // #1582 L2. The FIRST step is deliberately not refocused here: the surface's
+  // own mount focus already lands on the panel, and racing it would move focus
+  // twice on the first screen a person ever sees. Only a CHANGE of step, which
+  // is exactly when the control that had focus stops existing.
+  const focusedStep = useRef<ChapterStep | null>(null);
+  useEffect(() => {
+    if (!open) {
+      focusedStep.current = null;
+      return;
+    }
+    if (focusedStep.current === null || focusedStep.current === step) {
+      focusedStep.current = step;
+      return;
+    }
+    focusedStep.current = step;
+    stepRegionRef.current?.focus();
+  }, [open, step]);
   useEffect(() => () => firstRunChapterPresence.set(false), []);
 
   const writeStatus = useCallback(
@@ -301,6 +371,7 @@ export function FirstRunHomeChapter() {
   const decided = useRef(false);
 
   const defer = useCallback(() => {
+    completionGeneration.current += 1;
     // Closing the run while the DISCLOSURE step is in front of the reader is
     // the same decision as that step's own "Not now", and must leave the same
     // record. Without it, the `skipped` write below flips the home off
@@ -342,6 +413,7 @@ export function FirstRunHomeChapter() {
    * stays on offer until it genuinely finishes.
    */
   const giveUp = useCallback(() => {
+    completionGeneration.current += 1;
     firstRunStore.defer();
     setOpen(false);
     if (decided.current) return;
@@ -350,20 +422,56 @@ export function FirstRunHomeChapter() {
     writeStatus('skipped');
   }, [config?.firstRun?.status, writeStatus]);
 
-  const complete = useCallback(() => {
-    decided.current = true;
-    // Persist the hand-off before navigation. If the page reloads between the
-    // config write and the tour event, FirstRunFlow resumes at the tour rather
-    // than reopening this chapter from step one.
-    firstRunStore.enterChapter('tour');
-    setOpen(false);
-    writeStatus('completed');
-    // The tour is the one cross-route part of the guided run, and it is that
-    // by design — it anchors coachmarks over real surfaces. `FirstRunFlow`
-    // still owns it; this is the same event the command palette's "Take the
-    // tour" action dispatches.
-    requestFirstRunTour();
-  }, [writeStatus]);
+  const complete = useCallback(
+    (destination: 'chat' | 'tour') => {
+      decided.current = true;
+      if (destination === 'tour') firstRunStore.enterChapter('tour');
+      else firstRunStore.finish();
+      setOpen(false);
+      writeStatus('completed');
+      if (destination === 'tour') requestFirstRunTour();
+      else window.dispatchEvent(new Event('station:open-new-chat'));
+    },
+    [writeStatus],
+  );
+
+  const continueToAboutYou = useCallback(() => {
+    firstRunStore.enterChapter('about-you');
+    setStep('about-you');
+    setOpen(true);
+  }, []);
+
+  const continueAfterEngineSetup = useCallback(() => {
+    // Engine materialization answers "which harnesses should be available?";
+    // it does not answer the separate role question "which one powers
+    // Station?". Ask that question while first run already owns the screen,
+    // and only when no explicit choice (including explicit Station/null) has
+    // been recorded. EnginePicker is shared with Settings so capability
+    // filtering and persistence stay single-sourced.
+    if (config?.builtinAgentEngineConnectionId === undefined) {
+      // Self-correcting in both directions: the plan is decided at open, and
+      // this fact can move under a run that is already up (Settings in another
+      // tab). Re-admitting the step here keeps the counter describing the
+      // screens actually shown rather than the ones predicted.
+      setSteps((current) =>
+        current.includes('engine-role')
+          ? current
+          : [
+              ...current.slice(0, current.indexOf('engines') + 1),
+              'engine-role',
+              ...current.slice(current.indexOf('engines') + 1),
+            ],
+      );
+      setStep('engine-role');
+      setOpen(true);
+      return;
+    }
+    // The role was answered while this run was open, so a step the plan
+    // promised is not going to happen. Drop it rather than let every later
+    // screen keep counting one nobody will see.
+    setSteps((current) => current.filter((entry) => entry !== 'engine-role'));
+    continueToAboutYou();
+  }, [config?.builtinAgentEngineConnectionId, continueToAboutYou]);
 
   if (!offer.offered) return null;
 
@@ -372,6 +480,7 @@ export function FirstRunHomeChapter() {
       <FirstRunHomeCard onOpen={openChapter} />
       {open ? (
         <ResponsiveDialogSurface
+          layer="dialog"
           onClose={defer}
           ariaLabelledBy="first-run-chapter-title"
           overlayClassName="first-run-chapter__overlay"
@@ -379,64 +488,110 @@ export function FirstRunHomeChapter() {
         >
           <ResponsiveDialogHeader
             title={
-              <span id="first-run-chapter-title">{STEP_TITLES[step]}</span>
+              <span id="first-run-chapter-title">
+                {step === 'engine-role'
+                  ? (roleTitle ?? STEP_TITLES['engine-role'])
+                  : STEP_TITLES[step]}
+              </span>
             }
-            subtitle={`Step ${steps.indexOf(step) + 1} of ${steps.length}`}
+            subtitle={firstRunStepCounterLabel(steps, step)}
             closeLabel="Close setup"
             onClose={defer}
           />
-          {step === 'disclosure' ? (
-            <UsageTelemetryDisclosureStep
-              onAdvance={() => {
-                firstRunStore.enterChapter('engines');
-                setStep('engines');
-              }}
-              onDefer={defer}
-            />
-          ) : step === 'engines' ? (
-            <FirstRunEnginesChapter
-              options={options}
-              // The chapter is already on screen; this only says whether the
-              // LIST can be trusted yet (a flapping status probe changes
-              // the list's contents, never the chapter's presence).
-              loading={!settled}
-              onDone={() => {
-                firstRunStore.enterChapter('about-you');
-                setStep('about-you');
-              }}
-              onDefer={defer}
-              onGiveUp={giveUp}
-            />
-          ) : (
-            <AboutYouStep
-              initial={config?.userProfile}
-              saving={saving}
-              error={saveError}
-              onSave={async (profile: UserProfileSettings) => {
-                // `updateConfig` is `mutateAsync` and REJECTS on failure.
-                // Finishing without awaiting it would silently discard the
-                // profile the card had just promised to save.
-                setSaving(true);
-                setSaveError(null);
-                try {
-                  await updateConfig({ userProfile: profile });
-                } catch (error) {
-                  setSaveError(
-                    error instanceof Error
-                      ? `Station could not save your answers: ${error.message}`
-                      : 'Station could not save your answers.',
-                  );
-                  return;
-                } finally {
-                  setSaving(false);
+          {/* #1582 L2: focus, when a step swaps.
+              `ResponsiveDialogSurface` focuses its panel on MOUNT and only
+              then; the panel stays mounted across steps, so activating the
+              control that advances the run unmounts the element that had
+              focus and drops it to `<body>` — a keyboard or screen-reader
+              user lands outside the dialog with the next screen unannounced.
+              This region takes it instead, which is where the surface would
+              have put it. */}
+          <div
+            className="first-run-chapter__step"
+            ref={stepRegionRef}
+            tabIndex={-1}
+          >
+            {step === 'disclosure' ? (
+              <UsageTelemetryDisclosureStep
+                onAdvance={() => {
+                  firstRunStore.enterChapter('engines');
+                  setStep('engines');
+                }}
+              />
+            ) : step === 'engines' ? (
+              <FirstRunEnginesChapter
+                options={options}
+                // The chapter is already on screen; this only says whether the
+                // LIST can be trusted yet (a flapping status probe changes
+                // the list's contents, never the chapter's presence).
+                loading={!settled}
+                onDone={() => {
+                  continueAfterEngineSetup();
+                }}
+                onDefer={defer}
+                onGiveUp={giveUp}
+              />
+            ) : step === 'engine-role' ? (
+              <LazyBoundary
+                load={loadFirstRunEnginePicker}
+                componentProps={{
+                  variant: 'step' as const,
+                  // The step's title, or the picker resolves its own default
+                  // ("Choose what powers your default assistant") and reports
+                  // THAT up — the shared header then prints a name for this
+                  // step that the run's own table does not have. Caught in the
+                  // live screenshot of the rebuilt tree.
+                  title: STEP_TITLES['engine-role'],
+                  description:
+                    'Choose the engine that runs the Station agent. Station Control and Station Docs stay attached to the role.',
+                  onChosen: continueToAboutYou,
+                  onDismiss: continueToAboutYou,
+                  // The picker answers a different question when nothing on
+                  // this host can run the assistant, and the header must not
+                  // keep asking the one it cannot answer.
+                  onTitleChange: setRoleTitle,
+                }}
+                pending={
+                  <SkeletonBlock count={1} label="Loading engine options" />
                 }
-                complete();
-              }}
-              // Deliberately writes no profile at all — not an empty one.
-              // Absent is what makes the server inject nothing.
-              onSkip={complete}
-            />
-          )}
+              />
+            ) : (
+              <AboutYouStep
+                initial={config?.userProfile}
+                saving={saving}
+                error={saveError}
+                onComplete={async (
+                  profile: UserProfileSettings | undefined,
+                  destination: 'chat' | 'tour',
+                ) => {
+                  // Both exits save intentional answers before navigation. The
+                  // ref also guards two activations before React disables them.
+                  if (completionInFlight.current) return;
+                  completionInFlight.current = true;
+                  const generation = ++completionGeneration.current;
+                  setSaving(true);
+                  setSaveError(null);
+                  try {
+                    if (profile) await updateConfig({ userProfile: profile });
+                    // A close, Back, or route unmount during the write cancels
+                    // navigation, even when those answers are successfully saved.
+                    if (generation !== completionGeneration.current) return;
+                    complete(destination);
+                  } catch (error) {
+                    if (generation !== completionGeneration.current) return;
+                    setSaveError(
+                      error instanceof Error
+                        ? `Station could not save your answers: ${error.message}`
+                        : 'Station could not save your answers.',
+                    );
+                  } finally {
+                    completionInFlight.current = false;
+                    setSaving(false);
+                  }
+                }}
+              />
+            )}
+          </div>
         </ResponsiveDialogSurface>
       ) : null}
     </>

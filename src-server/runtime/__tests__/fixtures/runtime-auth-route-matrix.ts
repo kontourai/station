@@ -36,6 +36,13 @@ export const RUNTIME_AUTH_ROUTE_MATRIX: readonly RuntimeAuthRouteCase[] = [
     scopeMapped: true,
   },
   {
+    name: 'system status and home recovery disclosure',
+    method: 'GET',
+    path: '/api/system/status',
+    kind: 'protected',
+    scopeMapped: true,
+  },
+  {
     name: 'API read',
     method: 'GET',
     path: '/api/projects',

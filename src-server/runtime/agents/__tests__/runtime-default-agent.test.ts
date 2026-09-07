@@ -500,6 +500,10 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
     expect(scenario.agentMetadataMap.get('default')).toEqual(
       expect.objectContaining({
         slug: 'default',
+        tools: {
+          mcpServers: ['station-control', 'station-docs'],
+          autoApprove: [],
+        },
         execution: { agentConnectionId: 'claude' },
       }),
     );

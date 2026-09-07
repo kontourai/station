@@ -20,6 +20,30 @@ const showSurfaceStub = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
 }));
+// #928 C2a: the Home row's active state reads `main`'s occupant. `null`
+// is the no-provider mount every other test here uses.
+const sidebarRegion = vi.hoisted(() => ({
+  mainOccupant: undefined as string | null | undefined,
+}));
+vi.mock('../contexts/RegionModelContext', () => ({
+  useRegionModelOptional: () =>
+    sidebarRegion.mainOccupant === undefined
+      ? null
+      : {
+          // The full arrangement: `ProjectSidebarNav` reads the dock regions
+          // for its `regionSurface` rows.
+          regions: {
+            main: {
+              visible: true,
+              size: 0,
+              occupant: sidebarRegion.mainOccupant,
+            },
+            left: { visible: false, size: 400, occupant: null },
+            right: { visible: false, size: 400, occupant: null },
+            bottom: { visible: false, size: 320, occupant: 'chat' },
+          },
+        },
+}));
 
 vi.mock('../build-info', () => ({
   buildInfo: { version: '0.1.2', commit: 'test' },
@@ -125,6 +149,7 @@ import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
 function resetState() {
+  sidebarRegion.mainOccupant = undefined;
   for (const key of Object.keys(chats)) delete chats[key];
   agents.length = 0;
   projects.length = 0;
@@ -143,6 +168,53 @@ function resetState() {
   // clearing localStorage alone would leak a prior test's toggles.
   deviceSettingsStore.reloadFromStorage();
 }
+
+/**
+ * #928 C2a: Home is a region surface whose only placement is `main`. Both
+ * sidebar Home affordances (the header's app-name button and the Work list's
+ * Home row) reveal it through `showSurface('home')`; navigating to `/` is the
+ * region model's job once the placement lands, and a sidebar that navigated
+ * itself would show whatever surface occupies `main`.
+ */
+describe('ProjectSidebar Home affordances reveal the Home surface (#928 C2a)', () => {
+  test('the Work list Home row and the header home button call showSurface(home) and do not navigate', () => {
+    resetState();
+    showSurfaceStub.mockClear();
+    render(<ProjectSidebar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    expect(showSurfaceStub).toHaveBeenCalledWith('home');
+    expect(navigate).not.toHaveBeenCalled();
+
+    showSurfaceStub.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Station home' }));
+    expect(showSurfaceStub).toHaveBeenCalledWith('home');
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  test('the Home row is active at / only while main shows Home', () => {
+    const homeRow = () => screen.getByRole('button', { name: 'Home' });
+    const active = 'sidebar__project-btn--active';
+    resetState();
+
+    sidebarRegion.mainOccupant = 'activity';
+    const withActivity = render(<ProjectSidebar />);
+    expect(homeRow().classList.contains(active)).toBe(false);
+    withActivity.unmount();
+
+    sidebarRegion.mainOccupant = 'home';
+    const withHome = render(<ProjectSidebar />);
+    expect(homeRow().classList.contains(active)).toBe(true);
+    withHome.unmount();
+
+    // A null occupant is Home on screen (`MainRegionSurface`).
+    sidebarRegion.mainOccupant = null;
+    const withNull = render(<ProjectSidebar />);
+    expect(homeRow().classList.contains(active)).toBe(true);
+    withNull.unmount();
+    sidebarRegion.mainOccupant = undefined;
+  });
+});
 
 describe('ProjectSidebar WORK list labeling (station#1300)', () => {
   test.each([

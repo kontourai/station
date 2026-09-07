@@ -33,9 +33,11 @@ category.
 - [answer-share-permalinks.md](answer-share-permalinks.md) — Scoped answer share permalinks (station#1423)
 - [browser-preview-host-spike.md](browser-preview-host-spike.md) — Browser-preview host spike (Station #1376)
 - [browser-preview-pane-mvp.md](browser-preview-pane-mvp.md) — Browser Preview Pane MVP (Station #1375)
+- [channel-home-authority.md](channel-home-authority.md) — Channel home authority and planned transfer
 - [chat-composer.md](chat-composer.md) — Design: Chat composer & the agent-navigability principle
 - [cli-product.md](cli-product.md) — Design: the Station CLI as a published product
 - [cli-triage.md](cli-triage.md) — Design: bounded guided triage
+- [cloud-move.md](cloud-move.md) — Move a Station setup to the cloud
 - [collaborative-editor-pane.md](collaborative-editor-pane.md) — Collaborative editor pane
 - [conduit-runtime-integration.md](conduit-runtime-integration.md) — Conduit runtime integration
 - [connections-onboarding.md](connections-onboarding.md) — Design: Connections onboarding & capability passthrough
@@ -62,10 +64,13 @@ category.
 - [orchestration-decomposition-map.md](orchestration-decomposition-map.md) — The Seam Map — `OrchestrationService`
 - [pane-host-contract.md](pane-host-contract.md) — The pane-host contract: one interface, two transports
 - [pane-or-shell.md](pane-or-shell.md) — Pane or shell: the criterion
+- [placement.md](placement.md) — Placement: regions, surfaces, layouts, panes, pane hosts
 - [plugin-authority-model.md](plugin-authority-model.md) — The plugin authority model: contributions, loci, and where consent belongs
 - [plugin-knowledge-store-contributions.md](plugin-knowledge-store-contributions.md) — Plugin-contributed Knowledge stores
+- [pnpm-workspace-installation.md](pnpm-workspace-installation.md) — pnpm workspace installation
 - [portable-project-identity.md](portable-project-identity.md) — Design: portable Project identity — remote-keyed resources, per-Station bindings
 - [principals.md](principals.md) — Design: Principals — what "people" means in Station, and when it changes
+- [private-cloud-environment.md](private-cloud-environment.md) — Private cloud Station environment
 - [project-task-room-history.md](project-task-room-history.md) — Project/Task room history
 - [revision-bound-evidence.md](revision-bound-evidence.md) — Design: revision-bound evidence
 - [settings-architecture.md](settings-architecture.md) — Settings Architecture: scope-first settings for Station

@@ -1,12 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
-import { copyToClipboard } from '../../lib/clipboard';
-import { triggerHaptic } from '../../platform/native/haptics';
 import type { ChatSession } from '../../types';
 import { agentEngineDescriptor } from '../../utils/engine';
-import { EngineChip } from '../badges/EngineChip';
+import { engineChipLabel } from '../badges/EngineChip';
 import { FlowGatedChip } from '../flow/FlowGatedChip';
 import { AgentIcon } from '../icons/AgentIcon';
 
@@ -15,7 +12,7 @@ interface ChatDockActiveIdentityProps {
   agent?: AgentData;
   /**
    * Human label for the model this chat runs, from
-   * `effectiveChatModelId` + `modelDisplayLabel` — the same two derivations
+   * `effectiveChatModelId` + `modelIdentityLabel` — the same two derivations
    * the composer's model pill uses. `null`/absent when no model was reported;
    * the header then names none rather than inventing one.
    */
@@ -29,11 +26,20 @@ interface ChatDockActiveIdentityProps {
  * and tab bar from growing duplicate session/engine rendering paths (#1064).
  *
  * station#3309 (owner: "showing agent icons and metadata"): the row reads
- * AGENT-first. The agent's icon leads, then its name, then the engine that
- * executes it and the model it runs; the session title follows as the thing
- * that distinguishes one chat with that agent from another. It used to open
- * with the session title and hang the engine chip off the end, which named
- * the conversation but never the thing answering in it.
+ * AGENT-first. The agent's icon leads, then its name; the engine that executes
+ * it and the model it runs follow. It used to open with the session title and
+ * hang the engine chip off the end, which named the conversation but never the
+ * thing answering in it.
+ *
+ * #1536 F reordered what comes after the name and collapsed the tail. The
+ * conversation TITLE is now the row's flexible element and the engine and model
+ * are ONE muted token behind it that gives way first: measured on a project
+ * page, a 110-character project path left the title about one character while
+ * "Claude Code" and "Opus 5" — two separately flex-positioned spans, each
+ * `flex-shrink: 0` — overprinted each other. The agent identity still leads,
+ * because that is #3309's finding and it is short; what changed is that the
+ * label distinguishing THIS chat from the last one is no longer the first
+ * thing to vanish.
  */
 export function ChatDockActiveIdentity({
   session,
@@ -42,33 +48,6 @@ export function ChatDockActiveIdentity({
   onClose,
 }: ChatDockActiveIdentityProps) {
   const closeTabShortcut = useShortcutDisplay('dock.closeTab');
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>(
-    'idle',
-  );
-  const copyResetRef = useRef<number | undefined>(undefined);
-  useEffect(
-    () => () => {
-      if (copyResetRef.current !== undefined) {
-        window.clearTimeout(copyResetRef.current);
-      }
-    },
-    [],
-  );
-
-  const copyThreadId = async () => {
-    // `conversationId` is the durable Station thread id supplied by the
-    // conversation route. `session.id` is only the local tab/store key, so
-    // never fall back to it here: a copied value must remain usable by the
-    // CLI and receipt readers.
-    if (!session.conversationId) return;
-    const copied = await copyToClipboard(session.conversationId);
-    if (copied) triggerHaptic('light');
-    setCopyState(copied ? 'copied' : 'failed');
-    if (copyResetRef.current !== undefined) {
-      window.clearTimeout(copyResetRef.current);
-    }
-    copyResetRef.current = window.setTimeout(() => setCopyState('idle'), 1500);
-  };
 
   const engine = agent
     ? agentEngineDescriptor({
@@ -110,6 +89,13 @@ export function ChatDockActiveIdentity({
     slug: session.agentSlug,
     icon: agent?.icon,
   };
+  // One muted token, not a pill plus a span: `engineChipLabel` already joins an
+  // engine with its own model ("OpenCode · GLM-4.7"), and the model this chat
+  // actually runs joins on with the same separator. Empty when neither is
+  // known, so the row names nothing it cannot derive.
+  const engineTrail = [engineChipLabel(engineChip), modelLabel]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <div className="chat-dock__active-identity">
@@ -124,59 +110,29 @@ export function ChatDockActiveIdentity({
             {agentName}
           </strong>
         )}
-        <EngineChip engine={engineChip} />
-        {modelLabel && (
-          <span className="chat-dock__active-identity-model">{modelLabel}</span>
-        )}
-        <span className="chat-dock__active-identity-title">
+        {/* `title` because this is the element that ellipsizes: the full label
+            has to stay readable, and hover is the channel that costs the row
+            nothing. */}
+        <span
+          className="chat-dock__active-identity-title"
+          title={session.title}
+        >
           {session.title}
         </span>
+        {engineTrail && (
+          <span
+            className="chat-dock__active-identity-engine"
+            title={engineTrail}
+          >
+            {engineTrail}
+          </span>
+        )}
       </div>
       {session.flowRun && <FlowGatedChip binding={session.flowRun} />}
-      {session.conversationId && (
-        <>
-          <button
-            type="button"
-            className={`chat-dock__icon-btn chat-dock__active-identity-copy${
-              copyState === 'failed' ? ' copy-affordance--failed' : ''
-            }`}
-            style={{
-              minWidth: 44,
-              minHeight: 44,
-              flex: '0 0 auto',
-              color: 'var(--text-tertiary)',
-              fontSize: 'var(--text-xs)',
-            }}
-            aria-label="Copy thread ID"
-            title={
-              copyState === 'failed'
-                ? 'This browser refused clipboard access — select the thread ID from the session list to copy it manually.'
-                : 'Copy thread ID'
-            }
-            onClick={() => {
-              void copyThreadId();
-            }}
-          >
-            {/* #765 A7: the idle label says what pressing it does. A bare
-                "ID" chip beside the title read as a debug artifact, not as
-                the copy affordance its aria-label already named. */}
-            {copyState === 'copied'
-              ? 'Copied'
-              : copyState === 'failed'
-                ? "Can't copy"
-                : 'Copy ID'}
-          </button>
-          {/* The button's own name is fixed, so its label change is never
-              announced; this sibling carries the outcome. */}
-          <span role="status" className="copy-status-sr">
-            {copyState === 'copied'
-              ? 'Thread ID copied.'
-              : copyState === 'failed'
-                ? 'This browser refused clipboard access. The thread ID was not copied.'
-                : ''}
-          </span>
-        </>
-      )}
+      {/* #1536 F: "Copy ID" was a 44px labelled button inside the identity
+          row, competing with the title for the same pixels. It is a row of the
+          dock header's More menu now (`useDockCopyActions`), which reports the
+          outcome through a toast instead of an inline label. */}
       <button
         type="button"
         className="chat-dock__active-identity-close"

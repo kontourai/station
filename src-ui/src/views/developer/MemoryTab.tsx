@@ -13,6 +13,7 @@ import {
   Skeleton,
 } from '../../components/state';
 import { Tabs, tabElementId, tabPanelElementId } from '../../components/Tabs';
+import { LearningSourceAction } from '../learning-review/LearningSourceAction';
 
 /** Groups this view's generated tab/panel ids — see `components/Tabs.tsx`. */
 const TABS_ID = 'memory-knowledge-roots';
@@ -140,6 +141,11 @@ export default function MemoryTab() {
             rootId={rootId}
             authorityKey={authorityKey}
             graph={graph}
+            renderRecordActions={({ recordId }) =>
+              activeRoot ? (
+                <LearningSourceAction root={activeRoot} recordId={recordId} />
+              ) : null
+            }
           />
         ) : (
           <p>The selected memory store has no recall graph available.</p>

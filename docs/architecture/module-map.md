@@ -19,7 +19,10 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 | Module | Intent | Primary source |
 | --- | --- | --- |
-| [SurfaceRegistry](#surfaceregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/surface-registry.ts` |
+| [DestinationRegistry](#destinationregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/destination-registry.ts` |
+| [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
+| [WorkspacePaneHostContributions](#workspacepanehostcontributions) | Bind package-level Pane-host actions and explicit Agent selection without treating Pane requirements as routing authority. | `src-server/services/plugins/workspace-pane-host-contributions.ts` |
+| [WorkspacePaneHostAdmission](#workspacepanehostadmission) | Admit one captured package action at the existing foreground invocation boundary. | `src-server/services/plugins/workspace-pane-host-admission.ts` |
 | [InstalledPluginInventory](#installedplugininventory) | Keep valid and rejected installed plugin directories visible from one filesystem-backed inventory. | `src-server/services/plugins/installed-plugin-inventory.ts` |
 | [PackageMcpAdmissionJournal](#packagemcpadmissionjournal) | Retain package-incarnation admission evidence without inventing destructive retirement authority. | `src-server/services/plugins/package-mcp-admission.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
@@ -51,6 +54,8 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [OperationalEventOutbox](#operationaleventoutbox) | Persist validated operational facts before isolated notification and expose bounded replay truth. | `src-server/services/operational-events/operational-event-outbox.ts` |
 | [OperationalEventDelivery](#operationaleventdelivery) | Claim, settle, retry, and dead-letter one scope-filtered operational fact without duplicate effects. | `src-server/services/operational-events/operational-event-delivery.ts` |
 | [OperationalEventSubscriptions](#operationaleventsubscriptions) | Authorize declarative subscribers and isolate projected at-least-once delivery. | `src-server/services/operational-events/operational-event-subscriptions.ts` |
+| [LearningReviewProjection](#learningreviewprojection) | Present an owner-issued learning lifecycle without adopting learning authority. | `packages/contracts/src/learning-review.ts` |
+| [KnowledgeSourceObservation](#knowledgesourceobservation) | Observe one registered canonical record without bootstrap, repair, or learning authority. | `src-server/knowledge-store/knowledge-store-provider.ts` |
 | [PluginCompositionModule](#plugincompositionmodule) | Stage and atomically activate scoped, reversible plugin capability graphs. | `src-server/services/plugins/plugin-composition.ts` |
 | [PluginGrantReconciliation](#plugingrantreconciliation) | Converge runtime capability generations after a durable plugin grant change. | `src-server/services/plugins/plugin-grant-reconciliation.ts` |
 | [RegistrySupplyChainPolicy](#registrysupplychainpolicy) | Verify registry package signatures and prepare exact pins and rollback sources. | `src-server/services/plugins/registry-supply-chain.ts` |
@@ -62,13 +67,186 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [TaskDispatcher and TaskGraph](#taskdispatcher-and-taskgraph) | Dispatch a task while keeping graph state and orchestration detail local. | `src-server/services/projects/task-dispatcher.ts` |
 | [StationInstanceReconciler](#stationinstancereconciler) | Observe and converge one installed Station instance safely. | `packages/cli/src/commands/station-instance-reconciler.ts` |
 
-## SurfaceRegistry
+## DestinationRegistry
 
-**Intent and Interface.** `createSurfaceRegistry(definitions)` composes one immutable destination inventory. Callers may read registered surfaces, advertised surfaces for an explicit preview-flag set, ordered sidebar or command-palette projections, exact root routes, and the surface owning a `NavigationView`. Labels and badges resolve when projected, after locale, branding, and live attention facts exist. The built-in application composition is `APP_SURFACE_REGISTRY`.
+**Intent and Interface.** `createDestinationRegistry(definitions)` composes one immutable destination inventory. Callers may read registered destinations, advertised destinations for an explicit preview-flag set, ordered sidebar or command-palette projections, exact root routes, and the destination owning a `NavigationView`. Labels and badges resolve when projected, after locale, branding, and live attention facts exist. The built-in application composition is `APP_DESTINATION_REGISTRY`.
 
 **Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate exact-route owners, duplicate view owners, and duplicate sidebar or palette order slots. It never invokes a label or badge while composing or filtering; locale, branding, and attention state remain render-time inputs. A preview surface stays registered and routable while `getAdvertised` hides it until its named flag is enabled. `hiddenFromNav` removes only the sidebar affordance; route, palette, badge, and header callers remain independent projections. Parameterized Project, layout, task, Agent, connection, and Workspace Pane routes retain their domain parsers. Dynamic Workspace Panes retain their typed availability catalog and join the command palette after static registry projection rather than becoming unvalidated root-route contributions.
 
-**Seam, Implementation, callers, and tests.** The UI shell composes built-in descriptors. `routing.ts` consumes exact routes and semantic management ownership; `ProjectSidebarNav`, `CommandPalette`, and notification header badge consume their ordered projections. Icons are a presentation Adapter keyed by the registry's finite icon vocabulary. Future trusted plugin surface contributions must enter at registry composition and pass the same validation; there is no mutable global `register()` operation or renderer callback in persisted plugin data. Contract coverage is `src-ui/src/app-shell/__tests__/surface-registry.test.ts` plus sidebar, palette, routing, and header suites. **Do not reintroduce:** component-local static destination arrays, route-to-sidebar switch statements, hard-coded badge copy outside the registry, mutable post-construction registration, or treating a contributed renderer declaration as navigation authority.
+**Seam, Implementation, callers, and tests.** The UI shell composes built-in descriptors. `routing.ts` consumes exact routes and semantic management ownership; `ProjectSidebarNav`, `CommandPalette`, and notification header badge consume their ordered projections. Icons are a presentation Adapter keyed by the registry's finite icon vocabulary. Future trusted plugin surface contributions must enter at registry composition and pass the same validation; there is no mutable global `register()` operation or renderer callback in persisted plugin data. Contract coverage is `src-ui/src/app-shell/__tests__/destination-registry.test.ts` plus sidebar, palette, routing, and header suites. **Do not reintroduce:** component-local static destination arrays, route-to-sidebar switch statements, hard-coded badge copy outside the registry, mutable post-construction registration, or treating a contributed renderer declaration as navigation authority.
+
+## UnifiedSearchService
+
+**Intent and Interface.** `UnifiedSearchService.search(request, signal)` asks
+one to eight immutable typed Providers for independently authorized pages and
+returns a versioned result envelope whose key includes provider and semantic
+owner identity. Results retain kind, exact scope, matched fields, currentness,
+and a typed open intent that must be re-resolved by
+its owner before navigation.
+
+**Contract.** Query, provider, result, string, count, byte, continuation, and
+result-acceptance deadlines are fixed by the host. Elapsed monotonic checks
+reject late results even when synchronous work prevents the timer from firing.
+This in-process foundation cannot preempt synchronous provider/source work and
+does not establish a server responsiveness bound. Production composition is
+blocked on an isolated, cancellable execution/read-owner boundary; making a
+synchronous source method return a Promise is not that boundary.
+Provider output is cloned and validated;
+unknown shapes, duplicate identities, excessive pages, throwing accessors,
+timeouts, and exceptions become source-level unavailable state without error
+detail. Restricted sources return no results or resource counts. A partial,
+stale, restricted, or unavailable source never erases authorized results from
+another source, and ranking uses provider relevance only—not trust or inferred
+correlation. Same-text ids from different Station/tenant/Console owners cannot
+collide. Provider continuations are wrapped by the host and bind provider
+owner/version, normalized query, and exact filters. Providers are composed over
+request-bound read authority, but the aggregate result does not invent a host
+authorization receipt; navigation must re-resolve current authority. Console
+projection is a contract owner only: Station has no sibling
+store reader, and cross-product results remain blocked on a published Console
+Adapter.
+
+**Seam, Implementation, callers, and tests.** Public shapes live in
+`@kontourai/station-contracts/unified-search`; server composition and validation
+live in `src-server/services/search/unified-search-service.ts`. Initial local
+Adapters map the existing authority-filtered Session message index and the
+personal-mode TaskGraph list. The Task Adapter is deliberately not eligible for
+hosted composition until a tenant-bound Task store exists. The runtime/API/SDK
+slice below adds read-only transport; there is no command-palette row, file
+scan, or output/receipt Provider. Focused behavioral evidence lives in
+`src-server/services/search/__tests__/`. **Do not reintroduce:** a universal
+resource graph, sibling-repository scraping, provider-supplied owner stamping,
+unauthorized hit/count projection, cached-snippet authority, inferred identity,
+unbounded fan-out, or a second command-palette registry.
+
+**Task-only isolation prerequisite (#1413).** `TaskGraphService.createPersonalSearchReader(stationId)`
+binds one explicit-lifecycle reader to that owner's canonical file. Its fixed
+worker operation reuses TaskGraph validation, ordering, and JsonFileStore's
+missing-primary `.previous` recovery; corrupt primary data never falls back.
+The worker accepts files up to 8 MiB (with a bounded one-byte overflow probe;
+oversize is unavailable, not empty), scans the
+existing bounded Task window, and transfers only a bounded provider page.
+One request may execute; there is no queue. The two-second deadline includes
+worker startup. Deadline/cancellation fences result acceptance and retains the
+exact worker until exit/termination is confirmed. An uncertain or rejected
+cleanup occupies the slot; `inspect()` reports retiring/incomplete and bounded
+`close()` reports winding-down/incomplete. Repeated close joins pending cleanup
+and retries only settled rejection. The owner must close the reader. This is
+trusted first-party CPU isolation, not a hostile-plugin security sandbox, and
+is not a host-wide pool or a new authorization authority. Do not allocate one
+reader per request. Runtime composition below owns the caller; supported-platform
+responsiveness qualification remains open. Existing arbitrary Provider callbacks remain in-process and do
+not acquire an isolation guarantee from this Task-only slice.
+
+**Transcript read/auth isolation (#1413).** `OrchestrationService.createIsolatedTranscriptSearch()`
+is the explicit-lifecycle composition seam used by the runtime owner.
+Runtime initialization/recovery must precede query admission; it is not hidden
+inside the request deadline. Canonical FTS ranking/scope terms and owner SQL
+live in `transcript-search-queries.ts`, reused by EventStore and a read-only
+worker. The worker never constructs EventStore, migrates a database, or receives
+a branded SessionReadAuthority. Missing databases/schema and oversized read
+facts are unavailable, never empty/ownerless success. Candidate content is
+bounded before leaving SQLite; only excerpts/identities cross the worker port.
+The existing single SessionAuthorization applies the same personal/hosted/
+legacy policy with async cold owner lookups and positive-only caching. Its
+generation fence invalidates in-flight lookups on owner/tenant changes. Parent
+principal currentness and the generation are rechecked before publication.
+
+**Owner-backed exact open reads (#1363).** The same Task reader now supports a
+fresh personal-only Task/project point read, and the same transcript reader
+supports exact Session metadata and indexed-message event point reads. Hosted
+Task authority is rejected before worker admission. Transcript owner/tenant and
+optional project filtering happen in SQL before the search limit; parent
+SessionAuthorization, principal currentness, cancellation and runtime generation
+still gate returned facts. Indexed messages carry an exact `matchedEventId`
+separately from the legacy `messageId` navigation anchor, which multiple events
+in one turn may share. Unified hit identity uses the exact event when present;
+old providers' navigation-anchor API remains compatible. New message opens
+require an exact Session/event pair, verify the canonical event still exists,
+and never follow lineage to a newer child. Typed open locators are not cached
+authorization receipts. These methods reuse one reader slot and its retained
+cleanup, with no new worker per call or synchronous fallback.
+The complete query plus authorization sequence has one two-second acceptance
+deadline, one active query and no queue. Task and transcript workers share
+private termination custody, not a plugin execution framework. EventStore
+close reports pending/unavailable while its read worker remains outstanding;
+Orchestration shutdown also fences and settles its reader. Native SQLite work
+may defer thread termination until its native call returns; uncertain cleanup
+retains the occupied slot and is never reported complete. This is CPU isolation
+for fixed first-party reads, not a sandbox or a hard-real-time/preemption claim.
+**Runtime/API/SDK slice (#1363).** `StationRuntime.configureRoutes` constructs
+one `RuntimeSearch` after initialized Orchestration is published. It uses the
+existing handshake `environmentId` as result `stationId`, without inventing a
+machine/logical-Station identity. Request-bound lightweight adapters reuse one
+Task owner and one Orchestration transcript owner; hosted Task search is
+restricted and never invokes its worker. `POST /api/search` and
+`POST /api/search/resolve-open` use closed 12 KiB bodies and the same
+`orchestration:read` pairing scope as existing Task GET routes. No owner or
+authority fields are accepted. The ingress-derived SessionReadAuthority,
+request abort and live principal scope are checked before and after owner I/O.
+Responses are private/no-store. Search/read outcome telemetry contains only
+bounded operation/state labels, never queries or resource identities.
+Shutdown fences admission synchronously before initialization/configuration
+drains, keeps the Task close capability when retirement remains pending, and
+leaves transcript shutdown to Orchestration/EventStore. SDK cached hooks require
+the existing API-base/authority-epoch request scope and hide cached snippets
+until a fresh successful read. Real owner+Hono tests live in
+`services/search/__tests__/runtime-search.test.ts`; mounted SDK tests cover
+same-origin epoch replacement. CommandPalette/UI, additional source kinds, and
+supported-platform responsiveness qualification remain deferred.
+
+The SDK root publishes hooks/query keys only; direct operations stay on the
+existing React-free `/client` entry. Hooks load that client lazily after
+capturing request/scope, recheck cancellation, and use the existing live
+credential-authority guard. This avoids introducing a shared search chunk
+into the first-paint dependency table while retaining the full typed API.
+
+Search routes bind the same exact ingress principal and home-possession fact
+as conversation reads, not the server's OS display alias. A streaming bounded
+validator preserves the authenticated Request object and its WeakMap bindings.
+The single SessionAuthorization owner derives at most one legacy owner bridge,
+only for a personal local-operator authority with home possession; SQL groups
+the canonical/legacy owner postings before tenant/project/content filters and
+the result limit. Paired, WhoIs, hosted, and remote-operator-only authorities
+cannot claim the bridge. Final parent authorization still checks each result.
+Failed initialization synchronously fences the captured runtime search, then
+retains both retirement capabilities until actual closed proof. EventStore can
+release only that identical closed source, never pending/replaced/closing
+storage. Retry constructs a fresh Orchestration reader; old wrappers and old
+async authorizers remain stopped and cannot borrow its worker. No broad provider
+shutdown or source replacement is inferred from a failed search cleanup.
+
+**Exact-message inspector (#1436).** The palette has an explicit local
+Workspace-search mode, separate from existing command/remote-message search;
+the inactive search mode sends no queries. A lazy read-only inspector consumes
+`POST /api/search/read-message` through the public SDK with captured authority.
+The same isolated transcript owner selects prompt/output text from the exact
+canonical event, bounded in SQL before JavaScript materialization. Search-index
+text is never a displayed-message authority. Content-bound pages preserve the
+Session/event and reject mutation, deletion and authority loss. An optional
+assigned Agent identity is projected only from recorded owner metadata. No
+ChatDock current-conversation resolution, default Agent, second index or worker
+is introduced. Task navigation passes existing unsaved guards, then performs a
+fresh exact-open read and a final synchronous currentness check before the
+canonical route commit. The managed-browser exact-message proof and focused
+owner/SDK/UI tests qualify this tracer; broader source and platform qualification
+remains separate.
+
+## WorkspacePaneHostContributions
+
+**Intent and Interface.** `createWorkspacePaneHostContribution()` binds one versioned package-level contribution to an exact plugin installation generation and Project. It projects host-level prompt actions plus explicit available/default Agent state and dispatches only an owner-qualified action key. Pane-local actions remain on their descriptor; a host action is declared once and is never duplicated across every Pane.
+
+**Contract.** An `own-plugin-agent` declaration carries only a clean Agent id; the host adds plugin and installation-generation identity and re-resolves that exact ownership before every launch. A `station-agent` is explicit and still passes Project availability policy. Every action Agent and default must appear in the declaration's available set. `requiredAgents` remains only a Pane availability requirement and is not accepted as action or selection authority. Projection and dispatch recheck installation authority around awaited Agent resolution, and a resolver that returns a different owner, generation, or Agent is unavailable. Legacy migration is deterministic and read-only: exact `<plugin>:<clean-agent>` spellings become owner-relative references and `globalSkills[].prompt` remains literal prompt data. Legacy `prompt` actions require manual review because the old path ambiguously used both `data` and `label`; another namespace, an external/internal action, or an action with no explicit/default Agent likewise returns `manual-review` rather than inventing routing.
+
+**Seam, Implementation, callers, and tests.** Public data shapes live in `@kontourai/station-contracts/workspace-pane-host-contribution`; validation, deterministic legacy projection, owner/Agent resolution, and prompt-launch dispatch live in `src-server/services/plugins/workspace-pane-host-contributions.ts`. The injected prototype dispatcher is not production admission. The owned WorkspacePaneHostAdmission prerequisite below supplies the real invocation guard; route/SDK/UI composition and example migration remain separate work under #1372. Focused tests execute dispatch through the bound launcher and prove owner retirement, identity equivocation, namespaced migration, and refusal without an Agent. **Do not reintroduce:** first-required-Agent selection, punctuation-based owner inference beyond exact legacy migration, ambient default Agent fallback, duplicated global actions, caller-provided plugin ownership, navigation URLs in prompt intents, or persisted Layout rewrites.
+
+## WorkspacePaneHostAdmission
+
+**Intent and Interface.** `createWorkspacePaneHostAdmission()` prepares one installed package's inert `workspacePaneHost` action for an exact Project, then lends one server-only invocation capability to the existing foreground execution owner. It reads the canonical string installation digest, explicit own-plugin clean Agent identity/ownership marker, Project revision, authored Agent spec and exact literal or registered prompt body. Preparation is not activation or permission to execute; the capability is one-shot and valid only inside its installation lease.
+
+**Contract.** Admission linearizes at the irreversible provider invocation, not when its Promise later settles. The existing plugin-content full-effect lease is acquired outside Session coordination. At the final start call, and before the existing turn `beginInvocation`/provider call, the Project revision read guard precedes the short Agent identity guard. These guards recheck the exact Project, Agent bytes/owner, installation digest and body binding, then synchronously invoke and return a boxed Promise; Project/Agent locks release before network settlement. The identity lock never spans an awaited provider operation. Reentrant installed-content changes are checked again, not hidden by the outer lease. After invocation, existing receipts retain accepted/pending/unknown effect truth; policy change cannot turn that into cancellation or permission to replay. Captured Agent, Project, credential, presentation and stall-window inputs are passed through the existing resolver rather than rereading ambient replacements.
+
+**Seam, Implementation, callers, and tests.** `ProjectFileTransactions` owns the additive exact-revision read guard; `capturePluginAgentInvocation` reuses the canonical Agent parser and identity mutation lock; installation and admission share one plugin-Agent marker parser. Prompt-file discovery remains the in-place command-skill source with bounded invocation reads. `OrchestrationService` and the existing foreground tool adapter accept the server-only capability, never public JSON. The first prerequisite has no route, UI, example conversion or runtime registration caller. Its controlled-provider tests exercise actual Session commands, turn invocation and EventStore receipt/event readback, including pending-resolution and final-boundary races. Native Agent relays that cannot consume the captured spec, explicit non-plugin Agent references, and worktree provisioning remain unavailable in this first slice; none silently substitutes another execution path. This is not Agent Plugins namespace activation or migration completion. **Do not reintroduce:** a content lock acquired inside Session coordination, a network await while holding the Agent identity lock, label/colon inference for registered prompts, mutable captured snapshots, first-required-Agent defaults, raw database authority or an automatic retry after possible invocation.
 
 ## PackageMcpAdmissionJournal
 
@@ -280,6 +458,17 @@ ownership, or an implicit change to completed-session behavior.
 
 **Seam, Implementation, callers, and tests.** `@kontourai/station-shared/station-home-lifecycle` owns runtime/maintenance exclusion; `station-home-archive` owns the portable archive format and filesystem/SQLite mechanics. `StationRuntime` retains its opaque lease until clean persistence shutdown. The CLI's `station home backup|restore` wrappers reuse the existing instance observation for user-facing offline diagnostics; reset shares the same DRY refusal helper. Shared real-process tests force a runtime attempt behind held maintenance; runtime composition proves construction-through-shutdown ownership; real-SQLite tests cover round-trip, tampering, corruption, symlinks, bounds, confirmation, publication faults, and startup I/O classification. **Do not reintroduce:** snapshot-only inactivity checks, runtime/home mutations outside the lifecycle authority, raw recursive home copies, live-home backup, SQLite WAL/shm copying, automatic reset on corruption, unchecked archive paths, restore that deletes the prior home, or a second backup format in server code.
 
+The service-level `home-reference-recovery.test.ts` composes real Project, Task,
+room history, working-state, evidence, and home lifecycle owners. It restores
+after removing its synthetic source and external workspace, checks exact prior
+references, and treats missing evidence keys as unavailable. Duplicate edit
+replay locates the original publication through the history owner's indexed
+proposal lookup and normal authorized, integrity-checked page reader, then
+validates the evidence against the exact scope and committed working revision.
+It never substitutes the current document or publishes another intent's outbox.
+This is offline recovery evidence, not cross-host execution fencing or tenant
+isolation. See the [operator recovery drill](../guides/deployment.md#offline-home-recovery-drill).
+
 ### Detached recovery candidate (fixture-first)
 
 `StationHomeArchive.stageStationHomeRecoveryCandidate()` accepts already-detached, bounded UTF-8 JSON records and an absent output directory. Its private classifier observes selected v1 fields only; the declared version is not proof of source schema or capture consistency. The archive owner stages exact original records as mode-0600 `.payload` files in a mode-0700 `inert-evidence` directory, verifies the intended file set and hashes, and returns a content-free plan. No Station-home marker, `config`, `agents`, database or active runtime store is emitted. Original ambiguous Agent records remain whole: removing an external Engine binding would otherwise change absence into Station-engine execution. Explicit credential payload records are excluded from copied evidence; credential references and sensitive original records never enter public plans or errors. All candidates remain `publishable:false`, with capture/owner exclusion, destination, identity/account mapping and import review still required. Unknown and malformed records are inert evidence, not validated or executable input.
@@ -354,7 +543,7 @@ facts, insertion-order IDs, authority inferred from replay, or restored liveness
 
 Ephemeral room input has a closed schema, exact scope, server-owned monotonic generation+bound epoch, sequence, TTL, UTF-8/count bounds, duplicate refusal, and O(1) oversized-array rejection. Missing/malformed current stream authority masks the live projection as stale; an authenticated old packet is merely ignored. Stable principal identity is actor ID+kind; session/run are mutable presence correlations but immutable on each accepted attribution receipt. Resulting room capacity applies transactionally and quiet expiry removes principals safely. Followable views resolve through a separate exact target projection authority. The controller binds the authority revision, re-resolves before/after host join/navigation, and refuses active watch or navigation when authority changes mid-effect. Pane watch remains `off|active|paused` with explicit unwatch and local exit. The editing capability maps authoritative cursor boundaries through the same private pending operation batches into `displayText` coordinates or suppresses them. The React projection uses one synchronized aria-hidden pre overlay, sharing textarea font/line/scroll layout and one document copy for all range marks; coincident carets merge stable actor IDs and screen readers receive a bounded count.
 
-**Seam, Implementation, callers, and tests.** `src-shared/collaborative-editor-pane.ts` is the deep pure controller/privacy/validation locality; `src-server/domain/shared-working-state-editing.ts` owns atom-aware edit planning; `src-ui/src/workspace-panes/CollaborativeEditorPane.tsx` is the thin host-neutral projection. The shipped Task workspace retains the narrower browser-security Adapter: `ProjectTaskRoomRuntime` owns private operations, per-subscriber authority projection, ephemeral cursor bounds, and SQLite settlement; the route emits only the closed browser DTO; the SDK owns exact opaque edit receipts plus the one SSE connection; `ProjectTaskRoomProvider`, `TaskRoomEditorPane`, and `ProjectTaskRoomPresence` project that authority without creating a client operation factory or second room. Adversarial tests cover private batch settlement/retry, dynamic revocation secret masking, deferred duplicate and large release, solo editing/recovery, revision fencing, server-owned room generations, symmetric subscriber projection, cursor TTL/rate/capacity and exact revision binding, principal run change/kind equivocation, cross-document target movement, direct #2889 convergence, keyboard/selection, and reduced motion. Real two-browser acceptance is `tests/project-task-room-collaboration.spec.ts`. **Do not reintroduce:** editor-local CRDT/OT/LWW logic, client-owned authority, exported pending payload, opaque-epoch freshness guesses, JSON metadata equivocation, per-cursor document copies, caller-asserted revision verification, local paths, capability conflation, durable chat/history ownership, host placement policy, or renderer-specific transport.
+**Seam, Implementation, callers, and tests.** `src-shared/collaborative-editor-pane.ts` is the deep pure controller/privacy/validation locality; `src-server/domain/shared-working-state-editing.ts` owns atom-aware edit planning; `src-ui/src/workspace-panes/CollaborativeEditorPane.tsx` is the thin host-neutral projection. The shipped Task workspace retains the narrower browser-security Adapter: `ProjectTaskRoomRuntime` owns private operations, per-subscriber authority projection, ephemeral cursor bounds, and SQLite settlement; the route emits only the closed browser DTO and prioritizes exact-order document delivery over queued ephemeral room projections without moving the immediate currentness check; the SDK owns exact opaque edit receipts plus the one SSE connection and synchronously offers parsed accepted documents to the mounted host before normalizing that same object into its query cache; `ProjectTaskRoomProvider`, `TaskRoomEditorPane`, and `ProjectTaskRoomPresence` project that authority without creating a client operation factory or second room. Gaps, duplicates, malformed events, terminal streams, and Task changes retain the authoritative recovery/currentness path. Adversarial tests cover private batch settlement/retry, dynamic revocation secret masking, deferred duplicate and large release, solo editing/recovery, revision fencing, server-owned room generations, symmetric subscriber projection, cursor TTL/rate/capacity and exact revision binding, principal run change/kind equivocation, cross-document target movement, direct #2889 convergence, keyboard/selection, and reduced motion. Real two-browser acceptance is `tests/project-task-room-collaboration.spec.ts`. **Do not reintroduce:** editor-local CRDT/OT/LWW logic, client-owned authority, exported pending payload, opaque-epoch freshness guesses, JSON metadata equivocation, per-cursor document copies, caller-asserted revision verification, local paths, capability conflation, durable chat/history ownership, host placement policy, or renderer-specific transport.
 
 ## SharedWorkingStateEditingCapability
 
@@ -412,6 +601,23 @@ Ephemeral room input has a closed schema, exact scope, server-owned monotonic ge
 
 **Seam, Implementation, callers, and tests.** `EventStore.createOperationalEventSubscriptionRegistry(authorizer)` privately composes the consumer factory and one host policy. EventStore retains each registry as a shutdown capability: database and delivery-owner closure are deferred while any registry reports pending or unavailable settlement, and tracked consumer wrappers remove themselves on exact close. `PluginOperationalEventSubscriptionService` is the first production registrar: it strictly reads versioned installed-manifest declarations, derives stable consumer identity from plugin/subscription identity, requires current `plugin.server` plus `events.subscribe` grants (and `events.read-payload` for an envelope), acquires the existing quiescence-aware server module, and gives every subscription its own bounded dispatch queue. Plugin install/update/remove/grant events reconcile that set; observer code never receives registration or settlement authority. Plugin replacement composes an intent-shaped subscription quiescence before server-module quiescence, then releases them in reverse order after publication or rollback, so an old observer cannot overlap replacement code. The public contract types are exported by Station contracts and the plugin SDK, but no HTTP, CLI, or MCP mutation surface is added. Unit and real SQLite/EventStore composition proofs, including cross-EventStore shutdown fencing, grant revocation/recovery, manifest replacement, independent queues, and consumer-tracking cleanup, live in `operational-event-subscriptions.test.ts` and `plugin-operational-event-subscriptions.test.ts`. **Do not reintroduce:** subscriber-supplied grants or consumer IDs, raw delivery claims, raw-consumer shutdown that bypasses a registry, automatic gap skipping, payload access without the exact grant, post-construction policy setters, or a second event store.
 
+## KnowledgeSourceObservation
+
+**Intent and Interface.** The existing `KnowledgeStoreProvider` owns `observeExactRecord(rootId, recordId, authority)`. It defaults to `restricted` and admits only an exact target approved by its constructor-captured host policy, rechecked before file access and before returning content. Caller-supplied booleans, principal-shaped objects, localhost, and registry membership do not confer access. The runtime constructor captures a personal-root policy requiring a real middleware-bound home-possession Request, single-operator deployment without request or execution tenant context, current credentials and route scope, an exact route target, and matching registered root identity. The source-observation GET and SDK query feed the Memory record browser's optional host action and source-only dialog. No project-root authority or ordinary-get fallback is inferred.
+
+**Contract.** The first slice supports only registered built-in `kit-default-store` roots and exact path-safe record IDs, not alias/prefix resolution. `FileStorageAdapter.observeKnowledgeStoreRoots()` reads bounded registry bytes without repair or bootstrap. A separate construction-free observation port inside `KnowledgeFileTransactions` shares the writer's journal/lock identity rules. It opens no journal/lock payload, acquires/reaps no lease, launches no process, and writes no data, events or indexes. Any observed transaction artifact, unsafe path, corrupt data, detected replacement, or exceeded budget refuses the read. Every existing ancestor and leaf identity is checked; leaves must be regular, single-link files, opened no-follow/nonblocking and read with a fixed byte budget. The shared YAML codec applies parser depth/alias/merge limits; bounded schema validation checks exact filename/id before projecting only source fields.
+
+**Truth boundary.** Before/after checks are not an atomic filesystem capability or snapshot; an intervening transaction may start and finish between checks. Every result therefore declares `consistency: non-atomic`, unknown transaction state and unknown owner revision. Its content digest/time describe Station's observation, never owner revision, commit proof or mutation CAS. Record type/provenance/status retain published meanings; absent status stays absent. No source text becomes instruction, candidate, approval, activation, deployment scope, evaluation or effect evidence. Unsupported, restricted and unavailable outcomes carry no record identity or payload.
+
+**Seam and tests.** Real registry → provider → canonical-file proofs live in `knowledge-record-observation.test.ts`; actual writer lock/journal interoperability and a real FIFO swapped at native open live in `knowledge-record-observation.process.test.ts`. Only synthetic disposable fixtures are used. Windows FIFO behavior is explicitly not verified. The public LearningSourceObservation shape is explicitly source-only and does not populate the full LearningReviewProjection below. Production-constructor/authenticated-route proofs are in knowledge-source.routes.test.ts; managed desktop/mobile and replacement-root proof is in tests/learning-source.spec.ts. **Do not reintroduce:** ordinary read-repair under a read-only name, private Kit imports, raw route-owned file reads, inferred learning lifecycle, caller-created authority, unbounded scans, or an atomicity claim based on absence of a journal.
+
+## LearningReviewProjection
+
+**Intent and Interface.** `@kontourai/station-contracts/learning-review` describes one read-only owner projection from source feedback or receipt through candidate, evaluation, decision, active revision, effect observations, supersession, and retirement. Every available identity remains an opaque owner reference. Top-level `not-captured`, `restricted`, `unavailable`, `unsupported-version`, and `corrupt` outcomes carry no projection or protected owner identity; partial stage gaps carry no stage value. The UI-ready `learningReviewViewModel()` preserves the seven-stage order and supplies honest presentation states without fetching or mutating owner data.
+
+**Contract.** Approval does not imply activation: only an owner-issued activation record with `status: active` plus an explicit `not-retired` record presents current activity. A later retirement ends current activity while preserving that historical activation stage, while any retirement gap leaves current activity unknown. Effect is derived solely from explicit owner observations; an empty observation set is `not-observed`, supporting plus counter evidence is mixed, and any unresolved observation keeps the conclusion unresolved. Partial `corrupt` and `unsupported-version` stages remain distinct from owner unavailability. Retirement requires its own owner record and preserves the historical source, candidate, decision, and active-revision references. Exact per-turn contribution disclosures link a Turn owner reference to the exact active learning revision; Station infers no relationship from text similarity. Promotion, rejection, rollback, editing, and retirement remain absent until an owner publishes typed intents and decision receipts.
+
+**Seam, Implementation, callers, and tests.** The current Flow Agents package publishes a CLI-generated, explicitly non-authoritative workflow-learning projection containing source refs, outcome, routing, and correction data, but its stable `console-contract` subpath does not export that learning shape. The portable Kit observability contract declares a `learning` projection kind while leaving its data owner-defined. No installed Knowledge Kit contract supplies candidate revisions, evaluation, activation, effect, or retirement records. The full lifecycle projection still has no runtime mutation consumer. A separate source-only observation route/query/dialog can inspect actual canonical records without inventing the missing lifecycle fields. Contract and pure view-model tests live in `packages/contracts/src/__tests__/learning-review.test.ts` and `src-ui/src/views/learning-review/__tests__/learningReviewViewModel.test.ts`. The next slice requires an owner-published, runtime-validated projection or Adapter with the complete identity and access-state semantics above. **Do not reintroduce:** a Station learning ledger, inferred promotion, success from zero observations, protected identity in restricted/unavailable outcomes, or consumer-owned replicas of upstream learning schemas.
 ## PluginCompositionModule
 
 **Intent and Interface.** `createPluginCompositionModule()` accepts one named Project- or Agent-scoped profile and publishes a generation only after every selected contribution has been authorized and staged. Contribution-instance identity binds profile, scope, plugin, contribution, and local instance while configuration has a separate content digest, so reconfiguration preserves identity without sharing state across scopes. `inspect(scope)` projects active, pending, failed, and explicitly shadowed contributions without exposing staged handles or disposer authority.
@@ -616,6 +822,20 @@ Hosted requests fail closed unless a tenant-bound composition is provided.
 
 **Seam, Implementation, callers, and tests.** `StationRuntime` composes `TaskGraphService` after concrete project and workflow dependencies exist, then publishes `composeTaskDispatcher(taskGraph, adapters)` to runtime routes and capabilities. The dispatcher Implementation owns private task-graph Adapter contributions. Evidence includes `src-server/services/projects/__tests__/task-dispatcher.test.ts`, `task-dispatch-composition.test.ts`, `task-graph-service.dispatch-claim.test.ts`, task route tests, and cold-start/runtime tests. See [Task dispatch](../design/task-dispatcher.md). **Do not reintroduce:** `TaskGraphService.dispatchTask`, post-construction project/workflow setters, or a route that reaches graph execution details directly.
 
+The Task dispatcher additionally composes a server-owned room execution
+binding and the existing `SessionTurnBoundaryAuthority`. One durable
+`task-dispatch` record spans external claims, provider creation, graph
+association and publication preparation. Its session-start capability is bound
+to the exact session and cannot release the enclosing dispatch. Provider exit
+alone cannot retire that record. Ordinary start claims separately preserve
+uncertain adapter creation without fabricating a turn ID.
+`ProjectTaskRoomHistory.sealSource` reauthorizes a dedicated operator grant and
+serializes its immutable intent/checkpoint with room commits, publication
+queues and bound execution records. Both room workers enforce the seal in
+their write transactions. This is a private source barrier, not an exposed
+move command or external ownership lease. See the
+[handoff design and remaining integration](../design/channel-home-authority.md).
+
 ## StationInstanceReconciler
 
 **Intent and Interface.** `inspect(instance)` returns one coherent `InstanceState` but may reject when its direct platform observation fails; `reconcile({ instance, desired, deadlineMs? })` is the total operation and returns `converged`, `already-converged`, `not-installed`, `timed-out`, `contended`, `partial`, or `failed` results.
@@ -633,3 +853,34 @@ The project-resource shadow report is an evidence gate, not a cutover signal. It
 ### #2525 retained internal boundaries
 
 Turn deduplication, adoption, recovery, and private credential application are completed behavioural ledgers. Remaining EventStore details are retained on purpose: command receipts still participate in adoption's atomic commit; delivery checkpoints currently have one narrow caller; and a broader session journal has no deletion-complete caller family. Wrapping any of these in storage-shaped CRUD would be shallow. Their disposition and the next evidence required for a deep extraction are in [EventStore ledger migration](../design/event-store-ledger-migration.md).
+
+
+## Cloud move preparation
+
+The private [planned home transfer store](../../src-server/services/orchestration/planned-home-transfer-store.ts)
+owns conditional decision persistence for a future centrally served authority.
+It does not authenticate homes, issue leases or activate execution; the
+[channel home authority design](../design/channel-home-authority.md) owns those
+remaining integration requirements.
+
+`@kontourai/station-contracts/cloud-move` owns the public preview shape.
+`@kontourai/station-shared/cloud-move` owns bounded read-only setup inventory and
+explicit provider selection. The AWS adapter in `packages/shared/src/cloud-aws-ec2.ts`
+renders a deployment template; `packages/cli/src/commands/cloud.ts` is the thin
+command caller. Preview is non-atomic and never grants transfer or execution
+authority. Credential stores, plugin journals, live capabilities, workspace bytes,
+and session databases are not exported. The [cloud-move design](../design/cloud-move.md)
+owns the remaining transfer, enrollment, fencing, and UI sequence.
+
+Actual filesystem and command tests live in
+`packages/shared/src/__tests__/cloud-move.test.ts` and
+`packages/cli/src/__tests__/cloud.test.ts`. Template generation and schema
+validation do not establish AWS provisioning or application readiness.
+
+## Browser test evidence
+
+**Interface.** `test:fixtures:check`, `test:journeys:profile`, and `test:mutation:smoke` own syntax admission, diagnostic profiling, and targeted fault injection. `gate:for` consumes `fixturePolicyCommands` from the policy owner so contributors get the same route the gate enforces. Usage, scope, and limitations belong to [the testing guide](../guides/testing.md#fixture-fidelity-and-test-effectiveness).
+
+**Seams and adapters.** Typed engine and runtime-conversation factories in `tests/helpers` describe the backend fixture. `fixture-audit.ts` owns unknown-request failure at test teardown. `journey-profile.ts` instruments the real browser through CDP and the React commit hook; it adds no production endpoint. `run-test-mutations.mjs` reuses `lib/owned-process.mjs`, records exact replacement bytes, and restores only its own changes. The existing E2E runner owns app lifecycle and ports.
+
+**Evidence.** Policy known-bad/control tests, factory-to-execution binding tests, mutation restoration/verdict tests, profile schema tests, and the measured browser journeys exercise these interfaces. Do not copy the fixture defaults into a new catch-all router, replace the process owner, or treat a static PASS as behavioral coverage.

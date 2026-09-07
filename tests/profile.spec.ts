@@ -175,13 +175,13 @@ test.describe('Profile Page', () => {
     await setupRoutes(page);
   });
 
-  test('navigates to profile via header button', async ({ page }) => {
+  test('navigates to profile via the header avatar menu', async ({ page }) => {
     await page.goto('/');
-    const profileBtn = page.getByRole('button', {
-      name: 'Profile',
-      exact: true,
-    });
-    await profileBtn.click();
+    // #1552 D1: the avatar opens a menu (Profile / Ask Station for help / Open
+    // settings) rather than navigating straight to the profile. Profile leads
+    // it, so the destination is one press further and is now named.
+    await page.getByRole('button', { name: 'Profile and settings' }).click();
+    await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
     await expect(page).toHaveURL(/\/profile/);
     await expect(page.locator('.profile-page')).toBeVisible();
   });

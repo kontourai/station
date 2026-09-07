@@ -52,7 +52,7 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
    Task-context collapse into a single "+" (or overflow) menu next to attach + mic;
    Send stays a labeled primary button. Every item: real `button` role, accessible name,
    44px target (the ResponsiveDialogSurface/actions floor already owns this on mobile).
-3. **Model/connection selector becomes a labeled combobox.** Accessible name "Model";
+3. **Model/connection selector is a value-only dialog button.** Its accessible name names Model and the active Provider/model;
    popover on the dialog-surface layer (no interception); shows model + connection with
    auth state; glossary vocabulary only. Default selection must prefer an
    *authenticated* provider when one exists (spike finding).
@@ -66,8 +66,11 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 ### 3.1 Provider and model picker
 
-- The composer pill names the concrete Provider instance and model. Duplicate
-  model names are distinguished by exact Provider identity.
+- Agent and Model selectors show their selected values without repeating the field labels.
+  Their accessible names and tooltips retain the field name, exact Provider/model identity,
+  selection source, and any unavailable reason. The picker distinguishes duplicate model
+  names by Provider identity. Compact neutral controls use clear hover/focus states and
+  preserve the 44px mobile touch floor.
 - Search spans all ready Providers. A compact rail exposes Favorites, All, and
   each Provider without teaching internal connection categories.
 - Unavailable Providers explain their status and are disabled. They can never
@@ -75,6 +78,15 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 - Favorites, recents, hidden models, and explicit order use one versioned
   device-settings record. Provider details own favorite/hide/reorder controls;
   the picker consumes the same record.
+- Compact value pickers use the shared `.choice-trigger` / `.choice-caret` styles
+  and `ArrowDownGlyph`, also used by the layout switcher and scheduler agent picker.
+  Standard actions continue to use `Button`.
+- Agent, Model, and approval mode share control geometry and chevrons. Values size
+  naturally and truncate when needed; Model does not stretch into unused space.
+- The capsule owns one textarea focus ring. Keyboard-focused toolbar controls retain
+  their individual focus indicator.
+- Drafts and the labeled Clear action belong in the secondary action row, leaving
+  the textarea its full width. Clear appears only when there is text.
 - Model controls render only when the Provider reports support. A named reset
   restores the original default Provider and model for the chat.
 - Station-managed chats may switch Model Providers. Externally managed agent
@@ -102,3 +114,24 @@ Owner-directed API-first: session-api parity slice → detection/back-end slices
 composer overhaul + badges land together in the final UI-confirm pass, verified live
 with role-based Playwright selectors (no forceClickRole in the new specs) and
 screenshots.
+
+## Mobile conversation focus (2026-09-05)
+
+Owner-directed revision (clarified 2026-09-05): project switching and
+conversation switching are primary phone-header actions. Both stay directly
+reachable with readable current context and 44px touch targets at 320px,
+390px, and 412px widths. Neither requires opening Chat actions first.
+New chat, Activity, connection management, and dock sizing remain explicit
+actions in Chat actions. The collapsed dock also keeps a direct Expand chat control. No
+resize or navigation action requires a gesture.
+
+Mobile message rows prioritize the authored text and essential live approval or
+error state. A separate 44px actions button opens attribution, model facts,
+provenance, copy, ratings, and Task references on demand. These details retain
+their original event-backed identities. Desktop attribution stays inline.
+
+The executable contracts are `ChatDockMobileHeader.test.tsx` and the mobile
+project-switcher journey in `tests/cross-runtime-chat-switching.spec.ts`.
+Changing or removing these primary actions requires an explicit product-contract
+change; a fixed button count is not the acceptance criterion. The required
+pre-merge browser smoke must exercise the journey rather than wait for Nightly.

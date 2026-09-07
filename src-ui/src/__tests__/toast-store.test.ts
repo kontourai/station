@@ -133,3 +133,41 @@ describe('toastStore.show — duration: 0 is sticky', () => {
     );
   });
 });
+
+describe('toastStore.showToolActivity (station#1558)', () => {
+  beforeEach(() => {
+    toastStore.dismissAll();
+    toastStore.clearHistory();
+  });
+
+  const activity = (
+    status: 'completed' | 'cancelled' | 'error' | 'unresolved',
+  ) =>
+    toastStore.showToolActivity({
+      sessionId: `s-tool-${status}`,
+      toolName: 'shell exec',
+      agentName: 'Dev Agent',
+      status,
+    });
+
+  test('an unresolved call reads as a reported non-outcome, not a failure or a stop', () => {
+    activity('unresolved');
+    const toast = toastStore
+      .getSnapshot()
+      .find((entry) => entry.sessionId === 's-tool-unresolved');
+    expect(toast?.message).toBe('Dev Agent reported no result for shell exec');
+  });
+
+  test('the three outcome-asserting statuses keep their own copy', () => {
+    activity('error');
+    activity('cancelled');
+    activity('completed');
+    const messageFor = (status: string) =>
+      toastStore
+        .getSnapshot()
+        .find((entry) => entry.sessionId === `s-tool-${status}`)?.message;
+    expect(messageFor('error')).toBe('Dev Agent failed shell exec');
+    expect(messageFor('cancelled')).toBe('Dev Agent cancelled shell exec');
+    expect(messageFor('completed')).toBe('Dev Agent finished shell exec');
+  });
+});

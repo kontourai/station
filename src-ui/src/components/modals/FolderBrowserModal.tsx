@@ -127,6 +127,7 @@ export function FolderBrowserModal({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       ariaLabelledBy={titleId}
       overlayClassName={cx.overlay}

@@ -1,11 +1,80 @@
+import { parseConversationStatsResponse } from '@kontourai/station-contracts/runtime';
 import { describe, expect, test } from 'vitest';
 import {
   buildConversationStatsView,
   buildEmptyConversationStatsView,
   resolveConversationUserMessageTokens,
 } from '../conversation-stats-view.js';
+import { buildConversationStatsUpdate } from '../usage-stats.js';
 
 describe('conversation-stats-view', () => {
+  test.each([null, 0])(
+    'keeps producer pricing %s honest through the shared wire validator',
+    (cost) => {
+      const { updatedStats, modelStats } = buildConversationStatsUpdate({
+        usage: { promptTokens: 3, completionTokens: 2 },
+        toolCallCount: 0,
+        modelId: 'local-model',
+        cost,
+      });
+      const view = buildConversationStatsView({
+        stats: updatedStats,
+        modelStats,
+        modelId: 'local-model',
+      });
+      const parsed = parseConversationStatsResponse(
+        JSON.parse(JSON.stringify(view)),
+      );
+      expect(parsed).toBeDefined();
+      expect(parsed?.modelStats?.['local-model']).toMatchObject({
+        inputTokens: 3,
+        outputTokens: 2,
+        totalTokens: 5,
+        turns: 1,
+        toolCalls: 0,
+      });
+      if (cost === null)
+        expect(parsed?.modelStats?.['local-model']).not.toHaveProperty(
+          'estimatedCost',
+        );
+      else expect(parsed?.modelStats?.['local-model']?.estimatedCost).toBe(0);
+      // Wire projection must not rewrite the persisted unknown-pricing marker.
+      expect(modelStats['local-model']?.estimatedCost).toBe(cost);
+    },
+  );
+
+  test('preserves unreported model token measurements instead of inventing zeros', () => {
+    const { updatedStats, modelStats } = buildConversationStatsUpdate({
+      usage: {},
+      toolCallCount: 0,
+      modelId: 'unreported',
+      cost: null,
+    });
+    const parsed = parseConversationStatsResponse(
+      buildConversationStatsView({
+        stats: updatedStats,
+        modelStats,
+        modelId: 'unreported',
+      }),
+    );
+    expect(parsed).toBeDefined();
+    expect(parsed?.modelStats?.unreported).not.toHaveProperty('inputTokens');
+    expect(parsed?.modelStats?.unreported).not.toHaveProperty('outputTokens');
+    expect(parsed?.modelStats?.unreported).not.toHaveProperty('totalTokens');
+  });
+
+  test.each([-1, Number.NaN, Number.POSITIVE_INFINITY, 'unknown'])(
+    'keeps malformed per-model cost %s rejected',
+    (estimatedCost) => {
+      const view = buildConversationStatsView({
+        stats: { turns: 1, toolCalls: 0 },
+        modelId: 'bad',
+        modelStats: { bad: { turns: 1, toolCalls: 0, estimatedCost } },
+      });
+      expect(parseConversationStatsResponse(view)).toBeUndefined();
+    },
+  );
+
   test('buildEmptyConversationStatsView returns the shared zero-state shape', () => {
     expect(
       buildEmptyConversationStatsView({

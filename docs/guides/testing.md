@@ -1,5 +1,55 @@
 # Testing Guide
 
+## Fixture fidelity and test effectiveness
+
+Blocking checks must name the failure they prevent. Documentation gates should
+verify runnable commands, links, schemas, generated references, and disclosure
+boundaries; prose wording and line wrapping are editorial, not release criteria.
+For shared behavior changes, inspect dependent callers and tests, and exercise
+the production integration point rather than a retired helper or mock seam.
+Keep a known-bad catch case and a harmless-change control when repairing a gate.
+
+Changed-test diagnostics retain up to 32 explicit test targets even when broader
+verification is deferred. Their failures block fast feedback; their passes remain
+provisional and do not satisfy the deferred obligations. Broad import expansion
+and larger selections stay deferred within the existing feedback budget.
+
+
+Use this route for weak-test cleanup, fixture repairs, and performance work. The owning modules are in the [module map](../architecture/module-map.md#browser-test-evidence). Run `npm run gate:for -- <paths>` before editing; it prints the current fixture policy command when the change touches this surface.
+
+| Work | Owner / command | What it establishes |
+| --- | --- | --- |
+| Engine fixtures | `tests/helpers/connection-fixtures.ts` | Canonical `config.engineId` and typed connection envelope; obsolete `executionClass` alone cannot bind a fixture. |
+| Restored conversation fixtures | `tests/helpers/runtime-conversation-fixture.ts` | An explicit backend `/open` result and canonical conversation event window, independently of client storage seeds. The caller declares continuation authority. |
+| Unknown API reads | `tests/helpers/fixture-audit.ts`, `station-shell-fixtures.ts` | Explicit method/response shapes; omitted requests fail the audited test instead of returning false empty inventories. |
+| User interaction policy | `npm run test:fixtures:check` | Detects known source patterns that bypass Playwright actionability. The `test:fixtures:guard` command runs this check plus its known-bad, fixture, recovery, and profile-schema tests inside `verification:policy:gate` and therefore `ci:fast`. |
+| Critical assertion strength | `npm run test:mutation:smoke` | Baseline green, known injected defect caught by the named assertion, source restored, restored green. |
+| Journey diagnosis | `npm run test:journeys:profile -- --samples=3` | Raw browser CPU/heap profiles, React commit counts, DOM mutations, storage calls, and timings on three actual journeys. No uncalibrated latency threshold. |
+
+### Authoring fixtures
+
+Use the shared typed factory and assert the rendered engine/model/approval state before exercising that path. A chat titled “Claude” is not evidence that it runs in the external-engine mode. For restored chats, supply the authoritative conversation-open response and the conversation-scoped transcript endpoint; sessionStorage is only a client seed. In a mock API router, declare optional reads with their actual envelopes or a deliberate unavailable response. End an unknown branch with `rejectUnexpectedFixtureRequest` and use the audited `test` fixture so those failures cannot disappear at teardown.
+
+User journeys use normal `click`, `fill`, keyboard, and pointer actions. Do not use forced clicks, `dispatchEvent('click')`, DOM `.click()`, or remove a disabled/inert guard to get past an obstruction. Establish the right surface first, then assert its prerequisite. A test may deliberately inject provider protocol events or a clipboard payload when that is its named seam; this is not a substitute for a user's click.
+
+The syntax checker has deliberate limits: it recognizes the listed AST shapes, not arbitrary aliases, every dynamically constructed option, or assertion semantics. Existing out-of-scope findings are reported as **legacy unqualified sites**, with exact fingerprints in `scripts/test-fixture-policy-baseline.json`; PASS does not bless them. New baseline entries are refused once an introduction commit or upstream baseline exists, and removed sites must be removed from the baseline. Inspect the live inventory with `npm run test:fixtures:check -- --inventory`. Keep structural protocol/security tests when syntax or ownership is the actual contract; replace them when they claim a rendered or runtime result they never exercise.
+
+### Profiling
+
+Commit first, then run `npm run test:journeys:profile -- --samples=3`. `--allow-dirty` is an explicit diagnostic escape hatch; it cannot produce a clean-revision observation. The command uses the canonical isolated E2E lifecycle and writes a fresh `.kontourai/journey-profiles/<run>/` directory. Never reuse a summary from another revision or hardware/build mode as current evidence.
+
+The workloads are a 10,000-turn corpus with bounded loaded windows and streaming updates, an authoritative two-conversation round trip, and Home with 1,000 session records. The harness records its actual build mode and host/browser versions. CPU profiles include idle time; use script/layout metrics and source maps to locate work. Heap allocation is sampled, not an exact allocation census. Storage counters cover the browser's synchronous Storage calls, not server filesystem I/O. Instrumentation adds overhead; compare like-for-like samples and use the established production reference performance contract for release claims.
+
+Per-journey files describe the measured phase; only a completed wrapper summary means every selected test, including fixture teardown, succeeded. Profiles retain `.cpuprofile`, `.heapprofile`, per-journey JSON, source maps when emitted by the opt-in build, and a median summary. Inspect before choosing a fix. Preserve the real journey's assertions, then compare the same workload after the change. A counter can become a regression assertion when it represents a deterministic contract, such as one store read per request. Do not turn a noisy single-host timing into a blocking gate merely because a cleanup improved one sample.
+
+### Mutation safety and interpretation
+
+`test:mutation:smoke` runs five curated defects: eager unused highlighting, missing empty-state rendering, repeated acknowledgement reads, property-order-dependent scope identity, and missing fixture engine identity. Select one with `--case=<id>`. New cases belong in the runner's registry and must name both the source mutation and the exact failing assertion.
+
+The runner requires a clean linked worktree, takes an exclusive lock, owns the test process tree, and retains baseline/injected/restored logs and recovery bytes under `.kontourai/test-mutations/`. An import error, missing test, wrong root, timeout, truncated output, or unrelated failure is not catch evidence. Restoration only replaces the exact injected bytes; intervening edits are preserved. After an abnormal interruption, inspect the record and run `npm run test:mutation:smoke -- --recover=<path/to/recovery.json>` on the same revision. Recovery refuses a live owner and verifies original bytes against git. Run the case again after recovery.
+
+The mutation suite is deliberately focused and opt-in. Its runner safety and policy catch tests run in ordinary focused verification; the application mutations themselves are not injected during general CI or while another process owns the worktree.
+
 ## Philosophy
 
 - **Unit tests** for business logic (services, utilities, pure functions)
@@ -34,6 +84,18 @@ marks incomplete identities instead of presenting aggregate counts as a
 diagnosable bundle, and `incompleteReasons` names every shortfall in words
 rather than leaving a bare `complete: false`.
 
+Changed-test execution discovers Vitest's related files first, combines them
+with the enabled explicit manifest targets, and runs each selected file once.
+The subset uses the same resource groups and worker limits as `test:full`:
+ordinary files use four workers, process-heavy files use two, and exclusive
+or shared-output groups run serially. Groups run in sequence. Deferred lanes
+remain deferred; this grouping does not broaden a bounded CI selection.
+Discovery has a 60-second deadline and a 1 MiB output limit. Discovery and
+test commands own their process trees, including cancellation and settlement.
+Missing or unsafe selected files and discovery failures stop execution and
+produce a preparation error in the diagnostic; they never count as executed
+tests or a passing empty selection.
+
 Test outcomes are read from Vitest's own report, never derived by subtraction.
 `executed` counts what actually ran (`passed + failed`); a deliberate skip
 (`describe.skipIf`) and a `test.todo` are itemised as `skipped` and `todo`
@@ -57,6 +119,14 @@ evidence: it runs base-pinned affected Vitest tests followed by fixed bounded
 invariants, not the global static/build chain or full corpus.
 Ordinary pull requests use focused evidence plus `npm run ci:fast`.
 GitHub's merge queue runs the required checks on the synthesized latest-main candidate.
+The iOS relevance check compares pull-request and merge-queue candidates from
+their merge base to the candidate head, so changes added only to a newer base
+do not trigger a candidate build. The shared change classifier retains direct
+before-to-after ranges for push classification, while the iOS workflow keeps
+running every admitted push and manual dispatch. The `pull_request_target` job
+executes the base-controlled classifier and runs the iOS check when that
+classifier is missing, fails, or returns anything other than one exact
+`relevant=true` or `relevant=false` line.
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
@@ -87,7 +157,7 @@ npm run verify                    # broad diagnostic escalation when explicitly 
 npm run test:focused -- <file...> # pinned single-file runs (never ad hoc `npx vitest` — it can resolve a sibling worktree's config; see AGENTS.md)
 npm run test:coverage             # with coverage report
 npm run install:playwright        # install repo-local Chromium once (E2E specs AND test:full's BannerHost touch-target check)
-npm run install:playwright:ci     # install Chromium plus OS dependencies for CI runners
+npm run install:playwright:ci     # CI runners: Chromium into the ambient PLAYWRIGHT_BROWSERS_PATH, bounded retry, no root (station#1648)
 npm run test:e2e:product          # promoted product Playwright suite via ./station temp-home instance
 npm run test:e2e:starter-clean-install  # fresh-home Starter journey; inherited telemetry is disabled
 npm run test:e2e:smoke-live       # live app smoke via ./station temp-home instance
@@ -308,12 +378,50 @@ Baseline artifacts (both committed):
   the committed baseline — a last resort, not a first move. `screenshot:diff`
   then skips it **loudly** (named in the table as `skipped-volatile`),
   never silently folding it into "unchanged" and never failing the run over
-  it.
+  it. Such a screen gets no `<name>.png`: `screenshot:baseline` stores no
+  image for it and `screenshot:diff` never reads one. If you want a reference
+  purely for human eyeballing, hand-add it as
+  `tests/screenshots.baseline/<name>.reference.png` — a name no capture
+  writes, and the only one a full-run regeneration preserves (#1652). A file
+  at `<name>.png` for a volatile entry is an unclaimed leftover and the next
+  full-run regeneration deletes it; a partial run prunes nothing either way.
 
 Typical loop: `npm run test:e2e:screenshot -- --screens=<touched screens>`,
 then `npm run screenshot:diff -- --screens=<touched screens>` to see whether
 the change moved any pixels, without paying for a full 29-screen run or
 committing a new baseline until the change is intentional.
+
+#### Where the gate runs, and which renderer the baseline is bound to
+
+`.github/workflows/nightly-gallery.yml` runs the capture and the exact diff
+daily, in a **digest-pinned Playwright container** on a hosted runner. That is
+not an implementation detail: the comparator hashes a decoded RGBA buffer with
+no threshold, so a baseline is only meaningful against the renderer that
+produced it, and that renderer has to be reproducible. `--font-sans` resolves
+to `"DM Sans", system-ui, sans-serif` and the bundled woff2 subsets cover
+latin + latin-ext only, so the glyphs the UI draws for `⌘`, `⋯`, `─`, `→`,
+`●` and `✓` come from the **host's** fonts — pinning the image by digest pins
+the rasterizer, fontconfig and that font set together. The job logs the
+Playwright build and the resolved font families for exactly this reason.
+
+Two consequences worth stating plainly:
+
+- **Regenerate a baseline from the CI renderer, not from a laptop**, and as its
+  own commit that changes nothing else. A regeneration on a developer machine
+  bakes in that machine's fonts along with whatever upstream drift has
+  accumulated, under whoever happens to be holding the branch.
+- **Bump the container in lockstep with `@playwright/test`**, and expect a
+  re-baseline to be part of that change. A rebuilt base image published under
+  the same tag is a different renderer wearing the same name, which is why the
+  pin is a digest rather than `v1.62.1-noble`.
+
+  What is enforced, and what is not: `ci-workflow-contract.test.ts` asserts the
+  **version** in the image reference equals the `@playwright/test` version
+  resolved in `pnpm-lock.yaml` (the lockfile, not the caret range in
+  `package.json`, so a resolved minor bump cannot slip past). The **digest** is
+  not checked and cannot be — nothing in this repository derives it. A digest
+  that no longer matches its tag's contents therefore surfaces as a Playwright
+  launch error in the nightly, not as a silent renderer change.
 
 ### Region grid parity (`scripts/region-grid-parity.mjs`)
 
@@ -379,8 +487,68 @@ Fresh linked worktrees get the pinned dependency set through
 `npm run dependencies:ci`, so drift
 should not occur there. The shared main checkout is the drift-prone surface:
 pulling a package pin does not update its existing `node_modules`. Run
-`npm run dependencies:install` there after a pull when the dependency-drift gate or
+`npm run dependencies:ci` there after a pull when the dependency-drift gate or
 `station doctor` reports a pinned-versus-installed mismatch.
+
+#### Interrupted dependency installation
+
+The dependency lifecycle runner holds an exclusive `.station-dependency-install/`
+directory across pnpm, approved hooks, and final verification. A second
+participating installer refuses that existing guard; a PID or elapsed time is
+not permission to reclaim it. Stop other builds and dependency writers before
+installation: this guard does not coordinate raw package-manager commands, older runners, or other
+processes using the dependency tree.
+
+Both modes reuse an established pnpm installation. Under the acquired guard,
+a legacy npm tree, a hybrid tree with npm's hidden lock, or an unidentified
+tree is retired and cleared before pnpm installs. This one-time conversion
+prevents obsolete npm contents remaining beside the new graph without holding
+two complete trees. Redirected or non-directory roots refuse before inspection.
+`npm run dependencies:ci` requires the frozen lock; `npm run dependencies:install` permits
+intentional resolution changes. pnpm clones or copies package contents from its
+shared store, while the worktree keeps its own writable installation. The
+cooperative guard spans installation, exact-hook checks, approved hooks, and
+artifact verification; incremental reuse does not skip those checks.
+
+Node and the exact pinned pnpm executable or JavaScript bootstrap driver are
+selected and canonicalized before the guard. Drivers must remain outside the
+worktree's `node_modules`; redirected root dependency directories still refuse.
+The selected command is passed through the guarded operation, not rediscovered
+mid-install.
+
+An install/hook/verification failure leaves the guard and any partial new
+dependencies in place. They are not automatically
+restored, verified, or retried. Inspect the original install error and the exact
+reported guard path; first establish that the owning installer and other
+dependency consumers have stopped. Preserve the guard and partial tree in a
+separate recovery location before an intentional fresh install. Do not blindly
+delete a guard, infer ownership from a dead PID, or run gates against incomplete
+dependencies. A command-not-found error after interrupted provisioning is not
+an executed test failure.
+
+Leave disk headroom for npm extraction, staging, and cache work; this runner
+does not reserve disk space. An ENOSPC or abrupt interruption can prevent a
+phase-receipt update, so the last recorded phase is not proof that an installer
+is still alive or that an install completed.
+
+After successful verification, the exact owned receipt and any regular
+`.DS_Store` metadata up to64KiB are moved individually into a private
+`.station-dependency-record-*/` directory (the metadata uses a non-Finder
+destination name). Their identities and the metadata
+size are rechecked after each move; `rmdir` is the atomic final empty check. A
+new, replaced, linked, or larger entry keeps the fixed guard pending and is not
+deleted. The completed record is a small ignored generated worktree artifact,
+not authority to perform recovery. Records are not reclaimed by PID or age;
+normal completed-worktree cleanup removes them after relevant evidence has been
+preserved, avoiding an unattended pruning policy.
+
+If verification succeeds but guard finalization cannot finish, the runner reports
+**verified dependencies / cleanup pending** and leaves the guard blocking the
+next install until it is inspected. Unexpected guard children are never
+recursively deleted. This is cooperative install coordination and a recovery
+aid for generated dependencies, not a rollback transaction or user-data backup:
+workspace-local dependency trees and lockfiles remain pnpm-owned, and no
+hostile same-user/path-swap or power-loss archive guarantee is made.
 
 `npm run dependencies:ci` does **not** provision Playwright browsers. The
 runner applies Station's approved patch step explicitly; it does not trust a
@@ -461,6 +629,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 `ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, and **typecheck** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
 
 `full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:
+- `browser-prerequisite` — 20-unit host reservation; 1-minute execution deadline.
 - `repo-governance` — 20-unit host reservation; 5-minute execution deadline.
 - `sdk-builds` — 50-unit host reservation; 10-minute execution deadline.
 - `verify-static` — 60-unit host reservation; 15-minute execution deadline.
@@ -757,6 +926,16 @@ Use these terms consistently when adding connected-agents coverage:
 
 Focused automation:
 
+The connected-agent macro runs the same provider/service/route coverage
+through the existing focused runner, with one worker, no file parallelism,
+and the original 10-second test bound. The high-cardinality EventStore case is
+the first of seven test files and owns a fresh process-exclusive test-file lifecycle.
+EventStore is explicitly process-exclusive
+in the resource manifest; calling raw Vitest would bypass that constraint and
+run its high-cardinality SQLite fixture alongside other suites. This routing
+change neither removes a suite nor increases its timer. The fixed macro accepts
+no CLI overrides; other focused runs retain their existing defaults.
+
 ```bash
 npm run test:connected-agents
 PW_BASE_URL=http://localhost:5274 PLAYWRIGHT_BROWSERS_PATH=0 \
@@ -960,6 +1139,27 @@ layer that can fail for the right reason.
 4. **Use shared utilities.** Use `readJson()` from `__test-utils__/read-json.js` for typed response bodies and `collectSSE()` from `__test-utils__/sse-helpers.js` for SSE streams, rather than re-deriving either per file.
 
 5. **Playwright for browser/runtime boundaries.** SSE and HTTP route contracts normally use server integration tests; component state uses Vitest/jsdom. Use Playwright when browser streaming behavior, focus/layout, navigation, or the live packaged boundary is itself the claim.
+
+### Product contracts and test changes
+
+Critical user actions are acceptance criteria, not incidental button counts or
+component structure. Record their priority in the owning design document and
+protect durable invariants through the product-law registry. Changes to those
+invariants must state the product decision and replacement behavioral evidence
+in the PR; changing an assertion solely to match an implementation is not that
+justification.
+
+The required `fast-checks` job executes critical browser smoke before merge.
+The required repository-governance evidence rejects moving that suite into an
+optional/manual dependency or swallowing its result. Product-law observations
+use named structured results: missing, skipped, or unavailable evidence is not
+a pass, and changed areas are matched to their registered laws.
+
+CI also emits a non-blocking contract-test review report for changed contract
+policy, removed assertions/selectors, and added skips. It cannot infer semantic
+weakening: moving a valid test can produce a signal. Review the diff and its
+behavioral evidence rather than treating this advisory as a verdict. Promote
+new review heuristics to blocking rules only after measured catch evidence.
 
 ### What counts as "tested"
 

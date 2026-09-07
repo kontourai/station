@@ -5781,7 +5781,7 @@
         "count": 1
       }
     },
-    "src-ui/src/app-shell/surface-registry.ts": {
+    "src-ui/src/app-shell/destination-registry.ts": {
       "complexity_moderate": {
         "count": 1
       }

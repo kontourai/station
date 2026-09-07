@@ -328,6 +328,62 @@ export function resolveManagedAvailabilityReason(
   }
 }
 
+/**
+ * The minimum a caller has to expose for {@link
+ * createStationEngineAvailabilityReader}. Narrowed to what the reader reads,
+ * rather than the whole route context, so the reader stays out of the route
+ * layer and its dependency is legible from the signature.
+ */
+export interface StationEngineAvailabilitySource {
+  /**
+   * The CURRENT app config, never the route-construction snapshot: the default
+   * model connection is a setting a user changes while Station runs.
+   */
+  getLiveAppConfig: () => Pick<
+    AppConfig,
+    'defaultLLMProvider' | 'defaultModel' | 'region'
+  >;
+  providerService: {
+    listProviderConnections: () => ProviderConnectionConfig[];
+  };
+  connectionService: {
+    checkGatedModelConnectionIds: () => ReadonlyMap<
+      string,
+      'failed' | 'unreachable'
+    >;
+  };
+}
+
+/**
+ * Whether a Station-engine Agent can run right now, and why not — the ONE
+ * reader every surface that asks goes through (#1536 D8, review H2).
+ *
+ * Five call sites built this call separately, and they had already drifted:
+ * three passed the app config as it stood when routes were CONSTRUCTED, and
+ * one of those also omitted `gatedConnectionIds` (`runtime-routes.ts`'s own
+ * docblock says to read `getLiveAppConfig()` for anything a user can change
+ * while Station runs — the default model connection above all). So with two
+ * enabled LLM connections, setting a default at runtime cleared the attention
+ * item while the New Chat picker went on refusing until restart: the same
+ * disagreement #1536 D8 exists to close, inverted. Same function, same
+ * inputs, one place to change them.
+ */
+export function createStationEngineAvailabilityReader(
+  source: StationEngineAvailabilitySource,
+): (spec: Pick<AgentSpec, 'model' | 'execution' | 'region'>) => string | null {
+  return (spec) =>
+    resolveManagedAvailabilityReason(spec, {
+      appConfig: source.getLiveAppConfig(),
+      listProviderConnections: () =>
+        source.providerService.listProviderConnections(),
+      // The same receipts the Connections hub reads, so an agent bound to a
+      // faulted connection is not reported runnable beside a card saying its
+      // check failed.
+      gatedConnectionIds:
+        source.connectionService.checkGatedModelConnectionIds(),
+    });
+}
+
 export function resolveDefaultManagedModelHint(
   appConfig: Pick<AppConfig, 'defaultLLMProvider' | 'defaultModel'>,
   providerConnections: ProviderConnectionConfig[],

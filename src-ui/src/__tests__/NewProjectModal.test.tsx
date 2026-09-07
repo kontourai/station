@@ -284,16 +284,26 @@ describe('NewProjectModal starter layout picker', () => {
       target: { value: '/tmp/repo/' },
     });
 
-    await waitFor(() =>
-      expect(
-        screen.getByText('Recommended for this Git directory'),
-      ).toBeTruthy(),
+    // Detection and selection settle in that order, one commit apart: the
+    // Recommended group renders as soon as the settled directory reports a
+    // repo, and the effect that SELECTS Coding runs after that commit. Waiting
+    // on the group and then reading `aria-pressed` synchronously read the
+    // pre-selection render whenever the host was busy enough to separate the
+    // two (#1603). The pressed state is the later signal, so it is the one to
+    // await; the group is still asserted, after it. Above the 1s default,
+    // because the hook's own 400ms settle has to elapse before discovery is
+    // even asked — that leaves ~600ms for the query, the render and the
+    // selection effect on a loaded host.
+    await waitFor(
+      () =>
+        expect(
+          screen
+            .getByRole('button', { name: /Coding/ })
+            .getAttribute('aria-pressed'),
+        ).toBe('true'),
+      { timeout: 3_000 },
     );
-    expect(
-      screen
-        .getByRole('button', { name: /Coding/ })
-        .getAttribute('aria-pressed'),
-    ).toBe('true');
+    expect(screen.getByText('Recommended for this Git directory')).toBeTruthy();
   });
 
   test('does not surface or create Coding when the distribution omits it', async () => {
@@ -470,7 +480,19 @@ describe('NewProjectModal starter layout picker', () => {
     expect(onCloseMock).toHaveBeenCalled();
   });
 
-  test('re-checks a manually typed path for nested repos at submit', async () => {
+  /**
+   * #1536 E4. This used to assert the opposite: a manually typed path
+   * re-ran repo discovery AT SUBMIT and applied Coding when it found a repo.
+   * Nothing on screen said so — the recommendation was never rendered, so
+   * "Start without a layout" was the option shown as pressed while the project
+   * was created with a Coding layout. Create applies the selection the picker
+   * shows and nothing else, so with no repo discovered there is no layout.
+   *
+   * `useReposQuery` is mocked in this file, so the `enabled` gate that decides
+   * WHETHER discovery runs is invisible here — that seam is covered against the
+   * real query in `hooks/__tests__/useNewProjectStarter.test.tsx`.
+   */
+  test('creates no layout for a typed path when no repository is discovered', async () => {
     reposQueryState.refetch.mockResolvedValue({
       data: {
         workspace: '/tmp/typed-workspace',
@@ -484,13 +506,54 @@ describe('NewProjectModal starter layout picker', () => {
     fireEvent.change(screen.getByLabelText('Working Directory'), {
       target: { value: '/tmp/typed-workspace' },
     });
+    // The state the user is looking at when they press Create.
+    expect(
+      screen
+        .getByRole('button', { name: /Start without a layout/ })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
-    await waitFor(() => expect(reposQueryState.refetch).toHaveBeenCalled());
-    expect(applyProjectLayoutMock).toHaveBeenCalledWith(
-      'http://localhost:3000',
-      'typed-workspace',
-      'builtin:coding',
+    await waitFor(() => expect(createProjectMock).toHaveBeenCalled());
+    expect(applyProjectLayoutMock).not.toHaveBeenCalled();
+    expect(reposQueryState.refetch).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The recommendation itself is not removed — it is only made visible before
+   * it can be applied. A detected Git directory still selects Coding, and the
+   * card that Create then applies is the one on screen. The typed path carries
+   * NO trailing slash on purpose: that is the shape #1536 E4 was reported
+   * against, and the twin of `tests/project-architecture.spec.ts`'s
+   * "a manually typed path shows the Git recommendation".
+   */
+  test('applies the recommended Coding starter for a typed path once it is the shown selection', async () => {
+    reposQueryState.data = {
+      workspace: '/tmp/repo',
+      workspaceIsRepo: true,
+      repos: [{ root: '/tmp/repo' }],
+    };
+    createProjectMock.mockResolvedValue({ slug: 'repo' });
+
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    fireEvent.change(screen.getByLabelText('Working Directory'), {
+      target: { value: '/tmp/repo' },
+    });
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('button', { name: /Coding/ })
+          .getAttribute('aria-pressed'),
+      ).toBe('true'),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() =>
+      expect(applyProjectLayoutMock).toHaveBeenCalledWith(
+        'http://localhost:3000',
+        'repo',
+        'builtin:coding',
+      ),
     );
   });
 
@@ -726,15 +789,19 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
   });
 
   test('HIGH: a backdrop tap while browsing returns to the draft form instead of exiting the flow', () => {
-    const { container } = render(
-      <NewProjectModal isOpen onClose={onCloseMock} />,
-    );
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
     fireEvent.change(screen.getByPlaceholderText('My Project'), {
       target: { value: 'Draft Keeper' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
 
-    const overlay = container.querySelector('.responsive-surface-overlay')!;
+    // The browser step's OWN backdrop, reached through its panel rather than
+    // as the document's first overlay: this flow renders one surface today and
+    // the first-match form would silently tap the wrong one if a second were
+    // ever stacked.
+    const overlay = screen
+      .getByRole('dialog', { name: /Browse installed layouts/ })
+      .closest('.responsive-surface-overlay')!;
     fireEvent.pointerDown(overlay);
 
     expect(onCloseMock).not.toHaveBeenCalled();
@@ -794,9 +861,9 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
 
     onCloseMock.mockReset();
     const second = render(<NewProjectModal isOpen onClose={onCloseMock} />);
-    const overlay = second.container.querySelector(
-      '.responsive-surface-overlay',
-    )!;
+    const overlay = screen
+      .getByRole('dialog', { name: 'New Project' })
+      .closest('.responsive-surface-overlay')!;
     fireEvent.pointerDown(overlay);
     expect(onCloseMock).toHaveBeenCalledTimes(1);
     second.unmount();

@@ -215,6 +215,7 @@ export async function loadStablePreToolPolicySpec(options: {
   return { spec, revision };
 }
 
+import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
 import { adoptDetectedNativeEngines } from './native-engine-adoption.js';
 import { isHostedTenantExecutionRequired } from './runtime-tenant-context.js';
 
@@ -282,6 +283,10 @@ import {
   createMCPToolProvenanceGeneration,
   type MCPToolProvenanceGeneration,
 } from '../../services/orchestration/mcp-tool-provenance.js';
+import {
+  createRuntimeSearch,
+  type RuntimeSearch,
+} from '../../services/search/runtime-search.js';
 import { continueExecutionTargetMessage } from '../../tools/station-control-delegation.js';
 import { buildRuntimeContext as createRuntimeContext } from '../agents/runtime-context-builder.js';
 import { bootstrapRuntimeDefaultAgent } from '../agents/runtime-default-agent.js';
@@ -495,6 +500,23 @@ export class StationRuntime {
   private reconciliationChurnWindowStartMs = 0;
   private reconciliationChurnCount = 0;
   private readonly nativeEngineAdoptionAbort = new AbortController();
+  /**
+   * station#1586 (item 6, fix round M2): aborted on shutdown so the boot-time
+   * prerequisite priming settles instead of outliving the runtime, exactly
+   * like the adoption window beside it.
+   *
+   * What it bounds is the PRIMING, not the child process. `ClaudeAdapter`
+   * deliberately does not forward a caller's signal into its shared
+   * `--version` probe (one caller abandoning readiness must not abort an
+   * observation another is awaiting — see `versionProbe`'s comment), so a
+   * probe already spawned still runs to `runCliCommand`'s own 10s ceiling.
+   * Nor does it cut a prime already under way: the signal is read once,
+   * before the first await, and the adapter drops it on the way to
+   * `runCommand`. What it does, exactly and only, is prevent a prime from
+   * STARTING after shutdown. Killing the child, or interrupting a prime in
+   * flight, would need a change in the adapter's shared-probe contract.
+   */
+  private readonly enginePrerequisitePrimingAbort = new AbortController();
   private configurationSourceUnsubscribers: Array<() => void> = [];
   private schedulerService?: SchedulerService;
   private kitLifecycleReady: Promise<void> = Promise.resolve();
@@ -734,6 +756,9 @@ export class StationRuntime {
   private knowledgeStoreProvider!: KnowledgeStoreProvider;
   private fileTreeService!: FileTreeService;
   private readonly taskGraphService: TaskGraphService;
+  private runtimeSearch?: RuntimeSearch;
+  private searchAdmissionStopped = false;
+  private searchRetirementRequired = false;
   private readonly taskDispatchAssignmentClaims: Pick<
     AssignmentClaimService,
     'claim' | 'release' | 'status'
@@ -2721,6 +2746,9 @@ export class StationRuntime {
   }
 
   private async runInitialize(): Promise<void> {
+    // A failed attempt retains its exact readers until both owners prove
+    // retirement. No replacement Orchestration or listener is constructed first.
+    await this.retireFailedSearch();
     // Identity/credential state is a startup invariant. Corrupt or unsafe
     // state prevents any listener from being configured.
     const identity = await this.environmentSecurityService.initialize();
@@ -2757,6 +2785,11 @@ export class StationRuntime {
           acpBridge: this.acpBridge,
           resolveBuiltinEngineBinding: (appConfig) =>
             this.resolveBuiltinEngineBinding(appConfig),
+          // ACP connections finish their first capability handshake in the
+          // background. Re-resolve the reserved Station role once that live
+          // evidence exists so a persisted OpenCode/Kiro choice does not stay
+          // failed-safe on Station's native engine until another config write.
+          onACPConnectionsReady: () => this.reloadDefaultAgent(),
           orchestrationEventStore: this.orchestrationEventStore,
           credentialProfileRecoveryAdapter:
             this.connectionService.createCredentialProfileRecoveryAdapter(
@@ -2873,8 +2906,13 @@ export class StationRuntime {
                 resolveProjectWorkspace: this.resolveTaskDispatchWorkspace,
               },
               {
-                prepareAgentStarted: (result) =>
-                  this.projectTaskRoomRuntime?.prepareAgentStarted(result),
+                prepareAgentStarted: (result) => {
+                  if (!this.projectTaskRoomRuntime)
+                    throw new Error('Task room publication is not ready');
+                  return this.projectTaskRoomRuntime.prepareAgentStarted(
+                    result,
+                  );
+                },
                 // Route composition assigns this property before any user can
                 // dispatch. Read it lazily so construction order cannot invent
                 // a room or turn a provider start into a retryable failure.
@@ -2970,9 +3008,31 @@ export class StationRuntime {
       timers: this.timers,
       signal: this.nativeEngineAdoptionAbort.signal,
     });
+
+    // station#1586 (item 6): warm the Claude executable resolution and its
+    // `claude --version` probe now, instead of inside whichever session
+    // happens to be the first in this process. Readiness is otherwise
+    // resolved only by the `/status` route, so a user who starts a session
+    // before any surface fetched status paid the probe's 10s ceiling in their
+    // first turn. Fire-and-forget, like the adoption above: the probe is
+    // memoized per `command + args`, so a session starting while this is
+    // still in flight awaits the same probe rather than spawning a second.
+    //
+    // Signalled like the adoption above (station#1586 M2). Read
+    // `enginePrerequisitePrimingAbort`'s doc for what that does and does not
+    // stop: it bounds this priming, not a probe child already spawned.
+    void primeEnginePrerequisites({
+      adapters: [this.claudeAdapter],
+      logger: this.logger,
+      signal: this.enginePrerequisitePrimingAbort.signal,
+    });
   }
 
   private async cleanupFailedInitialization(error: unknown): Promise<never> {
+    if (this.runtimeSearch) {
+      this.searchRetirementRequired = true;
+      this.runtimeSearch.stop();
+    }
     const failures = [error];
     const attempt = async (
       cleanup: (() => void | Promise<void>) | undefined,
@@ -2987,6 +3047,7 @@ export class StationRuntime {
       }
     };
 
+    await attempt(() => this.retireFailedSearch());
     await attempt(() => this.sshEnvironmentService.shutdown());
     await attempt(() => this.discordGatewayService.stop());
     await attempt(() => this.taskRoomAcceptanceControl?.close());
@@ -3024,6 +3085,17 @@ export class StationRuntime {
       );
     }
     throw error;
+  }
+
+  private async retireFailedSearch(): Promise<void> {
+    if (!this.searchRetirementRequired || !this.runtimeSearch) return;
+    const owned = this.runtimeSearch;
+    owned.stop();
+    const result = await owned.retireAfterFailedInitialization();
+    if (result.state !== 'closed')
+      throw new Error('Failed runtime search readers are still retiring');
+    if (this.runtimeSearch === owned) this.runtimeSearch = undefined;
+    this.searchRetirementRequired = false;
   }
 
   /**
@@ -3222,6 +3294,14 @@ export class StationRuntime {
   private configureRoutes(
     app: Parameters<NonNullable<HonoServerConfig['configureApp']>>[0],
   ): void {
+    // The existing handshake environment identity qualifies these local owner
+    // records; it is not a new logical Station or machine identity.
+    this.runtimeSearch ??= createRuntimeSearch({
+      stationId: this.stationEnvironmentId!,
+      tasks: this.taskGraphService,
+      transcripts: this.orchestrationService,
+    });
+    if (this.searchAdmissionStopped) this.runtimeSearch.stop();
     const {
       schedulerService,
       notificationService,
@@ -3263,6 +3343,7 @@ export class StationRuntime {
       secretBindingIntegrationAdministration:
         this.secretBindingIntegrationAdministration,
       taskGraphService: this.taskGraphService,
+      runtimeSearch: this.runtimeSearch,
       taskDispatcher: this.taskDispatcher,
       terminalService: this.terminalService,
       actionOperations: this.actionOperations,
@@ -3707,11 +3788,17 @@ export class StationRuntime {
    * Shutdown the runtime
    */
   async shutdown(): Promise<void> {
+    this.searchAdmissionStopped = true;
+    this.runtimeSearch?.stop();
     // Settle any pending native-engine adoption window before timers are
     // cleared, so its promise cannot strand on a cleared timeout (archive#1575).
     // Optional-chained: prototype-built test doubles (Object.create) have no
     // constructor-initialized fields, and shutdown must never throw for them.
     this.nativeEngineAdoptionAbort?.abort();
+    // Same moment, same reason (station#1586 M2), same optional chaining for
+    // prototype-built doubles: the boot-time prerequisite priming must settle
+    // rather than outlive the runtime.
+    this.enginePrerequisitePrimingAbort?.abort();
     // Early, before the shutdown-promise guard: a store probe in flight is a child process, and
     // `gracefulShutdown` ends in `process.exit`. Same optional-chaining
     // reason as the line above — prototype-built doubles have no fields.
@@ -3740,6 +3827,11 @@ export class StationRuntime {
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
     const failures: unknown[] = [];
+    if (this.runtimeSearch) {
+      const retirement = await this.runtimeSearch.close();
+      if (retirement.state !== 'closed')
+        failures.push(new Error('Task search reader shutdown pending'));
+    }
     try {
       await this.discordGatewayService?.stop();
     } catch (error) {

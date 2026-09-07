@@ -189,6 +189,7 @@ export function useChatInput({
     agentSlug,
     activeChatState,
     bindingStatus,
+    availableModels,
   );
   const handleSlashCommand = useSlashCommandHandler();
 

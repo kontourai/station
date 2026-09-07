@@ -21,7 +21,7 @@ import {
  *     detail contract (`SplitPaneLayout`), never a second mobile layout.
  *
  * The route list is not hand-maintained. `ROUTES` below is checked against the
- * `route:` entries `src-ui/src/app-shell/surface-registry.ts` actually
+ * `route:` entries `src-ui/src/app-shell/destination-registry.ts` actually
  * declares, so a surface added without a decision about its phone behaviour
  * turns this spec red instead of shipping unswept. (The registry is read as
  * TEXT rather than imported: `tsconfig.e2e.json` typechecks `tests/` under the
@@ -30,7 +30,7 @@ import {
  */
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const REGISTRY_PATH = 'src-ui/src/app-shell/surface-registry.ts';
+const REGISTRY_PATH = 'src-ui/src/app-shell/destination-registry.ts';
 
 /** Every distinct `route:` the registry declares. */
 function declaredRoutes(): string[] {

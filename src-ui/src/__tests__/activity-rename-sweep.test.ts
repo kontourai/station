@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { describe, expect, test } from 'vitest';
+import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
 import {
   getLegacyPathRedirect,
   resolveViewFromPath,
 } from '../app-shell/routing';
-import { APP_SURFACE_REGISTRY } from '../app-shell/surface-registry';
 import { resolveClientOriginActor } from '../utils/clientOrigin';
 
 /**
@@ -17,22 +17,22 @@ import { resolveClientOriginActor } from '../utils/clientOrigin';
  * canonical deep link.
  */
 describe('Activity rename sweep', () => {
-  const surface = APP_SURFACE_REGISTRY.get('activity');
+  const destination = APP_DESTINATION_REGISTRY.get('activity');
 
   test('the surface is labeled Activity, on the sidebar and on the palette', () => {
-    expect(surface).not.toBeNull();
-    expect(surface!.label()).toBe('Activity');
+    expect(destination).not.toBeNull();
+    expect(destination!.label()).toBe('Activity');
     // SHELL-08 / lane 7's open question, decided yes: Home's lanes were the
     // only advertised way in, and Activity was one of five surfaces that
     // resolved but appeared in no navigation at all. It now leads the
     // sidebar's flat `primary` band with Agents and Connections.
-    expect(surface!.sidebar).toEqual({ section: 'primary', order: 30 });
+    expect(destination!.sidebar).toEqual({ section: 'primary', order: 30 });
     expect(
-      APP_SURFACE_REGISTRY.getSidebar().map((entry) => entry.label()),
+      APP_DESTINATION_REGISTRY.getSidebar().map((entry) => entry.label()),
     ).toContain('Activity');
     // The palette keeps the surface one keystroke away on every device, and
     // still answers to the old name.
-    const palette = APP_SURFACE_REGISTRY.getPalette().find(
+    const palette = APP_DESTINATION_REGISTRY.getPalette().find(
       (entry) => entry.id === 'activity',
     );
     expect(palette).toBeDefined();
@@ -44,10 +44,10 @@ describe('Activity rename sweep', () => {
     // canonical deep link rather than a path the resolver mounts. The two
     // retired spellings redirect onto it, carrying the only payload either
     // one ever had.
-    expect(surface!.route).toBe(activityDeepLink());
-    expect(surface!.regionSurface).toBe('activity');
-    expect(surface!.view).toBeUndefined();
-    expect(resolveViewFromPath(surface!.route)).toEqual({ type: 'home' });
+    expect(destination!.route).toBe(activityDeepLink());
+    expect(destination!.regionSurface).toBe('activity');
+    expect(destination!.view).toBeUndefined();
+    expect(resolveViewFromPath(destination!.route)).toEqual({ type: 'home' });
     // These reds if routing.ts loses the permanent redirect entry.
     expect(getLegacyPathRedirect('/activity?session=thread-1')).toBe(
       activityDeepLink({ sessionId: 'thread-1' }),
@@ -68,7 +68,7 @@ describe('Activity rename sweep', () => {
     'views/home/HomeSurface.tsx',
     'components/home/HomeRecentWorkSection.tsx',
     'views/project-page/ProjectLiveWorkSection.tsx',
-    'app-shell/surface-registry.ts',
+    'app-shell/destination-registry.ts',
   ] as const;
 
   /**

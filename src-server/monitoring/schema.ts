@@ -54,8 +54,12 @@ export interface MonitoringEvent {
   'gen_ai.tool.call.id'?: string;
   'gen_ai.tool.call.arguments'?: unknown;
   'gen_ai.tool.call.result'?: unknown;
-  /** Explicit producer-reported tool execution outcome; absent means unknown. */
-  'gen_ai.tool.call.outcome'?: 'success' | 'error';
+  /**
+   * Explicit producer-reported tool execution outcome; absent means unknown.
+   * `unresolved` (station#1558) is itself an explicit report: the session
+   * ended with the call still open, so no outcome can ever arrive.
+   */
+  'gen_ai.tool.call.outcome'?: 'success' | 'error' | 'unresolved';
 
   // ── Span lifecycle ──
   'span.kind': 'start' | 'end' | 'event' | 'log';

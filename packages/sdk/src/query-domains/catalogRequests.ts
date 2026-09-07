@@ -1,6 +1,7 @@
 import type { InstallResult } from '@kontourai/station-contracts/catalog';
 import type { LayoutCatalogItem } from '@kontourai/station-contracts/distribution';
 import type { LayoutComponentRef } from '@kontourai/station-contracts/layout';
+import type { PluginInstallResult } from '@kontourai/station-contracts/plugin';
 import { _getApiBase } from '../api';
 import type { RegistryCatalogTab } from './catalog';
 
@@ -124,8 +125,10 @@ export async function requestRegistryIntegrationAction({
   return requestRegistryCatalogAction('integrations', { id, action });
 }
 
-export async function requestRegistryCatalogAction(
-  tab: RegistryCatalogTab,
+export async function requestRegistryCatalogAction<
+  T extends RegistryCatalogTab,
+>(
+  tab: T,
   {
     id,
     action,
@@ -143,11 +146,17 @@ export async function requestRegistryCatalogAction(
       permissions: string[];
       contentDigest: string;
       dependencies: string[];
+      dependencyApprovals?: Array<{
+        id: string;
+        permissions: string[];
+        contentDigest: string;
+        dependencies: string[];
+      }>;
     };
     /** Preview conflict components to skip, as `type:id` keys. */
     skip?: string[];
   },
-): Promise<InstallResult> {
+): Promise<T extends 'plugins' ? PluginInstallResult : InstallResult> {
   const apiBase = await _getApiBase();
   const response =
     action === 'install'
@@ -173,7 +182,7 @@ export async function requestRegistryCatalogAction(
       apiErrorMessage(result, result.message || `${action} failed`),
     );
   }
-  return result as InstallResult;
+  return result as T extends 'plugins' ? PluginInstallResult : InstallResult;
 }
 
 export async function requestRegistryLayoutAction({

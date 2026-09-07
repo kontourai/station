@@ -30,12 +30,16 @@ export const AgentGlyph = /* @__PURE__ */ glyph(
 export const ArchiveGlyph = /* @__PURE__ */ glyph(
   'M2.5 5.5h11v8h-11v-8ZM2 2.5h12v3H2v-3Zm4 6h4',
 );
-export const ArrowDownGlyph = /* @__PURE__ */ glyph('M3 6l5 5 5-5');
+export const ArrowDownGlyph = /* @__PURE__ */ glyph('M3 5.5l5 5 5-5');
 export const ArrowLeftGlyph = /* @__PURE__ */ glyph('M10.5 3 5.5 8l5 5');
 export const ArrowRightGlyph = /* @__PURE__ */ glyph('M5.5 3l5 5-5 5');
 export const ArrowUpGlyph = /* @__PURE__ */ glyph('M3 10l5-5 5 5');
 export const AttachmentGlyph = /* @__PURE__ */ glyph(
   'm6 8.5 3.8-3.8a2 2 0 1 1 2.8 2.8L7.4 12.7a3 3 0 0 1-4.2-4.2l5-5',
+);
+/** A notification bell — the header's Notifications control. */
+export const BellGlyph = /* @__PURE__ */ glyph(
+  'M12 5.5A4 4 0 0 0 4 5.5c0 4.7-2 6-2 6h12s-2-1.3-2-6M9.2 14a1.4 1.4 0 0 1-2.4 0',
 );
 /** Kanban columns — the Console Board pane tile. */
 export const BoardGlyph = /* @__PURE__ */ glyph(
@@ -106,6 +110,17 @@ export const MessageGlyph = /* @__PURE__ */ glyph(
 );
 export const MicGlyph = /* @__PURE__ */ glyph(
   'M5.5 3.5a2.5 2.5 0 0 1 5 0V8a2.5 2.5 0 0 1-5 0V3.5ZM3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2m-2 0h4',
+);
+/**
+ * Used only by the LAZY `OverflowMenu`, and kept here anyway: relocating it to an
+ * inline SVG in that chunk was measured at 18 gzip entry bytes, against
+ * twenty-odd lines re-declaring the factory's own viewBox and stroke-width —
+ * which is the hand-rolled-SVG shape #1552 D1 exists to remove. Recorded because
+ * "a lazy-only glyph in an eager module" is normally worth relocating; here the
+ * measurement said otherwise.
+ */
+export const MonitorGlyph = /* @__PURE__ */ glyph(
+  'M2.5 3.5h11v8h-11zM6 14h4M8 11.5V14',
 );
 export const MoonGlyph = /* @__PURE__ */ glyph(
   'M13 10.5A6 6 0 0 1 5.5 3 5.5 5.5 0 1 0 13 10.5Z',

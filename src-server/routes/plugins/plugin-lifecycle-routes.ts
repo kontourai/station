@@ -791,33 +791,26 @@ export function registerPluginLifecycleRoutes(
       // fingerprint's subject tree — hold the same per-plugin content lock
       // the consent decision's revalidate → commit span takes, so a grant
       // cannot commit for a plugin being removed underneath it.
-      const mutation = await withPluginContentLock(
-        pluginsDir,
-        installedPluginName,
-        () =>
-          captureConfigurationMutation(
-            applyConfigurationMutation,
-            async (beginMutation) => {
-              const result = await uninstallInstalledPlugin(
-                installedPluginName,
-                {
-                  agentsDir,
-                  beginConfigurationMutation: beginMutation,
-                  buildPlugin,
-                  eventBus,
-                  logger,
-                  pluginsDir,
-                  projectHomeDir,
-                  removeEngineConnections,
-                  quiesceEventSubscriptions: quiesceEventSubscriptions
-                    ? (plugin) => quiesceEventSubscriptions(plugin)
-                    : undefined,
-                },
-              );
-              await settleProviderAdapterRetirements?.();
-              return result;
-            },
-          ),
+      // The shared uninstall owns publication -> content lock ordering.
+      const mutation = await captureConfigurationMutation(
+        applyConfigurationMutation,
+        async (beginMutation) => {
+          const result = await uninstallInstalledPlugin(installedPluginName, {
+            agentsDir,
+            beginConfigurationMutation: beginMutation,
+            buildPlugin,
+            eventBus,
+            logger,
+            pluginsDir,
+            projectHomeDir,
+            removeEngineConnections,
+            quiesceEventSubscriptions: quiesceEventSubscriptions
+              ? (plugin) => quiesceEventSubscriptions(plugin)
+              : undefined,
+          });
+          await settleProviderAdapterRetirements?.();
+          return result;
+        },
       );
       if (mutation.value.success) {
         try {

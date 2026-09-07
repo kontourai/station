@@ -17,6 +17,27 @@ import {
 } from '../workspace-panes/openFilePreviewIntent';
 import { parseSurfaceDeepLink } from './surface-deep-link';
 
+/** An exact temporary return location, owned and restored by this navigator. */
+export type NavigationLocation = Readonly<{ pathname: string; search: string }>;
+
+function canonicalSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  // A closed dock is never maximized (archive#795, station#1613). Every param
+  // WRITE normalizes that away (`closedDockNeverMaximized`), but a URL loaded
+  // directly or restored by `popstate` can still carry `maximize=true` with no
+  // `dock=open`. When the return trip also closes the dock — `restoreLocation`
+  // emits `dock: null` for any `dock` key the origin lacks, so a detour that
+  // opened the dock produces one — the destination goes back through a writer
+  // and comes home WITHOUT the param, and an origin captured in that state
+  // would not compare equal to where the user now is. Dropping it here, where
+  // both sides of the comparison pass, is what keeps that round trip exact;
+  // canonicalizing only the captured record would instead make
+  // `isCurrentLocation` false for a location nobody navigated away from.
+  if (params.get('dock') !== 'open') params.delete('maximize');
+  params.sort();
+  return params.toString();
+}
+
 export type NavigationState = {
   pathname: string;
   selectedAgent: string | null;
@@ -133,26 +154,68 @@ export function parseNavigationTarget(target: string, base: string): URL {
   return new URL(target, base);
 }
 
+/**
+ * A closed dock is never maximized (archive#795): a param write that sets
+ * `dock` to `null` also deletes `maximize`, whatever the caller passed for it.
+ * `is-collapsed` and `is-maximized` are independent CSS classes and the
+ * maximized rule wins on height with `!important`, so the pair renders as a
+ * full-height dock with an emptied body — a blank shell covering the app.
+ *
+ * `setDockState` used to carry this alone, and a second writer
+ * (`useChatDockActiveChatSync`'s `clearDeadChatPointer`, which closes the dock
+ * with a direct `updateParams({ chat: null, dock: null })`) skipped it —
+ * station#1613. Both URL-writing entry points now apply it: `updateParams` and
+ * `navigate`, the latter because `dock` and `maximize` are both
+ * `SHELL_SCOPED_QUERY_PARAMS`, so a route change carries them across together
+ * and a navigation that closes the dock would otherwise leave `maximize`
+ * behind exactly as the direct write did.
+ *
+ * `lastDockMaximized` is not touched here: `commitState` only ever moves it to
+ * `true`, and `setDockState` is the only path that moves it to `false`, so a
+ * close routed through this normalization keeps whatever memory the earlier
+ * maximized commit set (archive#945).
+ *
+ * What this does NOT cover: a URL loaded or restored by `popstate` carrying
+ * `maximize=true` without `dock=open` reaches `parseUrl` without passing a
+ * writer, and `parseUrl` reads the two params independently. Only writes are
+ * normalized. A `dock` value other than `null` is left alone too — no caller
+ * writes a non-`open` dock value, and `parseUrl` treats any such value as
+ * closed.
+ */
+function closedDockNeverMaximized(
+  params: Record<string, string | null>,
+): Record<string, string | null> {
+  return params.dock === null ? { ...params, maximize: null } : params;
+}
+
 class NavigationStore {
   private state!: NavigationState;
   private listeners = new Set<() => void>();
   private isNavigating = false;
   private navigationGuardBypass = false;
   private historyIndex = 0;
+  private navigationGeneration = {};
+  private guardGeneration = {};
+  private navigationHref = '';
   private restoringPop = false;
   private replayingPop = false;
   private pendingPopDelta: number | undefined;
   private readonly navigationGuards = new Map<
     symbol,
-    (continueNavigation: () => void) => void
+    (continueNavigation: () => void, cancelNavigation?: () => void) => void
   >();
   lastProject: string | null;
   lastProjectLayout: string | null;
   /**
    * The most recently observed `true` value of `isDockMaximized`, kept
-   * independent of the URL's `maximize` param itself. A closed dock always
-   * has `maximize` cleared from the URL (`setDockState`'s own invariant,
-   * archive#795) — a closed-and-still-maximized dock renders as a blank
+   * independent of the URL's `maximize` param itself. A dock closed by a PARAM
+   * WRITE has `maximize` cleared from the URL (`closedDockNeverMaximized`,
+   * applied by both `updateParams` and `navigate` — the archive#795 invariant,
+   * moved out of `setDockState` by station#1613). A `?maximize=true` URL loaded
+   * directly, or restored by `popstate`, is NOT normalized: `parseUrl` reads
+   * the param independently of `dock`, and
+   * `RegionModelContext.reshowKeepsMaximizeMemory.test.tsx` pins what the shell
+   * does with that state. A closed-and-still-maximized dock renders as a blank
    * full-height shell both in the desktop right-side-panel layout AND on
    * mobile (index.css's `@media (max-width: 768px)` `.chat-dock.is-maximized`
    * rule matches on `is-maximized` alone and forces `height` with
@@ -167,9 +230,10 @@ class NavigationStore {
    * it back to `false`, on a caller's explicit non-maximized open/close.
    * Restore paths that mean "reopen exactly as it was" (not "the user just
    * asked for a specific size") read this instead of the momentarily-cleared
-   * `isDockMaximized` snapshot — every close (including the task switcher's)
-   * must still go through `setDockState` so the invariant above holds
-   * unconditionally.
+   * `isDockMaximized` snapshot. A close written through `updateParams`
+   * directly (not via `setDockState`) clears the URL flag but leaves this
+   * field as it was, because nothing in `updateParams` or `commitState`
+   * assigns it `false`.
    */
   lastDockMaximized = false;
   private layoutTabMemory: Record<string, string> = readLayoutTabMemory();
@@ -208,8 +272,10 @@ class NavigationStore {
       // documented per the reviewer's request — the alternative was "any
       // navigation heals it," rejected because dockMode also drives
       // immediately-visible layout: the `chat-dock--right`/`--bottom` class
-      // and the `--chat-dock-width`/`--dock-slot-size` CSS vars in
-      // `useChatDockState.ts`. Subscribing here gives it the same live-store
+      // and the shell-clearance CSS vars (`--region-<id>-size` and
+      // `--dock-slot-size`) published by `regions/region-clearance.ts` —
+      // the single-side width alias they used to include was retired in
+      // #1374. Subscribing here gives it the same live-store
       // guarantee `useDeviceSettings` gives `useChatDockState`'s
       // reasoning/tool-details/font-size fix in this same,
       // instead of leaving dockMode stale until the next unrelated
@@ -223,7 +289,11 @@ class NavigationStore {
    * `this.state` from a `parseUrl` result routes through here so that
    * memory stays in sync regardless of how the URL got there (initial load,
    * `navigate`, `updateParams`, or a `popstate`). */
-  private commitState(state: NavigationState) {
+  private commitState(state: NavigationState, newEntry = false) {
+    const href = typeof window === 'undefined' ? '' : window.location.href;
+    if (newEntry || href !== this.navigationHref)
+      this.navigationGeneration = {};
+    this.navigationHref = href;
     this.state = state;
     if (state.isDockMaximized) this.lastDockMaximized = true;
   }
@@ -254,6 +324,8 @@ class NavigationStore {
 
   private handlePopState = (event: PopStateEvent) => {
     const targetIndex = historyIndex(event.state);
+    if (targetIndex !== undefined && targetIndex !== this.historyIndex)
+      this.navigationGeneration = {};
     if (this.replayingPop) {
       this.replayingPop = false;
       if (targetIndex !== undefined) this.historyIndex = targetIndex;
@@ -468,18 +540,30 @@ class NavigationStore {
 
   registerNavigationGuard(
     identity: symbol,
-    guard: (continueNavigation: () => void) => void,
+    guard: (
+      continueNavigation: () => void,
+      cancelNavigation?: () => void,
+    ) => void,
   ): () => void {
+    this.guardGeneration = {};
     this.navigationGuards.set(identity, guard);
-    return () => this.navigationGuards.delete(identity);
+    return () => {
+      if (this.navigationGuards.get(identity) !== guard) return;
+      this.navigationGuards.delete(identity);
+      // An approved form may become clean while preparation awaits. Removal
+      // only loosens the guard set; additions/replacements revoke admission.
+    };
   }
 
-  private runNavigationGuards(continuation: () => void): void {
+  private runNavigationGuards(
+    continuation: () => void,
+    cancelled?: () => void,
+  ): void {
     const guards = [...this.navigationGuards.values()];
     const continueAt = (index: number): void => {
       const guard = guards[index];
       if (guard) {
-        guard(() => continueAt(index + 1));
+        guard(() => continueAt(index + 1), cancelled);
         return;
       }
       continuation();
@@ -490,6 +574,93 @@ class NavigationStore {
   private notify = () => {
     this.listeners.forEach((listener) => listener());
   };
+
+  /**
+   * Records exactly where the user is. The closed-dock rule that lets a
+   * restored location still compare equal to its origin lives in
+   * `canonicalSearch`, which both sides of `isCurrentLocation` pass through —
+   * canonicalizing the RECORD instead would make `isCurrentLocation` false for
+   * a location nobody navigated away from (station#1613 review).
+   */
+  captureLocation(): NavigationLocation {
+    return {
+      pathname: window.location.pathname,
+      search: window.location.search,
+    };
+  }
+
+  /**
+   * Compares through `canonicalSearch`, which ignores param order and a
+   * `maximize` that a closed dock cannot mean (archive#795, station#1613) — so
+   * two URLs differing only by that param, with the dock closed in both, are
+   * the same place here.
+   */
+  isCurrentLocation(location: NavigationLocation): boolean {
+    return (
+      window.location.pathname === location.pathname &&
+      canonicalSearch(window.location.search) ===
+        canonicalSearch(location.search)
+    );
+  }
+
+  restoreLocation(
+    location: NavigationLocation,
+    admission: Parameters<NavigationStore['navigateWithPrecommit']>[1],
+  ): Promise<boolean> {
+    const captured = new URLSearchParams(location.search);
+    const clear: Record<string, null> = {};
+    for (const key of new URLSearchParams(window.location.search).keys()) {
+      if (!captured.has(key)) clear[key] = null;
+    }
+    // Keep exact Pane paths, tabs, and query selections through the same
+    // guarded navigation path. A Project-only projection cannot restore them.
+    return this.navigateWithPrecommit(
+      `${location.pathname}${location.search}`,
+      admission,
+      clear,
+    );
+  }
+
+  /** Fixed destination, fresh admission after any dirty-state delay. No alternate router. */
+  navigateWithPrecommit(
+    pathname: string,
+    admission: {
+      current: () => boolean;
+      prepare: () => Promise<boolean>;
+      signal: AbortSignal;
+    },
+    params?: Record<string, string | null>,
+  ): Promise<boolean> {
+    const captured = { ...admission };
+    const capturedParams = params ? { ...params } : undefined;
+    const navigation = this.navigationGeneration;
+    return import('./navigation-precommit')
+      .then(({ runNavigationPrecommit }) => {
+        const guards = this.guardGeneration;
+        return runNavigationPrecommit(
+          {
+            ...captured,
+            current: () =>
+              this.navigationGeneration === navigation &&
+              this.guardGeneration === guards &&
+              captured.current(),
+          },
+          (proceed, cancel) => this.runNavigationGuards(proceed, cancel),
+          () => {
+            if (this.isNavigating) return false;
+            const previousBypass = this.navigationGuardBypass;
+            this.navigationGuardBypass = true;
+            try {
+              this.navigate(pathname, capturedParams);
+            } finally {
+              this.navigationGuardBypass = previousBypass;
+            }
+            return true;
+          },
+        );
+      })
+      .catch(() => false);
+  }
 
   navigate(pathname: string, params?: Record<string, string | null>) {
     const target = parseNavigationTarget(pathname, window.location.href);
@@ -576,13 +747,15 @@ class NavigationStore {
     }
 
     if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value === null) {
-          url.searchParams.delete(key);
-        } else {
-          url.searchParams.set(key, value);
-        }
-      });
+      Object.entries(closedDockNeverMaximized(params)).forEach(
+        ([key, value]) => {
+          if (value === null) {
+            url.searchParams.delete(key);
+          } else {
+            url.searchParams.set(key, value);
+          }
+        },
+      );
     }
 
     url.hash = currentHash;
@@ -598,7 +771,7 @@ class NavigationStore {
     delete nextHistoryState[DIALOG_HISTORY_KEY];
     window.history.pushState(nextHistoryState, '', url.toString());
     this.historyIndex = nextIndex;
-    this.commitState(this.parseUrl());
+    this.commitState(this.parseUrl(), true);
     this.notify();
     window.dispatchEvent(new PopStateEvent('popstate'));
     this.isNavigating = false;
@@ -609,7 +782,7 @@ class NavigationStore {
     const prev = url.search;
     const currentHash = url.hash;
 
-    Object.entries(params).forEach(([key, value]) => {
+    Object.entries(closedDockNeverMaximized(params)).forEach(([key, value]) => {
       if (value === null) {
         url.searchParams.delete(key);
       } else {
@@ -630,7 +803,7 @@ class NavigationStore {
       '',
       url.toString(),
     );
-    this.commitState(this.parseUrl());
+    this.commitState(this.parseUrl(), true);
     this.notify();
   }
 
@@ -650,6 +823,9 @@ class NavigationStore {
     if (slug) {
       this.navigate(`/agents/${slug}`);
     } else {
+      // Clearing the agent returns to `/` and whatever occupies `main` —
+      // not Home by name, which is the region model's `showSurface('home')`
+      // and out of a store's reach (#1523).
       this.navigate('/');
     }
   }
@@ -657,6 +833,8 @@ class NavigationStore {
   setLayoutTab(layoutSlug: string, tabId: string | null) {
     const { selectedProject } = this.state;
     if (!selectedProject) {
+      // No project to route into: fall back to `/`'s occupant, whatever it
+      // is. Same meaning as `setAgent(null)` above (#1523).
       this.navigate('/');
       return;
     }
@@ -736,10 +914,15 @@ class NavigationStore {
    * `is-maximized` are independent CSS classes and the maximized rule wins on
    * height with `!important`, so the pair renders as a full-height dock with
    * an emptied body — a blank shell covering the app. Callers used to have to
-   * remember this individually and one of them didn't, so the invariant lives
-   * here rather than at each call site. Reopening still restores the previous
-   * size: that is carried by the persisted `station.chatDock.snap`, not by
-   * this flag.
+   * remember this individually and one of them didn't, so the invariant was
+   * moved here; a second caller then wrote `dock: null` through
+   * `updateParams` directly and skipped it (station#1613), so it now lives in
+   * `closedDockNeverMaximized`, which both URL writers — `updateParams` and
+   * `navigate` — apply (`navigate` has its own push path and does not call
+   * `updateParams`). This method still computes `params.maximize = null` for a
+   * close so its own intent reads locally; the helper deletes `maximize` on
+   * any `dock: null` write regardless. Reopening still restores the previous size: that is
+   * carried by the persisted `station.chatDock.snap`, not by this flag.
    */
   setDockState(open: boolean, maximized?: boolean) {
     const params: Record<string, string | null> = {

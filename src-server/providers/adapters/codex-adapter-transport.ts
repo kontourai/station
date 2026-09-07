@@ -13,7 +13,10 @@ import {
   mapApprovalResolutionStatus,
   mapServerRequestToEvent,
 } from './codex-adapter-events.js';
-import { handleCodexNotification } from './codex-adapter-notifications.js';
+import {
+  handleCodexNotification,
+  settleUnresolvedCodexToolCalls,
+} from './codex-adapter-notifications.js';
 import type {
   CodexProcessLike,
   CodexSessionRecord,
@@ -92,7 +95,7 @@ export function createCodexSessionRecord(options: {
     lastSessionState: 'idle',
     turnOutput: new Map(),
     toolNames: new Map(),
-    toolStarted: new Set(),
+    openToolCalls: new Map(),
     stopped: false,
   };
 }
@@ -197,6 +200,7 @@ export class CodexAdapterTransport {
         record,
         () => new Error(`Codex app-server failed to start: ${error.message}`),
       );
+      this.settleUnresolvedToolCalls(record, nowIso);
       this.publishOrphanedTurnFailure(
         record,
         nowIso,
@@ -246,6 +250,7 @@ export class CodexAdapterTransport {
         () =>
           new Error(`Codex app-server stdin write failed: ${error.message}`),
       );
+      this.settleUnresolvedToolCalls(record, nowIso);
       this.publishOrphanedTurnFailure(
         record,
         nowIso,
@@ -480,6 +485,7 @@ export class CodexAdapterTransport {
     // `publishOrphanedTurnFailure`'s `skipSynthesis` doc): that RPC's caller
     // owns the turn's terminal fate and, for the one caller that also calls
     // `stopSession` (the cooperative-stop deadline), already published it.
+    this.settleUnresolvedToolCalls(record, nowIso());
     this.publishOrphanedTurnFailure(
       record,
       nowIso(),
@@ -635,12 +641,69 @@ export class CodexAdapterTransport {
           'Codex process tree cleanup was not confirmed after the app-server exited.',
         code: 'codex-process-cleanup-unconfirmed',
       });
+      // station#1569 (L1): still settle. This handler runs ON the
+      // app-server's exit, so its stdio is gone and no notification can ever
+      // arrive for a call still open — whatever happened to the rest of its
+      // process tree. What went unconfirmed is the REAP, which says nothing
+      // about whether a result is still coming: it is not. Returning here
+      // without settling left those rows running forever and made the
+      // contract's "settled at session end" claim false for this path.
+      //
+      // Same guard as the ordinary path below, for the same reason: a
+      // deliberate stop has `stopSession`'s own settle. station#1586 (item 3)
+      // dropped the supersession half of it at both doors — a record the
+      // thread no longer owns still publishes TURN-keyed terminals safely
+      // (PR #1560/#1570); only the thread-keyed facts stay withheld. See the
+      // ordinary path's comment for why that half is defensive rather than a
+      // fix for an observed leak.
+      if (!record.stopped) {
+        this.settleUnresolvedToolCalls(record, nowIso);
+      }
       return;
     }
     if (
       record.stopped ||
       this.sessions.get(record.externalThreadId) !== record
     ) {
+      // `stopSession` owns the settle for a stop already in flight, so a
+      // stopped record publishes nothing here.
+      //
+      // station#1586 (item 3): a record this thread no longer owns settles
+      // its own open calls. Those calls are this record's, its process is
+      // gone, and every tool terminal carries the turnId that ISSUED the call
+      // (PR #1560) — read from the entry itself, never from whatever turn is
+      // active now — while both folds attribute by turn (PR #1570), so a row
+      // lands on the stopped session's own turn rather than on any
+      // successor's.
+      //
+      // DEFENSIVE, stated precisely (station#1586 fix round, M3): no
+      // production path reaches this branch with an OPEN call today. A
+      // restart cannot install a successor mid-drain — `registerSession`
+      // throws while the old record is still registered, and it is only
+      // unregistered after this method's `await terminateRecord` — and every
+      // other unregister site (`stopSession`, the process `error` door, the
+      // stdin EPIPE door) sets `stopped` first, so it takes the arm above.
+      // Nor is there a second door that could arrive after the ordinary
+      // path below: only the `exit` handler reaches this method, the stdin
+      // EPIPE door returns before it, and the process `error` door publishes
+      // its own terminals. So the settle is not a fix for an observed leak
+      // — as things stand nothing reaches it at all; it is here so that this
+      // branch cannot become the one door that abandons rows if the
+      // registration lifecycle changes — which is exactly how the Claude
+      // adapter's own restart window (station#1569 item 6, an observed path
+      // there because its `stopSession` removes the record BEFORE awaiting
+      // the drain) came to need it.
+      //
+      // What stays withheld is what is genuinely thread-keyed rather than
+      // turn-keyed: `session.exited` below (a client reads it as "this
+      // thread's session ended" and closes the thread's still-running cards,
+      // which now belong to the live session) and the orphaned-turn
+      // `runtime.error` (`publishOrphanedTurnFailure` dedupes on
+      // `record.terminalPublishedForTurnId` — the superseded record's own
+      // bookkeeping — and the turn it would close is not the one in flight).
+      if (!record.stopped) {
+        this.settleUnresolvedToolCalls(record, nowIso);
+      }
       return;
     }
     this.unregisterSession(record);
@@ -654,6 +717,7 @@ export class CodexAdapterTransport {
     // the turn's terminal fact before the session's, so nothing turnId-keyed
     // (the completion-notification listener, `hasActiveTurn`, the stall
     // watchdog) is left waiting on a turn that is already over.
+    this.settleUnresolvedToolCalls(record, nowIso);
     this.publishOrphanedTurnFailure(
       record,
       nowIso,
@@ -671,6 +735,33 @@ export class CodexAdapterTransport {
       sessionId: record.externalThreadId,
       exitCode: code ?? undefined,
       reason: code === 0 ? 'completed' : 'process-exit',
+    });
+  }
+
+  /**
+   * station#1569 (item 4): every tool item still open when the session ends
+   * gets its honest terminal, on the turn that issued it.
+   *
+   * Placed immediately before `publishOrphanedTurnFailure` at all four
+   * session-end doors for the reason that method's own comment gives —
+   * before `session.exited`, which closes a still-running card client-side
+   * (`background-tasks-store.ts`). Innermost terminal first: the tool rows,
+   * then the orphaned turn, then the session.
+   *
+   * Unconditional, unlike the turn synthesis beside it: an open tool call is
+   * a fact in `record.openToolCalls`, not an inference from `activeTurnId`,
+   * and no other path publishes a terminal for it. The helper is idempotent
+   * (it clears the map first), so a session that reaches two doors — a stdin
+   * EPIPE followed by the process `exit`, say — settles each call once.
+   */
+  private settleUnresolvedToolCalls(
+    record: CodexSessionRecord,
+    nowIso: string,
+  ): void {
+    settleUnresolvedCodexToolCalls({
+      record,
+      nowIso,
+      publish: (event) => this.publish(event),
     });
   }
 

@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ authenticatedFetch: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  authenticatedFetch: vi.fn(),
+  fetchSSE: vi.fn(),
+}));
 vi.mock('../client/http', () => ({
   authenticatedFetch: mocks.authenticatedFetch,
-  fetchSSE: vi.fn(),
+  fetchSSE: mocks.fetchSSE,
 }));
 
 import {
@@ -11,6 +14,7 @@ import {
   parseAuthoritativeProjectTaskRoomDocumentEvent,
   planProjectTaskRoomEdit,
   submitProjectTaskRoomBatch,
+  subscribeProjectTaskRoomEvents,
 } from '../client/project-task-rooms';
 
 function response(data: unknown) {
@@ -44,9 +48,48 @@ function liveRead() {
   };
 }
 
-beforeEach(() => mocks.authenticatedFetch.mockReset());
+beforeEach(() => {
+  mocks.authenticatedFetch.mockReset();
+  mocks.fetchSSE.mockReset();
+});
 
 describe('ProjectTaskRoom SDK client', () => {
+  test.each([
+    ['unknown', { event: 'future-event', id: 'bad-1', data: '{}' }],
+    ['malformed', { event: 'document', id: 'bad-2', data: '{' }],
+  ] as const)(
+    'does not checkpoint a %s protocol frame after reporting it',
+    (_label, message) => {
+      let transportCallbacks: any;
+      mocks.fetchSSE.mockImplementation((_url, callbacks) => {
+        transportCallbacks = callbacks;
+        return {
+          close: vi.fn(),
+          restart: vi.fn(),
+          completed: Promise.resolve(),
+        };
+      });
+      const onError = vi.fn();
+      const onCheckpoint = vi.fn();
+      const onEvent = vi.fn();
+
+      subscribeProjectTaskRoomEvents('https://station.test', 'task-1', {
+        onError,
+        onCheckpoint,
+        onEvent,
+      });
+      const accepted = transportCallbacks.onMessage(message);
+      if (accepted !== false) {
+        transportCallbacks.onCheckpoint({ id: message.id });
+      }
+
+      expect(accepted).toBe(false);
+      expect(onError).toHaveBeenCalledOnce();
+      expect(onEvent).not.toHaveBeenCalled();
+      expect(onCheckpoint).not.toHaveBeenCalled();
+    },
+  );
+
   test.each([
     [{ kind: 'unchanged' }, { kind: 'unchanged' }],
     [

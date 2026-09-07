@@ -58,6 +58,7 @@ import type { PairingScope } from '@kontourai/station-contracts';
 import {
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
+  PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_INFERENCE_INVOKE,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
@@ -116,6 +117,7 @@ export interface PairingScopeRouteRule {
  * upgrades handled by {@link PAIRING_WS_SCOPES} instead.
  */
 const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
+  '/api/search',
   '/api/models',
   '/api/system',
   '/api/analytics',
@@ -234,6 +236,54 @@ export const PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS: readonly string[] = [
 ];
 
 export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
+  ...[
+    '/api/home-authority/channels/:channelId/bindings',
+    '/api/home-authority/channels/:channelId/bindings/:controllerDeviceId/inspect',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:administration`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+    }),
+  ),
+
+  {
+    id: '/api/home-authority/channels/:channelId/owner:administration',
+    method: 'POST',
+    prefix: '/api/home-authority/channels/:channelId/owner',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  // Home-authority preparation and transfer participation is a separate,
+  // explicitly granted capability. Every present and future method beneath
+  // this family stays on that one tier; it does not inherit ordinary
+  // orchestration read/operate authority or pairing-management authority.
+  {
+    id: '/api/home-authority:home-transfer',
+    method: '*',
+    prefix: '/api/home-authority',
+    scope: PAIRING_SCOPE_HOME_TRANSFER,
+    origin: 'explicit',
+  },
+  // Body-shaped reads, including fresh open resolution, have no navigation or mutation effect.
+  ...[
+    '/api/search',
+    '/api/search/resolve-open',
+    '/api/search/read-message',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:query`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+      origin: 'explicit',
+    }),
+  ),
   ...PAIRING_SCOPE_DOMAIN_PREFIXES.flatMap((prefix) => [
     ...READ_METHODS.map(
       (method): PairingScopeRouteRule => ({
@@ -1962,6 +2012,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/knowledge/roots' },
     { method: 'POST', path: '/api/knowledge/roots' },
     { method: 'DELETE', path: '/api/knowledge/roots/:id' },
+    {
+      method: 'GET',
+      path: '/api/knowledge/roots/:rootId/records/:id/source-observation',
+    },
     { method: 'GET', path: '/api/knowledge/roots/:rootId/graph' },
     { method: 'GET', path: '/api/knowledge/roots/:rootId/graph/neo4j' },
     { method: 'POST', path: '/api/knowledge/roots/:rootId/graph/neo4j-sync' },
@@ -2056,6 +2110,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     { method: 'GET', path: '/api/orchestration/sessions' },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/requests/:requestId',
+    },
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/builder-run',

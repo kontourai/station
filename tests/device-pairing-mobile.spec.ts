@@ -16,10 +16,6 @@ async function openConnections(page: Page): Promise<Locator> {
   // toolbar chip start with "Manage Stations" (archive#3297 + archive#3311).
   const directConnections = page.getByTestId('app-toolbar-connection');
   const moreActions = page.getByRole('button', { name: 'More actions' });
-  const openConnections = page.getByRole('button', {
-    name: 'Open Connections',
-    exact: true,
-  });
   const addComputer = page.getByRole('button', {
     name: 'Add computer',
     exact: true,
@@ -68,6 +64,8 @@ async function openConnections(page: Page): Promise<Locator> {
   // Connection entry points can either open the legacy manager or navigate to
   // the Connections hub. The hub's "Open Connections" empty-state action is
   // intentionally not a manager trigger; pairing now begins at Add computer.
+  // Do not admit that notice as readiness: it can appear behind a still-loading
+  // manager and send this helper into the wrong Add computer branch.
   // Converge through the goal chooser and require a manager-specific control
   // so the chooser dialog cannot be mistaken for the destination.
   await expect
@@ -75,8 +73,7 @@ async function openConnections(page: Page): Promise<Locator> {
       async () =>
         (await managerControl.first().isVisible()) ||
         (await addComputer.isVisible()) ||
-        (await controlThisStation.isVisible()) ||
-        (await openConnections.isVisible()),
+        (await controlThisStation.isVisible()),
       { timeout: CONNECTION_ENTRY_TIMEOUT_MS },
     )
     .toBe(true);

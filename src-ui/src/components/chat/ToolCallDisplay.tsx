@@ -117,6 +117,11 @@ function ToolCallDisplayComponent({
   const error = toolCall.error ?? toolCall.errorText;
   const needsApproval = toolCall.needsApproval;
   const cancelled = toolCall.cancelled || toolCall.state === 'cancelled';
+  // station#1558: a call whose SESSION ended before any result arrived. Both
+  // write paths stamp the same state — `runtime-event-projection.ts` on
+  // rehydration and `streamHandlers.ts` live — and the engine's own
+  // explanation rides along as the result text.
+  const unresolved = toolCall.state === 'unresolved';
   const approvalStatus = toolCall.approvalStatus;
   const state = toolCall.state;
   const progressMessage = toolCall.progressMessage;
@@ -138,6 +143,11 @@ function ToolCallDisplayComponent({
     !failed &&
     !cancelled &&
     !denied &&
+    // station#1558: an unresolved row DOES carry a `result` — the sentence
+    // saying no result was reported. Without this it would satisfy the
+    // `result !== undefined` arm below and read as a success, which is the
+    // exact claim the status exists to refuse.
+    !unresolved &&
     (state === 'completed' || state === 'result' || result !== undefined);
   // Verb tense is the honest one for the call's actual phase: past ONLY for
   // work observed to have completed, progressive only while running, bare
@@ -155,7 +165,7 @@ function ToolCallDisplayComponent({
   // Cancelled, User denied, Blocked by Station). This is the one that does
   // not: dispatched, and no completion event ever arrived.
   const unresolvedWithoutOutcome =
-    phase === 'unresolved' && !failed && !cancelled && !denied;
+    phase === 'unresolved' && !failed && !cancelled && !denied && !unresolved;
   const label = useMemo(
     () => callLabel(kind, toolName, args, phase),
     [kind, toolName, args, phase],
@@ -190,6 +200,13 @@ function ToolCallDisplayComponent({
         )}
       {cancelled && !failed && (
         <span className="tool-call__status-badge">Cancelled</span>
+      )}
+      {unresolved && !failed && !cancelled && (
+        // station#1558: distinct from "No result recorded" below, which is
+        // inferred from a start with no terminal event at all. This one is
+        // REPORTED: the engine session ended with the call open, so the
+        // absence is a fact Station observed rather than one it noticed.
+        <span className="tool-call__status-badge">No result was reported</span>
       )}
       {approvalStatus === 'user-denied' && (
         <span className="tool-call__status-badge tool-call__status-badge--error">
@@ -275,6 +292,7 @@ function ToolCallDisplayComponent({
           result={result}
           error={error}
           cancelled={cancelled}
+          unresolved={unresolved}
           approvalStatus={approvalStatus}
           lastProgress={running ? undefined : progressMessage}
         />
@@ -324,6 +342,7 @@ function ToolCallDetails({
   result,
   error,
   cancelled,
+  unresolved,
   approvalStatus,
   lastProgress,
 }: {
@@ -335,6 +354,8 @@ function ToolCallDetails({
   result?: any;
   error?: string;
   cancelled?: boolean;
+  /** station#1558 — the session ended with this call still open. */
+  unresolved?: boolean;
   approvalStatus?: ToolCallData['approvalStatus'];
   /** The final tool.progress message of a settled call — historical record,
    * shown here rather than as a collapsed line that would read as live. */
@@ -393,9 +414,14 @@ function ToolCallDetails({
     ? 'Failed'
     : cancelled
       ? 'Cancelled'
-      : result !== undefined
-        ? 'Success'
-        : null;
+      : // station#1558: checked BEFORE the `result` arm — the unresolved
+        // row's `result` is the sentence explaining that there is no
+        // result, and reading it as one would print "Success".
+        unresolved
+        ? 'No result was reported'
+        : result !== undefined
+          ? 'Success'
+          : null;
 
   return (
     <div className="tool-call__details">

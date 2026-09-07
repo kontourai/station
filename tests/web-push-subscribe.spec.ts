@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openHeaderSettings } from './helpers/orchestration';
 
 /**
  * archive#614 — Web Push subscribe/unsubscribe from the Notifications
@@ -29,15 +30,10 @@ async function goToNotificationsSettings(
   page: import('@playwright/test').Page,
 ) {
   await page.goto('/');
-  await page.waitForSelector('button[aria-label="Open settings"]', {
-    timeout: 10_000,
-  });
-  await page
-    .locator('button[aria-label="Open settings"]')
-    .first()
-    .evaluate((el) =>
-      el.dispatchEvent(new MouseEvent('click', { bubbles: true })),
-    );
+  // #1552 D1: "Open settings" is a row of the avatar's menu on a fine pointer,
+  // and this suite runs at the default desktop viewport, so the standalone gear
+  // this used to dispatch against is `display: none` there.
+  await openHeaderSettings(page);
   await page.waitForSelector('.settings__section-nav', { timeout: 10_000 });
   await page.getByRole('link', { name: 'Notifications', exact: true }).click();
 }

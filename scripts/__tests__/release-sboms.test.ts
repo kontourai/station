@@ -135,7 +135,7 @@ function containerFixture() {
     name: 'Station container SBOM',
     documentNamespace:
       'https://kontourai.example/sbom/station/v1.0.0/container',
-    documentComment:
+    comment:
       'station:fragment-predicates=container/image;station:dependency-lifecycle-digest=' +
       context.dependencyLifecycle.digest +
       ';station:dependency-lifecycle-purls=' +
@@ -587,8 +587,23 @@ describe('release SBOM validation leaf', () => {
         missingLifecycleComponentBytes,
       ),
     ).toThrow(/lifecycle components/);
+    const legacy = JSON.parse(fixture.bytes);
+    legacy.documentComment = legacy.comment;
+    delete legacy.comment;
+    const legacyBytes = canonicalJson(legacy);
+    expect(() =>
+      validateSbomBytes({ ...fixture, sha256: hash(legacyBytes) }, legacyBytes),
+    ).not.toThrow();
+    legacy.comment = 'conflicting binding';
+    const ambiguousBytes = canonicalJson(legacy);
+    expect(() =>
+      validateSbomBytes(
+        { ...fixture, sha256: hash(ambiguousBytes) },
+        ambiguousBytes,
+      ),
+    ).toThrow(/comment fields disagree/);
     const wrongLifecycle = JSON.parse(fixture.bytes);
-    wrongLifecycle.documentComment = wrongLifecycle.documentComment.replace(
+    wrongLifecycle.comment = wrongLifecycle.comment.replace(
       context.dependencyLifecycle.digest,
       '0'.repeat(64),
     );
@@ -611,8 +626,7 @@ describe('release SBOM validation leaf', () => {
       ),
     ).toThrow(/package URL does not match/);
     const missingPolicy = JSON.parse(fixture.bytes);
-    missingPolicy.documentComment =
-      'station:fragment-predicates=container/image';
+    missingPolicy.comment = 'station:fragment-predicates=container/image';
     const missingPolicyBytes = canonicalJson(missingPolicy);
     expect(() =>
       validateSbomBytes(

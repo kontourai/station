@@ -4,6 +4,15 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { hasGrant } from '../../../services/plugins/plugin-permissions.js';
 
+// This route unit fixture replaces the filesystem/process probes. The shared
+// lifecycle suite separately exercises real publication/content-lock ordering.
+vi.mock('@kontourai/station-shared/lifecycle-events', async (original) => ({
+  ...(await original<
+    typeof import('@kontourai/station-shared/lifecycle-events')
+  >()),
+  acquireFileMutationLockAsync: vi.fn(async () => async () => {}),
+}));
+
 vi.mock('../../../telemetry/metrics.js', () => ({
   pluginInstalls: { add: vi.fn() },
   pluginUninstalls: { add: vi.fn() },
@@ -149,6 +158,8 @@ vi.mock('../../../services/plugins/plugin-permissions.js', () => ({
   ]),
   restorePluginGrantEntry,
   revokeAllGrants: vi.fn(),
+  readPluginDependencyOwnership: vi.fn().mockReturnValue([]),
+  removePluginHostRecord: vi.fn().mockResolvedValue(undefined),
   snapshotPluginGrantEntry,
   PluginGrantsUnavailableError: class PluginGrantsUnavailableError extends Error {},
   PluginContentUnavailableError: class PluginContentUnavailableError extends Error {},
@@ -226,6 +237,9 @@ vi.mock('node:fs', async (importOriginal) => {
     rmSync: vi.fn(),
     cpSync: vi.fn(),
     writeFileSync: vi.fn(),
+    // Alias removal now uses the canonical atomic writer. This unit fixture
+    // mocks its staging write too, so publishing must not touch real /tmp.
+    renameSync: vi.fn(),
   };
 });
 
@@ -1220,7 +1234,7 @@ describe('Plugin Routes', () => {
 
     const response = await app.request('/test-plugin', { method: 'DELETE' });
 
-    await expect(json(response)).resolves.toMatchObject({ success: true });
+    await expect(json(response)).resolves.toEqual({ success: true });
     expect(response.status).toBe(200);
     expect(applyConfigurationMutation).toHaveBeenCalledOnce();
     expect(beginMutation).toHaveBeenCalledOnce();
@@ -1284,7 +1298,9 @@ describe('Plugin Routes', () => {
 
     const response = await app.request('/demo', { method: 'DELETE' });
 
-    expect(response.status).toBe(200);
+    expect(response.status, JSON.stringify(await json(response.clone()))).toBe(
+      200,
+    );
     expect(vi.mocked(rmSync)).toHaveBeenCalledWith(
       '/tmp/project/plugins/actual-plugin',
       { recursive: true, force: true },

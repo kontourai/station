@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, type Page, type Route, test } from '@playwright/test';
+import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-sequence';
 
 /**
  * Build gallery — an at-a-glance contact sheet of what the current build looks
@@ -159,19 +160,33 @@ function fulfillGalleryConnectionsFixture(route: Route): Promise<void> {
   });
 }
 
+/**
+ * #1536 F: the gallery seeds exactly ONE Station and reaches it, which is the
+ * state whose chip collapsed to its status dot — a fact that does not change
+ * while you work, in the row that runs out of width first. So the state and the
+ * identity are no longer visible text HERE; they are the accessible name and
+ * the tooltip, which is the only channel a dot leaves for the identity.
+ *
+ * Both are asserted, not just one: the name is what the product's own E2E
+ * selectors key on (`/^Manage Stations/`), and the title is what a pointer user
+ * can actually read. A chip that dropped either would still pass a class check.
+ */
 async function assertGalleryConnectionChrome(page: Page): Promise<void> {
   const chip = page.getByTestId('app-toolbar-connection');
   await expect(chip).toHaveClass(/app-toolbar__conn--connected/, {
     timeout: 10_000,
   });
-  await expect(chip.locator('.app-toolbar__conn-state')).toHaveText(
-    'Connected',
-  );
-  await expect(chip.locator('.app-toolbar__conn-name')).toHaveText(
-    GALLERY_CONNECTION_NAME,
-  );
+  await expect(chip).toHaveClass(/app-toolbar__conn--compact/);
+  const named = `Manage Stations — Connected · ${GALLERY_CONNECTION_NAME}`;
+  await expect(chip).toHaveAttribute('aria-label', named);
+  await expect(chip).toHaveAttribute('title', named);
+  // Collapsed means collapsed: neither text span renders, which is the width
+  // this change reclaims.
+  await expect(chip.locator('.app-toolbar__conn-state')).toHaveCount(0);
+  await expect(chip.locator('.app-toolbar__conn-name')).toHaveCount(0);
   // The gallery is a browser E2E instance, never a supervised desktop
-  // sidecar; pin the absence of HeaderActions' only remaining optional text.
+  // sidecar — and a sidecar's "App only" is news, so it would have kept the
+  // full chip. Pinning its absence is also the premise for the compact form.
   await expect(chip.getByTestId('desktop-sidecar-indicator')).toHaveCount(0);
 }
 
@@ -1152,12 +1167,20 @@ function overlayDockProjectMismatchHooks(): Pick<
           page.locator('.chat-dock-inbox__item').first(),
         ).toContainText('Mismatch demo chat', { timeout: 10_000 });
         // The active session (project-b) renders first with no binding
-        // bound yet — badge reads "No project" (archive#4525: the badge no
-        // longer follows the active session at all). Binding to Project A
-        // through the real picker interaction is what produces the
-        // mismatch, exactly as a user reaching this state would.
+        // bound yet (archive#4525: the badge no longer follows the active
+        // session at all). Binding to Project A through the real picker
+        // interaction is what produces the mismatch, exactly as a user
+        // reaching this state would.
+        //
+        // #1552 D3 dropped the visible "No project" label — the unbound chip is
+        // the folder glyph alone, named for what pressing it does — so the
+        // unbound state is the accessible NAME now, and the empty text is
+        // asserted beside it so this cannot pass on a chip that renders nothing.
         const badge = page.locator('.chat-dock__project-badge');
-        await expect(badge).toHaveText('No project', { timeout: 10_000 });
+        await expect(badge).toHaveAttribute('aria-label', 'Choose a project', {
+          timeout: 10_000,
+        });
+        await expect(badge).toHaveText('');
         await badge.click();
         await expect(
           page.getByRole('dialog', { name: 'Switch project' }),
@@ -1723,22 +1746,38 @@ const SCREENS: Screen[] = [
   // deterministic trigger (never the transient home-route redirect race —
   // see `newProjectOverlay`'s doc comment) so its shot is reproducible.
   {
-    name: 'overlay-dock-picker',
-    title: 'Overlay — Dock occupant picker menu',
+    // Renamed from `overlay-dock-picker` (#1541): the overlay it captured —
+    // the dock's own occupant picker — was deleted with the rest of the
+    // surface-owned docking path in #928 C2b, so the screen could not
+    // capture at all. Its successor is the header's Layout picker, which is
+    // where placement is chosen now; the baseline entry was renamed with it
+    // rather than left pointing at a shot nothing can reproduce.
+    name: 'overlay-layout-picker',
+    title: 'Overlay — Layout regions placement picker',
     path: '/?dock=open',
     viewport: DESKTOP,
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
-      // DockOccupantPicker's trigger names the current occupant
-      // ("Docked pane: Chat") — archive#4484 made DockShell own the chrome
-      // for every occupant, so this is present whenever the dock is open
-      // and not placed fullscreen (`?dock=open` is neither).
-      const trigger = page.getByRole('button', { name: /^Docked pane:/ });
+      // #1552 D2: one folded control in the toolbar opens a `role="group"`
+      // panel of per-surface `radiogroup` rows — a segmented choice over the
+      // regions each surface declares plus `Hidden` — replacing the list of
+      // placement VERBS the dock header used to carry.
+      const trigger = page.getByRole('button', {
+        name: 'Layout regions',
+        exact: true,
+      });
       await trigger.waitFor({ timeout: 10_000 });
       await trigger.click();
-      await expect(page.locator('.dock-occupant-menu')).toBeVisible({
-        timeout: 10_000,
-      });
+      const picker = page.getByRole('group', { name: 'Layout regions' });
+      await expect(picker).toBeVisible({ timeout: 10_000 });
+      // Rows, not just the panel: an empty panel would still be "visible"
+      // and would capture a shot of nothing.
+      await expect(
+        picker.getByRole('radiogroup', { name: 'Chat placement' }),
+      ).toBeVisible();
+      await expect(
+        picker.getByRole('radiogroup', { name: 'Activity placement' }),
+      ).toBeVisible();
     },
   },
   {
@@ -2006,9 +2045,10 @@ const SCREENS: Screen[] = [
     viewport: MOBILE,
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
-      // archive#793: always rendered (bound project or not — "No project"
-      // is a valid, always-reachable switcher state), so this needs no
-      // project/session seeding to be deterministic.
+      // archive#793: always rendered (bound project or not — unbound is a
+      // valid, always-reachable switcher state), so this needs no
+      // project/session seeding to be deterministic. This screen is the MOBILE
+      // header's own trigger, which #1552 D3 did not touch.
       const trigger = page.getByRole('button', { name: /^Switch project/ });
       await trigger.waitFor({ timeout: 10_000 });
       await trigger.click();
@@ -2041,8 +2081,12 @@ const SCREENS: Screen[] = [
         // exercises the exact fixed code path
         // (`ChatDock.handleSwitchProject` -> `chrome.setActiveProjectSlug`),
         // not a hand-written substitute for its effect.
+        // #1552 D3: unbound is the chip's accessible name, not its text.
         const badge = page.locator('.chat-dock__project-badge');
-        await expect(badge).toHaveText('No project', { timeout: 10_000 });
+        await expect(badge).toHaveAttribute('aria-label', 'Choose a project', {
+          timeout: 10_000,
+        });
+        await expect(badge).toHaveText('');
         await badge.click();
         await expect(
           page.getByRole('dialog', { name: 'Switch project' }),
@@ -2083,7 +2127,9 @@ const SCREENS: Screen[] = [
         // archive#4524: the row's action is "Switch to <project>" (rebinds
         // the dock, no chat creation) — not the retired "Continue in
         // <project>" (which always opened the New Chat modal).
-        const trigger = page.getByRole('button', { name: 'No project' });
+        // #1552 D3: the unbound chip is named for its action, not for the
+        // absence it used to print.
+        const trigger = page.getByRole('button', { name: 'Choose a project' });
         await trigger.waitFor({ timeout: 10_000 });
         await trigger.click();
         await expect(
@@ -2502,49 +2548,65 @@ test('build gallery — capture key screens', async ({ page }) => {
         if (screen.beforeGoto) {
           await screen.beforeGoto(page);
         }
-        await page.goto(screen.path, { waitUntil: 'domcontentloaded' });
-        // Wait past the "Warming up" splash for the real app shell.
-        await page.waitForFunction(
-          () =>
-            !!document.querySelector('.app') &&
-            !document.body.textContent?.includes('Warming up'),
-          undefined,
-          { timeout: 20_000 },
-        );
-        if (screen.waitFor) {
-          await page.waitForSelector(screen.waitFor, { timeout: 10_000 });
-        }
-        // Let async panels settle so the shot reflects loaded data.
-        await page.waitForTimeout(1200);
-        // archive#4464: a web-font swap (FOUT/FOIT) landing mid-shot is a
-        // well-known source of exactly the kind of tiny, isolated
-        // text/border-edge pixel noise this feature's own
-        // two-consecutive-runs acceptance check was still catching after
-        // every other identified source was fixed — one capture can race the
-        // fallback-to-real-font swap and the next can miss it entirely.
-        await page.evaluate(() => document.fonts.ready);
-        if (!screen.expectSkeleton) {
-          await assertNoLoadingSkeleton(page);
-        }
-        if (screen.afterGoto) {
-          await screen.afterGoto(page);
-        }
-        // The identity-mismatch tile deliberately overrides the global healthy
-        // handshake and waits for its own deterministic blocked state. Every
-        // other screen must prove the gallery-wide route has reached the fixed
-        // healthy posture before capture rather than racing the opening probe.
-        if (screen.name !== 'overlay-connection-banner') {
-          await assertGalleryConnectionChrome(page);
-        }
-        await hideVolatileChrome(page);
-        await page.screenshot({
-          path: join(GALLERY_DIR, file),
-          fullPage: true,
-          // archive#4464: freeze CSS animations/transitions at their end state
-          // instead of racing them — `reducedMotion` above only sets the OS
-          // media-query preference, it does not itself stop an in-flight
-          // transition from being mid-frame at capture time.
-          animations: 'disabled',
+        // #1650: the ORDER of everything below lives in
+        // `runScreenshotCaptureSequence` so it is a unit a test can execute —
+        // a passing gallery run compares pixels and can never report a step
+        // having moved to the wrong side of another one. Each step's own
+        // reason stays here, next to the mechanic it performs. The web-font
+        // settle is the one step that module performs itself, against the page
+        // passed here, so the STEP MAP cannot wire in a settle that reads
+        // nothing. That the object passed here is the real page is checked by
+        // `typecheck:e2e` (the structural assignment on this line) and by
+        // reading the diff, like the other six steps.
+        await runScreenshotCaptureSequence(page, {
+          reachScreen: async () => {
+            await page.goto(screen.path, { waitUntil: 'domcontentloaded' });
+            // Wait past the "Warming up" splash for the real app shell.
+            await page.waitForFunction(
+              () =>
+                !!document.querySelector('.app') &&
+                !document.body.textContent?.includes('Warming up'),
+              undefined,
+              { timeout: 20_000 },
+            );
+            if (screen.waitFor) {
+              await page.waitForSelector(screen.waitFor, { timeout: 10_000 });
+            }
+            // Let async panels settle so the shot reflects loaded data.
+            await page.waitForTimeout(1200);
+          },
+          assertNoLoadingSkeleton: screen.expectSkeleton
+            ? null
+            : () => assertNoLoadingSkeleton(page),
+          // Called as a method on `screen`, not as a bare extracted function:
+          // no declared hook uses `this` today, and this keeps that from being
+          // a precondition of the refactor rather than a property of the file.
+          afterGoto: screen.afterGoto
+            ? async () => {
+                await screen.afterGoto?.(page);
+              }
+            : null,
+          // The identity-mismatch tile deliberately overrides the global
+          // healthy handshake and waits for its own deterministic blocked
+          // state. Every other screen must prove the gallery-wide route has
+          // reached the fixed healthy posture before capture rather than
+          // racing the opening probe.
+          assertConnectionChrome:
+            screen.name === 'overlay-connection-banner'
+              ? null
+              : () => assertGalleryConnectionChrome(page),
+          hideVolatileChrome: () => hideVolatileChrome(page),
+          screenshot: async () => {
+            await page.screenshot({
+              path: join(GALLERY_DIR, file),
+              fullPage: true,
+              // archive#4464: freeze CSS animations/transitions at their end
+              // state instead of racing them — `reducedMotion` above only sets
+              // the OS media-query preference, it does not itself stop an
+              // in-flight transition from being mid-frame at capture time.
+              animations: 'disabled',
+            });
+          },
         });
         shots.push({ screen, file, ok: true });
       } catch (error) {

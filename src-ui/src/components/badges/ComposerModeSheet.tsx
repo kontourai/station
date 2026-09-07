@@ -75,6 +75,7 @@ export function ComposerModeSheet({
 
   return (
     <ResponsiveDialogSurface
+      layer="popover"
       ariaLabel="Approval mode"
       onClose={onClose}
       historyMode="entry"

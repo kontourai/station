@@ -64,6 +64,10 @@ export function SessionModelPicker({
   );
   const [capabilityFilters, setCapabilityFilters] = useState<string[]>([]);
   const preferences = useModelPickerPreferences();
+  const favoriteKeys = useMemo(
+    () => new Set(preferences.favorites),
+    [preferences.favorites],
+  );
   const searchRef = useRef<HTMLInputElement>(null);
   const activeModel = currentModel || defaultModel;
   const selectedModel =
@@ -110,11 +114,19 @@ export function SessionModelPicker({
   );
   const visibleModels = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const preferenceKey = (model: SelectableModel) =>
-      modelPreferenceKey(
-        model.providerId ?? currentProviderId ?? 'current',
-        model.id,
-      );
+    const preferenceKeys = new Map(
+      models.map((model) => [
+        model,
+        modelPreferenceKey(
+          model.providerId ?? currentProviderId ?? 'current',
+          model.id,
+        ),
+      ]),
+    );
+    const hiddenKeys = new Set(preferences.hidden);
+    const selectedFilters = capabilityFilters.map((id) =>
+      filters.find((filter) => filter.id === id),
+    );
     const orderIndex = new Map(
       preferences.order.map((key, index) => [key, index]),
     );
@@ -122,19 +134,17 @@ export function SessionModelPicker({
       preferences.recents.map((key, index) => [key, index]),
     );
     return models
-      .filter((model) => !preferences.hidden.includes(preferenceKey(model)))
+      .filter((model) => !hiddenKeys.has(preferenceKeys.get(model)!))
       .filter(
         (model) =>
           needle.length > 0 ||
           providerFilter === 'all' ||
           (providerFilter === 'favorites'
-            ? preferences.favorites.includes(preferenceKey(model))
+            ? favoriteKeys.has(preferenceKeys.get(model)!)
             : model.providerId === providerFilter),
       )
       .filter((model) =>
-        capabilityFilters.every((id) =>
-          filters.find((filter) => filter.id === id)?.matches(model),
-        ),
+        selectedFilters.every((filter) => filter?.matches(model)),
       )
       .filter(
         (model) =>
@@ -144,8 +154,8 @@ export function SessionModelPicker({
           model.providerName?.toLowerCase().includes(needle),
       )
       .sort((a, b) => {
-        const aKey = preferenceKey(a);
-        const bKey = preferenceKey(b);
+        const aKey = preferenceKeys.get(a)!;
+        const bKey = preferenceKeys.get(b)!;
         const aOrder = orderIndex.get(aKey);
         const bOrder = orderIndex.get(bKey);
         if (aOrder !== undefined || bOrder !== undefined) {
@@ -169,7 +179,7 @@ export function SessionModelPicker({
     capabilityFilters,
     filters,
     models,
-    preferences.favorites,
+    favoriteKeys,
     preferences.hidden,
     preferences.order,
     preferences.recents,
@@ -226,7 +236,7 @@ export function SessionModelPicker({
       (!currentProviderId ||
         !model.providerId ||
         model.providerId === currentProviderId);
-    const favorite = preferences.favorites.includes(key);
+    const favorite = favoriteKeys.has(key);
     const favoriteTarget = model.providerName
       ? `${model.name} (${model.providerName})`
       : model.name;

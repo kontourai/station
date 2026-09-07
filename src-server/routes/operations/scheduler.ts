@@ -15,6 +15,7 @@ import type {
   SchedulerManualRunResult,
   SchedulerService,
 } from '../../services/scheduling/scheduler-service.js';
+import { SchedulerScheduleInvalidError } from '../../services/scheduling/scheduler-service.js';
 import { schedulerJobRuns } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -176,7 +177,14 @@ export function createSchedulerRoutes(
       if (!cron)
         return c.json({ success: false, error: 'cron is required' }, 400);
       const count = parseInt(c.req.query('count') || '5', 10);
-      const data = await schedulerService.previewSchedule(cron, count);
+      // #1536 D1: the zone travels with the expression or the projection is
+      // wrong for every zoned schedule.
+      const timezone = c.req.query('timezone') || undefined;
+      const data = await schedulerService.previewSchedule(
+        cron,
+        count,
+        timezone,
+      );
       return c.json({ success: true, data });
     } catch (error: unknown) {
       logger.error('Failed to preview schedule', { error });
@@ -384,7 +392,11 @@ export function createSchedulerRoutes(
   return app;
 }
 
-function schedulerErrorStatus(error: unknown): 409 | 500 | 503 {
+function schedulerErrorStatus(error: unknown): 400 | 409 | 500 | 503 {
+  // #1536 R3: a schedule the projector cannot evaluate is the CALLER's, so it
+  // is a 400 carrying `validateSchedule`'s own message — not a 500 that reads
+  // as a server fault for an operator's typo in a zone name.
+  if (error instanceof SchedulerScheduleInvalidError) return 400;
   if (error instanceof SchedulerJobConflictError) return 409;
   return error instanceof SchedulerStorageUnavailableError ? 503 : 500;
 }

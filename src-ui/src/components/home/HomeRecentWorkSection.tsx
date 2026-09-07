@@ -18,7 +18,6 @@ import { LazyBoundary } from '../LazyBoundary';
 import { Empty, ErrorState, SkeletonList } from '../state';
 import { renderHomeWorkRow } from './HomeWorkRow';
 
-const OPEN_NEW_CHAT_EVENT = 'station:open-new-chat';
 const SETTLED_PAGE_SIZE = 5;
 const loadSnoozeMenu = () => import('./SnoozeMenu');
 
@@ -270,20 +269,18 @@ function RecentWorkError({ onViewActivity }: { onViewActivity: () => void }) {
   );
 }
 
+/**
+ * #1536 C2: Home offered three ways to start a chat with no session — the
+ * "Start direct chat" action card, this button, and the dock's own "Start a
+ * chat". The card and the dock control both stay; this states the fact and
+ * points at the card rather than being a third door to the same room.
+ */
 function RecentWorkEmpty() {
   return (
     <Empty
       variant="prominent"
       label="Ready for your first direct chat"
-      description="Start a chat here, or open a local project to create a durable Task."
-      action={
-        <button
-          type="button"
-          onClick={() => window.dispatchEvent(new Event(OPEN_NEW_CHAT_EVENT))}
-        >
-          Start your first chat
-        </button>
-      }
+      description="Use Start direct chat above, or open a local project to create a durable Task."
     />
   );
 }

@@ -818,6 +818,14 @@ export class FlowPolicySidecar {
       const pending = this.pendingCommandSpools.get(key);
       if (!pending) return;
       this.pendingCommandSpools.delete(key);
+      // station#1558: an `unresolved` completion reports that no outcome will
+      // ever arrive for this call. There is no observed command result to
+      // spool, and `SpooledCommand.status` has no member for "unknown" —
+      // `commandOutcomePassed` reads any non-`success` status with a null
+      // exit code as a FAILING claim, so spooling it would attach a gate
+      // verdict nothing observed. Drop it instead; the transcript still
+      // carries the unresolved row.
+      if (event.status === 'unresolved') return;
 
       const output =
         event.status === 'error'

@@ -32,6 +32,10 @@ jobs:
           lease-weight: "9"
           timeout-seconds: "600"
           owner-lifetime-seconds: "7800"
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - run: npm run dependencies:ci
       - name: Run complete serialized Windows Vitest diagnostic
         run: npm run test:windows:diagnostic

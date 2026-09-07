@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -15,6 +16,7 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { productLawObservationTimeoutMs } from '../lib/product-laws.mjs';
 import {
+  digestVerificationDependencies,
   machineConditions,
   resolveVerificationToolchain,
 } from '../lib/test-reliability.mjs';
@@ -996,6 +998,128 @@ describe('run-verification CLI end-to-end preflight (station#4109)', () => {
     } finally {
       process.chdir(originalCwd);
       rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('pnpm dependency authority', () => {
+  function fixture(root: string) {
+    writeJson(join(root, 'package.json'), {
+      packageManager: 'pnpm@11.25.0',
+      workspaces: ['packages/widget'],
+      dependencies: { shared: '1.0.0' },
+    });
+    mkdirSync(join(root, 'packages/widget'), { recursive: true });
+    writeJson(join(root, 'packages/widget/package.json'), {
+      name: 'widget',
+      dependencies: { shared: '2.0.0' },
+    });
+    writeFileSync(
+      join(root, 'pnpm-workspace.yaml'),
+      'packages: [packages/widget]\nnodeLinker: hoisted\npackageImportMethod: clone-or-copy\n',
+    );
+    writeFileSync(
+      join(root, 'pnpm-lock.yaml'),
+      JSON.stringify({
+        lockfileVersion: '9.0',
+        packages: {},
+        importers: {
+          '.': {
+            dependencies: { shared: { specifier: '1.0.0', version: '1.0.0' } },
+          },
+          'packages/widget': {
+            dependencies: {
+              shared: { specifier: '2.0.0', version: '2.0.0(peer@1.0.0)' },
+            },
+          },
+        },
+      }),
+    );
+    writeInstalledPackage(root, 'shared', '1.0.0');
+    writeInstalledPackage(root, 'shared', '2.0.0', 'packages/widget');
+  }
+
+  it('compares each importer against its own installed version, including peer suffixes and hoisting', () => {
+    const temp = tempRoot('station-pnpm-preflight-');
+    try {
+      fixture(temp.root);
+      expect(
+        findStaleInstalledDependencies({ repositoryRoot: temp.root })
+          .mismatches,
+      ).toEqual([]);
+      writeInstalledPackage(temp.root, 'shared', '1.0.0', 'packages/widget');
+      expect(
+        findStaleInstalledDependencies({ repositoryRoot: temp.root })
+          .mismatches,
+      ).toEqual([
+        {
+          name: 'shared',
+          relDir: 'packages/widget',
+          installed: '1.0.0',
+          locked: '2.0.0',
+        },
+      ]);
+      removeInstalledPackage(temp.root, 'shared', 'packages/widget');
+      expect(
+        findStaleInstalledDependencies({ repositoryRoot: temp.root })
+          .mismatches,
+      ).toHaveLength(1);
+    } finally {
+      temp.remove();
+    }
+  });
+
+  it('refuses missing, malformed, and incomplete pnpm locks even when an npm lock remains', () => {
+    const temp = tempRoot('station-pnpm-preflight-');
+    try {
+      fixture(temp.root);
+      writeJson(join(temp.root, 'package-lock.json'), { packages: {} });
+      for (const value of [
+        null,
+        'bad: [',
+        JSON.stringify({
+          lockfileVersion: '9.0',
+          packages: {},
+          importers: { '.': {} },
+        }),
+      ]) {
+        if (value === null) rmSync(join(temp.root, 'pnpm-lock.yaml'));
+        else writeFileSync(join(temp.root, 'pnpm-lock.yaml'), value);
+        expect(() =>
+          assertInstalledDependenciesMatchLockfile({
+            repositoryRoot: temp.root,
+          }),
+        ).toThrow('pnpm-lock.yaml unreadable/unsupported shape');
+      }
+    } finally {
+      temp.remove();
+    }
+  });
+
+  it('binds lock, workspace configuration, and patch contents into receipt identity', () => {
+    const temp = tempRoot('station-pnpm-preflight-');
+    try {
+      fixture(temp.root);
+      const initial = digestVerificationDependencies(temp.root);
+      writeFileSync(
+        join(temp.root, 'pnpm-workspace.yaml'),
+        'packages: [packages/widget]\nnodeLinker: hoisted\npackageImportMethod: copy\n',
+      );
+      const changedConfig = digestVerificationDependencies(temp.root);
+      expect(changedConfig).not.toBe(initial);
+      mkdirSync(join(temp.root, 'patches'));
+      writeFileSync(join(temp.root, 'patches/native.patch'), 'patch one');
+      const patchOne = digestVerificationDependencies(temp.root);
+      expect(patchOne).not.toBe(changedConfig);
+      writeFileSync(join(temp.root, 'patches/native.patch'), 'patch two');
+      expect(digestVerificationDependencies(temp.root)).not.toBe(patchOne);
+      expect(initial).not.toBe(
+        createHash('sha256')
+          .update(readFileSync(join(temp.root, 'pnpm-lock.yaml')))
+          .digest('hex'),
+      );
+    } finally {
+      temp.remove();
     }
   });
 });

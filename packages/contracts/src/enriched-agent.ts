@@ -41,7 +41,10 @@ export interface EnrichedAgentProjection {
   toolsConfig?: Partial<AgentTools>;
   execution?: AgentExecutionConfig;
   delegation?: AgentDelegationPolicy;
-  /** Built-in and Agent-configured denials, derived from the enforcement catalog. */
+  /**
+   * Built-in and Agent-configured delegated-child denials. Detail reads only;
+   * catalog rows omit this verbose policy explanation.
+   */
   deniedCommandCatalog?: DelegationDeniedCommandCatalog;
   skills?: string[];
   workflowWarnings?: string[];

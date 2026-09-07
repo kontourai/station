@@ -46,6 +46,15 @@ type Toast = {
   // exact shape next, not invent a second one.
   type?: ToastTone | 'tool-approval' | 'tool-activity' | 'pairing-request';
   toolName?: string;
+  /**
+   * #1545: a bounded, single-line, redacted preview naming which command, or
+   * which file, the tool call will touch — derived by
+   * `@kontourai/station-shared/tool-request-preview`, never composed here. The
+   * tool name alone cannot tell an operator whether they are approving
+   * `git status` or `rm -rf /`. It is not the whole call: for a write it names
+   * the file and never the content (see that module's docblock).
+   */
+  toolPreview?: string;
   agentName?: string;
   conversationTitle?: string;
   actions?: ToastAction[];
@@ -170,6 +179,8 @@ class ToastStore {
   showToolApproval(options: {
     sessionId: string;
     toolName: string;
+    /** See `Toast.toolPreview`. */
+    toolPreview?: string;
     server?: string;
     tool?: string;
     agentName: string;
@@ -193,6 +204,7 @@ class ToastStore {
       sessionId: options.sessionId,
       type: 'tool-approval',
       toolName: toolDisplay,
+      ...(options.toolPreview ? { toolPreview: options.toolPreview } : {}),
       agentName: options.agentName,
       conversationTitle: conversationInfo,
       actions: options.actions,
@@ -219,7 +231,7 @@ class ToastStore {
     agentName: string;
     conversationTitle?: string;
     detail?: string;
-    status: 'completed' | 'cancelled' | 'error';
+    status: 'completed' | 'cancelled' | 'error' | 'unresolved';
     onNavigate?: () => void;
     duration?: number;
   }) {
@@ -229,7 +241,13 @@ class ToastStore {
         ? 'failed'
         : options.status === 'cancelled'
           ? 'cancelled'
-          : 'finished';
+          : // station#1558: the session ended with this call still open, so
+            // there is no outcome to name. "reported no result for" says
+            // exactly what happened — it does not claim the tool failed, and
+            // it does not claim it finished.
+            options.status === 'unresolved'
+            ? 'reported no result for'
+            : 'finished';
 
     const toast: Toast = {
       id,
@@ -244,7 +262,7 @@ class ToastStore {
         options.duration ??
         (options.status === 'error'
           ? 9000
-          : options.status === 'cancelled'
+          : options.status === 'cancelled' || options.status === 'unresolved'
             ? 7000
             : 6000),
       metadata: options.detail ? { detail: options.detail } : undefined,
@@ -328,6 +346,8 @@ const ToastContext = createContext<{
   showToolApproval: (options: {
     sessionId: string;
     toolName: string;
+    /** See `Toast.toolPreview`. */
+    toolPreview?: string;
     server?: string;
     tool?: string;
     agentName: string;
@@ -341,7 +361,7 @@ const ToastContext = createContext<{
     agentName: string;
     conversationTitle?: string;
     detail?: string;
-    status: 'completed' | 'cancelled' | 'error';
+    status: 'completed' | 'cancelled' | 'error' | 'unresolved';
     onNavigate?: () => void;
     duration?: number;
   }) => string;
@@ -395,7 +415,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       agentName: string;
       conversationTitle?: string;
       detail?: string;
-      status: 'completed' | 'cancelled' | 'error';
+      status: 'completed' | 'cancelled' | 'error' | 'unresolved';
       onNavigate?: () => void;
       duration?: number;
     }) => {

@@ -37,7 +37,7 @@ import { useSessionEventStream } from '../hooks/orchestration/useSessionEventStr
 import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
 import { resolveClientOriginActor } from '../utils/clientOrigin';
 import { elidedHistoryNoticeText } from '../utils/elidedHistory';
-import { modelDisplayLabel } from '../utils/modelCapabilities';
+import { modelIdentityLabel } from '../utils/modelCapabilities';
 import { relativeTimeAgo } from '../utils/relativeTime';
 import {
   activeTurnProgress,
@@ -190,7 +190,10 @@ function sessionMemberStatusLine(
       <span className="session-member-status__identity">
         <StatusGlyph state={state} />
         <span>
-          {agent.name} · {modelDisplayLabel(model)}
+          {/* #1536 review M5: a row naming what a session RUNS takes the
+              shared identity rule, so an unresolved engine default reads
+              "Default" here and not the catalog's "Default (recommended)". */}
+          {agent.name} · {modelIdentityLabel(model)}
         </span>
       </span>
       {turnProgress?.lastProgressEventAt && (

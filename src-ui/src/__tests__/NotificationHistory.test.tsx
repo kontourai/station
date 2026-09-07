@@ -5,7 +5,13 @@
 import type { AttentionProjection } from '@kontourai/station-contracts/attention';
 import type { Notification } from '@kontourai/station-contracts/notification';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  createEvent,
+  fireEvent,
+  render,
+  screen,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const dismiss = vi.fn();
@@ -308,6 +314,71 @@ describe('NotificationHistory', () => {
  * `AttentionSection` uses, which forces a `"5 of 9"` pair the moment the
  * rendered rows stop being the whole pending set.
  */
+/**
+ * B3: this panel shares `useMenuFocus` with the shell's real menus, and that
+ * hook's roving-focus effect swallows Arrow/Home/End with `preventDefault`. This
+ * container is NOT a menu — it is a scrolling list of headings and per-card
+ * Allow/Deny buttons — so applying menu keys to it killed keyboard scrolling
+ * outright and made focus wrap between two destructive actions. The hook gates
+ * that effect on the container's own `role`, and this is the side of the gate
+ * the shell's menus cannot prove.
+ */
+describe('NotificationHistory keeps the Arrow keys it never asked for', () => {
+  function renderPanelWithTwoActions() {
+    notifications = [
+      {
+        id: 'notif-1',
+        source: 'approval-inbox',
+        category: 'approval-request',
+        title: 'Approval needed',
+        body: 'Workspace Agent wants to use fs.read.',
+        priority: 'high',
+        status: 'delivered',
+        actions: [
+          { id: 'allow', label: 'Allow' },
+          { id: 'decline', label: 'Deny', variant: 'danger' },
+        ],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ];
+    render(
+      <NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />,
+    );
+    return document.querySelector('.notification-history') as HTMLElement;
+  }
+
+  test('declares no menu role, so the panel is not a menu to navigate', () => {
+    // The premise for everything below, and the fact the hook keys on.
+    expect(renderPanelWithTwoActions().getAttribute('role')).toBeNull();
+  });
+
+  test('ArrowDown is not prevented, so the list can still be scrolled', () => {
+    const panel = renderPanelWithTwoActions();
+
+    for (const key of ['ArrowDown', 'ArrowUp', 'Home', 'End']) {
+      const event = createEvent.keyDown(panel, { key });
+      fireEvent(panel, event);
+      expect(
+        event.defaultPrevented,
+        `"${key}" belongs to the scroll container, not to a menu`,
+      ).toBe(false);
+    }
+  });
+
+  test('ArrowDown moves no focus, so it cannot wrap between Allow and Deny', () => {
+    const panel = renderPanelWithTwoActions();
+    const allow = screen.getByRole('button', { name: 'Allow' });
+    allow.focus();
+    expect(document.activeElement).toBe(allow);
+
+    fireEvent.keyDown(panel, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(allow);
+    fireEvent.keyDown(panel, { key: 'End' });
+    expect(document.activeElement).toBe(allow);
+  });
+});
+
 describe('NotificationHistory attention section agrees with the badge', () => {
   const stamp = '2026-08-18T09:00:00.000Z';
 

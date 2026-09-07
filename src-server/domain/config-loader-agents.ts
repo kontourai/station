@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, renameSync } from 'node:fs';
+import { existsSync, lstatSync, renameSync } from 'node:fs';
 import { mkdir, open, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import type {
@@ -23,6 +23,11 @@ import {
   registryEngineConnectionForDefaultSync,
   withoutReservedStationBinding,
 } from './agent-registry.js';
+import { readRegularFileNoFollow } from './home-schema-gate.js';
+import {
+  PLUGIN_AGENT_OWNER_FILE,
+  pluginAgentOwner,
+} from './plugin-agent-ownership.js';
 import { validator } from './validator.js';
 
 const logger = createLogger({ name: 'config-loader' });
@@ -185,11 +190,91 @@ export async function loadAgentConfig(
     }
     throw error;
   }
+  return parseAgentConfigContent(content, slug);
+}
+
+function parseAgentConfigContent(content: string, slug: string): AgentSpec {
   const data = JSON.parse(content);
   dropRetiredToolAliases(slug, data);
   validator.validateAgentSpec(data, slug);
   assertSafeAgentSpec(slug, data);
   return data;
+}
+
+export class PluginAgentInvocationUnavailableError extends Error {
+  readonly code = 'plugin_agent_invocation_unavailable';
+
+  constructor() {
+    super(
+      'The exact plugin-owned Agent is unavailable or changed before invocation.',
+    );
+  }
+}
+
+/**
+ * Snapshot the canonical authored spec under its existing identity owner.
+ * All callers release before awaiting an invoked provider: the identity lock
+ * protects synchronous admission/publication, never a network operation.
+ */
+export async function capturePluginAgentInvocation(
+  projectHomeDir: string,
+  slug: string,
+  pluginName: string,
+) {
+  const cleanId = agentId(slug);
+  const agentsDir = join(projectHomeDir, 'agents');
+  const directory = join(agentsDir, cleanId);
+  const specPath = join(directory, 'agent.json');
+  const readOwnedBytes = () => {
+    try {
+      for (const path of [agentsDir, directory]) {
+        const stat = lstatSync(path);
+        if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error();
+      }
+      const specStat = lstatSync(specPath);
+      const ownerStat = lstatSync(join(directory, PLUGIN_AGENT_OWNER_FILE));
+      if (
+        !specStat.isFile() ||
+        specStat.isSymbolicLink() ||
+        specStat.size > 256 * 1024 ||
+        !ownerStat.isFile() ||
+        ownerStat.isSymbolicLink() ||
+        ownerStat.size > 1024 ||
+        pluginAgentOwner(directory, 1024) !== pluginName
+      )
+        throw new Error();
+      return readRegularFileNoFollow(projectHomeDir, specPath, {
+        maxBytes: 256 * 1024,
+      });
+    } catch {
+      throw new PluginAgentInvocationUnavailableError();
+    }
+  };
+  const release = await acquireAgentIdentityMutationLockAtHome(projectHomeDir);
+  let original: string;
+  let spec: AgentSpec;
+  try {
+    original = readOwnedBytes();
+    spec = parseAgentConfigContent(original, cleanId);
+  } finally {
+    await release();
+  }
+  return Object.freeze({
+    agentId: cleanId,
+    read: () => structuredClone(spec),
+    async invokeIfCurrent<R>(operation: () => R): Promise<R> {
+      const releaseCurrent =
+        await acquireAgentIdentityMutationLockAtHome(projectHomeDir);
+      try {
+        if (readOwnedBytes() !== original)
+          throw new PluginAgentInvocationUnavailableError();
+        // No await between the exact owner/spec check and invocation.
+        return operation();
+      } finally {
+        await releaseCurrent();
+      }
+    },
+  });
 }
 
 /**

@@ -8,7 +8,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { _getApiBase } from '../api';
 import {
   appendProjectTaskRoomHumanMessage,
@@ -17,6 +17,7 @@ import {
   fetchProjectTaskRoomDocument,
   fetchProjectTaskRoomHistory,
   type ProjectTaskRoomLiveCommand,
+  ProjectTaskRoomProtocolError,
   parseAuthoritativeProjectTaskRoomDocumentEvent,
   parseProjectTaskRoomDocumentResponse,
   planProjectTaskRoomEdit,
@@ -53,6 +54,18 @@ type ProjectTaskRoomDocumentSnapshot = Extract<
   import('../client/project-task-rooms').ProjectTaskRoomDocument,
   { readonly kind: 'snapshot' | 'delta' }
 >;
+
+function notifyProjectTaskRoomCallback(callback: (() => void) | undefined) {
+  try {
+    callback?.();
+  } catch {
+    // One host observer cannot turn an authenticated frame into transport loss.
+  }
+}
+
+function immutableAuthoritativeDocument<T extends object>(document: T): T {
+  return Object.freeze({ ...document }) as T;
+}
 
 /** The small cache seam the settled-edit authority decision needs. */
 export interface ProjectTaskRoomDocumentCache {
@@ -208,7 +221,12 @@ export async function refetchAuthoritativeProjectTaskRoomDocument(
   taskId: string,
 ) {
   const queryKey = projectTaskRoomQueries.document(taskId).queryKey;
+  const observed = client.getQueryData(queryKey);
   await cancelProjectTaskRoomDocumentQuery(client, taskId);
+  const current = client.getQueryData(queryKey);
+  // A newer accepted stream document can arrive during cancellation. It is
+  // already authoritative; do not start an older recovery after its fence.
+  if (current !== observed && isDocumentSnapshot(current)) return current;
   return client.fetchQuery({
     queryKey,
     staleTime: 0,
@@ -225,6 +243,8 @@ export function useProjectTaskRoomStream(
   callbacks?: {
     onRoom?(value: ProjectTaskRoomBrowserLiveSnapshot): void;
     onDocument?(value: unknown): void;
+    /** Parsed ordered document suitable for immediate host-owned application. */
+    onAuthoritativeDocument?(value: ProjectTaskRoomDocumentSnapshot): void;
     onTerminal?(): void;
     onCheckpoint?(id: string): void;
     onConnectionCreated?(id: string): void;
@@ -233,11 +253,27 @@ export function useProjectTaskRoomStream(
   connectionGeneration = 0,
 ) {
   const client = useQueryClient();
+  const streamKey = `${taskId}\u0000${connectionGeneration}`;
   const callbackRef = useRef(callbacks);
+  const streamIdentityRef = useRef({
+    key: streamKey,
+    generation: 1,
+  });
   const connectionRef = useRef<
     ReturnType<typeof subscribeProjectTaskRoomEvents> | undefined
   >(undefined);
-  callbackRef.current = callbacks;
+  useLayoutEffect(() => {
+    if (streamIdentityRef.current.key !== streamKey) {
+      streamIdentityRef.current = {
+        key: streamKey,
+        generation: streamIdentityRef.current.generation + 1,
+      };
+      // A restart request after this Task commits but before passive cleanup
+      // must not target the previous Task/generation's connection.
+      connectionRef.current = undefined;
+    }
+    callbackRef.current = callbacks;
+  }, [callbacks, streamKey]);
   useEffect(() => {
     // Hosts may rotate the one stream instance without changing Task identity.
     void connectionGeneration;
@@ -246,22 +282,61 @@ export function useProjectTaskRoomStream(
     let connection:
       | ReturnType<typeof subscribeProjectTaskRoomEvents>
       | undefined;
+    const streamGeneration = streamIdentityRef.current.generation;
+    const isCurrentStream = () =>
+      !closed &&
+      streamIdentityRef.current.key === streamKey &&
+      streamIdentityRef.current.generation === streamGeneration;
+    const notifyCurrent = (callback: (() => void) | undefined) => {
+      if (!isCurrentStream()) return;
+      notifyProjectTaskRoomCallback(callback);
+    };
+    const recoverDocument = (
+      gap: { kind: 'gap'; floor: string } | { kind: 'unavailable' } = {
+        kind: 'unavailable',
+      },
+    ) => {
+      if (!isCurrentStream()) return;
+      // Fetching retains the last successful React Query data. Publish lost
+      // authority before starting recovery so displayed text cannot still
+      // authorize ordinary editing while the no-cache request is pending.
+      client.setQueryData(
+        projectTaskRoomQueries.document(taskId).queryKey,
+        gap,
+      );
+      void refetchAuthoritativeProjectTaskRoomDocument(client, taskId).catch(
+        () => {},
+      );
+    };
     void _getApiBase().then((base) => {
-      if (closed) return;
+      if (!isCurrentStream()) return;
       connection = subscribeProjectTaskRoomEvents(base, taskId, {
-        onCheckpoint: (id) => callbackRef.current?.onCheckpoint?.(id),
+        onError: (error) => {
+          if (
+            !isCurrentStream() ||
+            !(error instanceof ProjectTaskRoomProtocolError)
+          ) {
+            return;
+          }
+          recoverDocument();
+        },
+        onCheckpoint: (id) =>
+          notifyCurrent(() => callbackRef.current?.onCheckpoint?.(id)),
         onEvent: (event) => {
-          if (closed) return;
+          if (!isCurrentStream()) return;
           if (event.kind === 'document') {
-            callbackRef.current?.onDocument?.(event.value);
-            const document = parseAuthoritativeProjectTaskRoomDocumentEvent(
-              event.value,
-            );
-            if (document?.kind === 'gap')
-              void refetchAuthoritativeProjectTaskRoomDocument(
-                client,
-                taskId,
-              ).catch(() => {});
+            const parsedDocument =
+              parseAuthoritativeProjectTaskRoomDocumentEvent(event.value);
+            const document = parsedDocument
+              ? immutableAuthoritativeDocument(parsedDocument)
+              : undefined;
+            notifyCurrent(() => callbackRef.current?.onDocument?.(event.value));
+            if (document?.kind === 'snapshot' || document?.kind === 'delta')
+              notifyCurrent(() =>
+                callbackRef.current?.onAuthoritativeDocument?.(document),
+              );
+            if (!isCurrentStream()) return;
+            if (document?.kind === 'gap') recoverDocument(document);
             else if (
               document?.kind === 'snapshot' ||
               document?.kind === 'delta'
@@ -273,14 +348,11 @@ export function useProjectTaskRoomStream(
                 projectTaskRoomQueries.document(taskId).queryKey,
                 document,
               );
-            } else
-              void client.invalidateQueries({
-                queryKey: projectTaskRoomQueries.document(taskId).queryKey,
-              });
+            } else recoverDocument();
           } else if (event.kind === 'room') {
             const live = parseProjectTaskRoomBrowserLiveSnapshot(event.value);
             if (live?.scope.taskId === taskId)
-              callbackRef.current?.onRoom?.(live);
+              notifyCurrent(() => callbackRef.current?.onRoom?.(live));
             else
               void client.invalidateQueries({
                 queryKey: projectTaskRoomQueries.history(taskId).queryKey,
@@ -288,47 +360,80 @@ export function useProjectTaskRoomStream(
           } else if (event.kind === 'snapshot') {
             const live = parseProjectTaskRoomBrowserLiveSnapshot(event.value);
             if (live?.scope.taskId === taskId)
-              callbackRef.current?.onRoom?.(live);
+              notifyCurrent(() => callbackRef.current?.onRoom?.(live));
+            if (!isCurrentStream()) return;
             let document:
               | ReturnType<typeof parseProjectTaskRoomDocumentResponse>
               | undefined;
             try {
-              document = parseProjectTaskRoomDocumentResponse(
+              const parsedDocument = parseProjectTaskRoomDocumentResponse(
                 event.value && typeof event.value === 'object'
                   ? (event.value as { document?: unknown }).document
                   : undefined,
               );
+              document = parsedDocument
+                ? immutableAuthoritativeDocument(parsedDocument)
+                : undefined;
             } catch {
               // Unknown snapshot document shapes remain a cache invalidation,
               // never an optimistic cache write.
             }
-            if (document) callbackRef.current?.onDocument?.(document);
+            if (document?.kind === 'snapshot' || document?.kind === 'delta')
+              notifyCurrent(() =>
+                callbackRef.current?.onAuthoritativeDocument?.(document),
+              );
+            if (!isCurrentStream()) return;
+            if (document)
+              notifyCurrent(() => callbackRef.current?.onDocument?.(document));
+            if (!isCurrentStream()) return;
             void client.invalidateQueries({
               queryKey: projectTaskRoomQueries.discovery(taskId).queryKey,
             });
             void client.invalidateQueries({
               queryKey: projectTaskRoomQueries.history(taskId).queryKey,
             });
-            if (document?.kind === 'snapshot' || document?.kind === 'delta')
+            if (document?.kind === 'snapshot' || document?.kind === 'delta') {
+              // The ordinary document GET commonly starts before this initial
+              // stream snapshot. Abort its exact query before publishing the
+              // newer stream object, or its late response can regress both
+              // canonical cache and the mounted editor.
+              void cancelProjectTaskRoomDocumentQuery(client, taskId).catch(
+                () => {},
+              );
               client.setQueryData(
                 projectTaskRoomQueries.document(taskId).queryKey,
                 document,
               );
-            else
-              void refetchAuthoritativeProjectTaskRoomDocument(client, taskId);
-          } else callbackRef.current?.onTerminal?.();
+            } else
+              recoverDocument(document?.kind === 'gap' ? document : undefined);
+          } else notifyCurrent(() => callbackRef.current?.onTerminal?.());
         },
       });
+      if (!isCurrentStream()) {
+        connection.close();
+        connection = undefined;
+        return;
+      }
       const connectionId = `${taskId}:${++taskRoomConnectionSequence}`;
+      // Lifecycle closure is owed to the exact observer that received this
+      // connection id. Unlike data events it must still run after the stream
+      // becomes stale, so bind it now rather than dereferencing Task B's
+      // callback or routing it through the current-generation data fence.
+      const lifecycleCallbacks = callbackRef.current;
       let notifiedClosed = false;
       const notifyClosed = () => {
         if (notifiedClosed) return;
         notifiedClosed = true;
-        callbackRef.current?.onConnectionClosed?.(connectionId);
+        notifyProjectTaskRoomCallback(() =>
+          lifecycleCallbacks?.onConnectionClosed?.(connectionId),
+        );
       };
-      callbackRef.current?.onConnectionCreated?.(connectionId);
+      notifyProjectTaskRoomCallback(() =>
+        lifecycleCallbacks?.onConnectionCreated?.(connectionId),
+      );
       void connection.completed.finally(notifyClosed);
-      connectionRef.current = connection;
+      if (isCurrentStream()) connectionRef.current = connection;
+      else connection.close();
     });
     return () => {
       closed = true;
@@ -336,6 +441,6 @@ export function useProjectTaskRoomStream(
       if (connectionRef.current === connection)
         connectionRef.current = undefined;
     };
-  }, [client, connectionGeneration, taskId]);
+  }, [client, connectionGeneration, streamKey, taskId]);
   return useCallback(() => connectionRef.current?.restart(), []);
 }

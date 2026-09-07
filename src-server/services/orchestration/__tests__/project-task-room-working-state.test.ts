@@ -67,6 +67,49 @@ async function finishPublication(
 }
 
 describe('project task room working state', () => {
+  test('acknowledges only the exact persisted lifecycle intent and preserves it across restart', async () => {
+    directory = mkdtempSync(join(tmpdir(), 'station-agent-outbox-'));
+    const path = join(directory, 'orchestration.sqlite');
+    const first = createProjectTaskRoomWorkingState(path);
+    const input = {
+      scope,
+      intentId: 'agent:started:session',
+      value: {
+        taskId: scope.taskId,
+        sessionId: 'session',
+        provider: 'codex',
+        outcome: 'started',
+        dispatchId: 'dispatch',
+        occurredAt: '2026-09-05T00:00:00.000Z',
+        authorizationReceiptId: 'authority',
+      },
+    };
+    try {
+      expect(await first.agentLifecycle(input)).toBe('stored');
+      expect(await first.agentLifecycle(input)).toBe('stored');
+      expect(
+        await first.agentLifecycle({
+          ...input,
+          value: { ...input.value, sessionId: 'wrong-session' },
+        }),
+      ).toBe('unavailable');
+      expect(await first.readAgentLifecycles({ scope })).toEqual([
+        { intentId: input.intentId, value: input.value },
+      ]);
+    } finally {
+      await first.close();
+    }
+    const restarted = createProjectTaskRoomWorkingState(path);
+    try {
+      expect(await restarted.agentLifecycle(input)).toBe('stored');
+      expect(await restarted.readAgentLifecycles({ scope })).toEqual([
+        { intentId: input.intentId, value: input.value },
+      ]);
+    } finally {
+      await restarted.close();
+    }
+  });
+
   test('migrates existing human publication rows explicitly and idempotently', () => {
     directory = mkdtempSync(join(tmpdir(), 'station-room-working-migrate-'));
     const database = new DatabaseSync(join(directory, 'orchestration.sqlite'));

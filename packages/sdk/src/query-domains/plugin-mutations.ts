@@ -1,4 +1,4 @@
-import type { InstallResult } from '@kontourai/station-contracts/catalog';
+import type { PluginInstallResult } from '@kontourai/station-contracts/plugin';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase, addProjectLayoutFromPlugin } from '../api';
 import type { MutationOptions } from '../query-core';
@@ -47,6 +47,12 @@ export interface PluginInstallConsent {
   permissions: string[];
   contentDigest: string;
   dependencies: string[];
+  dependencyApprovals?: Array<{
+    id: string;
+    permissions: string[];
+    contentDigest: string;
+    dependencies: string[];
+  }>;
 }
 
 export function usePluginInstallMutation() {
@@ -60,7 +66,7 @@ export function usePluginInstallMutation() {
       source: string;
       skip?: string[];
       consent: PluginInstallConsent;
-    }) => {
+    }): Promise<PluginInstallResult> => {
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
         `${apiBase}/api/plugins/install`,
@@ -353,7 +359,7 @@ export async function requestPluginRegistryInstallAction(
     /** Preview conflict components to skip, as `type:id` keys. */
     skip?: string[];
   },
-): Promise<InstallResult> {
+): Promise<PluginInstallResult> {
   const apiBase = await _getApiBase();
   const response =
     action === 'install'
@@ -378,13 +384,13 @@ export async function requestPluginRegistryInstallAction(
       apiErrorMessage(result, result.message || `${action} failed`),
     );
   }
-  return result as InstallResult;
+  return result as PluginInstallResult;
 }
 
 export function usePluginRegistryInstallMutation() {
   const queryClient = useQueryClient();
   return useMutation<
-    InstallResult,
+    PluginInstallResult,
     Error,
     {
       id: string;

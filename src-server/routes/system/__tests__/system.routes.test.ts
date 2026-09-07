@@ -29,6 +29,7 @@ const { createConnectionRoutes } = await import(
 const {
   readBuildProvenance,
   reconcileExternalEngineReadiness,
+  resolveExternalEngineReadiness,
   STATUS_PREREQUISITES_CACHE_TTL_MS,
 } = await import('../system-status-routes.js');
 const { buildCliRuntimePrerequisites } = await import(
@@ -127,6 +128,84 @@ async function waitForStatusDiscovery(
 }
 
 describe('System Routes', () => {
+  test('projects a detected ACP registry Engine as not connected, never ready', async () => {
+    const readiness = await resolveExternalEngineReadiness(
+      [],
+      undefined,
+      () => true,
+      undefined,
+      [{ id: 'kiro', name: 'Kiro CLI' }],
+    );
+    expect(readiness).toEqual({
+      ready: false,
+      source: null,
+      engines: [
+        {
+          engineId: 'kiro',
+          name: 'Kiro CLI',
+          registryEntryId: 'kiro',
+          detected: true,
+          ready: false,
+          source: null,
+          reason: 'not_connected',
+        },
+      ],
+    });
+  });
+
+  test('GET /status projects a detected ACP registry Engine as not connected', async () => {
+    const app = createSystemRoutes(
+      {
+        ...createMockDeps(),
+        listDetectedACPRegistryEntries: async () => [
+          { id: 'kiro', name: 'Kiro CLI' },
+        ],
+      } as any,
+      mockLogger,
+    );
+    const body = await waitForStatusDiscovery(app);
+    expect(body.externalEngines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          engineId: 'kiro',
+          name: 'Kiro CLI',
+          reason: 'not_connected',
+          ready: false,
+        }),
+      ]),
+    );
+  });
+
+  test('does not duplicate a detected registry Engine already reported by an adapter', async () => {
+    // The adapter must be a real readiness candidate (a known chat-capable
+    // engine with the agent-runtime capability); an unknown provider name
+    // is filtered out before the collision can occur, and the test would
+    // pass with no dedupe at all.
+    const readiness = await resolveExternalEngineReadiness(
+      [
+        fakeExternalEngineAdapter({
+          provider: 'claude',
+          engineId: 'claude',
+          prerequisites: [{ id: 'claude-cli', status: 'installed' }],
+        }),
+      ],
+      undefined,
+      () => true,
+      undefined,
+      [
+        { id: 'claude', name: 'Claude (registry)' },
+        { id: 'kiro', name: 'Kiro CLI' },
+      ],
+    );
+    const claudeRows = readiness.engines.filter(
+      (entry) => entry.engineId === 'claude',
+    );
+    expect(claudeRows).toHaveLength(1);
+    expect(claudeRows[0]).toMatchObject({ engineConnectionId: 'claude' });
+    expect(
+      readiness.engines.filter((entry) => entry.engineId === 'kiro'),
+    ).toMatchObject([{ reason: 'not_connected' }]);
+  });
   test('GET /boot-history returns bounded records without fabricating a cause', async () => {
     const getBootHistory = vi.fn().mockResolvedValue({
       currentUptimeSeconds: 43,
@@ -2273,4 +2352,25 @@ describe('System Routes', () => {
     expect(aliasResponse.status).toBe(canonicalResponse.status);
     expect(await json(aliasResponse)).toEqual(await json(canonicalResponse));
   });
+});
+
+test('system status includes host recovery disclosure and preserves unavailable evidence', async () => {
+  for (const homeRecovery of [
+    { kind: 'not-restored' },
+    { kind: 'unavailable' },
+    {
+      kind: 'recovered-from-copy',
+      recoveryId: 'recovery-test',
+      snapshotCreatedAt: '2026-09-05T00:00:00.000Z',
+      authorityTransferred: false,
+    },
+  ]) {
+    const app = createSystemRoutes(
+      { ...createMockDeps(), getHomeRecovery: () => homeRecovery } as any,
+      mockLogger,
+    );
+    const response = await app.request('/status');
+    expect(response.status).toBe(200);
+    expect((await json(response)).homeRecovery).toEqual(homeRecovery);
+  }
 });

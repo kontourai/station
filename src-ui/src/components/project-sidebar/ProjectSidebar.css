@@ -665,6 +665,25 @@
   color: var(--text-primary);
 }
 
+/* #1582 D4: a region-surface row is a toggle, not a location. It wears a
+   trailing "showing" dot and the primary text colour instead of the
+   current-page fill, so the row that IS the current page stays the only one
+   reading as current. Paired with `aria-pressed` on the same derivation, so
+   the mark and the announced state cannot disagree. */
+.sidebar__nav-btn--shown {
+  color: var(--text-primary);
+}
+
+.sidebar__nav-btn--shown::after {
+  content: "";
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+}
+
 .sidebar__nav-btn[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.72;

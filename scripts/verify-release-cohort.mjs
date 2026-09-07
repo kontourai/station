@@ -277,23 +277,38 @@ export function assertNightlyVersionRelationship(identities) {
 
 export function parseAndroidManifestIdentity(manifest) {
   if (typeof manifest !== 'string')
-    fail('apkanalyzer manifest output is invalid');
+    fail('bundletool manifest output is invalid');
   const packageName = /\bpackage="([^"]+)"/.exec(manifest)?.[1];
   const versionCode = /\bandroid:versionCode="([0-9]+)"/.exec(manifest)?.[1];
   const versionName = /\bandroid:versionName="([^"]+)"/.exec(manifest)?.[1];
   if (!packageName || !versionCode || !versionName)
-    fail('apkanalyzer manifest lacks package/version identity');
+    fail('bundletool manifest lacks package/version identity');
   return { packageName, versionCode: Number(versionCode), versionName };
 }
-function verifyAndroidAabIdentity(path, identity, apkanalyzer) {
+export function verifyAndroidAabIdentity(
+  path,
+  identity,
+  bundletool,
+  run = defaultSpawnSync,
+) {
   const outputText = output(
-    defaultSpawnSync(apkanalyzer.apkanalyzerPath, ['manifest', 'print', path], {
-      encoding: 'utf8',
-      shell: false,
-      windowsHide: true,
-      timeout: 60_000,
-    }),
-    'apkanalyzer Android identity verification',
+    run(
+      'java',
+      [
+        '-jar',
+        bundletool.bundletoolPath,
+        'dump',
+        'manifest',
+        `--bundle=${path}`,
+      ],
+      {
+        encoding: 'utf8',
+        shell: false,
+        windowsHide: true,
+        timeout: 60_000,
+      },
+    ),
+    'bundletool Android identity verification',
   );
   const observed = parseAndroidManifestIdentity(outputText);
   if (canonicalJson(observed) !== canonicalJson(identity))
@@ -322,13 +337,19 @@ export function parseMacosInfoPlist(json) {
     CFBundleVersion: value.CFBundleVersion,
   };
 }
-function verifyMacosArchive(path, identity) {
-  if (process.platform !== 'darwin')
+export function verifyMacosArchive(
+  path,
+  identity,
+  { run = defaultSpawnSync, platform = process.platform } = {},
+) {
+  if (platform !== 'darwin')
     fail(
       'macOS archive verification requires a protected macOS verifier runner',
     );
   const listing = output(
-    defaultSpawnSync('tar', ['-tzf', path], {
+    run('tar', ['-tzf', path], {
+      // The shipped bundle lists ~7 MiB of paths and ~10 MiB of metadata.
+      maxBuffer: 32 * 1024 * 1024,
       encoding: 'utf8',
       shell: false,
       windowsHide: true,
@@ -339,7 +360,8 @@ function verifyMacosArchive(path, identity) {
     .split('\n')
     .filter(Boolean);
   const verbose = output(
-    defaultSpawnSync('tar', ['-tvzf', path], {
+    run('tar', ['-tvzf', path], {
+      maxBuffer: 32 * 1024 * 1024,
       encoding: 'utf8',
       shell: false,
       windowsHide: true,
@@ -367,7 +389,7 @@ function verifyMacosArchive(path, identity) {
   if (plists.length !== 1)
     fail('macOS updater archive must contain exactly one app Info.plist');
   const plist = output(
-    defaultSpawnSync('tar', ['-xOzf', path, '--', plists[0]], {
+    run('tar', ['-xOzf', path, '--', plists[0]], {
       encoding: 'buffer',
       shell: false,
       windowsHide: true,
@@ -378,17 +400,13 @@ function verifyMacosArchive(path, identity) {
   if (!plist.trim()) fail('macOS updater archive Info.plist is empty');
   const parsed = parseMacosInfoPlist(
     output(
-      defaultSpawnSync(
-        '/usr/bin/plutil',
-        ['-convert', 'json', '-o', '-', '-'],
-        {
-          encoding: 'utf8',
-          input: plist,
-          shell: false,
-          windowsHide: true,
-          timeout: 30_000,
-        },
-      ),
+      run('/usr/bin/plutil', ['-convert', 'json', '-o', '-', '-'], {
+        encoding: 'utf8',
+        input: plist,
+        shell: false,
+        windowsHide: true,
+        timeout: 30_000,
+      }),
       'plutil Info.plist conversion',
     ),
   );
@@ -620,20 +638,18 @@ function ghVersion(runner) {
 function protectedVerifierToolVersions() {
   if (process.platform !== 'darwin')
     fail('protected release-cohort verification requires macOS');
-  const apkanalyzerPath = process.env.STATION_APKANALYZER_PATH;
-  const expectedApkanalyzerVersion = process.env.STATION_APKANALYZER_VERSION;
-  if (!apkanalyzerPath || !expectedApkanalyzerVersion)
-    fail(
-      'STATION_APKANALYZER_PATH and STATION_APKANALYZER_VERSION are required',
-    );
-  const apkanalyzer = output(
-    defaultSpawnSync(apkanalyzerPath, ['--version'], {
+  const bundletoolPath = process.env.STATION_BUNDLETOOL_PATH;
+  const expectedBundletoolVersion = process.env.STATION_BUNDLETOOL_VERSION;
+  if (!bundletoolPath || !expectedBundletoolVersion)
+    fail('STATION_BUNDLETOOL_PATH and STATION_BUNDLETOOL_VERSION are required');
+  const bundletool = output(
+    defaultSpawnSync('java', ['-jar', bundletoolPath, 'version'], {
       encoding: 'utf8',
       shell: false,
       windowsHide: true,
       timeout: 30_000,
     }),
-    'apkanalyzer prerequisite',
+    'bundletool prerequisite',
   )
     .trim()
     .split('\n')[0];
@@ -646,11 +662,11 @@ function protectedVerifierToolVersions() {
     }),
     'macOS verifier prerequisite',
   ).trim();
-  if (apkanalyzer !== expectedApkanalyzerVersion || !macos)
+  if (bundletool !== expectedBundletoolVersion || !macos)
     fail(
       'protected verifier prerequisite version does not match its protected identity',
     );
-  return { apkanalyzer, apkanalyzerPath, macos };
+  return { bundletool, bundletoolPath, macos };
 }
 function verifyCandidateObservations(candidateInput, artifactInput) {
   const runner = defaultSpawnSync;

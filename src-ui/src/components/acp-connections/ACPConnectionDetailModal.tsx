@@ -176,6 +176,7 @@ export function ACPConnectionDetailModal({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       ariaLabel={`${conn.name} connection details`}
       overlayStyle={{

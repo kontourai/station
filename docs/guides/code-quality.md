@@ -12,7 +12,7 @@ npm run dependencies:install  # refresh an existing developer checkout
 ```
 
 Both commands install with npm lifecycle scripts disabled, then run only the
-reviewed lifecycle allowlist, Station's explicit patch step, and Git-hook
+reviewed lifecycle allowlist, pnpm's explicit patch configuration, and Git-hook
 setup. To repair hook setup alone:
 
 ```bash

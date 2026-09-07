@@ -36,6 +36,27 @@ describe('handleRuntimeErrorEvent — station#1827 terminal engine session', () 
     });
   });
 
+  test('a failed turn preserves the provider refusal without claiming a lost binding or suggesting another attempt', () => {
+    const raw = 'Provider safeguards flagged this message.';
+    handleRuntimeErrorEvent({
+      threadId: THREAD_ID,
+      method: 'runtime.error',
+      code: 'engine-turn-failed',
+      message: raw,
+    } as any);
+    const chat = activeChatsStore.getSnapshot()[THREAD_ID];
+    const text = chat.streamingMessage?.contentParts
+      ?.filter((part: any) => part.type === 'text')
+      .map((part: any) => part.content)
+      .join('\n');
+    expect(text).toContain('This turn did not complete');
+    expect(text).toContain(raw);
+    expect(text).not.toMatch(/session was lost|fresh session|send.*again/i);
+    expect(chat.messages?.[0].content).toBe(
+      `[SYSTEM_EVENT] [CHAT_ERROR:engine-turn-failed] ${raw}`,
+    );
+  });
+
   test('renders translated copy in the streaming bubble, with the raw text behind a disclosure — not as the headline', () => {
     handleRuntimeErrorEvent({
       threadId: THREAD_ID,

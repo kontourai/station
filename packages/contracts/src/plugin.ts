@@ -4,6 +4,7 @@ import type {
   OperationalEventScope,
 } from './operational-event.js';
 import type { WorkspacePaneDescriptor } from './workspace-pane.js';
+import type { WorkspacePaneHostContributionV1 } from './workspace-pane-host-contribution.js';
 
 /**
  * Canonical persisted plugin identity. Plugin directories and registry aliases
@@ -19,6 +20,42 @@ export function isCanonicalPluginId(value: unknown): value is string {
 
 /** Plugin permission consent tier. */
 export type PermissionTier = 'passive' | 'active' | 'trusted';
+
+export interface PluginPermissionPrompt {
+  permission: string;
+  tier: PermissionTier;
+}
+
+/** Current installed permission truth. Missing dependency status is unknown, not approved. */
+export interface PluginInstallPermissionStatus {
+  autoGranted: string[];
+  consentGranted?: string[];
+  pendingConsent: PluginPermissionPrompt[];
+  withdrawn?: string[];
+  /** Optional for compatibility with servers predating dependency status. */
+  dependencies?: Array<{
+    id: string;
+    pendingConsent: PluginPermissionPrompt[];
+  }>;
+}
+
+/** Direct and registry plugin-install outcome; older servers may omit status fields. */
+export interface PluginInstallResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+  plugin?: {
+    name: string;
+    displayName?: string;
+    version: string;
+    hasBundle: boolean;
+    agents: Array<{ slug: string }>;
+  };
+  layout?: { slug: string };
+  tools?: Array<{ id: string; status: string }>;
+  dependencies?: Array<{ id: string; status: string; error?: string }>;
+  permissions?: PluginInstallPermissionStatus;
+}
 
 /**
  * The tier of each built-in plugin permission.
@@ -195,6 +232,8 @@ export interface PluginManifest {
   layouts?: Array<{ slug: string; source: string }>;
   /** Versioned, inert Pane declarations parsed before any renderer can load. */
   workspacePanes?: WorkspacePaneDescriptor[];
+  /** Inert package-level actions/Agent selection; admission is server-owned. */
+  workspacePaneHost?: WorkspacePaneHostContributionV1;
   /** Versioned declarations whose execution remains host-authorized. */
   operationalEventSubscriptions?: PluginOperationalEventSubscriptionEntry[];
   providers?: PluginProviderEntry[];

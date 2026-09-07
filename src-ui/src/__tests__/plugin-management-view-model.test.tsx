@@ -21,9 +21,13 @@ const mocks = vi.hoisted(() => ({
   requestInstallConsent: vi.fn(),
   installOnSuccess: null as
     | ((data: {
-        plugin: { name: string; displayName?: string; agents?: unknown[] };
+        plugin?: { name: string; displayName?: string; agents?: unknown[] };
         permissions?: {
           pendingConsent?: Array<{ permission: string; tier: string }>;
+          dependencies?: Array<{
+            id: string;
+            pendingConsent: Array<{ permission: string; tier: string }>;
+          }>;
         };
       }) => Promise<void>)
     | null,
@@ -57,6 +61,9 @@ const mocks = vi.hoisted(() => ({
   selectPlugin: vi.fn(),
   deselectPlugin: vi.fn(),
   previewOnSuccess: null as ((data: unknown) => void) | null,
+  projects: [] as Array<{ slug: string; name: string }>,
+  addLayoutFromPlugin: vi.fn(),
+  setLayout: vi.fn(),
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -68,11 +75,11 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 
 vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ setLayout: vi.fn() }),
+  useNavigation: () => ({ setLayout: mocks.setLayout }),
 }));
 
 vi.mock('../contexts/ProjectsContext', () => ({
-  useProjects: () => ({ projects: [] }),
+  useProjects: () => ({ projects: mocks.projects }),
 }));
 
 vi.mock('../core/PermissionManager', () => ({
@@ -95,7 +102,9 @@ vi.mock('../hooks/useUrlSelection', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useAddProjectLayoutFromPluginMutation: () => ({ mutateAsync: vi.fn() }),
+  useAddProjectLayoutFromPluginMutation: () => ({
+    mutateAsync: mocks.addLayoutFromPlugin,
+  }),
   useCreateProjectMutation: () => ({ mutateAsync: vi.fn() }),
   usePluginChangelogQuery: () => ({ data: null }),
   usePluginInstallMutation: () => ({
@@ -159,6 +168,100 @@ describe('usePluginManagementViewModel', () => {
     mocks.refetchPlugins.mockReset().mockResolvedValue({
       isError: false,
       error: null,
+    });
+    mocks.projects = [];
+    mocks.addLayoutFromPlugin.mockReset().mockResolvedValue(undefined);
+    mocks.setLayout.mockReset();
+  });
+
+  /**
+   * #1536 G2. Installing a starter opened the Add Layout picker once, in the
+   * seconds after the install, and the detail page offered nothing afterwards
+   * — so a layout the operator skipped, or installed from Registry, had no
+   * route into a project at all. `addPluginLayout` is that route.
+   */
+  describe('addPluginLayout', () => {
+    const starter = {
+      name: 'getting-started-starter',
+      displayName: 'Getting Started Starter',
+      layout: { slug: 'getting-started' },
+    };
+
+    test('adds straight to the only project and opens it, without asking', async () => {
+      mocks.projects = [{ slug: 'demo', name: 'Demo' }];
+      const { result } = renderHook(() => usePluginManagementViewModel());
+
+      await act(async () => {
+        await result.current.addPluginLayout(starter);
+      });
+
+      expect(mocks.addLayoutFromPlugin).toHaveBeenCalledWith({
+        projectSlug: 'demo',
+        plugin: 'getting-started-starter',
+      });
+      expect(mocks.setLayout).toHaveBeenCalledWith('demo', 'getting-started');
+      expect(result.current.layoutAssignment).toBeNull();
+    });
+
+    test('asks which project when there is more than one, and adds nothing yet', async () => {
+      mocks.projects = [
+        { slug: 'demo', name: 'Demo' },
+        { slug: 'other', name: 'Other' },
+      ];
+      const { result } = renderHook(() => usePluginManagementViewModel());
+
+      await act(async () => {
+        await result.current.addPluginLayout(starter);
+      });
+
+      expect(mocks.addLayoutFromPlugin).not.toHaveBeenCalled();
+      expect(result.current.layoutAssignment).toEqual({
+        pluginName: 'getting-started-starter',
+        displayName: 'Getting Started Starter',
+        layoutSlug: 'getting-started',
+      });
+    });
+
+    test('opens the picker with no projects, so the create-a-project path is reachable', async () => {
+      const { result } = renderHook(() => usePluginManagementViewModel());
+
+      await act(async () => {
+        await result.current.addPluginLayout(starter);
+      });
+
+      expect(mocks.addLayoutFromPlugin).not.toHaveBeenCalled();
+      expect(result.current.layoutAssignment).not.toBeNull();
+      expect(result.current.quickProjectName).toBe('Getting Started Starter');
+    });
+
+    test('reports the failure against the named project rather than silently doing nothing', async () => {
+      mocks.projects = [{ slug: 'demo', name: 'Demo' }];
+      mocks.addLayoutFromPlugin.mockRejectedValue(new Error('nope'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { result } = renderHook(() => usePluginManagementViewModel());
+
+      await act(async () => {
+        await result.current.addPluginLayout(starter);
+      });
+
+      expect(result.current.message).toEqual({
+        type: 'error',
+        text: 'Failed to add the Getting Started Starter layout to Demo.',
+      });
+      expect(mocks.setLayout).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    test('does nothing for a plugin that contributes no layout', async () => {
+      mocks.projects = [{ slug: 'demo', name: 'Demo' }];
+      const { result } = renderHook(() => usePluginManagementViewModel());
+
+      await act(async () => {
+        await result.current.addPluginLayout({ name: 'smart-routing' });
+      });
+
+      expect(mocks.addLayoutFromPlugin).not.toHaveBeenCalled();
+      expect(result.current.layoutAssignment).toBeNull();
     });
   });
 
@@ -602,6 +705,28 @@ describe('usePluginManagementViewModel', () => {
     });
   }
 
+  test('missing installed plugin details remain unknown and cannot prompt from preview identity', async () => {
+    mocks.requestInstallConsent.mockResolvedValue(true);
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await primePreview(result);
+    await act(async () => {
+      await result.current.install([]);
+    });
+    await act(async () => {
+      await mocks.installOnSuccess?.({
+        permissions: {
+          pendingConsent: [{ permission: 'network.fetch', tier: 'active' }],
+        },
+      });
+    });
+    expect(mocks.requestConsent).not.toHaveBeenCalled();
+    expect(result.current.message?.text).toContain(
+      'did not return installed plugin details',
+    );
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+    expect(mocks.reloadClientRegistry).toHaveBeenCalledOnce();
+  });
+
   /**
    * ACCEPTANCE 1 and 2 at the client. Declining does not reach the server at
    * all — there is no install request to leave anything behind, which is what
@@ -653,6 +778,126 @@ describe('usePluginManagementViewModel', () => {
       mocks.requestInstallConsent.mock.invocationCallOrder[0],
     ).toBeLessThan(mocks.installMutate.mock.invocationCallOrder[0]);
   });
+
+  test('names dependency permissions in the decision and carries their byte-bound approval', async () => {
+    mocks.requestInstallConsent.mockResolvedValue(true);
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await primePreview(result, {
+      ...PREVIEW,
+      dependencies: [
+        {
+          id: 'shared-providers',
+          status: 'will-install',
+          consent: {
+            permissions: ['providers.register'],
+            contentDigest: 'sha256:dependency',
+            dependencies: [],
+            pendingConsent: [
+              { permission: 'providers.register', tier: 'trusted' },
+            ],
+          },
+        },
+      ],
+    });
+
+    await act(async () => {
+      await result.current.install([]);
+    });
+
+    expect(mocks.requestInstallConsent).toHaveBeenCalledWith(
+      'network-kit',
+      'Network Kit',
+      [
+        { permission: 'network.fetch', tier: 'active' },
+        {
+          permission: 'shared-providers: providers.register',
+          tier: 'trusted',
+        },
+      ],
+    );
+    expect(mocks.installMutate.mock.calls[0][0].consent).toMatchObject({
+      dependencies: ['shared-providers'],
+      dependencyApprovals: [
+        {
+          id: 'shared-providers',
+          permissions: ['providers.register'],
+          contentDigest: 'sha256:dependency',
+          dependencies: [],
+        },
+      ],
+    });
+    mocks.requestConsent.mockResolvedValue(true);
+    await act(async () => {
+      await mocks.installOnSuccess?.({
+        plugin: { name: 'network-kit', displayName: 'Network Kit' },
+        permissions: {
+          pendingConsent: [],
+          dependencies: [
+            {
+              id: 'shared-providers',
+              pendingConsent: [
+                { permission: 'providers.register', tier: 'trusted' },
+              ],
+            },
+          ],
+        },
+      });
+    });
+    expect(mocks.requestConsent).toHaveBeenCalledWith(
+      'shared-providers',
+      'shared-providers',
+      [{ permission: 'providers.register', tier: 'trusted' }],
+    );
+  });
+
+  test.each([true, false])(
+    'uses installed dependency permission truth (reported=%s), never pending preview state',
+    async (reported) => {
+      mocks.requestInstallConsent.mockResolvedValue(true);
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await primePreview(result, {
+        ...PREVIEW,
+        dependencies: [
+          {
+            id: 'shared-providers',
+            status: 'installed',
+            consent: {
+              permissions: ['providers.register'],
+              contentDigest: 'sha256:dependency',
+              dependencies: [],
+              pendingConsent: [
+                { permission: 'providers.register', tier: 'trusted' },
+              ],
+            },
+          },
+        ],
+      });
+      await act(async () => {
+        await result.current.install([]);
+      });
+      await act(async () => {
+        await mocks.installOnSuccess?.({
+          plugin: { name: 'network-kit' },
+          permissions: {
+            pendingConsent: [],
+            ...(reported
+              ? {
+                  dependencies: [
+                    { id: 'shared-providers', pendingConsent: [] },
+                  ],
+                }
+              : {}),
+          },
+        });
+      });
+      expect(mocks.requestConsent).not.toHaveBeenCalled();
+      expect(result.current.message?.text).toContain(
+        reported
+          ? 'is ready'
+          : 'did not report current dependency approval status',
+      );
+    },
+  );
 
   test('will not install a source it has no preview to approve against', async () => {
     const { result } = renderHook(() => usePluginManagementViewModel());

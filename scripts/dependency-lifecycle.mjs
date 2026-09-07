@@ -2,13 +2,18 @@
 /**
  * The only supported dependency bootstrap. Phase one is inert; before phase
  * two we inspect every installed lifecycle package and grant only the exact
- * reviewed commands. Nothing here resolves an executable by package name.
+ * reviewed commands. Dependency hooks resolve reviewed local files; the
+ * package manager's exact version is verified before it is used.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, isAbsolute, resolve } from 'node:path';
+import { delimiter, dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  prepareDependencyInstallDrivers,
+  withDependencyInstallGuard,
+} from './lib/dependency-install-retirement.mjs';
 import {
   assertNodePtyPrebuildConsistency,
   confinedPackageTarget,
@@ -24,8 +29,10 @@ import {
   readLifecycleLocks,
   readNodePtyPrebuildManifest,
   stageNodePtyPrebuild,
+  validateAllowlist,
   verifyArtifact,
 } from './lib/dependency-lifecycle-policy.mjs';
+import { readPnpmWorkspace } from './lib/pnpm-lockfile.mjs';
 import { assertWorkspaceDependencySatisfaction } from './lib/workspace-dependency-satisfaction.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -39,12 +46,26 @@ function loadPolicy() {
   return JSON.parse(readFileSync(allowlistPath, 'utf8'));
 }
 
-export function check({ cwd = root } = {}) {
+export function check({ cwd = root, bootstrap = false } = {}) {
   const allowlist = loadPolicy();
-  const findings = evaluateLifecyclePolicy({
-    allowlist,
-    nodes: readLifecycleLocks(cwd),
-  });
+  if (bootstrap && !existsSync(resolve(cwd, 'pnpm-lock.yaml')))
+    throw new Error('dependency lockfile is missing: pnpm-lock.yaml');
+  const findings = bootstrap
+    ? validateAllowlist(allowlist)
+    : evaluateLifecyclePolicy({
+        allowlist,
+        nodes: readLifecycleLocks(cwd),
+      });
+  if (!bootstrap && existsSync(resolve(cwd, 'pnpm-lock.yaml'))) {
+    const workspace = readPnpmWorkspace(cwd);
+    if (
+      workspace.verifyDepsBeforeRun !== false ||
+      workspace.ignoreScripts !== true
+    )
+      findings.push(
+        'pnpm workspace must disable automatic installs and dependency lifecycle scripts',
+      );
+  }
   if (findings.length)
     throw new Error(
       `dependency lifecycle policy failed:\n${findings.map((finding) => `- ${finding}`).join('\n')}`,
@@ -111,18 +132,133 @@ export function inertInstallTimeout(
   return platform === 'win32' ? 1_200_000 : 600_000;
 }
 
-function npmCommand(args, cwd = root) {
-  // A cold workspace install can legitimately exceed the short lifecycle-hook
-  // bound, and the default here is not a claim about the slowest supported
-  // machine: a cold 1552-package install measured 11 minutes on an ARM64
-  // handset, which the previous fixed ten-minute bound killed outright. The
-  // deadline stays finite so a wedged install still fails, and
-  // STATION_DEPENDENCY_INSTALL_TIMEOUT_MS raises it for a host that is merely
-  // slow rather than stuck. Lifecycle hooks stay at 2 minutes.
-  command(process.execPath, [resolveNpmCli(), ...args], {
+/** npm is supplied by Node; it bootstraps exactly the reviewed pnpm pin.
+ * npm exec's cache is shared without sharing the worktree's installed files.
+ */
+export function pnpmInvocation({
+  cwd = root,
+  env = process.env,
+  node = process.execPath,
+  platform = process.platform,
+  exec = execFileSync,
+} = {}) {
+  const manifest = JSON.parse(
+    readFileSync(resolve(cwd, 'package.json'), 'utf8'),
+  );
+  if (!/^pnpm@11\.\d+\.\d+$/.test(manifest.packageManager ?? ''))
+    throw new Error('packageManager must pin an exact pnpm 11 version');
+  const expected = manifest.packageManager.slice('pnpm@'.length);
+  const fromPnpm = env.npm_execpath;
+  const candidates = [];
+  if (
+    fromPnpm &&
+    isAbsolute(fromPnpm) &&
+    /[/\\]pnpm(?:\.(?:[cm]?js|exe))?$/.test(fromPnpm)
+  )
+    candidates.push(fromPnpm);
+  for (const directory of (env.PATH ?? env.Path ?? '').split(
+    platform === 'win32' ? ';' : delimiter,
+  )) {
+    if (!isAbsolute(directory)) continue;
+    candidates.push(
+      resolve(directory, platform === 'win32' ? 'pnpm.exe' : 'pnpm'),
+    );
+    // Script installations expose .cmd on Windows; resolve their JS entry
+    // directly instead of invoking cmd.exe or interpolating shell arguments.
+    if (platform === 'win32')
+      candidates.push(
+        resolve(directory, '../pnpm/bin/pnpm.cjs'),
+        resolve(directory, 'node_modules/pnpm/bin/pnpm.cjs'),
+      );
+  }
+  const candidate = candidates.find(
+    (path) => existsSync(path) && statSync(path).isFile(),
+  );
+  if (candidate) {
+    const cli = realpathSync(candidate);
+    const invocation = /\.[cm]?js$/.test(cli)
+      ? { command: node, args: [cli] }
+      : { command: cli, args: [] };
+    // A package manager may replace its own tree during install. Reject any
+    // driver inside it before even invoking that driver's version probe.
+    prepareDependencyInstallDrivers({
+      root: cwd,
+      nodePath: node,
+      commandPath: invocation.command,
+      scriptPath: invocation.args[0],
+      clean: true,
+    });
+    const ownerPath = resolve(dirname(cli), '../package.json');
+    let corepackShim = false;
+    if (/\.[cm]?js$/.test(cli) && existsSync(ownerPath)) {
+      const owner = JSON.parse(readFileSync(ownerPath, 'utf8'));
+      corepackShim = owner.name === 'corepack';
+      if (owner.name === 'pnpm' && owner.version !== expected)
+        throw new Error('invoking pnpm version does not match packageManager');
+    }
+    let version;
+    try {
+      version = exec(invocation.command, [...invocation.args, '--version'], {
+        cwd,
+        env: { ...env, COREPACK_ENABLE_NETWORK: '0' },
+        encoding: 'utf8',
+        timeout: 10_000,
+        windowsHide: true,
+      }).trim();
+    } catch (error) {
+      // A Corepack shim can exist without the pinned manager installed.
+      // Keep its network disabled and bootstrap the explicit pin via npm.
+      if (
+        !corepackShim ||
+        !String(error?.stderr ?? error?.message ?? error).includes(
+          'Network access disabled by the environment',
+        )
+      )
+        throw error;
+    }
+    if (version !== undefined && version !== expected)
+      throw new Error(
+        `installed pnpm version ${version} does not match packageManager ${expected}`,
+      );
+    if (version !== undefined) return invocation;
+  }
+  const npmEnv = { ...env };
+  if (npmEnv.npm_execpath && !/npm-cli\.js$/.test(npmEnv.npm_execpath))
+    delete npmEnv.npm_execpath;
+  return {
+    command: node,
+    args: [
+      resolveNpmCli(npmEnv, node),
+      'exec',
+      '--yes',
+      `--package=${manifest.packageManager}`,
+      '--',
+      'pnpm',
+    ],
+  };
+}
+
+export function pnpmCommand(
+  args,
+  cwd = root,
+  invocation = pnpmInvocation({ cwd }),
+) {
+  command(invocation.command, [...invocation.args, ...args], {
     cwd,
     timeout: inertInstallTimeout(),
+    env: { npm_config_ignore_scripts: 'true' },
   });
+}
+
+/** Refresh resolution only; callers review dependency policy before installing. */
+export function refreshLock({ cwd = process.cwd() } = {}) {
+  command(process.execPath, [
+    resolve(root, 'scripts/node-runtime-contract.mjs'),
+  ]);
+  pnpmCommand(
+    ['install', '--lockfile-only', '--ignore-scripts', '--no-frozen-lockfile'],
+    cwd,
+  );
 }
 
 function approvedScripts(entry) {
@@ -246,6 +382,55 @@ function runExactHook(packageRoot, hook) {
  * an aborted install. One fixed, greppable line shape so `install.sh` logs,
  * CI receipts, and humans all find it: `DEGRADED <capability>: ...`.
  */
+/**
+ * Every message in an error's `cause` chain, outermost first.
+ *
+ * `retireDependencyInstall` (scripts/lib/dependency-install-retirement.mjs)
+ * reports a verification failure as "Dependencies are not verified. Installer
+ * state is retained at <dir>" and attaches the real reason as `cause`. This
+ * CLI printed only `error.message`, so CI logs named a directory on the runner
+ * -- which is never uploaded -- and no constraint at all. The failure was
+ * diagnosable only by reproducing it locally.
+ *
+ * Bounded rather than trusted: a dependency's own error text lands in this
+ * chain, so depth is capped and each message truncated.
+ */
+export function describeFailure(
+  error,
+  { maxDepth = 8, maxLength = 2000 } = {},
+) {
+  const lines = [];
+  const seen = new Set();
+  let current = error;
+  for (let depth = 0; current !== undefined && depth < maxDepth; depth += 1) {
+    if (typeof current === 'object' && current !== null) {
+      if (seen.has(current)) break;
+      seen.add(current);
+    }
+    const message = String(
+      current instanceof Error ? current.message : current,
+    ).slice(0, maxLength);
+    if (message !== '')
+      lines.push(depth === 0 ? message : `  caused by: ${message}`);
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return lines.length > 0 ? lines.join('\n') : String(error);
+}
+
+/**
+ * What the CLI prints, and the exit code it sets, when an operation throws.
+ *
+ * Separated from `main`'s catch so the REPORTING is covered rather than only
+ * the formatter: a test that exercises `describeFailure` alone still passes if
+ * the catch goes back to printing `error.message`, which is how the cause was
+ * being discarded in the first place. Verified by fault injection -- reverting
+ * this to `error.message` reddens `reports the cause chain` below.
+ */
+export function reportCliFailure(error, { log = console.error } = {}) {
+  log(describeFailure(error));
+  return 1;
+}
+
 function reportDegradedCapability(entry, phase, error) {
   const degradable = degradableLifecycleCapability(entry);
   const cause = String(error instanceof Error ? error.message : error)
@@ -349,10 +534,6 @@ export function verify({ cwd = root } = {}) {
 
 function stationOwnedHooks() {
   command(process.execPath, ['scripts/node-runtime-contract.mjs']);
-  const patchPackage = createRequire(resolve(root, 'package.json')).resolve(
-    'patch-package/index.js',
-  );
-  command(process.execPath, [patchPackage]);
   if (existsSync(resolve(root, '.git')))
     command(process.execPath, ['scripts/install-git-hooks.mjs']);
   else
@@ -361,9 +542,15 @@ function stationOwnedHooks() {
     );
 }
 
-function inertInstall(developer) {
-  const verb = developer ? 'install' : 'ci';
-  npmCommand([verb, '--ignore-scripts']);
+function inertInstallArgs(developer) {
+  return [
+    'install',
+    '--ignore-scripts',
+    '--config.node-linker=hoisted',
+    '--config.enable-global-virtual-store=false',
+    '--package-import-method=clone-or-copy',
+    developer ? '--no-frozen-lockfile' : '--frozen-lockfile',
+  ];
 }
 
 /**
@@ -386,16 +573,69 @@ export function stageLifecyclePrebuilds(allowlist, { cwd = root } = {}) {
   }
 }
 
-export function install({ developer = false } = {}) {
-  // Node is a trust boundary for every following command. Check it before npm.
-  command(process.execPath, ['scripts/node-runtime-contract.mjs']);
-  const allowlist = check();
-  inertInstall(developer);
-  check();
-  stageLifecyclePrebuilds(allowlist);
-  runApprovedHooks(allowlist);
-  stationOwnedHooks();
-  return verify();
+/** Inject only execution, preserving the actual guarded production phase order. */
+export function install(
+  { developer = false } = {},
+  execution = {
+    root,
+    nodePath: process.execPath,
+    pnpmInvocation,
+    command,
+    check,
+    pnpmCommand,
+    stageLifecyclePrebuilds,
+    runApprovedHooks,
+    stationOwnedHooks,
+    verify,
+  },
+) {
+  const nodeDriver = prepareDependencyInstallDrivers({
+    root: execution.root,
+    nodePath: execution.nodePath,
+    clean: true,
+  });
+  execution.command(
+    nodeDriver.nodePath,
+    ['scripts/node-runtime-contract.mjs'],
+    { cwd: execution.root },
+  );
+  const invocation = execution.pnpmInvocation({
+    cwd: execution.root,
+    node: nodeDriver.nodePath,
+  });
+  const drivers = prepareDependencyInstallDrivers({
+    root: execution.root,
+    nodePath: nodeDriver.nodePath,
+    commandPath: invocation.command,
+    scriptPath: isAbsolute(invocation.args[0] ?? '')
+      ? invocation.args[0]
+      : undefined,
+    clean: true,
+  });
+  const boundInvocation = {
+    command: drivers.commandPath,
+    args: drivers.scriptPath
+      ? [drivers.scriptPath, ...invocation.args.slice(1)]
+      : [...invocation.args],
+  };
+  const allowlist = execution.check({ cwd: execution.root, bootstrap: true });
+  return withDependencyInstallGuard({
+    root: execution.root,
+    clean: false,
+    retireLegacy: true,
+    run: () => {
+      execution.pnpmCommand(
+        inertInstallArgs(developer),
+        execution.root,
+        boundInvocation,
+      );
+      execution.check({ cwd: execution.root });
+      execution.stageLifecyclePrebuilds(allowlist, { cwd: execution.root });
+      execution.runApprovedHooks(allowlist, { cwd: execution.root });
+      execution.stationOwnedHooks();
+      return execution.verify({ cwd: execution.root });
+    },
+  });
 }
 
 export function propose({ cwd = root } = {}) {
@@ -420,7 +660,7 @@ export function propose({ cwd = root } = {}) {
 
 function usage() {
   console.error(
-    'Usage: node scripts/dependency-lifecycle.mjs <check|propose|install|ci|verify>',
+    'Usage: node scripts/dependency-lifecycle.mjs <check|propose|install|ci|verify|lock>',
   );
 }
 
@@ -432,12 +672,12 @@ if (process.argv[1]?.endsWith('dependency-lifecycle.mjs')) {
     else if (operation === 'install') install({ developer: true });
     else if (operation === 'ci') install({ developer: false });
     else if (operation === 'verify') verify();
+    else if (operation === 'lock') refreshLock();
     else {
       usage();
       process.exitCode = 2;
     }
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
+    process.exitCode = reportCliFailure(error);
   }
 }

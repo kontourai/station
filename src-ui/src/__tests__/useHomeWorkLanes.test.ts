@@ -38,6 +38,60 @@ describe('useHomeWorkLanes', () => {
     vi.useRealTimers();
   });
 
+  it('writes terminal anchors only when they change, including removal', () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    try {
+      const running = item({
+        id: 'persist',
+        lifecycleLabel: 'Running',
+        updatedAt: NOW,
+      });
+      const { rerender } = renderHook(({ items }) => useHomeWorkLanes(items), {
+        initialProps: { items: [running] },
+      });
+      setItem.mockClear();
+      rerender({ items: [{ ...running, title: 'Updated title' }] });
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(setItem).not.toHaveBeenCalled();
+      rerender({ items: [{ ...running, lifecycleLabel: 'Completed' }] });
+      expect(setItem).toHaveBeenCalledTimes(1);
+      expect(
+        JSON.parse(localStorage.getItem('station.activity.terminalSince')!),
+      ).toEqual({ persist: NOW });
+      rerender({ items: [] });
+      expect(setItem).toHaveBeenCalledTimes(2);
+      expect(
+        JSON.parse(localStorage.getItem('station.activity.terminalSince')!),
+      ).toEqual({});
+    } finally {
+      setItem.mockRestore();
+    }
+  });
+
+  it('retries a failed anchor write on the next render', () => {
+    const setItem = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementationOnce(() => {
+        throw new Error('temporary storage failure');
+      });
+    try {
+      const terminal = item({
+        id: 'retry',
+        lifecycleLabel: 'Completed',
+        updatedAt: NOW,
+      });
+      const { rerender } = renderHook(() => useHomeWorkLanes([terminal]));
+      expect(localStorage.getItem('station.activity.terminalSince')).toBeNull();
+      rerender();
+      expect(
+        JSON.parse(localStorage.getItem('station.activity.terminalSince')!),
+      ).toEqual({ retry: NOW });
+      expect(setItem).toHaveBeenCalledTimes(2);
+    } finally {
+      setItem.mockRestore();
+    }
+  });
+
   it('AC1: status churn across renders never reorders the active lane', () => {
     const a = item({ id: 'a', lifecycleLabel: 'Running', updatedAt: NOW });
     const b = item({ id: 'b', lifecycleLabel: 'Ready', updatedAt: NOW - 1 });

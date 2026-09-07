@@ -1,6 +1,8 @@
 import type { WorkspacePaneInstanceId } from '@kontourai/station-contracts/workspace-pane';
 import {
   adoptCommittedProjectTaskRoomDocument,
+  type ProjectTaskRoomDocument,
+  projectTaskRoomQueries,
   refetchAuthoritativeProjectTaskRoomDocument,
   usePlanProjectTaskRoomEditMutation,
   useProjectTaskRoomDiscoveryQuery,
@@ -26,6 +28,11 @@ import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
 import { projectTaskRoomEditorPaneId } from './ProjectTaskRoomPresence';
 import type { WorkspacePaneHostRuntime } from './workspacePaneHostRuntime';
 
+type AuthoritativeRoomDocument = Extract<
+  ProjectTaskRoomDocument,
+  { kind: 'snapshot' | 'delta' }
+>;
+
 /**
  * Browser adapter over the server's private edit planning capability. It never
  * receives operations, atoms, an epoch, or a write grant: only an opaque plan
@@ -49,6 +56,8 @@ export function TaskRoomEditorPane({
   const batch = useSubmitProjectTaskRoomBatchMutation(taskId);
   const [text, setText] = useState('');
   const [authoritativeText, setAuthoritativeText] = useState('');
+  const [appliedDocument, setAppliedDocument] =
+    useState<AuthoritativeRoomDocument>();
   const [rejection, setRejection] = useState<string>();
   const [possibleEffect, setPossibleEffect] = useState<{
     intentId: string;
@@ -61,7 +70,11 @@ export function TaskRoomEditorPane({
   const id = useId().replaceAll(':', '');
   const operationGeneration = useRef(0);
   const authorizationRef = useRef(true);
+  const documentAuthorityRef = useRef(true);
   const displayedTaskId = useRef(taskId);
+  const sharedStreamPresentRef = useRef(shared !== undefined);
+  const queryApplicationInitialized = useRef(false);
+  const authoritativeTextRef = useRef(authoritativeText);
   const lastDocumentIdentity = useRef<string | undefined>(undefined);
   const pendingPerformanceApply = useRef<
     | {
@@ -76,6 +89,8 @@ export function TaskRoomEditorPane({
     authorizationRef.current = authorizationCurrent;
     operationGeneration.current += 1;
   }
+  sharedStreamPresentRef.current = shared !== undefined;
+  authoritativeTextRef.current = authoritativeText;
   useLayoutEffect(() => {
     // Task identity defines the lifetime, even though only the generation is read.
     void taskId;
@@ -86,6 +101,42 @@ export function TaskRoomEditorPane({
   }, [taskId]);
   const isCurrentOperation = (generation: number) =>
     authorizationRef.current && operationGeneration.current === generation;
+  const applyAuthoritativeDocument = (
+    nextDocument: AuthoritativeRoomDocument,
+    requireCurrentStream = true,
+  ) => {
+    if (
+      (requireCurrentStream && !authorizationRef.current) ||
+      displayedTaskId.current !== taskId
+    )
+      return;
+    const identity = `${nextDocument.kind}\u0000${nextDocument.revision}\u0000${nextDocument.text}`;
+    if (lastDocumentIdentity.current === identity) return;
+    lastDocumentIdentity.current = identity;
+    const previousAuthoritativeText = authoritativeTextRef.current;
+    if (
+      import.meta.env.MODE === 'test' ||
+      import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE === '1'
+    ) {
+      pendingPerformanceApply.current = {
+        workingRevision: nextDocument.revision,
+        text: nextDocument.text,
+      };
+      emitTaskDocumentApplyPerformanceMark({
+        taskId,
+        workingRevision: nextDocument.revision,
+        appliedEpochMs: browserEpochMs(),
+      });
+    }
+    setText((current) =>
+      current === previousAuthoritativeText ? nextDocument.text : current,
+    );
+    setAppliedDocument(nextDocument);
+    authoritativeTextRef.current = nextDocument.text;
+    setAuthoritativeText(nextDocument.text);
+  };
+  const applyAuthoritativeDocumentRef = useRef(applyAuthoritativeDocument);
+  applyAuthoritativeDocumentRef.current = applyAuthoritativeDocument;
   const dirty = text !== authoritativeText;
   const { DiscardModal } = useUnsavedGuard(dirty);
   useLayoutEffect(() => {
@@ -93,6 +144,7 @@ export function TaskRoomEditorPane({
     displayedTaskId.current = taskId;
     lastDocumentIdentity.current = undefined;
     pendingPerformanceApply.current = undefined;
+    queryApplicationInitialized.current = false;
     setPossibleEffect(undefined);
     setRejection(undefined);
     setSettlement(undefined);
@@ -100,9 +152,13 @@ export function TaskRoomEditorPane({
       const next = document.data.text;
       lastDocumentIdentity.current = `${document.data.kind}\u0000${document.data.revision}\u0000${next}`;
       setText(next);
+      setAppliedDocument(document.data);
+      authoritativeTextRef.current = next;
       setAuthoritativeText(next);
     } else {
       setText('');
+      setAppliedDocument(undefined);
+      authoritativeTextRef.current = '';
       setAuthoritativeText('');
     }
   }, [document.data, taskId]);
@@ -117,35 +173,45 @@ export function TaskRoomEditorPane({
   }, [dirty, instanceId, runtime]);
   const room = shared?.discovery ?? discovery;
   useLayoutEffect(() => {
-    if (document.data?.kind === 'snapshot' || document.data?.kind === 'delta') {
-      const identity = `${document.data.kind}\u0000${document.data.revision}\u0000${document.data.text}`;
-      if (lastDocumentIdentity.current === identity) return;
-      lastDocumentIdentity.current = identity;
-      const next = document.data.text;
-      if (
-        import.meta.env.MODE === 'test' ||
-        import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE === '1'
-      ) {
-        pendingPerformanceApply.current = {
-          workingRevision: document.data.revision,
-          text: next,
-        };
-        emitTaskDocumentApplyPerformanceMark({
-          taskId,
-          workingRevision: document.data.revision,
-          appliedEpochMs: browserEpochMs(),
-        });
-      }
-      setText((current) => (current === authoritativeText ? next : current));
-      setAuthoritativeText(next);
+    if (!shared) return;
+    return shared.subscribeDocument((nextDocument) =>
+      applyAuthoritativeDocumentRef.current(nextDocument),
+    );
+  }, [shared]);
+  useLayoutEffect(() => {
+    if (
+      !document.isError &&
+      (document.data?.kind === 'snapshot' || document.data?.kind === 'delta')
+    ) {
+      const requireCurrentStream =
+        sharedStreamPresentRef.current && queryApplicationInitialized.current;
+      queryApplicationInitialized.current = true;
+      applyAuthoritativeDocumentRef.current(
+        document.data,
+        requireCurrentStream,
+      );
+    } else {
+      queryApplicationInitialized.current = true;
     }
-  }, [authoritativeText, document.data, taskId]);
-  const documentLoaded =
-    document.data?.kind === 'snapshot' || document.data?.kind === 'delta';
-  const documentRevision =
+  }, [document.data, document.isError]);
+  const queryDocument =
     document.data?.kind === 'snapshot' || document.data?.kind === 'delta'
-      ? document.data.revision
+      ? document.data
       : undefined;
+  const displayedDocument = appliedDocument ?? queryDocument;
+  const documentLoaded = displayedDocument !== undefined;
+  const documentRevision = displayedDocument?.revision;
+  // A stream-applied document may remain visible while recovery is needed,
+  // but gap/unavailable/error query truth revokes edit authority immediately.
+  // Display continuity is not authority to plan or save from stale text.
+  const documentAuthorityCurrent =
+    !document.isError &&
+    document.data?.kind !== 'gap' &&
+    document.data?.kind !== 'unavailable';
+  if (documentAuthorityRef.current !== documentAuthorityCurrent) {
+    documentAuthorityRef.current = documentAuthorityCurrent;
+    operationGeneration.current += 1;
+  }
   useLayoutEffect(() => {
     if (
       import.meta.env.MODE !== 'test' &&
@@ -176,7 +242,10 @@ export function TaskRoomEditorPane({
     room.data?.kind === 'opened' || room.data?.kind === 'existing'
       ? room.data.capabilities
       : undefined;
-  const readable = documentLoaded && capabilities?.documentRead === true;
+  const readable =
+    documentLoaded &&
+    documentAuthorityCurrent &&
+    capabilities?.documentRead === true;
   const writable =
     readable && capabilities?.documentWrite === true && authorizationCurrent;
   const paneId = projectTaskRoomEditorPaneId(taskId);
@@ -339,8 +408,10 @@ export function TaskRoomEditorPane({
     if (!isCurrentOperation(generation)) return;
     if (!adopted) return;
     setPossibleEffect(undefined);
+    authoritativeTextRef.current = adopted.text;
     setRejection(undefined);
     setSettlement(settled.kind);
+    setAppliedDocument(adopted);
     setAuthoritativeText(adopted.text);
     setText(adopted.text);
   }
@@ -353,12 +424,28 @@ export function TaskRoomEditorPane({
       batch.isPending
     )
       return;
-    const observedDocument = document.data;
+    // Immediate stream application owns display, not the cache CAS token.
+    // React Query structural sharing may copy that object on publication;
+    // capture its exact canonical identity before planning the save instead.
+    const observedDocument = queryClient.getQueryData<ProjectTaskRoomDocument>(
+      projectTaskRoomQueries.document(taskId).queryKey,
+    );
     if (
       observedDocument?.kind !== 'snapshot' &&
       observedDocument?.kind !== 'delta'
     )
       return;
+    // A newer cache publication that the pane has not displayed yet is not
+    // authority to save an older draft against that unseen document. Keep the
+    // draft and wait for the ordinary query/stream display to catch up.
+    if (
+      observedDocument.kind !== displayedDocument?.kind ||
+      observedDocument.revision !== displayedDocument.revision ||
+      observedDocument.text !== displayedDocument.text
+    ) {
+      setRejection('The shared document changed. Review it before retrying.');
+      return;
+    }
     const saveTaskId = taskId;
     const generation = operationGeneration.current;
     if (!isCurrentOperation(generation)) return;
@@ -381,6 +468,7 @@ export function TaskRoomEditorPane({
       if (!isCurrentOperation(generation)) return;
       if (planned.kind === 'unchanged') {
         setPossibleEffect(undefined);
+        authoritativeTextRef.current = text;
         setAuthoritativeText(text);
         setSettlement('unchanged');
         return;

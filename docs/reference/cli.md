@@ -340,13 +340,14 @@ container port-map is indistinguishable from a direct same-host process at
 that layer, so an unauthenticated `station acp status
 --api-base=http://127.0.0.1:<port>` fails with `authentication_required` even
 though nothing but this OS user could plausibly have reached that port. This
-is correct fail-closed behavior, not a bug — but the sanctioned way to satisfy
-it non-interactively is documented only in the implementation, not here.
+is expected authentication enforcement. The supported non-interactive
+local-grant exchange is documented below.
 
-The interactive paths (`station setup local`, `station setup existing <name> <endpoint> --pair`,
-and the bare `station` launcher's browser bootstrap) all end up minting a
-device-session credential through the same underlying primitive: **local
-grant**. A per-boot, owner-only secret file under the Station home is proof of
+Local setup, remote pairing, and browser bootstrap issue device-session
+credentials through distinct authority paths. `station setup local` uses
+**local grant**; `station setup existing <name> <endpoint> --pair` uses pairing,
+and the launcher’s browser bootstrap retains its separate `ui-bootstrap` mint
+kind. These paths do not confer interchangeable approval authority. A per-boot, owner-only secret file under the Station home is proof of
 authority, because whoever can already read that file has unconfined access to
 everything the exchange grants — same-user code execution is already
 unauthenticated with respect to the filesystem. See
@@ -920,13 +921,14 @@ station delegate targets [--on=<environment>] [--project=<slug>|--project-path=<
 foreground chat and delegation. It resolves the Conversation's current child
 Session at the serving Station; callers do not choose a Session just to send a
 follow-up. `task:` and `cli:` identifiers remain accepted as legacy
-conversation identities. `delegate continue <legacy-id> <message>` routes to
-the same continuation implementation, but is deprecated for at least this
+conversation identities. Ordinary chats and delegated conversations both use
+the canonical conversation continuation API. `delegate continue <legacy-id>
+<message>` retains the legacy task-bound API and response for at least this
 release and emits a migration notice. Supervision verbs keep their deliberately
 different scope: `status`, `events`, `respond`, and `interrupt` operate on the
 resolved current Session/task and their output identifies both the durable
-`conversationId` and `currentSessionId`. `taskId` remains a compatibility alias
-where it was already present.
+`conversationId` and `currentSessionId`. A Conversation selector does not create
+a Task or grant task-supervision authority.
 
 Creation accepts only the authored prompt, target, and optional parent Task.
 The serving Station produces the resulting Conversation and Session identities;
@@ -999,15 +1001,26 @@ e.g. `delegate.create`, `delegate.status`, `delegate.events`,
 `delegate.continue`, `delegate.respond`, `delegate.interrupt`,
 `delegate.targets`.
 
+For canonical `delegate --session`, `data` contains the foreground execution
+receipt (`conversationId`, accepted `sessionId`, `providerTurnId`, `target`, and
+`resolution`), plus `currentSessionId` as an alias of `sessionId` and
+`status: 'dispatched'`. It does not invent a `taskId`; environment/model
+provenance is in `resolution`. Consumers needing the previous task-specific
+follow-up payload can use the deprecated `delegate continue` alias during
+the compatibility period. Task creation and supervision payloads are unchanged.
+
 `--on-request=<wait|fail>` (station#979, default `wait`, `create`/
 conversation continuation only) — `delegate` dispatch is fire-and-forget (the server
 returns a `status: 'dispatched'` handle immediately; there is no live
 event stream open at the CLI call site to react to mid-turn, unlike
-`chat`). `--on-request=fail` makes exactly one follow-up status check
-(`observeDelegatedTask`) right after dispatch: if the task already shows a
-`pendingRequest`, it prints the request and the exact
-`station delegate respond <task-id> <request-id> <decision>` command and
-exits **4** instead of the ordinary success output, leaving the Conversation
+`chat`). `--on-request=fail` makes one best-effort observation after dispatch.
+Canonical local continuation reads pending approvals on the accepted child
+Session and supplies a `station approvals respond` command. Task creation,
+legacy continuation, and saved-environment task probes use task supervision
+and a `station delegate respond` command. A saved-environment ordinary
+Conversation has no task probe; its unavailable observation is reported as a
+warning, preserving the successful dispatch. Observation errors never trigger
+another turn. An observed pending request exits **4**, leaving the Conversation
 alive. `--on-request=wait` skips that check entirely (today's behavior,
 unchanged). Independent of `--on-request`, `station delegate status`
 always prints the respond-command hint alongside an existing
@@ -1224,7 +1237,7 @@ repaint — a documented, accepted risk, not a blocker.
 ```
 station projects list [--api-base=<url>]
 station projects get <slug> [--api-base=<url>]
-station projects create --data=<json> [--api-base=<url>]
+station projects create (--data=<json>|--file=<path>) [--station=<name>|--api-base=<url>]
 station projects update <slug> --data=<json> [--api-base=<url>]
 station projects delete <slug> [--api-base=<url>]
 station projects layouts available [--api-base=<url>]
@@ -1243,6 +1256,8 @@ station projects create --data='{"name":"Launchpad","slug":"launchpad"}'
 station projects layouts available
 station projects layouts create launchpad --data='{"name":"Code","slug":"code","type":"coding"}'
 ```
+
+For an imported checkout, follow [target Project registration](../guides/workspace-packages.md#register-the-restored-checkout-as-a-target-project). Use a target-visible path and an explicit enrolled Station; creation allocates a fresh Project identity.
 
 ### `skills`
 
@@ -1982,6 +1997,16 @@ Validate every manifest entry and content hash, then atomically restore a
 Station home while retaining the replaced home as a timestamped sibling.
 Restore never runs while a matching Station instance is live.
 
+The CLI identifies the result as **recovered from a copy**, prints the backup's
+snapshot time, and notes that work after that snapshot may be missing. Its JSON
+receipt includes `recovery` with a new recovery ID, snapshot/recovery times,
+the validated manifest digest, and `authorityTransferred: false`. Restore
+publishes `station-home-recovery.json` atomically with the home, replacing any
+prior recovery disclosure from that copy. This metadata grants no execution
+authority and does not claim witnessed failover. Connected browsers show the same recovery-from-copy notice after refreshing
+system status. This home-level disclosure does not establish a channel-specific
+divergence checkpoint or witnessed transfer.
+
 ```
 station home restore --from=<backup-directory> --confirm [--home=<dir>] [--base=<dir>] [--json]
 ```
@@ -2589,3 +2614,106 @@ Environment variables are station-only (`STATION_*`). Shared app data resolves
 from `STATION_ROOT` → `~/.station`; runtime state resolves independently from
 `STATION_HOME` → `<STATION_ROOT>/instances/<channel>`. The source launcher is
 `./station`.
+
+
+### `cloud` — cloud move preparation
+
+`station cloud` currently offers read-only preparation, not a live move.
+Preview supports `aws-ec2` and `gcp-compute`; template generation is AWS-only:
+
+```sh
+station cloud preview --home=/absolute/path/to/station-home --provider=aws-ec2 --region=us-east-1 --instance-type=t3.micro --json
+station cloud preview --home=/absolute/path/to/station-home --provider=gcp-compute --region=us-central1 --instance-type=e2-micro --json
+station cloud verify-target --station=cloud-dev --json
+station cloud template --provider=aws-ec2 --region=us-east-1 --instance-type=t3.micro --image=REGISTRY/IMAGE@sha256:DIGEST --output=station-cloud.json
+```
+
+`verify-target` requires exactly one explicitly enrolled `--station` or
+`--api-base` target. Complete owner-approved Station pairing first. It uses
+that connection's bearer credential and observes environment discovery between
+two matching boot-identity reads. Redirects, missing or wrong-origin
+credentials, malformed identities, responses over 4 KiB, and a boot change
+fail verification. The entire observation has a 15-second deadline.
+
+JSON output contains the target origin, environment ID, instance ID, boot ID,
+build SHA and observation time. It contains no credential and grants no
+execution authority. A saved observation cannot authorize activation: verify
+the target again when the future transfer coordinator reaches that boundary.
+The command does not provision, transfer files, or continue agents.
+
+
+Replace the image placeholder with a verified, publicly readable Linux/x86 image
+and its 64-character SHA-256 digest. The template command refuses existing output
+files. Use `./station` when running from a source checkout. Neither command
+creates AWS resources, exports credential stores, copies workspaces, stops a local
+instance, or resumes an agent. Unknown actions/options and unsupported target
+profiles fail rather than triggering implicit provisioning.
+
+The preview requires an explicit existing home with the current schema. It lists
+selected Agent/Project metadata, leaves plugin inventory unverified pending its
+lifecycle owner, and reports required
+credential enrollment and ownership checks, and omits configuration contents and
+secret payloads from its output. Selected configuration bytes may themselves contain
+sensitive fields; dedicated credential stores are not accessed. Corrupt, linked, oversized, or incompatible
+selected configuration fails the preview. This is not an atomic backup, a complete
+compatibility scan, or a credential portability guarantee. Exit zero means a
+preview/template was produced; inspect `transferAvailable` and
+`executionResumeAvailable`, which are currently false.
+
+The AWS template requires VPC/subnet inputs at deployment and IAM creation
+acknowledgement. Deploy in the selected region only after reviewing the resources
+and budget. It has no inbound security-group rules, uses SSM access and an
+encrypted retained EBS root/data volume, and requires a later application-health
+check. Retention does not imply automatic recovery on a replacement instance.
+The [cloud-move design](../design/cloud-move.md) records provider boundaries,
+credential handling, execution ownership, and the remaining implementation.
+
+
+### Encrypted workspace copies
+
+```bash
+station cloud keygen --output=/private/keys/workspace.key
+station cloud pack-workspace --workspace=/work/project --key-file=/private/keys/workspace.key --output=/private/exports/workspace.enc --source-paused --json
+station cloud inspect-workspace --archive=/private/exports/workspace.enc --key-file=/private/keys/workspace.key --json
+station cloud unpack-workspace --archive=/private/exports/workspace.enc --key-file=/private/keys/workspace.key --destination=/work/imported --json
+```
+
+These provider-independent commands require no `--home` or provider flags.
+Package operations emit JSON receipts; key generation emits a confirmation without
+printing the key. `--source-paused` is required and is the operator's assertion,
+not an automatic process stop. All output paths must be new. Import creates the
+checkout at `<destination>/workspace`. See [Workspace packages](../guides/workspace-packages.md)
+for prerequisites, encryption/key handling, exact preserved content, resource
+limits, and recovery. They copy workspace data, not credentials or running agents.
+
+
+### Import and register a target Project
+
+```bash
+station cloud import-project --archive=/private/import/workspace.enc --key-file=/private/keys/workspace.key --destination=/work/imported --target-workspace=/work/imported/workspace --name="Imported project" --slug=imported-project --station=cloud-dev
+```
+
+Requires an explicit already enrolled `--station` or authenticated `--api-base`,
+a fresh import destination, a target-visible absolute workspace path, and an
+unused lowercase hyphenated slug. It imports locally, creates a fresh target
+Project through the existing API, and reads back its identity. Failed or uncertain
+registration retains the checkout and durable request for explicit reconciliation.
+See [combined import and registration](../guides/workspace-packages.md#import-and-register-in-one-command)
+for the exact lifecycle and limits. This does not upload files, enroll credentials,
+verify the target filesystem, or transfer execution authority.
+
+
+### Verify a restored workspace
+
+```bash
+station cloud verify-workspace --archive=/private/import/workspace.enc --key-file=/private/keys/workspace.key --workspace=/work/imported/workspace --workspace-paused --json
+```
+
+Compares the paused local checkout with the authenticated package and emits a
+receipt bound to the package SHA-256. It checks HEAD/branch, staged state, content
+policy and working files through the existing bounded codecs. Physical executable
+bits are checked on POSIX and explicitly unavailable on Windows. It does not
+repair files or transfer authority. See [restored-checkout verification](../guides/workspace-packages.md#verify-the-restored-checkout)
+for scratch storage, exclusions and non-atomic capture limits. `import-project`
+performs this local check before sending Project creation, and retains the import
+without attempting creation when verification fails.

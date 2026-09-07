@@ -35,6 +35,10 @@ import {
   priorStringList,
 } from '@kontourai/station-contracts/device-settings';
 import type { SettingValueDescriptor } from '@kontourai/station-contracts/settings-registry';
+import {
+  parseRegionArrangementRecord,
+  toRegionArrangementRecord,
+} from '../regions/region-arrangement-record';
 
 const ENVELOPE_STORAGE_KEY = 'station-device-settings-v1';
 
@@ -458,6 +462,22 @@ function validateImportedValue<K extends keyof DeviceSettings>(
           ? {
               valid: true,
               value: outcome.value as unknown as DeviceSettings[K],
+            }
+          : { valid: false };
+      }
+      if (definition.key === 'regionArrangement') {
+        // #928 D: the record's own parser is its only shape validation (the
+        // generic composite path below would accept any plain object). An
+        // unrecognisable record is dropped; a readable one is canonicalized,
+        // so a retired surface or an undeclared placement lands as an empty
+        // region rather than as bytes every later read has to re-reject.
+        const parsed = parseRegionArrangementRecord(candidate);
+        return parsed
+          ? {
+              valid: true,
+              value: toRegionArrangementRecord(
+                parsed,
+              ) as unknown as DeviceSettings[K],
             }
           : { valid: false };
       }

@@ -33,6 +33,7 @@ import {
   readSync,
 } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { ANSI_SEQUENCE } from './lib/ansi-escape.mjs';
 
 /**
  * The gate's JSON verdict is the LAST document on stdout and is itself bounded
@@ -195,10 +196,18 @@ export function lastJsonDocument(text) {
   return null;
 }
 
-/** ANSI SGR/CSI sequences and C0 controls, which corrupt both renderings. */
-const CONTROL_SEQUENCES =
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: removing terminal control bytes is exactly the job.
-  /\u001B\[[0-9;?]*[ -/]*[@-~]|[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+/**
+ * ANSI SGR/CSI sequences and C0 controls, which corrupt both renderings.
+ *
+ * The escape-sequence half is the shared `ANSI_SEQUENCE` (station#1471
+ * review): this renderer and the verification reporter had independent copies
+ * of the same pattern, and a divergence between them would mean the reporter
+ * matching a line this renderer then mangles.
+ */
+const CONTROL_SEQUENCES = new RegExp(
+  `${ANSI_SEQUENCE.source}|[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]`,
+  'g',
+);
 
 function plainText(value) {
   return String(value ?? '').replace(CONTROL_SEQUENCES, '');
@@ -331,6 +340,17 @@ export function renderSummary({ document, unparseableReason, sourcePath }) {
   const excerpts = causalExcerptsOf(summary);
   if (excerpts.length) {
     lines.push('### Causal excerpts', '');
+    // station#1471 review: the caveat travels WITH the excerpt it qualifies.
+    // `causeStream` is emitted only when the excerpt came from a stream the
+    // reporter could not attribute to a step, so its absence is the stronger
+    // claim (the excerpt was scoped to the step that failed) and rendering
+    // nothing in that case is correct. Rendering nothing in EITHER case, which
+    // is what this did, states the stronger claim for both.
+    if (summary.causeStream === 'stderr')
+      lines.push(
+        'Chosen from stderr, unscoped: no step marker attributes this line to the failing step, so it was picked by severity and position.',
+        '',
+      );
     lines.push(
       fencedBlock(excerpts.map((entry) => plainText(entry)).join('\n')),
       '',

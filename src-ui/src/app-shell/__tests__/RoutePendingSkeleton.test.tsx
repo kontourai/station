@@ -92,7 +92,8 @@ const baseProps = {
   apiBase: 'http://localhost:3242',
   availableModels: [],
   onNavigate: vi.fn(),
-  onNavigateHome: vi.fn(),
+  onShowHome: vi.fn(),
+  onReturnToOutlet: vi.fn(),
   onSettingsSaved: vi.fn(),
 };
 

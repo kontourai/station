@@ -6,9 +6,9 @@ import {
   canonicalConnectionPath,
 } from '../views/connections-hub/connection-sections';
 import {
-  APP_SURFACE_REGISTRY,
-  type ManagementSurfaceId,
-} from './surface-registry';
+  APP_DESTINATION_REGISTRY,
+  type ManagementDestinationId,
+} from './destination-registry';
 
 export const DEVELOPER_TABS = [
   'logs',
@@ -265,8 +265,8 @@ export function resolveViewFromPath(
   const queryIndex = path.indexOf('?');
   const search = queryIndex >= 0 ? path.slice(queryIndex + 1) : '';
   path = queryIndex >= 0 ? path.slice(0, queryIndex) : path;
-  const exactSurface = APP_SURFACE_REGISTRY.resolveExactRoute(path);
-  if (exactSurface) return exactSurface;
+  const exactDestination = APP_DESTINATION_REGISTRY.resolveExactRoute(path);
+  if (exactDestination) return exactDestination;
 
   if (path.startsWith('/agents/')) {
     // Preserve the historically accepted trailing-slash spelling while the
@@ -597,10 +597,33 @@ export function getPathForView(view: NavigationView): string | null {
   }
 }
 
-/** Returns Station's semantic parent, independent of browser arrival history. */
+/**
+ * Returns Station's semantic parent, independent of browser arrival history.
+ *
+ * A parent is DECLARED here, never assumed. The fallback used to be
+ * `{ type: 'home' }`, which handed every unlisted view a parent it does not
+ * have: a top-level sidebar destination is not below anything, so the single
+ * consumer of this — `app.escapeUp` in App.tsx — was armed on those pages and
+ * Escape navigated away from them. #1582 H3 measured it on Schedule (open Add
+ * Job, Escape closes the dialog, Escape again lands on Home), but the dialog
+ * was never involved: one Escape on the resting page did the same, and so did
+ * Agents, Connections, Plugins, Guidance, Review, Notifications, Developer and
+ * Profile. `null` means "no level up", which is what those pages are.
+ */
 export function getParentView(view: NavigationView): NavigationView | null {
   switch (view.type) {
     case 'home':
+      return null;
+    // Top-level destinations: nothing above them to go up to.
+    case 'agents':
+    case 'connections':
+    case 'guidance':
+    case 'plugins':
+    case 'review-queue':
+    case 'developer':
+    case 'schedule':
+    case 'notifications':
+    case 'profile':
       return null;
     case 'agent-edit':
     case 'agent-new':
@@ -608,7 +631,10 @@ export function getParentView(view: NavigationView): NavigationView | null {
     case 'connections-model-edit':
       return { type: 'connections-models' };
     case 'connections-engine-edit':
+    case 'connections-engine-new':
       return { type: 'connections-engines' };
+    case 'connections-computers':
+      return { type: 'connections' };
     case 'connections-tool-edit':
       return { type: 'connections-tools' };
     case 'connections-models':
@@ -631,25 +657,32 @@ export function getParentView(view: NavigationView): NavigationView | null {
     case 'layout':
       return { type: 'project', slug: view.projectSlug };
     case 'task':
+    // Settings behaves as a full-page overlay of Home rather than a sibling
+    // destination, and its Escape has always closed back to Home.
+    case 'settings':
+    case 'project':
+    case 'project-new':
+    case 'board':
+    case 'not-found':
       return { type: 'home' };
     case 'registry':
-      return view.tab ? { type: 'registry' } : { type: 'home' };
+      return view.tab ? { type: 'registry' } : null;
     default:
-      return { type: 'home' };
+      return null;
   }
 }
 
-export type ManagementNavigationGroup = ManagementSurfaceId;
+export type ManagementNavigationGroup = ManagementDestinationId;
 
 export function getManagementNavigationGroup(
   view: NavigationView,
 ): ManagementNavigationGroup | null {
-  const surface = APP_SURFACE_REGISTRY.getSurfaceForView(view);
-  return surface?.managementGroup ?? null;
+  const destination = APP_DESTINATION_REGISTRY.getDestinationForView(view);
+  return destination?.managementGroup ?? null;
 }
 
 export function getPathForManagementNavigationGroup(
   group: ManagementNavigationGroup,
 ): string {
-  return APP_SURFACE_REGISTRY.get(group)?.route ?? '/';
+  return APP_DESTINATION_REGISTRY.get(group)?.route ?? '/';
 }
