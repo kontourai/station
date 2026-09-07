@@ -249,17 +249,28 @@
      `.app-toolbar__icon-btn` padding/font-size pair and an
      `.app-toolbar__workspace-btn { display: none }` — because the base rules
      redeclare the same properties LATER at equal specificity, and source
-     order decides a tie. They read as intent for years while computing
-     nothing.
+     order decides a tie. They stated an intent that computed nothing.
 
-     Deleted rather than moved after the base. Applying them would have
-     changed what a phone renders with no layout gain to show for it: the
-     768px block floors every `.app-toolbar__icon-btn` at 44x44, so trimming
-     its padding from 6px 8px to 4px 6px cannot narrow the row that #1401
-     measures as over-subscribed — it would only shrink the glyph inside a
-     floored box. And `.app-toolbar__workspace-btn` is not rendered by
-     anything: the class has no consumer in the app at all, so its whole rule
-     set went with it.
+     `.app-toolbar__workspace-btn` had no consumer anywhere in the app, so
+     hiding it was never a change anyone could see and its whole rule set went
+     with it.
+
+     The icon-button pair was deleted rather than moved after the base, and
+     the two halves are not alike. `font-size` only shrinks the glyph, which
+     renders at `1em`. `padding` is NOT inert: the 768px block's 44px is a
+     min-width FLOOR, and two controls in this row are content-sized past it —
+     the connection chip (~114px: 85px label plus 35px of its own furniture,
+     measured below) and the notifications button when it carries a badge
+     (~56-62px). Trimming 8px to 6px gives each of those back 4px, so roughly
+     8px of a `flex-shrink: 0` row, inside the 383-403px band #1401 measures
+     as over-subscribed.
+
+     That is real relief and it is still not the change #1401 is waiting for,
+     which is a control leaving the row. Taking it would move the 382px label
+     breakpoint derived in #1132 and buy a glyph two sizes smaller on a phone
+     — a visible cost with no owner behind it. So the row keeps what it
+     renders today, and the option is recorded on #1630 with these numbers
+     rather than taken silently here.
 
      This rule is the block's live one: its base sits EARLIER in this sheet,
      so it wins the tie. A finger needs the same 44px floor the composer
