@@ -81,6 +81,18 @@ function halfEnvelope(field: 'ready' | 'status'): Response {
 }
 
 /**
+ * Valid JSON that is not an object, on one of the two statuses.
+ *
+ * `null` specifically, because it is the shape that PARSES and then throws on a
+ * field read: the parse handler completes, so a naive implementation reads
+ * `body.ready` off `null`, and that error escapes the whole derivation to be
+ * classified as no answer at all. A body that parsed is an answer.
+ */
+function validJsonThatIsNotAnObject(): Response {
+  return Response.json(null, { status: 503 });
+}
+
+/**
  * Headers that ARE the envelope, over a body that never completes.
  *
  * The body stream errors when the request signal aborts, which is what a real
@@ -273,6 +285,27 @@ describe('the UI proxy’s timeout answer is the host being away (#1654)', () =>
       expect(fetchMock).toHaveBeenCalledTimes(1);
     },
   );
+
+  test('a body of valid JSON that is not an object is an answer, and still asks this browser to pair', async () => {
+    // The mirror of the defect this file is about, and it was introduced BY the
+    // fix for it: `null` parses, so the parse handler completes, and a field read
+    // on it threw past the derivation to be classified as the host being away.
+    // Reporting an answer as no answer is the same lie in the other direction, and
+    // it costs the user a retry ladder before a screen that was decidable at once.
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(validJsonThatIsNotAnObject()));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderGate(<div>Protected application mounted</div>);
+
+    await screen.findByRole('button', { name: 'Complete pairing' });
+    expect(
+      screen.queryByRole('heading', { name: 'Reconnecting to this Station' }),
+    ).toBeNull();
+    await settleForLongerThanTheLadder();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 
   test('a response torn down mid-body is the host being away, not a browser without access', async () => {
     // The production tail of an unbounded body read, and the door station#1654's

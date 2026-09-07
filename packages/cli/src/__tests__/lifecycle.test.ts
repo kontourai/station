@@ -5214,6 +5214,17 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         res.end(JSON.stringify({ ready: true }));
         return;
       }
+      // station#1654: refuse this one by dropping the connection, so the
+      // readiness envelope is answered by the SERIALIZED handler in the spawned
+      // process rather than only by the in-process one. That envelope is now a
+      // signal a browser derives from (`src-ui/src/lib/station-ui-proxy.ts`), and
+      // it is built from a same-function local — the one construct that survives
+      // `Function.prototype.toString` into this child. An imported constant would
+      // be `undefined` here, and every other test in this file would still pass.
+      if (req.url === '/api/system/identity') {
+        req.socket.destroy();
+        return;
+      }
       res.writeHead(404);
       res.end();
     });
@@ -5290,6 +5301,16 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
       const proxiedBody = JSON.parse(proxiedRes.body);
       expect(proxiedBody).toEqual({ ready: true });
       expect(upstreamTenant).toBe('alpha');
+      expect(stderr).toBe('');
+
+      // The envelope, out of the real spawned process: an upstream that dropped
+      // the connection. Same bytes the browser's derivation reads.
+      const unavailableRes = await request('/api/system/identity');
+      expect(unavailableRes.status).toBe(503);
+      expect(JSON.parse(unavailableRes.body)).toEqual({
+        ready: false,
+        status: 'unavailable',
+      });
       expect(stderr).toBe('');
     } finally {
       child.kill('SIGKILL');

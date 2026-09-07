@@ -54,21 +54,47 @@ function isStationUiProxyUnavailableStatus(status: number): boolean {
  *
  * A derivation on the same evidence would NOT be sufficient anywhere that granted
  * access, and must not be reused as if it were.
+ *
+ * DECLINED TIGHTENING: requiring `Content-Type: application/json`. The producer
+ * does send it and `lifecycle.test.ts` pins it, so this looks like an obvious
+ * strengthening, and it is deliberately not taken. It closes no misclassification
+ * anyone has identified — the bytes are the signal, and a stranger willing to emit
+ * this envelope is equally willing to emit the header — and it adds a condition
+ * whose FAILURE MODE IS THE ORIGINAL DEFECT: anything that rewrote or stripped
+ * that header would turn a real proxy answer into a non-OK response with no
+ * envelope, which is the pairing screen. A condition that can only fail toward the
+ * bug this check exists to prevent needs a real benefit to earn its place, and
+ * there is none here. Do not re-propose it without one.
+ *
+ * KNOWN LIMIT, recorded rather than fixed: a close-delimited response truncated by
+ * the close itself reads as a complete body, so a partial envelope would be
+ * classified from what arrived. This proxy cannot produce it — its own framing
+ * always sets a length or chunks — so there is no path from a Station to this
+ * case, and adding machinery for it would be defending a shape the producer
+ * cannot emit.
+ *
+ * THREE EXITS, because the shape of the failure decides which:
+ *
+ *  1. bytes that are not JSON (`SyntaxError`) — something ANSWERED, and it is not
+ *     this envelope. `false`.
+ *  2. valid JSON that is not an object — also an answer, also not this envelope.
+ *     `false`, via the guard below rather than inside the parse handler: a field
+ *     read that threw in there would be indistinguishable from a body that could
+ *     not be read, which is the very collapse this function exists to undo.
+ *  3. a body that could not be READ to the end — rethrown, because it is not an
+ *     answer at all and only the caller can decide what "no answer" means.
  */
 export async function isStationUiProxyUnavailableResponse(
   response: Response,
 ): Promise<boolean> {
   if (!isStationUiProxyUnavailableStatus(response.status)) return false;
-  let body: { ready?: unknown; status?: unknown };
+  // `unknown`, not a cast to the envelope's shape: the cast is what let a `null`
+  // body reach a field read and throw past this function entirely (exit 2 below).
+  let body: unknown;
   try {
-    body = (await response.clone().json()) as {
-      ready?: unknown;
-      status?: unknown;
-    };
+    body = await response.clone().json();
   } catch (error) {
-    // ONLY a body that parsed and is not the envelope means "not this proxy's
-    // answer". A `SyntaxError` is exactly that: something answered with bytes
-    // that are not JSON.
+    // Exit 1 versus exit 3. A `SyntaxError` is bytes that are not JSON.
     //
     // Anything else here is a body that could not be READ — the caller's
     // deadline aborted it, or the responder tore the stream down mid-body, which
@@ -82,5 +108,11 @@ export async function isStationUiProxyUnavailableResponse(
     if (error instanceof SyntaxError) return false;
     throw error;
   }
-  return body.ready === false && body.status === 'unavailable';
+  // Exit 2. `null` is the case that matters: it PARSES, so the handler above
+  // completes, and reading a field off it throws — which escaped this function and
+  // was classified as no answer at all. A body that parsed is an answer, and
+  // reporting an answer as no answer is the mirror of the defect above.
+  if (typeof body !== 'object' || body === null) return false;
+  const envelope = body as { ready?: unknown; status?: unknown };
+  return envelope.ready === false && envelope.status === 'unavailable';
 }

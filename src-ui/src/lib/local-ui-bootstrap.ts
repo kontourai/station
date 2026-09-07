@@ -95,13 +95,22 @@ export class LocalUiBootstrapRefusedError extends Error {}
  * owns its deadline and answers `host-unavailable` directly without constructing
  * this.
  *
- * The exchange is deliberately unbounded, and the reason is that its token is
- * ONE-SHOT: a deadline that fired on a slow-but-succeeding exchange would spend
- * the token and leave the user needing a fresh start link, which is worse than
- * waiting. The residual is a host that accepts the connection and never answers,
- * where this browser stays on the gate's pending screen — not stranded, since the
- * degraded window puts a reload control on that screen, but the wait is the
- * host's to end rather than the gate's.
+ * DECLINED TIGHTENING: a deadline on the exchange, matching the identity read's.
+ * It is not merely unhelpful, it is DESTRUCTIVE in exactly the window a deadline
+ * would fire, and the mechanism is server-side: the mint deletes the token only
+ * after the exchange SUCCEEDS, deliberately, so that a refused exchange stays
+ * retryable. So the token survives a refusal — but not a success the client never
+ * saw. A deadline firing after the server committed destroys the token while this
+ * browser never receives the cookie, and the page cannot re-mint: that endpoint
+ * requires a direct-loopback caller proving a per-boot secret, which a browser is
+ * not. The user would need a fresh start link for a host that was merely slow.
+ *
+ * The residual is a host that accepts the connection and never answers, where this
+ * browser sits on the gate's pending screen until the degraded window offers a
+ * reload. That reload does NOT recover the session — the fragment was stripped at
+ * capture, so it lands on the identity ladder and then the pairing screen. What it
+ * buys is getting off a spinner onto a screen with something to press; the wait
+ * itself is the host's to end, not the gate's.
  */
 export class LocalUiHostUnreachableError extends Error {}
 
@@ -335,6 +344,14 @@ export function resolveLocalUiSession(
       // above catches its own transport failure and reports it as the host being
       // away — so this splits the one class #1654 was filed about (see the three
       // bullets in the doc block).
+      //
+      // That claim is TRUE as of the fix that drew the read's try around its
+      // classification, and was false before it: with the classification outside
+      // that try, a rethrown transport error escaped to here and was rendered as
+      // an alert on the pairing screen — a raw transport string presented to the
+      // user as a decision about their access. Anything that moves the
+      // classification back out silently re-opens this door, which is why the
+      // read's own tests assert on the SCREEN rather than on its return value.
       if (error instanceof LocalUiHostUnreachableError) {
         // The exchange never reached a responder. Its token is already spent
         // (captured and stripped), so nothing here can re-present it, and the
