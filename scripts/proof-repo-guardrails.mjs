@@ -5664,7 +5664,7 @@ for (const requiredHelper of [
   'export function registerPluginConfigRoutes',
   'pluginSettingsUpdates.add',
   "app.get('/:name/changelog'",
-  "app.put('/:name/overrides'",
+  "'/:name/overrides',",
 ]) {
   if (!pluginConfigRoutes.includes(requiredHelper)) {
     errors.push(`plugin-config-routes.ts must include ${requiredHelper}.`);
