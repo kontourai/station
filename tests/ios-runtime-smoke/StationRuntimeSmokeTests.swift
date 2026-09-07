@@ -7,20 +7,20 @@ final class StationRuntimeSmokeTests: XCTestCase {
 
     func testCleanInstallLeavesStartupForActionableConnectionState() throws {
         let app = XCUIApplication(bundleIdentifier: "io.kontourai.station")
-        app.launch()
-
-        // A clean hosted simulator can present the notification permission
-        // sheet before XCTest is allowed to query or tap the WKWebView. Handle
-        // it before asking the app process for its actionable shell.
-        dismissSystemAlertIfPresent()
-        app.activate()
-
         addTeardownBlock {
             let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             attachment.name = "station-ios-final-state"
             attachment.lifetime = .keepAlways
             self.add(attachment)
             app.terminate()
+        }
+        app.launch()
+
+        // A hosted failure observed the notification sheet arrive after this
+        // bounded probe initially missed it but before the following activation
+        // settled. Reacquire Station only after a sheet actually disappears.
+        if dismissSystemAlertIfPresent() {
+            app.activate()
         }
 
         let connect = app.buttons["Connect to a Station"]
@@ -34,8 +34,9 @@ final class StationRuntimeSmokeTests: XCTestCase {
         // launch-time dismissal sees no alert, while XCTest can still report
         // the covered WebView button as hittable. Dismiss again only after the
         // shell exists, then reacquire Station before delivering the tap.
-        dismissSystemAlertIfPresent()
-        app.activate()
+        if dismissSystemAlertIfPresent() {
+            app.activate()
+        }
         XCTAssertTrue(
             connect.waitForExistence(timeout: 5),
             "Connect to a Station disappeared after dismissing the notification sheet. Accessibility hierarchy:\n\(app.debugDescription)"
@@ -51,8 +52,9 @@ final class StationRuntimeSmokeTests: XCTestCase {
             // The notification sheet can still win the final race between the
             // post-shell dismissal and the first WebView tap. Recover once,
             // then let the existing bounded manager assertion decide the run.
-            dismissSystemAlertIfPresent()
-            app.activate()
+            if dismissSystemAlertIfPresent() {
+                app.activate()
+            }
             XCTAssertTrue(
                 connect.waitForExistence(timeout: 5),
                 "Connect to a Station disappeared while recovering from a post-tap notification sheet. Accessibility hierarchy:\n\(app.debugDescription)"
@@ -133,20 +135,37 @@ final class StationRuntimeSmokeTests: XCTestCase {
         }
     }
 
-    private func dismissSystemAlertIfPresent() {
+    /// Uses one two-second budget for both discovery and dismissal so probing
+    /// for a late sheet cannot extend the surrounding smoke-test timeout.
+    private func dismissSystemAlertIfPresent() -> Bool {
+        let deadline = Date().addingTimeInterval(2)
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let alert = springboard.alerts.firstMatch
-        guard alert.waitForExistence(timeout: 2) else { return }
+        guard alert.waitForExistence(timeout: deadline.timeIntervalSinceNow) else {
+            return false
+        }
+
+        var dismissalButton: XCUIElement?
         for label in ["Don’t Allow", "Don't Allow"] {
             let deny = alert.buttons[label]
             if deny.exists {
-                deny.tap()
-                return
+                dismissalButton = deny
+                break
             }
         }
-        if alert.buttons.firstMatch.exists {
-            alert.buttons.firstMatch.tap()
+        if dismissalButton == nil, alert.buttons.firstMatch.exists {
+            dismissalButton = alert.buttons.firstMatch
         }
+        guard let dismissalButton else {
+            return false
+        }
+
+        dismissalButton.tap()
+        let remaining = deadline.timeIntervalSinceNow
+        if remaining <= 0 {
+            return !alert.exists
+        }
+        return alert.waitForNonExistence(timeout: remaining)
     }
 
     private func assertContained(_ frame: CGRect, within container: CGRect, label: String) {

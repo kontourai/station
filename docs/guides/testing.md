@@ -84,6 +84,18 @@ marks incomplete identities instead of presenting aggregate counts as a
 diagnosable bundle, and `incompleteReasons` names every shortfall in words
 rather than leaving a bare `complete: false`.
 
+Changed-test execution discovers Vitest's related files first, combines them
+with the enabled explicit manifest targets, and runs each selected file once.
+The subset uses the same resource groups and worker limits as `test:full`:
+ordinary files use four workers, process-heavy files use two, and exclusive
+or shared-output groups run serially. Groups run in sequence. Deferred lanes
+remain deferred; this grouping does not broaden a bounded CI selection.
+Discovery has a 60-second deadline and a 1 MiB output limit. Discovery and
+test commands own their process trees, including cancellation and settlement.
+Missing or unsafe selected files and discovery failures stop execution and
+produce a preparation error in the diagnostic; they never count as executed
+tests or a passing empty selection.
+
 Test outcomes are read from Vitest's own report, never derived by subtraction.
 `executed` counts what actually ran (`passed + failed`); a deliberate skip
 (`describe.skipIf`) and a `test.todo` are itemised as `skipped` and `todo`
@@ -107,6 +119,14 @@ evidence: it runs base-pinned affected Vitest tests followed by fixed bounded
 invariants, not the global static/build chain or full corpus.
 Ordinary pull requests use focused evidence plus `npm run ci:fast`.
 GitHub's merge queue runs the required checks on the synthesized latest-main candidate.
+The iOS relevance check compares pull-request and merge-queue candidates from
+their merge base to the candidate head, so changes added only to a newer base
+do not trigger a candidate build. The shared change classifier retains direct
+before-to-after ranges for push classification, while the iOS workflow keeps
+running every admitted push and manual dispatch. The `pull_request_target` job
+executes the base-controlled classifier and runs the iOS check when that
+classifier is missing, fails, or returns anything other than one exact
+`relevant=true` or `relevant=false` line.
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
@@ -365,6 +385,38 @@ then `npm run screenshot:diff -- --screens=<touched screens>` to see whether
 the change moved any pixels, without paying for a full 29-screen run or
 committing a new baseline until the change is intentional.
 
+#### Where the gate runs, and which renderer the baseline is bound to
+
+`.github/workflows/nightly-gallery.yml` runs the capture and the exact diff
+daily, in a **digest-pinned Playwright container** on a hosted runner. That is
+not an implementation detail: the comparator hashes a decoded RGBA buffer with
+no threshold, so a baseline is only meaningful against the renderer that
+produced it, and that renderer has to be reproducible. `--font-sans` resolves
+to `"DM Sans", system-ui, sans-serif` and the bundled woff2 subsets cover
+latin + latin-ext only, so the glyphs the UI draws for `⌘`, `⋯`, `─`, `→`,
+`●` and `✓` come from the **host's** fonts — pinning the image by digest pins
+the rasterizer, fontconfig and that font set together. The job logs the
+Playwright build and the resolved font families for exactly this reason.
+
+Two consequences worth stating plainly:
+
+- **Regenerate a baseline from the CI renderer, not from a laptop**, and as its
+  own commit that changes nothing else. A regeneration on a developer machine
+  bakes in that machine's fonts along with whatever upstream drift has
+  accumulated, under whoever happens to be holding the branch.
+- **Bump the container in lockstep with `@playwright/test`**, and expect a
+  re-baseline to be part of that change. A rebuilt base image published under
+  the same tag is a different renderer wearing the same name, which is why the
+  pin is a digest rather than `v1.62.1-noble`.
+
+  What is enforced, and what is not: `ci-workflow-contract.test.ts` asserts the
+  **version** in the image reference equals the `@playwright/test` version
+  resolved in `pnpm-lock.yaml` (the lockfile, not the caret range in
+  `package.json`, so a resolved minor bump cannot slip past). The **digest** is
+  not checked and cannot be — nothing in this repository derives it. A digest
+  that no longer matches its tag's contents therefore surfaces as a Playwright
+  launch error in the nightly, not as a silent renderer change.
+
 ### Region grid parity (`scripts/region-grid-parity.mjs`)
 
 The dock grid in `src-ui/src/index.css` keys its tracks on the shell's
@@ -489,7 +541,7 @@ If verification succeeds but guard finalization cannot finish, the runner report
 next install until it is inspected. Unexpected guard children are never
 recursively deleted. This is cooperative install coordination and a recovery
 aid for generated dependencies, not a rollback transaction or user-data backup:
-workspace-local dependency trees and lockfiles remain npm-owned, and no
+workspace-local dependency trees and lockfiles remain pnpm-owned, and no
 hostile same-user/path-swap or power-loss archive guarantee is made.
 
 `npm run dependencies:ci` does **not** provision Playwright browsers. The
