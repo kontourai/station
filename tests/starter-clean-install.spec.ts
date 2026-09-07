@@ -17,7 +17,7 @@ type ApiEnvelope<T> = { success: boolean; data: T };
 
 test.use({ actionTimeout: 20_000 });
 
-test('fresh Station completes real Work and reopens its exact Scheduler receipt', async ({
+test('fresh Station completes real Work and opts into the developer Scheduler check', async ({
   authenticatedRequest,
   baseURL,
   page,
@@ -192,6 +192,10 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
     const starter = page.getByRole('region', {
       name: 'Run a scheduled readiness check',
     });
+    await expect(starter).toHaveCount(0);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('switch', { name: 'Enable developer tools' }).check();
+    await page.getByRole('button', { name: 'Home', exact: true }).click();
     await expect(starter).toBeVisible();
     await starter.getByRole('button', { name: 'Run check' }).click();
     await expect
