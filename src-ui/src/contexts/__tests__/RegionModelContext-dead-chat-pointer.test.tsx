@@ -115,7 +115,10 @@ describe('a reload carrying a chat pointer nothing can resolve', () => {
   test('leaves the side region closed and unoccupied', async () => {
     // Exactly what the audit reload carried: an unpromoted chat's session id.
     // `null` is now a 404 and only a 404 (see the SDK contract test).
-    setUrl('/?chat=claude%3A1788672912443&dock=open');
+    // Maximized, because that is the #1613 shape: the clear closes the dock
+    // through `updateParams`, and `maximize` must go with it or the URL holds
+    // the closed-and-still-maximized pair archive#795 refuses.
+    setUrl('/?chat=claude%3A1788672912443&dock=open&maximize=true');
     fetchConversationById.mockResolvedValue(null);
 
     await mountReload();
@@ -135,6 +138,12 @@ describe('a reload carrying a chat pointer nothing can resolve', () => {
       ).toBeNull(),
     );
 
+    // station#1613 end to end: the real hook's real clear, through the real
+    // store, leaves no `maximize` behind — the store-level tests drive
+    // `updateParams` by hand, this one drives `clearDeadChatPointer`.
+    expect(
+      new URLSearchParams(window.location.search).get('maximize'),
+    ).toBeNull();
     expect(model?.regions.right).toMatchObject({
       occupant: null,
       visible: false,
