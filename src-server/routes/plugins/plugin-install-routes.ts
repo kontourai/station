@@ -49,6 +49,7 @@ import {
   detectWorkspacePaneCatalogConflicts,
   fetchPluginSource,
   getPluginGitInfo,
+  PluginPreviewUnsupportedDependencyError,
   resolvePluginDependencies,
 } from './plugin-source.js';
 
@@ -338,6 +339,8 @@ export function registerPluginInstallRoutes(
             },
           }),
           logger,
+          undefined,
+          source,
         );
         const git = await getPluginGitInfo(tempDir, logger);
         // archive#4288: the preview already staged and validated everything a
@@ -375,6 +378,18 @@ export function registerPluginInstallRoutes(
         rmSync(tempDir, { recursive: true, force: true });
       }
     } catch (error: unknown) {
+      if (error instanceof PluginPreviewUnsupportedDependencyError) {
+        return c.json(
+          {
+            valid: false,
+            error: errorMessage(error),
+            code: 'unsupported-plugin-dependency',
+            components: [],
+            conflicts: [],
+          },
+          400,
+        );
+      }
       if (isContextSafetyError(error)) {
         return c.json(
           {
@@ -425,6 +440,9 @@ export function registerPluginInstallRoutes(
         permissions: consent.permissions,
         contentDigest: consent.contentDigest,
         dependencies: consent.dependencies ?? [],
+        ...(consent.dependencyApprovals
+          ? { dependencyApprovals: consent.dependencyApprovals }
+          : {}),
       };
       const mutation = await captureConfigurationMutation(
         applyConfigurationMutation,
@@ -480,9 +498,9 @@ export function registerPluginInstallRoutes(
       }
       if (isPluginConsentRefusedError(error)) {
         // 400 and not 500: the request and the plugin disagree about what was
-        // approved, and — the part worth saying out loud — the install had not
-        // mutated anything when it refused, so there is nothing to undo and
-        // nothing to report as partially done.
+        // approved. Earlier dependency effects may already have been rolled
+        // back. A 400 does not claim the request performed no earlier writes.
+        // Failed rollback remains an aggregate and must not be reported as 400.
         logger.warn(
           'Plugin install refused: consent did not cover the source',
           {

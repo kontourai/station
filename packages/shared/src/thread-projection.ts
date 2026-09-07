@@ -245,7 +245,39 @@ export function conversationToThread(
           },
         });
         const failed = isError === true || state === 'error';
-        if (result !== undefined || failed) {
+        // station#1558 (fix round, M5): an unresolved call carries a
+        // `result` — the sentence saying no result was reported — so it
+        // reached this push and exported as an ordinary tool result with no
+        // marker at all, i.e. as a success whose output happened to be that
+        // sentence. Thread's own vocabulary already names this case, so say
+        // it: `unknown` is neither `success` nor `error`, and it is what
+        // `thread-tool-result-adapter.ts` maps the same status to on the
+        // other export path. Every other state keeps today's shape.
+        const unresolved = state === 'unresolved';
+        // Thread refuses `terminalStatus` without the owner-issued result id
+        // it identifies ("resultId and terminalStatus must be supplied
+        // together"). Every unresolved row Station writes carries the
+        // terminal event's id, so the pair is available in practice.
+        const resultId =
+          typeof part.sourceEventId === 'string' &&
+          part.sourceEventId.length > 0
+            ? part.sourceEventId
+            : undefined;
+        if (unresolved) {
+          // Without an id the status cannot be stated, and a bare result
+          // reads as a success. Export the call with NO result instead —
+          // "no result was reported" is precisely what happened, and an
+          // absence cannot be mistaken for an outcome.
+          if (resultId) {
+            toolResults.push({
+              toolCallId: callId,
+              name,
+              content: toolResultContent(result),
+              resultId,
+              terminalStatus: 'unknown',
+            });
+          }
+        } else if (result !== undefined || failed) {
           toolResults.push({
             toolCallId: callId,
             name,

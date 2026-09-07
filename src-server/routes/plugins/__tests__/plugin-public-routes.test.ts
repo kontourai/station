@@ -5,12 +5,20 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
-import { withPluginContentLock } from '../../../services/plugins/plugin-content-integrity.js';
+import {
+  computePluginContentDigest,
+  withPluginContentLock,
+} from '../../../services/plugins/plugin-content-integrity.js';
+import { createPluginGrantReconciliationService } from '../../../services/plugins/plugin-grant-reconciliation.js';
 import {
   grantPermissions,
   readPluginGrantRecord,
 } from '../../../services/plugins/plugin-permissions.js';
 import { registerPluginPublicRoutes } from '../plugin-public-routes.js';
+import {
+  acquirePluginPublicServerModule,
+  quiescePluginPublicServerModule,
+} from '../plugin-public-server.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   pluginGrantsStoreCorruption: { add: vi.fn() },
@@ -36,7 +44,16 @@ function writePlugin(root: string, relativePath: string, content: string) {
   writeFileSync(fullPath, content);
 }
 
-function createApp(projectHomeDir: string, emit = vi.fn()) {
+function createApp(
+  projectHomeDir: string,
+  emit = vi.fn(),
+  grantReconciliation?: {
+    reconcile(input: {
+      pluginName: string;
+      permissions: readonly string[];
+    }): Promise<any>;
+  },
+) {
   const app = new Hono();
   registerPluginPublicRoutes(app, {
     eventBus: { emit } as any,
@@ -48,6 +65,7 @@ function createApp(projectHomeDir: string, emit = vi.fn()) {
     } as any,
     pluginsDir: join(projectHomeDir, 'plugins'),
     projectHomeDir,
+    grantReconciliation: grantReconciliation as any,
   });
   return app;
 }
@@ -136,6 +154,176 @@ describe('plugin-public-routes', () => {
     expect(emit).toHaveBeenCalledWith('plugins:grants-changed', {
       name: 'plain-plugin',
     });
+  });
+
+  test('retires runtime capability only after the provider grant is durably absent', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-plugin-public-'));
+    cleanupDirs.push(root);
+    const pluginDir = join(root, 'plugins', 'provider-plugin');
+    mkdirSync(pluginDir, { recursive: true });
+    writePlugin(
+      pluginDir,
+      'plugin.json',
+      JSON.stringify({
+        name: 'provider-plugin',
+        version: '1.0.0',
+        providers: [{ type: 'providerAdapter', module: './provider.js' }],
+      }),
+    );
+    await grantPermissions(root, 'provider-plugin', ['providers.register']);
+    const reconcile = vi.fn(async () => {
+      expect(
+        readPluginGrantRecord(root, 'provider-plugin').permissions,
+      ).toEqual([]);
+      return {
+        status: 'completed' as const,
+        operationId: 'operation-1',
+        generation: 1,
+        installationGeneration: 'sha256:generation',
+        effects: ['provider-retirement'],
+      };
+    });
+
+    const response = await createApp(root, vi.fn(), { reconcile }).request(
+      '/provider-plugin/grant',
+      {
+        body: JSON.stringify({ permissions: ['providers.register'] }),
+        headers: { 'content-type': 'application/json' },
+        method: 'DELETE',
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      granted: [],
+      reconciliation: {
+        status: 'completed',
+        operationId: 'operation-1',
+        effects: ['provider-retirement'],
+      },
+    });
+    expect(reconcile).toHaveBeenCalledWith({
+      pluginName: 'provider-plugin',
+      permissions: ['providers.register'],
+    });
+  });
+
+  test('reports 202 while a durable server grant revocation is still draining work', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-plugin-public-'));
+    cleanupDirs.push(root);
+    writePlugin(
+      root,
+      'plugins/server-plugin/plugin.json',
+      JSON.stringify({
+        name: 'server-plugin',
+        version: '1.0.0',
+        serverModule: './server.js',
+      }),
+    );
+    await grantPermissions(root, 'server-plugin', ['plugin.server']);
+    const reconcile = vi.fn(async () => ({
+      status: 'winding-down' as const,
+      operationId: 'operation-slow',
+      generation: 1,
+    }));
+
+    const response = await createApp(root, vi.fn(), { reconcile }).request(
+      '/server-plugin/grant',
+      {
+        body: JSON.stringify({ permissions: ['plugin.server'] }),
+        headers: { 'content-type': 'application/json' },
+        method: 'DELETE',
+      },
+    );
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      granted: [],
+      reconciliation: {
+        status: 'winding-down',
+        operationId: 'operation-slow',
+      },
+    });
+    expect(readPluginGrantRecord(root, 'server-plugin').permissions).toEqual(
+      [],
+    );
+  });
+
+  test('clean-home revocation fences and drains a real acquired server module before completing', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-plugin-public-'));
+    cleanupDirs.push(root);
+    const pluginsDir = join(root, 'plugins');
+    const manifest = {
+      name: 'server-plugin',
+      version: '1.0.0',
+      serverModule: 'server.mjs',
+    };
+    writePlugin(
+      root,
+      'plugins/server-plugin/plugin.json',
+      JSON.stringify(manifest),
+    );
+    writePlugin(
+      root,
+      'plugins/server-plugin/server.mjs',
+      'export function register() {}\nexport function dispose() {}\n',
+    );
+    await grantPermissions(root, 'server-plugin', ['plugin.server']);
+    const active = await acquirePluginPublicServerModule(
+      pluginsDir,
+      'server-plugin',
+      manifest,
+      { warn: vi.fn() } as any,
+    );
+    expect(active).not.toBeNull();
+    const reconciliation = createPluginGrantReconciliationService(
+      {
+        snapshot: async () => ({
+          installed: true,
+          installationGeneration: computePluginContentDigest(
+            pluginsDir,
+            'server-plugin',
+          ),
+          providerGeneration: 0,
+          grants: readPluginGrantRecord(root, 'server-plugin').permissions,
+        }),
+        quiesceModule: () =>
+          quiescePluginPublicServerModule(pluginsDir, 'server-plugin'),
+        quiesceSubscriptions: async () => ({ release: vi.fn() }),
+        retireProviders: async () => 'retired',
+        activateProviders: async () => 'activated',
+        settleProviderAdapters: async () => {},
+        removeEngineConnections: async () => 'removed',
+        reconcileEngineConnections: async () => {},
+        reconcileSubscriptions: async () => ({ kind: 'applied' }),
+      },
+      { responseDeadlineMs: 5 },
+    );
+
+    const response = await createApp(root, vi.fn(), reconciliation).request(
+      '/server-plugin/grant',
+      {
+        body: JSON.stringify({ permissions: ['plugin.server'] }),
+        headers: { 'content-type': 'application/json' },
+        method: 'DELETE',
+      },
+    );
+    expect(response.status).toBe(202);
+    const body = (await response.json()) as {
+      reconciliation: { operationId: string; generation: number };
+    };
+    expect(active?.isCurrent()).toBe(false);
+    active?.release();
+    await vi.waitFor(() =>
+      expect(reconciliation.inspect('server-plugin')).toMatchObject({
+        status: 'completed',
+        operationId: body.reconciliation.operationId,
+        generation: body.reconciliation.generation,
+        effects: expect.arrayContaining(['module-quiescence']),
+      }),
+    );
   });
 
   test('station#4288: GET /permissions reports the content binding and what it withheld', async () => {

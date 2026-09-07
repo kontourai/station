@@ -75,6 +75,7 @@
     "./known-environment": "./src/known-environment.ts",
     "./knowledge-store": "./src/knowledge-store.ts",
     "./knowledge-index": "./src/knowledge-index.ts",
+    "./learning-review": "./src/learning-review.ts",
     "./layout": "./src/layout.ts",
     "./live-activity": "./src/live-activity.ts",
     "./managed-model-binding": "./src/managed-model-binding.ts",
@@ -124,6 +125,7 @@
     "./workspace-pane-renderer-selection": "./src/workspace-pane-renderer-selection.ts",
     "./workspace-pane-host": "./src/workspace-pane-host.ts",
     "./workspace-pane-host-contract": "./src/workspace-pane-host-contract.ts",
+    "./workspace-pane-host-contribution": "./src/workspace-pane-host-contribution.ts",
     "./provider": "./src/provider.ts",
     "./orchestration": "./src/orchestration.ts",
     "./scheduler": "./src/scheduler.ts",
@@ -133,6 +135,7 @@
     "./tool": "./src/tool.ts",
     "./user-profile": "./src/user-profile.ts",
     "./usage-rollup": "./src/usage-rollup.ts",
+    "./unified-search": "./src/unified-search.ts",
     "./turn-provenance": "./src/turn-provenance.ts",
     "./turn-provenance-context": "./src/turn-provenance-context.ts",
     "./turn-changed-files": "./src/turn-changed-files.ts",
@@ -143,6 +146,7 @@
     "./workflow": "./src/workflow.ts",
     "./work-reference": "./src/work-reference.ts",
     "./starter-work": "./src/starter-work.ts",
+    "./surface-deep-link": "./src/surface-deep-link.ts",
     "./workspace-browser-preview": "./src/workspace-browser-preview.ts",
     "./workspace-activity-pane": "./src/workspace-activity-pane.ts",
     "./workspace-chat-pane": "./src/workspace-chat-pane.ts",
@@ -158,11 +162,12 @@
     "./workspace-coding-diff-composition": "./src/workspace-coding-diff-composition.ts",
     "./workspace-evidence-panels": "./src/workspace-evidence-panels.ts",
     "./workspace-file-preview": "./src/workspace-file-preview.ts",
-    "./workspace-isolation": "./src/workspace-isolation.ts"
+    "./workspace-isolation": "./src/workspace-isolation.ts",
+    "./cloud-move": "./src/cloud-move.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",
-    "@kontourai/flow": "5.1.0",
+    "@kontourai/flow": "5.1.1",
     "@kontourai/flow-agents": "6.2.0",
     "@kontourai/surface": "^3.2.0",
     "@kontourai/thread": "0.5.0"

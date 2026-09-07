@@ -20,6 +20,159 @@ import { deviceSettingsStore } from '../lib/device-settings-store';
 import { normalizeDockMode } from '../types';
 
 describe('parseProjectSelectionFromPath', () => {
+  test.each(['navigate', 'popstate', 'aba'] as const)(
+    'intervening %s supersedes delayed precommit',
+    async (movement) => {
+      navigationStore.navigate('/');
+      navigationStore.navigate('/before-search');
+      let settle!: (allowed: boolean) => void;
+      const pending = navigationStore.navigateWithPrecommit(
+        '/tasks/old-selection',
+        {
+          current: () => true,
+          prepare: () =>
+            new Promise<boolean>((resolve) => {
+              settle = resolve;
+            }),
+          signal: new AbortController().signal,
+        },
+      );
+      await vi.waitFor(() => expect(settle).toBeTypeOf('function'));
+      if (movement === 'popstate') {
+        window.history.back();
+        await vi.waitFor(() => expect(window.location.pathname).toBe('/'));
+      } else {
+        navigationStore.navigate('/new-selection');
+        if (movement === 'aba') navigationStore.navigate('/before-search');
+      }
+      const acceptedLocation = window.location.href;
+      settle(true);
+      expect(await pending).toBe(false);
+      expect(window.location.href).toBe(acceptedLocation);
+    },
+  );
+  test('a new dirty guard during prepare invalidates previous guard admission', async () => {
+    navigationStore.navigate('/before-guard');
+    let settle!: (allowed: boolean) => void;
+    const pending = navigationStore.navigateWithPrecommit(
+      '/tasks/old-selection',
+      {
+        current: () => true,
+        prepare: () =>
+          new Promise<boolean>((resolve) => {
+            settle = resolve;
+          }),
+        signal: new AbortController().signal,
+      },
+    );
+    await vi.waitFor(() => expect(settle).toBeTypeOf('function'));
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('new-dirty-owner'),
+      () => {},
+    );
+    try {
+      settle(true);
+      expect(await pending).toBe(false);
+      expect(window.location.pathname).toBe('/before-guard');
+    } finally {
+      unregister();
+    }
+  });
+  test('precommit navigation waits for guards and rejects an obsolete authority', async () => {
+    window.history.replaceState({}, '', '/');
+    let continueNavigation!: () => void;
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('search-test'),
+      (next) => {
+        continueNavigation = next;
+      },
+    );
+    let current = true;
+    const prepare = vi.fn().mockResolvedValue(true);
+    const controller = new AbortController();
+    try {
+      const pending = navigationStore.navigateWithPrecommit('/tasks/exact', {
+        current: () => current,
+        prepare,
+        signal: controller.signal,
+      });
+      await vi.waitFor(() => expect(continueNavigation).toBeTypeOf('function'));
+      expect(prepare).not.toHaveBeenCalled();
+      current = false;
+      continueNavigation();
+      expect(await pending).toBe(false);
+      expect(prepare).not.toHaveBeenCalled();
+      expect(window.location.pathname).toBe('/');
+    } finally {
+      unregister();
+      controller.abort();
+    }
+  });
+  test.each(['denied', 'superseded', 'cancelled', 'accepted'] as const)(
+    'precommit navigation handles %s after the guard',
+    async (outcome) => {
+      window.history.replaceState({}, '', '/');
+      let continueNavigation!: () => void;
+      const unregister = navigationStore.registerNavigationGuard(
+        Symbol('search-test'),
+        (next) => {
+          continueNavigation = next;
+        },
+      );
+      let settle!: (allowed: boolean) => void;
+      let current = true;
+      const prepare = vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            settle = resolve;
+          }),
+      );
+      const controller = new AbortController();
+      try {
+        const pending = navigationStore.navigateWithPrecommit('/tasks/exact', {
+          current: () => current,
+          prepare,
+          signal: controller.signal,
+        });
+        await vi.waitFor(() =>
+          expect(continueNavigation).toBeTypeOf('function'),
+        );
+        continueNavigation();
+        continueNavigation();
+        expect(prepare).toHaveBeenCalledOnce();
+        if (outcome === 'superseded') current = false;
+        if (outcome === 'cancelled') controller.abort();
+        settle(outcome !== 'denied');
+        expect(await pending).toBe(outcome === 'accepted');
+        expect(window.location.pathname).toBe(
+          outcome === 'accepted' ? '/tasks/exact' : '/',
+        );
+      } finally {
+        unregister();
+        controller.abort();
+      }
+    },
+  );
+  test('an explicit dirty-guard cancel settles without invoking admission', async () => {
+    window.history.replaceState({}, '', '/');
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('search-cancel'),
+      (_next, cancel) => cancel?.(),
+    );
+    const prepare = vi.fn().mockResolvedValue(true);
+    try {
+      expect(
+        await navigationStore.navigateWithPrecommit('/tasks/exact', {
+          current: () => true,
+          prepare,
+          signal: new AbortController().signal,
+        }),
+      ).toBe(false);
+      expect(prepare).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
   test('keeps the new-project route outside project context', () => {
     expect(parseProjectSelectionFromPath('/projects/new')).toEqual({
       selectedProject: null,
@@ -300,15 +453,44 @@ describe('navigationStore Settings query history', () => {
 });
 
 describe('navigationStore legacy Activity canonicalization', () => {
-  test('rewrites a legacy /sessions deep link before deriving navigation state', () => {
-    window.history.replaceState({}, '', '/sessions?session=x&anything=y');
+  // #928: the store rewrites BEFORE deriving state, which is what keeps
+  // `useUrlSelection` from ever seeing a retired pathname. Both retired
+  // spellings now land on the surface's canonical deep link, so the derived
+  // pathname is `/` and the surface travels in the query.
+  test.each([
+    '/sessions?session=x&anything=y',
+    '/activity?session=x&anything=y',
+  ])('rewrites %s before deriving navigation state', (legacy) => {
+    window.history.replaceState({}, '', legacy);
 
     window.dispatchEvent(new PopStateEvent('popstate'));
 
     expect(window.location.pathname + window.location.search).toBe(
-      '/activity?session=x&anything=y',
+      '/?surface=activity&session=x',
     );
-    expect(navigationStore.getSnapshot().pathname).toBe('/activity');
+    expect(navigationStore.getSnapshot().pathname).toBe('/');
+  });
+});
+
+describe('navigationStore shell surface intents', () => {
+  test('parses a surface intent and carries its shell params across route changes', () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/?surface=activity&session=thread%2Falpha&focus=evidence',
+    );
+    window.dispatchEvent(new PopStateEvent('popstate'));
+
+    expect(navigationStore.getSnapshot().surfaceIntent).toEqual({
+      surfaceId: 'activity',
+      sessionId: 'thread/alpha',
+      focus: 'evidence',
+    });
+
+    navigationStore.navigate('/registry');
+    expect(window.location.pathname + window.location.search).toBe(
+      '/registry?surface=activity&session=thread%2Falpha&focus=evidence',
+    );
   });
 });
 
@@ -580,7 +762,7 @@ describe('navigationStore route-change query hygiene (6-OPS-30)', () => {
     // Measured, three independent instances in one run:
     //   /settings?view=notifications  → /notifications?view=notifications
     //   /settings?view=knowledge      → /connections/knowledge?view=knowledge
-    //   /settings?view=developer-tools → ⌘K → /activity?view=developer-tools
+    //   /settings?view=developer-tools → ⌘K → a surface?view=developer-tools
     // Harmless only while the destination ignores what it inherited;
     // /notifications already reads ?category= from the URL.
     window.history.replaceState({}, '', '/settings?view=notifications');
@@ -590,15 +772,15 @@ describe('navigationStore route-change query hygiene (6-OPS-30)', () => {
     );
 
     window.history.replaceState({}, '', '/settings?view=developer-tools');
-    navigationStore.navigate('/activity');
+    navigationStore.navigate('/agents');
     expect(window.location.search).toBe('');
   });
 
   test('keeps a param the caller supplies for the destination', () => {
     window.history.replaceState({}, '', '/settings?view=appearance');
-    navigationStore.navigate('/activity', { session: 'thread-1' });
+    navigationStore.navigate('/agents', { session: 'thread-1' });
     expect(window.location.pathname + window.location.search).toBe(
-      '/activity?session=thread-1',
+      '/agents?session=thread-1',
     );
   });
 
@@ -617,6 +799,75 @@ describe('navigationStore route-change query hygiene (6-OPS-30)', () => {
     expect(params.get('maximize')).toBe('true');
     expect(params.get('fontSize')).toBe('15');
     expect(params.get('view')).toBeNull();
+  });
+
+  test('strips a surface intent fragment without its surface on route changes', () => {
+    window.history.replaceState({}, '', '/settings?session=x&focus=evidence');
+    navigationStore.navigate('/projects');
+    expect(window.location.pathname + window.location.search).toBe('/projects');
+  });
+
+  test('carries a complete surface intent on route changes', () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/settings?surface=activity&session=x&focus=evidence',
+    );
+    navigationStore.navigate('/projects');
+    expect(window.location.pathname + window.location.search).toBe(
+      '/projects?surface=activity&session=x&focus=evidence',
+    );
+  });
+
+  test('does not retain a surface intent fragment when the caller clears its surface', () => {
+    window.history.replaceState({}, '', '/projects?surface=activity&session=x');
+    navigationStore.navigate('/settings', { surface: null });
+    expect(window.location.pathname + window.location.search).toBe('/settings');
+  });
+
+  // Swapping one surface for another is the same loss of ownership as clearing
+  // it: Activity's session/focus must not be re-attached to Chat. Asserting
+  // only that *a* surface survives cannot tell these apart.
+  test('drops a surface intent fragment when the target pathname carries a different surface', () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/projects?surface=activity&session=x&focus=evidence',
+    );
+    navigationStore.navigate('/?surface=chat');
+    const params = new URLSearchParams(window.location.search);
+    expect(window.location.pathname).toBe('/');
+    expect(params.get('surface')).toBe('chat');
+    expect(params.get('session')).toBeNull();
+    expect(params.get('focus')).toBeNull();
+  });
+
+  test('drops a surface intent fragment when structured params carry a different surface', () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/projects?surface=activity&session=x&focus=evidence',
+    );
+    navigationStore.navigate('/settings', { surface: 'chat' });
+    const params = new URLSearchParams(window.location.search);
+    expect(window.location.pathname).toBe('/settings');
+    expect(params.get('surface')).toBe('chat');
+    expect(params.get('session')).toBeNull();
+    expect(params.get('focus')).toBeNull();
+  });
+
+  test('keeps a surface intent fragment when the target pathname restates the same surface', () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/projects?surface=activity&session=x&focus=evidence',
+    );
+    navigationStore.navigate('/settings?surface=activity');
+    const params = new URLSearchParams(window.location.search);
+    expect(window.location.pathname).toBe('/settings');
+    expect(params.get('surface')).toBe('activity');
+    expect(params.get('session')).toBe('x');
+    expect(params.get('focus')).toBe('evidence');
   });
 
   test('leaves the query alone when only params change on the same route', () => {

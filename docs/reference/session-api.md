@@ -9,8 +9,9 @@ takes in the chat dock has a documented, scriptable equivalent here
 There is one execution surface: `POST /api/orchestration/chat` accepts an
 Environment + Agent target and a message. Station resolves the Agent's engine,
 model, and workspace binding on the target Environment. A bound continuation
-uses `POST /api/orchestration/chat/:conversationId/continue`; it cannot select a
-provider, connection, Agent, or replacement model. Two separate read paths show
+uses `POST /api/orchestration/chat/:conversationId/continue`; it preserves the
+Environment, workspace and current Agent/engine binding. Supported per-turn model
+overrides remain explicit choices. Two separate read paths show
 what happened: a point-in-time JSON replay and a live SSE feed.
 
 ---
@@ -54,7 +55,7 @@ Agent, engine kind, provider, and honest model launch plan.
 
 ## Continue a conversation
 
-Continuation retains the original Environment + Agent + model binding:
+Continuation retains the original Environment/workspace and follows the current linked Session:
 
 ```jsonc
 POST /api/orchestration/chat/<conversationId>/continue
@@ -66,9 +67,20 @@ POST /api/orchestration/chat/<conversationId>/continue
 }
 ```
 
-There is deliberately no target or model field on continuation. Station loads the
-persisted binding, verifies the caller and current Environment, re-resolves the Agent,
-and only then sends the turn.
+There is no replacement target on continuation. Station loads the persisted
+binding, verifies the caller and current Environment, resolves the current Agent,
+and only then sends the turn. Optional `model.override` and `model.options` apply
+only when that engine supports them; omission retains the current model choice.
+
+A completed turn does not discard the conversation. If the next turn needs a new
+execution Session, it remains linked beneath the same Conversation. Station-native
+prompt history reads existing authorized native memory segments across that
+lineage. This preserves structured messages without copying earlier records into
+the new Session or changing its approval/write identity. Earlier harness or Agent
+legs contribute their authorized user/assistant transcript, not provider-private
+tool state. An explicit empty-context boundary excludes earlier model context even
+while the historical transcript remains visible. Callers never supply native
+memory paths or another Session's memory identity.
 
 ## Lifecycle control commands
 
@@ -97,12 +109,36 @@ by `requestId`.
 
 Three more command types exist on the same union but are outside this doc's session-lifecycle
 scope — see the zod schemas in `orchestration.ts` for their exact shapes: `adoptSession`
-(`{ type: 'adoptSession', sourceThreadId, idempotencyKey? }`, take over a
+(`{ type: 'adoptSession', sourceThreadId, idempotencyKey? }`, create an independent continuation of a
 read-only attached session; a UUID idempotency key safely replays the same
 Continue intent and returns the existing continuation with
 `alreadyAdopted: true`),
 `interruptTurn` (`{ type: 'interruptTurn', threadId, turnId? }`, cancel an in-flight turn),
 and `stopSession` (`{ type: 'stopSession', threadId }`).
+
+External transcript observation does not grant control of the original terminal
+process. The engine capability matrix declares independent continuation support;
+known unsupported and unknown engines retain a disabled **Continue in Station**
+control with a reason. The adoption owner enforces the same declaration before
+invoking an adapter, then checks current source, Project, ownership, and runtime
+requirements. A native continuation declaration does not guarantee readiness of
+any particular source.
+
+Codex rollout observation reads the local `CODEX_HOME/sessions` directory
+(`~/.codex/sessions` by default) through bounded, read-only pages. It imports
+supported turn boundaries, user messages, assistant text, public reasoning
+summaries, tool activity, cumulative token snapshots, and compaction markers.
+Only transcripts attributed to configured Projects enter the shared follower.
+Encrypted content and subagent sidechain traversal are outside this importer.
+Additional user input after observed assistant or tool activity keeps the same
+native turn identity and is marked as steering. When the rollout does not
+establish that phase, the text remains in a bounded diagnostic without a guessed
+initial-input or steering classification.
+A tool-output body alone does not establish success or failure; it is retained
+as observed progress without inventing a verdict. Discovery and parser limits
+are reported as incomplete observations. Cursor progress is saved after the
+page's events, so an interrupted import replays through durable event-id
+deduplication. This observation path does not enable Codex native continuation.
 
 ### The receipt envelope
 
@@ -148,7 +184,8 @@ GET /api/orchestration/commands/receipts/:commandId            # single receipt,
 There is no separate "select model" command. A new execution request may include
 `target.model.override` and `target.model.options`. The target Agent's engine binding
 decides whether those controls are supported; unsupported controls fail before
-dispatch. A continuation has no model selector and retains the original binding.
+dispatch. Continuation accepts the corresponding `model.override` and `model.options`
+without changing the Conversation's Environment/workspace or Agent/engine binding.
 
 ---
 
@@ -321,3 +358,55 @@ curl -sS -X POST "${BASE}/api/orchestration/commands" \
     \"decision\": \"accept\"
   }"
 ```
+
+
+## Inspect an exact attention request
+
+Request-backed approval and permission items in `/api/attention` may carry
+`requestReference: { threadId, requestId, requestEventId }`. Preserve that exact
+reference when opening an inspector:
+
+```text
+GET /api/orchestration/sessions/:threadId/requests/:requestId?eventId=:requestEventId
+```
+
+This protected read returns `open`, `changed`, `resolved`, or `unavailable`.
+Only `open` includes bounded, redacted presentation, engine identity, current
+answerability, and `canRespond`. The route rechecks request-principal and Session
+read authority and uses private/no-store caching. It reads the indexed current
+request event and canonical lifecycle facts instead of replaying Session history.
+An oversized or inconsistent stored request is unavailable, not partially trusted.
+
+After an explicit decision, use the existing response command and include the
+inspected event identity:
+
+```json
+{
+  "type": "respondToRequest",
+  "threadId": "session-id",
+  "requestId": "request-id",
+  "expectedRequestEventId": "opened-event-id",
+  "decision": "accept"
+}
+```
+
+`expectedRequestEventId` is optional for existing clients. Exact inspectors always
+send it. The server rechecks it after adapter resolution, immediately before the
+response effect. A replaced or reopened request returns HTTP 409 with
+`request_event_changed`; an unverifiable request or lost authority returns 409
+with `request_verification_unavailable`. Both retain a rejected command receipt
+and cause no adapter response. The comparison identity is not an authorization
+grant. Freeform input and lifecycle-only attention retain their existing surfaces.
+
+An event comparison prevents answering a replaced request; it is not an
+idempotency key for provider effects. A transport failure after dispatch can leave
+the decision outcome uncertain. The inspector never retries a decision. It retains
+uncertain exact-event attempts in its existing QueryClient mutation cache across
+closing and reopening the dialog. A fresh same-open inspection cannot re-enable
+decisions; a resolved or changed event releases the uncertainty. Expired authority
+records are pruned when another inspector opens. Successful decisions use ordinary
+cache expiry. At 64 uncertain attempts for one Station authority, further inspector
+decisions are refused rather than evicting uncertainty into permission to retry.
+Open the session to confirm an uncertain outcome. A client restart clears this
+in-memory history; cross-client or restart-safe effect deduplication remains the
+adapter's responsibility.

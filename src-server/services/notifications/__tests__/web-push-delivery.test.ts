@@ -1,4 +1,5 @@
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { describe, expect, test, vi } from 'vitest';
 import { EventBus } from '../../orchestration/event-bus.js';
 import type { WebPushDeliveryDevicePairing } from '../web-push-delivery.js';
@@ -308,6 +309,8 @@ describe('wireWebPushDelivery', () => {
     await flushMicrotasks();
 
     const [, payload] = send.mock.calls[0];
-    expect(payload).toMatchObject({ url: '/activity?session=thread-1' });
+    expect(payload).toMatchObject({
+      url: activityDeepLink({ sessionId: 'thread-1' }),
+    });
   });
 });

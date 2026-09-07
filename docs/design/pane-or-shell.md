@@ -29,15 +29,23 @@ pane.
    fixed point.
 3. **Otherwise it is a pane** — even when today it happens to be a route.
    A route is not an identity; it is a *placement* (this pane, standalone,
-   at a stable URL). The `standalone` region exists precisely so that
-   pane-ization never costs a deep link.
+   at a stable URL). A pane may keep that placement, or drop it once another
+   placement carries the surface — what it may never do is drop the URL (see
+   the first invariant below).
 
 ## Two invariants the rule depends on
 
-- **URLs survive pane-ization.** `/activity` remains `/activity` when
-  Activity becomes a pane. The route table becomes "which pane opens
-  standalone at this path," never disappears. If converting a surface would
-  break a URL, the conversion is wrong, not the URL.
+- **URLs survive pane-ization.** A deep link that worked before a surface
+  became a pane still resolves to that surface afterwards. It need not
+  resolve to the same *placement*: when a pane's standalone host goes away,
+  its path joins the retirement table (`getLegacyPathRedirect`) and redirects
+  to the surface's canonical placement, carrying its payload. `/activity`
+  and `/activity?session=…&focus=evidence` are the worked example —
+  station#928 removed the standalone placement and both spellings now land on
+  `/?surface=activity[&session=…][&focus=evidence]`, minted by the one builder
+  (`activityDeepLink`) every producer of those links already uses. What the
+  invariant forbids is a 404 or a silently discarded payload: if converting a
+  surface would break a URL, the conversion is wrong, not the URL.
 - **Panes consume declared data surfaces.** A pane — first-party or not —
   reaches server state through the same declared surface a plugin could use,
   never through internal service access. This is where plugin compatibility

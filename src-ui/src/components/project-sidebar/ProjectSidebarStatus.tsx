@@ -55,6 +55,7 @@ export function ProjectSidebarStatus() {
         </button>
         {isOpen && (
           <ResponsiveDialogSurface
+            layer="popover"
             ariaLabel="Open chats"
             onClose={close}
             historyMode="entry"

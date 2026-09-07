@@ -549,7 +549,7 @@ function validateSpdx(descriptor, value) {
       version: dependency.versionInfo,
     });
   const lifecycle = descriptor.dependencyLifecycle;
-  const comment = value.documentComment ?? '';
+  const comment = spdxComment(value);
   const prefix = 'station:fragment-predicates=container/image';
   const expectedComment = `${prefix};station:dependency-lifecycle-digest=${lifecycle.digest};station:dependency-lifecycle-purls=${canonicalJson(lifecycle.purls)}`;
   if (comment !== expectedComment)
@@ -564,6 +564,17 @@ function validateSpdx(descriptor, value) {
   );
   if (canonicalJson(relevant) !== canonicalJson(lifecycle.purls))
     throw new Error('SPDX lifecycle components do not match the allowlist');
+}
+
+/** Read older Station artifacts while new producers use SPDX's standard field. */
+export function spdxComment(value) {
+  if (
+    value.comment !== undefined &&
+    value.documentComment !== undefined &&
+    value.comment !== value.documentComment
+  )
+    throw new Error('SPDX comment fields disagree');
+  return value.comment ?? value.documentComment ?? '';
 }
 
 export function validateSbomBytes(descriptor, bytes) {

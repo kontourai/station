@@ -18,9 +18,12 @@ import { delimiter, join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  describeFailure,
   INERT_INSTALL_TIMEOUT_ENV,
   inertInstallTimeout,
+  pnpmInvocation,
   preflightInstalledLifecycle,
+  reportCliFailure,
   resolveNpmCli,
   runApprovedHooks,
   verifyLifecycleArtifacts,
@@ -47,6 +50,7 @@ import {
   verifyArtifact,
   verifyNodePtyHandshake,
 } from '../lib/dependency-lifecycle-policy.mjs';
+import { readPnpmWorkspace } from '../lib/pnpm-lockfile.mjs';
 import {
   classifyDependencySpec,
   findWorkspaceDependencyProblems,
@@ -201,7 +205,8 @@ function launcherFixture({
     join(checkout, 'scripts', 'node-runtime-contract.mjs'),
     runtimeFailure ? 'process.exit(42);' : '',
   );
-  if (lockfile) writeFileSync(join(checkout, 'package-lock.json'), '{}');
+  if (lockfile) writeFileSync(join(checkout, 'pnpm-lock.yaml'), '{}');
+  writeFileSync(join(checkout, 'pnpm-workspace.yaml'), '{}');
   if (warm) mkdirSync(join(checkout, 'node_modules'));
   executable(
     join(bin, 'npm'),
@@ -383,17 +388,10 @@ describe('dependency lifecycle policy', () => {
     expect(result.stderr).toContain('did not exit naturally');
   });
 
-  it('matches every root, SDK, and Shared lifecycle marker exactly', () => {
+  it('matches every installed lifecycle package against the single workspace lock', () => {
     expect(evaluateLifecyclePolicy({ allowlist: policy, nodes })).toEqual([]);
     expect(allowlistDigest(policy)).toMatch(/^[a-f0-9]{64}$/);
     expect(expectedLifecyclePurls(policy)).toContain('pkg:npm/node-pty@1.1.0');
-  });
-
-  it('keeps Station-owned lifecycle hooks out of the lock marker inventory', () => {
-    const lock = JSON.parse(
-      readFileSync(resolve(root, 'package-lock.json'), 'utf8'),
-    );
-    expect(lock.packages[''].hasInstallScript).not.toBe(true);
   });
 
   it.each([
@@ -1262,7 +1260,7 @@ describe('dependency lifecycle policy', () => {
         const missingLockResult = runLauncher(missingLock, ['doctor']);
         expect(missingLockResult.status).toBe(1);
         expect(missingLockResult.stderr).toContain(
-          'dependency lockfile is missing',
+          'dependency lockfile or workspace configuration is missing',
         );
       } finally {
         rmSync(warm.fixtureRoot, { recursive: true, force: true });
@@ -1452,5 +1450,234 @@ describe('dependency lifecycle policy', () => {
         expect.stringContaining('raw npm rebuild'),
       ]),
     );
+  });
+
+  it('rejects pnpm lifecycle bypasses across aliases, scopes, chaining, and configuration', () => {
+    for (const command of [
+      'pnpm install',
+      'pnpm i',
+      'pnpm add left-pad',
+      'pnpm update',
+      'pnpm up',
+      'pnpm upgrade',
+      'pnpm rebuild',
+      'pnpm rb',
+      'pnpm approve-builds',
+      'pnpm -w install',
+      'pnpm -C packages/sdk install',
+      'pnpm --dir packages/sdk --filter @kontourai/station-sdk install',
+      'pnpm -r --filter=@kontourai/station-sdk rebuild',
+      'pnpm.cmd install',
+      'npm run dependencies:check && pnpm install',
+      'pnpm run build;pnpm install',
+      'corepack pnpm install',
+      'npm exec -- pnpm install',
+      'pnpm --ignore-scripts=false run build',
+      'pnpm --ignore-scripts false run build',
+      'pnpm --config.ignoreScripts=false run build',
+      'pnpm --no-ignore-scripts run build',
+      'pnpm config set ignoreScripts false',
+      'pnpm config set verifyDepsBeforeRun install',
+      'pnpm --verify-deps-before-run=install run dependencies:ci',
+      'pnpm install --lockfile-only && pnpm run x --ignore-scripts',
+      'pnpm_config_ignore_scripts=false pnpm run build',
+      'env:\n  PNPM_CONFIG_IGNORE_SCRIPTS: false',
+      'verifyDepsBeforeRun: install',
+      'verifyDepsBeforeRun: prompt',
+      'ignoreScripts: false',
+      'run_install: true',
+      '      - uses: pnpm/setup@pinned\n        with: { install: true }',
+      '      - uses: pnpm/setup@pinned\n      - run: npm run dependencies:ci',
+    ])
+      expect(collectRawNpmLifecycleBypasses(command), command).not.toEqual([]);
+    for (const command of [
+      'pnpm run dependencies:ci',
+      'pnpm -w run dependencies:ci',
+      'pnpm install --lockfile-only --ignore-scripts',
+      'pnpm update --lockfile-only --ignore-scripts',
+      'npm install --package-lock-only --ignore-scripts --force',
+      'verifyDepsBeforeRun: false',
+      'ignoreScripts: true',
+      'uses: pnpm/action-setup@pinned',
+      '      - uses: pnpm/setup@pinned\n        with: { install: false }',
+      'run_install: false',
+    ])
+      expect(collectRawNpmLifecycleBypasses(command), command).toEqual([]);
+  });
+
+  it('the pinned pnpm CLI runs cold managed bootstrap without auto-installing or executing dependency hooks', () => {
+    const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-pnpm-cold-'));
+    try {
+      const workspace = readPnpmWorkspace(root);
+      const manifest = JSON.parse(
+        readFileSync(join(root, 'package.json'), 'utf8'),
+      );
+      const hookMarker = join(fixtureRoot, 'unapproved-hook.marker');
+      const managedMarker = join(fixtureRoot, 'managed.marker');
+      mkdirSync(join(fixtureRoot, 'hook-package'));
+      writeFileSync(
+        join(fixtureRoot, 'hook-package/package.json'),
+        JSON.stringify({
+          name: 'station-pnpm-hook-fixture',
+          version: '1.0.0',
+          scripts: { postinstall: 'node hook.cjs' },
+        }),
+      );
+      writeFileSync(
+        join(fixtureRoot, 'hook-package/hook.cjs'),
+        'require("node:fs").writeFileSync(process.env.STATION_TEST_HOOK_MARKER, "executed");',
+      );
+      writeFileSync(
+        join(fixtureRoot, 'managed.cjs'),
+        'require("node:fs").writeFileSync("managed.marker", "managed preflight reached");',
+      );
+      writeFileSync(
+        join(fixtureRoot, 'package.json'),
+        JSON.stringify({
+          name: 'station-pnpm-cold-fixture',
+          private: true,
+          packageManager: manifest.packageManager,
+          scripts: { 'dependencies:ci': 'node managed.cjs' },
+          dependencies: { 'station-pnpm-hook-fixture': 'file:./hook-package' },
+        }),
+      );
+      // JSON is valid YAML. Read the real policy settings, so reverting either
+      // guard changes the child process behavior instead of merely a regex.
+      writeFileSync(
+        join(fixtureRoot, 'pnpm-workspace.yaml'),
+        JSON.stringify({
+          packages: ['.'],
+          verifyDepsBeforeRun: workspace.verifyDepsBeforeRun,
+          ignoreScripts: workspace.ignoreScripts,
+          nodeLinker: 'hoisted',
+          storeDir: join(fixtureRoot, 'store'),
+          allowBuilds: { 'station-pnpm-hook-fixture@file:hook-package': true },
+        }),
+      );
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        CI: 'true',
+        COREPACK_ENABLE_NETWORK: '0',
+        STATION_TEST_HOOK_MARKER: hookMarker,
+      };
+      delete env.npm_config_ignore_scripts;
+      delete env.pnpm_config_verify_deps_before_run;
+      const cli = pnpmInvocation({ cwd: root, env });
+      const prefix = [...cli.args];
+      if (prefix[1] === 'exec') prefix.splice(2, 0, '--offline');
+      const run = (args: string[]) =>
+        spawnSync(cli.command, [...prefix, ...args], {
+          cwd: fixtureRoot,
+          env,
+          encoding: 'utf8',
+          timeout: 30_000,
+          windowsHide: true,
+        });
+      const version = run(['--version']);
+      expect(version.status, version.stderr).toBe(0);
+      expect(version.stdout.trim()).toBe(
+        manifest.packageManager.slice('pnpm@'.length),
+      );
+      const bootstrap = run(['run', 'dependencies:ci']);
+      expect(bootstrap.status, bootstrap.stderr).toBe(0);
+      expect(readFileSync(managedMarker, 'utf8')).toBe(
+        'managed preflight reached',
+      );
+      expect(existsSync(join(fixtureRoot, 'node_modules'))).toBe(false);
+      expect(existsSync(hookMarker)).toBe(false);
+      // The second guard also suppresses a dependency's otherwise approved
+      // hook during an explicit local/offline fixture install.
+      const install = run(['install', '--offline', '--no-frozen-lockfile']);
+      expect(install.status, install.stderr).toBe(0);
+      expect(
+        existsSync(join(fixtureRoot, 'node_modules/station-pnpm-hook-fixture')),
+      ).toBe(true);
+      expect(existsSync(hookMarker)).toBe(false);
+      const settingsPath = join(fixtureRoot, 'pnpm-workspace.yaml');
+      const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+      settings.ignoreScripts = false;
+      writeFileSync(settingsPath, JSON.stringify(settings));
+      const enabled = run(['rebuild', 'station-pnpm-hook-fixture']);
+      expect(enabled.status, enabled.stderr).toBe(0);
+      expect(readFileSync(hookMarker, 'utf8')).toBe('executed');
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  }, 60_000);
+});
+
+describe('describeFailure surfaces the cause chain', () => {
+  it('reports the reason a retired install attached as cause', () => {
+    // The real shape: `retireDependencyInstall` reports the guard directory
+    // and attaches the actual constraint as `cause`. The CLI printed only
+    // `error.message`, so CI logs named a runner directory that is never
+    // uploaded, and no reason at all -- the failure was diagnosable only by
+    // reproducing it locally (dependabot #1353 sat blocked on exactly this).
+    const cause = new Error(
+      'lifecycle artifact esbuild:bin/esbuild is missing after install',
+    );
+    const thrown = new Error(
+      'Dependencies are not verified. Installer state is retained at "/x".',
+      { cause },
+    );
+
+    const described = describeFailure(thrown);
+
+    expect(described).toContain('Dependencies are not verified');
+    expect(described).toContain(
+      'lifecycle artifact esbuild:bin/esbuild is missing after install',
+    );
+  });
+
+  it('walks more than one level and marks each hop', () => {
+    const described = describeFailure(
+      new Error('outer', {
+        cause: new Error('middle', { cause: new Error('root') }),
+      }),
+    );
+    expect(described.split('\n')).toEqual([
+      'outer',
+      '  caused by: middle',
+      '  caused by: root',
+    ]);
+  });
+
+  it('terminates on a cause cycle rather than looping', () => {
+    const a = new Error('a');
+    const b = new Error('b', { cause: a });
+    (a as { cause?: unknown }).cause = b;
+    // Without the seen-set this never returns.
+    expect(describeFailure(a).split('\n')).toEqual(['a', '  caused by: b']);
+  });
+
+  it('bounds depth and message length rather than trusting them', () => {
+    let deepest: Error | undefined;
+    for (let i = 0; i < 40; i += 1)
+      deepest = new Error(`level ${i}`, { cause: deepest });
+    expect(describeFailure(deepest).split('\n')).toHaveLength(8);
+    expect(describeFailure(new Error('x'.repeat(5000))).length).toBe(2000);
+  });
+
+  it('handles a non-Error throw without inventing structure', () => {
+    expect(describeFailure('plain string')).toBe('plain string');
+  });
+
+  it('reports the cause chain, not just the outermost message', () => {
+    // The seam that actually matters. Testing `describeFailure` alone does
+    // NOT cover this: reverting the reporter to `error.message` leaves every
+    // test above green, which is exactly how the cause came to be discarded.
+    // Fault-injected both ways before this test was accepted.
+    const lines: string[] = [];
+    const code = reportCliFailure(
+      new Error('Dependencies are not verified.', {
+        cause: new Error('esbuild:bin/esbuild missing after install'),
+      }),
+      { log: (line: string) => lines.push(line) },
+    );
+
+    expect(code).toBe(1);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('Dependencies are not verified.');
+    expect(lines[0]).toContain('esbuild:bin/esbuild missing after install');
   });
 });

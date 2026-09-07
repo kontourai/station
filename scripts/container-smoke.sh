@@ -22,6 +22,8 @@ node "$ROOT/scripts/lib/container-release-metadata.mjs" \
   --tag="$REF" --sha="$SHA" --created-at="$CREATED_AT" \
   --repository="$REPOSITORY" >/dev/null
 
+node "$ROOT/scripts/check-container-build-context.mjs"
+
 existing_resources=$(
   {
     docker ps --all --quiet --filter "label=com.docker.compose.project=$COMPOSE_PROJECT_NAME"
@@ -81,12 +83,11 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-printf 'station container sentinel\n' > "$WORKSPACE/container-sentinel.txt"
-chmod 0755 "$WORKSPACE"
 export STATION_RELEASE_SHA="$SHA"
 export STATION_RELEASE_REF="$REF"
 export STATION_RELEASE_CREATED_AT="$CREATED_AT"
-export STATION_WORKSPACE_DIR="$WORKSPACE"
+# Exercise the default persistent workspace volume with the actual UID 1000.
+export STATION_WORKSPACE_DIR=station-workspace
 export STATION_UI_PORT=${STATION_UI_PORT:-$(node -e 'require("node:net").createServer().listen(0,"127.0.0.1",function(){console.log(this.address().port);this.close()})')}
 export STATION_ALLOWED_ORIGINS="http://127.0.0.1:${STATION_UI_PORT}"
 
@@ -113,6 +114,36 @@ docker run --rm --entrypoint sh "$STATION_IMAGE" -c '
     exit 1
   fi
 '
+"${compose[@]}" run --rm --no-deps -T station sh -ec '
+  test "$(id -u)" = 1000
+  git --version >/dev/null
+  ssh -V 2>/dev/null
+  source_root=$(mktemp -d /tmp/station-copy-source.XXXXXX)
+  trap "rm -rf \"$source_root\"" EXIT
+  mkdir "$source_root/repo"
+  printf "station container sentinel\n" > "$source_root/repo/container-sentinel.txt"
+  printf "committed\n" > "$source_root/repo/changes.txt"
+  git -C "$source_root/repo" init --quiet --template= --initial-branch=main
+  git -C "$source_root/repo" config core.autocrlf false
+  git -C "$source_root/repo" add .
+  git -C "$source_root/repo" -c user.name="Station smoke" -c user.email="smoke@example.invalid" commit --quiet -m "Seed container workspace"
+  printf "staged\n" > "$source_root/repo/changes.txt"
+  git -C "$source_root/repo" add changes.txt
+  printf "working\n" > "$source_root/repo/changes.txt"
+  ./station cloud keygen --output="$source_root/key"
+  ./station cloud pack-workspace --workspace="$source_root/repo" --key-file="$source_root/key" --output="$source_root/package" --source-paused --json
+  ./station cloud inspect-workspace --archive="$source_root/package" --key-file="$source_root/key" --json
+  ./station cloud unpack-workspace --archive="$source_root/package" --key-file="$source_root/key" --destination=/workspace/imported --json
+  ./station cloud verify-workspace --archive="$source_root/package" --key-file="$source_root/key" --workspace=/workspace/imported/workspace --workspace-paused --json
+  test "$(git -C "$source_root/repo" rev-parse HEAD)" = "$(git -C /workspace/imported/workspace rev-parse HEAD)"
+  test "$(git -C /workspace/imported/workspace show :changes.txt)" = staged
+  test "$(cat /workspace/imported/workspace/changes.txt)" = working
+  mkdir /workspace/import-fixture
+  cp "$source_root/key" /workspace/import-fixture/key
+  cp "$source_root/package" /workspace/import-fixture/package
+'
+"${compose[@]}" run --rm --no-deps -T station node --input-type=module -e \
+  'import { verifyNodePtyHandshake } from "/app/scripts/lib/dependency-lifecycle-policy.mjs"; verifyNodePtyHandshake("/app/node_modules/node-pty");'
 "${compose[@]}" up -d station
 
 deadline=$((SECONDS + 90))
@@ -139,33 +170,48 @@ until curl --fail --silent \
   fi
   sleep 1
 done
+# Exercise the combined command against the real authenticated target API.
+STATION_API_CREDENTIAL="$credential" "${compose[@]}" exec -T -e STATION_API_CREDENTIAL station \
+  ./station cloud import-project --archive=/workspace/import-fixture/package \
+  --key-file=/workspace/import-fixture/key --destination=/workspace/command-import \
+  --target-workspace=/workspace/command-import/workspace --name="CLI imported Project" \
+  --slug=cli-imported-project --api-base=http://127.0.0.1:3141
+"${compose[@]}" exec -T station sh -ec '
+  test "$(git -C /workspace/command-import/workspace show :changes.txt)" = staged
+  test "$(cat /workspace/command-import/workspace/changes.txt)" = working
+  test -s /workspace/command-import/workspace-project-registration.json
+  rm /workspace/import-fixture/key /workspace/import-fixture/package
+  rmdir /workspace/import-fixture
+'
 STATION_CONTAINER_HOST_CREDENTIAL="$credential" \
-STATION_CONTAINER_WORKSPACE=/workspace \
+STATION_CONTAINER_WORKSPACE=/workspace/imported/workspace \
 PW_BASE_URL="http://127.0.0.1:${STATION_UI_PORT}" \
 npx playwright test tests/container-self-host.spec.ts tests/device-pairing-mobile.spec.ts --workers=1
-unset credential
-
-"${compose[@]}" restart station
+old_container=$("${compose[@]}" ps -q station)
+"${compose[@]}" up -d --force-recreate station
+new_container=$("${compose[@]}" ps -q station)
+[[ -n "$old_container" && -n "$new_container" && "$old_container" != "$new_container" ]] || { echo 'container was not recreated' >&2; exit 1; }
 deadline=$((SECONDS + 90))
 until curl --fail --silent "http://127.0.0.1:${STATION_UI_PORT}/__station/identity" >/dev/null; do
   (( SECONDS < deadline )) || { "${compose[@]}" logs --no-color station >&2 || true; exit 1; }
   sleep 1
 done
-credential=$("${compose[@]}" exec -T station sh -c 'STATION_HOME=/data/station ./station environment credential show')
+
 deadline=$((SECONDS + 90))
 until curl --fail --silent \
   --header "Authorization: Bearer $credential" \
   "http://127.0.0.1:${STATION_UI_PORT}/api/system/identity" >/dev/null; do
   if (( SECONDS >= deadline )); then
     "${compose[@]}" logs --no-color station >&2 || true
-    echo 'authenticated Station API did not recover after restart' >&2
+    echo 'authenticated Station API did not recover after recreation' >&2
     exit 1
   fi
   sleep 1
 done
 STATION_CONTAINER_HOST_CREDENTIAL="$credential" \
-STATION_CONTAINER_WORKSPACE=/workspace \
+STATION_CONTAINER_WORKSPACE=/workspace/imported/workspace \
 STATION_CONTAINER_EXPECT_PERSISTED=1 \
 PW_BASE_URL="http://127.0.0.1:${STATION_UI_PORT}" \
 npx playwright test tests/container-self-host.spec.ts --workers=1
+unset credential
 echo 'Container smoke passed.'

@@ -57,6 +57,46 @@ export function upsertTextPart(
   return next;
 }
 
+/**
+ * Which existing row an update for `toolCallId` may write into.
+ *
+ * A row with no `sourceEventId` is still open and is this call's slot. A row
+ * pinned to THIS terminal is the same fact arriving twice. A row pinned to a
+ * DIFFERENT terminal is a distinct durable result and is left alone — the
+ * rule `runtime-event-projection.ts` applies on the durable side, so the two
+ * folds agree about what one call id may mean twice.
+ *
+ * station#1569 (H1) carves out the single exception: `unresolved` is not an
+ * outcome, it is the admission that none arrived, and one still can — the
+ * stop grace can elapse while the engine is holding the real `tool_result`,
+ * which then drains and is published for the same call
+ * (`claude-adapter-events.ts`'s `settledToolCalls`). Without this the reader
+ * got two rows for one call, "no result was reported" beside the result, and
+ * the batch header counted the stale one.
+ *
+ * Only a TERMINAL may supersede it — `resultEventId` is present only on that
+ * path (`handleToolCompletedEvent` is the one caller that pins a row). A
+ * `tool.started`/`tool.progress` for a reused call id must never erase a
+ * settled outcome, which is why this is not simply "match any unresolved
+ * row".
+ */
+export function toolPartSettleableBy(
+  part: OrchestrationContentPart,
+  toolCallId: string,
+  resultEventId: string | undefined,
+): boolean {
+  if (part.type !== 'tool-invocation' || part.toolCallId !== toolCallId) {
+    return false;
+  }
+  if (
+    part.sourceEventId === undefined ||
+    part.sourceEventId === resultEventId
+  ) {
+    return true;
+  }
+  return resultEventId !== undefined && part.state === 'unresolved';
+}
+
 export function upsertToolPart(
   parts: Array<OrchestrationContentPart> | undefined,
   toolCallId: string,
@@ -67,12 +107,8 @@ export function upsertToolPart(
     typeof updates.sourceEventId === 'string'
       ? updates.sourceEventId
       : undefined;
-  const index = next.findIndex(
-    (part) =>
-      part.type === 'tool-invocation' &&
-      part.toolCallId === toolCallId &&
-      (part.sourceEventId === undefined ||
-        part.sourceEventId === resultEventId),
+  const index = next.findIndex((part) =>
+    toolPartSettleableBy(part, toolCallId, resultEventId),
   );
   if (index >= 0) {
     next[index] = {

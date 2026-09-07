@@ -99,6 +99,7 @@ export async function checkHostCompatibility(
   url: string,
   signal?: AbortSignal,
   policy: StationClientCompatibilityPolicy = CLIENT_COMPATIBILITY_POLICY,
+  transport: typeof fetch = fetch,
 ): Promise<StationCompatibilityResult> {
   // Bounded like the modal's existing candidate review: this check sits in
   // front of an Add button, and a black-hole host must not hang it.
@@ -107,10 +108,13 @@ export async function checkHostCompatibility(
   signal?.addEventListener('abort', abort, { once: true });
   const timeout = setTimeout(abort, COMPATIBILITY_PROBE_TIMEOUT_MS);
   try {
-    const response = await fetch(new URL(PUBLIC_STATION_HANDSHAKE_PATH, url), {
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-    });
+    const response = await transport(
+      new URL(PUBLIC_STATION_HANDSHAKE_PATH, url),
+      {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      },
+    );
     if (!response.ok) {
       return {
         verdict: 'unknown',

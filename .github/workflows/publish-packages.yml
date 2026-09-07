@@ -90,9 +90,12 @@ jobs:
       # each package's own `publishConfig`. Preflight check 4 fails the job if a
       # registry credential is configured but unresolvable.
       #
-      # `cache: npm` is deliberately absent: `npm run dependencies:ci` is a
-      # clean install from the lockfile, and a remote cache is not part of
-      # that guarantee.
+      # Publishing uses the frozen dependency lifecycle install. The npm CLI
+      # remains the OIDC publisher; pnpm owns only dependency installation.
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc

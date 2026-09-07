@@ -29,12 +29,12 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
+import { APP_DESTINATION_REGISTRY } from '../../src-ui/src/app-shell/destination-registry.ts';
 import {
   DEVELOPER_TABS,
   getPathForView,
   resolveViewFromPath,
 } from '../../src-ui/src/app-shell/routing.ts';
-import { APP_SURFACE_REGISTRY } from '../../src-ui/src/app-shell/surface-registry.ts';
 import { CONNECTION_SECTIONS } from '../../src-ui/src/views/connections-hub/connection-sections.ts';
 import { WALKTHROUGH_ALLOWLIST } from './fresh-home-walkthrough-allowlist.mjs';
 // Boot/pair/settle plumbing is shared with the core-loop journey suite
@@ -103,8 +103,8 @@ function deriveRoutes() {
   const routes = new Set();
   // Every registered surface's canonical route (deduped: several palette
   // entries share /settings and /guidance).
-  for (const surface of APP_SURFACE_REGISTRY.getRegistered()) {
-    routes.add(surface.route);
+  for (const destination of APP_DESTINATION_REGISTRY.getRegistered()) {
+    routes.add(destination.route);
   }
   // Developer tabs are path segments of /developer.
   for (const tab of DEVELOPER_TABS) routes.add(`/developer/${tab}`);
@@ -276,7 +276,8 @@ async function dismissFirstRun(page) {
   await screenshot(page, 'first-boot');
   const steps = [
     ['button', 'Continue Without Setup'],
-    ['button', 'I understand'],
+    // #1582 A3 / #1600: both disclosure surfaces name the decision now.
+    ['button', 'Keep usage telemetry on'],
     ['button', 'Not now'],
   ];
   for (const [role, name] of steps) {
@@ -340,6 +341,23 @@ async function installBundledPlugin(page, plugin) {
       permissions: previewed.permissions.required ?? [],
       contentDigest: previewed.contentDigest,
       dependencies: (previewed.dependencies ?? []).map((entry) => entry.id),
+      ...((previewed.dependencies ?? []).some((entry) => entry.consent)
+        ? {
+            dependencyApprovals: (previewed.dependencies ?? []).flatMap(
+              (entry) =>
+                entry.consent
+                  ? [
+                      {
+                        id: entry.id,
+                        permissions: entry.consent.permissions,
+                        contentDigest: entry.consent.contentDigest,
+                        dependencies: entry.consent.dependencies,
+                      },
+                    ]
+                  : [],
+            ),
+          }
+        : {}),
     },
   });
 }

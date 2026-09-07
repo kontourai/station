@@ -204,7 +204,14 @@ function toolsSlot(
         omittedNames += 1;
         continue;
       }
-      use = { name, started: 0, succeeded: 0, failed: 0, cancelled: 0 };
+      use = {
+        name,
+        started: 0,
+        succeeded: 0,
+        failed: 0,
+        cancelled: 0,
+        unresolved: 0,
+      };
       byName.set(name, use);
     }
     observedFrom.push(observation(event));
@@ -216,6 +223,12 @@ function toolsSlot(
     if (event.status === 'success') use.succeeded += 1;
     else if (event.status === 'error') use.failed += 1;
     else if (event.status === 'cancelled') use.cancelled += 1;
+    // station#1558: its own counter beside the three outcomes that assert
+    // what happened. Adding it to `failed` would blame a tool nothing
+    // observed fail; adding it to `cancelled` would claim a stop nobody
+    // asked for.
+    else if (event.status === 'unresolved')
+      use.unresolved = (use.unresolved ?? 0) + 1;
   }
 
   if (byName.size === 0) return unavailable(NOT_REPORTED);

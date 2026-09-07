@@ -21,6 +21,7 @@ import { ErrorState, Skeleton } from '../components/state';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import type { ProjectConfig } from '../contexts/ProjectsContext';
+import { useShowSurface } from '../contexts/useShowSurface';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
@@ -53,6 +54,7 @@ const PROJECT_SETTINGS_SECTIONS = [
 export function ProjectSettingsView({ slug }: { slug: string }) {
   const { apiBase } = useApiBase();
   const { navigate } = useNavigation();
+  const showSurface = useShowSurface();
 
   const [form, setForm] = useState<ProjectForm | null>(null);
   const [savedForm, setSavedForm] = useState<ProjectForm | null>(null);
@@ -179,7 +181,10 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     setDeleteError(null);
     try {
       await deleteMutation.mutateAsync(slug);
-      navigate('/');
+      // The project this view was about is gone, so there is no "back" to
+      // return to: land on Home BY NAME — the Home surface, placed in `main`
+      // (the model navigates to `/`) — not on whatever occupies `main` (#1523).
+      showSurface('home');
     } catch (deleteFailure) {
       setDeleteError(errorText(deleteFailure));
     }

@@ -107,6 +107,10 @@ describe('Knowledge recall contract', () => {
       ],
       edges: [{ source: 'decision', target: 'source', kind: 'source' }],
     };
+    const recordActions = vi.fn(
+      ({ recordId }: { rootId: string; recordId: string }) =>
+        createElement('button', { type: 'button' }, `Inspect ${recordId}`),
+    );
     const refetch = vi.fn(async () => undefined);
     const useRecordQuery = vi.fn((_rootId, recordId) => ({
       isLoading: false,
@@ -156,6 +160,7 @@ describe('Knowledge recall contract', () => {
         authorityKey: knowledgeRootIncarnationKey(personalRoot),
         graph,
         useRecordQuery,
+        renderRecordActions: recordActions,
         testIds: {
           recordTitle: 'record-title',
           recordProvenance: 'record-provenance',
@@ -170,6 +175,13 @@ describe('Knowledge recall contract', () => {
     await waitFor(() =>
       expect(screen.getByTestId('record-title').textContent).toBe('Decision'),
     );
+    expect(recordActions).toHaveBeenLastCalledWith({
+      rootId: personalRoot.id,
+      recordId: 'decision',
+    });
+    expect(
+      screen.getByRole('button', { name: 'Inspect decision' }),
+    ).toBeTruthy();
     expect(screen.getByTestId('record-provenance').textContent).toContain(
       'knowledge.synthesize',
     );

@@ -95,6 +95,31 @@
         "testFile": "scripts/__tests__/release-artifacts.test.ts",
         "selector": "fails when uploaded bytes differ from the assembled checksum"
       }
+    },
+    {
+      "id": "station.mobile-context.primary-actions",
+      "family": "mobile-context",
+      "invariant": "Project and conversation switching remain directly reachable with readable context in the mobile dock header; opening a Project must not rebind the active conversation.",
+      "module": "Mobile chat dock header",
+      "interface": "ChatDockMobileHeader",
+      "remediationOwner": "station#1540",
+      "affectedPaths": [
+        "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
+        "src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx",
+        "src-ui/src/index.css",
+        "src-ui/src/__tests__/ChatDockMobileHeader.test.tsx",
+        "docs/design/chat-composer.md"
+      ],
+      "observation": {
+        "kind": "vitest-file",
+        "testFile": "src-ui/src/__tests__/ChatDockMobileHeader.test.tsx",
+        "selector": "keeps project and conversation switching directly reachable with readable context"
+      },
+      "faultInjection": {
+        "kind": "vitest-file",
+        "testFile": "src-ui/src/__tests__/ChatDockMobileHeader.test.tsx",
+        "selector": "opening a project preserves the active conversation binding"
+      }
     }
   ]
 }

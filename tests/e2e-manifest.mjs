@@ -243,6 +243,10 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
   retries: 0,
   isolation: 'temp-home-and-dynamic-loopback-ports',
   flakePolicy: 'fail-and-fix-no-retry',
+  requiredObservations: [320, 390, 412].map((width) => ({
+    path: 'tests/cross-runtime-chat-switching.spec.ts',
+    title: `mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`,
+  })),
   journeys: [
     {
       path: 'tests/csp-shell.spec.ts',
@@ -292,11 +296,12 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/daily-driver-switching.spec.ts':
       'browser-local page.route mocks installed through tests/helpers/daily-driver-shell.ts; no live-instance or child-process resources',
     'tests/activity-pane.spec.ts':
-      'read-only against the isolated temp-home instance; the only write is this browser context’s own ambient dock document in localStorage, and every journey ends with the slot returned to Chat',
-    'tests/dock-occupant-picker.spec.ts':
-      'read-only against the isolated temp-home instance; the only writes are this browser context’s own ambient dock document in localStorage and a browser-local config/app route mock pinning the first-run fact',
+      'read-only against the isolated temp-home instance; the only writes are this browser context’s own localStorage — the regionArrangement device setting, plus the dock-chrome settings a region write mirrors (station.chatDock.snap, chatDockHeight/chatDockWidth)',
+    'tests/project-architecture.spec.ts':
+      'browser-local page.route mocks installed before navigation; the only writes are this browser context’s own localStorage — the same regionArrangement and dock-chrome device settings its placement journeys drive',
   },
   parallelSafe: [
+    'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
@@ -314,6 +319,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/accessibility-core.spec.ts',
     'tests/status-token-contrast.spec.ts',
     'tests/text-ramp-contrast.spec.ts',
+    'tests/overlay-elevation-tokens.spec.ts',
     'tests/builtin-runtime-workflow.spec.ts',
     'tests/pending-message-queue.spec.ts',
     'tests/skills.spec.ts',
@@ -352,7 +358,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/root-route-restore.spec.ts',
     'tests/task-first-home.spec.ts',
     'tests/activity-pane.spec.ts',
-    'tests/dock-occupant-picker.spec.ts',
     'tests/connections-sections.spec.ts',
     'tests/connections-computers-ssh.spec.ts',
   ],
@@ -379,13 +384,17 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // Creates and repairs one invalid plugin directory in the runner-owned
     // temporary home, then removes it and reloads before yielding the server.
     'tests/plugin-rejection-visibility.spec.ts',
+    // Seeds exact historical/current-child events only in the managed temporary home.
+    'tests/workspace-search-exact-message.spec.ts',
     'tests/plugin-system.spec.ts',
+    'tests/plugin-dependency-lifecycle.spec.ts',
     'tests/survey-review-workbench.spec.ts',
     'tests/fieldwork-review.spec.ts',
     'tests/plugin-dev-hot-reload.spec.ts',
     'tests/external-session-follow.spec.ts',
     'tests/builder-delivery-viewer.spec.ts',
     'tests/meeting-notes.spec.ts',
+    'tests/learning-source.spec.ts',
     'tests/knowledge-library.spec.ts',
     // Both drive the REAL API and mutate shared instance state — the agents
     // lane disables every LLM connection to prove the empty case, the skills
@@ -467,15 +476,24 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
-    path: 'tests/chat-multi-turn-context.spec.ts',
-    bucket: 'quarantine',
+    path: 'tests/native-conversation-restart.spec.ts',
+    bucket: 'smoke-live',
     surface: 'Chat / Orchestration',
     tierTarget: 'full',
     primary: true,
     rationale:
-      "station#4537 item 3: multi-turn context retention, UNCOVERED anywhere per the flow-coverage audit. RED BY DESIGN, not spec rot — the source of truth here is the spec itself, and the spec disproves coverage rather than proving it: it sends two real turns through POST /api/orchestration/chat into a real local model server and reads the ollama-fixture onChat capture hook, and turn 2's own captured request body is missing turn 1's prompt and reply entirely (a server-side context read, not a client-side replay — the fixture answers identically both times, so the discriminating evidence is the captured request, not the response text). Quarantined rather than left in a running bucket: a spec that is supposed to fail cannot sit in smoke-live/verify:e2e:full without permanently redding the gate. It re-enters a running bucket once #574 (the defect it proves) is fixed.",
+      'Regression #574: four legitimate restart journeys across VoltAgent/Strands and foreground/delegated origins. Two completed native turns precede actual same-home restart; foreground resumes through CLI chat and delegated Tasks through CLI delegate. Independently owned temporary instances use real readiness, and captured model requests must retain ordered user/assistant exchanges and original Conversation/Project/cwd binding.',
     exceptions: [],
-    replacement: '#574',
+  },
+  {
+    path: 'tests/chat-multi-turn-context.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Regression #574: two real Station-native turns reach a local model server. The first turn must have a persisted terminal event; the second model request must contain the original user message and assistant reply, not merely render a client-side transcript. Uses ordinary Agent/Chat controls and retains actual model-request evidence.',
+    exceptions: [],
   },
   {
     path: 'tests/agents-new-cli-turn.spec.ts',
@@ -544,7 +562,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'UX audit E8: one parametrised 390x844 sweep over EVERY route src-ui/src/app-shell/surface-registry.ts declares — no horizontal document scroll on each, and the shared SplitPaneLayout detail-sheet contract ("← Back to list", list hidden, Back restores it) on the split-pane surfaces, whose lists are seeded so an empty rail cannot pass as coverage. The route list is checked against the registry source, so a surface added without a decision about its phone behaviour reds this spec instead of shipping unswept.',
+      'UX audit E8: one parametrised 390x844 sweep over EVERY route src-ui/src/app-shell/destination-registry.ts declares — no horizontal document scroll on each, and the shared SplitPaneLayout detail-sheet contract ("← Back to list", list hidden, Back restores it) on the split-pane surfaces, whose lists are seeded so an empty rail cannot pass as coverage. The route list is checked against the registry source, so a surface added without a decision about its phone behaviour reds this spec instead of shipping unswept.',
     exceptions: [],
   },
   {
@@ -575,6 +593,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Global ⌘K command palette: open via keybind, fuzzy filter, Enter navigates, Esc closes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/workspace-search-exact-message.spec.ts',
+    bucket: 'product',
+    surface: 'Workspace search',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real runner-owned EventStore, authenticated runtime and browser: exact historical Session/event selection, old target outside newest history window, canonical text pagination and keyboard focus without current-child substitution or parallel legacy search.',
     exceptions: [],
   },
   {
@@ -652,17 +680,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "Epic station#4142 M3 (station#3193): /activity is the STANDALONE PLACEMENT of the Activity Workspace Pane — the sessions surface reached through the pane path, which is what puts a real 'Dock this pane' in the page header's actions slot. The journey docks Activity into the ambient slot (the dock-slot section labeled 'Activity dock'), proves the choice survives a reload through the persisted ambient document (localStorage carries pane:builtin:activity), and returns the slot to Chat from the dock-slot header, with Chat back as a direct shell child. Every assertion names an affordance that must exist, so the route silently ceasing to produce the pane occurrence fails by name. Desktop plus a 390x844 isMobile variant asserting no horizontal document scroll before and after docking and a 44px return-to-Chat target.",
-    exceptions: [],
-  },
-  {
-    path: 'tests/dock-occupant-picker.spec.ts',
-    bucket: 'product',
-    surface: 'Activity',
-    tierTarget: 'full',
-    primary: true,
-    rationale:
-      "Epic station#4142 M5 (station#4090): the dock-slot header's fixed return-to-Chat action is replaced by an occupant picker whose menu is the ambient admission DERIVATION ({Chat, Home, Activity}, by descriptor name, current occupant checked), and route placements render an away state while their pane occupies the dock. The journeys pin the transition most likely to be wrong (choosing Activity clears the Home away state on `/`), the 'Bring it back here' return path (route pane back, dock back to Chat), the menu opening UPWARD within the viewport on a bottom dock (measured box — Playwright calls an off-screen menu visible), and a 390x844 isMobile variant asserting no horizontal scroll and 44px trigger/menu-item tap targets. Every assertion names an affordance that must exist, so a curated menu, a resurrected fixed Chat action, or a stuck away state fails by name.",
+      "#928: /?surface=activity is the canonical DEEP LINK to the Activity surface, and #928 changed what it means — the link is a REVEAL and the region model decides where the revealed surface lands, so there is no /activity route and no surface-owned 'Dock this pane' any more (the redirect that keeps stored links working stays unit-covered; this journey drives the destination). Desktop: the link reveals Activity in its declared defaultRegion 'right' with its own region chrome (Resize Activity, Hide Activity), leaving Chat's region and the Home primary area untouched. Activity is the only registered surface that declares every region, so this is also the only browser journey that crosses the dock/primary-area boundary: placed in 'main' through the header's Layout picker it is rendered by the route outlet through a PageFrame (an h1 only a main occupant produces) with no DockShell at all and no dock panel spawned for what it displaced, the placement survives a reload through the regionArrangement device setting, and returning it to 'right' hands the primary area back to Home. 390x844 isMobile variant: the coarse fold gives the phone one dock slot, so the reveal shows Activity ALONE in it — asserted inside the viewport with no horizontal document scroll, its own 44px Hide control giving the slot back to Chat. Every assertion names an affordance that must exist, so the deep link silently ceasing to produce the surface fails by name. The dock's slot-return journeys live in project-architecture.spec.ts.",
     exceptions: [],
   },
   {
@@ -706,6 +724,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/plugin-pane-sdk-context.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves a test-only plugin installed through real preview and consent receives a server-issued Project Pane occurrence and executes public Agent, navigation, and toast SDK hooks in direct and placed hosts, without migrating first-party examples.',
+    exceptions: [],
+  },
+  {
     path: 'tests/default-agent-workflow.spec.ts',
     bucket: 'product',
     surface: 'Agents',
@@ -722,6 +750,24 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Deterministic 320px/390px mobile task-switcher, visual-viewport, composer, scroll-anchor, model/session preservation, restore, and desktop parity lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/toolbar-reachability.spec.ts',
+    bucket: 'product',
+    surface: 'App toolbar',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Toolbar occlusion (#917, #1384) reproduces only at phone widths in a ' +
+      'news-carrying connection state. It declares its own Pixel 7 emulation ' +
+      'rather than living in tests/android/, whose lane a src-ui change never ' +
+      'triggers (build-android.yml is path-filtered to src-desktop and six ' +
+      'named scripts), so the guard would never have run where it is needed.',
+    // No exception any more: the 390 and 360 cases were skipped with the fix
+    // that would un-skip each named in its own reason, and both have landed
+    // (#1401/#1424 for 390, #1132 for 360). All four widths are enforced, so
+    // the file carries no `test.skip` for this to exempt.
     exceptions: [],
   },
   {
@@ -762,6 +808,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Composited two-theme contrast for the neutral text ramp (primary/secondary/tertiary) and the two shared chrome rules that carry it — .engine-chip__pill, which failed 1.4.3 at 10px in both themes (station#3140), and .button--link, pinned while passing because its 0.17 light-theme margin rests on a vendor brand token this repo does not own. Each probe mounts the real shipped class against a sentinel host colour, so a rule that stops matching fails instead of passing by inheriting body copy.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/overlay-elevation-tokens.spec.ts',
+    bucket: 'product',
+    surface: 'Core accessibility',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Resolves --radius-overlay / --elevation-overlay on the real data-theme="dark" document main.tsx stamps before first render, and mounts the three entry-stylesheet rules that read them and have live surfaces. #1637 declared both inside [data-theme="light"] under a comment saying no per-theme override was needed, so a dark root matched no declaration at all, both resolved to the empty string, and every Dialog panel, the command palette, .modal-dialog, .agent-selector__menu and the ACP add dialog rendered square and flat. Light and the unstamped pre-script frame are covered too, and they are what catches the other half of the class: the fix lives in a `:root, [data-theme="dark"]` block, and dropping the `:root` half (measured live) leaves dark correct while returning the empty string under light — the same defect mirrored into the theme fewer people develop in. One assertion pins that the app really does stamp the attribute, so the primary case cannot drift into testing a state no user occupies. Each alias is compared against the kit token as resolved in the same document — every write and read in one round-trip, so nothing can re-stamp the attribute between them — so the kit stays free to retune the value while an alias that resolves to nothing still fails; each probe carries a painted-surface guard so a renamed class cannot pass by reporting the same 0px/none the defect produced.',
     exceptions: [],
   },
   {
@@ -997,6 +1053,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/plugin-dependency-lifecycle.spec.ts',
+    bucket: 'product',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Test-only managed API fixture proves preview-bound dependency consent, pending provider-permission/settings projection, and individual owned-plugin cleanup. It is not provider non-execution, Enterprise rendering, registry-alias retirement, or external-effect drain proof.',
+    exceptions: [],
+  },
+  {
     path: 'tests/survey-review-workbench.spec.ts',
     bucket: 'product',
     surface: 'Plugins',
@@ -1089,7 +1155,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Isolated Claude JSONL follow: discover after startup, open the canonical read-only transcript, observe an append without reload, reject direct mutation, and prove 320px containment.',
+      'Isolated Claude and Codex JSONL follow: discover after startup, open read-only activity, observe appends, reject unsupported continuation or direct mutation, and retain controls at 320px.',
     exceptions: [],
   },
   {
@@ -1355,7 +1421,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "#304 regression guard: the dock project-context path's rtl start-truncation must not bidi-reorder leading `~`/`/` glyphs; asserts per-character visual order via Range rects, which only a real browser can see.",
+      "#304 successor guard: the dock project-context row's start-truncated path segment is retired (#1536 F), so its rtl bidi-reordering failure mode is unreachable; this now proves the working directory arrives whole and in its resolved form (`~` or absolute) in the channel that carries it — the project badge's tooltip — and that the retired segment is absent rather than hidden, neither of which a jsdom test can see.",
     exceptions: [],
   },
   {
@@ -1506,6 +1572,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'K5 meeting-notes plugin (mocked /api/knowledge/* routes, mirroring knowledge-onboarding.spec.ts): capture writes a raw transcript record then a provenance-linked compiled record, the Library graph pane renders fixture nodes/edges with a selection detail panel, and the Ask pane returns provenance-linked answer cards plus the honest NO_EMBEDDER_ERROR state.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/learning-source.spec.ts',
+    bucket: 'product',
+    surface: 'Knowledge',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real managed personal root and canonical record APIs, local UI-credential source inspection on desktop/mobile, source-only semantics, and replacement-root refusal; no route mocks or external provider.',
     exceptions: [],
   },
   {

@@ -32,6 +32,7 @@ import {
   startStation,
   stopStation,
 } from './helpers/live-station-task';
+import { referenceBrowserProvisioningOwner } from './helpers/reference-browser-lifecycle';
 
 const execFileAsync = promisify(execFile);
 const IMPLEMENTED_FIXTURES = [
@@ -243,6 +244,10 @@ async function runFixtureTarget(input: {
   const page = await context.newPage();
   const removeTelemetryDialogHandler =
     await installTelemetryDialogDismissal(page);
+  const provisioning = referenceBrowserProvisioningOwner(
+    context,
+    removeTelemetryDialogHandler,
+  );
   let succeeded = false;
   try {
     await page.goto(`${live.ui}/#station-ui-bootstrap=${bootstrapToken}`);
@@ -368,46 +373,49 @@ async function runFixtureTarget(input: {
       ? await seedAndOpenWorkBoard(page, live, 'performance-reference')
       : `${live.ui}/tasks/${encodeURIComponent(taskId)}?station-performance-reference=interactive-workspace-v3`;
     let exitCode = 0;
-    try {
-      await execFileAsync(
-        process.execPath,
-        [
-          'scripts/interactive-workspace-performance.mjs',
-          '--mode=reference',
-          `--config=${configPath}`,
-          `--output=${reportPath}`,
-          '--json',
-        ],
-        {
-          cwd: process.cwd(),
-          env: {
-            ...process.env,
-            STATION_PERFORMANCE_UI_URL: target,
-            STATION_PERFORMANCE_UI_BUILD_DIR: `dist-ui-${live.instance}`,
-            STATION_PERFORMANCE_STORAGE_STATE: storageState,
-            STATION_PERFORMANCE_CONTROL_SOCKET: controlSocket,
-            STATION_PERFORMANCE_PEER_STORAGE_STATE: peerStorageState,
-            STATION_PERFORMANCE_RETAINED_TASK_ID: taskId,
-            STATION_PERFORMANCE_REMOTE_TASK_ID: taskId,
-            STATION_PERFORMANCE_COLLABORATION_TASK_ID: taskId,
-            STATION_PERFORMANCE_FILE_TASK_ID: taskId,
-            STATION_PERFORMANCE_RAW_BRIDGE_OUTPUT: rawBridgePath,
+    await provisioning.run(async () => {
+      try {
+        await execFileAsync(
+          process.execPath,
+          [
+            'scripts/interactive-workspace-performance.mjs',
+            '--mode=reference',
+            `--config=${configPath}`,
+            `--output=${reportPath}`,
+            '--json',
+          ],
+          {
+            cwd: process.cwd(),
+            windowsHide: true,
+            env: {
+              ...process.env,
+              STATION_PERFORMANCE_UI_URL: target,
+              STATION_PERFORMANCE_UI_BUILD_DIR: `dist-ui-${live.instance}`,
+              STATION_PERFORMANCE_STORAGE_STATE: storageState,
+              STATION_PERFORMANCE_CONTROL_SOCKET: controlSocket,
+              STATION_PERFORMANCE_PEER_STORAGE_STATE: peerStorageState,
+              STATION_PERFORMANCE_RETAINED_TASK_ID: taskId,
+              STATION_PERFORMANCE_REMOTE_TASK_ID: taskId,
+              STATION_PERFORMANCE_COLLABORATION_TASK_ID: taskId,
+              STATION_PERFORMANCE_FILE_TASK_ID: taskId,
+              STATION_PERFORMANCE_RAW_BRIDGE_OUTPUT: rawBridgePath,
+            },
+            timeout:
+              input.fixture.id === 'work-board-one-hour-v1'
+                ? WORK_BOARD_ONE_HOUR_REFERENCE_TIMEOUT_MS
+                : input.fixture.id === ONE_HOUR_FIXTURE
+                  ? ONE_HOUR_REFERENCE_TIMEOUT_MS
+                  : 2_700_000,
+            maxBuffer: 10 * 1024 * 1024,
           },
-          timeout:
-            input.fixture.id === 'work-board-one-hour-v1'
-              ? WORK_BOARD_ONE_HOUR_REFERENCE_TIMEOUT_MS
-              : input.fixture.id === ONE_HOUR_FIXTURE
-                ? ONE_HOUR_REFERENCE_TIMEOUT_MS
-                : 2_700_000,
-          maxBuffer: 10 * 1024 * 1024,
-        },
-      );
-    } catch (error) {
-      exitCode =
-        error && typeof error === 'object' && 'code' in error
-          ? Number(error.code)
-          : -1;
-    }
+        );
+      } catch (error) {
+        exitCode =
+          error && typeof error === 'object' && 'code' in error
+            ? Number(error.code)
+            : -1;
+      }
+    });
     const report = JSON.parse(
       readFileSync(reportPath, 'utf8'),
     ) as FixtureReport;
@@ -448,11 +456,13 @@ async function runFixtureTarget(input: {
       report,
     };
   } finally {
-    await removeTelemetryDialogHandler();
-    await context.close();
-    if (!succeeded) {
-      await stopStation(live).catch(() => {});
-      rmSync(live.home, { recursive: true, force: true });
+    try {
+      await provisioning.close();
+    } finally {
+      if (!succeeded) {
+        await stopStation(live).catch(() => {});
+        rmSync(live.home, { recursive: true, force: true });
+      }
     }
   }
 }

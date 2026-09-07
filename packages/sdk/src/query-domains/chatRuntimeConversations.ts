@@ -423,6 +423,29 @@ export async function fetchConversationMessages(
   );
 }
 
+/**
+ * Look a conversation up by id.
+ *
+ * `null` means ONE thing: STATION'S CONVERSATIONS ROUTE answered that it has no
+ * such conversation — a 404 carrying that route's own `{ success: false }`
+ * envelope. Every other outcome throws a `StationHttpError` carrying the status
+ * and the server's message.
+ *
+ * The distinction is load-bearing rather than tidy (#1582). This used to
+ * return `null` for any `{ success: false }` envelope, and the route emits
+ * that shape for a 500 (`conversationRouteFailure`), a 400 (a reserved agent
+ * identity) and a 401 as readily as for a miss. Its one caller,
+ * `useChatDockActiveChatSync`, treats `null` as "this id names nothing" and
+ * drops the `?chat=` pointer on it — so a transient server or auth blip during
+ * a reload silently discarded a REAL conversation's pointer, the exact failure
+ * archive#1284 exists to prevent. A thrown error keeps that caller on its
+ * retry-then-reveal path, where an unresolved lookup belongs.
+ *
+ * BOTH halves are required, which is why the status alone is not the test: a
+ * reverse proxy, a stale service worker or a misrouted API base can answer 404
+ * for a conversation that exists, and none of them speak this envelope. Such a
+ * 404 is an unresolved lookup, not an absence, and throws.
+ */
 export async function fetchConversationById(
   conversationId: string,
   apiBase?: string,
@@ -431,13 +454,19 @@ export async function fetchConversationById(
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/conversations/${encodeURIComponent(conversationId)}`,
   );
-  const result = (await response.json()) as {
-    success: boolean;
+  const result = (await response.json().catch(() => null)) as {
+    success?: boolean;
     data?: ConversationLookup;
     error?: string;
-  };
-  if (!result.success) {
-    return null;
+  } | null;
+  // The route's own answer, not the status on its own: only this pairing means
+  // "no such conversation here".
+  if (response.status === 404 && result?.success === false) return null;
+  if (!response.ok || !result?.success) {
+    throw new StationHttpError(
+      response.status,
+      apiErrorMessage(result ?? {}, 'Conversation lookup failed'),
+    );
   }
   return result.data ?? null;
 }
@@ -635,4 +664,4 @@ export function useDeleteConversationMutation(
 
 import { withNormalizedAnswerability } from '@kontourai/station-contracts/orchestration';
 import { apiErrorMessage } from '../api-core';
-import { authenticatedFetch } from '../client/http';
+import { authenticatedFetch, StationHttpError } from '../client/http';

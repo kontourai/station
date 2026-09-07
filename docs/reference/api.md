@@ -2331,12 +2331,60 @@ Returns all installed plugins with manifest info, bundle status, git metadata, a
 
 ---
 
+### Revoke Plugin Permissions
+```http
+DELETE /plugins/:name/grant
+```
+
+The grant-store withdrawal commits before runtime reconciliation begins. New
+per-call use stops immediately. Lifecycle permissions additionally retire the
+exact installed plugin generation's server module, operational-event
+subscriptions, provider registrations/adapters, and engine connections.
+
+`200` means reconciliation reached a terminal `completed`, `superseded`, or
+`incomplete` result. `202` means the durable withdrawal succeeded but existing
+work is still `winding-down`; its operation id and generation identify that
+owned continuation. An `incomplete` result names bounded cleanup stages and can
+be retried with the same idempotent DELETE.
+
+Trusted approvals use the same reconciliation service. After an approval is
+terminal, `GET /plugins/host-approvals/:id` retains its `reconciliation`
+projection—including status, operation id, generation, and bounded effect or
+failure stage names—alongside `approval.status`. An approved consent record
+therefore does not erase a still-winding or incomplete withdrawal caused by
+grant rebinding.
+
+```json
+{
+  "success": true,
+  "revoked": ["providers.register"],
+  "granted": [],
+  "reconciliation": {
+    "status": "completed",
+    "operationId": "8f3f...",
+    "generation": 4,
+    "installationGeneration": "sha256:...",
+    "effects": ["provider-retirement", "adapter-retirement", "engine-connections"]
+  }
+}
+```
+
+---
+
 ### Preview Plugin (Pre-install Validation)
 ```http
 POST /plugins/preview
 ```
 
 Fetches a plugin from a git URL or local path, validates it, and returns manifest, components, conflicts, and dependencies — without installing.
+
+Dependencies with unsupported lifecycle features (including ordinary dependency
+permissions such as `network.fetch`) return HTTP 400 with
+`code: "unsupported-plugin-dependency"` and `valid: false`, without a digest or
+permission approval payload. Preview and install use the same support policy;
+preview does not grant or expand permissions. Registry-backed local dependencies
+resolve relative transitive sources from the registry source directory under the
+same allowed sibling-root containment rules as installation.
 
 **Request Body**:
 ```json
@@ -2394,10 +2442,24 @@ Installs a plugin from a git URL or local path, including agents, layout config,
   "dependencies": [{ "id": "dep-plugin", "status": "installed" }],
   "permissions": {
     "autoGranted": ["network.fetch"],
-    "pendingConsent": []
+    "pendingConsent": [],
+    "dependencies": [{ "id": "dep-plugin", "pendingConsent": [] }]
   }
 }
 ```
+
+`permissions.dependencies` reports current missing permissions for the actual
+installed transitive dependency graph, after installation and grant binding.
+Unlike preview consent requirements, an already-granted permission is absent
+from this pending list. Older servers may omit it; clients must then report
+dependency approval status as unknown rather than infer it from preview.
+
+A parent or dependency content/permission approval mismatch returns HTTP 400
+with structured `consent.reason`, `consent.required`, and `consent.consented`.
+This does not claim that no earlier dependency effects occurred: completed
+compensation may precede the refusal. Failed compensation is not a simple
+consent refusal and may leave retained dependency state (HTTP 500 for cleanup
+failure, or the existing HTTP 409 for a diagnosed content-lock cycle).
 
 ---
 
@@ -2948,7 +3010,7 @@ GET /scheduler/status
 
 ### Preview Cron Schedule
 ```http
-GET /scheduler/jobs/preview-schedule?cron=<expr>&count=5
+GET /scheduler/jobs/preview-schedule?cron=<expr>&count=5&timezone=<iana>
 ```
 
 Returns the next N scheduled run times for a cron expression.
@@ -2956,6 +3018,10 @@ Returns the next N scheduled run times for a cron expression.
 **Query Parameters**:
 - `cron`: Cron expression (required)
 - `count`: Number of upcoming runs to return (default: `5`)
+- `timezone`: IANA zone the expression is written in (optional). Omitted means
+  UTC, which is how the scheduler evaluates a schedule with no zone — so a
+  preview of a ZONED job must send this or it describes different instants from
+  the ones the job will fire at.
 
 **Response**:
 ```json

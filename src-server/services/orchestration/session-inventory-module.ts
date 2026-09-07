@@ -345,6 +345,26 @@ export function createSessionInventoryModule(input: {
           attachmentDescriptors: attachments,
         });
       } else if (descriptor.method === 'tool.completed') {
+        const terminalStatus =
+          descriptor.terminalStatus ??
+          (descriptor.status === 'success'
+            ? 'succeeded'
+            : descriptor.status === 'error'
+              ? 'failed'
+              : descriptor.status === 'unresolved'
+                ? 'unresolved'
+                : 'cancelled');
+        // station#1558: `ThreadToolResultRow.terminalStatus` is a published,
+        // version-validated vocabulary of succeeded/failed/cancelled, and an
+        // unresolved completion is none of them. Emitting it as `cancelled`
+        // would put a fabricated outcome in an inventory whose whole purpose
+        // is to be believable; widening the enum would make every older
+        // consumer reject the ROW (their validator is exact), which is a
+        // worse failure than not describing this one event. So the event is
+        // simply not projected as a tool-result row — the transcript still
+        // carries it. Revisit if the inventory contract gains a version that
+        // can say "outcome never observed".
+        if (terminalStatus === 'unresolved') continue;
         execution.push({
           kind: 'thread-tool-result',
           key: `tool:${event.id}`,
@@ -355,13 +375,7 @@ export function createSessionInventoryModule(input: {
           turnId: descriptor.turnId ?? '',
           toolCallId: descriptor.toolCallId,
           name: descriptor.name ?? descriptor.toolName,
-          terminalStatus:
-            descriptor.terminalStatus ??
-            (descriptor.status === 'success'
-              ? 'succeeded'
-              : descriptor.status === 'error'
-                ? 'failed'
-                : 'cancelled'),
+          terminalStatus,
         });
       } else if (descriptor.method === 'request.resolved') {
         decisions.push({

@@ -60,11 +60,11 @@ export function useCreateChatSession() {
  * swallows its own errors and leaves `messages` as `[]`, so without this
  * check a 404/network failure on an otherwise-valid agent+conversation
  * rehydrated into a live, permanently EMPTY chat tab with no visible error,
- * a regression against the pre-archive#1297 always-navigate-to-/activity fallback
+ * a regression against the pre-archive#1297 always-reveal-Activity fallback
  * for that population. On failure the just-created tab is torn back down
  * (`removeChat`) so the caller's own fallback (`useChatDockActions`'
  * `openConversation` reporting `false` to the row-open policy, which then
- * navigates to `/activity`) is the only visible outcome, not an orphaned tab
+ * reveals Activity) is the only visible outcome, not an orphaned tab
  * sitting alongside it.
  */
 export function useOpenConversation(apiBase: string) {

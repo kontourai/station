@@ -10,7 +10,24 @@ export interface ReadyPlugin {
   description?: string;
   hasBundle: boolean;
   hasSettings?: boolean;
-  layout?: { slug: string };
+  /**
+   * `name` is optional because `GET /api/plugins` sends `manifest.layout`,
+   * which carries only the slug and source — the layout's own display name
+   * lives in its layout.json. A server that later fills it in reaches the
+   * detail page with no client change (#1536 review M4).
+   */
+  layout?: {
+    slug: string;
+    name?: string;
+    displayName?: string;
+    title?: string;
+  };
+  /**
+   * Panes the manifest declares. `GET /api/plugins` has always sent these;
+   * the client dropped them, so an installed plugin's detail page could not
+   * say what it had added (#1536 G2).
+   */
+  workspacePanes?: Array<{ id: string; name: string }>;
   agents?: Array<{ slug: string }>;
   providers?: Array<{ type: string }>;
   providerDetails?: Array<{
@@ -90,6 +107,12 @@ export interface PreviewData {
     status: string;
     components?: Array<{ type: string; id: string }>;
     git?: GitInfo;
+    consent?: {
+      contentDigest: string;
+      permissions: string[];
+      dependencies: string[];
+      pendingConsent: Array<{ permission: string; tier: PermissionTier }>;
+    };
   }>;
   git?: GitInfo;
 }
@@ -104,4 +127,36 @@ export interface PluginUpdateSummary {
 export interface PluginMessage {
   type: 'success' | 'error';
   text: string;
+  action?: {
+    label: string;
+    invoke(): void;
+  };
+}
+
+/** Installed permission truth, never inferred from a pre-install preview. */
+export function installedDependencyPermissions(result: unknown):
+  | Array<{
+      id: string;
+      pendingConsent: Array<{ permission: string; tier: PermissionTier }>;
+    }>
+  | undefined {
+  const rows = (result as { permissions?: { dependencies?: unknown } } | null)
+    ?.permissions?.dependencies;
+  if (!Array.isArray(rows)) return undefined;
+  if (
+    rows.some(
+      (row) =>
+        !row ||
+        typeof row.id !== 'string' ||
+        !Array.isArray(row.pendingConsent) ||
+        row.pendingConsent.some(
+          (entry: { permission?: unknown; tier?: unknown }) =>
+            !entry ||
+            typeof entry.permission !== 'string' ||
+            !['passive', 'active', 'trusted'].includes(entry.tier as string),
+        ),
+    )
+  )
+    return undefined;
+  return rows;
 }

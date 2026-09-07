@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
 
@@ -19,6 +20,7 @@ type Job = {
   outputs?: Record<string, unknown>;
   steps?: Step[];
   if?: string;
+  environment?: string;
   permissions?: Record<string, string>;
 };
 type Workflow = {
@@ -39,14 +41,74 @@ function namedStep(job: Job, name: string): Step {
 }
 
 describe('one-revision native promotion contract', () => {
+  test.skipIf(process.platform === 'win32')(
+    'exports expanded verifier paths and writes the key where the verifier will read it',
+    () => {
+      const job = workflow('nightly-native-cohort.yml').jobs?.[
+        'protected-finalize'
+      ];
+      if (!job) throw new Error('missing protected finalizer');
+      const setup = namedStep(job, 'Resolve protected verifier paths');
+      const authenticate = namedStep(
+        job,
+        'Fail closed and authenticate the protected verifier',
+      );
+      const directory = mkdtempSync(join(tmpdir(), 'station verifier paths '));
+      const githubEnv = join(directory, 'github-env');
+      writeFileSync(githubEnv, '');
+      const env = {
+        ...process.env,
+        ANDROID_HOME: join(directory, 'Android SDK'),
+        RUNNER_TEMP: directory,
+        GITHUB_ENV: githubEnv,
+      };
+      try {
+        execFileSync('/bin/bash', ['-e', '-c', setup.run ?? 'exit 1'], {
+          env,
+          windowsHide: true,
+        });
+        const exported = Object.fromEntries(
+          readFileSync(githubEnv, 'utf8')
+            .trim()
+            .split('\n')
+            .map((line) => {
+              const equal = line.indexOf('=');
+              return [line.slice(0, equal), line.slice(equal + 1)];
+            }),
+        );
+        expect(exported.STATION_BUNDLETOOL_PATH).toBe(
+          join(directory, 'bundletool.jar'),
+        );
+        const keyFile = join(directory, 'station-updater.pub');
+        expect(exported.STATION_UPDATER_PUBLIC_KEY_FILE).toBe(keyFile);
+        execFileSync('/bin/bash', ['-e', '-c', authenticate.run ?? 'exit 1'], {
+          windowsHide: true,
+          env: {
+            ...env,
+            ...exported,
+            GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER: 'fixture-provider',
+            GCP_PLAY_SERVICE_ACCOUNT: 'fixture-account',
+            TAURI_SIGNING_PUBLIC_KEY: 'fixture-public-key',
+          },
+        });
+        expect(readFileSync(keyFile, 'utf8')).toBe('fixture-public-key');
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    },
+  );
+
   test('binds the caller and complete native cohort to one validated main SHA', () => {
     const nightly = workflow('nightly.yml');
+    const stage = workflow('nightly-native-stage.yml');
     const cohort = workflow('nightly-native-cohort.yml');
     expect(nightly.on?.workflow_dispatch?.inputs?.source_sha).toMatchObject({
       required: false,
     });
     const gate = nightly.jobs?.['test-gate'];
+    const stageCaller = nightly.jobs?.['native-stage'];
     const caller = nightly.jobs?.['native-cohort'];
+    const iosStageCaller = stage.jobs?.['stage-ios'];
     const iosCaller = cohort.jobs?.['deliver-ios'];
     const fleetCaller = nightly.jobs?.['fleet-staging'];
     expect(gate?.outputs?.source_sha).toBe(
@@ -60,12 +122,63 @@ describe('one-revision native promotion contract', () => {
     expect(source.run).toContain('older revisions are rejected');
     expect(source.run).toContain('test "$source_sha" = "$GITHUB_SHA"');
     expect(gate?.steps?.[0]?.with?.ref).toBe('$' + '{{ github.sha }}');
-    expect(caller?.needs).toEqual(['test-gate', 'full-regression']);
-    expect((caller as any)?.with?.source_sha).toBe(
-      '$' + '{{ needs.test-gate.outputs.source_sha }}',
+    // Staging builds and attests but publishes nothing, so it needs only the
+    // source gate (#1453); the publishing cohort needs the regression receipt
+    // and the staged identity from the same run.
+    expect(stageCaller?.needs).toEqual(['test-gate']);
+    expect(stageCaller?.if).not.toContain('full-regression');
+    expect(stageCaller?.permissions).toEqual({
+      contents: 'write',
+      'id-token': 'write',
+      attestations: 'write',
+    });
+    expect((stageCaller as any)?.uses).toBe(
+      './.github/workflows/nightly-native-stage.yml',
     );
+    expect((stageCaller as any)?.with).toEqual({
+      source_sha: '$' + '{{ needs.test-gate.outputs.source_sha }}',
+      rebuild_index: '$' + '{{ inputs.rebuild_index }}',
+    });
+    expect((stageCaller as any)?.secrets).toBe('inherit');
+    expect(caller?.needs).toEqual([
+      'test-gate',
+      'full-regression',
+      'native-stage',
+    ]);
+    expect(caller?.if).toContain(
+      "needs['full-regression'].result == 'success'",
+    );
+    expect(caller?.if).toContain("needs['native-stage'].result == 'success'");
+    expect(caller?.permissions).toEqual({
+      contents: 'write',
+      'id-token': 'write',
+      attestations: 'write',
+    });
+    expect((caller as any)?.with).toEqual({
+      source_sha: '$' + '{{ needs.test-gate.outputs.source_sha }}',
+      build: '$' + '{{ needs.native-stage.outputs.build }}',
+      marketing_version:
+        '$' + '{{ needs.native-stage.outputs.marketing_version }}',
+      bundle_version: '$' + '{{ needs.native-stage.outputs.bundle_version }}',
+      reservation_tag: '$' + '{{ needs.native-stage.outputs.reservation_tag }}',
+    });
     expect((caller as any)?.secrets).toBe('inherit');
-    expect(cohort.on?.workflow_call?.outputs).toMatchObject({
+    for (const input of ['source_sha', 'build']) {
+      expect(cohort.on?.workflow_call?.inputs?.[input]?.required).toBe(true);
+    }
+    // Empty on a no-op night, so declared but optional; every cohort job
+    // gates on `build` before reading them.
+    for (const input of [
+      'marketing_version',
+      'bundle_version',
+      'reservation_tag',
+    ]) {
+      expect(cohort.on?.workflow_call?.inputs?.[input]).toMatchObject({
+        required: false,
+        type: 'string',
+      });
+    }
+    expect(stage.on?.workflow_call?.outputs).toMatchObject({
       build: { value: '$' + '{{ jobs.plan-cohort.outputs.build }}' },
       source_sha: {
         value: '$' + '{{ jobs.plan-cohort.outputs.source_sha }}',
@@ -80,16 +193,20 @@ describe('one-revision native promotion contract', () => {
         value: '$' + '{{ jobs.plan-cohort.outputs.reservation_tag }}',
       },
     });
-    expect(cohort.jobs?.['plan-cohort']?.outputs).toMatchObject({
+    expect(stage.jobs?.['plan-cohort']?.outputs).toMatchObject({
       marketing_version:
         '$' + '{{ steps.ios_identity.outputs.marketing_version }}',
       bundle_version: '$' + '{{ steps.allocate.outputs.version_code }}',
       reservation_tag: '$' + '{{ steps.allocate.outputs.reservation_tag }}',
     });
-    expect((iosCaller as any)?.uses).toBe(
+    // iOS is built and audited during staging and only uploaded by the
+    // publishing cohort from the same run's staged bytes (#1454).
+    expect(iosStageCaller?.needs).toBe('plan-cohort');
+    expect((iosStageCaller as any)?.uses).toBe(
       './.github/workflows/testflight-delivery.yml',
     );
-    expect((iosCaller as any)?.with).toMatchObject({
+    expect((iosStageCaller as any)?.with).toMatchObject({
+      delivery: 'build',
       channel: 'nightly',
       source_sha: '$' + '{{ needs.plan-cohort.outputs.source_sha }}',
       source_ref:
@@ -97,6 +214,18 @@ describe('one-revision native promotion contract', () => {
       marketing_version:
         '$' + '{{ needs.plan-cohort.outputs.marketing_version }}',
       bundle_version: '$' + '{{ needs.plan-cohort.outputs.bundle_version }}',
+    });
+    expect((iosStageCaller as any)?.secrets).toBe('inherit');
+    expect((iosCaller as any)?.uses).toBe(
+      './.github/workflows/testflight-delivery.yml',
+    );
+    expect((iosCaller as any)?.with).toMatchObject({
+      delivery: 'upload',
+      channel: 'nightly',
+      source_sha: '$' + '{{ inputs.source_sha }}',
+      source_ref: 'refs/tags/$' + '{{ inputs.reservation_tag }}',
+      marketing_version: '$' + '{{ inputs.marketing_version }}',
+      bundle_version: '$' + '{{ inputs.bundle_version }}',
     });
     expect(fleetCaller?.needs).toEqual(['test-gate', 'full-regression']);
     expect((fleetCaller as any)?.uses).toBe(
@@ -111,10 +240,13 @@ describe('one-revision native promotion contract', () => {
       '$' + '{{ needs.test-gate.outputs.source_sha }}',
     );
     expect(fleetCaller).not.toHaveProperty('secrets');
-    expect(Object.keys(cohort.jobs ?? {})).toEqual([
+    expect(Object.keys(stage.jobs ?? {})).toEqual([
       'plan-cohort',
       'stage-android',
       'stage-macos',
+      'stage-ios',
+    ]);
+    expect(Object.keys(cohort.jobs ?? {})).toEqual([
       'admit-cohort',
       'create-promotion-fence',
       'promote-android',
@@ -124,25 +256,19 @@ describe('one-revision native promotion contract', () => {
       'record-native-completion',
       'recover-native-cohort',
     ]);
-    expect(cohort.jobs?.['promote-macos']?.needs).toEqual([
-      'plan-cohort',
-      'promote-android',
-    ]);
-    expect(cohort.jobs?.['deliver-ios']?.needs).toEqual([
-      'plan-cohort',
-      'promote-macos',
-    ]);
+    expect(cohort.jobs?.['admit-cohort']?.if).toContain(
+      "inputs.build == 'true'",
+    );
+    expect(cohort.jobs?.['promote-macos']?.needs).toEqual(['promote-android']);
+    expect(cohort.jobs?.['deliver-ios']?.needs).toEqual(['promote-macos']);
     expect(cohort.jobs?.['protected-finalize']?.needs).toEqual([
-      'plan-cohort',
       'promote-macos',
       'deliver-ios',
     ]);
     expect(cohort.jobs?.['record-native-completion']?.needs).toEqual([
-      'plan-cohort',
       'protected-finalize',
     ]);
     expect(cohort.jobs?.['recover-native-cohort']?.needs).toEqual([
-      'plan-cohort',
       'create-promotion-fence',
       'promote-android',
       'promote-macos',
@@ -185,7 +311,8 @@ describe('one-revision native promotion contract', () => {
 
   test('fails planning closed on a durable recovery lock and records every recovery boundary', () => {
     const cohort = workflow('nightly-native-cohort.yml');
-    const plan = cohort.jobs?.['plan-cohort'] ?? {};
+    const plan =
+      workflow('nightly-native-stage.yml').jobs?.['plan-cohort'] ?? {};
     const lock = namedStep(
       plan,
       'Fail closed when durable native recovery is pending',
@@ -217,7 +344,8 @@ describe('one-revision native promotion contract', () => {
 
   test('uses a content-bound promotion fence from admission through final durable completion', () => {
     const cohort = workflow('nightly-native-cohort.yml');
-    const plan = cohort.jobs?.['plan-cohort'] ?? {};
+    const plan =
+      workflow('nightly-native-stage.yml').jobs?.['plan-cohort'] ?? {};
     const pendingFence = namedStep(
       plan,
       'Fail closed when a prior promotion fence is pending',
@@ -225,7 +353,7 @@ describe('one-revision native promotion contract', () => {
     expect(pendingFence.run).toContain('refs/tags/nightly-promotion-fence');
     expect(pendingFence.run).toContain('assert-promotion-fence-tag-object');
     const fence = cohort.jobs?.['create-promotion-fence'] ?? {};
-    expect(fence.needs).toEqual(['plan-cohort', 'admit-cohort']);
+    expect(fence.needs).toEqual(['admit-cohort']);
     expect(fence.permissions).toEqual({ contents: 'write' });
     const create = namedStep(
       fence,
@@ -236,11 +364,7 @@ describe('one-revision native promotion contract', () => {
     expect(create.run).toContain('git/tags');
     expect(create.run).toContain('git/refs');
     const android = cohort.jobs?.['promote-android'] ?? {};
-    expect(android.needs).toEqual([
-      'plan-cohort',
-      'admit-cohort',
-      'create-promotion-fence',
-    ]);
+    expect(android.needs).toEqual(['admit-cohort', 'create-promotion-fence']);
     const check = namedStep(
       android,
       'Re-verify the live promotion fence immediately before Play',
@@ -316,6 +440,27 @@ describe('one-revision native promotion contract', () => {
     const nightlyCaller = nightlyCohort.jobs?.['deliver-ios'] ?? {};
     const delivery = workflow('testflight-delivery.yml');
     const ios = delivery.jobs?.deliver ?? {};
+    const iosUpload = delivery.jobs?.upload ?? {};
+    // build-and-upload (default) chains the two jobs in one call; build stops
+    // after the audited IPA is staged; upload never runs the build job and
+    // never proceeds past a failed one (#1454).
+    expect(delivery.on?.workflow_call?.inputs?.delivery).toMatchObject({
+      required: false,
+      default: 'build-and-upload',
+    });
+    expect(ios.if).toBe('$' + "{{ inputs.delivery != 'upload' }}");
+    expect(iosUpload.needs).toBe('deliver');
+    expect(iosUpload.if).toContain("inputs.delivery != 'build'");
+    expect(iosUpload.if).toContain("needs.deliver.result == 'success'");
+    expect(iosUpload.if).toContain(
+      "(inputs.delivery == 'upload' && needs.deliver.result == 'skipped')",
+    );
+    expect(iosUpload.environment).toBe(ios.environment);
+    expect(
+      iosUpload.steps?.some((step) =>
+        step.run?.includes('npx tauri ios build'),
+      ),
+    ).toBe(false);
     expect(
       namedStep(ios, 'Import protected signing material bound to this channel'),
     ).toBeDefined();
@@ -362,12 +507,32 @@ describe('one-revision native promotion contract', () => {
       ).toContain(required);
     }
     const upload = namedStep(
-      ios,
+      iosUpload,
       'Upload a previously unobserved IPA to TestFlight',
     );
     const packageVerification = namedStep(
       ios,
       'Verify IPA identity, profile and package contents',
+    );
+    const staged = namedStep(
+      ios,
+      'Retain the audited IPA and receipts as the staged run artifact',
+    );
+    expect(staged.with?.name).toBe(
+      'station-$' +
+        '{{ inputs.channel }}-ios-staged-$' +
+        '{{ inputs.bundle_version }}',
+    );
+    expect(staged.with?.['if-no-files-found']).toBe('error');
+    expect(ios.steps?.indexOf(staged)).toBeGreaterThan(
+      ios.steps?.indexOf(packageVerification) ?? -1,
+    );
+    const download = iosUpload.steps?.find((step) =>
+      step.uses?.startsWith('actions/download-artifact@'),
+    );
+    expect(download?.with?.name).toBe(staged.with?.name);
+    expect(upload.with?.['app-path']).toBe(
+      '$' + '{{ steps.staged.outputs.ipa }}',
     );
     expect(packageVerification.run).toContain(
       'scripts/ios-exported-entitlements.mjs',
@@ -383,28 +548,51 @@ describe('one-revision native promotion contract', () => {
     expect(failedPackage.with?.path).toBe(
       'src-desktop/gen/apple/build/arm64/*.ipa',
     );
-    expect(upload.with?.['wait-for-processing']).toBe('true');
+    // The action's own wait outlives the single token it mints (#1499); the
+    // workflow's wait-for-valid-build step, which mints per request, is the
+    // one processing wait, and it must directly follow the upload.
+    expect(upload.with?.['wait-for-processing']).toBe('false');
+    const processingWait = namedStep(
+      iosUpload,
+      'Reconcile exactly one VALID provider build',
+    );
+    expect(processingWait.run).toContain('wait-for-valid-build');
+    expect(processingWait.run).toContain('--deadline-seconds 1800');
+    expect(iosUpload.steps?.indexOf(processingWait)).toBe(
+      (iosUpload.steps?.indexOf(upload) ?? -1) + 1,
+    );
     expect((upload as any).if).toContain(
       "steps.reconcile.outputs.upload == 'true'",
     );
     expect(
-      ios.steps?.some((step) => step.name === 'Note skipped TestFlight upload'),
+      [...(ios.steps ?? []), ...(iosUpload.steps ?? [])].some(
+        (step) => step.name === 'Note skipped TestFlight upload',
+      ),
     ).toBe(false);
 
     const preflight = namedStep(
       ios,
       'Verify App Store Connect app authority before signing',
     );
+    const uploadPreflight = namedStep(
+      iosUpload,
+      'Verify App Store Connect app authority before upload',
+    );
     const receipt = namedStep(
-      ios,
+      iosUpload,
       'Record processed provider receipt and attach the channel group',
     );
-    const retain = ios.steps?.find((step) =>
+    const retain = iosUpload.steps?.find((step) =>
       step.uses?.includes('upload-artifact'),
     );
     expect(preflight.run).toContain('app-preflight');
+    expect(uploadPreflight.run).toContain('app-preflight');
+    expect(uploadPreflight.run).toContain('Print :CFBundleVersion');
     expect(receipt.run).toContain('build-receipt');
     expect(receipt.run).toContain('inputs.source_sha');
+    expect(receipt.run).toContain(
+      '--artifact-manifest staged/src-desktop/station-client-build.json',
+    );
     expect(retain?.with?.name).toContain(
       'station-$' + '{{ inputs.channel }}-ios-testflight',
     );
@@ -492,7 +680,7 @@ describe('one-revision native promotion contract', () => {
     expect(dependencyStep).toBeGreaterThanOrEqual(0);
     expect(planStep).toBeGreaterThan(dependencyStep ?? -1);
     for (const action of [
-      'anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610',
+      'anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26',
       'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
     ])
       expect(source).toContain(action);

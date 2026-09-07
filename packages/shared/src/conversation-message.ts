@@ -46,6 +46,8 @@ export interface MessagePart {
   cancelled?: boolean;
   isError?: boolean;
   progressMessage?: string;
+  /** Engine output was deliberately narrowed before publication. */
+  outputTruncated?: true;
   /**
    * station#3769: set only by `runtime-event-projection.ts` on the text part
    * it writes for a `runtime.error`, so a failure replayed from the durable

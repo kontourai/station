@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   agents: [] as Array<Record<string, unknown>>,
   focus: vi.fn(),
   navigate: vi.fn(),
+  showSurface: vi.fn(),
   roomDiscoveries: new Map<string, Record<string, unknown>>(),
   roomStreams: new Map<
     string,
@@ -35,6 +36,10 @@ vi.mock('../contexts/AgentsContext', () => ({
 }));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: mocks.navigate }),
+}));
+vi.mock('../contexts/RegionModelContext', () => ({}));
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => mocks.showSurface,
 }));
 vi.mock('../contexts/open-chats-store', () => ({
   openChatsStore: { focus: mocks.focus },
@@ -84,6 +89,7 @@ beforeEach(() => {
   );
   mocks.focus.mockClear();
   mocks.navigate.mockClear();
+  mocks.showSurface.mockClear();
   mocks.roomDiscoveries.clear();
   mocks.roomStreams.clear();
   mocks.roomStreamCalls.mockClear();
@@ -427,7 +433,7 @@ describe('ProjectLiveWorkSection', () => {
 
     render(<ProjectLiveWorkSection slug="station" />);
     fireEvent.click(screen.getByRole('button', { name: 'All activity' }));
-    expect(mocks.navigate).toHaveBeenCalledWith('/activity');
+    expect(mocks.showSurface).toHaveBeenCalledWith('activity');
   });
 
   test('matches only published task-room presence and exposes separate accessible actions', () => {

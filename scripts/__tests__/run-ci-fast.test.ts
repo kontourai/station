@@ -4,12 +4,15 @@ import {
   mkdirSync,
   mkdtempSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { checkChangesets } from '../check-changesets.mjs';
 import {
+  CHANGESET_STATUS_FAST_COMMAND,
   CI_FAST_INFRASTRUCTURE_EXIT_CODE,
   CI_FAST_NESTED_INFRASTRUCTURE_CAUSE,
   CI_FAST_OWNER_INFRASTRUCTURE_PREFIX,
@@ -65,7 +68,10 @@ function contentGateRepo(source: string): string {
   return dir;
 }
 
-function runOnlyContentGate(cwd: string): {
+function runOnlyFastGate(
+  cwd: string,
+  gate: readonly [string, readonly string[]] = CONTENT_INTEGRITY_FAST_COMMAND,
+): {
   status: number;
   output: string;
 } {
@@ -74,8 +80,7 @@ function runOnlyContentGate(cwd: string): {
     cwd,
     env: { STATION_CI_FAST_BASE: 'fixture-base' },
     execute(command, args, { cwd: childCwd, timeout }) {
-      if (command !== CONTENT_INTEGRITY_FAST_COMMAND[0]) return 0;
-      if (args !== contentIntegrityArgs) return 0;
+      if (command !== gate[0] || args !== gate[1]) return 0;
       const result = spawnSync(command, args, {
         cwd: childCwd,
         timeout,
@@ -122,6 +127,7 @@ describe('bounded ci:fast runner', () => {
       [process.execPath, ['scripts/node-runtime-contract.mjs']],
       ['npm', ['run', 'dependencies:verify']],
       ['npm', ['run', 'lockfile-sync:gate']],
+      [process.execPath, ['scripts/check-changesets.mjs']],
       ['npm', ['run', 'channel-ports:check']],
       ['npm', ['run', 'gate:workflows']],
       ['npm', ['run', 'content:integrity']],
@@ -145,7 +151,7 @@ describe('bounded ci:fast runner', () => {
     const nul = String.fromCharCode(0);
     const repo = contentGateRepo(`export const key = "left${nul}right";\n`);
 
-    const result = runOnlyContentGate(repo);
+    const result = runOnlyFastGate(repo);
 
     expect(result.status).toBe(1);
     expect(result.output).toContain(
@@ -157,7 +163,7 @@ describe('bounded ci:fast runner', () => {
   it('accepts a conformant tracked source through the same fixed static lane', () => {
     const repo = contentGateRepo('export const key = "left\\0right";\n');
 
-    const result = runOnlyContentGate(repo);
+    const result = runOnlyFastGate(repo);
 
     expect(result.status).toBe(0);
     expect(result.output).toContain('OK: no control characters');
@@ -281,18 +287,9 @@ describe('bounded ci:fast runner', () => {
     ).toBe(0);
     expect(calls).toEqual([
       FAST_FEEDBACK_TIMEOUT_MS - FAST_STATIC_RESERVE_MS,
-      FAST_FEEDBACK_TIMEOUT_MS - 12_345,
-      FAST_FEEDBACK_TIMEOUT_MS - 24_690,
-      FAST_FEEDBACK_TIMEOUT_MS - 37_035,
-      FAST_FEEDBACK_TIMEOUT_MS - 49_380,
-      FAST_FEEDBACK_TIMEOUT_MS - 61_725,
-      FAST_FEEDBACK_TIMEOUT_MS - 74_070,
-      // station#604 adds nearest-workspace dependency verification; the
-      // arithmetic is unchanged.
-      FAST_FEEDBACK_TIMEOUT_MS - 86_415,
-      FAST_FEEDBACK_TIMEOUT_MS - 98_760,
-      FAST_FEEDBACK_TIMEOUT_MS - 111_105,
-      FAST_FEEDBACK_TIMEOUT_MS - 123_450,
+      ...FAST_STATIC_COMMANDS.map(
+        (_, index) => FAST_FEEDBACK_TIMEOUT_MS - 12_345 * (index + 1),
+      ),
     ]);
   });
 
@@ -312,4 +309,84 @@ describe('bounded ci:fast runner', () => {
     ).toThrow('exceeded its 12-minute feedback budget');
     expect(calls).toBe(1);
   });
+});
+
+describe('Changesets workspace validation through ci:fast', () => {
+  it.each(['@fixture/published', '@fixture/root', 'empty'])(
+    'checks native release planning for %s',
+    async (target) => {
+      const dir = mkdtempSync(join(tmpdir(), 'station-changeset-gate-'));
+      contentGateRepos.add(dir);
+      mkdirSync(join(dir, 'packages', 'published'), { recursive: true });
+      mkdirSync(join(dir, '.changeset'));
+      mkdirSync(join(dir, 'scripts'));
+      copyFileSync(
+        join(process.cwd(), 'scripts', 'check-changesets.mjs'),
+        join(dir, 'scripts', 'check-changesets.mjs'),
+      );
+      writeFileSync(
+        join(dir, 'package.json'),
+        JSON.stringify({
+          name: '@fixture/root',
+          private: true,
+          version: '1.0.0',
+          scripts: { changeset: 'changeset' },
+        }),
+      );
+      writeFileSync(
+        join(dir, 'pnpm-workspace.yaml'),
+        'packages:\n  - packages/*\n',
+      );
+      writeFileSync(
+        join(dir, 'packages', 'published', 'package.json'),
+        JSON.stringify({ name: '@fixture/published', version: '1.0.0' }),
+      );
+      writeFileSync(
+        join(dir, '.changeset', 'config.json'),
+        JSON.stringify({
+          changelog: false,
+          fixed: [],
+          linked: [],
+          access: 'public',
+          baseBranch: 'main',
+          updateInternalDependencies: 'patch',
+          ignore: [],
+          privatePackages: true,
+        }),
+      );
+      writeFileSync(
+        join(dir, '.changeset', 'fixture.md'),
+        target === 'empty'
+          ? '---\n---\n\nRoot-only acknowledgement.\n'
+          : `---\n"${target}": patch\n---\n\nFixture release note.\n`,
+      );
+      symlinkSync(
+        join(process.cwd(), 'node_modules'),
+        join(dir, 'node_modules'),
+        'junction',
+      );
+      const result = runOnlyFastGate(
+        dir,
+        CHANGESET_STATUS_FAST_COMMAND as readonly [string, readonly string[]],
+      );
+      if (target !== '@fixture/root') {
+        const plan = await checkChangesets(dir);
+        expect(plan.packages).toEqual(
+          target === 'empty' ? [] : ['@fixture/published'],
+        );
+        expect(result.status, result.output).toBe(0);
+        expect(result.output).toContain(
+          target === 'empty' ? '(none)' : '@fixture/published',
+        );
+      } else {
+        await expect(checkChangesets(dir)).rejects.toThrow(
+          'package @fixture/root which is not in the workspace',
+        );
+        expect(result.status).not.toBe(0);
+        expect(result.output).toContain(
+          'package @fixture/root which is not in the workspace',
+        );
+      }
+    },
+  );
 });

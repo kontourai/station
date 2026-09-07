@@ -225,40 +225,28 @@ test.describe('Android — Mobile Layout', () => {
   });
 
   test('hamburger opens sidebar drawer', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(2000);
-    // This spec is about the APP TOOLBAR's drawer specifically. A full-screen
-    // mobile chat legitimately hides that toolbar and the chat header carries
-    // its own toggle instead, so guard on visibility rather than presence —
-    // the element stays in the DOM while hidden, and the old count() guard let
-    // the test proceed to click something it could never click.
-    // The first-run setup launcher's backdrop covers the toolbar and swallows
-    // this click. Dismiss it first, as the other specs in this suite do —
-    // whether it had rendered yet is what made these two intermittently red.
+    await page.goto('/settings');
     await dismissSetupLauncher(page);
     const toggle = page.locator('.app-toolbar__sidebar-toggle');
-    if (!(await toggle.isVisible().catch(() => false))) return;
+    await expect(toggle).toBeVisible();
 
     await toggle.click();
-    await page.waitForTimeout(300);
     const sidebar = page.locator('.sidebar--expanded');
     await expect(sidebar).toBeVisible();
   });
 
   test('sidebar drawer has navigation items', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(2000);
+    await page.goto('/settings');
     // The first-run setup launcher's backdrop covers the toolbar and swallows
     // this click. Dismiss it first, as the other specs in this suite do —
     // whether it had rendered yet is what made these two intermittently red.
     await dismissSetupLauncher(page);
     const toggle = page.locator('.app-toolbar__sidebar-toggle');
-    if (!(await toggle.isVisible().catch(() => false))) return;
+    await expect(toggle).toBeVisible();
 
     await toggle.click();
-    await page.waitForTimeout(300);
     const navBtns = page.locator('.sidebar__nav-btn');
-    expect(await navBtns.count()).toBeGreaterThan(0);
+    await expect(navBtns.first()).toBeVisible();
   });
 
   test('sidebar drawer is named navigation with contained, restorable focus', async ({

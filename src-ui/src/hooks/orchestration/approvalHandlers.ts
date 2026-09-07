@@ -1,4 +1,9 @@
 import { resolveOrchestrationRequest } from '@kontourai/station-sdk';
+import {
+  toolRequestDisplayName,
+  toolRequestFromPayload,
+  toolRequestPreviewFromPayload,
+} from '@kontourai/station-shared/tool-request-preview';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
 import type { OrchestrationEvent } from './types';
@@ -34,9 +39,31 @@ export function handleRequestOpenedEvent(
   });
 
   const agentName = chat.agentName || chat.agentSlug || event.provider;
+  // #1545: the tool name alone ("Codex wants to use Bash") is not a decision an
+  // operator can make. `toolRequestPreview` derives the one field that says
+  // what the call will do — the command, the file, the pattern — bounded,
+  // single-line and secret-redacted.
+  //
+  // Read the payload through the shared helpers, never by indexing one key: the
+  // adapters do not agree on a name. Claude's `canUseTool` publishes
+  // `toolInput`, ACP publishes `rawInput` (so every ACP engine, Gemini
+  // included), the station-agent adapter publishes `toolArgs`, and Codex — which
+  // Station cannot intercept at all — publishes its raw request params with no
+  // argument bag, handled by `toolRequestPreviewFromPayload`'s fallback.
+  const { toolName: payloadToolName } = toolRequestFromPayload(event.payload);
+  const displayName = toolRequestDisplayName(payloadToolName);
+  const toolName = String(displayName || event.title || 'Tool request');
+  // Only name the tool in the grant label when the payload actually reported
+  // one. The `event.title` fallback is adapter display text — for Codex it is
+  // the literal shell command — and "Allow <a whole command line> for this
+  // session" would both mislead about the grant's scope and swamp the button.
+  const grantLabel = displayName
+    ? `Allow ${displayName} for this session`
+    : 'Allow this tool for this session';
   const toastId = toastStore.showToolApproval({
     sessionId: event.threadId,
-    toolName: String(event.payload?.toolName || event.title || 'Tool request'),
+    toolName,
+    toolPreview: toolRequestPreviewFromPayload(event.payload),
     agentName,
     conversationTitle: chat.title,
     actions: [
@@ -53,7 +80,10 @@ export function handleRequestOpenedEvent(
         },
       },
       {
-        label: 'Allow for Session',
+        // Says what the grant covers: "Allow for Session" reads as a grant for
+        // this one call, and it is a standing grant for every later call to the
+        // same tool in this session.
+        label: grantLabel,
         variant: 'secondary',
         onClick: () => {
           void resolveApproval(

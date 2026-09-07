@@ -1045,9 +1045,22 @@ export function SplitPaneLayout({
                       <div className="split-pane__item-icon">{item.icon}</div>
                     )}
                     <div className="split-pane__item-text">
+                      {/* #1582 D10: the name and the badge are separate boxes.
+                          Rendered as one `text-overflow: ellipsis` run they
+                          shared a single truncation, so a status pill's length
+                          decided where the NAME was cut — the Agents rail
+                          printed "Station…" at its default width. The badge
+                          gives way first (see the shrink rule in the CSS), so
+                          the name keeps the row's remaining width. */}
                       <div className="split-pane__item-name">
-                        {item.name}
-                        {item.badge}
+                        <span className="split-pane__item-name-text">
+                          {item.name}
+                        </span>
+                        {item.badge ? (
+                          <span className="split-pane__item-name-badge">
+                            {item.badge}
+                          </span>
+                        ) : null}
                       </div>
                       {item.subtitle && (
                         <div className="split-pane__item-subtitle">

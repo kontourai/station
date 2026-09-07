@@ -33,6 +33,7 @@ export type {
   WorkspacePaneContractVersion,
   WorkspacePaneDescriptor,
   WorkspacePaneDescriptorId,
+  WorkspacePaneHostRegion,
   WorkspacePaneInstance,
   WorkspacePaneInstanceId,
   WorkspacePaneLayoutAdapterContext,
@@ -70,6 +71,7 @@ export type {
   NeedsInputAttentionItem,
   ReviewPendingAttentionItem,
   SessionFailedAttentionItem,
+  SetupIncompleteAttentionItem,
 } from '@kontourai/station-contracts/attention';
 export type {
   AdoptedSessionResult,
@@ -330,6 +332,7 @@ export {
 export {
   type ACPConnectionInfo,
   type ACPConnectionRegistryEntry,
+  type ACPRegistryInstallAgentReceipt,
   type AcceptFlowExceptionInput,
   type AcpSlashCommandDescriptor,
   type AdoptOrchestrationSessionIntent,
@@ -395,6 +398,7 @@ export {
   clearFeedbackAnalysis,
   clearNotificationActivity,
   clearNotifications,
+  connectAndMaterializeACPRegistryEngine,
   createACPConnection,
   createAdoptOrchestrationSessionIntent,
   createAgent,
@@ -570,6 +574,7 @@ export {
   type PluginChangelogData,
   type PluginChangelogEntry,
   type PluginInstallConsent,
+  type PluginPermissionRevocationResult,
   type PluginProviderDetail,
   type PluginSettingField,
   type PluginSettingsData,
@@ -612,6 +617,7 @@ export {
   resolveOrchestrationRequest,
   resolveSystemStatusRefetchInterval,
   reviewEvidenceQueryKey,
+  revokePluginPermissions,
   revokeWorkspaceHomeRoleGrant,
   runsQueries,
   SESSION_SUMMARY_GENERATE_MUTATION_KEY,
@@ -732,6 +738,7 @@ export {
   useCodingFilesQuery,
   useConfigProvenanceQuery,
   useConfigQuery,
+  useConnectAndMaterializeEngineMutation,
   useConnectionQuery,
   useConnectionsQuery,
   useConnectSshEnvironmentMutation,
@@ -836,6 +843,7 @@ export {
   useKnowledgeStatusQuery,
   useKnowledgeTreeQuery,
   useKnowledgeUpdateMutation,
+  useLearningSourceObservationQuery,
   useLinkKnowledgeRecordMutation,
   useLoadedOrchestrationSessionsQuery,
   useMaterializeEngineAgentMutation,
@@ -1128,6 +1136,13 @@ export {
   taskQueries,
 } from './queryFactories';
 export {
+  type AttentionRequestInspection,
+  type AttentionRequestReference,
+  attentionRequestQueryKey,
+  inspectAttentionRequest,
+  useAttentionRequestInspection,
+} from './request-inspection';
+export {
   claimSessionEventWindowCapabilityRecovery,
   fetchSessionEventWindowCapability,
   invalidateSessionEventWindowCapabilityCache,
@@ -1157,6 +1172,10 @@ export {
 } from './starter-work';
 export { telemetry } from './telemetry';
 export * from './types';
+export {
+  unifiedSearchQueries,
+  useUnifiedSearchQuery,
+} from './unified-search';
 export type {
   VoiceRealtimeCapabilities,
   VoiceRealtimeConnection,

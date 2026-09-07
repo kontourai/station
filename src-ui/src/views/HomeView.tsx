@@ -9,15 +9,11 @@ import { FirstRunHomeChapter } from '../components/first-run/FirstRunHomeChapter
 import { StarterInspectionCards } from '../components/home/StarterInspectionCards';
 import { StarterScheduledCheckCard } from '../components/home/StarterScheduledCheckCard';
 import { StarterWorkCard } from '../components/home/StarterWorkCard';
+import { PageCalloutStack } from '../components/PageCallout';
 import { ErrorState, SkeletonList } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
 import { useDeviceSettings } from '../contexts/DeviceSettingsContext';
 import type { NavigationView } from '../types';
-import { WorkspacePaneAwayState } from '../workspace-panes/WorkspacePaneAwayState';
-import {
-  isAmbientDockOccupant,
-  useWorkspacePaneDockAction,
-} from '../workspace-panes/WorkspacePaneDockContext';
 import { selectClientWorkspacePaneRenderer } from '../workspace-panes/workspacePaneRendererSelection';
 import {
   HomeWorkspacePane,
@@ -106,23 +102,10 @@ export function HomeView({
     selection.candidate.source === 'primary' &&
     selection.candidate.renderer.kind === 'builtin-component';
 
-  // While Home's canonical occurrence occupies the ambient dock, this route
-  // renders the away state instead of a second live copy of the pane
-  // (archive#4090; disclosed the co-mount this replaces). The
-  // derivation is the host's own published occupant state through
-  // `isAmbientDockOccupant` — never a route-local flag — so choosing another
-  // dock occupant clears this state without any route-side bookkeeping.
-  const dock = useWorkspacePaneDockAction();
-  // Route-owned away state remains until surface placements stop reading the
-  // legacy workspace-pane dock adapter. // #928 step 5
-  const paneAway = isAmbientDockOccupant(dock, WORKSPACE_HOME_PANE_INSTANCE);
-
   // The un-removable floor (archive#3122): built once, used by both
   // branches below, so the granted path can only ever ADD a Pane above it —
   // there is no code path where a grant makes the built-in unreachable.
-  const builtinHome = paneAway ? (
-    <WorkspacePaneAwayState paneName={WORKSPACE_HOME_PANE_DESCRIPTOR.name} />
-  ) : builtinSelected ? (
+  const builtinHome = builtinSelected ? (
     <HomeWorkspacePaneBindingProvider
       binding={{ model, continuation, onNavigate }}
     >
@@ -158,21 +141,26 @@ export function HomeView({
           with. It renders nothing at all unless this home's durable
           `firstRun` fact says it is on the table. Route chrome, not a Home
           renderer: it stays above BOTH the built-in and a granted Home. */}
-      <FirstRunHomeChapter />
-      {/* Starter Work is a post-onboarding offer.  It reads the same durable
-          first-run decision as the chapter; a cached/default browser flag
-          cannot make a real Task offer appear before setup is complete. */}
-      {config?.firstRun?.status === 'completed' && (
-        <>
-          <StarterWorkCard />
-          {developerToolsEnabled && (
-            <>
-              <StarterInspectionCards />
-              <StarterScheduledCheckCard />
-            </>
-          )}
-        </>
-      )}
+      {/* Home's page callouts, in one stack so they share one rhythm and one
+          identity check (#1582 C4). The chapter's DIALOG is not a callout —
+          it renders from the same component, above this stack's flow, and is
+          unaffected by it. */}
+      <PageCalloutStack>
+        <FirstRunHomeChapter />
+        {/* Starter Work is a post-onboarding offer.  It reads the same durable
+            first-run decision as the chapter; a cached/default browser flag
+            cannot make a real Task offer appear before setup is complete. */}
+        {config?.firstRun?.status === 'completed' ? <StarterWorkCard /> : null}
+        {/* The developer starters are the same family — same offer shape, same
+            primitive — so they share the stack's rhythm rather than each
+            carrying spacing of their own. */}
+        {config?.firstRun?.status === 'completed' && developerToolsEnabled ? (
+          <>
+            <StarterInspectionCards />
+            <StarterScheduledCheckCard />
+          </>
+        ) : null}
+      </PageCalloutStack>
       {status?.state === 'granted' ? (
         <Suspense fallback={<SkeletonList count={1} label="Loading Home" />}>
           <HomeRolePane

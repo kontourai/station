@@ -1,4 +1,10 @@
-import { type ComponentType, createContext, useContext } from 'react';
+import {
+  type ComponentType,
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+} from 'react';
 import { ChatDock } from '../components/chat-dock/ChatDock';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/Skeleton';
@@ -6,25 +12,17 @@ import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { availablePlacements, useDockSlotDevice } from '../hooks/useIsMobile';
 import {
   DOCK_REGION_IDS,
-  type DockRegionId,
   foldedDockRegion,
+  isDockRegion,
+  type RegionId,
 } from '../regions/region-model';
-import type { NavigationView } from '../types';
-import type { HomeViewNavigation } from '../views/home/useHomeViewModel';
-import type { WorkspacePaneDockAction } from '../workspace-panes/WorkspacePaneDockContext';
 
-interface ChatShellProps {
-  homeContinuation: HomeViewNavigation | null;
-  onNavigate: (view: NavigationView) => void;
-  onDockActionChange: (action: WorkspacePaneDockAction | null) => void;
-}
-
-const ChatShellContext = createContext<ChatShellProps | null>(null);
-
-function ChatSurfaceShell({ regionId }: { regionId: DockRegionId }) {
-  const props = useContext(ChatShellContext);
-  if (!props) return null;
-  return <ChatDock regionId={regionId} {...props} />;
+function ChatSurfaceShell({ regionId }: { regionId: RegionId }) {
+  // Chat declares no `main` placement (`REGION_SURFACE_REGISTRY`), so
+  // `placeSurface` never puts it there; the guard narrows the type for the
+  // dock, it is not a branch anything reaches.
+  if (!isDockRegion(regionId)) return null;
+  return <ChatDock regionId={regionId} />;
 }
 
 const loadActivityRegionShell = () =>
@@ -32,7 +30,7 @@ const loadActivityRegionShell = () =>
     default: ActivityRegionShell,
   }));
 
-function ActivitySurfaceShell({ regionId }: { regionId: DockRegionId }) {
+function ActivitySurfaceShell({ regionId }: { regionId: RegionId }) {
   return (
     <LazyBoundary
       load={loadActivityRegionShell}
@@ -42,13 +40,56 @@ function ActivitySurfaceShell({ regionId }: { regionId: DockRegionId }) {
   );
 }
 
+/**
+ * What `App.tsx` renders at `/` for Home. Home's only placement is `main`,
+ * and `main` at `/` is App's route outlet: the pending skeleton, the
+ * host-unavailable and error states and the resolved `HomeView` all read
+ * App-owned state (the resolved home surface, the retry, the connection
+ * names), so App supplies the render and this shell is where the outlet
+ * calls it from. It is `null` outside `MainRegionSurface`: nothing else may
+ * mount Home.
+ */
+const HomeShellContext = createContext<(() => ReactNode) | null>(null);
+
+function HomeSurfaceShell(_props: { regionId: RegionId }) {
+  const renderHome = useContext(HomeShellContext);
+  return renderHome ? renderHome() : null;
+}
+
 export const REGION_SURFACE_SHELLS: ReadonlyMap<
   string,
-  ComponentType<{ regionId: DockRegionId }>
-> = new Map([
+  ComponentType<{ regionId: RegionId }>
+> = new Map<string, ComponentType<{ regionId: RegionId }>>([
   ['chat', ChatSurfaceShell],
   ['activity', ActivitySurfaceShell],
+  ['home', HomeSurfaceShell],
 ]);
+
+/**
+ * The `main` region's occupant, rendered by the route outlet at `/` (#928
+ * C2a). A null occupant is Home: the default arrangement names Home, and a
+ * surface leaving `main` for a dock region leaves nothing behind, which the
+ * outlet must not render as an empty page. An occupant with no shell (a
+ * stale id) also falls back to Home rather than to a blank outlet.
+ *
+ * `RegionShells` below iterates the dock regions only, so a `main` occupant
+ * never gets a `DockShell`; this is its one renderer.
+ */
+export function MainRegionSurface({
+  occupant,
+  renderHome,
+}: {
+  occupant: string | null;
+  renderHome: () => ReactNode;
+}) {
+  const Shell =
+    REGION_SURFACE_SHELLS.get(occupant ?? 'home') ?? HomeSurfaceShell;
+  return (
+    <HomeShellContext.Provider value={renderHome}>
+      <Shell regionId="main" />
+    </HomeShellContext.Provider>
+  );
+}
 
 /**
  * One `DockShell` per occupied dock region (#928). A surface occupies at most
@@ -60,29 +101,21 @@ export const REGION_SURFACE_SHELLS: ReadonlyMap<
  * `main-provider-order.test.ts` pins the provider's tag order, and the
  * no-provider branch keeps App-level tests on the legacy mount.
  */
-export function RegionShells({
-  homeContinuation,
-  onNavigate,
-  onDockActionChange,
-}: {
-  homeContinuation: HomeViewNavigation | null;
-  onNavigate: (view: NavigationView) => void;
-  onDockActionChange: (action: WorkspacePaneDockAction | null) => void;
-}) {
+export function RegionShells() {
   const model = useRegionModelOptional();
   const bottomOnly = availablePlacements(useDockSlotDevice()).length === 1;
-  if (!model)
-    return (
-      <ChatDock
-        homeContinuation={homeContinuation}
-        onNavigate={onNavigate}
-        onDockActionChange={onDockActionChange}
-      />
-    );
+  // This component IS "a region surface can render right now": App mounts it
+  // only while `showAmbientChatDock` holds, and a Chat workspace layout owns
+  // the whole view instead. Registering from here — rather than handing the
+  // model a copy of App's predicate — is what keeps the two from drifting;
+  // the deleted navigation fallback this restores was guarded on a condition
+  // that could never fire (#928). `useShowSurface` navigates while nothing is
+  // registered, so a commanded reveal is never dropped on the floor.
+  const registerRegionSurfaceHost = model?.registerRegionSurfaceHost;
+  useEffect(() => registerRegionSurfaceHost?.(), [registerRegionSurfaceHost]);
+  if (!model) return <ChatDock />;
   return (
-    <ChatShellContext.Provider
-      value={{ homeContinuation, onNavigate, onDockActionChange }}
-    >
+    <>
       {DOCK_REGION_IDS.filter((id) => {
         if (!bottomOnly) return true;
         return id === foldedDockRegion(model.regions, model.lastShownRegion);
@@ -95,6 +128,6 @@ export function RegionShells({
           <SurfaceShell key={occupant} regionId={id} />
         ) : null;
       })}
-    </ChatShellContext.Provider>
+    </>
   );
 }

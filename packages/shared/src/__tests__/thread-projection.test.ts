@@ -181,6 +181,84 @@ describe('conversationToThread', () => {
     });
   });
 
+  // station#1558 (fix round, M5): an unresolved call carries a `result` — the
+  // sentence saying no result was reported — so it used to export as an
+  // ordinary tool result with no marker at all, i.e. as a success whose
+  // output happened to be that sentence.
+  it('exports an unresolved tool call with an unknown terminal status, not as a plain success', () => {
+    const thread = conversationToThread(
+      [
+        {
+          id: 'a1',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'tool-invocation',
+              toolCallId: 'c-open',
+              toolName: 'bash',
+              args: { command: 'sleep 100' },
+              state: 'unresolved',
+              sourceEventId: 'evt-open',
+              result:
+                'No result was reported before the session ended; whether the tool ran is unknown.',
+            },
+          ],
+          metadata: { timestamp: 1750982402000, turnId: 'turn-open' },
+        },
+      ],
+      { threadId: 'conv-unresolved' },
+    );
+    expect(Thread.parse(thread)).toBeTruthy();
+    const tool = thread.messages.find((message) => message.role === 'tool');
+    if (tool?.role !== 'tool') throw new Error('expected tool');
+    expect(tool.toolResults[0]).toMatchObject({
+      toolCallId: 'c-open',
+      resultId: 'evt-open',
+      terminalStatus: 'unknown',
+    });
+    // Not a failure either — nothing observed the tool fail.
+    expect(tool.toolResults[0]?.isError).toBeUndefined();
+  });
+
+  // Thread cannot carry `terminalStatus` without the result id it names, so
+  // the fallback must be an ABSENT result, never a bare one (which reads as
+  // a success whose output is the "no result" sentence).
+  it('exports no tool result at all for an unresolved call with no terminal event id', () => {
+    const thread = conversationToThread(
+      [
+        {
+          id: 'a1',
+          role: 'assistant',
+          parts: [
+            {
+              type: 'tool-invocation',
+              toolCallId: 'c-open',
+              toolName: 'bash',
+              args: { command: 'sleep 100' },
+              state: 'unresolved',
+              result: 'No result was reported before the session ended.',
+            },
+          ],
+          metadata: { timestamp: 1750982402000, turnId: 'turn-open' },
+        },
+      ],
+      { threadId: 'conv-unresolved-anon' },
+    );
+    expect(Thread.parse(thread)).toBeTruthy();
+    expect(thread.messages.some((message) => message.role === 'tool')).toBe(
+      false,
+    );
+    // The call itself is still exported — the reader sees a call with no
+    // result, which is exactly what happened.
+    const assistant = thread.messages.find(
+      (message) => message.role === 'assistant',
+    );
+    if (assistant?.role !== 'assistant') throw new Error('expected assistant');
+    expect(assistant.content.some((entry) => entry.type === 'tool_call')).toBe(
+      true,
+    );
+  });
+
   it('projects the persisted Strands nested invocation and separate result shapes', () => {
     const thread = conversationToThread(
       [

@@ -78,6 +78,7 @@ import {
   removeRemovedFilePreviewPaneState,
 } from '../workspace-panes/filePreviewPaneInstance';
 import { trackMcpAppDisplayModeDecision } from '../workspace-panes/mcpAppDisplayModeTelemetry';
+import { PluginWorkspacePaneSDKBoundary } from '../workspace-panes/PluginWorkspacePaneSDKBoundary';
 import { ProjectWorkspacePaneModal } from '../workspace-panes/ProjectWorkspacePaneCatalog';
 import { useResolvedWorkspacePaneCatalog } from '../workspace-panes/resolvedWorkspacePaneCatalog';
 import { WorkspacePaneHost } from '../workspace-panes/WorkspacePaneHost';
@@ -91,13 +92,19 @@ import type { WorkspacePaneHostOpenAction } from '../workspace-panes/WorkspacePa
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspace-panes/workspacePaneAvailabilityPresentation';
 import { presentWorkspacePaneAvailability } from '../workspace-panes/workspacePaneAvailabilityPresentation';
 import { isWorkspacePaneInstanceOwnedByProject } from '../workspace-panes/workspacePaneHostAdmission';
+import {
+  describeWorkspacePaneOpenRefusal,
+  type WorkspacePaneHostOpenRefusal,
+} from '../workspace-panes/workspacePaneHostOpenOutcome';
 import { WorkspacePaneHostRuntime } from '../workspace-panes/workspacePaneHostRuntime';
 import { createWorkspacePaneOperationalEventContext } from '../workspace-panes/workspacePaneOperationalEvents';
+import { resolveClientTrustedPluginLayout } from '../workspace-panes/workspacePaneRendererSelection';
 import { trackCodingDiffCompositionReceipt } from './codingDiffCompositionTelemetry';
 import { trackCodingEvidenceCompositionReceipt } from './codingEvidenceCompositionTelemetry';
 import { codingEvidenceUnavailableCopy } from './codingEvidenceUnavailableCopy';
 import { trackCodingFileCompositionReceipt } from './codingFileCompositionTelemetry';
 import { layoutTypeRegistry } from './layoutRegistry';
+import { resolveProjectLayoutRendererKind } from './project-layout-kind';
 
 const loadProjectBasisMcpWorkspacePane = () =>
   import('../workspace-panes/BasisMcpWorkspacePane').then(
@@ -389,9 +396,20 @@ function BuiltinCodingLayoutHost({
     projectSlug,
     layoutSlug: layout.id,
   });
-  const hostOpen = useRef<WorkspacePaneHostOpenAction | null>(null);
+  /**
+   * State, not a ref (#1596): the pane picker is a control that belongs to the
+   * host, so whether a host is mounted has to be renderable. As a ref its
+   * nullness was invisible, and `hostOpen.current?.open(...)` completed the
+   * picker's Open click with no modal closed and nothing said.
+   */
+  const [hostOpen, setHostOpen] = useState<WorkspacePaneHostOpenAction | null>(
+    null,
+  );
   const [catalogRequest, setCatalogRequest] =
     useState<WorkspacePaneHostCatalogRequest | null>(null);
+  /** The reason the last picker selection did not open, or null. */
+  const [openRefusal, setOpenRefusal] =
+    useState<WorkspacePaneHostOpenRefusal | null>(null);
   const [hostInstanceIds, setHostInstanceIds] = useState<ReadonlySet<string>>();
   /**
    * Stable sink, and a set identity that moves only when its membership does.
@@ -477,6 +495,28 @@ function BuiltinCodingLayoutHost({
       return (
         basisCandidate ??
         basisMcpCandidate ??
+        (() => {
+          if (!parsedCandidate) return null;
+          const current = catalog.entries.find(
+            (entry) =>
+              entry.instance?.instanceId === parsedCandidate.instanceId &&
+              entry.descriptor.id === parsedCandidate.descriptorId,
+          );
+          return current?.instance &&
+            current.availability.state === 'available' &&
+            current.selectedRenderer?.renderer.kind === 'plugin-component' &&
+            isWorkspacePaneInstanceOwnedByProject(
+              current.instance,
+              projectId,
+            ) &&
+            resolveClientTrustedPluginLayout(
+              current.descriptor,
+              current.selectedRenderer,
+              current.instance,
+            )
+            ? current.instance
+            : null;
+        })() ??
         admitRestoredFilePreviewPaneInstance(
           projectId,
           projectSlug,
@@ -490,7 +530,7 @@ function BuiltinCodingLayoutHost({
         )
       );
     },
-    [projectId, projectSlug],
+    [catalog.entries, projectId, projectSlug],
   );
   const onInstanceRemoved = useCallback(
     (instance: WorkspacePaneInstance) => {
@@ -525,9 +565,16 @@ function BuiltinCodingLayoutHost({
           ) ??
           (isCanonicalBasisMcpWorkspacePaneInstance(instance)
             ? 'Basis App'
+            : null) ??
+          (isWorkspacePaneInstanceOwnedByProject(instance, projectId)
+            ? (catalog.entries.find(
+                (entry) =>
+                  entry.instance?.instanceId === instance.instanceId &&
+                  entry.descriptor.id === instance.descriptorId,
+              )?.descriptor.name ?? null)
             : null))
         : null,
-    [projectId, projectSlug],
+    [catalog.entries, projectId, projectSlug],
   );
   /** The document already published, kept while its content is unchanged. */
   const publishedDocument = useRef<{
@@ -535,15 +582,47 @@ function BuiltinCodingLayoutHost({
     document: WorkspacePaneHostDocumentV1;
   } | null>(null);
   const captureHostOpen = useCallback(
-    (action: WorkspacePaneHostOpenAction | null) => {
-      hostOpen.current = action;
+    (action: WorkspacePaneHostOpenAction | null) => setHostOpen(action),
+    [],
+  );
+  /**
+   * The picker cannot outlive the host it was opened from: its only entry point
+   * is that host's command menu, and the host publishes `null` from the same
+   * effect cleanup that runs when it unmounts. Withdrawing the picker is the
+   * honest answer, rather than reporting a refusal for a click with nowhere to
+   * land.
+   *
+   * WHY THE `show` PROP DERIVES IT and this effect does not. An effect runs
+   * AFTER the render that observed `hostOpen === null`, so on its own it would
+   * leave the picker painted for one frame with no host behind it — one frame
+   * is enough to click, and that click would take the silent early return in
+   * `openCatalogEntry`, which is the exact defect this change removes. The
+   * modal's `show` therefore reads both facts during render; this effect only
+   * clears the state that render already stopped honouring, so a later host
+   * does not resurrect a stale request.
+   */
+  useEffect(() => {
+    if (hostOpen) return;
+    setCatalogRequest(null);
+    setOpenRefusal(null);
+  }, [hostOpen]);
+  /** A fresh request is a fresh attempt; it does not inherit the last refusal. */
+  const requestCatalog = useCallback(
+    (request: WorkspacePaneHostCatalogRequest) => {
+      setOpenRefusal(null);
+      setCatalogRequest(request);
     },
     [],
   );
   const openCatalogEntry = useCallback(
     (entry: WorkspacePaneAvailabilityCatalogEntry) => {
+      // None of these can be true while a card's Open button is on screen: the
+      // picker renders only with BOTH a request and a host (see the modal's
+      // `show`), and only an available entry that carries an instance renders
+      // Open at all.
       if (
         !catalogRequest ||
+        !hostOpen ||
         !entry.instance ||
         entry.availability.state !== 'available'
       ) {
@@ -554,20 +633,44 @@ function BuiltinCodingLayoutHost({
           candidate.descriptor.id === entry.descriptor.id &&
           candidate.instance?.instanceId === entry.instance?.instanceId,
       );
+      const trustedPluginLayout =
+        resolved?.instance &&
+        resolved.selectedRenderer?.renderer.kind === 'plugin-component'
+          ? resolveClientTrustedPluginLayout(
+              resolved.descriptor,
+              resolved.selectedRenderer,
+              resolved.instance,
+            )
+          : null;
       if (
         !resolved?.instance ||
         resolved.availability.state !== 'available' ||
-        !getBuiltinWorkspacePaneRenderer(resolved.descriptor, resolved.instance)
+        (!getBuiltinWorkspacePaneRenderer(
+          resolved.descriptor,
+          resolved.instance,
+        ) &&
+          (!trustedPluginLayout || !catalog.projectSlug))
       ) {
+        // This build has no renderer for the selection the catalog offered.
+        // Reported as a refusal because the card said "available" and the
+        // click was real, even though the card's own availability normally
+        // withholds Open first.
+        setOpenRefusal('refused');
         return;
       }
-      if (
-        hostOpen.current?.open(resolved.instance, undefined, catalogRequest)
-      ) {
+      const outcome = hostOpen.open(
+        resolved.instance,
+        undefined,
+        catalogRequest,
+      );
+      if (outcome.ok) {
+        setOpenRefusal(null);
         setCatalogRequest(null);
+        return;
       }
+      setOpenRefusal(outcome.reason);
     },
-    [catalog.entries, catalogRequest],
+    [catalog.entries, catalog.projectSlug, catalogRequest, hostOpen],
   );
   const codingOccurrence = catalog.entries.find(
     (candidate) =>
@@ -678,6 +781,7 @@ function BuiltinCodingLayoutHost({
       ? presentWorkspacePaneAvailability(
           codingOccurrence.availability,
           codingOccurrence.rendererGate,
+          codingOccurrence.rendererResolution,
         )
       : undefined;
     return (
@@ -963,7 +1067,7 @@ function BuiltinCodingLayoutHost({
         runtime={workspacePaneRuntime.current}
         compact={compact}
         onDocumentChange={handleHostDocumentChange}
-        onOpenCatalog={setCatalogRequest}
+        onOpenCatalog={requestCatalog}
         onOpenActionChange={captureHostOpen}
         popOut={popOut}
         operationalEventContext={operationalEventContext}
@@ -1024,6 +1128,8 @@ function BuiltinCodingLayoutHost({
           if (paneEntry && paneEntry.availability.state !== 'available') {
             const presentation = presentWorkspacePaneAvailability(
               paneEntry.availability,
+              paneEntry.rendererGate,
+              paneEntry.rendererResolution,
             );
             return (
               <Empty
@@ -1035,6 +1141,22 @@ function BuiltinCodingLayoutHost({
           const mcpRenderer =
             paneEntry?.selectedRenderer?.renderer.kind === 'mcp-tool-ui'
               ? paneEntry.selectedRenderer.renderer
+              : null;
+          const pluginRenderer =
+            paneEntry?.selectedRenderer?.renderer.kind === 'plugin-component'
+              ? paneEntry.selectedRenderer
+              : null;
+          const pluginComponent =
+            pluginRenderer?.renderer.kind === 'plugin-component'
+              ? pluginRenderer.renderer
+              : null;
+          const trustedPluginLayout =
+            pluginRenderer && pluginComponent && descriptor
+              ? resolveClientTrustedPluginLayout(
+                  descriptor,
+                  pluginRenderer,
+                  instance,
+                )
               : null;
           if (codeIssuedBasisMcp) {
             return (
@@ -1077,6 +1199,53 @@ function BuiltinCodingLayoutHost({
               />
             );
           }
+          if (
+            trustedPluginLayout &&
+            pluginRenderer &&
+            pluginComponent &&
+            descriptor
+          ) {
+            const pluginName =
+              instance.boundContext?.contribution?.provenance.origin ===
+              'plugin'
+                ? instance.boundContext.contribution.provenance.pluginId
+                : undefined;
+            if (!pluginName || !catalog.projectSlug) {
+              return (
+                <Empty
+                  label="Workspace pane unavailable"
+                  description="Station could not bind this plugin pane to its owning Project and plugin."
+                />
+              );
+            }
+            const selectedTab = {
+              id: instance.instanceId,
+              label: descriptor.name,
+              description: descriptor.description,
+              component: pluginComponent,
+              actions: descriptor.actions,
+            };
+            const paneLayout = {
+              name: descriptor.name,
+              slug: instance.instanceId,
+              tabs: [selectedTab],
+            };
+            return (
+              <PluginWorkspacePaneSDKBoundary
+                layout={paneLayout}
+                projectSlug={catalog.projectSlug}
+                pluginName={pluginName}
+              >
+                <LayoutRenderer
+                  componentId={pluginComponent}
+                  trustedPluginLayout={trustedPluginLayout}
+                  layout={paneLayout}
+                  activeTab={selectedTab}
+                  activeTabId={selectedTab.id}
+                />
+              </PluginWorkspacePaneSDKBoundary>
+            );
+          }
           return Pane ? (
             <Pane
               descriptor={descriptor}
@@ -1087,8 +1256,14 @@ function BuiltinCodingLayoutHost({
         }}
       />
       <ProjectWorkspacePaneModal
-        show={catalogRequest !== null}
-        onClose={() => setCatalogRequest(null)}
+        show={catalogRequest !== null && hostOpen !== null}
+        notice={
+          openRefusal ? describeWorkspacePaneOpenRefusal(openRefusal) : null
+        }
+        onClose={() => {
+          setCatalogRequest(null);
+          setOpenRefusal(null);
+        }}
         entries={catalog.entries}
         loading={catalog.isLoading}
         error={catalog.isError}
@@ -1133,23 +1308,20 @@ export function ProjectLayoutRenderer({
   }
 
   const config = layoutConfig.config ?? {};
-  const declaredPlugin =
-    typeof config.plugin === 'string' && config.plugin.length > 0;
-  const contributionOrigin =
-    layoutConfig.catalogContribution?.provenance.origin;
-  const isContributedLayout =
-    contributionOrigin === 'plugin' || contributionOrigin === 'mcp';
-
   // A contributed layout's free-form `type` may intentionally match one of
   // Station's built-in layout types. Its declared tabs/components remain the
   // rendering authority. `config.plugin` covers persisted layouts created
   // before catalog attribution was stored. Layout tabs alone are not
   // attribution: Station-owned legacy chat layouts also declare them.
-  if (isContributedLayout || declaredPlugin) {
+  // The decision lives in `project-layout-kind.ts` so App's "does this layout
+  // own the whole viewport?" reads the same derivation (#1446).
+  const rendererKind = resolveProjectLayoutRendererKind(layoutConfig);
+
+  if (rendererKind === 'layout-view') {
     return <LayoutView projectSlug={projectSlug} layoutSlug={layoutSlug} />;
   }
 
-  if (layoutConfig.type === 'coding') {
+  if (rendererKind === 'coding') {
     const fileCompositionControl =
       config.workspaceCompositionFilePane === 'composition' ||
       config.workspaceCompositionFilePane === 'compare'
@@ -1177,18 +1349,12 @@ export function ProjectLayoutRenderer({
     );
   }
 
-  const Renderer = layoutConfig.type
-    ? layoutTypeRegistry[layoutConfig.type]
-    : undefined;
-  if (Renderer) {
-    return (
-      <Renderer
-        projectSlug={projectSlug}
-        layoutSlug={layoutSlug}
-        config={layoutConfig.config ?? {}}
-      />
-    );
-  }
-
-  return <LayoutView projectSlug={projectSlug} layoutSlug={layoutSlug} />;
+  const Renderer = layoutTypeRegistry[rendererKind];
+  return (
+    <Renderer
+      projectSlug={projectSlug}
+      layoutSlug={layoutSlug}
+      config={config}
+    />
+  );
 }

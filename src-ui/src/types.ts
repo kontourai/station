@@ -393,18 +393,6 @@ export type NavigationView =
   | { type: 'plugins' }
   | { type: 'registry'; tab?: RegistryCatalogTab }
   | { type: 'review-queue' }
-  | {
-      type: 'activity';
-      sessionId?: string;
-      /**
-       * One-shot route intent: land the reader on the selected session's
-       * evidence region (receipts/diagnostics). Only meaningful alongside
-       * `sessionId`; consumed and cleared by the Activity surface after it is
-       * honored, following the `openFilePreviewIntent` idiom
-       * (`navigation-store.ts`).
-       */
-      focus?: 'evidence';
-    }
   | { type: 'developer'; tab?: DeveloperTab }
   | { type: 'schedule' }
   | { type: 'settings' }

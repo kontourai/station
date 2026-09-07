@@ -4,17 +4,8 @@ import {
   type TurnProvenanceEnvelope,
 } from '@kontourai/station-contracts/turn-provenance';
 import type { EngineDescriptor } from '../../../utils/engine';
+import { modelIdentityLabel } from '../../../utils/modelCapabilities';
 import { displayModelIdentifier } from '../../../utils/modelDisplay';
-
-export function getModelDisplayName(model: string): string {
-  if (model.includes('claude-3-7-sonnet')) return 'Claude 3.7 Sonnet';
-  if (model.includes('claude-3-5-sonnet-20241022'))
-    return 'Claude 3.5 Sonnet v2';
-  if (model.includes('claude-3-5-sonnet')) return 'Claude 3.5 Sonnet';
-  if (model.includes('claude-3-opus')) return 'Claude 3 Opus';
-  if (model.includes('claude-3-haiku')) return 'Claude 3 Haiku';
-  return 'Custom';
-}
 
 /** The subset of a chat row these resolvers read. */
 interface TurnIdentitySource {
@@ -44,6 +35,25 @@ function readEnvelope(msg: TurnIdentitySource): TurnProvenanceEnvelope | null {
   return isSupportedTurnProvenanceEnvelope(msg.provenance)
     ? msg.provenance
     : null;
+}
+
+/**
+ * Whether this turn's own envelope records a COMPLETED outcome (#1536 B3).
+ *
+ * The Basis read is the reason this matters. `GET …/turns/:turnId/basis`
+ * answers 404 unless the turn's ordered lifecycle says it completed normally
+ * (`session-query-module.ts`'s `hasSuccessfulCompletion`), and 404 is a real
+ * answer there rather than a fault — the route keeps 503 for a read that
+ * could not be performed. The client's own precondition for offering the
+ * affordance was `answerEligible` alone, which is a weaker claim, so an
+ * aborted turn asked for a basis the server can only ever refuse and the
+ * affordance rendered "Basis · Unavailable" over a healthy instance.
+ *
+ * `false` for an unreadable or absent envelope: an outcome nobody recorded is
+ * not a completed one.
+ */
+export function turnCompletedNormally(msg: TurnIdentitySource): boolean {
+  return readEnvelope(msg)?.outcome === 'completed';
 }
 
 /**
@@ -139,28 +149,33 @@ export function resolveTurnModelIdentity(
       : null;
 
   const claims: TurnModelClaim[] = [];
+  // #1536 B5: identity comparison stays on the OBSERVED ids — two ids are the
+  // same fact or they are not, and a display rule must never decide that.
+  // Only what the row PRINTS goes through the shared identity label, so a turn
+  // no longer reads "Requested default · Reported claude-opus-5" beside a dock
+  // header saying "Opus 5". The observed id keeps its place in the title.
   if (requested !== null && requested === reported) {
     claims.push({
       slot: 'agreed',
       label: 'Model',
-      value: requested,
-      description: 'Station requested this model and the engine reported it',
+      value: modelIdentityLabel(requested),
+      description: `Station requested this model and the engine reported it (${requested})`,
     });
   } else {
     if (requested !== null) {
       claims.push({
         slot: 'requested',
         label: 'Requested',
-        value: requested,
-        description: 'Model requested',
+        value: modelIdentityLabel(requested),
+        description: `Model requested (${requested})`,
       });
     }
     if (reported !== null) {
       claims.push({
         slot: 'reported',
         label: 'Reported',
-        value: reported,
-        description: 'Model reported by engine',
+        value: modelIdentityLabel(reported),
+        description: `Model reported by engine (${reported})`,
       });
     }
   }

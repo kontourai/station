@@ -2,6 +2,68 @@ import { describe, expect, test, vi } from 'vitest';
 import { searchKnowledgeDocuments } from '../knowledge-search.js';
 
 describe('knowledge-search helpers', () => {
+  test.each([undefined, 'missing'])(
+    'does not embed when no searchable namespace exists (%s)',
+    async (namespace) => {
+      const embed = vi.fn();
+      const search = vi.fn();
+      const result = await searchKnowledgeDocuments({
+        projectSlug: 'p',
+        query: 'hello',
+        topK: 5,
+        namespace,
+        vectorDb: { namespaceExists: vi.fn().mockResolvedValue(false), search },
+        embeddingProvider: { embed },
+        listNamespaces: () => [{ id: 'injected', behavior: 'inject' }],
+        listAuthoritativeDocuments: vi.fn(),
+      });
+      expect(result).toEqual([]);
+      expect(embed).not.toHaveBeenCalled();
+      expect(search).not.toHaveBeenCalled();
+    },
+  );
+
+  test('bounds concurrent namespace searches and preserves tied-score order despite completion order', async () => {
+    const pending = new Map<string, () => void>();
+    let active = 0;
+    let peak = 0;
+    const search = vi.fn(async (namespace: string) => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise<void>((resolve) => pending.set(namespace, resolve));
+      active--;
+      return [
+        {
+          id: namespace,
+          score: 1,
+          metadata: { docId: 'doc', contentHash: 'hash' },
+        },
+      ];
+    });
+    const result = searchKnowledgeDocuments({
+      projectSlug: 'p',
+      query: 'hello',
+      topK: 6,
+      vectorDb: { namespaceExists: async () => true, search },
+      embeddingProvider: { embed: async () => [[1]] },
+      listNamespaces: () =>
+        Array.from({ length: 6 }, (_, i) => ({
+          id: String(i),
+          behavior: 'rag',
+        })),
+      listAuthoritativeDocuments: async () => new Map([['doc', 'hash']]),
+    });
+    await vi.waitFor(() => expect(pending.size).toBe(4));
+    expect(active).toBe(4);
+    for (const id of ['3', '2']) pending.get(`project-p:${id}`)!();
+    await vi.waitFor(() => expect(pending.size).toBe(6));
+    for (const release of pending.values()) release();
+    expect((await result).map((row) => row.id)).toEqual(
+      Array.from({ length: 6 }, (_, i) => `project-p:${i}`),
+    );
+    expect(peak).toBe(4);
+  });
+
   test('searches a single namespace when requested', async () => {
     const search = vi.fn().mockResolvedValue([
       {

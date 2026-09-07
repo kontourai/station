@@ -1,0 +1,157 @@
+{
+  "architecture": {
+    "input_modalities": ["text", "image", "file"],
+    "instruct_type": null,
+    "modality": "text+image+file->text",
+    "output_modalities": ["text"],
+    "tokenizer": "Claude"
+  },
+  "benchmarks": {
+    "artificial_analysis": {
+      "agentic_index": 26.4,
+      "coding_index": 52.1,
+      "intelligence_index": 37.4
+    },
+    "design_arena": [
+      {
+        "arena": "models",
+        "category": "3d",
+        "elo": 1197,
+        "rank": 49,
+        "win_rate": 51
+      },
+      {
+        "arena": "models",
+        "category": "asciiart",
+        "elo": 1231,
+        "rank": 18,
+        "win_rate": 56.1
+      },
+      {
+        "arena": "models",
+        "category": "codecategories",
+        "elo": 1202,
+        "rank": 50,
+        "win_rate": 51.5
+      },
+      {
+        "arena": "models",
+        "category": "dataviz",
+        "elo": 1187,
+        "rank": 57,
+        "win_rate": 47.3
+      },
+      {
+        "arena": "models",
+        "category": "gamedev",
+        "elo": 1202,
+        "rank": 50,
+        "win_rate": 51.1
+      },
+      {
+        "arena": "models",
+        "category": "svg",
+        "elo": 1153,
+        "rank": 48,
+        "win_rate": 52.2
+      },
+      {
+        "arena": "models",
+        "category": "uicomponent",
+        "elo": 1194,
+        "rank": 54,
+        "win_rate": 49.4
+      },
+      {
+        "arena": "models",
+        "category": "website",
+        "elo": 1205,
+        "rank": 55,
+        "win_rate": 51.8
+      },
+      {
+        "arena": "agents",
+        "category": "fullstack",
+        "elo": 1075,
+        "rank": 33,
+        "win_rate": 43.7
+      },
+      {
+        "arena": "agents",
+        "category": "mobileapps",
+        "elo": 1177,
+        "rank": 26,
+        "win_rate": 52.9
+      },
+      {
+        "arena": "agents",
+        "category": "webapps",
+        "elo": 1090,
+        "rank": 32,
+        "win_rate": 43.2
+      }
+    ]
+  },
+  "canonical_slug": "anthropic/claude-4.5-sonnet-20250929",
+  "context_length": 1000000,
+  "created": 1759161676,
+  "default_parameters": {
+    "frequency_penalty": null,
+    "presence_penalty": null,
+    "repetition_penalty": null,
+    "temperature": 1,
+    "top_k": null,
+    "top_p": 1
+  },
+  "description": "Reviewed fixture row.",
+  "expiration_date": null,
+  "hugging_face_id": "",
+  "id": "anthropic/claude-sonnet-4.5",
+  "knowledge_cutoff": "2025-01-31",
+  "links": {
+    "details": "/api/v1/models/anthropic/claude-4.5-sonnet-20250929/endpoints"
+  },
+  "name": "Anthropic: Claude Sonnet 4.5",
+  "per_request_limits": null,
+  "pricing": {
+    "completion": "0.000015",
+    "input_cache_read": "0.0000003",
+    "input_cache_write": "0.00000375",
+    "input_cache_write_1h": "0.000006",
+    "overrides": [
+      {
+        "completion": "0.0000225",
+        "input_cache_read": "0.0000006",
+        "input_cache_write": "0.0000075",
+        "input_cache_write_1h": "0.000012",
+        "min_prompt_tokens": 200000,
+        "prompt": "0.000006"
+      }
+    ],
+    "prompt": "0.000003",
+    "web_search": "0.01"
+  },
+  "reasoning": {
+    "mandatory": false
+  },
+  "supported_parameters": [
+    "include_reasoning",
+    "max_completion_tokens",
+    "max_tokens",
+    "reasoning",
+    "response_format",
+    "stop",
+    "structured_outputs",
+    "temperature",
+    "tool_choice",
+    "tools",
+    "top_k",
+    "top_p"
+  ],
+  "supported_voices": null,
+  "top_provider": {
+    "context_length": 1000000,
+    "is_moderated": true,
+    "max_completion_tokens": 64000
+  }
+}

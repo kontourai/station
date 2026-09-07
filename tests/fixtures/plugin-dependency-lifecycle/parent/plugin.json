@@ -1,0 +1,8 @@
+{
+  "name": "dependency-parent-fixture",
+  "version": "1.0.0",
+  "displayName": "Dependency Parent Fixture",
+  "dependencies": [
+    { "id": "dependency-provider-fixture", "source": "../provider" }
+  ]
+}

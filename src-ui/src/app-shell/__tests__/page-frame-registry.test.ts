@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { NavigationView } from '../../types';
+import { APP_DESTINATION_REGISTRY } from '../destination-registry';
 import { resolvePageFrame } from '../page-frame-registry';
-import { APP_SURFACE_REGISTRY } from '../surface-registry';
 
 /**
  * Every route in the app, once. `resolvePageFrame` is typed as a `Record` over
@@ -28,7 +28,6 @@ const ROUTES: NavigationView[] = [
   { type: 'plugins' },
   { type: 'registry' },
   { type: 'review-queue' },
-  { type: 'activity' },
   { type: 'developer' },
   { type: 'schedule' },
   { type: 'settings' },
@@ -106,8 +105,8 @@ describe('page-frame registry', () => {
     // the view mounts — this is only what shows before that.
     for (const route of ROUTES) {
       const spec = resolvePageFrame(route);
-      const surface = APP_SURFACE_REGISTRY.getSurfaceForView(route);
-      if (!spec || !surface) continue;
+      const destination = APP_DESTINATION_REGISTRY.getDestinationForView(route);
+      if (!spec || !destination) continue;
       // Routes that state their own title in the table keep it (Connections'
       // hub is 'Connections'; the ACP sub-route is 'Provider setup').
       const stated = new Set([
@@ -121,7 +120,9 @@ describe('page-frame registry', () => {
         'notifications',
       ]);
       if (stated.has(route.type)) continue;
-      expect(spec.title, `${route.type} fallback title`).toBe(surface.label());
+      expect(spec.title, `${route.type} fallback title`).toBe(
+        destination.label(),
+      );
     }
   });
 
@@ -144,7 +145,6 @@ describe('page-frame registry', () => {
       'connections-tools',
       'plugins',
       'review-queue',
-      'activity',
       'guidance',
     ] as const) {
       const spec = resolvePageFrame({ type } as NavigationView);

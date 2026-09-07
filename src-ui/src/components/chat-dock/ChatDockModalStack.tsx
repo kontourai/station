@@ -1,5 +1,6 @@
 import type { ConversationListItem } from '@kontourai/station-sdk';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import type { ChatSession } from '../../types';
 import type { EffectiveModelSource } from '../../utils/execution';
@@ -33,6 +34,7 @@ interface ChatDockModalStackProps {
   newChatProjectOverride?: { slug: string; name: string } | null;
   sessions: ChatSession[];
   showNewChatModal: boolean;
+  newChatRequestEpoch?: number;
   showChatSettings: boolean;
   showSessionPicker: boolean;
   chatFontSize: number;
@@ -82,6 +84,7 @@ export function ChatDockModalStack({
   newChatProjectOverride,
   sessions,
   showNewChatModal,
+  newChatRequestEpoch,
   showChatSettings,
   showSessionPicker,
   chatFontSize,
@@ -111,14 +114,18 @@ export function ChatDockModalStack({
     else onSelectNewChat(agent, ...args);
   };
 
+  const requestAuthority = useHostRequestAuthorityScope();
+
   return (
     <>
       {showNewChatModal && (
         <LazyBoundary
+          key={newChatRequestEpoch}
           load={loadNewChatModal}
           componentProps={{
             agents,
             projects,
+            requestAuthority,
             activeProjectSlug:
               newChatProjectOverride?.slug ?? activeProjectSlug,
             onSelect: handleNewChatSelect,

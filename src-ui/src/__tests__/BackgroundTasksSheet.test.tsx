@@ -143,6 +143,20 @@ describe('BackgroundTasksSheet', () => {
     expect(screen.getByText('Completed')).not.toBeNull();
   });
 
+  // station#1558: an entry whose session ended before its tool reported must
+  // not borrow "Stopped" (nobody asked it to stop) or "Failed" (nothing
+  // observed a failure).
+  test('an unresolved entry is chipped "No result", not Stopped or Failed', () => {
+    renderSheet({
+      running: [],
+      finished: [finishedEntry({ state: 'unresolved' })],
+    });
+    fireEvent.click(screen.getByText('Finished (1)'));
+    expect(screen.getByText('No result')).not.toBeNull();
+    expect(screen.queryByText('Stopped')).toBeNull();
+    expect(screen.queryByText('Failed')).toBeNull();
+  });
+
   test('Finished section collapse state persists to localStorage and is honored on remount', () => {
     renderSheet({ running: [], finished: [finishedEntry()] });
     fireEvent.click(screen.getByText('Finished (1)'));

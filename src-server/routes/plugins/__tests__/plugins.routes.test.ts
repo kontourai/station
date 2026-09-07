@@ -4,6 +4,15 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { hasGrant } from '../../../services/plugins/plugin-permissions.js';
 
+// This route unit fixture replaces the filesystem/process probes. The shared
+// lifecycle suite separately exercises real publication/content-lock ordering.
+vi.mock('@kontourai/station-shared/lifecycle-events', async (original) => ({
+  ...(await original<
+    typeof import('@kontourai/station-shared/lifecycle-events')
+  >()),
+  acquireFileMutationLockAsync: vi.fn(async () => async () => {}),
+}));
+
 vi.mock('../../../telemetry/metrics.js', () => ({
   pluginInstalls: { add: vi.fn() },
   pluginUninstalls: { add: vi.fn() },
@@ -14,6 +23,21 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 const clearPluginProviders = vi.hoisted(() => vi.fn());
 const replacePluginProviders = vi.hoisted(() => vi.fn());
 const replacePluginProvidersForSource = vi.hoisted(() => vi.fn());
+const replacePluginProvidersForSourceGeneration = vi.hoisted(() =>
+  vi.fn(async () => 'activated' as const),
+);
+const pluginProviderSourceGeneration = vi.hoisted(() => vi.fn(() => 1));
+const retirePluginProvidersForSourceGeneration = vi.hoisted(() =>
+  vi.fn(async () => 'retired' as const),
+);
+const withPluginProviderSourceGeneration = vi.hoisted(() =>
+  vi.fn(
+    async (_source: string, _generation: number, operation: () => unknown) => ({
+      kind: 'applied' as const,
+      value: await operation(),
+    }),
+  ),
+);
 const agentRegistryProvider = vi.hoisted(() => ({
   install: vi.fn().mockResolvedValue({ success: true }),
   listAvailable: vi.fn().mockResolvedValue([]),
@@ -35,9 +59,15 @@ const pluginRegistryProviderEntries = vi.hoisted<
   Array<{ provider: any; source: string }>
 >(() => []);
 vi.mock('../../../providers/registries/registry.js', () => ({
+  disposePreparedPluginProviders: vi.fn(async () => {}),
   clearPluginProviders,
   replacePluginProviders,
   replacePluginProvidersForSource,
+  replacePluginProvidersForSourceGeneration,
+  pluginProviderSourceGeneration,
+  pluginProviderRegistryGeneration: vi.fn(() => 1),
+  retirePluginProvidersForSourceGeneration,
+  withPluginProviderSourceGeneration,
   getAgentRegistryProvider: vi.fn().mockReturnValue(agentRegistryProvider),
   getIntegrationRegistryProvider: vi
     .fn()
@@ -46,7 +76,11 @@ vi.mock('../../../providers/registries/registry.js', () => ({
 }));
 
 const loadPluginProviders = vi.hoisted(() => vi.fn().mockResolvedValue(0));
-vi.mock('../plugin-loader.js', () => ({ loadPluginProviders }));
+const preparePluginProviders = vi.hoisted(() => vi.fn().mockResolvedValue([]));
+vi.mock('../plugin-loader.js', () => ({
+  loadPluginProviders,
+  preparePluginProviders,
+}));
 
 // The scanner the install/lifecycle routes actually call. It used to be
 // `plugin-prompt-generation.js`, which was DELETED with the copy-into-a-store
@@ -89,6 +123,19 @@ const snapshotPluginGrantEntry = vi.hoisted(() =>
 );
 const restorePluginGrantEntry = vi.hoisted(() => vi.fn());
 vi.mock('../../../services/plugins/plugin-permissions.js', () => ({
+  withPluginProviderGrantSnapshot: vi.fn(
+    async (_home: string, resolve: () => unknown) => ({
+      snapshot: 'fixture-grant-snapshot',
+      value: resolve(),
+    }),
+  ),
+  withPluginProviderGrantsPublication: vi.fn(
+    async (
+      _home: string,
+      names: string[],
+      publish: (granted: Set<string>) => unknown,
+    ) => publish(new Set(names)),
+  ),
   getPermissionTier: vi.fn().mockReturnValue('standard'),
   getPluginGrants: vi.fn().mockReturnValue(['network']),
   grantPermissions: vi.fn(),
@@ -111,6 +158,8 @@ vi.mock('../../../services/plugins/plugin-permissions.js', () => ({
   ]),
   restorePluginGrantEntry,
   revokeAllGrants: vi.fn(),
+  readPluginDependencyOwnership: vi.fn().mockReturnValue([]),
+  removePluginHostRecord: vi.fn().mockResolvedValue(undefined),
   snapshotPluginGrantEntry,
   PluginGrantsUnavailableError: class PluginGrantsUnavailableError extends Error {},
   PluginContentUnavailableError: class PluginContentUnavailableError extends Error {},
@@ -188,6 +237,9 @@ vi.mock('node:fs', async (importOriginal) => {
     rmSync: vi.fn(),
     cpSync: vi.fn(),
     writeFileSync: vi.fn(),
+    // Alias removal now uses the canonical atomic writer. This unit fixture
+    // mocks its staging write too, so publishing must not touch real /tmp.
+    renameSync: vi.fn(),
   };
 });
 
@@ -330,7 +382,10 @@ describe('Plugin Routes', () => {
     const body = await json(await app.request('/reload', { method: 'POST' }));
 
     expect(body).toEqual({ success: true, loaded: 0 });
-    expect(replacePluginProviders).toHaveBeenCalledWith([]);
+    expect(replacePluginProviders).toHaveBeenCalledWith(
+      [],
+      expect.any(Function),
+    );
   });
 
   test('rejects a plugin identity change and restores the prior provider source', async () => {
@@ -1179,7 +1234,7 @@ describe('Plugin Routes', () => {
 
     const response = await app.request('/test-plugin', { method: 'DELETE' });
 
-    await expect(json(response)).resolves.toMatchObject({ success: true });
+    await expect(json(response)).resolves.toEqual({ success: true });
     expect(response.status).toBe(200);
     expect(applyConfigurationMutation).toHaveBeenCalledOnce();
     expect(beginMutation).toHaveBeenCalledOnce();
@@ -1243,7 +1298,9 @@ describe('Plugin Routes', () => {
 
     const response = await app.request('/demo', { method: 'DELETE' });
 
-    expect(response.status).toBe(200);
+    expect(response.status, JSON.stringify(await json(response.clone()))).toBe(
+      200,
+    );
     expect(vi.mocked(rmSync)).toHaveBeenCalledWith(
       '/tmp/project/plugins/actual-plugin',
       { recursive: true, force: true },

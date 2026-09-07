@@ -2,15 +2,15 @@
 
 ## Start here
 
-- GitHub issues and pull requests own live work state. Before trusting a checkout, inspect `git status -sb` and its relationship to `origin/main`.
+- GitHub owns live work state. Check `git status -sb` and its relationship to `origin/main`.
 - Work only in a sibling worktree (`../station-worktrees/<lane>`), never the primary checkout or a nested worktree. Preserve intentional changes: never use `git stash`; after review begins, integrate upstream with `git merge origin/main`, not rebase.
 - Use an isolated Station home, instance name, and non-default ports. Ports 3141 and 3000 belong to the user.
 - Run `npm run dependencies:ci` to arm hooks. Before editing, use `npm run gate:for -- <paths...>`; it routes to focused evidence. Run selected tests with `npm run test:focused -- <file...>`, not ad-hoc `npx vitest`.
+- Managed installs use pinned pnpm; `npm run` is the script interface. Never run raw npm installs in this workspace.
 - Never `git push --no-verify`; no required CI check re-runs the pre-push gates. The transfer gate reads `STATION_TRANSFER_BASELINE_ROOT`; slow hardware raises `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` (see docs/guides/testing.md).
 - `npm run test:changed -- --base=origin/main --explain` selects a diagnostic lane; exit 3 is provisional/deferred, not completion. For ordinary pull requests, run focused evidence and `npm run ci:fast`; GitHub's merge queue verifies the synthesized latest-main candidate. Do not run `npm run full:regression` locally merely because `main` moved.
 - The reusable hosted full-regression workflow owns canonical completion receipts for Nightly and tagged preview/stable promotions. CI `workflow_dispatch` is the explicit diagnostic escape hatch. Builder `tests-evidence` uses that exact-SHA promotion receipt; focused test evidence remains diagnostic.
 - Diagnose the failure rather than rerun-to-green: a red lane is a signal to diagnose, not a request to rerun until green. For a redundant same-digest run, join or reuse the existing lease.
-- Diagnose locally with the narrowest named lane. If an explicit full-regression investigation is authorized, join or reuse an in-flight same-digest request rather than launching redundant work.
 - If an explicit submission handoff is active, freeze the worktree. Never use shell background or relaunch loops, and do not edit or remove a worktree with a live handoff.
 
 ## Landing a pull request
@@ -61,11 +61,13 @@ queue is part of it. What that means in practice:
   session first (`ListAgents` / `SendMessage`); a merge is not yours to make
   because the checks happen to be green.
 
-## A test must execute the seam it is named for
+## Test and performance evidence
 
-Before adding or accepting a test, answer both: does it reach the code its name claims, and would it fail if the fix were reverted? A test that satisfies its name without touching its subject is worse than no test — it retires the question, so the next reader sees coverage and stops looking. Recurring shapes to reject: a constant asserted against its own literal; a source-text or config-shape scan (a regex over a file, a substring of workflow YAML) standing in for behaviour; a pure reducer or helper exercised while the defect lives in the integration that calls it; an assertion sitting behind a catch-all that converts the tested condition into an ordinary return.
+Tests must reach the behavior their names claim and fail when it breaks. Structural scans prove structural rules; helper tests do not prove caller integration. Missing prerequisites and caught errors must not become success.
 
-When a mutation is the only convincing evidence, commit first and confirm `git status --short` is empty before injecting — restoring a dirty tree discards uncommitted work. Report the red result, not only the green: an injection that does not fail means the test lacks power or the mutation never reached the case. A fix round is where defects are introduced most often, so review the delta of a fix, not only the original change.
+For fixture repair, cleanup, or performance work, follow [the test-effectiveness route](docs/guides/testing.md#fixture-fidelity-and-test-effectiveness). `npm run gate:for -- <paths>` prints the executable checks. Use typed fixtures and real user actions; profile before adding performance abstractions.
+
+Commit and confirm a clean tree before mutation. Preserve intervening edits and report baseline, injected failure, and restored outcomes. Review the delta of a fix, and bind measurements to their revision and environment.
 
 ## Issue references
 
@@ -79,6 +81,7 @@ Codex loads this root file when launched here; it does not automatically load ne
 
 | Touched path | Read |
 | --- | --- |
+| Documentation | [docs/guides/documentation.md](docs/guides/documentation.md) |
 | `src-server/**` | [src-server/AGENTS.md](src-server/AGENTS.md) |
 | `src-ui/**` | [src-ui/AGENTS.md](src-ui/AGENTS.md) |
 | `scripts/**`, `.github/**`, root configuration, package scripts | [scripts/AGENTS.md](scripts/AGENTS.md) |

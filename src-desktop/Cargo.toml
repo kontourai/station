@@ -122,6 +122,12 @@ zbus-secret-service-keyring-store = { version = "=1.0.1", features = ["crypto-ru
 # into the WebView. iOS writes are configured ThisDeviceOnly in `run()`.
 tauri-plugin-keyring-store = { version = "=0.2.0", default-features = false }
 
+[target."cfg(target_os = \"android\")".dependencies]
+# Android's per-UID resolver is the authority for VPN DNS (including
+# Tailscale MagicDNS); std::net::ToSocketAddrs bypasses that resolver.
+jni = "0.21"
+ndk-context = "0.1"
+
 [target."cfg(unix)".dependencies]
 libc = "0.2"
 

@@ -1,7 +1,7 @@
 name: node-pty Linux prebuilds
 
 # Builds attested linux-x64 and linux-arm64 (glibc) prebuilds of the EXACT
-# node-pty version pinned in package-lock.json (#1245), so Linux stops being
+# node-pty version pinned in pnpm-lock.yaml (#1245), so Linux stops being
 # the only platform whose install needs a C++ toolchain. Upstream ships
 # prebuilds for darwin-arm64/x64 and win32-arm64/x64 and nothing for Linux;
 # its loader (lib/utils.js) and its install hook (scripts/prebuild.js) both
@@ -78,6 +78,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc

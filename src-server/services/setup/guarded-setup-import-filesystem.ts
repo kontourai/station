@@ -100,6 +100,8 @@ export async function readGuardedUtf8(
   options: {
     parentDirectory: string;
     directories?: GuardedDirectoryBinding[];
+    /** Receipt stores permit sibling lock/temp files, never directory swaps. */
+    allowParentEntryChanges?: boolean;
     /** Narrow instrumentation used only to force descriptor/path races. */
     afterOpenForTest?: () => void | Promise<void>;
   },
@@ -111,7 +113,10 @@ export async function readGuardedUtf8(
   const directories =
     options.directories ??
     (await bindGuardedDirectories(options.parentDirectory));
-  await revalidateGuardedDirectories(options.parentDirectory, directories);
+  const revalidate = options.allowParentEntryChanges
+    ? revalidateGuardedDirectoryIdentities
+    : revalidateGuardedDirectories;
+  await revalidate(options.parentDirectory, directories);
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const stat = await handle.stat();
@@ -153,7 +158,7 @@ export async function readGuardedUtf8(
       finalPath.mtimeMs !== stat.mtimeMs
     )
       throw new Error('Guarded file changed after read.');
-    await revalidateGuardedDirectories(options.parentDirectory, directories);
+    await revalidate(options.parentDirectory, directories);
     const raw = bytes.subarray(0, offset);
     return {
       bytes: raw,

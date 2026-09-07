@@ -6,7 +6,10 @@
  */
 
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
-import type { MCPConnection } from '@kontourai/station-shared/mcp';
+import type {
+  MCPConnection,
+  MCPLocalConnectionCustody,
+} from '@kontourai/station-shared/mcp';
 import {
   Agent,
   type AgentHooks,
@@ -22,6 +25,10 @@ import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { createPromptOnlyMemoryView } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { resolveMaxSteps } from '../../constants.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
+import {
+  publicAgentIdFromRuntimeKey,
+  runtimeAgentKey,
+} from '../../routes/agents/runtime-agent-identity.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import type { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import type { IntegrationSecretResolver } from '../../services/secrets/secret-binding-administration.js';
@@ -82,6 +89,7 @@ export interface CreateAgentOptions {
   memoryAdapter: FileMemoryAdapter;
   configLoader: ConfigLoader;
   mcpConfigs: Map<string, MCPConnection>;
+  mcpCustody: MCPLocalConnectionCustody;
   mcpConnectionStatus: Map<string, { connected: boolean; error?: string }>;
   integrationMetadata: Map<
     string,
@@ -900,7 +908,7 @@ export class VoltAgentFramework {
     // the raw, unwrapped adapter, so the marker still renders on
     // reload. See `memory-adapter-prompt-view.ts` for the full trace.
     const memory = new Memory({
-      storage: createPromptOnlyMemoryView(opts.memoryAdapter),
+      storage: createPromptOnlyMemoryView(opts.memoryAdapter, slug),
     });
 
     // Load tools
@@ -971,6 +979,7 @@ export class VoltAgentFramework {
       CreateAgentOptions,
       | 'configLoader'
       | 'mcpConfigs'
+      | 'mcpCustody'
       | 'mcpConnectionStatus'
       | 'integrationMetadata'
       | 'toolNameMapping'
@@ -994,6 +1003,7 @@ export class VoltAgentFramework {
       opts.serverPort,
       opts.mcpToolProvenanceGeneration!,
       opts.integrationSecretResolver,
+      opts.mcpCustody,
     )) as ITool[];
     return [...loaded, createNativeOutputDeclarationTool() as ITool];
   }
@@ -1026,6 +1036,7 @@ export class VoltAgentFramework {
   }
 
   async createTempAgent(opts: {
+    agentId?: string;
     name: string;
     instructions: string | (() => string);
     model: any;
@@ -1055,7 +1066,9 @@ export class VoltAgentFramework {
       ...(opts.hooks
         ? {
             hooks: createVoltAgentLifecycleHooks(
-              opts.name,
+              opts.agentId
+                ? runtimeAgentKey(publicAgentIdFromRuntimeKey(opts.agentId))
+                : opts.name,
               conformAgentHooks('voltagent', opts.hooks),
             ),
           }
@@ -1063,7 +1076,10 @@ export class VoltAgentFramework {
       ...(opts.memoryAdapter
         ? {
             memory: new Memory({
-              storage: createPromptOnlyMemoryView(opts.memoryAdapter),
+              storage: createPromptOnlyMemoryView(
+                opts.memoryAdapter,
+                opts.agentId,
+              ),
             }),
           }
         : {}),

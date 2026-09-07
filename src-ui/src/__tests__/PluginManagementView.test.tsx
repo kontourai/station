@@ -14,7 +14,7 @@
  * renders — this is the join, not either half again.
  */
 
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const refetchPlugins = vi.fn();
@@ -22,6 +22,13 @@ const reloadRejectedPlugin = vi.fn();
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
+}));
+
+// Unrelated to the wiring under test and it reaches for a live connection
+// context; its own behaviour is pinned in
+// `plugin-management/__tests__/WorkspaceHomeRoleSection.test.tsx`.
+vi.mock('../views/plugin-management/WorkspaceHomeRoleSection', () => ({
+  WorkspaceHomeRoleSection: () => null,
 }));
 
 vi.mock('../hooks/useIsMobile', () => ({
@@ -41,6 +48,7 @@ Object.defineProperty(window, 'matchMedia', {
 function baseViewModel(overrides: Record<string, unknown> = {}) {
   return {
     addLayoutToProjects: vi.fn(),
+    addPluginLayout: vi.fn(),
     apiBase: 'http://station.test',
     assigningLayout: null,
     changelogData: null,
@@ -73,6 +81,14 @@ function baseViewModel(overrides: Record<string, unknown> = {}) {
     remove: vi.fn(),
     removeConfirm: null,
     requestConsent: vi.fn(),
+    requestRevokePermission: vi.fn(),
+    revokeConfirm: null as null | {
+      pluginName: string;
+      permission: string;
+      label: string;
+    },
+    revokePermission: vi.fn(),
+    revokingPermissions: new Set<string>(),
     savePluginSetting: vi.fn(),
     search: '',
     selected: null,
@@ -85,6 +101,7 @@ function baseViewModel(overrides: Record<string, unknown> = {}) {
     setLayoutAssignment: vi.fn(),
     setPreviewData: vi.fn(),
     setRemoveConfirm: vi.fn(),
+    setRevokeConfirm: vi.fn(),
     setSearch: vi.fn(),
     setShowFolderPicker: vi.fn(),
     setShowInstallModal: vi.fn(),
@@ -133,6 +150,40 @@ describe('PluginManagementView error wiring (Review H1)', () => {
 
     expect(screen.getByText('No plugins installed yet')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  test('trusted revocation explains completed versus winding-down retirement', () => {
+    viewModel = baseViewModel({
+      revokeConfirm: {
+        pluginName: 'provider-plugin',
+        permission: 'providers.register',
+        label: 'Register system providers',
+      },
+    });
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    expect(
+      screen.getByText(
+        /drain running module work and retire registered providers/,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/still winding down/)).toBeTruthy();
+    expect(screen.queryByText(/continues until the plugin reloads/)).toBeNull();
+  });
+
+  test('renders and invokes runtime-cleanup continuation actions', () => {
+    const invoke = vi.fn();
+    viewModel = baseViewModel({
+      message: {
+        type: 'success',
+        text: 'Runtime cleanup is incomplete.',
+        action: { label: 'Retry cleanup', invoke },
+      },
+    });
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry cleanup' }));
+    expect(invoke).toHaveBeenCalledOnce();
   });
 });
 
@@ -276,5 +327,145 @@ describe('rejected installed plugins', () => {
         'Plugins were not reloaded: registry is still unavailable',
       ),
     ).toBeTruthy();
+  });
+});
+
+/**
+ * #1536 G2. The detail page's capability chips said `ui` and
+ * `layout:getting-started` and offered a permissions table and Remove — after
+ * installing a starter there was no way to see what had arrived or to place
+ * it. This is the JOIN: the view has to hand the panel the sole-project
+ * decision and the action, and a view that computed the label from nothing
+ * would still render a plausible button.
+ */
+describe('what an installed plugin adds (#1536 G2)', () => {
+  const starter = {
+    name: 'getting-started-starter',
+    displayName: 'Getting Started Starter',
+    version: '1.0.0',
+    hasBundle: true,
+    layout: { slug: 'getting-started' },
+    workspacePanes: [{ id: 'notes', name: 'Notes' }],
+    agents: [{ slug: 'guide' }],
+  };
+
+  function renderWithProjects(
+    projects: Array<{ slug: string; name: string }>,
+    overrides: Record<string, unknown> = {},
+  ) {
+    const addPluginLayout = vi.fn();
+    viewModel = baseViewModel({
+      plugins: [starter],
+      filtered: [starter],
+      items: [{ id: starter.name, name: starter.displayName, subtitle: '' }],
+      selectedPlugin: starter.name,
+      selected: starter,
+      projects,
+      addPluginLayout,
+      ...overrides,
+    });
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+    return addPluginLayout;
+  }
+
+  test('names each contribution, and only the layout can be placed', () => {
+    renderWithProjects([{ slug: 'demo', name: 'Demo' }]);
+
+    const section = screen
+      .getByText('What it adds')
+      .closest<HTMLElement>('.detail-panel__section');
+    expect(section).toBeTruthy();
+    const rows = within(section!).getAllByRole('listitem');
+    // Review M4: each entry is NAMED. The layout used to render its raw slug
+    // under a section promising things rather than slugs.
+    expect(rows.map((row) => row.textContent)).toEqual([
+      'LayoutGetting StartedAdd to Demo',
+      'PaneNotes',
+      'AgentGuide',
+    ]);
+  });
+
+  test('with exactly one project the destination is named, not asked for', () => {
+    const addPluginLayout = renderWithProjects([
+      { slug: 'demo', name: 'Demo' },
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add to Demo' }));
+    expect(addPluginLayout).toHaveBeenCalledWith(starter);
+  });
+
+  test('with several projects the action asks which one', () => {
+    const addPluginLayout = renderWithProjects([
+      { slug: 'demo', name: 'Demo' },
+      { slug: 'other', name: 'Other' },
+    ]);
+
+    expect(screen.queryByRole('button', { name: 'Add to Demo' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add to project…' }));
+    expect(addPluginLayout).toHaveBeenCalledWith(starter);
+  });
+
+  test('with no projects the action still asks, so a project can be created', () => {
+    renderWithProjects([]);
+    expect(
+      screen.getByRole('button', { name: 'Add to project…' }),
+    ).toBeTruthy();
+  });
+
+  test('an in-flight add disables the action instead of queueing another', () => {
+    const addPluginLayout = renderWithProjects(
+      [{ slug: 'demo', name: 'Demo' }],
+      {
+        assigningLayout: true,
+      },
+    );
+
+    const button = screen.getByRole('button', { name: 'Adding…' });
+    fireEvent.click(button);
+    expect(addPluginLayout).not.toHaveBeenCalled();
+  });
+
+  test('a plugin that adds nothing renders no section', () => {
+    const bare = {
+      name: 'smart-routing',
+      displayName: 'Smart Routing',
+      version: '1.0.0',
+      hasBundle: false,
+    };
+    viewModel = baseViewModel({
+      plugins: [bare],
+      filtered: [bare],
+      items: [{ id: bare.name, name: bare.displayName, subtitle: '' }],
+      selectedPlugin: bare.name,
+      selected: bare,
+      projects: [{ slug: 'demo', name: 'Demo' }],
+    });
+
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    expect(screen.queryByText('What it adds')).toBeNull();
+  });
+  test('prefers a display name the payload declares over the humanized slug', () => {
+    viewModel = baseViewModel({
+      plugins: [
+        {
+          ...starter,
+          layout: { slug: 'getting-started', name: 'First Steps' },
+        },
+      ],
+      filtered: [starter],
+      items: [{ id: starter.name, name: starter.displayName, subtitle: '' }],
+      selectedPlugin: starter.name,
+      selected: {
+        ...starter,
+        layout: { slug: 'getting-started', name: 'First Steps' },
+      },
+      projects: [{ slug: 'demo', name: 'Demo' }],
+    });
+
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    expect(screen.getByText('First Steps')).toBeTruthy();
+    expect(screen.queryByText('Getting Started')).toBeNull();
   });
 });

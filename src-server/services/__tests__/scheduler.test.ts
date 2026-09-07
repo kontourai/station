@@ -2207,6 +2207,40 @@ describe('SchedulerService', () => {
     previews.forEach((p) => expect(p).toMatch(/^\d{4}-\d{2}-\d{2}T/));
   });
 
+  test('previewSchedule projects in the zone it is given', async () => {
+    // #1536 D1: the zone is why this parameter exists — 22:00 UTC is 08:00 the
+    // next day in Brisbane, so an unzoned projection of the same expression
+    // names different instants.
+    const [first] = await service.previewSchedule(
+      '0 8 * * 1-5',
+      1,
+      'Australia/Brisbane',
+    );
+    const hourInZone = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Australia/Brisbane',
+      hour: 'numeric',
+      hour12: false,
+    }).format(new Date(first));
+    // `hour12: false` renders a padded 24-hour hour on this ICU build.
+    expect(hourInZone.replace(/^0/, '')).toBe('8');
+  });
+
+  test.each([
+    ['an unknown IANA zone', '0 8 * * 1-5', 'Mars/Olympus'],
+    ['a cron field out of range', '0 99 * * *', undefined],
+  ])(
+    'previewSchedule refuses %s instead of throwing a RangeError',
+    async (_label, cron, timezone) => {
+      // #1536 R3: `nextOccurrences` throws a RangeError on an unknown zone, and
+      // that reached the HTTP route as a 500 — an operator's typo reported as a
+      // server fault. Validated here, once, so the MCP operator tool is covered
+      // by the same check as the route.
+      await expect(service.previewSchedule(cron, 3, timezone)).rejects.toThrow(
+        /Invalid schedule/,
+      );
+    },
+  );
+
   test('addProvider registers a custom provider', async () => {
     const mock: any = {
       id: 'mock-provider',

@@ -123,6 +123,12 @@ describe('OrchestrationMonitoringBridge', () => {
       ['error-tool', 'error'],
       ['success-tool', 'success'],
       ['unknown-tool', undefined],
+      // station#1558: an explicitly REPORTED non-outcome. It must not read
+      // as `error`, and it must not collapse into the `undefined` bucket
+      // that means "the producer told us nothing" — insights counts the two
+      // apart.
+      ['unresolved-tool', 'unresolved'],
+      ['cancelled-tool', 'cancelled'],
     ] as const) {
       bridge.onRuntimeEvent(
         runtimeEvent({
@@ -139,10 +145,14 @@ describe('OrchestrationMonitoringBridge', () => {
     const results = persisted.filter(
       (event) => event[K.OP_NAME] === OP.EXECUTE_TOOL,
     );
-    expect(results).toHaveLength(3);
+    expect(results).toHaveLength(5);
     expect(results.map((event) => event[K.TOOL_CALL_OUTCOME])).toEqual([
       'error',
       'success',
+      undefined,
+      'unresolved',
+      // Unchanged: the attribute has no member for a cancellation, so it
+      // stays omitted exactly as before.
       undefined,
     ]);
   });

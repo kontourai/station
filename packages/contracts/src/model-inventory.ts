@@ -245,3 +245,73 @@ export function describeConnectionInventoryFailures(
     ? `A ${kind} connection could not be read — ${detail}`
     : `${failures.length} ${kind} connections could not be read — ${detail}`;
 }
+
+/**
+ * One prompt-token threshold in a route's schedule, with the rates that apply
+ * at or above it. Rates are `null` on the same terms as the base figures: the
+ * source stated none, which is not a price of zero.
+ */
+export interface RoutePricingTier {
+  abovePromptTokens: number;
+  promptUsdPerMillionTokens: number | null;
+  completionUsdPerMillionTokens: number | null;
+}
+
+/**
+ * A price quoted for THIS route by the service that routes it (#949, #1127).
+ *
+ * Never borrowed from a sibling route, never averaged, never matched by name:
+ * a direct Anthropic route and an OpenRouter route for the same model are two
+ * routes with two prices, and only the OpenRouter one has a source Station
+ * can cite. `source` and `attributionUrl` are part of the value because the
+ * figure is only honest with its provenance attached -- OpenRouter's own
+ * documentation says its facts describe OpenRouter routing and may differ
+ * from direct-provider rates. Absent means unpriced, which surfaces must
+ * render as nothing rather than as zero.
+ */
+export interface RoutePricingReference {
+  source: 'openrouter';
+  attributionUrl: string;
+  /**
+   * USD per 1,000,000 prompt tokens at the source's BASE rate, or null when
+   * the source stated none. Normalised to fifteen significant digits, which
+   * removes the artefacts of scaling a decimal to per-million while keeping
+   * far more precision than the source quotes -- no figure is truncated, and
+   * no non-zero price can round to zero. See `promptTokenTiers`: this is the
+   * whole price only when that list is empty.
+   */
+  promptUsdPerMillionTokens: number | null;
+  /**
+   * USD per 1,000,000 completion tokens at the source's BASE rate, or null
+   * when the source stated none. Same normalisation and same tiering caveat
+   * as `promptUsdPerMillionTokens`.
+   */
+  completionUsdPerMillionTokens: number | null;
+  /**
+   * Rate changes the source quotes above a prompt-token threshold, lowest
+   * threshold first. Empty when the source quotes one prompt-token rate for
+   * this route at every size.
+   *
+   * A tiered schedule published as a single figure is this type's own defect
+   * class one level up: not a sibling route's price, but one tier of a
+   * schedule presented as the whole schedule. The route Station prices today
+   * doubles its prompt rate above 200,000 tokens, so a surface that renders
+   * the base figure unqualified is wrong for a routine long-context turn.
+   * Surfaces must qualify the base figures whenever this is non-empty.
+   *
+   * Each tier carries its own rates rather than a direction, because a
+   * threshold is not always an increase: a volume DISCOUNT has the same
+   * shape, and a field asserting "higher" would be a label derived from
+   * nothing but today's data. Render the numbers, not an adjective.
+   *
+   * This describes prompt-token thresholds ONLY. A source may vary a route's
+   * price on other dimensions -- OpenRouter also publishes time-of-day
+   * schedules -- and empty here does not deny those. It says there is no
+   * prompt-token tier, which is all that is derived.
+   */
+  promptTokenTiers: readonly RoutePricingTier[];
+  /** When the source was read; the reference is only as current as this. */
+  observedAt: string;
+  /** After this instant the figure must not be shown; null when unbounded. */
+  validUntil: string | null;
+}

@@ -249,7 +249,7 @@ test.describe('Command palette', () => {
     // may reorder this tier, but it cannot escape it into a fuzzy result.
     await input.fill('activity');
     await page.getByRole('option', { name: /^Activity/ }).click();
-    await expect(page).toHaveURL(/\/activity$/);
+    await expect(page).toHaveURL(/\/$/);
 
     await page.reload();
     await openPalette(page);

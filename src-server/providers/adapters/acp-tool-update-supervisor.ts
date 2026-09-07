@@ -9,6 +9,7 @@ import type {
   CanonicalRuntimeEvent,
   ProviderSession,
 } from '../adapter-shape.js';
+import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 /** ACP redraws are untrusted input, never a second event store. */
 export const ACP_TOOL_UPDATE_LIMITS = {
@@ -855,7 +856,15 @@ export class AcpToolUpdateSupervisor {
     if (this.disposed) return;
     for (const call of this.calls.values()) this.flushCall(call);
   }
-  /** Emits truthful bounded cancellations before teardown; synchronous by design. */
+  /**
+   * Emits truthful bounded cancellations before teardown; synchronous by
+   * design.
+   *
+   * This is the INTERRUPT path (`acp-adapter.ts`'s `cancelTurn`): someone
+   * asked for the turn to stop, so `cancelled` is a fact about every call it
+   * closes. Session end is `settleUnresolvedAtSessionEnd` below — there
+   * nobody cancelled anything, and saying so would be a claim.
+   */
   cancelAll(): void {
     if (this.disposed) return;
     this.flush();
@@ -863,9 +872,46 @@ export class AcpToolUpdateSupervisor {
       this.complete(id, call, 'cancelled');
     this.observe('teardown');
   }
+  /**
+   * station#1569 (item 4): close every still-open call as `unresolved` when
+   * the SESSION ends — the terminal the Claude adapter publishes for the same
+   * moment (`settleUnresolvedClaudeToolCalls`).
+   *
+   * Until this existed, dispose ran `cancelAll` and every open ACP call ended
+   * `cancelled`, which reads as "someone stopped this" for a session that
+   * simply went away. The honest facts are the ones in
+   * `UNRESOLVED_TOOL_OUTPUT`: no result was reported, and whether the tool ran
+   * is unknown.
+   *
+   * No `turnId`, exactly like every other event this supervisor publishes: it
+   * has never tracked one, and inventing `activeTurnId` here would attribute
+   * a call to whichever turn happened to be last. The folds handle a terminal
+   * with no turn identity (station#1569 item 2).
+   */
+  settleUnresolvedAtSessionEnd(): void {
+    if (this.disposed) return;
+    this.flush();
+    for (const [id, call] of [...this.calls]) {
+      this.publish(
+        this.event({
+          method: 'tool.completed',
+          itemId: id,
+          toolCallId: id,
+          toolName: call.name || call.title || id,
+          status: 'unresolved',
+          output: UNRESOLVED_TOOL_OUTPUT,
+        }),
+      );
+      this.observe('terminal');
+      this.releaseCall(id, call);
+    }
+    this.observe('teardown');
+  }
   dispose(): void {
     if (this.disposed) return;
-    this.cancelAll();
+    // Reached only from `prepareRecordForStop` — a session ending, never a
+    // turn ending. `cancelAll` stays for the interrupt path.
+    this.settleUnresolvedAtSessionEnd();
     this.disposed = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;

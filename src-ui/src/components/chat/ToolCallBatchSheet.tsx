@@ -30,6 +30,7 @@ export function ToolCallBatchSheet<P extends ToolCallLike>({
 }: ToolCallBatchSheetProps<P>) {
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       ariaLabelledBy={titleId}
       historyMode="entry"

@@ -1498,9 +1498,8 @@ describe('TaskGraphService', () => {
         }),
       },
       undefined,
-      // This task names no builder sidecar, so nothing is declared and no
-      // attach mode is forced (archive#189 S4).
-      undefined,
+      // Room binding is independent of the optional Builder sidecar.
+      { roomExecutionBinding: { projectId: task.projectId, taskId: task.id } },
     );
     expect(result.dispatch.outcome).toBe('started');
     expect(result.task.status).toBe('in_progress');
@@ -1566,7 +1565,13 @@ describe('TaskGraphService', () => {
         undefined,
         // Review M1: the Builder run behind this slug is driven by
         // flow-agents, so the attach must read it, never write it.
-        { workflowSidecarAttachMode: 'read-only-join' },
+        {
+          workflowSidecarAttachMode: 'read-only-join',
+          roomExecutionBinding: {
+            projectId: 'project-alpha',
+            taskId: expect.any(String),
+          },
+        },
       );
     });
 
@@ -1593,7 +1598,9 @@ describe('TaskGraphService', () => {
       expect(readState).not.toHaveBeenCalled();
       expect(dispatch.mock.calls[0][0].input.metadata).toBeUndefined();
       // No slug means no join, so the attach mode must not be forced either.
-      expect(dispatch.mock.calls[0][2]).toBeUndefined();
+      expect(
+        dispatch.mock.calls[0][2].workflowSidecarAttachMode,
+      ).toBeUndefined();
     });
 
     test('never derives a slug from the task title', async () => {

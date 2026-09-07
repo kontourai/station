@@ -393,7 +393,7 @@ describe('DelegationLauncher', () => {
 
   test('dismisses only an actual pointer press on the presentational backdrop', () => {
     const onClose = vi.fn();
-    const { container } = render(
+    render(
       <DelegationLauncher
         isOpen
         apiBase="http://station.test"
@@ -404,7 +404,11 @@ describe('DelegationLauncher', () => {
       />,
     );
 
-    const overlay = container.querySelector('.delegation-launcher__overlay');
+    // #1180: portalled to `document.body` (out of any inert route frame), so
+    // it is no longer a descendant of RTL's own render container.
+    const overlay = document.body.querySelector(
+      '.delegation-launcher__overlay',
+    );
     const dialog = screen.getByRole('dialog');
     expect(overlay?.getAttribute('role')).toBe('presentation');
 

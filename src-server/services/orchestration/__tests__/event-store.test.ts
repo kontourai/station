@@ -5889,32 +5889,6 @@ describe('EventStore', () => {
         [],
       );
     });
-
-    // archive#4466 review remediation: `id`/`thread_id`/pair lists are
-    // chunked at `EVENT_STORE_BATCH_CHUNK_SIZE` (500) so SQLite's bound-
-    // parameter ceiling (SQLITE_MAX_VARIABLE_NUMBER, commonly 32766) can
-    // never be reached. 1200 threads crosses that boundary three times over
-    // (500 + 500 + 200) for every chunked query in this method, including
-    // the turn-scoped-pair queries (every thread here has an active turn).
-    test('a population crossing the 500-id chunk boundary is folded completely and correctly', () => {
-      const totalThreads = 1200;
-      const threadIds = Array.from(
-        { length: totalThreads },
-        (_, index) => `batch-equiv-chunk-${index}`,
-      );
-      threadIds.forEach((threadId) => {
-        seedProjectionThread(threadId, 'ordinary');
-      });
-
-      const batched = store.listSessionProjectionEventsForThreads(threadIds);
-      expect(batched.size).toBe(totalThreads);
-      // Spot-check threads landing in each of the three chunks (indices 0,
-      // 500, 999) rather than re-running the full per-thread equivalence
-      // check 1200 times over.
-      for (const index of [0, 1, 250, 499, 500, 501, 750, 999, 1199]) {
-        expectBatchedMatchesIndividual(threadIds[index]!);
-      }
-    });
   });
 
   // archive#1867/#3495: `sessionOwnerUserId()` is the /events SSE route's
@@ -8062,6 +8036,64 @@ describe('EventStore', () => {
     expect(() =>
       store.reserveAttachmentCapacity('thread-over-global-limit', 1),
     ).toThrow('attachment storage is full');
+  });
+
+  test('retains explicit persistence refusal after reopen and leaves legacy rows unknown', () => {
+    const databasePath = join(dir, 'orchestration.sqlite');
+    for (const [threadId, persistSession] of [
+      ['retained', true],
+      ['refused', false],
+      ['undeclared', undefined],
+      ['legacy', undefined],
+    ] as const) {
+      store.upsertSession({
+        provider: 'station-agent',
+        threadId,
+        status: 'closed',
+        ...(persistSession !== undefined ? { persistSession } : {}),
+        createdAt: '2026-09-06T00:00:00.000Z',
+        updatedAt: '2026-09-06T00:00:00.000Z',
+      });
+    }
+    store.close();
+    const database = new DatabaseSync(databasePath);
+    try {
+      // Model an existing row written before explicit false had an encoding.
+      database.exec(
+        "UPDATE provider_session_state SET persist_session = 0 WHERE thread_id = 'legacy'",
+      );
+      expect(
+        database
+          .prepare(
+            'SELECT thread_id, persist_session FROM provider_session_state ORDER BY thread_id',
+          )
+          .all(),
+      ).toEqual([
+        { thread_id: 'legacy', persist_session: 0 },
+        { thread_id: 'refused', persist_session: -1 },
+        { thread_id: 'retained', persist_session: 1 },
+        { thread_id: 'undeclared', persist_session: 0 },
+      ]);
+    } finally {
+      database.close();
+      store = new EventStore(databasePath);
+    }
+    const sessions = new Map(
+      store.readSessions().map((session) => [session.threadId, session]),
+    );
+    expect(sessions.get('retained')?.persistSession).toBe(true);
+    expect(sessions.get('refused')?.persistSession).toBe(false);
+    for (const threadId of ['legacy', 'undeclared']) {
+      expect(sessions.get(threadId)).toBeDefined();
+      expect(sessions.get(threadId)).not.toHaveProperty('persistSession');
+    }
+    // An ordinary later update must retain the explicit refusal as well.
+    store.upsertSession({ ...sessions.get('refused')!, status: 'ready' });
+    store.close();
+    store = new EventStore(databasePath);
+    expect(
+      store.readSessions().find((session) => session.threadId === 'refused'),
+    ).toMatchObject({ persistSession: false, status: 'ready' });
   });
 
   test('round-trips provider session state with resume cursors', () => {

@@ -1164,6 +1164,7 @@ describe('Project Routes', () => {
       ]),
     );
     expect(instance.boundContext.projectId).toBe('project-internal-id');
+    expect(body.data.projectSlug).toBe('test');
     expect(decodeURIComponent(instance.instanceId)).toContain(
       'project:project-internal-id:source:',
     );

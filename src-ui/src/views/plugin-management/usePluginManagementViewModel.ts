@@ -33,6 +33,7 @@ import {
 } from '../../core/permission-vocabulary';
 import { useUrlSelection } from '../../hooks/useUrlSelection';
 import {
+  installedDependencyPermissions,
   isRejectedPlugin,
   type Plugin,
   type PluginMessage,
@@ -44,6 +45,7 @@ import {
   filterPlugins,
   pluginSelectionId,
   slugifyProjectName,
+  soleLayoutTargetProject,
   toggleSetValue,
 } from './view-utils';
 
@@ -342,7 +344,15 @@ export function usePluginManagementViewModel() {
 
     const displayName =
       basis.manifest?.displayName || basis.manifest?.name || source;
-    const pendingConsent = basis.permissions.pendingConsent;
+    const pendingConsent = [
+      ...basis.permissions.pendingConsent,
+      ...(basis.dependencies ?? []).flatMap((dependency) =>
+        (dependency.consent?.pendingConsent ?? []).map((entry) => ({
+          ...entry,
+          permission: `${dependency.id}: ${entry.permission}`,
+        })),
+      ),
+    ];
     if (pendingConsent.length > 0) {
       const approved = await requestInstallConsent(
         basis.manifest?.name || displayName,
@@ -372,17 +382,47 @@ export function usePluginManagementViewModel() {
           dependencies: (basis.dependencies ?? []).map(
             (dependency) => dependency.id,
           ),
+          ...((basis.dependencies ?? []).some(
+            (dependency) => dependency.consent,
+          )
+            ? {
+                dependencyApprovals: (basis.dependencies ?? []).flatMap(
+                  (dependency) =>
+                    dependency.consent
+                      ? [
+                          {
+                            id: dependency.id,
+                            permissions: dependency.consent.permissions,
+                            contentDigest: dependency.consent.contentDigest,
+                            dependencies: dependency.consent.dependencies,
+                          },
+                        ]
+                      : [],
+                ),
+              }
+            : {}),
         },
       },
       {
         onSuccess: async (data) => {
-          const pluginName = data.plugin.displayName || data.plugin.name;
-          const pending = data.permissions?.pendingConsent;
           setShowInstallModal(false);
+          const installedPlugin = data.plugin;
+          if (!installedPlugin) {
+            setMessage({
+              type: 'error',
+              text: 'Station did not return installed plugin details. Refresh Plugins before continuing.',
+            });
+            await reloadPluginsMutation.mutateAsync().catch(() => {});
+            await reloadClientPluginRegistry();
+            return;
+          }
+          const pluginName =
+            installedPlugin.displayName || installedPlugin.name;
+          const pending = data.permissions?.pendingConsent;
 
           if (pending?.length) {
             const approved = await requestConsent(
-              data.plugin.name,
+              installedPlugin.name,
               pluginName,
               pending,
             );
@@ -394,6 +434,40 @@ export function usePluginManagementViewModel() {
               await reloadPluginsMutation.mutateAsync().catch((error) => {
                 console.warn('Plugin reload failed', error);
               });
+              await reloadClientPluginRegistry();
+              return;
+            }
+          }
+          const dependencyStatus = installedDependencyPermissions(data);
+          if (
+            dependencyStatus === undefined &&
+            (basis.dependencies?.length ?? 0) > 0
+          ) {
+            setMessage({
+              type: 'error',
+              text: `${pluginName} is installed, but Station did not report current dependency approval status. Check Plugins on the Station host.`,
+            });
+            await reloadPluginsMutation.mutateAsync().catch(() => {});
+            await reloadClientPluginRegistry();
+            return;
+          }
+          for (const dependency of dependencyStatus ?? []) {
+            const dependencyPending = dependency.pendingConsent;
+            if (dependencyPending.length === 0) continue;
+            const approved = await requestConsent(
+              dependency.id,
+              dependency.id,
+              dependencyPending,
+            );
+            if (!approved) {
+              setMessage({
+                type: 'error',
+                text: consentFailureMessage(
+                  `Dependency ${dependency.id}`,
+                  dependencyPending,
+                ),
+              });
+              await reloadPluginsMutation.mutateAsync().catch(() => {});
               await reloadClientPluginRegistry();
               return;
             }
@@ -412,7 +486,7 @@ export function usePluginManagementViewModel() {
           }
           await reloadClientPluginRegistry();
 
-          const agents = data.plugin.agents || [];
+          const agents = installedPlugin.agents || [];
           if (agents.length > 0) {
             const slug = agents[0].slug;
             const health = await waitForAgentHealth(slug);
@@ -429,7 +503,7 @@ export function usePluginManagementViewModel() {
             setQuickProjectName(pluginName);
             setSelectedProjects(new Set());
             setLayoutAssignment({
-              pluginName: data.plugin.name,
+              pluginName: installedPlugin.name,
               displayName: pluginName,
               layoutSlug: data.layout.slug,
             });
@@ -470,9 +544,38 @@ export function usePluginManagementViewModel() {
     setRevokingPermissions((current) => new Set(current).add(permission));
     setMessage(null);
     try {
-      await revokePermissionMutation.mutateAsync({
+      const outcome = await revokePermissionMutation.mutateAsync({
         name: pluginName,
         permissions: [permission],
+      });
+      const label = describePermission(permission);
+      const operation = outcome.reconciliation.operationId
+        ? ` Cleanup operation ${outcome.reconciliation.operationId}.`
+        : '';
+      const action =
+        outcome.reconciliation.status === 'winding-down' ||
+        outcome.reconciliation.status === 'incomplete'
+          ? {
+              label:
+                outcome.reconciliation.status === 'winding-down'
+                  ? 'Check cleanup'
+                  : 'Retry cleanup',
+              invoke: () => {
+                void revokePermission(pluginName, permission);
+              },
+            }
+          : undefined;
+      setMessage({
+        type: 'success',
+        text:
+          outcome.reconciliation.status === 'completed'
+            ? `${label} was removed and its runtime capability is retired.`
+            : outcome.reconciliation.status === 'winding-down'
+              ? `${label} was removed. Existing work is still winding down.${operation}`
+              : outcome.reconciliation.status === 'superseded'
+                ? `${label} changed again while runtime state was reconciling; the latest grant state won.`
+                : `${label} was removed, but runtime cleanup is incomplete.${operation}`,
+        ...(action ? { action } : {}),
       });
     } catch (error) {
       // A failed withdrawal used to be silent: the row stopped spinning, the
@@ -543,6 +646,51 @@ export function usePluginManagementViewModel() {
     }
   }
 
+  /**
+   * "Add to project" from the plugin detail page (#1536 G2). Installing a
+   * starter opened this picker once and never again, so a layout the operator
+   * skipped past — or installed from Registry — had no route to a project at
+   * all. With exactly one project the destination is not a question: add the
+   * layout and open it. Otherwise the existing picker asks, unchanged.
+   */
+  async function addPluginLayout(plugin: {
+    name: string;
+    displayName?: string;
+    layout?: { slug: string };
+  }) {
+    const layoutSlug = plugin.layout?.slug;
+    if (!layoutSlug) return;
+    const displayName = plugin.displayName || plugin.name;
+    const sole = soleLayoutTargetProject(projects);
+    if (!sole) {
+      setMessage(null);
+      setQuickProjectName(displayName);
+      setSelectedProjects(new Set());
+      setLayoutAssignment({
+        pluginName: plugin.name,
+        displayName,
+        layoutSlug,
+      });
+      return;
+    }
+    setAssigningLayout(true);
+    try {
+      await addLayoutFromPluginMutation.mutateAsync({
+        projectSlug: sole.slug,
+        plugin: plugin.name,
+      });
+      setLayout(sole.slug, layoutSlug);
+    } catch (error) {
+      console.warn('Layout assignment failed', error);
+      setMessage({
+        type: 'error',
+        text: `Failed to add the ${displayName} layout to ${sole.name}.`,
+      });
+    } finally {
+      setAssigningLayout(false);
+    }
+  }
+
   async function addLayoutToProjects() {
     if (!layoutAssignment) return;
     setAssigningLayout(true);
@@ -567,6 +715,7 @@ export function usePluginManagementViewModel() {
   }
 
   return {
+    addPluginLayout,
     apiBase,
     assigningLayout,
     pluginsError,

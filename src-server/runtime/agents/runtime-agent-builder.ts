@@ -1,5 +1,6 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import type { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { Agent, type Tool } from '@voltagent/core';
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
@@ -35,6 +36,7 @@ interface RuntimeAgentBuilderContext {
   dispatchEvidenceSource?: DispatchEvidenceSource;
   approvalRegistry: ApprovalRegistry;
   mcpConfigs: Map<string, any>;
+  mcpCustody: MCPLocalConnectionCustody;
   mcpConnectionStatus: Map<string, { connected: boolean; error?: string }>;
   integrationMetadata: Map<
     string,
@@ -170,6 +172,7 @@ export async function prepareRuntimeAgentInstance(
       memoryAdapter,
       configLoader: context.configLoader,
       mcpConfigs: preparationState.mcpConfigs,
+      mcpCustody: context.mcpCustody,
       mcpConnectionStatus: preparationState.mcpConnectionStatus,
       integrationMetadata: preparationState.integrationMetadata,
       toolNameMapping: preparationState.toolNameMapping,

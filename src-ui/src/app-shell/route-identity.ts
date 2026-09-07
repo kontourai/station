@@ -10,7 +10,7 @@ import type { NavigationView } from '../types';
  * - INCLUDED — the record: `agent-edit.slug`, `task.taskId`, `project.slug`,
  *   the three `connections-*-edit` ids, `connections-engine-new.providerId`,
  *   `layout`'s project+layout, `workspace-pane`'s full pane identity,
- *   `project-flow-console`'s run, `activity.sessionId`, `not-found.path`.
+ *   `project-flow-console`'s run, `not-found.path`.
  *   Going from `/agents/a` to `/agents/b` is a navigation to a different
  *   thing and the entrance replays.
  *
@@ -41,8 +41,6 @@ export function routeIdentity(view: NavigationView): string {
       return `registry:${view.tab ?? 'default'}`;
     case 'developer':
       return `developer:${view.tab ?? 'default'}`;
-    case 'activity':
-      return `activity:${view.sessionId ?? 'all'}`;
     case 'task':
       return `task:${view.taskId}`;
     case 'board':

@@ -3,7 +3,7 @@
  *
  * Consumed by:
  *   - Workspace File Preview pane
- *   - Chat markdown code blocks (MessageBubble, StreamingMessage)
+ *   - UIBlockRenderer code blocks; chat markdown uses the highlight worker
  *   - Any future component needing syntax highlighting
  */
 
@@ -13,7 +13,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import {
@@ -38,32 +37,23 @@ type ShikiHighlighter = Awaited<
   ReturnType<typeof import('shiki')['createHighlighter']>
 >;
 
-let shikiInstance: ShikiHighlighter | null = null;
-let shikiLoading = false;
-const shikiWaiters: Array<(h: ShikiHighlighter) => void> = [];
+let shikiPromise: Promise<ShikiHighlighter> | null = null;
 
 /**
  * archive#3354 — exported for the async highlight client's main-thread
  * fallback (jsdom / failed worker bootstrap); interactive callers keep using
  * the provider.
  */
-export async function initShiki(): Promise<ShikiHighlighter> {
-  if (shikiInstance) return shikiInstance;
-  if (shikiLoading) {
-    return new Promise<ShikiHighlighter>((resolve) =>
-      shikiWaiters.push(resolve),
-    );
-  }
-  shikiLoading = true;
-  const { createHighlighter } = await import('shiki');
-  shikiInstance = await createHighlighter({
-    themes: [THEME],
-    langs: [...PRELOAD_LANGS],
-  });
-  shikiLoading = false;
-  for (const w of shikiWaiters) w(shikiInstance);
-  shikiWaiters.length = 0;
-  return shikiInstance;
+export function initShiki(): Promise<ShikiHighlighter> {
+  shikiPromise ??= import('shiki')
+    .then(({ createHighlighter }) =>
+      createHighlighter({ themes: [THEME], langs: [...PRELOAD_LANGS] }),
+    )
+    .catch((error) => {
+      shikiPromise = null;
+      throw error;
+    });
+  return shikiPromise;
 }
 
 // ── File extension → language mapping ─────────────────────────────
@@ -113,17 +103,13 @@ export function langFromFilePath(path: string): string | undefined {
 
 class ShikiSyntaxHighlighter implements ISyntaxHighlighter {
   private cache = new HighlightCache();
-  private highlighter: ShikiHighlighter | null = null;
+  constructor(private readonly highlighter: ShikiHighlighter | null) {}
 
   get ready() {
     return this.highlighter !== null;
   }
   get loadedLanguages() {
     return this.highlighter?.getLoadedLanguages() ?? [];
-  }
-
-  setHighlighter(h: ShikiHighlighter) {
-    this.highlighter = h;
   }
 
   highlight(code: string, lang?: string): string {
@@ -154,36 +140,39 @@ class ShikiSyntaxHighlighter implements ISyntaxHighlighter {
 
 // ── React Context ─────────────────────────────────────────────────
 
-const SyntaxHighlighterContext = createContext<ISyntaxHighlighter | null>(null);
+const SyntaxHighlighterContext = createContext<{
+  highlighter: ISyntaxHighlighter;
+  request: (requested: boolean) => void;
+} | null>(null);
 
 export function SyntaxHighlighterProvider({
   children,
 }: {
   children: ReactNode;
 }) {
-  const [_ready, setReady] = useState(!!shikiInstance);
-  const implRef = useRef(new ShikiSyntaxHighlighter());
-
+  const [highlighter, setHighlighter] = useState(
+    () => new ShikiSyntaxHighlighter(null),
+  );
+  const [requested, setRequested] = useState(false);
   useEffect(() => {
-    if (shikiInstance) {
-      implRef.current.setHighlighter(shikiInstance);
-      setReady(true);
-      return;
-    }
+    if (!requested || highlighter.ready) return;
     let cancelled = false;
-    initShiki().then((h) => {
-      if (cancelled) return;
-      implRef.current.setHighlighter(h);
-      setReady(true);
-    });
+    void initShiki()
+      .then((instance) => {
+        if (!cancelled) setHighlighter(new ShikiSyntaxHighlighter(instance));
+      })
+      .catch(() => {
+        // Keep escaped code and let a later consumer retry; never spin on failures.
+        if (!cancelled) setRequested(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  // Force re-render when ready changes so consumers see updated `ready`
-  const value = useMemo(() => implRef.current, []); // eslint-disable-line react-hooks/exhaustive-deps
-
+  }, [requested, highlighter]);
+  const value = useMemo(
+    () => ({ highlighter, request: setRequested }),
+    [highlighter],
+  );
   return (
     <SyntaxHighlighterContext.Provider value={value}>
       {children}
@@ -192,10 +181,13 @@ export function SyntaxHighlighterProvider({
 }
 
 export function useSyntaxHighlighter(): ISyntaxHighlighter {
-  const ctx = useContext(SyntaxHighlighterContext);
-  if (!ctx)
+  const context = useContext(SyntaxHighlighterContext);
+  useEffect(() => {
+    context?.request(true);
+  }, [context?.request]);
+  if (!context)
     throw new Error(
       'useSyntaxHighlighter must be used within SyntaxHighlighterProvider',
     );
-  return ctx;
+  return context.highlighter;
 }

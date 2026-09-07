@@ -8,7 +8,11 @@ import {
 import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import { Hono } from 'hono';
-import { preparePluginProviderGeneration } from '../../providers/plugin-provider-loader.js';
+import {
+  capturePluginProviderGeneration,
+  preparePluginProviderGeneration,
+  publishPluginProviderGeneration,
+} from '../../providers/plugin-provider-loader.js';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
 import { readRegistryInstallAliases } from '../../providers/registries/registry-install-aliases.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
@@ -787,33 +791,26 @@ export function registerPluginLifecycleRoutes(
       // fingerprint's subject tree — hold the same per-plugin content lock
       // the consent decision's revalidate → commit span takes, so a grant
       // cannot commit for a plugin being removed underneath it.
-      const mutation = await withPluginContentLock(
-        pluginsDir,
-        installedPluginName,
-        () =>
-          captureConfigurationMutation(
-            applyConfigurationMutation,
-            async (beginMutation) => {
-              const result = await uninstallInstalledPlugin(
-                installedPluginName,
-                {
-                  agentsDir,
-                  beginConfigurationMutation: beginMutation,
-                  buildPlugin,
-                  eventBus,
-                  logger,
-                  pluginsDir,
-                  projectHomeDir,
-                  removeEngineConnections,
-                  quiesceEventSubscriptions: quiesceEventSubscriptions
-                    ? (plugin) => quiesceEventSubscriptions(plugin)
-                    : undefined,
-                },
-              );
-              await settleProviderAdapterRetirements?.();
-              return result;
-            },
-          ),
+      // The shared uninstall owns publication -> content lock ordering.
+      const mutation = await captureConfigurationMutation(
+        applyConfigurationMutation,
+        async (beginMutation) => {
+          const result = await uninstallInstalledPlugin(installedPluginName, {
+            agentsDir,
+            beginConfigurationMutation: beginMutation,
+            buildPlugin,
+            eventBus,
+            logger,
+            pluginsDir,
+            projectHomeDir,
+            removeEngineConnections,
+            quiesceEventSubscriptions: quiesceEventSubscriptions
+              ? (plugin) => quiesceEventSubscriptions(plugin)
+              : undefined,
+          });
+          await settleProviderAdapterRetirements?.();
+          return result;
+        },
       );
       if (mutation.value.success) {
         try {
@@ -877,19 +874,10 @@ export function registerPluginLifecycleRoutes(
       );
     }
     try {
-      const { replacePluginProviders } = await import(
-        '../../providers/registries/registry.js'
-      );
       const mutation = await captureConfigurationMutation(
         applyConfigurationMutation,
         async (beginMutation) => {
           beginMutation();
-          if (!existsSync(pluginsDir)) {
-            await replacePluginProviders([]);
-            await settleProviderAdapterRetirements?.();
-            return { success: true as const, loaded: 0 };
-          }
-
           const { resolvePluginProviders } = await import(
             '../../providers/resolver.js'
           );
@@ -900,12 +888,19 @@ export function registerPluginLifecycleRoutes(
           const configLoader = new ConfigLoader({ projectHomeDir });
           const overrides = await configLoader.loadPluginOverrides();
 
-          const { resolved, conflicts } = resolvePluginProviders(
-            pluginsDir,
-            overrides,
-            (pluginName) =>
-              hasGrant(projectHomeDir, pluginName, 'providers.register'),
-            logger,
+          const {
+            basis,
+            candidates: { resolved, conflicts },
+          } = await capturePluginProviderGeneration(projectHomeDir, () =>
+            existsSync(pluginsDir)
+              ? resolvePluginProviders(
+                  pluginsDir,
+                  overrides,
+                  (pluginName) =>
+                    hasGrant(projectHomeDir, pluginName, 'providers.register'),
+                  logger,
+                )
+              : { resolved: [], conflicts: [] },
           );
 
           for (const conflict of conflicts) {
@@ -932,9 +927,12 @@ export function registerPluginLifecycleRoutes(
             })),
             logger,
           );
-          await replacePluginProviders(prepared);
+          const published = await publishPluginProviderGeneration(
+            basis,
+            prepared,
+          );
           await settleProviderAdapterRetirements?.();
-          return { success: true as const, loaded: prepared.length };
+          return { success: true as const, loaded: published.length };
         },
       );
       if (mutation.value.success) {

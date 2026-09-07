@@ -32,6 +32,7 @@ import {
 import { Command } from 'commander';
 import { build as buildPlugin } from './commands/build.js';
 import { runCheckpointsCommand } from './commands/checkpoints.js';
+import { runCloudCommand } from './commands/cloud.js';
 import { configGet, configSet } from './commands/config.js';
 import { runCoreCommand } from './commands/core.js';
 import {
@@ -449,6 +450,7 @@ const INDIVIDUAL_COMMANDS = [
   'stop',
   'fresh',
   'home',
+  'cloud',
   'upgrade',
   'doctor',
   'link',
@@ -1081,6 +1083,8 @@ function buildProgram(
     });
   });
 
+  register('cloud', (args) => runCloudCommand(args));
+
   register('home', (args) => {
     const [homeAction, ...homeArgs] = args;
     if (homeAction === 'recovery-plan') {
@@ -1225,12 +1229,17 @@ function buildProgram(
             homeDir: result.homeDir,
             previousHome: result.previousHome,
             restoredFrom: backupDir,
+            recovery: result.recovery,
             fileCount: result.manifest.files.length,
             totalBytes: result.manifest.totalBytes,
           }),
         );
       else {
         console.log(`✓ Restored Station home from ${backupDir}`);
+        console.log(
+          `  Recovered from a copy captured at ${result.recovery.snapshotCreatedAt}. Work after that snapshot may be missing.`,
+        );
+        console.log('  This restore did not transfer execution authority.');
         if (result.previousHome)
           console.log(`  Previous home retained at ${result.previousHome}`);
       }

@@ -18,8 +18,15 @@ import type {
 } from '@kontourai/station-contracts/project-task-room';
 import { PROJECT_TASK_ROOM_MAX_PAGE_JSON_ITEMS } from '@kontourai/station-contracts/project-task-room';
 import { PROJECT_TASK_ROOM_HISTORY_MIGRATION } from '../../domain/migrations/005-project-task-room-history.js';
+import { SharedWorkingState } from '../../domain/shared-working-state.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import { measureBoundedJson, plainDataObject } from './bounded-json.js';
+import {
+  hasPendingProjectTaskRoomExecution,
+  initializeProjectTaskRoomSourceSeals,
+  persistProjectTaskRoomSourceSeal,
+  readProjectTaskRoomSourceSeal,
+} from './project-task-room-source-seal.js';
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -113,6 +120,23 @@ type Request =
       limit: number;
       pageBytes: number;
     }
+  | {
+      type: 'seal-source';
+      scope: ProjectTaskRoomScope;
+      channelId: string;
+      policyRevision: string;
+      authorizationId: string;
+      operationId: string;
+      sourceHomeRef: string;
+      targetHomeRef: string;
+    }
+  | {
+      type: 'locate-proposal';
+      scope: ProjectTaskRoomScope;
+      channelId: string;
+      proposalId: string;
+    }
+  | { type: 'read-source-seal'; scope: ProjectTaskRoomScope; channelId: string }
   | { type: 'close' };
 if (
   !exactObject(workerData, [
@@ -342,6 +366,41 @@ function validRequest(value: unknown): value is Request {
   )
     return false;
   if (value.type === 'close') return exactObject(value, ['type']);
+  if (value.type === 'read-source-seal')
+    return (
+      exactObject(value, ['type', 'scope', 'channelId']) &&
+      validScope(value.scope) &&
+      typeof value.channelId === 'string' &&
+      value.channelId.length <= 256
+    );
+  if (value.type === 'seal-source')
+    return (
+      exactObject(value, [
+        'type',
+        'scope',
+        'channelId',
+        'policyRevision',
+        'authorizationId',
+        'operationId',
+        'sourceHomeRef',
+        'targetHomeRef',
+      ]) &&
+      validScope(value.scope) &&
+      [
+        'channelId',
+        'policyRevision',
+        'authorizationId',
+        'operationId',
+        'sourceHomeRef',
+        'targetHomeRef',
+      ].every(
+        (key) =>
+          typeof value[key] === 'string' &&
+          value[key].length > 0 &&
+          value[key].length <= 256,
+      ) &&
+      value.sourceHomeRef !== value.targetHomeRef
+    );
   if (value.type === 'open')
     return (
       exactObject(value, [
@@ -355,6 +414,15 @@ function validRequest(value: unknown): value is Request {
       typeof value.channelId === 'string' &&
       typeof value.policyRevision === 'string' &&
       typeof value.authorizationId === 'string'
+    );
+  if (value.type === 'locate-proposal')
+    return (
+      exactObject(value, ['type', 'scope', 'channelId', 'proposalId']) &&
+      validScope(value.scope) &&
+      typeof value.channelId === 'string' &&
+      typeof value.proposalId === 'string' &&
+      value.proposalId.length > 0 &&
+      value.proposalId.length <= 256
     );
   if (value.type === 'read')
     return (
@@ -427,6 +495,7 @@ const db = new DatabaseSync(init.databasePath, { timeout: 175 });
 // `enableWalJournalMode` for why `busy_timeout` does not cover this pragma.
 applyWalJournalMode(db, { store: 'project task room history' });
 db.exec(PROJECT_TASK_ROOM_HISTORY_MIGRATION);
+initializeProjectTaskRoomSourceSeals(db);
 let faultPending = init.faultAfterCommitOnce === true;
 let unavailableAfterCommitPending = init.unavailableAfterCommitOnce === true;
 
@@ -536,6 +605,252 @@ async function open(
   }
 }
 
+/** Validate and bind all document snapshots while the caller holds the room transaction. */
+function roomWorkingStateDigest(
+  scope: ProjectTaskRoomScope,
+): string | undefined {
+  const digest = createHash('sha256').update(
+    'station-room-seal-documents/v1\0',
+  );
+  digest.update(JSON.stringify([scope.projectId, scope.taskId]));
+  if (
+    !db
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='project_task_room_working_states'",
+      )
+      .get()
+  )
+    return digest.digest('hex');
+  const size = db
+    .prepare(`SELECT count(*) AS count,
+    coalesce(max(length(CAST(snapshot_json AS BLOB))),0) AS largest,
+    coalesce(max(length(CAST(document_id AS BLOB))),0) AS idBytes,
+    coalesce(max(length(CAST(revision AS BLOB))),0) AS revisionBytes,
+    coalesce(max(length(CAST(compaction_floor AS BLOB))),0) AS floorBytes
+    FROM project_task_room_working_states WHERE project_id=? AND task_id=?`)
+    .get(scope.projectId, scope.taskId) as {
+    count: number;
+    largest: number;
+    idBytes: number;
+    revisionBytes: number;
+    floorBytes: number;
+  };
+  if (
+    size.count > 128 ||
+    size.largest > 512 * 1024 ||
+    size.idBytes > 1024 ||
+    size.revisionBytes > 1024 ||
+    size.floorBytes > 1024
+  )
+    return undefined;
+  for (const raw of db
+    .prepare(`SELECT document_id,snapshot_json,revision,compaction_floor
+    FROM project_task_room_working_states WHERE project_id=? AND task_id=? ORDER BY document_id`)
+    .iterate(scope.projectId, scope.taskId)) {
+    const row = raw as {
+      document_id: string;
+      snapshot_json: string;
+      revision: string;
+      compaction_floor: string;
+    };
+    const state = new SharedWorkingState({
+      scope: {
+        projectId: scope.projectId,
+        taskId: scope.taskId,
+        documentId: row.document_id,
+      },
+      snapshot: JSON.parse(row.snapshot_json),
+    });
+    const snapshot = state.snapshot();
+    if (
+      snapshot.revision !== row.revision ||
+      typeof row.compaction_floor !== 'string' ||
+      row.compaction_floor.length === 0 ||
+      snapshot.deferred.length
+    )
+      return undefined;
+    // Length-framed JSON binds the exact accepted source bytes, not just a caller's revision label.
+    digest.update(
+      JSON.stringify([
+        row.document_id,
+        row.revision,
+        row.compaction_floor,
+        row.snapshot_json,
+      ]),
+    );
+  }
+  return digest.digest('hex');
+}
+
+function inspectSourceSeal(
+  request: Extract<Request, { type: 'read-source-seal' }>,
+) {
+  db.exec('BEGIN');
+  try {
+    const room = head(request.scope);
+    if (
+      !room ||
+      room.channel_id !== request.channelId ||
+      room.project_slug !== request.scope.projectSlug
+    )
+      return { kind: 'denied' };
+    const all = db
+      .prepare(
+        'SELECT * FROM project_task_room_records WHERE channel_id=? AND epoch=? ORDER BY seq',
+      )
+      .iterate(room.channel_id, room.epoch) as IterableIterator<Row>;
+    if (!validateHistory(room, all)) return { kind: 'unavailable' };
+    const row = readProjectTaskRoomSourceSeal(db, request.scope) as
+      | {
+          operationId: unknown;
+          sourceHomeRef: unknown;
+          targetHomeRef: unknown;
+          checkpointJson: unknown;
+          workingStateDigest: unknown;
+        }
+      | undefined;
+    if (!row) return { kind: 'unsealed' };
+    if (
+      ![row.operationId, row.sourceHomeRef, row.targetHomeRef].every(
+        (value) =>
+          typeof value === 'string' && value.length > 0 && value.length <= 256,
+      ) ||
+      row.sourceHomeRef === row.targetHomeRef ||
+      typeof row.checkpointJson !== 'string'
+    )
+      return { kind: 'unavailable' };
+    const sealedCheckpoint = JSON.parse(row.checkpointJson);
+    if (
+      canonical(sealedCheckpoint) !== canonical(checkpoint(room)) ||
+      typeof row.workingStateDigest !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(row.workingStateDigest) ||
+      row.workingStateDigest !== roomWorkingStateDigest(request.scope)
+    )
+      return { kind: 'unavailable' };
+    return {
+      kind: 'sealed',
+      seal: {
+        operationId: row.operationId,
+        sourceHomeRef: row.sourceHomeRef,
+        targetHomeRef: row.targetHomeRef,
+        checkpoint: sealedCheckpoint,
+        workingStateDigest: row.workingStateDigest,
+      },
+    };
+  } finally {
+    db.exec('COMMIT');
+  }
+}
+
+async function sealSource(
+  request: Extract<Request, { type: 'seal-source' }>,
+  requestId: number,
+) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const room = head(request.scope);
+    if (
+      !room ||
+      room.channel_id !== request.channelId ||
+      room.project_slug !== request.scope.projectSlug ||
+      room.policy_revision !== request.policyRevision ||
+      !(await authorizeCommit(requestId, request.authorizationId))
+    ) {
+      db.exec('ROLLBACK');
+      return { kind: 'denied' };
+    }
+    const all = db
+      .prepare(
+        'SELECT * FROM project_task_room_records WHERE channel_id=? AND epoch=? ORDER BY seq',
+      )
+      .iterate(room.channel_id, room.epoch) as IterableIterator<Row>;
+    if (!validateHistory(room, all)) {
+      db.exec('ROLLBACK');
+      return { kind: 'unavailable' };
+    }
+    const existing = readProjectTaskRoomSourceSeal(db, request.scope) as
+      | {
+          operationId: string;
+          sourceHomeRef: string;
+          targetHomeRef: string;
+          checkpointJson: string;
+          workingStateDigest: string | null;
+        }
+      | undefined;
+    if (existing) {
+      const documentDigest = roomWorkingStateDigest(request.scope);
+      db.exec('ROLLBACK');
+      if (
+        existing.operationId !== request.operationId ||
+        existing.sourceHomeRef !== request.sourceHomeRef ||
+        existing.targetHomeRef !== request.targetHomeRef
+      )
+        return { kind: 'conflict' };
+      const priorCheckpoint = JSON.parse(existing.checkpointJson);
+      if (
+        canonical(priorCheckpoint) !== canonical(checkpoint(room)) ||
+        !documentDigest ||
+        existing.workingStateDigest !== documentDigest
+      )
+        return { kind: 'unavailable' };
+      return {
+        kind: 'sealed',
+        seal: {
+          operationId: existing.operationId,
+          sourceHomeRef: existing.sourceHomeRef,
+          targetHomeRef: existing.targetHomeRef,
+          checkpoint: priorCheckpoint,
+          workingStateDigest: documentDigest,
+        },
+      };
+    }
+    // A history-only room need not have materialized working-state tables.
+    // If present, both durable publication queues must be empty at closure.
+    for (const table of [
+      'project_task_room_revision_publication_outbox',
+      'project_task_room_agent_lifecycle_outbox',
+    ]) {
+      if (
+        db
+          .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?")
+          .get(table) &&
+        db
+          .prepare(
+            `SELECT 1 FROM ${table} WHERE project_id=? AND task_id=? LIMIT 1`,
+          )
+          .get(request.scope.projectId, request.scope.taskId)
+      ) {
+        db.exec('ROLLBACK');
+        return { kind: 'publication-pending' };
+      }
+    }
+    if (hasPendingProjectTaskRoomExecution(db, request.scope)) {
+      db.exec('ROLLBACK');
+      return { kind: 'execution-pending' };
+    }
+    const workingStateDigest = roomWorkingStateDigest(request.scope);
+    if (!workingStateDigest) {
+      db.exec('ROLLBACK');
+      return { kind: 'unavailable' };
+    }
+    const seal = {
+      workingStateDigest,
+      operationId: request.operationId,
+      sourceHomeRef: request.sourceHomeRef,
+      targetHomeRef: request.targetHomeRef,
+      checkpoint: checkpoint(room),
+    };
+    persistProjectTaskRoomSourceSeal(db, request.scope, seal);
+    db.exec('COMMIT');
+    return { kind: 'sealed', seal };
+  } catch {
+    try {
+      db.exec('ROLLBACK');
+    } catch {}
+    return { kind: 'unavailable' };
+  }
+}
+
 const authorizationWaiters = new Map<string, (granted: boolean) => void>();
 function authorizeCommit(requestId: number, authorizationId: string) {
   return new Promise<boolean>((resolve) => {
@@ -573,6 +888,10 @@ async function append(request: AppendRequest, requestId: number) {
         return { kind: 'conflict' };
       const receipt = exactReceipt(existing, room.channel_id);
       return receipt ? { kind: 'duplicate', receipt } : { kind: 'unavailable' };
+    }
+    if (readProjectTaskRoomSourceSeal(db, request.scope)) {
+      db.exec('ROLLBACK');
+      return { kind: 'denied' };
     }
     const count = db
       .prepare(
@@ -1014,6 +1333,41 @@ function historicalReceipt(
     .get(room.channel_id, room.epoch, seq) as Identity | undefined;
   return identity ? exactReceipt(identity, room.channel_id) : undefined;
 }
+/** Locate only; the parent must feed this cursor through the existing full
+ * history read/validation path before any record becomes observable. */
+function locateProposal(
+  request: Extract<Request, { type: 'locate-proposal' }>,
+) {
+  db.exec('BEGIN');
+  try {
+    const room = head(request.scope);
+    if (!room || room.channel_id !== request.channelId)
+      return { kind: 'missing' };
+    const identity = readIdentity(room.channel_id, request.proposalId);
+    if (!identity || identity.seq <= room.retained_anchor_seq)
+      return { kind: 'missing' };
+    const receipt = exactReceipt(identity, room.channel_id);
+    const before =
+      identity.seq > 1 ? historicalReceipt(room, identity.seq - 1) : undefined;
+    if (!receipt || (identity.seq > 1 && !before))
+      return { kind: 'unavailable' };
+    return {
+      kind: 'located',
+      cursor: {
+        schemaVersion: 'station.project-task-room-cursor/v1',
+        ...checkpoint(room),
+        afterSeq: identity.seq - 1,
+        afterEnvelopeDigest: before?.envelopeDigest ?? null,
+        afterCheckpointDigest:
+          before?.checkpoint.checkpointDigest ??
+          sha(`room-genesis:${room.channel_id}`),
+      },
+    };
+  } finally {
+    db.exec('COMMIT');
+  }
+}
+
 function read(request: Extract<Request, { type: 'read' }>) {
   try {
     db.exec('BEGIN');
@@ -1208,9 +1562,15 @@ async function handleRequest(message: unknown) {
         ? await open(message.request, Number(message.id))
         : message.request.type === 'append'
           ? await append(message.request, Number(message.id))
-          : message.request.type === 'read'
-            ? read(message.request)
-            : { kind: 'closed' };
+          : message.request.type === 'read-source-seal'
+            ? inspectSourceSeal(message.request)
+            : message.request.type === 'seal-source'
+              ? await sealSource(message.request, Number(message.id))
+              : message.request.type === 'locate-proposal'
+                ? locateProposal(message.request)
+                : message.request.type === 'read'
+                  ? read(message.request)
+                  : { kind: 'closed' };
   } catch {
     result = { kind: 'unavailable' };
   }

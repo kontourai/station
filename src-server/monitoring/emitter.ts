@@ -195,8 +195,16 @@ export class MonitoringEmitter {
     toolName?: string;
     toolCallId: string | undefined;
     result?: unknown;
-    /** Omit when the source did not report a terminal outcome. */
-    outcome?: 'success' | 'error';
+    /**
+     * Omit when the source did not report a terminal outcome.
+     *
+     * station#1558: `unresolved` is a REPORTED outcome, not a missing one —
+     * the producer told us the session ended with the call open and no
+     * result will arrive. Omitting the key for it would put it in the same
+     * bucket as "we never heard back", which is a different (and softer)
+     * claim, and would leave insights unable to separate the two.
+     */
+    outcome?: 'success' | 'error' | 'unresolved';
     /**
      * Elapsed time from call to result. Recorded on the EVENT because the
      * OTel histogram that used to be its only home is a no-op unless an

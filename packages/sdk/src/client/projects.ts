@@ -49,6 +49,8 @@ export interface ProjectWorkspacePaneCatalog {
   version: '1.0';
   /** Canonical Project identity; distinct from the route slug. */
   projectId: string;
+  /** Canonical slug read from the same Project record as `projectId`. */
+  projectSlug: string;
   contributions: readonly (LayoutCatalogItem & {
     disabledReason?: string;
   })[];

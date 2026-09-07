@@ -115,9 +115,20 @@ describe('foldUsageEvents', () => {
         toolName: 'edit',
         status: 'cancelled',
       }),
+      // station#1558: an unresolved call was dispatched exactly like the
+      // three above; only its outcome is unknown. This counter counts calls
+      // MADE, so excluding it would under-report every session that ended
+      // mid-tool and disagree with the transcript, which shows the row.
+      ev({
+        method: 'tool.completed',
+        provider: 'acp',
+        toolCallId: 'c4',
+        toolName: 'bash',
+        status: 'unresolved',
+      }),
     ]);
 
-    expect(aggregate.toolCalls).toBe(3);
+    expect(aggregate.toolCalls).toBe(4);
   });
 
   it('carries the latest session.configured model forward as lastModelId', () => {

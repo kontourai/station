@@ -3,7 +3,7 @@
   "entries": [
     {
       "scope": "root",
-      "lock": "package-lock.json",
+      "lock": "pnpm-lock.yaml",
       "path": "node_modules/@voltagent/cli/node_modules/esbuild",
       "name": "esbuild",
       "version": "0.25.12",
@@ -26,7 +26,30 @@
     },
     {
       "scope": "root",
-      "lock": "package-lock.json",
+      "lock": "pnpm-lock.yaml",
+      "path": "node_modules/bundle-require/node_modules/esbuild",
+      "name": "esbuild",
+      "version": "0.25.12",
+      "integrity": "sha512-bbPBYYrtZbkt6Os6FiTLCTFxvq4tt3JKall1vRwshA3fdVztsLAatFaZobhkBC8/BrPetoa0oksYoKXoG4ryJg==",
+      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
+      "decision": "execute",
+      "owner": "station-security",
+      "reason": "Bundler binary is required by bundle-require; pnpm hoists an additional copy of the already reviewed esbuild version, with identical install script bytes and executable proof.",
+      "platform": { "os": [], "cpu": [] },
+      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
+      "purl": "pkg:npm/esbuild@0.25.12",
+      "reviewedAt": "2026-08-25",
+      "expiresAt": "2026-11-23",
+      "recheck": "dependency refresh, advisory, or platform build change",
+      "triggers": [
+        "dependency refresh",
+        "esbuild advisory",
+        "VoltAgent removal"
+      ]
+    },
+    {
+      "scope": "root",
+      "lock": "pnpm-lock.yaml",
       "path": "node_modules/cpu-features",
       "name": "cpu-features",
       "version": "0.0.10",
@@ -58,7 +81,7 @@
     },
     {
       "scope": "root",
-      "lock": "package-lock.json",
+      "lock": "pnpm-lock.yaml",
       "path": "node_modules/esbuild",
       "name": "esbuild",
       "version": "0.28.1",
@@ -81,7 +104,7 @@
     },
     {
       "scope": "root",
-      "lock": "package-lock.json",
+      "lock": "pnpm-lock.yaml",
       "path": "node_modules/fsevents",
       "name": "fsevents",
       "version": "2.3.3",
@@ -104,7 +127,7 @@
     },
     {
       "scope": "root",
-      "lock": "package-lock.json",
+      "lock": "pnpm-lock.yaml",
       "path": "node_modules/libxmljs2",
       "name": "libxmljs2",
       "version": "0.37.0",
@@ -133,7 +156,7 @@
     },
     {
       "scope": "root",
-      "lock": "package-lock.json",
+      "lock": "pnpm-lock.yaml",
       "path": "node_modules/node-pty",
       "name": "node-pty",
       "version": "1.1.0",
@@ -196,7 +219,7 @@
     },
     {
       "scope": "root",
-      "lock": "package-lock.json",
+      "lock": "pnpm-lock.yaml",
       "path": "node_modules/playwright/node_modules/fsevents",
       "name": "fsevents",
       "version": "2.3.2",
@@ -219,7 +242,7 @@
     },
     {
       "scope": "root",
-      "lock": "package-lock.json",
+      "lock": "pnpm-lock.yaml",
       "path": "node_modules/protobufjs",
       "name": "protobufjs",
       "version": "7.6.5",
@@ -248,7 +271,7 @@
     },
     {
       "scope": "root",
-      "lock": "package-lock.json",
+      "lock": "pnpm-lock.yaml",
       "path": "node_modules/ssh2",
       "name": "ssh2",
       "version": "1.17.0",
@@ -271,71 +294,6 @@
         "dependency refresh",
         "ssh2 advisory",
         "SSH accelerator requirement"
-      ]
-    },
-    {
-      "scope": "sdk",
-      "lock": "packages/sdk/package-lock.json",
-      "path": "node_modules/esbuild",
-      "name": "esbuild",
-      "version": "0.28.1",
-      "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==",
-      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
-      "decision": "execute",
-      "owner": "station-security",
-      "reason": "SDK package build uses the reviewed esbuild binary and verifies it after the explicit lifecycle phase.",
-      "platform": { "os": [], "cpu": [] },
-      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
-      "purl": "pkg:npm/esbuild@0.28.1",
-      "reviewedAt": "2026-08-25",
-      "expiresAt": "2026-11-23",
-      "recheck": "dependency refresh, advisory, or platform build change",
-      "triggers": ["dependency refresh", "esbuild advisory", "SDK build change"]
-    },
-    {
-      "scope": "sdk",
-      "lock": "packages/sdk/package-lock.json",
-      "path": "node_modules/fsevents",
-      "name": "fsevents",
-      "version": "2.3.3",
-      "integrity": "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==",
-      "hooks": [],
-      "decision": "execute",
-      "owner": "station-security",
-      "reason": "SDK tooling retains the Darwin prebuilt watcher binding; no manifest lifecycle command exists and the real watch proof remains mandatory.",
-      "platform": { "os": ["darwin"], "cpu": [] },
-      "artifact": { "path": "fsevents.node", "proof": "fsevents-watch" },
-      "purl": "pkg:npm/fsevents@2.3.3",
-      "reviewedAt": "2026-08-25",
-      "expiresAt": "2026-11-23",
-      "recheck": "dependency refresh, advisory, or platform build change",
-      "triggers": [
-        "dependency refresh",
-        "fsevents advisory",
-        "SDK watcher change"
-      ]
-    },
-    {
-      "scope": "shared",
-      "lock": "packages/shared/package-lock.json",
-      "path": "node_modules/esbuild",
-      "name": "esbuild",
-      "version": "0.28.1",
-      "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==",
-      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
-      "decision": "execute",
-      "owner": "station-security",
-      "reason": "Shared package build uses the reviewed esbuild binary and verifies its explicit executable artifact.",
-      "platform": { "os": [], "cpu": [] },
-      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
-      "purl": "pkg:npm/esbuild@0.28.1",
-      "reviewedAt": "2026-08-25",
-      "expiresAt": "2026-11-23",
-      "recheck": "dependency refresh, advisory, or platform build change",
-      "triggers": [
-        "dependency refresh",
-        "esbuild advisory",
-        "shared build change"
       ]
     }
   ]

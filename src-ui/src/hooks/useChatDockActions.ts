@@ -77,7 +77,7 @@ export function useChatDockActions({
       );
       // Restore the dock's last stated maximize preference, not the
       // momentarily-live `isDockMaximized` — a round trip through a closed
-      // dock (e.g. following a delegated task into `/activity`) always
+      // dock (e.g. revealing Activity for a delegated task) always
       // clears the URL's `maximize` flag by design, so reading the live
       // value here would silently drop a maximized dock back to normal size
       // on return instead of restoring it.

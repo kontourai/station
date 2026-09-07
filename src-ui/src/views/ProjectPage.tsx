@@ -1,7 +1,9 @@
+import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
 import {
   useApplyProjectLayoutMutation,
   useAvailableProjectLayoutsQuery,
+  useEngineConnectionsQuery,
   useKnowledgeDocsQuery,
   useKnowledgeNamespacesQuery,
   useKnowledgeStatusQuery,
@@ -10,18 +12,20 @@ import {
   useProjectQuery,
   useUpdateProjectMutation,
 } from '@kontourai/station-sdk';
-import { useReducer, useState } from 'react';
+import { useMemo, useReducer, useState } from 'react';
+import { selectChatReadyAgents } from '../components/agent-selection-policy';
+import { Button } from '../components/Button';
+import { PageCallout, PageCalloutStack } from '../components/PageCallout';
 import { ErrorState, SkeletonBlock } from '../components/state';
+import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import { useGitLog, useGitStatus } from '../hooks/useGitStatus';
 import { trackRecentLayout } from '../hooks/useRecentLayouts';
+import { requestProjectChat } from '../lib/projectChatEvents';
 import { errorText } from '../utils/errorText';
-import {
-  ProjectWorkspacePaneModal,
-  ProjectWorkspacePaneSection,
-} from '../workspace-panes/ProjectWorkspacePaneCatalog';
+import { ProjectWorkspacePaneModal } from '../workspace-panes/ProjectWorkspacePaneCatalog';
 import { useResolvedWorkspacePaneCatalog } from '../workspace-panes/resolvedWorkspacePaneCatalog';
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspace-panes/workspacePaneAvailabilityPresentation';
 import {
@@ -37,7 +41,9 @@ import {
 import { ProjectLiveWorkSection } from './project-page/ProjectLiveWorkSection';
 import { ProjectPageHeader } from './project-page/ProjectPageHeader';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
+import { projectChatCta } from './project-page/projectChatCta';
 import type { AvailableLayout, ConversationRecord } from './project-page/types';
+import './project-page-frame.css';
 import './ProjectPage.css';
 
 export function ProjectPage({ slug }: { slug: string }) {
@@ -62,13 +68,32 @@ export function ProjectPage({ slug }: { slug: string }) {
   });
   // #801: the page renders as soon as the *project* query settles, so a
   // layouts fetch still in flight used to reach the section as an empty array
-  // and render "No layouts yet" for a project that has layouts.
+  // and render the empty state for a project that has layouts.
   const {
     data: layouts = [],
     isLoading: layoutsLoading,
     isError: layoutsError,
     refetch: refetchLayouts,
   } = useProjectLayoutsQuery(slug);
+  const agents = useAgents();
+  const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
+    data?: ConnectionConfig[];
+  };
+  // ONE fact drives the "New here?" banner's copy AND whether it appears at
+  // all: which Agents can start a chat in this project. See
+  // `projectChatCta`.
+  const chatCta = useMemo(
+    () =>
+      projectChatCta(
+        selectChatReadyAgents({
+          agents,
+          agentConnections,
+          selectedProjectSlug: slug,
+          selectedProjectAgentFilter: project?.agents,
+        }),
+      ),
+    [agentConnections, agents, project?.agents, slug],
+  );
   const { data: gitStatus } = useGitStatus(project?.workingDirectory);
   const { data: gitLog = [] } = useGitLog(project?.workingDirectory, 5);
   const {
@@ -258,22 +283,40 @@ export function ProjectPage({ slug }: { slug: string }) {
             when nothing is in flight. */}
         <ProjectLiveWorkSection slug={slug} />
 
-        {conversations.length === 0 && !navigator.webdriver && (
-          <div className="project-page__chat-cta">
-            <div className="project-page__chat-cta-text">
-              <strong>New here? Chat with Station to get started.</strong>
-              <span>
-                Ask a question or describe a task — no setup required.
-              </span>
-            </div>
-            <button
-              type="button"
-              className="project-page__chat-cta-btn"
-              onClick={() => setDockState(true)}
+        {conversations.length === 0 && !navigator.webdriver && chatCta && (
+          // In a stack even as the only callout: the stack owns the rhythm
+          // between a callout and the page under it, so a page that renders
+          // one directly loses the space the card it replaces had.
+          <PageCalloutStack>
+            <PageCallout
+              calloutId="project-chat-cta"
+              ariaLabel="Start a chat in this project"
+              title={chatCta.headline}
+              action={
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    // Reveal the dock first: its New Chat dialog renders inside
+                    // the dock shell, which is collapsed to its header strip
+                    // while closed. Then ask the dock to route — it focuses a
+                    // chat already bound to this project, or opens the picker
+                    // preselected to it. `setDockState(true)` alone was the bug:
+                    // it just revealed whatever conversation was last active.
+                    setDockState(true);
+                    requestProjectChat({
+                      projectSlug: slug,
+                      projectName: project.name || slug,
+                      source: 'project-page-cta',
+                    });
+                  }}
+                >
+                  {chatCta.actionLabel}
+                </Button>
+              }
             >
-              Start a chat
-            </button>
-          </div>
+              {chatCta.detail}
+            </PageCallout>
+          </PageCalloutStack>
         )}
 
         {gitStatus && gitStatus.isRepo === false && (
@@ -355,6 +398,13 @@ export function ProjectPage({ slug }: { slug: string }) {
           <p className="project-page__section-explainer">
             Workspace views open in this project.
           </p>
+          {/* #1536 E8: this section lists what the user ADDED to this
+              project. It used to carry a second grid of every pane in the
+              distribution — a catalog rendered as project state, duplicating
+              the "+ Add pane" picker above. The picker's entry list is a
+              superset of what that grid could show (the grid filtered the same
+              catalog down to placed occurrences), so nothing became
+              unreachable. */}
           <ProjectLayoutsSection
             slug={slug}
             layouts={layouts as any[]}
@@ -362,20 +412,6 @@ export function ProjectPage({ slug }: { slug: string }) {
             error={layoutsError}
             onRetry={() => void refetchLayouts()}
             setLayout={setLayout}
-            onOpenAddLayout={() => setShowAddLayout(true)}
-            embedded
-          />
-          <ProjectWorkspacePaneSection
-            entries={paneCatalog.entries}
-            loading={paneCatalog.isLoading}
-            error={paneCatalog.isError}
-            onRetry={() => void paneCatalog.refetch()}
-            onSelect={openPane}
-            onAction={handlePaneAction}
-            canExecuteAction={canExecutePaneAction}
-            onOpen={() => setShowAddPane(true)}
-            onReviewInRegistry={() => navigate('/registry')}
-            embedded
           />
         </section>
 
@@ -424,6 +460,10 @@ export function ProjectPage({ slug }: { slug: string }) {
           onSelect={openPane}
           onAction={handlePaneAction}
           canExecuteAction={canExecutePaneAction}
+          // The removed page grid was the only surface that supplied this, and
+          // without it a card whose availability names the Registry falls back
+          // to a bounded action instead of the navigation that resolves it.
+          onReviewInRegistry={() => navigate('/registry')}
           onClose={() => setShowAddPane(false)}
         />
       </div>

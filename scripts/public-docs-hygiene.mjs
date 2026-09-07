@@ -4,8 +4,9 @@ import { loadPublicDocs } from './build-github-pages.mjs';
 
 const ABSOLUTE_DEVELOPER_PATH =
   /(?:^|[\s`"'(])(?:\/(?:Users|home|private(?:\/(?:tmp|var))?|tmp|var|opt|Volumes)(?=\/|\b)|[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/][^\\/\s]+)/gim;
+// Match complete DNS labels: settings.local.json is not a .local host.
 const PRIVATE_HOSTNAME =
-  /\b(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:internal|corp|local|lan|home\.arpa)|(?:[a-z0-9-]+\.)?ts\.net|brian-media|desktop-win)\b/gi;
+  /\b(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:internal|corp|local|lan|home\.arpa)(?![a-z0-9-]|\.[a-z0-9-])|(?:[a-z0-9-]+\.)?ts\.net|brian-media|desktop-win)\b/gi;
 const PRIVATE_IP =
   /(?:\b(?:127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2}|169\.254(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})\b|(?:^|[^\da-f])(?:::1|(?:fc|fd)[\da-f:]+|fe[89ab][\da-f]*:[\da-f:]*)(?=$|[^\da-f]))/gi;
 const INTERNAL_OPERATION =

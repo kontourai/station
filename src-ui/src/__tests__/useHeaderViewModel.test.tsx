@@ -5,11 +5,14 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { launchChat, navigate, telemetryTrack } = vi.hoisted(() => ({
-  launchChat: vi.fn().mockResolvedValue('session-1'),
-  navigate: vi.fn(),
-  telemetryTrack: vi.fn(),
-}));
+const { launchChat, navigate, showSurface, telemetryTrack } = vi.hoisted(
+  () => ({
+    launchChat: vi.fn().mockResolvedValue('session-1'),
+    navigate: vi.fn(),
+    showSurface: vi.fn(),
+    telemetryTrack: vi.fn(),
+  }),
+);
 
 vi.mock('@kontourai/station-sdk', () => ({
   telemetry: { track: telemetryTrack },
@@ -24,6 +27,12 @@ vi.mock('../contexts/AuthContext', () => ({
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate }),
 }));
+// #928 C2a: `goHome` reveals the Home surface through the region command
+// hook, which needs a `RegionModelProvider` this hook-level harness does not
+// mount. `HeaderHomeSurface.test.tsx` asserts the reveal itself.
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurface,
+}));
 vi.mock('../hooks/useActiveChatSessions', () => ({
   useLaunchChat: () => launchChat,
 }));
@@ -36,6 +45,69 @@ vi.mock('../utils/execution', () => ({
 }));
 
 import { useHeaderViewModel } from '../components/header/useHeaderViewModel';
+
+/**
+ * #1523: the header holds both meanings of "go to `/`". `goHome` is Home BY
+ * NAME (the Home surface); the profile toggle's return is a dismissal — back
+ * to `/` and whatever occupies `main` — and must not route through the
+ * surface reveal, or a user who had Activity in `main` loses it on the way
+ * out of their profile.
+ */
+describe('useHeaderViewModel home producers', () => {
+  beforeEach(() => {
+    navigate.mockClear();
+    showSurface.mockClear();
+  });
+
+  test('goHome reveals the Home surface and does not navigate itself', () => {
+    const { result } = renderHook(() =>
+      useHeaderViewModel({
+        currentView: { type: 'profile' },
+        agents: [],
+        onNavigate: vi.fn(),
+      }),
+    );
+
+    act(() => result.current.goHome());
+
+    expect(showSurface).toHaveBeenCalledWith('home');
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  test('the profile toggle returns to the outlet, whatever occupies main, and NOT to the Home surface', () => {
+    const onNavigate = vi.fn();
+    const { result } = renderHook(() =>
+      useHeaderViewModel({
+        currentView: { type: 'profile' },
+        agents: [],
+        onNavigate,
+      }),
+    );
+
+    act(() => result.current.openProfile());
+
+    expect(navigate).toHaveBeenCalledWith('/');
+    expect(showSurface).not.toHaveBeenCalled();
+    expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  test('the profile toggle opens the profile from any other view', () => {
+    const onNavigate = vi.fn();
+    const { result } = renderHook(() =>
+      useHeaderViewModel({
+        currentView: { type: 'settings' },
+        agents: [],
+        onNavigate,
+      }),
+    );
+
+    act(() => result.current.openProfile());
+
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'profile' });
+    expect(navigate).not.toHaveBeenCalled();
+    expect(showSurface).not.toHaveBeenCalled();
+  });
+});
 
 describe('useHeaderViewModel help launch', () => {
   beforeEach(() => {

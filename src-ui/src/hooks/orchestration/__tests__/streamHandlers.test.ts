@@ -12,6 +12,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChatsStore;
 let handleToolStartedEvent: typeof import('../streamHandlers').handleToolStartedEvent;
 let handleToolCompletedEvent: typeof import('../streamHandlers').handleToolCompletedEvent;
+let handleToolProgressEvent: typeof import('../streamHandlers').handleToolProgressEvent;
+let handleRuntimeErrorEvent: typeof import('../turnHandlers').handleRuntimeErrorEvent;
 let handleTextDeltaEvent: typeof import('../streamHandlers').handleTextDeltaEvent;
 // archive#3351: spies on the messageParts module (see the doMock in the
 // text-delta describe below) to prove the dedup actually removed the
@@ -56,9 +58,12 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
     ({ activeChatsStore } = await import(
       '../../../contexts/active-chats-store'
     ));
-    ({ handleToolStartedEvent, handleToolCompletedEvent } = await import(
-      '../streamHandlers'
-    ));
+    ({
+      handleToolStartedEvent,
+      handleToolCompletedEvent,
+      handleToolProgressEvent,
+    } = await import('../streamHandlers'));
+    ({ handleRuntimeErrorEvent } = await import('../turnHandlers'));
 
     activeChatsStore.initChat(threadId, {
       agentSlug: 'assistant',
@@ -239,6 +244,24 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
     expect(part?.approvalStatus).toBeUndefined();
   });
 
+  // station#1558: the session ended with the call still open. Neither
+  // `error` (nothing observed the tool fail) nor `cancelled` (nobody asked
+  // it to stop) nor `completed` (there is no result).
+  test('an unresolved tool call renders the unresolved state, not error, and isError is false', () => {
+    handleToolCompletedEvent(
+      toolCompleted({
+        status: 'unresolved',
+        output:
+          'No result was reported before the session ended; whether the tool ran is unknown.',
+      }),
+    );
+
+    const part = toolPart();
+    expect(part).toMatchObject({ state: 'unresolved', isError: false });
+    expect(part?.error).toBeUndefined();
+    expect(part?.approvalStatus).toBeUndefined();
+  });
+
   // #3117: the live-path derivation this issue exists to add. Only ever set
   // from the event's own `policyDenied` marker — never inferred from
   // `status === 'error'` alone.
@@ -337,6 +360,865 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
     );
 
     expect(toolPart()?.approvalStatus).toBe('user-denied');
+  });
+
+  // station#1558 Part A (live side): the durable projection folds a late
+  // result onto the turn its `turnId` names; this handler used to fold every
+  // result into whatever message is streaming right now.
+  describe('a late result settles on the message that holds its call (station#1558)', () => {
+    function seedTwoMessages(openCallId: string) {
+      activeChatsStore.updateChat(threadId, {
+        messages: [
+          {
+            role: 'assistant',
+            content: 'A is working.',
+            turnId: 'turn-a',
+            contentParts: [
+              { type: 'text', content: 'A is working.' },
+              {
+                type: 'tool-invocation',
+                toolCallId: openCallId,
+                toolName: 'write_file',
+                args: { path: 'a.txt' },
+                state: 'running',
+              },
+            ],
+          },
+          {
+            role: 'user',
+            content: 'and now this',
+          },
+        ],
+        streamingMessage: {
+          role: 'assistant',
+          content: 'B answers.',
+          contentParts: [{ type: 'text', content: 'B answers.' }],
+        },
+      });
+    }
+
+    const historyParts = (index: number) =>
+      activeChatsStore.getSnapshot()[threadId]?.messages?.[index]
+        ?.contentParts ?? [];
+    const streamingParts = () =>
+      activeChatsStore.getSnapshot()[threadId]?.streamingMessage
+        ?.contentParts ?? [];
+
+    test("settles the earlier message's open call there, and adds no row to the streaming turn", () => {
+      seedTwoMessages('tool-1');
+
+      handleToolCompletedEvent(
+        toolCompleted({
+          turnId: 'turn-a',
+          status: 'success',
+          output: 'late output',
+        }),
+      );
+
+      const settled = historyParts(0).filter(
+        (part) => part.type === 'tool-invocation',
+      );
+      expect(settled).toHaveLength(1);
+      expect(settled[0]).toMatchObject({
+        toolCallId: 'tool-1',
+        state: 'completed',
+        isError: false,
+        result: 'late output',
+        sourceEventId: 'evt-1',
+      });
+      expect(
+        streamingParts().filter((part) => part.type === 'tool-invocation'),
+      ).toHaveLength(0);
+    });
+
+    test('puts a start-less late result on the turn its own turnId names, never on the streaming turn', () => {
+      seedTwoMessages('tool-1');
+
+      handleToolCompletedEvent(
+        toolCompleted({
+          eventId: 'evt-orphan',
+          turnId: 'turn-a',
+          toolCallId: 'orphan-call',
+          status: 'success',
+          output: 'orphan output',
+        }),
+      );
+
+      const tools = historyParts(0).filter(
+        (part) => part.type === 'tool-invocation',
+      );
+      expect(tools.map((part) => part.toolCallId)).toEqual([
+        'tool-1',
+        'orphan-call',
+      ]);
+      expect(
+        streamingParts().filter((part) => part.type === 'tool-invocation'),
+      ).toHaveLength(0);
+    });
+
+    // Fix round (M2): the historical scan must respect the turn the event
+    // names, or a reused call id settles the older row with the newer turn's
+    // result.
+    test("does not settle an earlier message's row when the result names another turn", () => {
+      seedTwoMessages('tool-1');
+      // Give the second message a turn identity so the event has somewhere
+      // honest to land.
+      const chat = activeChatsStore.getSnapshot()[threadId]!;
+      activeChatsStore.updateChat(threadId, {
+        messages: [
+          chat.messages![0],
+          { ...chat.messages![1], role: 'assistant', turnId: 'turn-b' },
+        ],
+      });
+
+      handleToolCompletedEvent(
+        toolCompleted({ turnId: 'turn-b', status: 'success', output: 'B' }),
+      );
+
+      // turn-a's open row is untouched…
+      const aTools = historyParts(0).filter(
+        (part) => part.type === 'tool-invocation',
+      );
+      expect(aTools).toHaveLength(1);
+      expect(aTools[0]).toMatchObject({ state: 'running' });
+      expect(aTools[0]?.result).toBeUndefined();
+      // …and the result went to the turn it names.
+      const bTools = historyParts(1).filter(
+        (part) => part.type === 'tool-invocation',
+      );
+      expect(bTools).toHaveLength(1);
+      expect(bTools[0]).toMatchObject({
+        toolCallId: 'tool-1',
+        state: 'completed',
+        result: 'B',
+      });
+    });
+
+    /**
+     * station#1569 (H1): the live twin of the projection's rule. An
+     * `unresolved` row is pinned to its own settle event, so the real result
+     * that follows used to match nothing and append a SECOND row beside it.
+     */
+    describe('a real result supersedes an unresolved row (station#1569 H1)', () => {
+      const unresolvedPart = {
+        type: 'tool-invocation' as const,
+        toolCallId: 'tool-1',
+        toolName: 'write_file',
+        args: { path: 'a.txt' },
+        state: 'unresolved' as const,
+        sourceEventId: 'evt-settle',
+        result:
+          'No result was reported before the session ended; whether the tool ran is unknown.',
+      };
+
+      test('supersedes it in place on the streaming message', () => {
+        activeChatsStore.updateChat(threadId, {
+          streamingMessage: {
+            role: 'assistant',
+            content: 'Working.',
+            contentParts: [
+              { type: 'text', content: 'Working.' },
+              { ...unresolvedPart },
+            ],
+          },
+        });
+
+        handleToolCompletedEvent(
+          toolCompleted({
+            eventId: 'evt-real',
+            status: 'success',
+            output: 'real output',
+          }),
+        );
+
+        const tools = streamingParts().filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(tools).toHaveLength(1);
+        expect(tools[0]).toMatchObject({
+          toolCallId: 'tool-1',
+          state: 'completed',
+          result: 'real output',
+          sourceEventId: 'evt-real',
+          isError: false,
+        });
+      });
+
+      test('supersedes it in place on the committed message it lives on', () => {
+        activeChatsStore.updateChat(threadId, {
+          messages: [
+            {
+              role: 'assistant',
+              content: 'A is working.',
+              turnId: 'turn-a',
+              contentParts: [
+                { type: 'text', content: 'A is working.' },
+                { ...unresolvedPart },
+              ],
+            },
+          ],
+          streamingMessage: {
+            role: 'assistant',
+            content: 'B answers.',
+            contentParts: [{ type: 'text', content: 'B answers.' }],
+          },
+        });
+
+        handleToolCompletedEvent(
+          toolCompleted({
+            eventId: 'evt-real',
+            turnId: 'turn-a',
+            status: 'success',
+            output: 'real output',
+          }),
+        );
+
+        const tools = historyParts(0).filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(tools).toHaveLength(1);
+        expect(tools[0]).toMatchObject({
+          state: 'completed',
+          result: 'real output',
+          sourceEventId: 'evt-real',
+        });
+        // Not a standalone second row on whatever turn is streaming.
+        expect(
+          streamingParts().filter((part) => part.type === 'tool-invocation'),
+        ).toHaveLength(0);
+      });
+
+      test('leaves a settled SUCCESS alone — only unresolved is overtakeable', () => {
+        // The discriminating control: this is the "distinct durable result"
+        // rule the change carves one exception into, not a repeal of it.
+        activeChatsStore.updateChat(threadId, {
+          streamingMessage: {
+            role: 'assistant',
+            content: 'Working.',
+            contentParts: [
+              {
+                ...unresolvedPart,
+                state: 'completed',
+                result: 'first output',
+              },
+            ],
+          },
+        });
+
+        handleToolCompletedEvent(
+          toolCompleted({
+            eventId: 'evt-real',
+            status: 'success',
+            output: 'second output',
+          }),
+        );
+
+        const tools = streamingParts().filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(tools).toHaveLength(2);
+        expect(tools.map((part) => part.sourceEventId)).toEqual([
+          'evt-settle',
+          'evt-real',
+        ]);
+      });
+
+      test('a tool.started for a reused id does not resurrect an unresolved row', () => {
+        // Only a TERMINAL may supersede. A start carries no terminal event
+        // id, and erasing a settled outcome with a new call's start would be
+        // the same two-rows-into-one defect pointed the wrong way.
+        activeChatsStore.updateChat(threadId, {
+          streamingMessage: {
+            role: 'assistant',
+            content: 'Working.',
+            contentParts: [{ ...unresolvedPart }],
+          },
+        });
+
+        handleToolStartedEvent({
+          eventId: 'evt-start',
+          provider: 'station-agent',
+          threadId,
+          createdAt: '2026-08-15T00:00:01.000Z',
+          method: 'tool.started',
+          itemId: 'tool-1',
+          toolCallId: 'tool-1',
+          toolName: 'write_file',
+          arguments: { path: 'b.txt' },
+        } as unknown as Parameters<typeof handleToolStartedEvent>[0]);
+
+        const tools = streamingParts().filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(tools).toHaveLength(2);
+        expect(tools[0]).toMatchObject({
+          state: 'unresolved',
+          sourceEventId: 'evt-settle',
+        });
+        expect(tools[1]).toMatchObject({ state: 'running' });
+      });
+    });
+
+    // station#1569 (item 2): the OTHER half of the M2 rule — a committed row
+    // with no turn identity of its own is deliberately NOT a mismatch. Only
+    // prose said so; these execute the branch (`candidate.turnId !==
+    // undefined` is what makes it fall through) and pin the consequence,
+    // including the one it accepts.
+    describe('a row with no turn identity (station#1569 item 2)', () => {
+      /** The pre-turnId shape: a committed assistant row holding an open
+       * call, with no `turnId` on the message at all. */
+      function seedUnidentifiedRow() {
+        activeChatsStore.updateChat(threadId, {
+          messages: [
+            {
+              role: 'assistant',
+              content: 'Older client, no turn identity.',
+              contentParts: [
+                { type: 'text', content: 'Older client, no turn identity.' },
+                {
+                  type: 'tool-invocation',
+                  toolCallId: 'tool-1',
+                  toolName: 'write_file',
+                  args: { path: 'a.txt' },
+                  state: 'running',
+                },
+              ],
+            },
+          ],
+          streamingMessage: {
+            role: 'assistant',
+            content: 'B answers.',
+            contentParts: [{ type: 'text', content: 'B answers.' }],
+          },
+        });
+      }
+
+      test('is settled by a completion that names a turn, rather than stranded', () => {
+        seedUnidentifiedRow();
+
+        handleToolCompletedEvent(
+          toolCompleted({
+            turnId: 'turn-b',
+            status: 'success',
+            output: 'late output',
+          }),
+        );
+
+        const settled = historyParts(0).filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(settled).toHaveLength(1);
+        expect(settled[0]).toMatchObject({
+          toolCallId: 'tool-1',
+          state: 'completed',
+          result: 'late output',
+        });
+        // Rejecting it would have appended a second, result-only row to the
+        // streaming turn and left this one running forever.
+        expect(
+          streamingParts().filter((part) => part.type === 'tool-invocation'),
+        ).toHaveLength(0);
+      });
+
+      test('loses to a row that DOES name the completion turn when the call id is reused', () => {
+        seedUnidentifiedRow();
+        const chat = activeChatsStore.getSnapshot()[threadId]!;
+        activeChatsStore.updateChat(threadId, {
+          messages: [
+            chat.messages![0],
+            {
+              role: 'assistant',
+              content: 'B is working.',
+              turnId: 'turn-b',
+              contentParts: [
+                {
+                  type: 'tool-invocation',
+                  toolCallId: 'tool-1',
+                  toolName: 'write_file',
+                  args: { path: 'b.txt' },
+                  state: 'running',
+                },
+              ],
+            },
+          ],
+        });
+
+        handleToolCompletedEvent(
+          toolCompleted({ turnId: 'turn-b', status: 'success', output: 'B' }),
+        );
+
+        // The scan runs newest-first and stops at the first row that does not
+        // contradict the named turn, so the row that actually claims turn-b
+        // wins over the one that claims nothing.
+        const bTools = historyParts(1).filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(bTools).toHaveLength(1);
+        expect(bTools[0]).toMatchObject({ state: 'completed', result: 'B' });
+        const aTools = historyParts(0).filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(aTools).toHaveLength(1);
+        expect(aTools[0]).toMatchObject({ state: 'running' });
+        expect(aTools[0]?.result).toBeUndefined();
+      });
+
+      test('absorbs a completion for a turn it cannot disclaim — the accepted cost of the rule', () => {
+        seedUnidentifiedRow();
+        const chat = activeChatsStore.getSnapshot()[threadId]!;
+        activeChatsStore.updateChat(threadId, {
+          messages: [
+            chat.messages![0],
+            {
+              role: 'assistant',
+              content: 'B is working.',
+              turnId: 'turn-b',
+              contentParts: [
+                {
+                  type: 'tool-invocation',
+                  toolCallId: 'tool-1',
+                  toolName: 'write_file',
+                  args: { path: 'b.txt' },
+                  state: 'running',
+                },
+              ],
+            },
+          ],
+        });
+
+        // Names a THIRD turn: turn-b's row contradicts it and is skipped, and
+        // the unidentified row has no claim to contradict it with — so it
+        // takes the result. This is the trade the rule makes on purpose:
+        // stranding every identity-less row is the worse failure.
+        handleToolCompletedEvent(
+          toolCompleted({ turnId: 'turn-c', status: 'success', output: 'C' }),
+        );
+
+        expect(
+          historyParts(0).filter((part) => part.type === 'tool-invocation')[0],
+        ).toMatchObject({ state: 'completed', result: 'C' });
+        expect(
+          historyParts(1).filter((part) => part.type === 'tool-invocation')[0],
+        ).toMatchObject({ state: 'running' });
+      });
+    });
+
+    /**
+     * station#1586 (fix round, B): a FAILED turn's only turnId-bearing
+     * message is the `role: 'user'` `[SYSTEM_EVENT] [CHAT_ERROR]` marker
+     * `handleRuntimeErrorEvent` appends. `ChatDockBody` renders that marker
+     * through an `isSystemEvent` short-circuit that never iterates
+     * `contentParts`, so routing a tool row onto it files the row where
+     * nothing can render it. The turn-index lookup therefore considers only
+     * assistant messages.
+     */
+    describe('a failed turn error marker never takes a tool row (station#1586 B)', () => {
+      function failTurnA() {
+        // The real handler, so the marker's shape (role, turnId, content) is
+        // the one production writes rather than one this test imagines.
+        handleRuntimeErrorEvent({
+          eventId: 'evt-error',
+          provider: 'station-agent',
+          threadId,
+          createdAt: '2026-08-15T00:00:00.000Z',
+          method: 'runtime.error',
+          severity: 'error',
+          turnId: 'turn-a',
+          message: 'the engine failed',
+        } as unknown as Parameters<typeof handleRuntimeErrorEvent>[0]);
+        const chat = activeChatsStore.getSnapshot()[threadId];
+        const marker = (chat?.messages ?? []).find(
+          (message) => message.turnId === 'turn-a',
+        );
+        // station#1701. A missing marker used to reach the assertion below as
+        // `expected undefined to match object { role: 'user' }`, which — being
+        // a precondition — reported against whichever test called this helper.
+        // Twice on CI that pointed a reader at tool-outcome logic that was
+        // never involved.
+        //
+        // The discriminator is the MESSAGE COUNT, not the key list: this
+        // block's `beforeEach` calls `initChat(threadId)` on the same binding
+        // the helper reads, so `threadId` is always a key here and only
+        // "chat present" is reachable.
+        //
+        // Present-with-0-messages is the interesting one, and it has exactly
+        // one cause. `getChatKeyForExecutionSession` returns immediately when
+        // `chats[sessionId]` exists, and it does exist here, so a lookup miss
+        // in THIS store is impossible — the handler must be holding a
+        // different module instance (the station#1045 class). The silent
+        // `updateChat` no-op is not a competing explanation but how that looks
+        // from the other side: the handler's store never saw `initChat`, so
+        // its own lookup finds nothing and returns.
+        //
+        // One cause the investigation ruled out: `handleRuntimeErrorEvent` is
+        // synchronous end to end, so a not-yet-settled dispatch is not among
+        // them.
+        if (marker === undefined) {
+          const storeKeys = Object.keys(activeChatsStore.getSnapshot());
+          throw new Error(
+            `handleRuntimeErrorEvent left no readable turn-a marker for ` +
+              `"${threadId}". Store keys: [${storeKeys.join(', ')}]; the chat ` +
+              `is ${chat ? 'present' : 'ABSENT'} and holds ` +
+              `${chat?.messages?.length ?? 0} message(s).\n` +
+              `- Present, 0 messages: the write never reached THIS store. A ` +
+              `key miss here is impossible (the chat exists, so the lookup ` +
+              `returns its key directly), so the handler is holding a ` +
+              `different module instance and its own updateChat found no ` +
+              `chat and returned silently — the station#1045 class.\n` +
+              `- Present, >=1 messages: the write landed here and the ` +
+              `marker's turnId or role changed.\n` +
+              `- ABSENT: beforeEach's initChat did not take on the instance ` +
+              `this helper reads. That should not be reachable; treat it as a ` +
+              `harness bug.\n` +
+              `Look at this helper and handleRuntimeErrorEvent, not at the ` +
+              `behaviour the calling test names.`,
+          );
+        }
+        // The precondition this test exists for: the only message carrying
+        // turn A is a user-role marker.
+        expect(marker).toMatchObject({ role: 'user' });
+        expect(
+          (chat?.messages ?? []).some(
+            (message) =>
+              message.turnId === 'turn-a' && message.role === 'assistant',
+          ),
+        ).toBe(false);
+        return marker;
+      }
+
+      const markerParts = () =>
+        (activeChatsStore.getSnapshot()[threadId]?.messages ?? []).find(
+          (message) => message.turnId === 'turn-a',
+        )?.contentParts ?? [];
+
+      test('a late tool.completed for the failed turn falls back instead of landing on the marker', () => {
+        failTurnA();
+
+        handleToolCompletedEvent(
+          toolCompleted({
+            eventId: 'evt-late',
+            turnId: 'turn-a',
+            toolCallId: 'tool-late',
+            status: 'success',
+            output: 'late output',
+          }),
+        );
+
+        expect(
+          markerParts().filter((part) => part.type === 'tool-invocation'),
+        ).toHaveLength(0);
+        // The documented fallback: the streaming shell, which does render.
+        expect(
+          streamingParts()
+            .filter((part) => part.type === 'tool-invocation')
+            .map((part) => part.toolCallId),
+        ).toEqual(['tool-late']);
+      });
+
+      test('a late tool.started for the failed turn falls back too, even with another turn open', () => {
+        failTurnA();
+        // A new turn is streaming, so the opener's turn check is live.
+        activeChatsStore.updateChat(threadId, {
+          openTurnId: 'turn-b',
+          streamingMessage: {
+            role: 'assistant',
+            content: 'B answers.',
+            contentParts: [{ type: 'text', content: 'B answers.' }],
+          },
+        });
+
+        handleToolStartedEvent({
+          eventId: 'evt-start',
+          provider: 'station-agent',
+          threadId,
+          createdAt: '2026-08-15T00:00:01.000Z',
+          method: 'tool.started',
+          turnId: 'turn-a',
+          itemId: 'tool-late',
+          toolCallId: 'tool-late',
+          toolName: 'write_file',
+          arguments: {},
+        } as unknown as Parameters<typeof handleToolStartedEvent>[0]);
+
+        expect(
+          markerParts().filter((part) => part.type === 'tool-invocation'),
+        ).toHaveLength(0);
+        expect(
+          streamingParts()
+            .filter((part) => part.type === 'tool-invocation')
+            .map((part) => part.toolCallId),
+        ).toEqual(['tool-late']);
+      });
+    });
+
+    /**
+     * station#1586 (fix round, M1): the opener and the progress writer had no
+     * turn rule at all — they wrote into the streaming shell unconditionally.
+     * With the terminal now turn-aware, a `tool.started` naming an earlier
+     * turn opened a row in the STREAMING turn's bubble whose outcome was then
+     * (correctly) delivered to the earlier turn's message, leaving the
+     * streaming row running forever. Both halves are asserted here as one
+     * sequence, because either alone reads as correct.
+     */
+    describe('the opener and progress obey the turn rule (station#1586 M1)', () => {
+      /** turn-a committed and closed; turn-b is the shell that is streaming. */
+      function seedClosedTurnAndOpenShell() {
+        activeChatsStore.updateChat(threadId, {
+          openTurnId: 'turn-b',
+          messages: [
+            {
+              role: 'assistant',
+              content: 'A finished narrating.',
+              turnId: 'turn-a',
+              contentParts: [
+                { type: 'text', content: 'A finished narrating.' },
+              ],
+            },
+          ],
+          streamingMessage: {
+            role: 'assistant',
+            content: 'B answers.',
+            contentParts: [{ type: 'text', content: 'B answers.' }],
+          },
+        });
+      }
+
+      function toolStarted(overrides: Record<string, unknown> = {}) {
+        return {
+          eventId: 'evt-start',
+          provider: 'station-agent',
+          threadId,
+          createdAt: '2026-08-15T00:00:00.000Z',
+          method: 'tool.started',
+          itemId: 'tool-late',
+          toolCallId: 'tool-late',
+          toolName: 'write_file',
+          arguments: { path: 'a.txt' },
+          ...overrides,
+        } as unknown as Parameters<typeof handleToolStartedEvent>[0];
+      }
+
+      test('a tool.started for an earlier turn opens its row there, and its result settles it — nothing is left running on the streaming turn', () => {
+        seedClosedTurnAndOpenShell();
+
+        handleToolStartedEvent(toolStarted({ turnId: 'turn-a' }));
+        handleToolCompletedEvent(
+          toolCompleted({
+            eventId: 'evt-late',
+            turnId: 'turn-a',
+            toolCallId: 'tool-late',
+            status: 'success',
+            output: 'A output',
+          }),
+        );
+
+        const aTools = historyParts(0).filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(aTools).toHaveLength(1);
+        expect(aTools[0]).toMatchObject({
+          toolCallId: 'tool-late',
+          state: 'completed',
+          result: 'A output',
+        });
+        // The row the streaming turn never owned: before M1 the start landed
+        // here and stayed `running` for the life of the chat.
+        expect(
+          streamingParts().filter((part) => part.type === 'tool-invocation'),
+        ).toHaveLength(0);
+      });
+
+      test('a tool.progress for an earlier turn updates that row, not the streaming shell', () => {
+        seedClosedTurnAndOpenShell();
+        handleToolStartedEvent(toolStarted({ turnId: 'turn-a' }));
+
+        handleToolProgressEvent({
+          eventId: 'evt-progress',
+          provider: 'station-agent',
+          threadId,
+          createdAt: '2026-08-15T00:00:01.000Z',
+          method: 'tool.progress',
+          turnId: 'turn-a',
+          itemId: 'tool-late',
+          toolCallId: 'tool-late',
+          message: 'still working',
+        } as unknown as Parameters<typeof handleToolProgressEvent>[0]);
+
+        expect(
+          historyParts(0).filter((part) => part.type === 'tool-invocation')[0],
+        ).toMatchObject({
+          toolCallId: 'tool-late',
+          state: 'running',
+          progressMessage: 'still working',
+        });
+        expect(
+          streamingParts().filter((part) => part.type === 'tool-invocation'),
+        ).toHaveLength(0);
+      });
+
+      test('a tool.started for the open turn still opens on the streaming shell', () => {
+        // The discriminating control: the routing is a turn contradiction,
+        // not a blanket move to history.
+        seedClosedTurnAndOpenShell();
+
+        handleToolStartedEvent(toolStarted({ turnId: 'turn-b' }));
+
+        expect(
+          streamingParts()
+            .filter((part) => part.type === 'tool-invocation')
+            .map((part) => part.toolCallId),
+        ).toEqual(['tool-late']);
+        expect(
+          historyParts(0).filter((part) => part.type === 'tool-invocation'),
+        ).toHaveLength(0);
+        expect(activeChatsStore.getSnapshot()[threadId]?.isProcessingStep).toBe(
+          true,
+        );
+      });
+
+      test('a tool.started for a turn with no committed message falls back to the streaming shell', () => {
+        // Same last-resort shape the terminal has: there is nowhere else to
+        // put it, and dropping the row would hide live activity.
+        seedClosedTurnAndOpenShell();
+
+        handleToolStartedEvent(toolStarted({ turnId: 'turn-unknown' }));
+
+        expect(
+          streamingParts()
+            .filter((part) => part.type === 'tool-invocation')
+            .map((part) => part.toolCallId),
+        ).toEqual(['tool-late']);
+      });
+    });
+
+    /**
+     * station#1586 (item 4): the fast path above the historical scan checked
+     * only the call id, so the turn rule the scan enforces did not apply to
+     * the message it checked first. With a provider that reuses call ids
+     * across turns, a terminal naming turn A settled the row sitting in the
+     * streaming (turn B) message — the same misattribution the scan refuses,
+     * reached by the one route that never consulted it.
+     */
+    describe('the streaming message obeys the turn rule too (station#1586 item 4)', () => {
+      /** turn-a holds an open call; the streaming turn-b holds a row under
+       * the SAME reused id (an `unresolved` one, the shape a stop leaves). */
+      function seedReusedIdAcrossTurns() {
+        activeChatsStore.updateChat(threadId, {
+          openTurnId: 'turn-b',
+          messages: [
+            {
+              role: 'assistant',
+              content: 'A is working.',
+              turnId: 'turn-a',
+              contentParts: [
+                {
+                  type: 'tool-invocation',
+                  toolCallId: 'tool-1',
+                  toolName: 'write_file',
+                  args: { path: 'a.txt' },
+                  state: 'running',
+                },
+              ],
+            },
+          ],
+          streamingMessage: {
+            role: 'assistant',
+            content: 'B answers.',
+            contentParts: [
+              {
+                type: 'tool-invocation',
+                toolCallId: 'tool-1',
+                toolName: 'write_file',
+                args: { path: 'b.txt' },
+                state: 'running',
+              },
+            ],
+          },
+        });
+      }
+
+      test("a result for an earlier turn does not settle the streaming turn's row", () => {
+        seedReusedIdAcrossTurns();
+
+        handleToolCompletedEvent(
+          toolCompleted({ turnId: 'turn-a', status: 'success', output: 'A' }),
+        );
+
+        // It went to the turn it names…
+        const aTools = historyParts(0).filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(aTools).toHaveLength(1);
+        expect(aTools[0]).toMatchObject({
+          state: 'completed',
+          result: 'A',
+        });
+        // …and the streaming turn's row is still waiting for its own.
+        const bTools = streamingParts().filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(bTools).toHaveLength(1);
+        expect(bTools[0]).toMatchObject({ state: 'running' });
+        expect(bTools[0]?.result).toBeUndefined();
+      });
+
+      test("a result for the open turn still settles the streaming turn's row", () => {
+        // The discriminating control: the gate is a turn contradiction, not a
+        // blanket refusal to settle the streaming message.
+        seedReusedIdAcrossTurns();
+
+        handleToolCompletedEvent(
+          toolCompleted({ turnId: 'turn-b', status: 'success', output: 'B' }),
+        );
+
+        const bTools = streamingParts().filter(
+          (part) => part.type === 'tool-invocation',
+        );
+        expect(bTools).toHaveLength(1);
+        expect(bTools[0]).toMatchObject({ state: 'completed', result: 'B' });
+        expect(
+          historyParts(0).filter((part) => part.type === 'tool-invocation')[0],
+        ).toMatchObject({ state: 'running' });
+      });
+
+      test('a result carrying no turn id is not a contradiction', () => {
+        // Same rule as the committed scan: a contradiction needs BOTH ids.
+        // A pre-turnId provider's result must not be pushed off the message
+        // that holds its call.
+        seedReusedIdAcrossTurns();
+
+        handleToolCompletedEvent(
+          toolCompleted({ status: 'success', output: 'no turn' }),
+        );
+
+        expect(
+          streamingParts().filter((part) => part.type === 'tool-invocation')[0],
+        ).toMatchObject({ state: 'completed', result: 'no turn' });
+      });
+    });
+
+    test('a result for the streaming turn still lands on the streaming message', () => {
+      seedTwoMessages('tool-1');
+
+      handleToolCompletedEvent(
+        toolCompleted({
+          eventId: 'evt-live',
+          turnId: 'turn-b',
+          toolCallId: 'live-call',
+          status: 'success',
+          output: 'live output',
+        }),
+      );
+
+      expect(
+        streamingParts()
+          .filter((part) => part.type === 'tool-invocation')
+          .map((part) => part.toolCallId),
+      ).toEqual(['live-call']);
+      expect(
+        historyParts(0).filter((part) => part.type === 'tool-invocation'),
+      ).toHaveLength(1);
+    });
   });
 });
 

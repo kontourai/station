@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  isSecretField,
   MAX_SANITIZED_ERROR_STACK_FRAMES,
   redactDeep,
   redactSecrets,
@@ -274,5 +275,92 @@ describe('redactDeep', () => {
     expect(redacted.err.type).toBe('Error');
     expect(typeof redacted.err.stack).toBe('string');
     expect(redacted.password).toBe('[REDACTED]');
+  });
+});
+
+describe('#1545: credential vocabulary reachable from a tool-call preview', () => {
+  // A tool-call approval preview renders a shell command, so the credential
+  // shapes that matter are the ones a command line actually carries — a
+  // `--flag=` key and the whole-name env vars. Neither was contextually
+  // redacted before.
+  test.each([
+    ['--password=hunter2', '--password=[REDACTED]'],
+    ['mysql --password=hunter2', 'mysql --password=[REDACTED]'],
+    ['-password=hunter2', '-password=[REDACTED]'],
+    ['--creds=abc123', '--creds=[REDACTED]'],
+    ['--api-key=abc123', '--api-key=[REDACTED]'],
+    ['PGPASSWORD=hunter2', 'PGPASSWORD=[REDACTED]'],
+    ['MYSQL_PWD=hunter2', 'MYSQL_PWD=[REDACTED]'],
+    ['env MYSQL_PWD=hunter2', 'env MYSQL_PWD=[REDACTED]'],
+  ])('redacts %j', (input, expected) => {
+    expect(redactSecrets(input)).toBe(expected);
+  });
+
+  // An unquoted value used to run to the end of the line, so ONE non-secret pair
+  // earlier on a command line consumed the rest of it and the secret pair was
+  // never examined. Every case below came through verbatim before the value
+  // learned to stop at a following flag.
+  test.each([
+    [
+      'mysql --user=root --password=hunter2 -h db',
+      'mysql --user=root --password=[REDACTED] -h db',
+    ],
+    [
+      'curl --header=x -d a=1 --password=p2',
+      'curl --header=x -d a=1 --password=[REDACTED]',
+    ],
+    [
+      '--config=/etc/app.conf --password=hunter2 --verbose',
+      '--config=/etc/app.conf --password=[REDACTED] --verbose',
+    ],
+    [
+      'llm --max-tokens=100 --auth-token=abc123',
+      'llm --max-tokens=100 --auth-token=[REDACTED]',
+    ],
+  ])(
+    'examines a secret pair that follows a non-secret one: %j',
+    (input, expected) => {
+      expect(redactSecrets(input)).toBe(expected);
+    },
+  );
+
+  test('a quoted value still spans spaces and dashes, so it is not cut at a word that looks like a flag', () => {
+    // `-m 'password=hunter2'` is one argument. The quoted-value alternative must
+    // keep matching across the whole quoted run, and this string is a commit
+    // message rather than a credential assignment, so nothing is redacted.
+    expect(redactSecrets("git commit -m 'password=hunter2' --no-verify")).toBe(
+      "git commit -m 'password=hunter2' --no-verify",
+    );
+  });
+
+  test('leaves a non-secret flag alone, dashes and all', () => {
+    expect(redactSecrets('--host=db --port=5432')).toBe(
+      '--host=db --port=5432',
+    );
+  });
+
+  test('does not touch the attached single-letter password flag, deliberately', () => {
+    // `-p<value>` is mysql's password flag, and also `-p` for a hundred other
+    // things. With no separator to anchor on there is nothing to distinguish a
+    // secret from a port number, so this is left alone on purpose rather than
+    // guessed at. Documented in `redactContextualFields`.
+    expect(redactSecrets('mysql -phunter2')).toBe('mysql -phunter2');
+    expect(redactSecrets('mysql -p hunter2')).toBe('mysql -p hunter2');
+  });
+
+  test.each([
+    ['PGPASSWORD', true],
+    ['MYSQL_PWD', true],
+    ['mysql-pwd', true],
+    ['mysqlPwd', true],
+    ['creds', true],
+    ['AWS_CREDS', true],
+    // The segments these whole names decompose into must stay non-secret on
+    // their own: `pwd` is also "print working directory", `mysql` is a program.
+    ['pwd', false],
+    ['mysql', false],
+    ['host', false],
+  ])('isSecretField(%j) is %s', (key, expected) => {
+    expect(isSecretField(key)).toBe(expected);
   });
 });

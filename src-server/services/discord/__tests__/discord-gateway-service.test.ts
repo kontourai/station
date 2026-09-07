@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DiscordGatewayConfiguration } from '@kontourai/station-contracts/discord';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   type DiscordAuthorizationRequest,
@@ -599,7 +600,7 @@ describe('DiscordGatewayService', () => {
     await settle();
 
     expect(delivered).toEqual([
-      'Station completed the turn. View it in Station: /activity?session=session-a',
+      `Station completed the turn. View it in Station: ${activityDeepLink({ sessionId: 'session-a' })}`,
     ]);
     expect(delivered.join('\n')).not.toContain('private transcript content');
     await service.stop();
@@ -667,7 +668,7 @@ describe('DiscordGatewayService', () => {
     await settle();
     expect(delivered).toHaveLength(2);
     expect(delivered[1]).toContain(
-      '[Truncated — view the full response in Station: /activity?session=session-a]',
+      `[Truncated — view the full response in Station: ${activityDeepLink({ sessionId: 'session-a' })}]`,
     );
     expect(delivered[1].length).toBeLessThanOrEqual(2_000);
     await service.stop();

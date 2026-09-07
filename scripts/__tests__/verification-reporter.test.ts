@@ -43,6 +43,9 @@ function privateKeyMarker(position: 'BEGIN' | 'END', kind: string): string {
   return ['-----', position, ' ', kind, ' PRIVATE', ' KEY', '-----'].join('');
 }
 
+/** The terminal escape byte, spelled rather than embedded in source. */
+const ESC = String.fromCharCode(27);
+
 const roots: string[] = [];
 const requestKey = 'a'.repeat(64);
 const otherRequestKey = 'b'.repeat(64);
@@ -624,6 +627,248 @@ describe('verification reporter', () => {
     expect(summary.firstCausalExcerpt).toBeUndefined();
     expect(JSON.stringify(summary)).not.toContain('suppressions/unused');
     expect(summary.failingStep).toBe('proof:app-builds');
+  });
+
+  // #1459. The capture below is the shape a GREEN hosted full-regression run
+  // actually produces. This repo's `lint:check` tolerates warnings (it exits 0
+  // with three of them today), and Biome writes its diagnostics to STDERR,
+  // which carries no npm step headers and so is never scoped to a failing
+  // step. The warnings-only fallback -- which exists so a FAILED warnings-only
+  // capture still names a cause -- therefore reached them on runs that had no
+  // cause at all: run 33886817593 passed and reported
+  // `literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions` as its
+  // `firstCausalExcerpt`.
+  test('reports no causal excerpt for a run that PASSED with tolerated lint warnings (#1459)', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        '> @kontourai/station-core@0.0.0 full:regression',
+        '> npm run proof:repo-governance && npm run test:full:raw',
+        '',
+        '> @kontourai/station-core@0.0.0 lint:check',
+        '> biome check .',
+        '',
+        '> @kontourai/station-core@0.0.0 test:full:raw',
+        '> node scripts/run-vitest-corpus.mjs',
+        '',
+        'Tests 4213 passed | 12 skipped',
+      ].join('\n'),
+      stderr: [
+        'scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions ━━━━━━━━━━',
+        '  ! The assignment should not be in an expression.',
+        'Checked 5565 files. Found 3 warnings.',
+      ].join('\n'),
+      terminal: { status: 'completed', exitCode: 0, truncated: false },
+      counts: {
+        executed: 4225,
+        passed: 4213,
+        failed: 0,
+        infrastructureErrors: 0,
+      },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 4096,
+    });
+    expect(summary.firstCausalExcerpt).toBeUndefined();
+    expect(summary.causalExcerpts).toBeUndefined();
+    expect(JSON.stringify(summary)).not.toContain('noAssignInExpressions');
+    // The rest of the summary is untouched: this withdraws the cause, not the
+    // measured record around it.
+    expect(summary.finalTally).toContain('Tests 4213 passed');
+  });
+
+  // The withdrawal above is scoped to the WARNING tier and to a pass. An
+  // error-tier diagnostic on a run that claims success is a contradiction a
+  // reader needs to see, not noise to suppress.
+  test('still reports an error-tier diagnostic present on a run that claims success (#1459)', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        '> @kontourai/station-core@0.0.0 typecheck:scripts',
+        '> tsc -p tsconfig.scripts.json --noEmit',
+        '',
+        "scripts/probe.ts(9,3): error TS2322: Type 'string' is not assignable to type 'number'.",
+      ].join('\n'),
+      terminal: { status: 'completed', exitCode: 0, truncated: false },
+      ...measured,
+      maxBytes: 2048,
+    });
+    expect(summary.firstCausalExcerpt).toContain('error TS2322');
+  });
+
+  // station#1471. Once FAIL matching stopped being defeated by colour, the
+  // FAIL tiers became reachable on a GREEN run -- and a coloured FAIL line is
+  // the ORDINARY CI form, so a passing test that prints one would have become
+  // the run's reported cause and rendered a "Causal excerpts" block for it.
+  // Same withdrawal as #1459's, one tier over.
+  test('reports no cause for a PASSING run whose stderr holds a coloured FAIL line (#1471)', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        '> @kontourai/station-core@0.0.0 test:full:raw',
+        '> node scripts/run-vitest-corpus.mjs',
+        '',
+        'Tests 4213 passed | 12 skipped',
+      ].join('\n'),
+      // Byte-for-byte the shape vitest writes on a runner: SGR before FAIL.
+      stderr: `${ESC}[41m${ESC}[1m FAIL ${ESC}[22m${ESC}[49m src-ui/src/__tests__/PrintsABanner.test.tsx${ESC}[2m > ${ESC}[22mprints the banner`,
+      terminal: { status: 'completed', exitCode: 0, truncated: false },
+      counts: {
+        executed: 4225,
+        passed: 4213,
+        failed: 0,
+        infrastructureErrors: 0,
+      },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    expect(summary.firstCausalExcerpt).toBeUndefined();
+    expect(summary.causalExcerpts).toBeUndefined();
+    expect(JSON.stringify(summary)).not.toContain('PrintsABanner');
+    // The same capture on a FAILED run still names it: the withdrawal is
+    // scoped to the pass, not to the shape.
+    const failed = summarizeVerificationOutput({
+      stdout: [
+        '> @kontourai/station-core@0.0.0 test:full:raw',
+        '> node scripts/run-vitest-corpus.mjs',
+      ].join('\n'),
+      stderr: `${ESC}[41m${ESC}[1m FAIL ${ESC}[22m${ESC}[49m src-ui/src/__tests__/PrintsABanner.test.tsx${ESC}[2m > ${ESC}[22mprints the banner`,
+      terminal: { status: 'failed', exitCode: 1, truncated: false },
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    expect(failed.firstCausalExcerpt).toContain('PrintsABanner.test.tsx');
+  });
+
+  // station#1471 review, item 4. Stripping escapes once, where the lines are
+  // built, is what lets EVERY `^`-anchored matcher see plain text -- not just
+  // the FAIL probe. Biome colours its severity markers, and
+  // `diagnosticSeverity` reads the `×`/`!` on the line AFTER the header: with
+  // the escapes still in place that check never matches, every diagnostic
+  // grades as `unknown`, and first-match hands the run the WARNING sitting
+  // above the real error.
+  // Deliberately on STDOUT, with the warning ABOVE the error. Stdout is
+  // scanned forward, so reaching the error requires grading the warning as a
+  // warning and walking past it -- which is only possible if the `!` marker on
+  // the line below its header is legible. On stderr this proves nothing:
+  // `preferLast` scans from the end and would reach the error either way.
+  test('ranks a coloured biome error above the coloured warning before it (#1471)', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        '> @kontourai/station-core@0.0.0 lint:check',
+        '> biome check .',
+        '',
+        `${ESC}[33msrc-ui/src/Warned.tsx:1:1 lint/suspicious/noExplicitAny ━━━━━━━━━━${ESC}[39m`,
+        `  ${ESC}[33m!${ESC}[39m The warning above the error.`,
+        `${ESC}[31msrc-ui/src/Errored.tsx:9:3 lint/style/noVar ━━━━━━━━━━${ESC}[39m`,
+        `  ${ESC}[31m×${ESC}[39m The error a reader actually needs.`,
+      ].join('\n'),
+      terminal: { status: 'failed', exitCode: 1, truncated: false },
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    expect(summary.firstCausalExcerpt).toContain('Errored.tsx');
+    expect(summary.firstCausalExcerpt).not.toContain('Warned.tsx');
+  });
+
+  // station#1471 review. `withoutAnsi` runs BEFORE the redaction boundary, and
+  // the ordering is the whole point: a token split by an escape sequence is
+  // not a token the redactor can recognise, so stripping afterwards would
+  // reassemble a real secret into an excerpt that is published in the run
+  // summary and the annotations rail.
+  test('redacts a secret that an escape sequence had split in two (#1471)', () => {
+    const split = `ghp_${'A'.repeat(20)}${ESC}[0m${'B'.repeat(20)}`;
+    const summary = summarizeVerificationOutput({
+      stdout: '> @kontourai/station-core@0.0.0 test:full:raw',
+      stderr: `Error: request rejected for ${split}`,
+      terminal: { status: 'failed', exitCode: 1, truncated: false },
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    // The line is still reported -- this withholds the secret, not the cause.
+    expect(summary.firstCausalExcerpt).toContain('request rejected for');
+    expect(summary.firstCausalExcerpt).toContain('[REDACTED]');
+    expect(JSON.stringify(summary)).not.toContain('ghp_');
+    expect(JSON.stringify(summary)).not.toContain('A'.repeat(20));
+  });
+
+  // The failed-run fallback is exactly what #1459 must not have disturbed:
+  // the SAME capture -- byte-identical to the passing case above -- still
+  // names its warning when the run failed. Only the terminal differs.
+  test('keeps the warnings-only fallback for a run that FAILED (#1459 changes nothing here)', () => {
+    const failed = summarizeVerificationOutput({
+      stdout: [
+        '> @kontourai/station-core@0.0.0 lint:check',
+        '> biome check .',
+      ].join('\n'),
+      stderr: [
+        'scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions ━━━━━━━━━━',
+        '  ! The assignment should not be in an expression.',
+        'Checked 5565 files. Found 3 warnings.',
+      ].join('\n'),
+      terminal: { status: 'failed', exitCode: 1, truncated: false },
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    expect(failed.firstCausalExcerpt).toContain('noAssignInExpressions');
+    expect(failed.causalExcerpts).toEqual([failed.firstCausalExcerpt]);
+  });
+
+  // #1459 review: the withdrawal above is keyed on a CONSERVATIVE reading of
+  // the run, not on `terminal.status` alone. `classifyTerminal` also requires
+  // clean counts, clean cleanup and no surviving owned child before it calls a
+  // run passed, so a capture that says `completed` with a failed cleanup is a
+  // run that FAILED — and withdrawing its only reported cause would leave the
+  // reader with a red verdict and nothing at all naming why.
+  test('keeps the warnings-only fallback when cleanup failed despite a completed status (#1459)', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        '> @kontourai/station-core@0.0.0 lint:check',
+        '> biome check .',
+      ].join('\n'),
+      stderr: [
+        'scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions ━━━━━━━━━━',
+        '  ! The assignment should not be in an expression.',
+        'Checked 5565 files. Found 3 warnings.',
+      ].join('\n'),
+      terminal: { status: 'completed', exitCode: 0, truncated: false },
+      counts: {
+        executed: 4225,
+        passed: 4213,
+        failed: 0,
+        infrastructureErrors: 0,
+      },
+      cleanup: { status: 'failed', survivingOwnedChildren: 2 },
+      maxBytes: 2048,
+    });
+    expect(summary.firstCausalExcerpt).toContain('noAssignInExpressions');
+  });
+
+  // The counts half of the same predicate: a failed test with a zero exit code
+  // is a contradiction, and it is the failure — not the zero — that decides
+  // whether this run had a cause to report.
+  test('keeps the warnings-only fallback when the counts report a failure despite exit 0 (#1459)', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        '> @kontourai/station-core@0.0.0 lint:check',
+        '> biome check .',
+      ].join('\n'),
+      stderr: [
+        'scripts/literal-swap-gate.mjs:58:11 lint/suspicious/noAssignInExpressions ━━━━━━━━━━',
+        '  ! The assignment should not be in an expression.',
+        'Checked 5565 files. Found 3 warnings.',
+      ].join('\n'),
+      terminal: { status: 'completed', exitCode: 0, truncated: false },
+      counts: {
+        executed: 4225,
+        passed: 4212,
+        failed: 1,
+        infrastructureErrors: 0,
+      },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+      maxBytes: 2048,
+    });
+    expect(summary.firstCausalExcerpt).toContain('noAssignInExpressions');
   });
 
   // station#4249: `causalExcerpts` is the plural companion that lets a run

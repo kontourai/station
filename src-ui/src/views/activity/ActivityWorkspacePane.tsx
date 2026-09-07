@@ -8,7 +8,7 @@ import { useActivityWorkspacePaneBinding } from './ActivityWorkspacePaneBinding'
  * The built-in Activity Workspace Pane renderer — the ONE mounter of the
  * sessions surface (`SessionsView`), pinned by
  * `__tests__/activity-surface-single-mounter.test.ts`. Every placement
- * (the `/activity` route, the ambient dock, the Developer archive embed)
+ * (the Activity region shell, the Developer archive embed)
  * reaches the surface through this renderer and its canonical-occurrence
  * check, so the pre-pane route/surface split cannot silently re-form.
  *
@@ -39,6 +39,8 @@ export function ActivityWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
       apiBase={binding.apiBase}
       sessionId={binding.sessionId}
       focusHint={binding.focusHint}
+      intentToken={binding.intentToken}
+      onFocusConsumed={binding.onFocusConsumed}
     />
   );
 }

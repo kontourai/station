@@ -37,6 +37,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load } from 'js-yaml';
+import { collectRequiredBrowserSmokeFindings } from './ci-workflow-governance.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..');
@@ -752,9 +753,38 @@ function reusableWorkflowPolicyFindings(file, jobId, job) {
   return findings;
 }
 
+/**
+ * station#1648: `playwright install --with-deps` apt-installs system
+ * libraries as root. The fleet's runner account has no passwordless sudo, so
+ * on a persistent self-hosted runner the flag cannot succeed — it failed
+ * three identical times in half a second each in ci-extended, and the job's
+ * real work never ran. GitHub-hosted images do have passwordless sudo, which
+ * is why this is scoped to persistent runners rather than banned outright.
+ *
+ * Asserted over the PARSED `run` string, so a block or folded scalar
+ * (`run: >-`) cannot hide the flag from it the way a whole-file text scan
+ * can. Whole-line shell comments are dropped first: a comment explaining why
+ * the flag is absent is inert and must not red a correct tree.
+ */
+export function refusesWithDepsOnPersistentRunner(run) {
+  if (typeof run !== 'string') return true;
+  const executable = run
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n');
+  return !/--with-deps/.test(executable);
+}
+
 function persistentStepPolicyFindings(file, jobId, steps) {
   const findings = [];
   for (const step of steps ?? []) {
+    if (!refusesWithDepsOnPersistentRunner(step?.run))
+      findings.push({
+        file,
+        jobId,
+        message:
+          'persistent self-hosted steps must not pass --with-deps to playwright install: the fleet runner account has no passwordless sudo, so it can only fail. Install the system libraries on the runner image, and use scripts/install-playwright-browsers.mjs here',
+      });
     if (
       typeof step?.uses === 'string' &&
       step.uses.startsWith('actions/checkout@') &&
@@ -1211,11 +1241,27 @@ function securityAnalysisTopologyFindings(file, jobs) {
   return findings;
 }
 
+// This bootstrap installs only the package manager pinned by package.json.
+// Keep install explicitly disabled: the action otherwise installs candidate dependencies
+// before the reviewed lifecycle entrypoint gets to apply its policy.
+function isPinnedPnpmSetup(step) {
+  return (
+    step?.uses === 'pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c' &&
+    step?.name === 'Setup pinned pnpm' &&
+    Object.keys(step).every(
+      (key) => key === 'name' || key === 'uses' || key === 'with',
+    ) &&
+    Object.keys(step.with ?? {}).join(',') === 'install' &&
+    step.with.install === false
+  );
+}
+
 function unapprovedActionFindings(file, jobId, job, allowedPrefixes) {
   return (job?.steps ?? [])
     .filter(
       (step) =>
         typeof step?.uses === 'string' &&
+        !isPinnedPnpmSetup(step) &&
         !allowedPrefixes.some((prefix) => step.uses.startsWith(prefix)),
     )
     .map(() => ({
@@ -1462,7 +1508,9 @@ function primaryCiRouterFindings(file, document) {
   }
   if (file !== '.github/workflows/ci.yml') return [];
 
-  const findings = [];
+  const findings = collectRequiredBrowserSmokeFindings(document).map(
+    (message) => ({ file, jobId: 'fast-checks', message }),
+  );
   const jobs = document?.jobs ?? {};
   if (!hasOnlyReadContentsPermission(document.permissions))
     findings.push({
@@ -1583,13 +1631,24 @@ function primaryCiRouterFindings(file, document) {
           run: 'echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"\nfor attempt in 1 2 3; do\n  echo "Playwright install attempt $attempt"\n  if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then\n    exit 0\n  fi\n  echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"\n  sleep 15\ndone\necho "::error::Playwright install failed after 3 attempts"\nexit 1\n',
         },
         { name: 'Run fast CI lane', run: 'npm run ci:fast' },
+        // #1540: these exact commands run on the same isolated, read-only
+        // candidate runner as ci:fast. No new credentials or host authority.
+        {
+          name: 'Verify critical browser journeys before merge',
+          run: 'npm run test:e2e:pr-smoke',
+        },
+        {
+          name: 'Report contract-test changes for review',
+          run: 'node scripts/test-contract-review.mjs',
+        },
+
         {
           name: 'Run interactive workspace performance smoke',
           run: 'npm run performance:workspace:smoke',
         },
         {
           name: 'Enforce candidate UI bundle budget',
-          run: 'npm run build:connect && npm run build:ui',
+          run: 'npm run build:ui',
         },
       ]),
     );
@@ -1773,6 +1832,7 @@ function baseControlledPrWorkflowFindings(file, document) {
         });
       if (
         typeof step?.uses === 'string' &&
+        !isPinnedPnpmSetup(step) &&
         ![
           'actions/checkout@',
           'actions/setup-node@',

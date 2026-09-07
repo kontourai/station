@@ -216,17 +216,11 @@ describe('TurnProvenanceCard', () => {
   });
 
   // the sharp one.
-  it('shows missing usage, routing receipt, sources, and trust report as named gaps, never 0 (AC2)', () => {
+  it('shows missing usage and tools as named gaps, never 0 (AC2)', () => {
     render(<TurnProvenanceCard provenance={envelope()} />);
     expand();
 
-    const gapLabels = [
-      'Usage',
-      'Routing receipt',
-      'Sources',
-      'Trust report',
-      'Tools',
-    ];
+    const gapLabels = ['Usage', 'Tools'];
     for (const label of gapLabels) {
       expect(valueFor(label)).toMatch(
         /^Not (reported by this engine|captured by Station yet)$/,
@@ -239,6 +233,27 @@ describe('TurnProvenanceCard', () => {
     expect(
       screen.getByText('Usage').closest('dl')?.textContent ?? '',
     ).not.toContain('tokens');
+  });
+
+  // #1536 B3: the no-omission rule still binds — every Station-backlog slot
+  // is NAMED — but as one sentence rather than a row each repeating one fact
+  // under a heading that had already said it.
+  it('names every Station-backlog slot in one sentence, not a row each', () => {
+    const { container } = render(
+      <TurnProvenanceCard provenance={envelope()} />,
+    );
+    expand();
+
+    const sentence = container.querySelector('.turn-provenance__not-captured');
+    expect(sentence?.textContent).toBe(
+      'Routing receipt, sources and trust report are not captured by Station yet.',
+    );
+    // Said once, not four times.
+    expect(
+      (container.textContent ?? '').split('not captured by Station yet')
+        .length - 1,
+    ).toBe(1);
+    expect(screen.queryByText('Not yet captured by Station')).toBeNull();
   });
 
   it('never renders an unreported tool count as "0 tools" (AC2)', () => {
@@ -396,6 +411,50 @@ describe('TurnProvenanceCard', () => {
     expand();
 
     expect(valueFor('Tools')).toBe('read_file, bash (1 failed) — and 3 more');
+  });
+
+  // station#1558 (fix round, L11): the per-tool line annotated failures and
+  // cancellations and said nothing about an unresolved call, so a tool whose
+  // only anomaly was "no outcome was ever observed" read as clean. It must
+  // also never join the "failed" count — that word names something Station
+  // saw happen.
+  it('annotates unresolved calls on the tool line, separately from failures', () => {
+    render(
+      <TurnProvenanceCard
+        provenance={envelope({
+          tools: {
+            state: 'observed',
+            value: {
+              uses: [
+                {
+                  name: 'read_file',
+                  started: 1,
+                  succeeded: 0,
+                  failed: 0,
+                  cancelled: 0,
+                  unresolved: 1,
+                },
+                {
+                  name: 'bash',
+                  started: 2,
+                  succeeded: 0,
+                  failed: 1,
+                  cancelled: 0,
+                  unresolved: 1,
+                },
+              ],
+              omittedNames: 0,
+            },
+            observedFrom: [{ eventId: 'e6', method: 'tool.completed' }],
+          },
+        })}
+      />,
+    );
+    expand();
+
+    expect(valueFor('Tools')).toBe(
+      'read_file (1 unresolved), bash (1 failed, 1 unresolved)',
+    );
   });
 
   // drill-down into the existing trust surface, only when a reference exists.
@@ -601,6 +660,40 @@ describe('TurnProvenanceCard', () => {
     expect(badge?.textContent).toBe('1 tool call unresolved');
   });
 
+  // station#1558: the same finding, reached from the OTHER direction — the
+  // call now settles with an explicit `unresolved` terminal, so `started`
+  // and the observed outcomes balance and the derived gap is zero. Counting
+  // only the derived gap would silently drop the finding the moment the
+  // adapter started reporting it.
+  it('badges a turn whose tool call settled as unresolved, without double counting it', () => {
+    const { container } = render(
+      <TurnProvenanceCard
+        provenance={envelope({
+          tools: {
+            state: 'observed',
+            value: {
+              uses: [
+                {
+                  name: 'bash',
+                  started: 1,
+                  succeeded: 0,
+                  failed: 0,
+                  cancelled: 0,
+                  unresolved: 1,
+                },
+              ],
+              omittedNames: 0,
+            },
+            observedFrom: [{ eventId: 'e9', method: 'tool.completed' }],
+          },
+        })}
+      />,
+    );
+    const badge = container.querySelector('.turn-provenance__badge');
+    expect(badge?.textContent).toBe('1 tool call unresolved');
+    expect(badge?.textContent).not.toMatch(/tool issue/);
+  });
+
   // --- archive#1802: the four row kinds must be checkably distinct ---
 
   it('renders an engine-didn’t-report row and a Station-hasn’t-built-it row with different classes and in different sections', () => {
@@ -611,24 +704,17 @@ describe('TurnProvenanceCard', () => {
     // in the checkable facts list.
     const toolsValue = screen.getByText('Tools').nextElementSibling;
     expect(toolsValue?.className).toContain('turn-provenance__value--absence');
-    expect(toolsValue?.className).not.toContain(
-      'turn-provenance__value--not-captured',
-    );
-    expect(toolsValue?.closest('.turn-provenance__facts--backlog')).toBeNull();
+    // Review L1: `--value--not-captured` no longer exists, so asserting its
+    // absence proved nothing. What discriminates is that this row is IN the
+    // checkable facts and the backlog sentence is not a row at all.
+    expect(toolsValue?.closest('.turn-provenance__facts')).toBeTruthy();
 
-    // "Routing receipt" is Station's own gap and is demoted to its own
-    // section, under its own heading, with a different class.
-    expect(screen.getByText('Not yet captured by Station')).toBeTruthy();
-    const receiptValue = screen.getByText('Routing receipt').nextElementSibling;
-    expect(receiptValue?.className).toContain(
-      'turn-provenance__value--not-captured',
-    );
-    expect(receiptValue?.className).not.toContain(
-      'turn-provenance__value--absence',
-    );
-    expect(
-      receiptValue?.closest('.turn-provenance__facts--backlog'),
-    ).toBeTruthy();
+    // "Routing receipt" is Station's own gap and is demoted out of the
+    // checkable facts entirely, into the collapsed backlog sentence (#1536 B3).
+    expect(screen.queryByText('Routing receipt')).toBeNull();
+    const backlog = screen.getByText(/Routing receipt, sources and trust/);
+    expect(backlog.className).toContain('turn-provenance__not-captured');
+    expect(backlog.closest('.turn-provenance__facts')).toBeNull();
   });
 
   it('renders an earned claim with its own class, distinct from either gap kind', () => {
@@ -649,9 +735,6 @@ describe('TurnProvenanceCard', () => {
     expect(usageValue?.className).toContain('turn-provenance__value--earned');
     expect(usageValue?.className).not.toContain(
       'turn-provenance__value--absence',
-    );
-    expect(usageValue?.className).not.toContain(
-      'turn-provenance__value--not-captured',
     );
   });
 

@@ -29,6 +29,55 @@ export function intervalToMs(value: number, unit: ExactIntervalUnit): number {
   return value * INTERVAL_UNIT_MS[unit];
 }
 
+/**
+ * The reader's own IANA zone, or `undefined` where the runtime will not name
+ * one. `@kontourai/ephemeris` evaluates a cron in `schedule.timezone` and is
+ * DST-aware there; ABSENT means UTC, so omitting it is a real (if blunt)
+ * fallback rather than a broken one.
+ */
+export function browserTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A cron in LOCAL wall-clock terms, paired with the zone that makes it mean
+ * that.
+ *
+ * #1536 L1: these presets used to shift only the HOUR into UTC
+ * (`0 ${utcHourForLocalHour(8)} * * 1-5`), which is wrong for any zone where
+ * the shift crosses midnight — at UTC+10, "weekdays 8:00 local" fired Tuesday
+ * through SATURDAY, because the day-of-week field was never shifted with it.
+ * There is no correct fixed-UTC spelling of a local weekday rule; the zone has
+ * to travel with the expression. It also survives DST, which the shifted form
+ * could not: `utcHourForLocalHour` read the offset in force the day the form
+ * was opened.
+ */
+export function localCronSchedule(
+  expr: string,
+  timezone = browserTimeZone(),
+): SchedulerSchedule {
+  return { kind: 'cron', expr, ...(timezone ? { timezone } : {}) };
+}
+
+/** Weekdays 8:00 AM local, in local terms. */
+export const WEEKDAY_MORNING_CRON = '0 8 * * 1-5';
+
+/**
+ * The "Morning Briefing" starter's schedule, and the Add Job form's default.
+ * ONE definition on purpose: the form used to default to `* * * * *`, so a
+ * reader who accepted the default without noticing scheduled a job that ran
+ * every single minute, forever.
+ */
+export function weekdayMorningSchedule(
+  timezone = browserTimeZone(),
+): SchedulerSchedule {
+  return localCronSchedule(WEEKDAY_MORNING_CRON, timezone);
+}
+
 export function scheduleForJob(job?: SchedulerJob): SchedulerSchedule {
   if (job?.schedule) return job.schedule;
   return { kind: 'cron', expr: job?.cron || '* * * * *' };

@@ -1,5 +1,6 @@
 import type { TaskRecord } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { Empty, ErrorState, SkeletonList } from '../state';
@@ -150,116 +151,131 @@ export function TaskPicker<TTarget>({
           {successMessage(attachedTask)}
         </span>
       )}
-      {openTarget !== null && (
-        <Dialog
-          eyebrow={eyebrow}
-          title={dialogTitle}
-          subtitle={
-            projectId
-              ? 'Choose a Task in this project.'
-              : 'Choose a Task you can access.'
-          }
-          closeLabel={`Close ${dialogTitle}`}
-          onClose={close}
-          returnFocusTarget={returnFocusTarget}
-          initialFocusRef={searchRef}
-          initialFocusPolicy="desktop"
-          panelClassName="task-picker__dialog"
-          footer={
-            <>
-              <Button size="sm" onClick={close} disabled={isPending}>
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => void submit()}
-                disabled={!selectedTask}
-                pending={isPending}
-                pendingLabel="Adding…"
-              >
-                Add to Task
-              </Button>
-            </>
-          }
-        >
-          <div className="task-picker__dialog-body">
-            <label className="task-picker__search-label">
-              Find a Task
-              <input
-                ref={searchRef}
-                type="search"
-                className="task-picker__search"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                  setSelectedTaskId(null);
-                }}
-                placeholder="Search Tasks"
-                aria-label="Find a Task"
-              />
-            </label>
-            {adapter.error ? (
-              <ErrorState
-                variant="compact"
-                title="Unable to load Tasks"
-                description="Task choices are unavailable."
-                action={
-                  adapter.refetch ? (
-                    <Button size="sm" onClick={() => void adapter.refetch?.()}>
-                      Retry
-                    </Button>
-                  ) : undefined
-                }
-              />
-            ) : adapter.isLoading ? (
-              <SkeletonList count={4} label="Loading Tasks" />
-            ) : visibleTasks.length === 0 ? (
-              <Empty
-                variant="compact"
-                label={
-                  tasks.length === 0
-                    ? 'Tasks are not available'
-                    : 'Task search has no matches'
-                }
-                description={
-                  tasks.length === 0
-                    ? 'Create a Task before adding this reference.'
-                    : 'Try a different Task name or identifier.'
-                }
-              />
-            ) : (
-              <ul className="task-picker__task-list" aria-label="Tasks">
-                {visibleTasks.map((task) => {
-                  const selected = task.id === selectedTaskId;
-                  return (
-                    <li key={task.id}>
-                      <button
-                        type="button"
-                        className={`task-picker__task${selected ? ' task-picker__task--selected' : ''}`}
-                        aria-pressed={selected}
-                        onClick={() => setSelectedTaskId(task.id)}
+      {openTarget !== null &&
+        // Portaled to the document, not rendered where the trigger sits.
+        // `.message-row` animates its entry with a transform and keeps
+        // `will-change: transform` on the newest row, and either one makes the
+        // row a containing block AND a stacking context for `position: fixed`
+        // descendants. Inside a message bubble this dialog was therefore
+        // positioned against the ROW rather than the viewport (measured at
+        // y = -129px in `TaskPicker.messageStacking.test.tsx`) and its
+        // `--layer-dialog` z-index was scoped to that row, so the next message
+        // card painted over it. No layer token can escape an ancestor
+        // stacking context; leaving the DOM subtree is what does.
+        createPortal(
+          <Dialog
+            eyebrow={eyebrow}
+            title={dialogTitle}
+            subtitle={
+              projectId
+                ? 'Choose a Task in this project.'
+                : 'Choose a Task you can access.'
+            }
+            closeLabel={`Close ${dialogTitle}`}
+            onClose={close}
+            returnFocusTarget={returnFocusTarget}
+            initialFocusRef={searchRef}
+            initialFocusPolicy="desktop"
+            panelClassName="task-picker__dialog"
+            footer={
+              <>
+                <Button size="sm" onClick={close} disabled={isPending}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => void submit()}
+                  disabled={!selectedTask}
+                  pending={isPending}
+                  pendingLabel="Adding…"
+                >
+                  Add to Task
+                </Button>
+              </>
+            }
+          >
+            <div className="task-picker__dialog-body">
+              <label className="task-picker__search-label">
+                Find a Task
+                <input
+                  ref={searchRef}
+                  type="search"
+                  className="task-picker__search"
+                  value={search}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setSelectedTaskId(null);
+                  }}
+                  placeholder="Search Tasks"
+                  aria-label="Find a Task"
+                />
+              </label>
+              {adapter.error ? (
+                <ErrorState
+                  variant="compact"
+                  title="Unable to load Tasks"
+                  description="Task choices are unavailable."
+                  action={
+                    adapter.refetch ? (
+                      <Button
+                        size="sm"
+                        onClick={() => void adapter.refetch?.()}
                       >
-                        <span className="task-picker__task-title">
-                          {task.title}
-                        </span>
-                        <span className="task-picker__task-meta">
-                          {taskDescription(task)}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            {submissionFailed && (
-              <p className="task-picker__submission-error" role="alert">
-                Unable to add this to the Task. Try again.
-              </p>
-            )}
-          </div>
-        </Dialog>
-      )}
+                        Retry
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ) : adapter.isLoading ? (
+                <SkeletonList count={4} label="Loading Tasks" />
+              ) : visibleTasks.length === 0 ? (
+                <Empty
+                  variant="compact"
+                  label={
+                    tasks.length === 0
+                      ? 'Tasks are not available'
+                      : 'Task search has no matches'
+                  }
+                  description={
+                    tasks.length === 0
+                      ? 'Create a Task before adding this reference.'
+                      : 'Try a different Task name or identifier.'
+                  }
+                />
+              ) : (
+                <ul className="task-picker__task-list" aria-label="Tasks">
+                  {visibleTasks.map((task) => {
+                    const selected = task.id === selectedTaskId;
+                    return (
+                      <li key={task.id}>
+                        <button
+                          type="button"
+                          className={`task-picker__task${selected ? ' task-picker__task--selected' : ''}`}
+                          aria-pressed={selected}
+                          onClick={() => setSelectedTaskId(task.id)}
+                        >
+                          <span className="task-picker__task-title">
+                            {task.title}
+                          </span>
+                          <span className="task-picker__task-meta">
+                            {taskDescription(task)}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {submissionFailed && (
+                <p className="task-picker__submission-error" role="alert">
+                  Unable to add this to the Task. Try again.
+                </p>
+              )}
+            </div>
+          </Dialog>,
+          document.body,
+        )}
     </span>
   );
 }

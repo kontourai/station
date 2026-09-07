@@ -109,7 +109,7 @@ export interface ConversationOpenSubject {
  *
  * Split out rather than copied (archive#3202). `resolveWorkItemOpenAction`
  * above now delegates to it, so "can Station reopen this, or must it hand you
- * to /activity?" is decided in exactly one place — the whole point of
+ * to Activity?" is decided in exactly one place — the whole point of
  * archive#1297, which existed because three surfaces had each branched their
  * own way.
  */
@@ -203,7 +203,7 @@ export interface WorkItemOpenHandlers {
    * agent does not exist" ONLY once the catalog has answered — while it is
    * pending or failed, `useAgents` supplies the shared empty array and
    * EVERY rehydrate resolves `false`, which used to bounce every inbox click
-   * to `/activity`. Absent means "unknown", which is treated as loaded so
+   * to Activity. Absent means "unknown", which is treated as loaded so
    * existing callers keep the archive#801 fallback.
    */
   agentsLoaded?: boolean;
@@ -218,7 +218,7 @@ export interface WorkItemOpenHandlers {
 export type WorkItemOpenOutcome =
   /** Focused, opened, or navigated — the row did what a click promises. */
   | 'opened'
-  /** The row's agent no longer exists; landed on `/activity` (archive#801). */
+  /** The row's agent no longer exists; Activity was revealed (archive#801). */
   | 'fallback'
   /** The agent catalog has not answered yet — nothing was navigated. */
   | 'catalog-pending'
@@ -229,7 +229,7 @@ export type WorkItemOpenOutcome =
  * Execute the resolved action for a surface with direct callback access
  * (`ChatDockInboxPanel`, `MobileTaskSwitcher` — both rendered inside
  * `ChatDock`, which owns `openConversation`). Awaits the rehydrate attempt
- * so a stale/deleted agent still lands the user on `/activity` instead of a
+ * so a stale/deleted agent still reveals Activity instead of a
  * silent no-op (archive#801's rule, extended to this seam).
  */
 export async function openWorkItem(
@@ -261,7 +261,7 @@ export async function openWorkItem(
       if (opened === false) {
         // archive#3687 seam 1: `false` from an unanswered catalog is not
         // "this agent was deleted" — it is "nothing is known yet". Bouncing
-        // the user to /activity on that reading turned every inbox click
+        // the user to Activity on that reading turned every inbox click
         // into a teleport while a query was merely pending.
         if (handlers.agentsLoaded === false) {
           return 'catalog-pending';

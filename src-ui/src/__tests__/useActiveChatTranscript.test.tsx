@@ -73,6 +73,59 @@ describe('useActiveChatTranscript', () => {
     vi.useRealTimers();
   });
 
+  /**
+   * #1582 E3/B6. The reader's `settled` is what lets a consumer tell "this
+   * conversation is empty" from "nobody has looked yet"; `loading` cannot,
+   * because it is false on both sides of the request. The chat dock reads it
+   * to decide whether "Start a conversation" is a claim it is entitled to
+   * make, so the PRODUCER needs its own coverage — a consumer test given
+   * `settled: false` proves the fold, never that anything ever sets it.
+   */
+  test('does not settle while the read is in flight', async () => {
+    // Never resolves: the reader has asked and has no answer, which is the
+    // exact state the empty "Start a conversation" placeholder used to render
+    // over.
+    fetchWindow.mockImplementation(() => new Promise(() => {}));
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(true));
+    expect(result.current.settled).toBe(false);
+    expect(result.current.messages).toEqual([]);
+  });
+
+  test('settles on an empty page — "no turns" is then a reading', async () => {
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [],
+    });
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    // Still empty — but now that is a reading, not an absence of one.
+    expect(result.current.messages).toEqual([]);
+  });
+
+  test('a failed read is still a reading', async () => {
+    fetchWindow.mockRejectedValue(new Error('transport down'));
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    // The consumer must stop waiting: an error is an answer, and leaving
+    // `settled` false here would hold the loading state forever.
+    expect(result.current.settled).toBe(true);
+  });
+
   test('reads bounded REST pages only, keeps stable rows, and filters the global live leaf', async () => {
     fetchWindow
       .mockResolvedValueOnce({

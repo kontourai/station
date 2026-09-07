@@ -44,6 +44,7 @@ export const PREPUSH_BUILD_DIR = 'dist-ui-prepush';
  * bytes have historically arrived unattributed.
  */
 export const UI_BUILD_INPUT_PREFIXES = Object.freeze([
+  'patches/',
   'src-ui/',
   'src-shared/',
   'packages/sdk/src/',
@@ -55,6 +56,8 @@ export const UI_BUILD_INPUT_FILES = Object.freeze([
   'vite.config.ts',
   'package.json',
   'package-lock.json',
+  'pnpm-lock.yaml',
+  'pnpm-workspace.yaml',
   'scripts/ui-bundle-budget.mjs',
   'scripts/ui-bundle-budget.json',
 ]);

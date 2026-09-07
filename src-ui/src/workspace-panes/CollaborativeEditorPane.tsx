@@ -1,3 +1,4 @@
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import {
   type CollaborativeActorKind,
   type CollaborativeEditorPaneController,
@@ -27,8 +28,7 @@ export interface CollaborativeReferenceNavigation {
 /** Canonical Station routes remain injected so native hosts can replace them. */
 export const CANONICAL_COLLABORATIVE_REFERENCE_NAVIGATION: CollaborativeReferenceNavigation =
   Object.freeze({
-    sessionHref: (sessionId: string) =>
-      `/activity?session=${encodeURIComponent(sessionId)}`,
+    sessionHref: (sessionId: string) => activityDeepLink({ sessionId }),
     runHref: (projectId: string, runId: string) =>
       `/projects/${encodeURIComponent(projectId)}/flow-console?run=${encodeURIComponent(runId)}`,
   });

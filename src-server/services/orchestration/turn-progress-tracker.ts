@@ -106,10 +106,16 @@ export class TurnProgressTracker {
   }
 
   /** Resolve and pin a thread's stall window from its agent's config. */
-  async setWindow(threadId: string, agentSlug: unknown): Promise<void> {
+  async setWindow(
+    threadId: string,
+    agentSlug: unknown,
+    captured?: { execution: AgentExecutionConfig | undefined },
+  ): Promise<void> {
     this.windowByThread.set(
       threadId,
-      await this.resolveWindowMsForAgent(agentSlug),
+      captured
+        ? resolveTurnStallWindowMs(captured.execution)
+        : await this.resolveWindowMsForAgent(agentSlug),
     );
   }
 

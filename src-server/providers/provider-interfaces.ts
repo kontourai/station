@@ -83,7 +83,16 @@ export interface IPluginRegistryProvider {
   install(
     id: string,
     options?: { expectedInstalledPluginName?: string },
-  ): Promise<InstallResult>;
+  ): Promise<
+    InstallResult & {
+      /**
+       * Compensates only the durable registry ownership written by this
+       * successful install. The dependency installer invokes it when a later
+       * validation or activation step refuses the installed tree.
+       */
+      rollback?: () => Promise<void>;
+    }
+  >;
   uninstall(id: string): Promise<InstallResult>;
   preview?(id: string): Promise<PluginPreview>;
   update?(id: string): Promise<InstallResult>;

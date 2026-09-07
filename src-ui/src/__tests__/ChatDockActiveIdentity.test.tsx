@@ -2,51 +2,18 @@
  * @vitest-environment jsdom
  */
 
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ChatDockActiveIdentity } from '../components/chat-dock/ChatDockActiveIdentity';
 import type { AgentData } from '../contexts/AgentsContext';
 import type { ChatSession } from '../types';
 import { identiconHue } from '../utils/identicon';
-import {
-  clipboardAbsent,
-  clipboardRefuses,
-  clipboardWrites,
-} from './clipboard-stubs';
 
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useShortcutDisplay: () => '⌘W',
 }));
 
-const { triggerHapticMock } = vi.hoisted(() => ({
-  triggerHapticMock: vi.fn(),
-}));
-vi.mock('../platform/native/haptics', () => ({
-  triggerHaptic: triggerHapticMock,
-}));
-
-afterEach(() => {
-  cleanup();
-  triggerHapticMock.mockReset();
-  clipboardAbsent();
-});
-
-const routedSession = {
-  id: 'local-tab-key',
-  conversationId: 'station-thread-from-route',
-  title: 'Routed session',
-  agentSlug: 'codex',
-} as ChatSession;
-
-function copyButton() {
-  return screen.getByRole('button', { name: 'Copy thread ID' });
-}
+afterEach(cleanup);
 
 /**
  * archive#3309: the header reads agent-first. These pin WHAT the row names and
@@ -73,7 +40,14 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
       ?.textContent;
   }
 
-  test('leads with the agent, then engine and model, with the title last', () => {
+  /**
+   * #1536 F reordered the tail: the conversation TITLE is the row's flexible
+   * element and the engine/model token follows it as ONE muted string. The
+   * agent still leads (that is #3309's finding, and it is short); what changed
+   * is that the label distinguishing this chat from the last one is no longer
+   * the first thing to vanish.
+   */
+  test('leads with the agent, then the title, with engine and model as one token behind it', () => {
     render(
       <ChatDockActiveIdentity
         session={session}
@@ -83,13 +57,36 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
       />,
     );
 
-    // Order is the claim, not just presence: agent → engine → model → title.
+    // Order is the claim, not just presence: agent → title → engine · model.
     expect(identityText()).toBe(
-      'CodexClaude CodeOpus 5 (1M context)Polish the Station dock',
+      'CodexPolish the Station dockClaude Code · Opus 5 (1M context)',
     );
+    expect(
+      document.querySelector('.chat-dock__active-identity-engine')?.textContent,
+    ).toBe('Claude Code · Opus 5 (1M context)');
     expect(
       document.querySelector('.chat-dock__active-identity-avatar'),
     ).not.toBeNull();
+  });
+
+  test('the title and the token each carry their full text as a tooltip, because each ellipsizes', () => {
+    render(
+      <ChatDockActiveIdentity
+        session={session}
+        agent={codex}
+        modelLabel="Opus 5 (1M context)"
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText('Polish the Station dock').getAttribute('title'),
+    ).toBe('Polish the Station dock');
+    expect(
+      screen
+        .getByText('Claude Code · Opus 5 (1M context)')
+        .getAttribute('title'),
+    ).toBe('Claude Code · Opus 5 (1M context)');
   });
 
   test('an unreported model names none rather than a placeholder', () => {
@@ -102,9 +99,11 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
       />,
     );
 
+    // The token is the engine alone — not "Claude Code · " with a dangling
+    // separator, and not a placeholder word.
     expect(
-      document.querySelector('.chat-dock__active-identity-model'),
-    ).toBeNull();
+      document.querySelector('.chat-dock__active-identity-engine')?.textContent,
+    ).toBe('Claude Code');
     expect(identityText()).not.toContain('not reported');
   });
 
@@ -132,7 +131,9 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
 
     // One "Station", not two: the agent's own name now carries that identity.
     expect(identityText()).toBe('StationPolish the Station dock');
-    expect(document.querySelector('.engine-chip')).toBeNull();
+    expect(
+      document.querySelector('.chat-dock__active-identity-engine'),
+    ).toBeNull();
   });
 
   /**
@@ -176,7 +177,9 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     expect(
       document.querySelector('.chat-dock__active-identity-avatar'),
     ).not.toBeNull();
-    expect(document.querySelector('.engine-chip')).toBeNull();
+    expect(
+      document.querySelector('.chat-dock__active-identity-engine'),
+    ).toBeNull();
   });
 });
 
@@ -198,77 +201,30 @@ describe('ChatDockActiveIdentity', () => {
     expect(onClose).toHaveBeenCalledWith('chat-1');
   });
 
-  // #765 A7: the idle chip used to read a bare "ID", which looked like a
-  // debug artifact next to the chat title. The visible label must name the
-  // action the aria-label already promises.
-  test('the copy control idles as "Copy ID", not a bare "ID" chip', () => {
+  /**
+   * #1536 F: "Copy ID" was a 44px labelled button in this row, competing with
+   * the conversation title for the same pixels. It is a row of the dock
+   * header's More menu now — see `useDockCopyActions.test.tsx`, which carries
+   * archive#3341's contracts (copies the ROUTED conversation id, never the
+   * local tab key; never claims or buzzes for a refused write).
+   */
+  test('no longer carries its own copy affordance', () => {
     render(
-      <ChatDockActiveIdentity session={routedSession} onClose={vi.fn()} />,
-    );
-    expect(copyButton().textContent).toBe('Copy ID');
-    expect(copyButton().classList).toContain('chat-dock__active-identity-copy');
-    expect(copyButton().style.minWidth).toBe('44px');
-    expect(copyButton().style.minHeight).toBe('44px');
-    expect(copyButton().style.fontSize).toBe('var(--text-xs)');
-  });
-
-  test('copies the routed conversation id, never the local tab key', async () => {
-    const writeText = clipboardWrites();
-
-    render(
-      <ChatDockActiveIdentity session={routedSession} onClose={vi.fn()} />,
-    );
-    fireEvent.click(copyButton());
-
-    expect(writeText).toHaveBeenCalledWith('station-thread-from-route');
-    expect(writeText).not.toHaveBeenCalledWith('local-tab-key');
-    await waitFor(() => expect(copyButton().textContent).toBe('Copied'));
-    expect(triggerHapticMock).toHaveBeenCalledWith('light');
-    expect(screen.getByRole('status').textContent).toBe('Thread ID copied.');
-  });
-
-  // archive#3341: the two arms that used to render "Copied" for a write that
-  // never happened.
-  test('a refused write never claims a copy and never buzzes', async () => {
-    clipboardRefuses();
-
-    render(
-      <ChatDockActiveIdentity session={routedSession} onClose={vi.fn()} />,
-    );
-    fireEvent.click(copyButton());
-
-    await waitFor(() => expect(copyButton().textContent).toBe("Can't copy"));
-    expect(copyButton().textContent).not.toContain('Copied');
-    expect(triggerHapticMock).not.toHaveBeenCalled();
-    expect(screen.getByRole('status').textContent).toContain(
-      'refused clipboard access',
-    );
-  });
-
-  test('an insecure origin with no clipboard API never claims a copy', async () => {
-    clipboardAbsent();
-
-    render(
-      <ChatDockActiveIdentity session={routedSession} onClose={vi.fn()} />,
-    );
-    fireEvent.click(copyButton());
-
-    await waitFor(() => expect(copyButton().textContent).toBe("Can't copy"));
-    expect(triggerHapticMock).not.toHaveBeenCalled();
-  });
-
-  test('the copy reset timer is cleared on unmount', async () => {
-    clipboardWrites();
-    const clearTimeoutSpy = vi.spyOn(window, 'clearTimeout');
-    const { unmount } = render(
-      <ChatDockActiveIdentity session={routedSession} onClose={vi.fn()} />,
+      <ChatDockActiveIdentity
+        session={
+          {
+            id: 'local-tab-key',
+            conversationId: 'station-thread-from-route',
+            title: 'Routed session',
+            agentSlug: 'codex',
+          } as ChatSession
+        }
+        onClose={vi.fn()}
+      />,
     );
 
-    fireEvent.click(copyButton());
-    await waitFor(() => expect(copyButton().textContent).toBe('Copied'));
-    clearTimeoutSpy.mockClear();
-    unmount();
-    expect(clearTimeoutSpy).toHaveBeenCalled();
-    clearTimeoutSpy.mockRestore();
+    expect(screen.queryByRole('button', { name: 'Copy thread ID' })).toBeNull();
+    // The close control is still here, so an unmounted row cannot pass this.
+    expect(screen.getByRole('button', { name: 'Close chat' })).toBeTruthy();
   });
 });

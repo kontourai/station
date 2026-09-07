@@ -119,4 +119,34 @@ describe('tool activity notifications', () => {
     expect(setDockState).toHaveBeenCalledWith(true);
     expect(setActiveChat).toHaveBeenCalledWith('conv-1');
   });
+
+  // station#1558: an unresolved call is surfaced (the reader should learn the
+  // session ended mid-tool) but never as an ERROR — Station observed no
+  // failure, only that no result will arrive.
+  test('an unresolved tool outcome raises a neutral note, not the error toast', () => {
+    notifyToolCompletion(
+      {
+        provider: 'claude',
+        threadId: 'session-1',
+        createdAt: '2026-04-11T00:00:00.000Z',
+        method: 'tool.completed',
+        itemId: 'tool-1',
+        toolCallId: 'tool-1',
+        toolName: 'shell_exec',
+        status: 'unresolved',
+        output:
+          'No result was reported before the session ended; whether the tool ran is unknown.',
+      },
+      baseChat,
+    );
+
+    expect(showToolActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'session-1',
+        toolName: 'shell exec',
+        status: 'unresolved',
+      }),
+    );
+    expect(showToolActivity.mock.calls[0][0].status).not.toBe('error');
+  });
 });

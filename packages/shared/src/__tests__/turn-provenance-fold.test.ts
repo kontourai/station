@@ -336,18 +336,19 @@ describe('assembleTurnProvenanceEnvelopes', () => {
     ).toEqual([]);
   });
 
-  it('records tool failures and cancellations separately from successes', () => {
+  it('records tool failures, cancellations and unresolved calls separately from successes', () => {
     const [envelope] = assembleTurnProvenanceEnvelopes([
       event({ method: 'turn.started', turnId: 't' }),
-      ...(['success', 'error', 'cancelled'] as const).map((status, index) =>
-        event({
-          method: 'tool.completed',
-          turnId: 't',
-          itemId: `i${index}`,
-          toolCallId: `c${index}`,
-          toolName: 'bash',
-          status,
-        }),
+      ...(['success', 'error', 'cancelled', 'unresolved'] as const).map(
+        (status, index) =>
+          event({
+            method: 'tool.completed',
+            turnId: 't',
+            itemId: `i${index}`,
+            toolCallId: `c${index}`,
+            toolName: 'bash',
+            status,
+          }),
       ),
       event({ method: 'turn.completed', turnId: 't' }),
     ]);
@@ -362,6 +363,10 @@ describe('assembleTurnProvenanceEnvelopes', () => {
             succeeded: 1,
             failed: 1,
             cancelled: 1,
+            // station#1558: its own counter. A reader asking "did any tool
+            // fail this turn?" must not be told yes because one call's
+            // session ended before it reported.
+            unresolved: 1,
           },
         ],
       },
@@ -565,6 +570,65 @@ describe('assembleTurnProvenanceEnvelopes', () => {
     // an envelope the fold actually produces always passes the tightened
     // check.
     expect(isSupportedTurnProvenanceEnvelope(envelope)).toBe(true);
+  });
+
+  // station#1558: every envelope persisted before that change carries tool
+  // uses with no `unresolved` count. The guard rejects the WHOLE envelope on
+  // any malformed slot, so requiring the new field would have degraded every
+  // historical turn's card to "cannot read this".
+  it('still accepts a tool summary written before the unresolved count existed', () => {
+    const [envelope] = assembleTurnProvenanceEnvelopes([
+      event({ method: 'turn.started', turnId: 't' }),
+      event({
+        method: 'tool.completed',
+        turnId: 't',
+        itemId: 'i',
+        toolCallId: 'c',
+        toolName: 'bash',
+        status: 'success',
+      }),
+      event({ method: 'turn.completed', turnId: 't' }),
+    ]);
+    const legacy = {
+      ...envelope,
+      tools:
+        envelope.tools.state === 'observed'
+          ? {
+              ...envelope.tools,
+              value: {
+                ...envelope.tools.value,
+                uses: envelope.tools.value.uses.map(
+                  ({ unresolved: _dropped, ...use }) => use,
+                ),
+              },
+            }
+          : envelope.tools,
+    };
+
+    expect(
+      (legacy.tools as { value: { uses: Array<Record<string, unknown>> } })
+        .value.uses[0],
+    ).not.toHaveProperty('unresolved');
+    expect(isSupportedTurnProvenanceEnvelope(legacy)).toBe(true);
+    // And a malformed one still rejects, exactly like the sibling counts.
+    expect(
+      isSupportedTurnProvenanceEnvelope({
+        ...legacy,
+        tools:
+          legacy.tools.state === 'observed'
+            ? {
+                ...legacy.tools,
+                value: {
+                  ...legacy.tools.value,
+                  uses: legacy.tools.value.uses.map((use) => ({
+                    ...use,
+                    unresolved: 'one',
+                  })),
+                },
+              }
+            : legacy.tools,
+      }),
+    ).toBe(false);
   });
 
   // N4 — cross-session contamination is impossible by construction.

@@ -1,7 +1,9 @@
 import { memo, useCallback } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import type { ChatMessage } from '../../types';
+import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
 import { FlowRunAttachedMarker } from '../flow/FlowRunAttachedMarker';
@@ -13,13 +15,14 @@ import { Skeleton } from '../state';
 import { ConversationContextBoundary } from './ConversationContextBoundary';
 import { ConversationHandoffBoundary } from './ConversationHandoffBoundary';
 import { type ForkTurnSource, forkTurnSource } from './fork-turn-source';
+import { MessageDetails } from './MessageDetails';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { MessageContent } from './message-bubble/MessageContent';
 import { MessageRating } from './message-bubble/MessageRating';
 import {
-  getModelDisplayName,
   resolveTurnEngine,
   resolveTurnModelIdentity,
+  turnCompletedNormally,
 } from './message-bubble/utils';
 import { TurnProvenanceCard } from './TurnProvenanceCard';
 import './chat.css';
@@ -119,6 +122,7 @@ function MessageBubbleComponent({
   accountableHuman,
 }: MessageBubbleProps) {
   const { developerToolsEnabled } = useDeviceSettings();
+  const isMobile = useIsMobile();
   const textContent = typeof msg.content === 'string' ? msg.content : '';
 
   // Hoisted above the flowPart early-return (hooks can't be called
@@ -275,116 +279,333 @@ function MessageBubbleComponent({
       ? activeSession.agentName
       : undefined);
 
-  return (
-    <div
-      className={`message-row ${msg.role === 'user' ? 'message-row--user' : ''}`}
-      data-chat-message-key={anchorKey}
-    >
-      <div className="message-row__avatar">{avatarContent}</div>
-      <div
-        style={{
-          position: 'relative',
-          maxWidth: '70%',
-        }}
-        className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}`}
-      >
-        {developerToolsEnabled && msg.traceId && !hasTurnFooter && (
-          <a
-            href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="message__trace"
-            title={`Trace: ${msg.traceId}`}
+  const metadataBefore = (
+    <>
+      {developerToolsEnabled && msg.traceId && !hasTurnFooter && (
+        <a
+          href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="message__trace"
+          title={`Trace: ${msg.traceId}`}
+        >
+          {msg.traceId.slice(-8)}
+        </a>
+      )}
+
+      {isMobile && msg.role === 'user' && textContent && (
+        <button
+          type="button"
+          onClick={() => onCopy(textContent)}
+          className="message__copy-btn"
+          aria-label="Copy message"
+        >
+          Copy message
+        </button>
+      )}
+      {msg.role === 'assistant' && textContent && !hasTurnFooter && (
+        <button
+          type="button"
+          onClick={() => onCopy(textContent)}
+          className="message__copy-btn"
+          title="Copy message"
+          aria-label="Copy message"
+        >
+          <svg
+            aria-hidden="true"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            {msg.traceId.slice(-8)}
-          </a>
-        )}
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+        </button>
+      )}
 
-        {msg.role === 'assistant' && textContent && !hasTurnFooter && (
-          <button
-            type="button"
-            onClick={() => onCopy(textContent)}
-            className="message__copy-btn"
-            title="Copy message"
-            aria-label="Copy message"
-          >
-            <svg
-              aria-hidden="true"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-            </svg>
-          </button>
-        )}
-
-        {msg.role === 'assistant' &&
-          textContent &&
-          !hasTurnFooter &&
-          feedbackConversationId &&
-          rowAgentSlug && (
-            <MessageRating
-              conversationId={feedbackConversationId}
-              messageIndex={idx}
-              messagePreview={textContent.slice(0, 200)}
-              agentSlug={rowAgentSlug}
-            />
-          )}
-
-        {isAssistant && (
-          <MessageAttribution
-            agent={attributionAgentName ? { name: attributionAgentName } : null}
-            engine={engine}
-            owner={owner}
+      {msg.role === 'assistant' &&
+        textContent &&
+        !hasTurnFooter &&
+        feedbackConversationId &&
+        rowAgentSlug && (
+          <MessageRating
+            conversationId={feedbackConversationId}
+            messageIndex={idx}
+            messagePreview={textContent.slice(0, 200)}
+            agentSlug={rowAgentSlug}
           />
         )}
 
-        {/* No readable envelope (an earlier message, a flag-off session, a
+      {isAssistant && (
+        <MessageAttribution
+          agent={attributionAgentName ? { name: attributionAgentName } : null}
+          engine={engine}
+          owner={owner}
+        />
+      )}
+
+      {/* No readable envelope (an earlier message, a flag-off session, a
             payload this build cannot decode): the pre-station#1434 badge,
             unchanged — the row keeps stating the one model fact it holds. */}
-        {isAssistant &&
-          modelIdentity.source === 'metadata-absent' &&
-          msg.model && (
-            <div className="message__model-badge" title={modelOptionsTitle}>
-              {getModelDisplayName(msg.model)}
-            </div>
-          )}
+      {isAssistant &&
+        modelIdentity.source === 'metadata-absent' &&
+        msg.model && (
+          <div className="message__model-badge" title={modelOptionsTitle}>
+            {/* #1536 B5: the shared identity rule. This used to be a
+                hardcoded table that answered "Custom" for every model newer
+                than Claude 3, so a row running claude-opus-5 with no
+                provenance envelope named it "Custom". */}
+            {modelIdentityLabel(msg.model)}
+          </div>
+        )}
 
-        {/* archive#1434: with an envelope on the row, model identity comes
+      {/* archive#1434: with an envelope on the row, model identity comes
             from it and only from it, and each slot it observed is named. */}
-        {isAssistant &&
-          modelIdentity.source === 'envelope' &&
-          modelIdentity.claims.length > 0 && (
-            <div className="message__model-claims">
-              {modelIdentity.claims.map((claim) => (
-                <span
-                  key={claim.slot}
-                  className="message__model-claim"
-                  title={
-                    modelOptionsTitle && claim.slot === requestOptionsSlot
-                      ? `${claim.description} · Station requested: ${modelOptionsTitle}`
-                      : claim.description
-                  }
-                >
-                  {/* The space is a real text node, not CSS spacing: a
+      {isAssistant &&
+        modelIdentity.source === 'envelope' &&
+        modelIdentity.claims.length > 0 && (
+          <div className="message__model-claims">
+            {modelIdentity.claims.map((claim) => (
+              <span
+                key={claim.slot}
+                className="message__model-claim"
+                title={
+                  modelOptionsTitle && claim.slot === requestOptionsSlot
+                    ? `${claim.description} · Station requested: ${modelOptionsTitle}`
+                    : claim.description
+                }
+              >
+                {/* The space is a real text node, not CSS spacing: a
                       screen reader and a copy-paste both read the DOM text,
                       and "Requestedsonnet-latest" is not what a person sees. */}
-                  <span className="message__model-claim-label">
-                    {claim.label}
-                  </span>{' '}
-                  {claim.value}
+                <span className="message__model-claim-label">
+                  {claim.label}
+                </span>{' '}
+                {claim.value}
+              </span>
+            ))}
+          </div>
+        )}
+    </>
+  );
+  const metadataAfter = (
+    <>
+      {/* Only a rehydrated, durable authored input has the exact identity
+            needed for an explicit Task pin. Optimistic/content-reconciled rows
+            deliberately carry no surrogate action. */}
+      {msg.role === 'user' &&
+        msg.sourceEventId &&
+        msg.sessionId &&
+        msg.turnId && (
+          <div className="message__task-input-action">
+            <LazyBoundary
+              load={loadConnectedAttachUserInputToTaskButton}
+              componentProps={{
+                sessionId: msg.sessionId,
+                eventId: msg.sourceEventId,
+                projectId: activeSession.projectSlug,
+              }}
+              pending={
+                <span
+                  className="task-picker__status"
+                  role="status"
+                  aria-busy="true"
+                  aria-label="Task action pending"
+                >
+                  <Skeleton variant="line" />
                 </span>
-              ))}
-            </div>
-          )}
+              }
+              unavailable={(retry) => (
+                <span className="task-picker__status" role="alert">
+                  Task action unavailable.{' '}
+                  <button type="button" onClick={retry}>
+                    Retry
+                  </button>
+                </span>
+              )}
+            />
+          </div>
+        )}
 
+      {msg.role === 'assistant' && msg.changedFiles && (
+        <details className="message__changed-files">
+          <summary>
+            {msg.changedFiles.status === 'available'
+              ? `${msg.changedFiles.files.length} changed ${msg.changedFiles.files.length === 1 ? 'file' : 'files'}`
+              : 'Changed files unavailable'}
+          </summary>
+          {msg.changedFiles.status === 'available' ? (
+            msg.changedFiles.files.length > 0 ? (
+              <ul>
+                {msg.changedFiles.files.map((file) => (
+                  <li
+                    key={`${file.status}:${file.previousPath ?? ''}:${file.path}`}
+                  >
+                    <span>{file.status}</span>{' '}
+                    <code>
+                      {file.previousPath
+                        ? `${file.previousPath} → ${file.path}`
+                        : file.path}
+                    </code>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No files changed during this turn.</p>
+            )
+          ) : (
+            <p>
+              {msg.changedFiles.reason === 'checkpoint_failed'
+                ? 'Station failed to capture a checkpoint for this turn.'
+                : msg.changedFiles.reason === 'checkpoint_pruned'
+                  ? 'This turn’s checkpoint expired and was pruned.'
+                  : msg.changedFiles.reason === 'checkpoint_missing'
+                    ? 'A checkpoint for this turn is missing.'
+                    : msg.changedFiles.reason === 'diff_output_limit_exceeded'
+                      ? 'This turn changed too many files to summarize.'
+                      : msg.changedFiles.reason === 'repository_changed'
+                        ? 'The turn crossed repository boundaries and cannot be compared.'
+                        : 'The turn’s checkpoint pair could not be compared.'}
+            </p>
+          )}
+        </details>
+      )}
+
+      {/* archive#1410: the answer's provenance, rendered only for a turn
+            Station actually observed through the canonical event store.
+            A row with no envelope claims nothing rather than showing an
+            empty card. */}
+      {/* archive#2652 redesign: one quiet footer row holds every per-turn
+            meta affordance — the provenance disclosure leads (its collapsed
+            line IS the takeaway) and the share control sits beside it, both
+            text-weight and muted so the answer above stays the loudest thing
+            in the column. */}
+      {hasTurnFooter && (
+        <div className="turn-footer">
+          {msg.provenance !== undefined && (
+            <TurnProvenanceCard
+              provenance={msg.provenance}
+              statedInRow={{
+                engine: engine !== null,
+                model:
+                  modelIdentity.source === 'envelope' &&
+                  modelIdentity.claims.length > 0,
+              }}
+              accountableHuman={accountableHuman}
+              shareContent={
+                <LazyBoundary
+                  load={loadShareAnswerButton}
+                  componentProps={{ provenance: msg.provenance }}
+                  pending={null}
+                />
+              }
+              basisContent={
+                msg.turnId &&
+                answerSessionId &&
+                msg.answerEligible === true &&
+                // #1536 B3: the same precondition the Basis route applies. A
+                // turn whose envelope records an aborted outcome can only ever
+                // be answered 404, and the affordance rendered that refusal as
+                // "Basis · Unavailable" on a healthy instance.
+                turnCompletedNormally(msg) &&
+                (!isLastMessage || !activeSession.isThinking) ? (
+                  <LazyBoundary
+                    load={loadConnectedAnswerBasisAffordance}
+                    componentProps={{
+                      projectSlug: activeSession.projectSlug,
+                      chatStoreId: activeSession.id,
+                      sessionId: answerSessionId,
+                      turnId: msg.turnId,
+                    }}
+                    pending={null}
+                    unavailable={() => null}
+                  />
+                ) : null
+              }
+            />
+          )}
+          <div className="turn-footer__actions">
+            {developerToolsEnabled && msg.traceId && (
+              <a
+                href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="message__trace"
+                title={`Trace: ${msg.traceId}`}
+              >
+                {msg.traceId.slice(-8)}
+              </a>
+            )}
+            {textContent && (
+              <button
+                type="button"
+                onClick={() => onCopy(textContent)}
+                className="message__copy-btn"
+                title="Copy message"
+                aria-label="Copy message"
+              >
+                Copy
+              </button>
+            )}
+            {((msg.turnId &&
+              answerSessionId &&
+              msg.answerEligible === true &&
+              (!isLastMessage || !activeSession.isThinking)) ||
+              (turnForkSource && onForkFromTurn)) && (
+              <LazyBoundary
+                load={loadTurnActionsMenu}
+                componentProps={{
+                  taskTarget:
+                    msg.turnId &&
+                    answerSessionId &&
+                    msg.answerEligible === true &&
+                    (!isLastMessage || !activeSession.isThinking)
+                      ? {
+                          sessionId: answerSessionId,
+                          turnId: msg.turnId,
+                          projectId: activeSession.projectSlug,
+                        }
+                      : undefined,
+                  forkSource: turnForkSource,
+                  onForkFromTurn,
+                }}
+                pending={null}
+                unavailable={() => null}
+              />
+            )}
+            {textContent && feedbackConversationId && rowAgentSlug && (
+              <MessageRating
+                conversationId={feedbackConversationId}
+                messageIndex={idx}
+                messagePreview={textContent.slice(0, 200)}
+                agentSlug={rowAgentSlug}
+              />
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <div
+      className={`message-row ${msg.role === 'user' ? 'message-row--user' : ''}${isMobile ? ' message-row--compact' : ''}`}
+      data-chat-message-key={anchorKey}
+    >
+      {!isMobile && <div className="message-row__avatar">{avatarContent}</div>}
+      <div
+        style={{
+          position: 'relative',
+          maxWidth: isMobile ? 'calc(100% - 52px)' : '70%',
+        }}
+        className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}`}
+      >
+        {!isMobile && metadataBefore}
         <MessageContent
           contentParts={msg.contentParts}
           textContent={textContent}
@@ -397,196 +618,7 @@ function MessageBubbleComponent({
           }
         />
 
-        {/* Only a rehydrated, durable authored input has the exact identity
-            needed for an explicit Task pin. Optimistic/content-reconciled rows
-            deliberately carry no surrogate action. */}
-        {msg.role === 'user' &&
-          msg.sourceEventId &&
-          msg.sessionId &&
-          msg.turnId && (
-            <div className="message__task-input-action">
-              <LazyBoundary
-                load={loadConnectedAttachUserInputToTaskButton}
-                componentProps={{
-                  sessionId: msg.sessionId,
-                  eventId: msg.sourceEventId,
-                  projectId: activeSession.projectSlug,
-                }}
-                pending={
-                  <span
-                    className="task-picker__status"
-                    role="status"
-                    aria-busy="true"
-                    aria-label="Task action pending"
-                  >
-                    <Skeleton variant="line" />
-                  </span>
-                }
-                unavailable={(retry) => (
-                  <span className="task-picker__status" role="alert">
-                    Task action unavailable.{' '}
-                    <button type="button" onClick={retry}>
-                      Retry
-                    </button>
-                  </span>
-                )}
-              />
-            </div>
-          )}
-
-        {msg.role === 'assistant' && msg.changedFiles && (
-          <details className="message__changed-files">
-            <summary>
-              {msg.changedFiles.status === 'available'
-                ? `${msg.changedFiles.files.length} changed ${msg.changedFiles.files.length === 1 ? 'file' : 'files'}`
-                : 'Changed files unavailable'}
-            </summary>
-            {msg.changedFiles.status === 'available' ? (
-              msg.changedFiles.files.length > 0 ? (
-                <ul>
-                  {msg.changedFiles.files.map((file) => (
-                    <li
-                      key={`${file.status}:${file.previousPath ?? ''}:${file.path}`}
-                    >
-                      <span>{file.status}</span>{' '}
-                      <code>
-                        {file.previousPath
-                          ? `${file.previousPath} → ${file.path}`
-                          : file.path}
-                      </code>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>No files changed during this turn.</p>
-              )
-            ) : (
-              <p>
-                {msg.changedFiles.reason === 'checkpoint_failed'
-                  ? 'Station failed to capture a checkpoint for this turn.'
-                  : msg.changedFiles.reason === 'checkpoint_pruned'
-                    ? 'This turn’s checkpoint expired and was pruned.'
-                    : msg.changedFiles.reason === 'checkpoint_missing'
-                      ? 'A checkpoint for this turn is missing.'
-                      : msg.changedFiles.reason === 'diff_output_limit_exceeded'
-                        ? 'This turn changed too many files to summarize.'
-                        : msg.changedFiles.reason === 'repository_changed'
-                          ? 'The turn crossed repository boundaries and cannot be compared.'
-                          : 'The turn’s checkpoint pair could not be compared.'}
-              </p>
-            )}
-          </details>
-        )}
-
-        {/* archive#1410: the answer's provenance, rendered only for a turn
-            Station actually observed through the canonical event store.
-            A row with no envelope claims nothing rather than showing an
-            empty card. */}
-        {/* archive#2652 redesign: one quiet footer row holds every per-turn
-            meta affordance — the provenance disclosure leads (its collapsed
-            line IS the takeaway) and the share control sits beside it, both
-            text-weight and muted so the answer above stays the loudest thing
-            in the column. */}
-        {hasTurnFooter && (
-          <div className="turn-footer">
-            {msg.provenance !== undefined && (
-              <TurnProvenanceCard
-                provenance={msg.provenance}
-                statedInRow={{
-                  engine: engine !== null,
-                  model:
-                    modelIdentity.source === 'envelope' &&
-                    modelIdentity.claims.length > 0,
-                }}
-                accountableHuman={accountableHuman}
-                shareContent={
-                  <LazyBoundary
-                    load={loadShareAnswerButton}
-                    componentProps={{ provenance: msg.provenance }}
-                    pending={null}
-                  />
-                }
-                basisContent={
-                  msg.turnId &&
-                  answerSessionId &&
-                  msg.answerEligible === true &&
-                  (!isLastMessage || !activeSession.isThinking) ? (
-                    <LazyBoundary
-                      load={loadConnectedAnswerBasisAffordance}
-                      componentProps={{
-                        projectSlug: activeSession.projectSlug,
-                        chatStoreId: activeSession.id,
-                        sessionId: answerSessionId,
-                        turnId: msg.turnId,
-                      }}
-                      pending={null}
-                      unavailable={() => null}
-                    />
-                  ) : null
-                }
-              />
-            )}
-            <div className="turn-footer__actions">
-              {developerToolsEnabled && msg.traceId && (
-                <a
-                  href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="message__trace"
-                  title={`Trace: ${msg.traceId}`}
-                >
-                  {msg.traceId.slice(-8)}
-                </a>
-              )}
-              {textContent && (
-                <button
-                  type="button"
-                  onClick={() => onCopy(textContent)}
-                  className="message__copy-btn"
-                  title="Copy message"
-                  aria-label="Copy message"
-                >
-                  Copy
-                </button>
-              )}
-              {((msg.turnId &&
-                answerSessionId &&
-                msg.answerEligible === true &&
-                (!isLastMessage || !activeSession.isThinking)) ||
-                (turnForkSource && onForkFromTurn)) && (
-                <LazyBoundary
-                  load={loadTurnActionsMenu}
-                  componentProps={{
-                    taskTarget:
-                      msg.turnId &&
-                      answerSessionId &&
-                      msg.answerEligible === true &&
-                      (!isLastMessage || !activeSession.isThinking)
-                        ? {
-                            sessionId: answerSessionId,
-                            turnId: msg.turnId,
-                            projectId: activeSession.projectSlug,
-                          }
-                        : undefined,
-                    forkSource: turnForkSource,
-                    onForkFromTurn,
-                  }}
-                  pending={null}
-                  unavailable={() => null}
-                />
-              )}
-              {textContent && feedbackConversationId && rowAgentSlug && (
-                <MessageRating
-                  conversationId={feedbackConversationId}
-                  messageIndex={idx}
-                  messagePreview={textContent.slice(0, 200)}
-                  agentSlug={rowAgentSlug}
-                />
-              )}
-            </div>
-          </div>
-        )}
-
+        {!isMobile && metadataAfter}
         {msg.role === 'assistant' && isLastMessage && (
           <>
             {activeSession.isThinking && textContent && (
@@ -613,6 +645,18 @@ function MessageBubbleComponent({
           </>
         )}
       </div>
+      {isMobile && (
+        <MessageDetails
+          label={
+            msg.role === 'user'
+              ? 'Your message actions'
+              : 'Answer details and actions'
+          }
+        >
+          {metadataBefore}
+          {metadataAfter}
+        </MessageDetails>
+      )}
     </div>
   );
 }

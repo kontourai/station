@@ -11,6 +11,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   readSync,
   realpathSync,
@@ -29,6 +30,8 @@ import {
 } from 'node:path';
 import { normalizeGitOrigin } from '@kontourai/station-contracts/git-remote-identity';
 import { assertSupportedNode } from '../node-runtime-contract.mjs';
+import { isPnpmRepository } from '../workspace-dependency-provenance.mjs';
+import { readPnpmLockfile, readPnpmWorkspace } from './pnpm-lockfile.mjs';
 import {
   PRODUCT_LAW_OBSERVATION_TIMEOUT_ENV,
   productLawObservationTimeoutMs,
@@ -542,13 +545,51 @@ export function digestRepositoryFile(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
 }
 
+/** Bind installed dependency authority and transformation inputs, invalidating
+ * pre-migration receipts even when a legacy lock has identical dependencies. */
+export function digestVerificationDependencies(repositoryRoot, override) {
+  if (!isPnpmRepository(repositoryRoot))
+    return digestRepositoryFile(
+      override ?? resolve(repositoryRoot, 'package-lock.json'),
+    );
+  readPnpmLockfile(repositoryRoot);
+  readPnpmWorkspace(repositoryRoot);
+  const paths = ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml'];
+  for (const path of [
+    '.npmrc',
+    'scripts/dependency-lifecycle.mjs',
+    'config/dependency-lifecycle-allowlist.json',
+    'packaging/node-pty-prebuilds/manifest.json',
+  ])
+    if (existsSync(resolve(repositoryRoot, path))) paths.push(path);
+  const collect = (directory) => {
+    if (!existsSync(resolve(repositoryRoot, directory))) return;
+    for (const entry of readdirSync(resolve(repositoryRoot, directory), {
+      withFileTypes: true,
+    })) {
+      const path = `${directory}/${entry.name}`;
+      if (entry.isDirectory()) collect(path);
+      else paths.push(path);
+    }
+  };
+  collect('patches');
+  const inputs = paths
+    .sort()
+    .map((path) => [path, digestRepositoryFile(resolve(repositoryRoot, path))]);
+  if (override)
+    inputs.push(['explicit-lockfile', digestRepositoryFile(override)]);
+  return createHash('sha256')
+    .update(JSON.stringify(['pnpm-dependency-identity-v1', inputs]))
+    .digest('hex');
+}
+
 /**
  * Station's receipt-specific provenance projection. It extends, rather than
  * changes, the schema-v2 neutral workspace helper consumed by pre-push. The
  * toolchain defaults to the detected package-manager identity (name@version)
  * rather than duplicating the Node version.
  *
- * The lockfile defaults to the repository-root `package-lock.json`, resolved
+ * The lockfile defaults to the repository-root `pnpm-lock.yaml`, resolved
  * from the Git toplevel — not `process.cwd()`. A subdirectory invocation (the
  * common case for a coordinator that does not `cd` to the repo root) must
  * digest the same lockfile as a root invocation, or its `dependencyDigest`
@@ -575,10 +616,9 @@ export function collectVerificationProvenance({
   return {
     ...repository,
     ...workspace,
-    dependencyDigest: digestRepositoryFile(
-      lockfile
-        ? resolve(cwd, lockfile)
-        : resolve(repository.repositoryRoot, 'package-lock.json'),
+    dependencyDigest: digestVerificationDependencies(
+      repository.repositoryRoot,
+      lockfile ? resolve(cwd, lockfile) : undefined,
     ),
     toolchain: toolchain ?? resolvedToolchain.toolchain,
     toolchainIdentity: exactToolchain,

@@ -147,6 +147,39 @@ describe('PullRequestRepositoryContextResolver', () => {
     },
   );
 
+  /**
+   * #1536 G5: an ordinary local repository is not a failure, and the panel
+   * cannot tell it from one by reading the sentence. A read that could not be
+   * performed deliberately carries no cause.
+   */
+  test('classifies a remote-less checkout as no-remote, and an unreadable one as neither', async () => {
+    const noRemotes = new PullRequestRepositoryContextResolver({
+      git: git() as any,
+      readRemotes: (async () => ({ ok: true as const, remotes: [] })) as any,
+    });
+    await expect(
+      noRemotes.resolve({ projectWorkingDirectory: '/checkout' }),
+    ).resolves.toEqual({
+      available: false,
+      reason: 'Checkout has no remote',
+      cause: 'no-remote',
+    });
+
+    const unreadable = new PullRequestRepositoryContextResolver({
+      git: git() as any,
+      readRemotes: (async () => ({
+        ok: false as const,
+        reason: 'git could not be run',
+      })) as any,
+    });
+    await expect(
+      unreadable.resolve({ projectWorkingDirectory: '/checkout' }),
+    ).resolves.toEqual({
+      available: false,
+      reason: 'git could not be run',
+    });
+  });
+
   test('uses the recorded worktree rather than the project directory', async () => {
     const runGit = git('feature\n', 'origin/feature\n', '0\t0\n', 'main\n');
     const resolver = new PullRequestRepositoryContextResolver({

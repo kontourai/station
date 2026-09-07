@@ -23,10 +23,11 @@ import { describe, expect, it } from 'vitest';
  */
 
 const root = resolve(import.meta.dirname, '../..');
-const nightly = readFileSync(
-  resolve(root, '.github/workflows/nightly-native-cohort.yml'),
-  'utf8',
-);
+// Two reusable phases in run order (#1453): staging decides and builds, the
+// cohort promotes and records. Ordering pins across the two read them joined.
+const nightly = ['nightly-native-stage.yml', 'nightly-native-cohort.yml']
+  .map((name) => readFileSync(resolve(root, '.github/workflows', name), 'utf8'))
+  .join('\n');
 const nightlyCaller = readFileSync(
   resolve(root, '.github/workflows/nightly.yml'),
   'utf8',
@@ -111,10 +112,10 @@ describe('the nightly workflow records what it ships', () => {
     expect(step).toContain('--channel nightly-android');
     // The decided ship SHA — the same one the gate verdicted and the build
     // shipped — never a re-derivation.
-    expect(step).toContain('needs.plan-cohort.outputs.source_sha');
-    expect(step).toContain(
-      '--sha "$' + '{{ needs.plan-cohort.outputs.source_sha }}"',
-    );
+    // The cohort receives the staged, decided SHA as a required input from the
+    // caller (the same value plan-cohort bound), never a re-derivation.
+    expect(step).toContain('inputs.source_sha');
+    expect(step).toContain('--sha "$' + '{{ inputs.source_sha }}"');
     // LOW-2: the version is the identity step's derived version, not
     // github.ref or a re-derived one.
     expect(step).toContain('androidVersion=');
@@ -184,7 +185,7 @@ describe('the nightly workflow records what it ships', () => {
     );
     // Native recording is a final job after both provider receipts, so a
     // recorder failure cannot suppress either provider effect.
-    expect(nightly).toContain('needs: [plan-cohort, protected-finalize]');
+    expect(nightly).toContain('needs: [protected-finalize]');
     expect(nightly).toContain("needs.protected-finalize.result == 'success'");
   });
 });
@@ -207,10 +208,10 @@ describe('the desktop nightly workflow records what it ships (station#575)', () 
     expect(step).toContain('--channel nightly-desktop');
     // The same decided ship SHA the gate verdicted and the build shipped —
     // this job's OWN decide step, never a re-derivation.
-    expect(step).toContain('needs.plan-cohort.outputs.source_sha');
-    expect(step).toContain(
-      '--sha "$' + '{{ needs.plan-cohort.outputs.source_sha }}"',
-    );
+    // The cohort receives the staged, decided SHA as a required input from the
+    // caller (the same value plan-cohort bound), never a re-derivation.
+    expect(step).toContain('inputs.source_sha');
+    expect(step).toContain('--sha "$' + '{{ inputs.source_sha }}"');
     expect(step).not.toMatch(/git rev-parse/);
     expect(step).toContain('desktopVersion=');
     expect(step).toMatch(/docs\(ledger\):/);

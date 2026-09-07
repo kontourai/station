@@ -1,23 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
-import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
-import {
-  WORKSPACE_HOME_PANE_DESCRIPTOR,
-  WORKSPACE_HOME_PANE_INSTANCE,
-} from '@kontourai/station-contracts/workspace-home-pane';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   isDockOwnedViewType,
   isMobileDockFullscreen,
-  MOBILE_DOCK_OCCUPANT_PICKER_QUERY,
-  shouldMaximizeAfterDockingAsOnlyContent,
-  shouldMaximizeOnOccupantChoice,
 } from '../components/chat-dock/mobile-chrome';
-import {
-  ambientDockOccupantRouteViewType,
-  chooseAmbientOccupant,
-} from '../workspace-panes/ambientDockOccupants';
 import { ruleBodiesFor } from './helpers/css-rules';
 
 /**
@@ -108,11 +95,17 @@ describe('the connection banner slot bounds without reserving', () => {
     expect(critical).toMatch(/z-index:\s*auto/);
     const [criticalCard] = ruleBodiesFor(
       css,
-      '.app__main:has(> .chat-dock.is-maximized) > .banner-host.banner-host--critical-chrome :is(.banner-host__item--critical-chrome, .banner-host__cap--critical-chrome)',
+      '.app__main:has(> .chat-dock.is-maximized) > .banner-host--critical-chrome .banner-host__item--critical-chrome',
     );
     expect(criticalCard).toBeDefined();
+    // #1132: the card moved a tier up when the cap joined it above the dock,
+    // so the cap can stay tucked BEHIND the card it hangs off while both
+    // clear the dock. Equal tiers would have painted the cap's border and
+    // background over the card's bottom edge (the cap is a later sibling).
+    // The cap's own half of this contract is pinned in
+    // `critical-chrome-over-maximized-region.test.tsx`.
     expect(criticalCard).toMatch(
-      /z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/,
+      /z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*2\)/,
     );
   });
 
@@ -659,109 +652,6 @@ describe('mobile chat chrome has one header owner', () => {
     expect(desktopHeader).not.toContain('chat-dock__restore-label');
     expect(chatCss).not.toContain('chat-dock__mobile-task-trigger');
     expect(read('index.css')).not.toContain('chat-dock__restore-label');
-  });
-
-  it('render-gates the mobile occupant picker at the 481px identity boundary', () => {
-    const mobileHeader = read('components/chat-dock/ChatDockMobileHeader.tsx');
-    const picker = read('workspace-panes/DockOccupantPicker.tsx');
-    const css = read('index.css');
-
-    expect(MOBILE_DOCK_OCCUPANT_PICKER_QUERY).toBe('(min-width: 481px)');
-    expect(mobileHeader).toContain('useMobileDockOccupantPicker()');
-    expect(mobileHeader).toContain('mobileDragPassthrough: true');
-    expect(picker).toContain('data-dock-drag-passthrough=');
-    expect(
-      ruleBodiesFor(css, '.chat-dock__mobile-occupant-picker').every(
-        (body) => !/display:\s*none/.test(body),
-      ),
-      'the picker must be DOM-absent below 481px, not merely CSS-hidden',
-    ).toBe(true);
-  });
-});
-
-describe('the mobile dock-and-empty contract derivation (station#520)', () => {
-  it('maximizes only mobile + a request the admission check actually docked', () => {
-    expect(shouldMaximizeAfterDockingAsOnlyContent(true, true)).toBe(true);
-    expect(
-      shouldMaximizeAfterDockingAsOnlyContent(false, true),
-      'desktop already has room beside the dock',
-    ).toBe(false);
-    expect(
-      shouldMaximizeAfterDockingAsOnlyContent(true, false),
-      'a REFUSED dock request must never force Full over nothing',
-    ).toBe(false);
-    expect(shouldMaximizeAfterDockingAsOnlyContent(false, false)).toBe(false);
-  });
-
-  /** review round 2, M3: `DockOccupantPicker`'s onChoose seam. */
-  it('shouldMaximizeOnOccupantChoice matches only mobile + picked-pane-is-current-route', () => {
-    expect(shouldMaximizeOnOccupantChoice(true, 'home', 'home')).toBe(true);
-    expect(
-      shouldMaximizeOnOccupantChoice(false, 'home', 'home'),
-      'desktop already has room beside the dock',
-    ).toBe(false);
-    expect(
-      shouldMaximizeOnOccupantChoice(true, 'settings', 'home'),
-      'the main area is already showing something else — nothing stranded',
-    ).toBe(false);
-    expect(
-      shouldMaximizeOnOccupantChoice(true, 'home', null),
-      'Chat has no route of its own (null) and never matches',
-    ).toBe(false);
-  });
-
-  it('ambientDockOccupantRouteViewType maps Home to its route and Chat to null; Activity is a region surface, not a routed occupant (#928)', () => {
-    expect(
-      ambientDockOccupantRouteViewType(WORKSPACE_HOME_PANE_DESCRIPTOR),
-    ).toBe('home');
-    expect(
-      ambientDockOccupantRouteViewType(WORKSPACE_ACTIVITY_PANE_DESCRIPTOR),
-    ).toBeNull();
-    expect(
-      ambientDockOccupantRouteViewType(WORKSPACE_CHAT_PANE_DESCRIPTOR),
-    ).toBeNull();
-  });
-
-  it('chooseAmbientOccupant dispatches through the maximizing action when the live route would be stranded', () => {
-    const onChoose = vi.fn();
-    const onChooseAsOnlyContent = vi.fn();
-
-    chooseAmbientOccupant({
-      isMobile: true,
-      pathname: '/',
-      descriptor: WORKSPACE_HOME_PANE_DESCRIPTOR,
-      instance: WORKSPACE_HOME_PANE_INSTANCE,
-      onChoose,
-      onChooseAsOnlyContent,
-    });
-
-    expect(onChooseAsOnlyContent).toHaveBeenCalledOnce();
-    expect(onChooseAsOnlyContent).toHaveBeenCalledWith(
-      WORKSPACE_HOME_PANE_DESCRIPTOR,
-      WORKSPACE_HOME_PANE_INSTANCE,
-    );
-    expect(onChoose).not.toHaveBeenCalled();
-  });
-
-  it('chooseAmbientOccupant keeps ordinary choices on the plain action', () => {
-    const onChoose = vi.fn();
-    const onChooseAsOnlyContent = vi.fn();
-
-    chooseAmbientOccupant({
-      isMobile: true,
-      pathname: '/settings',
-      descriptor: WORKSPACE_HOME_PANE_DESCRIPTOR,
-      instance: WORKSPACE_HOME_PANE_INSTANCE,
-      onChoose,
-      onChooseAsOnlyContent,
-    });
-
-    expect(onChoose).toHaveBeenCalledOnce();
-    expect(onChoose).toHaveBeenCalledWith(
-      WORKSPACE_HOME_PANE_DESCRIPTOR,
-      WORKSPACE_HOME_PANE_INSTANCE,
-    );
-    expect(onChooseAsOnlyContent).not.toHaveBeenCalled();
   });
 });
 

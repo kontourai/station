@@ -14,13 +14,15 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const harness = vi.hoisted(() => ({
   regions: {
-    main: { visible: true, size: 0, occupant: null },
+    main: { visible: true, size: 0, occupant: null as string | null },
     left: { visible: false, size: 400, occupant: null },
     right: { visible: false, size: 400, occupant: null },
     bottom: { visible: true, size: 320, occupant: 'chat' },
   },
   setRegion: vi.fn(),
   placeSurface: vi.fn(),
+  showSurface: vi.fn(),
+  toggleSurface: vi.fn(),
   bottomOnly: true,
   isMobile: true,
   hasRegionModel: true,
@@ -40,6 +42,8 @@ vi.mock('../../../contexts/RegionModelContext', async (importOriginal) => {
     surfaces: REGION_SURFACE_REGISTRY,
     setRegion: harness.setRegion,
     placeSurface: harness.placeSurface,
+    showSurface: harness.showSurface,
+    toggleSurface: harness.toggleSurface,
   });
   return {
     ...actual,
@@ -87,6 +91,11 @@ function renderMenu() {
 
 describe('OverflowMenu region section (#917)', () => {
   beforeEach(() => {
+    Object.assign(harness.regions.main, {
+      visible: true,
+      size: 0,
+      occupant: null,
+    });
     Object.assign(harness.regions.left, {
       visible: false,
       size: 400,
@@ -104,6 +113,8 @@ describe('OverflowMenu region section (#917)', () => {
     });
     harness.setRegion.mockReset();
     harness.placeSurface.mockReset();
+    harness.showSurface.mockReset();
+    harness.toggleSurface.mockReset();
     harness.bottomOnly = true;
     harness.isMobile = true;
     harness.hasRegionModel = true;
@@ -118,12 +129,12 @@ describe('OverflowMenu region section (#917)', () => {
     // an assistive technology reads, and it must agree with the model rather
     // than with the word in the label.
     const hideChat = screen.getByRole('button', {
-      name: 'Hide Chat',
+      name: 'Hide Chat from the dock',
     });
     expect(hideChat.getAttribute('aria-pressed')).toBe('true');
     expect(group.contains(hideChat)).toBe(true);
     const showActivity = screen.getByRole('button', {
-      name: 'Show Activity',
+      name: 'Show Activity in the dock',
     });
     expect(showActivity.getAttribute('aria-pressed')).toBe('false');
     expect(group.contains(showActivity)).toBe(true);
@@ -144,8 +155,8 @@ describe('OverflowMenu region section (#917)', () => {
       'Connections',
       'Profile',
       'Help',
-      'Hide Chat',
-      'Show Activity',
+      'Hide Chat from the dock',
+      'Show Activity in the dock',
     ]);
   });
 
@@ -187,41 +198,77 @@ describe('OverflowMenu region section (#917)', () => {
     expect(screen.getByRole('button', { name: 'Connections' })).toBeTruthy();
   });
 
-  test('selecting a visible surface hides its region and closes the menu', () => {
+  /** The row issued the model's toggle for `surfaceId`, and nothing else. */
+  const expectOnlyToggle = (surfaceId: string) => {
+    expect(harness.toggleSurface).toHaveBeenCalledTimes(1);
+    expect(harness.toggleSurface).toHaveBeenCalledWith(surfaceId);
+    expect(harness.placeSurface).not.toHaveBeenCalled();
+    expect(harness.setRegion).not.toHaveBeenCalled();
+    expect(harness.showSurface).not.toHaveBeenCalled();
+  };
+
+  test('selecting a visible surface issues the model toggle and closes the menu', () => {
     renderMenu();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Hide Chat' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Hide Chat from the dock' }),
+    );
 
-    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
-      visible: false,
-    });
+    // Hiding the folded region is the model's decision (`toggleSurface` in
+    // region-model.ts); the row issues the command.
+    expectOnlyToggle('chat');
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  test('selecting an unplaced surface shows it alone, the coarse fold rule', () => {
+  test('selecting an unplaced surface issues the model toggle; the coarse fold rule is the model’s', () => {
     renderMenu();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Show Activity in the dock' }),
+    );
 
-    // Placed in its default region, and every other region closed: a coarse
-    // device shows exactly one dock surface at a time.
-    expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'right');
-    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
-      visible: false,
-    });
-    expect(harness.setRegion).toHaveBeenCalledWith('right', { visible: true });
+    // Placing it in its default region and closing every other region — a
+    // coarse device shows exactly one dock surface at a time — is the model's
+    // (`toggleSurface` → `showSurface` → `showSurfaceAlone`, region-model.ts).
+    // The row issues that one command and places nothing itself (#1420).
+    expectOnlyToggle('activity');
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  test('a hidden surface reads as unchecked and its row shows it again', () => {
+  test('a hidden surface reads as unchecked and its row issues the same toggle', () => {
     harness.regions.bottom.visible = false;
     renderMenu();
 
     const showChat = screen.getByRole('button', {
-      name: 'Show Chat',
+      name: 'Show Chat in the dock',
     });
     expect(showChat.getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(showChat);
-    expect(harness.setRegion).toHaveBeenCalledWith('bottom', { visible: true });
+    expectOnlyToggle('chat');
+  });
+
+  /**
+   * #1523: a surface occupying `main` is neither shown nor hidden by a dock
+   * toggle, so its row says what the toggle does — return it to the dock — and
+   * claims no pressed state. `Show Activity` here would reveal it where it
+   * already is, and the tap would read as nothing happening.
+   */
+  test('a surface occupying main gets a Move row, not a Show toggle', () => {
+    harness.regions.main.occupant = 'activity';
+    renderMenu();
+
+    expect(
+      screen.queryByRole('button', { name: 'Show Activity in the dock' }),
+    ).toBeNull();
+    const move = screen.getByRole('button', {
+      name: 'Move Activity to the dock',
+    });
+    expect(move.hasAttribute('aria-pressed')).toBe(false);
+    expect(screen.getByRole('group', { name: 'Regions' }).contains(move)).toBe(
+      true,
+    );
+    fireEvent.click(move);
+    expectOnlyToggle('activity');
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

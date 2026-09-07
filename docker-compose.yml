@@ -12,8 +12,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    stop_grace_period: 30s
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/__station/identity').then(async(response)=>{if(!response.ok)throw new Error(String(response.status));const identity=await response.json();if(identity.sha!==process.env.STATION_IMAGE_SHA)throw new Error('image identity mismatch')})"]
+      test: ["CMD", "node", "/app/scripts/container-healthcheck.mjs"]
 
 volumes:
   station-data:

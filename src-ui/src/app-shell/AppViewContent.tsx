@@ -13,8 +13,8 @@ import { resolvePageFrame } from './page-frame-registry';
 import { RoutePendingSkeleton } from './RoutePendingSkeleton';
 import { routeIdentity, routeSurfaceIdentity } from './route-identity';
 import './route-transition.css';
+import { APP_DESTINATION_REGISTRY } from './destination-registry';
 import { RouteViewBoundary } from './RouteViewBoundary';
-import { APP_SURFACE_REGISTRY } from './surface-registry';
 
 // Project creation is a route-only overlay. Keeping it lazy avoids charging
 // every initial desktop load for its form, icon picker, and path autocomplete.
@@ -144,14 +144,6 @@ const ConsoleBoardView = lazy(() =>
     default: module.ConsoleBoardView,
   })),
 );
-// The standalone placement of the Activity Workspace Pane (
-// archive#4142) — the pane path to the sessions surface, never the
-// surface directly.
-const ActivityView = lazy(() =>
-  import('../views/ActivityView').then((module) => ({
-    default: module.ActivityView,
-  })),
-);
 const SettingsView = lazy(() =>
   import('../views/SettingsView').then((module) => ({
     default: module.SettingsView,
@@ -175,7 +167,17 @@ interface AppViewContentProps {
   availableModels: Array<{ id: string; name: string }>;
   defaultModel?: string;
   onNavigate: (view: NavigationView) => void;
-  onNavigateHome: () => void;
+  /**
+   * Show Home BY NAME (#1523): reveals the Home surface, placing it in `main`.
+   * For an affordance that says "home" — the not-found view's "Go home".
+   */
+  onShowHome: () => void;
+  /**
+   * Leave the routed view for `/`, whatever occupies `main` (#1523). For a
+   * dismissal — the Settings view's Escape, the New Project modal's close —
+   * which returns the user to where they were, Activity in `main` included.
+   */
+  onReturnToOutlet: () => void;
   onSettingsSaved: () => void;
   projectsLoading?: boolean;
   homeContinuation?: Extract<
@@ -191,10 +193,11 @@ export function AppViewContent(props: AppViewContentProps) {
   const routeKey = routeIdentity(props.currentView);
   const surfaceKey = routeSurfaceIdentity(props.currentView);
   // The surface the sidebar would highlight for this view — the same
-  // `getSurfaceForView` resolution `ProjectSidebarNav` uses, so the row marked
+  // `getDestinationForView` resolution `ProjectSidebarNav` uses, so the row marked
   // pending is by construction the row that will be marked active.
   const pendingSurfaceId =
-    APP_SURFACE_REGISTRY.getSurfaceForView(props.currentView)?.id ?? null;
+    APP_DESTINATION_REGISTRY.getDestinationForView(props.currentView)?.id ??
+    null;
   // Resolved ONCE and handed to both consumers: the frame that renders the
   // header, and the boundary that renders the body while the route's chunk is
   // in flight. Two calls would be two chances to disagree about what the
@@ -248,7 +251,8 @@ function AppViewContentBody({
   availableModels,
   defaultModel,
   onNavigate,
-  onNavigateHome,
+  onShowHome,
+  onReturnToOutlet,
   onSettingsSaved,
   projectsLoading,
   homeContinuation,
@@ -285,15 +289,6 @@ function AppViewContentBody({
   }
   if (currentView.type === 'review-queue') {
     return <ReviewQueueView />;
-  }
-  if (currentView.type === 'activity') {
-    return (
-      <ActivityView
-        apiBase={apiBase}
-        sessionId={currentView.sessionId}
-        focusHint={currentView.focus}
-      />
-    );
   }
   if (currentView.type === 'plugins') {
     return <PluginManagementView onNavigate={onNavigate} />;
@@ -384,7 +379,7 @@ function AppViewContentBody({
     if (projectsLoading) {
       return <SkeletonList count={3} label="Loading your projects" />;
     }
-    return <ProjectNewViewGate onNavigateHome={onNavigateHome} />;
+    return <ProjectNewViewGate onReturnToOutlet={onReturnToOutlet} />;
   }
   if (currentView.type === 'project-edit') {
     return <ProjectSettingsView slug={currentView.slug} />;
@@ -430,7 +425,9 @@ function AppViewContentBody({
   if (currentView.type === 'settings') {
     return (
       <SettingsView
-        onBack={onNavigateHome}
+        // Escape from Settings is a dismissal, the same return as the ⌘,
+        // toggle: the outlet's occupant, not Home by name (#1523).
+        onBack={onReturnToOutlet}
         onSaved={onSettingsSaved}
         onNavigate={onNavigate}
       />
@@ -461,7 +458,8 @@ function AppViewContentBody({
           <button
             type="button"
             className="editor-btn editor-btn--primary"
-            onClick={onNavigateHome}
+            // Says "home", means Home: the Home surface, not `/`'s occupant.
+            onClick={onShowHome}
           >
             Go home
           </button>
@@ -483,9 +481,10 @@ function AppViewContentBody({
  * still renders its normal content underneath.
  */
 function ProjectNewViewGate({
-  onNavigateHome,
+  onReturnToOutlet,
 }: {
-  onNavigateHome: () => void;
+  /** Closing the modal is a dismissal: back to `/`'s occupant (#1523). */
+  onReturnToOutlet: () => void;
 }) {
   const { activeConnection } = useConnections();
   const { visible, content } = useOnboardingSetupState();
@@ -505,7 +504,7 @@ function ProjectNewViewGate({
       isOpen
       onClose={() => {
         if (window.location.pathname === '/projects/new') {
-          onNavigateHome();
+          onReturnToOutlet();
         }
       }}
     />

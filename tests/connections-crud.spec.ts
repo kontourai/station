@@ -1479,6 +1479,35 @@ test.describe('Connections CRUD', () => {
     await expect(page.locator('#int-name')).not.toBeVisible();
   });
 
+  // #1180: `connections-tools` is one of the routes where `SplitPaneLayout`'s
+  // mobile detail sheet marks `PageFrame`'s route frame `inert`
+  // (PageFrame.tsx:155) while it is open. `DeleteIntegrationModal` opens from
+  // "Delete" INSIDE `IntegrationEditorPanel` — the exact detail content
+  // `SplitPaneLayout` portals into `PageFrame`'s mobile-detail slot once an
+  // integration is selected on a phone — so it used to render as a plain
+  // sibling of `SplitPaneLayout`, inside the `inert` its own trigger was
+  // exempt from: visible, but `.focus()` a no-op and both buttons
+  // unclickable. A visibility assertion cannot tell the two states apart —
+  // this proves focus and a real click instead (#1131's coverage shape).
+  test('the delete confirm stays reachable inside a phone mobile detail sheet', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installVisualViewportFixture(page);
+    await page.goto('/connections/tools');
+
+    await page.getByRole('button', { name: /Filesystem Tools/ }).click();
+    await page.waitForSelector('#int-name', { timeout: 15_000 });
+    await page.getByRole('button', { name: 'Delete' }).click();
+
+    const confirm = page.getByRole('dialog', { name: 'Delete Tool Server' });
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toBeFocused();
+    await confirm.getByRole('button', { name: 'Cancel' }).click();
+    await expect(confirm).toBeHidden();
+    await expect(page.locator('#int-name')).toBeVisible();
+  });
+
   test('knowledge view guards a dirty data-directory edit before navigating away', async ({
     page,
   }) => {

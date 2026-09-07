@@ -19,6 +19,7 @@ import {
   MAX_ANDROID_VERSION_CODE,
   NIGHTLY_PUBLISHED_VERSION_CODE_FLOOR,
   NIGHTLY_VERSION_CODE_TAG_PREFIX,
+  nightlyCliVersion,
   nightlyDayNumber,
   nightlyIdentifier,
   nightlyVersion,
@@ -440,6 +441,9 @@ describe('the desktop tauri config overlay (station#575)', () => {
       identifier: 'io.kontourai.station.nightly',
       bundle: {
         createUpdaterArtifacts: 'v1Compatible',
+        // The notarization script builds the DMG and updater archive itself;
+        // Tauri must bundle only the .app it consumes (#1479).
+        targets: ['app'],
         macOS: { bundleVersion: '241203' },
       },
       plugins: {
@@ -533,6 +537,9 @@ describe('the desktop tauri config overlay (station#575)', () => {
     expect(config.version).toBe('0.1.2-nightly.2412.3');
     expect(config.identifier).toBe('io.kontourai.station.nightly');
     expect(config.bundle.macOS.bundleVersion).toBe('241203');
+    // The written overlay, not only the in-memory object, restricts bundling:
+    // an overlay array replaces tauri.conf.json's `targets: "all"`.
+    expect(config.bundle.targets).toEqual(['app']);
   });
 });
 
@@ -546,13 +553,18 @@ describe('the nightly workflow keeps its promises', () => {
     resolve(import.meta.dirname, '../../.github/workflows/nightly.yml'),
     'utf8',
   );
-  const workflow = readFileSync(
-    resolve(
-      import.meta.dirname,
-      '../../.github/workflows/nightly-native-cohort.yml',
-    ),
-    'utf8',
-  );
+  // The native work is two reusable phases (#1453): staging, then the
+  // publishing cohort. `nightly.yml` runs them in that order, so ordering
+  // pins across a build and its later promotion read the two sources joined
+  // in run order.
+  const workflow = ['nightly-native-stage.yml', 'nightly-native-cohort.yml']
+    .map((name) =>
+      readFileSync(
+        resolve(import.meta.dirname, '../../.github/workflows', name),
+        'utf8',
+      ),
+    )
+    .join('\n');
 
   it('is scheduled daily rather than triggered by pushes', () => {
     // The whole point of the channel: "nightly" is a claim about cadence.
@@ -588,6 +600,25 @@ describe('the nightly workflow keeps its promises', () => {
       callerWorkflow.indexOf('\n  native-cohort:'),
     );
     expect(nativeCaller).toContain('needs: [test-gate, full-regression]');
+  });
+
+  it('retries the registry provenance read that lags npm publish, bounded and fail-closed (#1498)', () => {
+    const receipt = callerWorkflow.slice(
+      callerWorkflow.indexOf(
+        'name: Bind the published CLI receipt to npm registry provenance',
+      ),
+      callerWorkflow.indexOf('id: ledger_token'),
+    );
+    expect(receipt).toContain(
+      'until npm view "@kontourai/station-cli@$CLI_VERSION" gitHead --json',
+    );
+    expect(receipt).toContain('if [ "$attempt" -ge 12 ]; then');
+    expect(receipt).toContain('exit 1');
+    // The gitHead comparison against the exact source stays the receipt's
+    // authority; the retry only decides when to read.
+    expect(receipt).toContain(
+      'node scripts/verify-npm-registry-provenance.mjs "$registry_record" "$SOURCE_SHA"',
+    );
   });
 
   it('publishes only on literal success from both promotion gates', () => {
@@ -676,7 +707,17 @@ describe('the nightly workflow keeps its promises', () => {
     const validationStep = nightlyJob.slice(validation, decide);
     expect(workflow).toContain('rebuild_index:');
     expect(workflow).toContain('build: $' + '{{ steps.decide.outputs.build }}');
-    expect(workflow).not.toContain('inputs.build');
+    // The dispatch surface never takes a boolean `build`; the staging phase
+    // decides it, and the publishing cohort only receives that decision as a
+    // required string input (#1453).
+    const stageSource = workflow.slice(
+      0,
+      workflow.indexOf('\nname: Nightly native cohort'),
+    );
+    expect(stageSource).not.toContain('inputs.build');
+    expect(workflow).toContain(
+      "description: The staging phase's exact `build` output",
+    );
     expect(validationStep).toContain(
       'NIGHTLY_REBUILD_INDEX: $' + '{{ inputs.rebuild_index }}',
     );
@@ -876,13 +917,18 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     resolve(import.meta.dirname, '../../.github/workflows/nightly.yml'),
     'utf8',
   );
-  const workflow = readFileSync(
-    resolve(
-      import.meta.dirname,
-      '../../.github/workflows/nightly-native-cohort.yml',
-    ),
-    'utf8',
-  );
+  // The native work is two reusable phases (#1453): staging, then the
+  // publishing cohort. `nightly.yml` runs them in that order, so ordering
+  // pins across a build and its later promotion read the two sources joined
+  // in run order.
+  const workflow = ['nightly-native-stage.yml', 'nightly-native-cohort.yml']
+    .map((name) =>
+      readFileSync(
+        resolve(import.meta.dirname, '../../.github/workflows', name),
+        'utf8',
+      ),
+    )
+    .join('\n');
   const jobStart = workflow.indexOf('\n  stage-macos:');
   // Bounded to the NEXT top-level (2-space-indented) job key, not EOF: a
   // future job appended after this one must not silently leak its steps
@@ -940,6 +986,15 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     const notarize = build;
     expect(notarize).toContain('--release-tag nightly-desktop');
     expect(notarize).toContain('--bundle-id io.kontourai.station.nightly');
+    // Nightly, and only Nightly, buys wall-clock time by overlapping the two
+    // notarization waits; its disk image therefore encloses an application
+    // whose ticket Gatekeeper resolves online rather than from a local staple.
+    // The flag has to be on the invocation itself, not merely in the step.
+    const notarizeInvocations = notarize
+      .split('\n')
+      .filter((line) => line.includes('macos-notarized-artifacts.mjs'));
+    expect(notarizeInvocations).toHaveLength(1);
+    expect(notarizeInvocations[0]).toContain(' --overlap-notarization ');
     expect(notarize).toContain('CFBundleShortVersionString');
     expect(notarize).toContain('CFBundleIdentifier');
     expect(notarize).toContain('macos-signing-readiness.mjs unlock');
@@ -1127,10 +1182,45 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
       ),
     );
     expect(ledgerStep).toContain('--channel nightly-desktop');
-    expect(ledgerStep).toContain(
-      '--sha "$' + '{{ needs.plan-cohort.outputs.source_sha }}"',
-    );
+    expect(ledgerStep).toContain('--sha "$' + '{{ inputs.source_sha }}"');
     expect(ledgerStep).not.toMatch(/git rev-parse/);
     expect(ledgerStep).not.toContain('continue-on-error');
   });
+});
+
+describe('CLI publications do not collide within a UTC day', () => {
+  const date = new Date('2026-09-05T09:00:00Z');
+  it('sorts a replacement after the already published day-only version and a prior run', () => {
+    const prior = nightlyCliVersion('0.6.0', date, '33929822729');
+    const replacement = nightlyCliVersion('0.6.0', date, '33965345304');
+    expect(gt(prior, '0.6.0-nightly.2439')).toBe(true);
+    expect(gt(replacement, prior)).toBe(true);
+    expect(replacement).not.toBe(prior);
+  });
+  it('retains one identity for same-day reruns but advances on the next day', () => {
+    const version = nightlyCliVersion('0.6.0', date, '33965345304');
+    expect(
+      nightlyCliVersion(
+        '0.6.0',
+        new Date('2026-09-05T23:59:59Z'),
+        '33965345304',
+      ),
+    ).toBe(version);
+    expect(
+      gt(
+        nightlyCliVersion(
+          '0.6.0',
+          new Date('2026-09-06T00:00:00Z'),
+          '33965345305',
+        ),
+        version,
+      ),
+    ).toBe(true);
+  });
+  it.each(['', '0', '01', '-1', '1.2', '9007199254740992', 'bad'])(
+    'rejects ambiguous run ID %s',
+    (runId) => {
+      expect(() => nightlyCliVersion('0.6.0', date, runId)).toThrow(/run ID/);
+    },
+  );
 });
