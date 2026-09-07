@@ -175,6 +175,43 @@ describe('iOS simulator runtime smoke selection', () => {
     );
     expect([...swiftSmoke.matchAll(/connect\.tap\(\)/g)]).toHaveLength(2);
     expect(swiftSmoke).not.toContain('while !addAddress.waitForExistence');
+
+    const conditionalActivations = [
+      ...swiftSmoke.matchAll(
+        /if dismissSystemAlertIfPresent\(\) \{\s+app\.activate\(\)\s+\}/g,
+      ),
+    ];
+    expect(conditionalActivations).toHaveLength(3);
+    expect([...swiftSmoke.matchAll(/app\.activate\(\)/g)]).toHaveLength(3);
+
+    const helper = swiftSmoke.slice(
+      swiftSmoke.indexOf('private func dismissSystemAlertIfPresent() -> Bool'),
+      swiftSmoke.indexOf('private func assertContained'),
+    );
+    expect(helper).toContain('let deadline = Date().addingTimeInterval(2)');
+    expect(helper).toContain('return false');
+    expect(helper).toContain('alert.waitForNonExistence(timeout: remaining)');
+    expect(helper).not.toContain('waitForExistence(timeout: 3)');
+  });
+
+  test('registers final-state evidence and cleanup before launch', () => {
+    const teardown = swiftSmoke.indexOf('addTeardownBlock {');
+    const launch = swiftSmoke.indexOf('app.launch()');
+    const firstDismissal = swiftSmoke.indexOf(
+      'if dismissSystemAlertIfPresent()',
+    );
+    const firstActivation = swiftSmoke.indexOf('app.activate()');
+
+    expect([...swiftSmoke.matchAll(/addTeardownBlock \{/g)]).toHaveLength(1);
+    expect(teardown).toBeGreaterThanOrEqual(0);
+    expect(teardown).toBeLessThan(launch);
+    const teardownBody = swiftSmoke.slice(teardown, launch);
+    const screenshot = teardownBody.indexOf('XCUIScreen.main.screenshot()');
+    const terminate = teardownBody.indexOf('app.terminate()');
+    expect(screenshot).toBeGreaterThanOrEqual(0);
+    expect(terminate).toBeGreaterThan(screenshot);
+    expect(launch).toBeLessThan(firstDismissal);
+    expect(firstDismissal).toBeLessThan(firstActivation);
   });
 });
 
@@ -208,8 +245,9 @@ describe('iOS simulator runtime smoke retry policy', () => {
 
   test('binds the retryable signature to the one pre-test app.launch() line', () => {
     expect(findPreTestLaunchLine(swiftSmoke)).toBe(realLaunchLine);
-    expect(realLaunchLine).toBe(10);
-    // Fixtures below are recorded against line 10, the real launch line.
+    // These fixtures remain the recorded hosted line-10 failure. Production
+    // derives the current launch line from the Swift source rather than
+    // widening the retry classifier to other activation failures.
     expect(launchTimeoutLine).toContain(`${swiftPath}:10: error:`);
 
     // No launch line, or more than one, fails closed to "never retry".

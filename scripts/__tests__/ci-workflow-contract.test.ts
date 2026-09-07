@@ -8,6 +8,7 @@ import {
   REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
   readWorkflowDocuments,
 } from '../actionlint-gate.mjs';
+import { readPnpmLockfile } from '../lib/pnpm-lockfile.mjs';
 import {
   resolveAndroidBuildRun,
   sanitizeLookupDiagnostic,
@@ -531,12 +532,6 @@ describe('CI verification workflow contracts', () => {
         new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
       ),
     ).toHaveLength(2);
-    expect(
-      workflow('nightly-gallery.yml').match(
-        new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
-      ),
-    ).toHaveLength(1);
-
     for (const name of [
       'android-test.yml',
       'build-android.yml',
@@ -544,6 +539,11 @@ describe('CI verification workflow contracts', () => {
       'nightly.yml',
       'publish-packages.yml',
       'backlog-priority-policy.yml',
+      // #1645: the gallery capture moved to a digest-pinned Playwright
+      // container on a hosted runner, so it no longer reserves half of
+      // desktop-win for up to its owner lifetime. It held `lease-weight: "5"`
+      // of 10 capacity units while never once reaching a runner.
+      'nightly-gallery.yml',
     ]) {
       expect(workflow(name), name).not.toContain('physical-host-capacity@');
     }
@@ -606,20 +606,104 @@ describe('CI verification workflow contracts', () => {
     expect(gallery).toContain("- cron: '30 7 * * *'");
     expect(gallery).toMatch(/^ {2}workflow_dispatch:$/m);
     expect(gallery).toContain(`group: nightly-gallery-\${{ github.ref }}`);
-    expect(gallery).toContain('cancel-in-progress: true');
+    // #1645: NOT cancel-in-progress. Two daily runs are 24h apart, so nothing
+    // legitimately cancels its predecessor — and while this job could not
+    // reach a runner at all, that setting is what converted four of six
+    // consecutive stalls into a fresh-looking `cancelled` run.
+    //
+    // Read the parsed value, not the file text: a prose line explaining the
+    // choice satisfies `toContain('cancel-in-progress: false')` on its own, so
+    // the substring form would stay green if the key itself flipped or went
+    // away while the comment survived.
+    const galleryDocument = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/nightly-gallery.yml',
+    )?.document as
+      | { concurrency?: { 'cancel-in-progress'?: unknown } }
+      | undefined;
+    expect(galleryDocument?.concurrency?.['cancel-in-progress']).toBe(false);
     expect(gallery).toContain("if: github.event_name != 'pull_request'");
-    expect(gallery).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
+    // #1645: a digest-pinned Playwright container on a hosted runner, not the
+    // fleet. The comparator hashes a decoded RGBA buffer with no threshold, so
+    // the baseline is bound to whichever renderer produced it — and the
+    // fleet's kontour-linux runner is a WSL2 instance in a shared developer
+    // desktop whose system libraries and fonts are unmanaged and unpinnable.
+    // A digest rather than the `v1.62.1-noble` tag: a rebuilt base image
+    // published under the same tag is a different renderer wearing the same
+    // name. Bump it in lockstep with `@playwright/test`.
+    expect(gallery).toContain('runs-on: ubuntu-22.04');
+    expect(gallery).not.toContain('runs-on: [self-hosted');
+    // Anchored to the parsed `container.image`, not matched loose against the
+    // file, so a digest quoted in a comment cannot stand in for the pin. The
+    // version is a strict dotted triple rather than `[\d.]+`, which would
+    // accept `1..2` or a bare `1`.
+    const galleryJob = (
+      galleryDocument as
+        | {
+            jobs?: Record<
+              string,
+              {
+                container?: { image?: unknown };
+                defaults?: { run?: { shell?: unknown } };
+              }
+            >;
+          }
+        | undefined
+    )?.jobs?.['screenshot-diff'];
+    const containerImage = galleryJob?.container?.image;
+    expect(containerImage).toEqual(expect.any(String));
+
+    // A CONTAINER job's default shell is `sh`, not `bash`. Measured in run
+    // 34064794212: dash rejected `set -euo pipefail` with "Illegal option -o
+    // pipefail" and the job died before any real work. Every `run:` here needs
+    // pipefail — without it the `tee` in the dependency install masks a failed
+    // `dependencies:ci`, which is precisely the pipe-masking this job exists
+    // not to do — so the job must declare bash for all of them at once.
+    expect(galleryJob?.defaults?.run?.shell).toBe('bash');
+    const container = String(containerImage).match(
+      /^mcr\.microsoft\.com\/playwright:v(?<version>\d+\.\d+\.\d+)-[a-z]+@sha256:(?<digest>[0-9a-f]{64})$/,
     );
-    expect(gallery).toContain('runner-preflight@');
-    expect(gallery).toContain('physical-host-capacity@');
-    expect(gallery).toContain('lease-weight: "5"');
-    expect(gallery).toContain('owner-lifetime-seconds: "7800"');
-    expect(runBodies).toContain(
-      'node scripts/run-e2e-coverage.mjs --only=screenshot',
-    );
+    expect(container?.groups?.digest).toEqual(expect.any(String));
+
+    // The container IS the renderer, so the Playwright inside it must be the
+    // Playwright that drives it. The digest cannot be derived from anything in
+    // this repository — that half stays unverifiable, and a skew there surfaces
+    // as a Playwright launch error rather than silently. The VERSION in the tag
+    // can be derived, and it is the half worth guarding: a bump to
+    // `@playwright/test` that leaves the image behind would otherwise only be
+    // discovered by a nightly that nobody is watching closely.
+    //
+    // The oracle is the LOCKFILE, not `package.json`. The declared specifier is
+    // a caret range (`^1.62.1`), so comparing against the declaration would
+    // miss exactly the case that matters — a resolved minor bump that installs
+    // a Playwright the pinned image does not contain.
+    const resolvedPlaywright = (
+      readPnpmLockfile(root) as {
+        importers: Record<
+          string,
+          { devDependencies?: Record<string, { version?: unknown }> }
+        >;
+      }
+    ).importers['.']?.devDependencies?.['@playwright/test']?.version;
+    expect(resolvedPlaywright).toEqual(expect.any(String));
+    // pnpm appends peer suffixes to some resolutions; the version is the head.
+    const installedVersion = String(resolvedPlaywright).replace(/\(.*$/, '');
+    expect(container?.groups?.version).toBe(installedVersion);
+    // runner-preflight reports the capabilities of a SELF-HOSTED runner; it
+    // has nothing to assert about a hosted container.
+    expect(gallery).not.toContain('runner-preflight@');
+    // The capture and the diff must refer to the SAME pixels. Through
+    // `run-e2e-coverage.mjs` they did not: it overrides
+    // `STATION_E2E_GALLERY_DIR` to a run-scoped
+    // `.kontourai/e2e-runs/<runId>/evidence/gallery` while `screenshot:diff`
+    // reads `gallery/`, so the gate captured one directory and compared
+    // another. Measured in run 34065319882 — capture PASSED, diff aborted with
+    // "No capture manifest at …/gallery/capture.json". The bucket script
+    // invoked directly retains `gallery/`, which is what the spec's own comment
+    // says it is for.
+    expect(runBodies).toContain('npm run test:e2e:screenshot');
+    expect(runBodies).not.toContain('run-e2e-coverage.mjs --only=screenshot');
     expect(runBodies).toContain('npm run screenshot:diff');
-    expect(runBodies.indexOf('--only=screenshot')).toBeLessThan(
+    expect(runBodies.indexOf('npm run test:e2e:screenshot')).toBeLessThan(
       runBodies.indexOf('npm run screenshot:diff'),
     );
     expect(runBodies).not.toContain('npm run verify:e2e:full');
@@ -639,17 +723,20 @@ describe('CI verification workflow contracts', () => {
   });
 
   it('the nightly gallery entrypoint reaches the suppression-injecting suite (station#875)', () => {
-    // nightly-gallery.yml runs run-e2e-coverage.mjs, but the hermetic-roster
-    // flag lives in run-e2e-suite.mjs. Nothing else asserts that chain, so a
-    // renamed bucket script would leave every test green while the nightly
-    // captured with the fleet host's real CLIs — the exact daily re-red this
-    // lane exists to prevent.
-    const coverage = readFileSync(
-      resolve(root, 'scripts/run-e2e-coverage.mjs'),
-      'utf8',
+    // nightly-gallery.yml invokes `test:e2e:screenshot`, but the
+    // hermetic-roster flag lives in run-e2e-suite.mjs. Nothing else asserts
+    // that chain, so a renamed bucket script would leave every test green while
+    // the nightly captured with the host's real CLIs — the exact daily re-red
+    // this lane exists to prevent.
+    //
+    // #1645 shortened this chain by one hop: the workflow used to reach the
+    // bucket through `run-e2e-coverage.mjs --only=screenshot`, which wrote the
+    // gallery somewhere `screenshot:diff` never looked. The roster is unchanged
+    // either way because it has always lived in the suite runner, which is what
+    // this asserts.
+    expect(extractRunBodies(workflow('nightly-gallery.yml'))).toContain(
+      'npm run test:e2e:screenshot',
     );
-    expect(coverage).toContain("name: 'screenshot'");
-    expect(coverage).toContain("script: 'test:e2e:screenshot'");
     const pkg = JSON.parse(
       readFileSync(resolve(root, 'package.json'), 'utf8'),
     ) as { scripts: Record<string, string> };
@@ -1034,6 +1121,9 @@ describe('CI verification workflow contracts', () => {
       'nightly.yml',
       'publish-packages.yml',
       'backlog-priority-policy.yml',
+      // #1645: the gallery capture belongs on a hosted runner now, because an
+      // exact-pixel baseline needs a renderer pinned by digest.
+      'nightly-gallery.yml',
     ];
     for (const name of linuxWorkflows) {
       const source = workflow(name);
@@ -1052,9 +1142,6 @@ describe('CI verification workflow contracts', () => {
       'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, docker, playwright]',
     );
     expect(workflow('ci-extended.yml')).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
-    );
-    expect(workflow('nightly-gallery.yml')).toContain(
       'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
     );
     const recovery = workflow('recover-terminal-capacity-owner.yml');
@@ -1544,11 +1631,27 @@ describe('every Tauri invocation is rooted at the app directory', () => {
 
 describe('iOS verification proves packaged runtime readiness', () => {
   const ios = workflow('build-ios.yml');
+  const classifier = readFileSync(
+    resolve(root, 'scripts/classify-ci-change.mjs'),
+    'utf8',
+  );
 
   it('emits a stable check while reserving macOS for affected pull requests', () => {
     expect(ios).toContain('pull_request_target:');
     expect(ios).toContain('merge_group:');
-    expect(ios).toContain('src-desktop/*|src-ui/*|packages/connect/*');
+    expect(classifier).toContain("'src-desktop/'");
+    expect(classifier).toContain("'src-ui/'");
+    expect(classifier).toContain("'packages/connect/'");
+    expect(ios).toContain(
+      'if [ "$GITHUB_EVENT_NAME" != "pull_request_target" ] && [ "$GITHUB_EVENT_NAME" != "merge_group" ]',
+    );
+    expect(ios).toContain(
+      'git show "$BASE_SHA:scripts/classify-ci-change.mjs"',
+    );
+    expect(ios).toContain('--scope ios --mode candidate');
+    expect(ios).toContain('relevant=true|relevant=false)');
+    expect(ios).toContain('fail_closed "classifier execution failed"');
+    expect(ios).toContain('fail_closed "classifier returned malformed output"');
     expect(ios).toContain('needs: classify');
     expect(ios).toContain("if: needs.classify.outputs.relevant == 'true'");
     expect(ios).toContain('runs-on: macos-26');

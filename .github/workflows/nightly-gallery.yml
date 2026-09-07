@@ -3,6 +3,14 @@ name: Nightly gallery
 on:
   schedule:
     # Gallery: 07:30 UTC daily, distinct from nightly.yml at 09:00 UTC.
+    #
+    # GitHub's scheduler runs this late and the delay is not small: the six
+    # runs between 2026-08-31 and 2026-09-05 were created between 11:20 and
+    # 12:39 UTC, a lag of ~3.8-5.1h, which lands this alongside Nightly rather
+    # than 90 minutes ahead of it. The cron is the request, not the schedule;
+    # nothing here may assume the gap the comment above describes. The
+    # freshness window in gallery-freshness.yml is sized from the observed lag
+    # rather than from this cron (#1645).
     - cron: '30 7 * * *'
   workflow_dispatch:
 
@@ -11,14 +19,72 @@ permissions:
 
 concurrency:
   group: nightly-gallery-${{ github.ref }}
-  cancel-in-progress: true
+  # Deliberately NOT cancel-in-progress. Two daily runs are 24h apart, so
+  # there is no legitimate case for one cancelling its predecessor — and while
+  # this job was unable to reach a runner at all (#1645), that setting is what
+  # converted four of six consecutive stalls into a fresh-looking `cancelled`
+  # run instead of leaving the stalled one visible. A run still executing when
+  # the next one starts is information worth keeping, not noise to discard.
+  cancel-in-progress: false
 
 jobs:
   screenshot-diff:
     name: Capture and diff screenshot gallery
     if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]
+    # A digest-pinned container on a hosted runner, NOT the self-hosted fleet
+    # (#1645). The comparator is exact — the sha256 of a decoded RGBA buffer,
+    # with no threshold — so the baseline is bound to whichever renderer
+    # produced it, and that renderer has to be reproducible for the contract to
+    # mean anything. The fleet's `kontour-linux` runner is a WSL2 instance
+    # inside a shared developer desktop whose system libraries and installed
+    # fonts are unmanaged and unpinnable; it cannot even install Playwright's
+    # own dependencies (`--with-deps` needs passwordless sudo it does not
+    # have). Fonts are not incidental here: `--font-sans` resolves to
+    # `"DM Sans", system-ui, sans-serif` and the bundled woff2 subsets cover
+    # latin + latin-ext only, so the glyphs the UI actually draws for `⌘`,
+    # `⋯`, `─`, `→`, `●`, `✓` and friends come from the HOST's fonts. Pinning
+    # the image by digest pins the rasterizer, fontconfig and that font set
+    # together, and lets anyone reproduce the gate's renderer locally instead
+    # of learning to discount a local diff.
+    #
+    # Pinned by digest, not by tag: `v1.62.1-noble` is republished, and a
+    # rebuilt base image is a different renderer wearing the same name.
+    # Bump this in lockstep with `@playwright/test` (currently 1.62.1), and
+    # expect a re-baseline to be part of that change.
+    runs-on: ubuntu-22.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+      # --ipc=host is Playwright's documented remedy for Chromium crashing on
+      # the 64MB /dev/shm a container job gets by default.
+      #
+      # --init runs tini as PID 1 so orphaned processes are REAPED. Without it,
+      # `run-e2e-suite.mjs`'s exact process-group ownership cannot settle:
+      # `./station start` detaches a daemon, the harness signals the group, and
+      # a killed-but-unreaped process still answers a signal-0 liveness check,
+      # so settlement never completes and the suite aborts with "exact process
+      # group did not settle" (measured in run 34065115674, after Station had
+      # built and booted successfully). A container job's PID 1 is GitHub's
+      # keepalive, which does not reap; tini does.
+      options: --ipc=host --init
     timeout-minutes: 60
+    defaults:
+      run:
+        # A CONTAINER job's default shell is `sh`, not the `bash` a job on the
+        # runner host gets — measured, in run 34064794212: GitHub invoked
+        # `sh -e {0}` and dash rejected `set -euo pipefail` with "Illegal
+        # option -o pipefail" before a single step of real work ran. Every
+        # `run:` below relies on `pipefail` (the `tee` in the install step
+        # would otherwise mask a failed `dependencies:ci`, which is the exact
+        # pipe-masking this job must not do). Declared once for the job so a
+        # step added later cannot silently inherit dash.
+        shell: bash
+    env:
+      # The image ships the browser build this Playwright pins, at this path.
+      # `run-e2e-suite.mjs` honours an already-set value and fails loudly when
+      # Chromium is not present at it, so a container/`@playwright/test`
+      # version skew surfaces as a named error rather than a silent download of
+      # some other revision.
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -28,32 +94,101 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "5"
-          timeout-seconds: "600"
-          owner-lifetime-seconds: "7800"
-
       - name: Setup pinned pnpm
         uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
         with: { install: false }
 
-      - run: npm run dependencies:ci
-
-      - name: Install repo-pinned Chromium
+      # The Playwright image carries no C++ toolchain (verified against the
+      # pinned digest: no `make`, `g++`, `cc` or `gcc`), and
+      # `packaging/node-pty-prebuilds/manifest.json` publishes no Linux
+      # artifact yet (`"artifacts": {}`), so node-pty is the one dependency
+      # that must compile from source here. Without this it fails and
+      # `dependency-lifecycle` continues DEGRADED by design (#1244) — which for
+      # this job would mean photographing an app whose interactive terminal
+      # panes are unavailable, and `home` reaches the terminal module. A
+      # gallery exists to be a picture of the app; a picture of a degraded one
+      # is worse than no picture.
+      #
+      # This touches no font, no rasterizer and no browser, so the digest pin's
+      # purpose survives it intact. The designed fix is a `linux-x64` prebuild
+      # through `node-pty-prebuilds.yml` (whose matrix already has that
+      # target), which removes this step; tracked separately.
+      - name: Install the native build toolchain node-pty needs
         run: |
-          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
-          PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" npx playwright install chromium
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential
 
+      # `actions/checkout` adds the workspace to `safe.directory` in a
+      # TEMPORARY global git config (it overrides HOME, writes, then reverts),
+      # so by the time a later step runs, git refuses the workspace for
+      # dubious ownership — the container is root while the workspace is the
+      # runner's. Measured in run 34064951580: `dependencies:ci` died on
+      # `install-git-hooks.mjs`, whose `git rev-parse --show-toplevel` throw is
+      # reported as the much more alarming "not a git checkout". Re-declare it
+      # for the shell the remaining steps actually use.
+      - name: Trust the workspace checkout inside the container
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          git rev-parse --show-toplevel
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          npm run dependencies:ci 2>&1 | tee "${RUNNER_TEMP}/dependencies-ci.log"
+
+      # Records the identity of the renderer the captured pixels are bound to —
+      # Playwright build, and the font set the `system-ui` fallback will
+      # actually resolve against (#1649) — so a future diff can be attributed
+      # to the product or to the image rather than argued about.
+      #
+      # It also REFUSES a degraded capture rather than merely noting one. A
+      # missing capability does not produce a false green; it produces
+      # something worse to diagnose — a real pixel difference that reads as a
+      # product regression. Failing here names the cause instead.
+      - name: Record the pinned renderer identity and refuse a degraded capture
+        run: |
+          set -euo pipefail
+          npx playwright --version
+          echo "browsers path: ${PLAYWRIGHT_BROWSERS_PATH}"
+          ls -1 "${PLAYWRIGHT_BROWSERS_PATH}"
+          echo "fontconfig families: $(fc-list --format '%{family[0]}\n' | sort -u | wc -l)"
+          fc-list --format '%{family[0]}\n' | sort -u
+          echo "--- terminal readiness ---"
+          if node -e 'require("node-pty"); console.log("node-pty: loadable")'; then
+            echo "terminal capability: available"
+          else
+            echo "::error::node-pty is not loadable, so this capture would photograph an app without interactive terminal panes. Fix the toolchain/prebuild in .github/workflows/nightly-gallery.yml rather than re-baselining against a degraded render."
+            exit 1
+          fi
+          echo "--- dependency-lifecycle degradation ---"
+          if grep -F '[dependency-lifecycle] DEGRADED' "${RUNNER_TEMP}/dependencies-ci.log"; then
+            echo "::error::dependency-lifecycle reported a DEGRADED capability above. A gallery capture must photograph a fully-capable build; refusing rather than baselining the degradation."
+            exit 1
+          fi
+          echo "no degraded capability reported"
+
+      # Capture through the bucket script DIRECTLY, not through
+      # `run-e2e-coverage.mjs --only=screenshot`. The coverage runner overrides
+      # `STATION_E2E_GALLERY_DIR` to a run-scoped
+      # `.kontourai/e2e-runs/<runId>/evidence/gallery`, while `screenshot:diff`
+      # reads `gallery/` — so the two halves of this gate never referred to the
+      # same pixels. Measured in run 34065319882: the capture PASSED (71
+      # screens, 2.2m) and the diff then aborted with "No capture manifest at
+      # …/gallery/capture.json". `tests/screenshots.spec.ts` says which is
+      # which in its own words: full coverage supplies an isolated run-scoped
+      # directory, and running the bucket directly "intentionally retains the
+      # familiar gitignored gallery/".
+      #
+      # That mismatch shipped with this workflow on 2026-08-29 and could not be
+      # observed, because the job never once reached a runner (#1645). The
+      # hermetic roster is unaffected: it lives in `run-e2e-suite.mjs`, which is
+      # what `test:e2e:screenshot` invokes either way, so this shortens the
+      # chain rather than leaving it.
       - name: Capture screenshot bucket and enforce exact baseline
         run: |
-          node scripts/run-e2e-coverage.mjs --only=screenshot
+          npm run test:e2e:screenshot
           npm run screenshot:diff
 
       - name: Upload gallery and pixel diffs

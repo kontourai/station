@@ -43,6 +43,7 @@ import { ProjectPageHeader } from './project-page/ProjectPageHeader';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
 import { projectChatCta } from './project-page/projectChatCta';
 import type { AvailableLayout, ConversationRecord } from './project-page/types';
+import './project-page-frame.css';
 import './ProjectPage.css';
 
 export function ProjectPage({ slug }: { slug: string }) {
