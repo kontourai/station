@@ -830,6 +830,24 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
         const marker = (chat?.messages ?? []).find(
           (message) => message.turnId === 'turn-a',
         );
+        // station#1701. Distinguish "the handler wrote something wrong" from
+        // "the handler wrote nothing": `updateChat` resolves its key through
+        // `getChatKeyForExecutionSession` and RETURNS SILENTLY when that
+        // misses, so a no-op write reaches this helper as a missing marker —
+        // and, being a precondition, reports against whichever test called
+        // it. Twice on CI that read as `expected undefined to match object
+        // { role: 'user' }` on a tool-outcome test that was never involved.
+        if (marker === undefined) {
+          throw new Error(
+            `handleRuntimeErrorEvent wrote no turn-a marker for "${threadId}". ` +
+              `The chat is ${chat ? 'present' : 'ABSENT'} in the store and holds ` +
+              `${chat?.messages?.length ?? 0} message(s). An absent chat means ` +
+              `updateChat's key lookup missed and the write was a silent no-op ` +
+              `(station#1701); a present chat with messages means the marker's ` +
+              `shape changed. Either way this is setup, not the behaviour the ` +
+              `calling test names.`,
+          );
+        }
         // The precondition this test exists for: the only message carrying
         // turn A is a user-role marker.
         expect(marker).toMatchObject({ role: 'user' });
