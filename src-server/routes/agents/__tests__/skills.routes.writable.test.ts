@@ -15,7 +15,14 @@
  * writability coincide proves nothing at all: it passes under the projection
  * and under the `source === 'local'` derivation the projection replaces.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -92,9 +99,22 @@ function seedFixtures() {
 const configLoader = {
   getProjectHomeDir: () => home,
   loadSkill: vi.fn(async (name: string) => {
-    throw new Error(`Skill '${name}' not found`);
+    const record = join(home, 'skills', name, 'skill.json');
+    if (!existsSync(record)) throw new Error(`Skill '${name}' not found`);
+    return JSON.parse(readFileSync(record, 'utf-8'));
   }),
-  saveSkill: vi.fn(),
+  // Writes the record where the writer said it goes, as production does. The
+  // effect oracle below reads the filesystem back, so a stub that persisted
+  // nothing would make every write look like a refusal.
+  saveSkill: vi.fn(async (name: string, config: { path?: string }) => {
+    const directory = config.path ?? join(home, 'skills', name);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      join(directory, 'skill.json'),
+      JSON.stringify(config, null, 2),
+      'utf-8',
+    );
+  }),
   deleteSkill: vi.fn(),
   listSkills: vi.fn().mockResolvedValue([]),
   skillExists: vi.fn().mockResolvedValue(false),
@@ -382,5 +402,178 @@ describe('a package the user owns that the server nonetheless refuses', () => {
     expect(row).toBeDefined();
     expect(row?.writable).toBe(await gateAdmits(app, 'shared-name'));
     expect(row?.writeRefusal === undefined).toBe(row?.writable === true);
+  });
+});
+
+/**
+ * The EFFECT oracle: `writable` is true if and only if a write through the route
+ * modifies that package's own `SKILL.md` and creates no second package under the
+ * machine root.
+ *
+ * The agreement assertions above are a cheap WIRING pin and nothing more — both
+ * sides reach the same function with identical arguments, so they catch a reader
+ * that stops going through it, which is the regression the issue is about, and
+ * they cannot see both sides being wrong TOGETHER. Review found exactly that: a
+ * decision memoised across a rediscovery made the projection and the gate agree
+ * on a grant neither should have given, and every agreement assertion stayed
+ * green while a write to a read-only package published a shadow copy.
+ *
+ * This oracle is the filesystem, so it is blind to what the rule believes. It
+ * survives the #1619 policy change for the same reason the agreement assertions
+ * do — whichever answer the rule gives, the effect has to match it.
+ */
+describe('writable iff the write lands in that package and nowhere else', () => {
+  /** What a write through the route actually DID, read off the disk. */
+  async function writeEffect(
+    app: RouteApp,
+    name: string,
+    packageDirectory: string,
+  ) {
+    const own = join(packageDirectory, 'SKILL.md');
+    const before = readFileSync(own, 'utf-8');
+    const response = await app.request(`/${name}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description: 'Edited by the oracle',
+        body: 'Edited body',
+      }),
+    });
+    return {
+      status: response.status,
+      modifiedItsOwnPackage: readFileSync(own, 'utf-8') !== before,
+      // A shadow package under the machine root is the specific damage the
+      // refusal exists to prevent, so it is asserted rather than inferred from
+      // the response.
+      shadowedUnderMachineRoot:
+        packageDirectory !== join(home, 'skills', name) &&
+        existsSync(join(home, 'skills', name)),
+    };
+  }
+
+  test('a project-scoped package the user owns', async () => {
+    const packageDirectory = join(
+      home,
+      'projects',
+      'demo',
+      'skills',
+      'scoped-tool',
+    );
+    writePackage(packageDirectory, 'scoped-tool', {
+      source: 'local',
+      origin: 'project',
+      installedAt: '2026-01-06T00:00:00.000Z',
+    });
+    const { app } = await setup({ projectSlug: 'demo' });
+    const writable = (await listing(app)).get('scoped-tool')?.writable;
+
+    const effect = await writeEffect(app, 'scoped-tool', packageDirectory);
+
+    expect(writable).toBe(
+      effect.modifiedItsOwnPackage && !effect.shadowedUnderMachineRoot,
+    );
+  });
+
+  test('a project-scoped package whose name a plugin also holds', async () => {
+    const packageDirectory = join(
+      home,
+      'plugins',
+      'vendor',
+      'skills',
+      'shared-name',
+    );
+    writePackage(
+      join(home, 'projects', 'demo', 'skills', 'shared-name'),
+      'shared-name',
+      {
+        source: 'local',
+        origin: 'project',
+        installedAt: '2026-01-06T00:00:00.000Z',
+      },
+    );
+    writePackage(packageDirectory, 'shared-name');
+    const { app } = await setup({ projectSlug: 'demo' });
+    const row = (await listing(app)).get('shared-name');
+
+    // The plugin's package is what answers to the name — that IS the residual.
+    const effect = await writeEffect(app, 'shared-name', packageDirectory);
+
+    expect(row?.writable).toBe(
+      effect.modifiedItsOwnPackage && !effect.shadowedUnderMachineRoot,
+    );
+  });
+
+  test('the oracle can distinguish: a machine-root package writes and is reported writable', async () => {
+    // Without this the biconditional above could be satisfied by a rule that
+    // answers `false` for everything, which is not the property being asserted.
+    const packageDirectory = join(home, 'skills', 'bought-in');
+    const { app } = await setup();
+    const writable = (await listing(app)).get('bought-in')?.writable;
+
+    const effect = await writeEffect(app, 'bought-in', packageDirectory);
+
+    expect(writable).toBe(true);
+    expect(effect.modifiedItsOwnPackage).toBe(true);
+    expect(effect.shadowedUnderMachineRoot).toBe(false);
+  });
+
+  test('the oracle can distinguish: a plugin-root package writes nowhere and is reported unwritable', async () => {
+    const packageDirectory = join(
+      home,
+      'plugins',
+      'vendor',
+      'skills',
+      'vendor-tool',
+    );
+    const { app } = await setup();
+    const writable = (await listing(app)).get('vendor-tool')?.writable;
+
+    const effect = await writeEffect(app, 'vendor-tool', packageDirectory);
+
+    expect(writable).toBe(false);
+    expect(effect.modifiedItsOwnPackage).toBe(false);
+    expect(effect.shadowedUnderMachineRoot).toBe(false);
+  });
+});
+
+/**
+ * The window review reproduced: `discoverSkills` clears the registry
+ * SYNCHRONOUSLY and then awaits its scans, so anything landing in between
+ * decides against an empty registry — where no name resolves to a package and
+ * every name therefore reads writable. That transient answer is correct-ish and
+ * harmless as long as it is transient; the first cut of #1655 memoised it for
+ * the whole registry generation, and because the write gate consulted the same
+ * memo, an ordinary listing armed a durable grant on a read-only package.
+ */
+describe('a decision made while discovery is in flight does not outlive it', () => {
+  test('a canonical package is refused after a read landed mid-rediscovery', async () => {
+    const canonicalRoot = join(home, 'canonical');
+    writePackage(join(canonicalRoot, 'shipped'), 'shipped');
+    const { app, service } = await setup({ canonicalRoot });
+    expect((await listing(app)).get('shipped')?.writable).toBe(false);
+
+    // Not awaited: the registry is empty from here until the scans finish.
+    const discovery = service.discoverSkills(home);
+    // The window itself, asserted so the test says what it is exercising. This
+    // answer is not the defect — outliving the window is.
+    expect(service.isSkillWritable('shipped', home)).toBe(true);
+    // And an ordinary read lands in it, which is what armed the grant.
+    await listing(app);
+    await discovery;
+
+    expect(service.isSkillWritable('shipped', home)).toBe(false);
+    const row = (await listing(app)).get('shipped');
+    expect(row?.writable).toBe(false);
+    expect(refusalOf(row).reason).toBe('canonical-package');
+
+    // The consequence, not just the label: the gate refuses, and no shadow
+    // package appears under the machine root.
+    const refused = await app.request('/shipped', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: { enabled: true } }),
+    });
+    expect(refused.status).toBe(409);
+    expect(existsSync(join(home, 'skills', 'shipped'))).toBe(false);
   });
 });

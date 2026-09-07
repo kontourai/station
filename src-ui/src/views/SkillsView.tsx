@@ -1,4 +1,7 @@
-import type { Skill } from '@kontourai/station-contracts/catalog';
+import type {
+  Skill,
+  SkillWriteRefusalReason,
+} from '@kontourai/station-contracts/catalog';
 import { skillCommandNameError } from '@kontourai/station-contracts/skill-command';
 import { serializeSkillMarkdown } from '@kontourai/station-contracts/skill-markdown';
 import {
@@ -50,6 +53,23 @@ import {
 import './editor-layout.css';
 import './page-layout.css';
 import './skills-view.css';
+
+/**
+ * What to DO about each refusal — keyed by the server's reason code, because the
+ * remedies are not the same sentence. A plugin-served prompt has no registry
+ * entry to install; a name that cannot be a directory name needs a rename, not
+ * an install. Appending one fixed remedy to every reason made the closed union
+ * real in the type and unrealised in the product (review medium).
+ *
+ * A `Record` over the union rather than a lookup with a default, so adding a
+ * reason code fails to COMPILE until someone decides what to say about it.
+ */
+const SKILL_WRITE_REMEDY: Record<SkillWriteRefusalReason, string> = {
+  'served-in-place': 'The plugin that provides it is what to change.',
+  'canonical-package': 'Install it into your workspace to author it here.',
+  'outside-writable-root': 'Install it into your workspace to author it here.',
+  'unresolvable-name': 'Rename it to author it here.',
+};
 
 export function SkillsView({
   basePath = '/skills',
@@ -575,16 +595,19 @@ export function SkillsView({
                     <div className="skill-detail__meta">
                       <span>{sourceLabel}</span>
                     </div>
-                    {/* The server's own reason, not a sentence invented here:
-                        it names the root the package sits in, which is the one
-                        thing that tells a reader what to do about it. The
-                        fallback covers a server that stated no decision — a
-                        Save is still withheld, and saying so without a reason
-                        beats inventing one. */}
+                    {/* WHAT is wrong comes from the server verbatim; WHAT TO
+                        DO is chosen by the reason code, because the remedies
+                        genuinely differ — a plugin-served prompt has no registry
+                        entry to install, and telling its reader to install it is
+                        advice that cannot be followed. The fallback covers a
+                        server that stated no decision: Save is still withheld,
+                        and saying so without a reason beats inventing one. */}
                     {!editableLocal && (
                       <p className="skill-detail__source-note">
                         {selected?.writeRefusal
-                          ? `Read-only: ${selected.writeRefusal.detail}. Install it into your workspace to author it here.`
+                          ? `Read-only. ${selected.writeRefusal.detail} ${
+                              SKILL_WRITE_REMEDY[selected.writeRefusal.reason]
+                            }`
                           : 'This skill is read-only here. Browse Registry to discover or install skills; create a new workspace skill to author one.'}
                       </p>
                     )}

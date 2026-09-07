@@ -180,20 +180,39 @@ export type SkillOrigin =
  * wrong again after it.
  */
 export type SkillWriteRefusalReason =
-  /** A SOURCE serves it in place (a plugin's prompt file), not a directory Station owns. */
+  /**
+   * A SOURCE serves it in place (a plugin's prompt file), not a directory
+   * Station owns. Its remedy is unlike the others': there is no registry entry
+   * to install, so the plugin that provides it is the thing to change.
+   */
   | 'served-in-place'
   /** It is served from a canonical package root, which ships read-only. */
   | 'canonical-package'
   /** Its package sits in some other root, which Station does not write. */
-  | 'outside-writable-root';
+  | 'outside-writable-root'
+  /**
+   * Its name cannot become a directory name, so there is no package of its own
+   * to write. Discovery registers a frontmatter `name` unvalidated, so this is
+   * reachable; the remedy is a rename, not an install.
+   */
+  | 'unresolvable-name';
 
 /** The server's refusal to write a skill package, with its own sentence about it. */
 export interface SkillWriteRefusal {
   reason: SkillWriteRefusalReason;
   /**
-   * The server's statement of THIS package's refusal, for display. Readers
-   * render it rather than composing an explanation from `reason`; nothing may
-   * branch on the text.
+   * WHAT is wrong, in the server's own words, as a complete sentence — for
+   * display. Readers render it rather than composing a description from
+   * `reason`, and nothing may branch on the text.
+   *
+   * It never contains the skill's NAME. A name is plugin- or
+   * frontmatter-authored and can be long enough to read as a sentence of its
+   * own, which a surface would then frame as Station's explanation; every
+   * surface showing this already shows the name beside it.
+   *
+   * It never carries an exception message either. What to DO about the refusal
+   * belongs to `reason` — the remedies genuinely differ — so a reader switches
+   * on the code for the remedy and renders this for the description.
    */
   detail: string;
 }

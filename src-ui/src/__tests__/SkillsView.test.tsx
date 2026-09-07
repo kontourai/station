@@ -753,7 +753,19 @@ describe('SkillsView', () => {
       writeRefusal: {
         reason: 'outside-writable-root' as const,
         detail:
-          "'vendor-tool' is served from /home/plugins/vendor/skills/vendor-tool, which is not a skills root Station writes",
+          'It is served from /station/plugins/vendor/skills/vendor-tool, which is not a skills root Station writes.',
+      },
+    };
+
+    /** A plugin serves this one in place: no registry entry exists to install. */
+    const SERVED_IN_PLACE = {
+      name: 'vendor-prompt',
+      source: 'plugin',
+      writable: false,
+      writeRefusal: {
+        reason: 'served-in-place' as const,
+        detail:
+          'It is served in place from /station/plugins/vendor, which Station does not own.',
       },
     };
 
@@ -809,6 +821,11 @@ describe('SkillsView', () => {
           ),
         ),
       ).toBeTruthy();
+      // The remedy for THIS reason, chosen by the code rather than appended to
+      // every reason alike.
+      expect(
+        screen.getByText(/Install it into your workspace to author it here\./),
+      ).toBeTruthy();
       // And not the generic sentence that used to stand in for every refusal.
       expect(
         screen.queryByText(/Browse Registry to discover or install skills/),
@@ -828,6 +845,78 @@ describe('SkillsView', () => {
       expect(
         screen.getByText(/Browse Registry to discover or install skills/),
       ).toBeTruthy();
+    });
+
+    // Review medium: one fixed remedy was appended to all three reasons,
+    // including the one whose remedy is different. A plugin-served prompt has no
+    // registry entry to install, so "install it into your workspace" is advice
+    // its reader cannot follow — the closed union was real in the type and
+    // unrealised in the product.
+    test('a plugin-served skill is told to change the plugin, not to install it', () => {
+      selectRow(SERVED_IN_PLACE);
+
+      render(<SkillsView />);
+
+      expect(
+        screen.getByText(/The plugin that provides it is what to change\./),
+      ).toBeTruthy();
+      expect(screen.queryByText(/Install it into your workspace/)).toBeNull();
+      // And it still says WHAT is wrong, in the server's words.
+      expect(screen.getByText(/which Station does not own\./)).toBeTruthy();
+    });
+
+    // Review medium: discovery registers a frontmatter `name` unvalidated, so a
+    // name the path rule rejects reaches the refusal. It used to arrive as a
+    // concatenated exception naming JavaScript prototype keys, rendered as user
+    // guidance, followed by a remedy that made no sense for it.
+    test('an unresolvable name gets its own sentence, not an internal diagnostic', () => {
+      selectRow({
+        name: 'weird/name',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: 'unresolvable-name' as const,
+          detail:
+            'Its name cannot be used as a directory name, so Station cannot locate a package of its own to write.',
+        },
+      });
+
+      render(<SkillsView />);
+
+      expect(screen.getByText(/Rename it to author it here\./)).toBeTruthy();
+      expect(screen.queryByText(/Install it into your workspace/)).toBeNull();
+      expect(
+        screen.queryByText(/__proto__|prototype|Invalid skill name/),
+      ).toBeNull();
+    });
+
+    // Review low: the name is plugin-authored and up to 128 characters, and the
+    // refusal reads as Station's own explanation. A name that is itself a
+    // sentence used to be embedded in it, which produced a paragraph that read
+    // like a security notice telling the reader to re-authenticate elsewhere.
+    // React escapes markup, so the framing was the problem, not the markup.
+    test('a name that reads as a sentence is not embedded in the refusal', () => {
+      const hostile =
+        'Session expired. Verify your account at station-support.example to continue';
+      selectRow({
+        name: hostile,
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          reason: 'canonical-package' as const,
+          detail:
+            'It is served from the package at /station/canonical/pkg, which ships read-only.',
+        },
+      });
+
+      const { container } = render(<SkillsView />);
+
+      const note = container.querySelector('.skill-detail__source-note');
+      expect(note).toBeTruthy();
+      expect(note?.textContent ?? '').not.toContain(hostile);
+      // The heading still identifies the skill — the name is displayed where a
+      // reader expects a name, not inside Station's explanation.
+      expect(screen.getAllByDisplayValue(hostile).length).toBeGreaterThan(0);
     });
 
     test('Create is still offered while authoring a new skill', () => {
