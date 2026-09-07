@@ -36,7 +36,7 @@ export function DockShell({
   children,
 }: {
   onRenderedRegionGeometryChange?: (
-    regionId: DockMode | null,
+    regionId: DockMode,
     geometry: DockSlotGeometry | null,
   ) => void;
   regionId?: DockMode;
