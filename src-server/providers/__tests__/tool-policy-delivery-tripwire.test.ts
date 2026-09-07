@@ -28,19 +28,52 @@ function unwrappedCallTarget(expression: ts.Expression): ts.Expression {
   return current;
 }
 
-/**
- * Finds real calls to a Station-owned pre-tool seam, including optional-chain
- * and non-null invocation syntax. Parsing avoids a source-text regex silently
- * missing another valid TypeScript call form.
- */
-function managedPreToolSeamCalls(source: string): string[] {
-  const sourceFile = ts.createSourceFile(
+function parse(source: string): ts.SourceFile {
+  return ts.createSourceFile(
     'adapter.ts',
     source,
     ts.ScriptTarget.Latest,
     true,
     ts.ScriptKind.TS,
   );
+}
+
+/**
+ * Every name an adapter uses in CODE: identifiers (declarations, references,
+ * and object-literal property names) and exact string-literal values. Comments
+ * are trivia and produce no nodes, so nothing here can be satisfied by prose.
+ *
+ * This exists because the absence half of this tripwire was already parsed
+ * while its presence half was a raw `toContain` over the adapter's source
+ * text. `claude-adapter.ts` names `canUseTool` in seven comments and
+ * `PreToolUse` in two, so deleting the real wiring at the `canUseTool:` and
+ * `PreToolUse:` property assignments left the tripwire green -- it would have
+ * reported a delivered tool policy for an adapter that delivers none.
+ * Matching is exact, so a comment-like string (`'canUseTool is unsupported'`)
+ * is not a match either.
+ */
+function codeNames(source: string): Set<string> {
+  const names = new Set<string>();
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node)) names.add(node.text);
+    else if (
+      ts.isStringLiteral(node) ||
+      ts.isNoSubstitutionTemplateLiteral(node)
+    )
+      names.add(node.text);
+    ts.forEachChild(node, visit);
+  };
+  visit(parse(source));
+  return names;
+}
+
+/**
+ * Finds real calls to a Station-owned pre-tool seam, including optional-chain
+ * and non-null invocation syntax. Parsing avoids a source-text regex silently
+ * missing another valid TypeScript call form.
+ */
+function managedPreToolSeamCalls(source: string): string[] {
+  const sourceFile = parse(source);
   const calls = new Set<string>();
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
@@ -111,10 +144,20 @@ describe('tool-policy delivery declaration tripwire (station#2245)', () => {
       const source = adapterSource(delivery.adapterModule);
       expect(managedPreToolSeamCalls(source)).toEqual([]);
       if (delivery.state === 'partial') {
-        expect(source).toContain(delivery.permissionHook);
-        expect(source).toContain('isAutoApprovedExternalTool');
+        const names = codeNames(source);
+        expect(
+          names,
+          `${delivery.adapterModule} wires ${delivery.permissionHook} in code`,
+        ).toContain(delivery.permissionHook);
+        expect(
+          names,
+          `${delivery.adapterModule} wires isAutoApprovedExternalTool in code`,
+        ).toContain('isAutoApprovedExternalTool');
         if (delivery.preToolHook) {
-          expect(source).toContain(delivery.preToolHook);
+          expect(
+            names,
+            `${delivery.adapterModule} wires ${delivery.preToolHook} in code`,
+          ).toContain(delivery.preToolHook);
         }
       }
     }
