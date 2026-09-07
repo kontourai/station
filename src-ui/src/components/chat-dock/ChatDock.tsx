@@ -72,6 +72,7 @@ import {
 } from '../../hooks/useDockShellChrome';
 import { useExitTransition } from '../../hooks/useExitTransition';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import { useOutboundQueueSnapshot } from '../../hooks/useOutboundQueueSnapshot';
 import {
   OPEN_PROJECT_CHATS_EVENT,
   type OpenProjectChatsDetail,
@@ -1195,25 +1196,22 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
   const commandLauncherShortcut = isMac ? '⌘⇧L' : 'Ctrl+Shift+L';
 
-  const durableHandoffQueue = useQuery({
-    queryKey: [
-      'conversation-handoff-outbound-queue',
-      activeSession?.conversationId,
-      activeSession?.id,
-    ],
-    enabled: Boolean(activeSession?.conversationId),
-    queryFn: async () => {
-      const { outboundDispatch } = await import('../../lib/outboundQueue');
-      const turns = await outboundDispatch.snapshot();
-      return turns.filter(
+  // The queue publishes every durable transition through its own
+  // subscription, so this reads a cached projection and is told when it
+  // changed. It used to re-read IndexedDB once a second for a value that only
+  // moves when the user queues, sends, or discards a message.
+  const durableHandoffQueue = useOutboundQueueSnapshot(
+    Boolean(activeSession?.conversationId),
+  );
+  const durableHandoffQueueCount = useMemo(
+    () =>
+      durableHandoffQueue.turns.filter(
         (turn) =>
           turn.conversationId === activeSession?.conversationId ||
           turn.sessionId === activeSession?.id,
-      ).length;
-    },
-    staleTime: 0,
-    refetchInterval: 1_000,
-  });
+      ).length,
+    [durableHandoffQueue, activeSession?.conversationId, activeSession?.id],
+  );
   const contextBoundaryStatus =
     contextBoundaryStatusQuery.data?.status ?? contextBoundaryStored?.status;
   const contextBoundaryLabel =
@@ -1239,11 +1237,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ? 'Wait for the current turn to finish before changing Agent.'
       : hasLocalDeferredMessages
         ? 'Resolve queued or offline messages before changing Agent.'
-        : durableHandoffQueue.isPending
+        : durableHandoffQueue.status === 'pending'
           ? 'Checking queued messages before changing Agent.'
-          : durableHandoffQueue.isError
+          : durableHandoffQueue.status === 'error'
             ? 'Queued message state is unavailable. Try again.'
-            : (durableHandoffQueue.data ?? 0) > 0
+            : durableHandoffQueueCount > 0
               ? 'Resolve queued or offline messages before changing Agent.'
               : undefined;
 
