@@ -25,6 +25,8 @@ allowBuilds:
   protobufjs@7.6.5: false
   ssh2@1.17.0: false
 minimumReleaseAge: 1440
+minimumReleaseAgeExclude:
+  - '@kontourai/veritas'
 pmOnFail: ignore
 overrides:
   adm-zip: ^0.6.0

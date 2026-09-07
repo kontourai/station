@@ -150,8 +150,8 @@ importers:
         specifier: ^1.12.0
         version: 1.12.0(react@19.2.8)
       '@kontourai/veritas':
-        specifier: ^1.5.3
-        version: 1.5.3(supports-color@7.2.0)(zod@4.4.3)
+        specifier: ^1.6.0
+        version: 1.6.0(supports-color@7.2.0)(zod@4.4.3)
       '@modelcontextprotocol/client':
         specifier: ^2.0.0
         version: 2.0.0
@@ -2157,8 +2157,8 @@ packages:
     peerDependencies:
       react: ^19.0.0
 
-  '@kontourai/veritas@1.5.3':
-    resolution: {integrity: sha512-nQIGjoKBSvJ8ldtco+MPzXiKkkPMftLKd+/oez1xPf6+DW8LNXUW7tcs5hLEq5kkuW1vVjT12uhQnB6M31o+xQ==}
+  '@kontourai/veritas@1.6.0':
+    resolution: {integrity: sha512-ejipgxPDKlcNyeEOMfCIR/BPXzmFbMd4kGl76SwO1xunqDw2QisEqtcxuFQ9VOnZZ4TwGFP4kssPJNtpIKFxGQ==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -4885,10 +4885,6 @@ packages:
   gray-matter@4.0.3:
     resolution: {integrity: sha512-5v6yZd4JK3eMI3FqqCouswVqwugaA9r4dNZB1wwcmrD02QkV5H0y7XBQW8QwQqEaZY1pM9aqORSORhJRdNK44Q==}
     engines: {node: '>=6.0'}
-
-  hachure@0.14.0:
-    resolution: {integrity: sha512-mK6h4W8NNZqVu3Di7eCD6QRIgmJDzFrrBj3+ss4nvVggo4ym68T/9tRpKD4rJOh80pTtDxVF8k3HuJ0KcuGRtg==}
-    hasBin: true
 
   hachure@0.15.0:
     resolution: {integrity: sha512-4YKLShbDKG+k52lJvH9shup7UYAX7pW+EA8c/4dx3RQFqCmORHl9gjJrM9vUljuTml/haTJgWYPd1G1MWmrm8Q==}
@@ -8812,13 +8808,14 @@ snapshots:
     dependencies:
       react: 19.2.8
 
-  '@kontourai/veritas@1.5.3(supports-color@7.2.0)(zod@4.4.3)':
+  '@kontourai/veritas@1.6.0(supports-color@7.2.0)(zod@4.4.3)':
     dependencies:
       '@kontourai/surface': 2.18.0(supports-color@7.2.0)
       '@modelcontextprotocol/sdk': 1.30.0(supports-color@7.2.0)(zod@4.4.3)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
-      hachure: 0.14.0
+      cross-spawn: 7.0.6
+      hachure: 0.15.0
       picomatch: 4.0.5
     transitivePeerDependencies:
       - '@cfworker/json-schema'
@@ -11913,8 +11910,6 @@ snapshots:
       kind-of: 6.0.3
       section-matter: 1.0.0
       strip-bom-string: 1.0.0
-
-  hachure@0.14.0: {}
 
   hachure@0.15.0: {}
 
