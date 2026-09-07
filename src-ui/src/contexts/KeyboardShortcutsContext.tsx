@@ -215,6 +215,42 @@ const isMac =
   typeof navigator !== 'undefined' &&
   navigator.platform.toUpperCase().indexOf('MAC') >= 0;
 
+const MAC_MODIFIER_SYMBOLS: Record<ShortcutModifier, string> = {
+  cmd: '⌘',
+  ctrl: '⌃',
+  shift: '⇧',
+  alt: '⌥',
+};
+
+const PORTABLE_MODIFIER_LABELS: Record<ShortcutModifier, string> = {
+  cmd: 'Ctrl+',
+  ctrl: 'Ctrl+',
+  shift: 'Shift+',
+  alt: 'Alt+',
+};
+
+/**
+ * Spell a chord the way the platform the user is on presses it.
+ *
+ * This is the ONE place that decides `⌘K` versus `Ctrl+K`, and it is exported
+ * so a surface drawing a keycap has somewhere to route to. A hardcoded `⌘`
+ * outside macOS is not a typography problem, it is a false label: it
+ * advertises a chord the user cannot press (#1649). It is also the reason the
+ * Mac keycap codepoints — none of which is in the bundled font subsets — only
+ * ever reach the DOM on macOS, where the system font draws them.
+ */
+export function formatShortcutChord(
+  modifiers: readonly ShortcutModifier[],
+  key: string,
+  mac: boolean = isMac,
+): string {
+  const symbols = modifiers.map(
+    (modifier) =>
+      (mac ? MAC_MODIFIER_SYMBOLS : PORTABLE_MODIFIER_LABELS)[modifier] ?? '',
+  );
+  return symbols.join('') + key.toUpperCase();
+}
+
 export function orderShortcuts(
   shortcuts: Iterable<KeyboardShortcut>,
 ): KeyboardShortcut[] {
@@ -390,15 +426,7 @@ export function KeyboardShortcutsProvider({
       const shortcut = resolveShortcut(registered);
       if (shortcut.disabled) return 'Not set';
 
-      const modifierSymbols = shortcut.modifiers.map((mod) => {
-        if (mod === 'cmd') return isMac ? '⌘' : 'Ctrl+';
-        if (mod === 'ctrl') return isMac ? '⌃' : 'Ctrl+';
-        if (mod === 'shift') return isMac ? '⇧' : 'Shift+';
-        if (mod === 'alt') return isMac ? '⌥' : 'Alt+';
-        return '';
-      });
-
-      return modifierSymbols.join('') + shortcut.key.toUpperCase();
+      return formatShortcutChord(shortcut.modifiers, shortcut.key);
     },
     [resolveShortcut],
   );

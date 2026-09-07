@@ -1,7 +1,10 @@
 import type React from 'react';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { toastStore } from '../../contexts/ToastContext';
-import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
+import {
+  useShortcutDisplay,
+  useShortcutDisplayLookup,
+} from '../../hooks/useKeyboardShortcut';
 import type { DockMode } from '../../types';
 import { isSessionExecutionActive } from '../../utils/execution';
 import { LazyBoundary } from '../LazyBoundary';
@@ -198,6 +201,9 @@ export function ChatDockHeader({
   const isDockMaximized = shellMaximized;
   const toggleDockShortcut = useShortcutDisplay(surfaceShortcutId);
   const registeredMaximizeShortcut = useShortcutDisplay('dock.maximize');
+  // One hook for a variable number of per-session rows: `useShortcutDisplay`
+  // is a hook and cannot be called inside the activity map.
+  const shortcutDisplay = useShortcutDisplayLookup();
   const maximizeShortcut = showMaximizeShortcut
     ? registeredMaximizeShortcut
     : '';
@@ -428,8 +434,19 @@ export function ChatDockHeader({
                     <span className="chat-dock__activity-label">
                       {session.title}
                     </span>
+                    {/*
+                      `dock.session1`…`dock.session9` are Cmd-N on macOS and
+                      Ctrl-N everywhere else; the literal `⌘{n}` that used to
+                      sit here named a chord no Windows or Linux user could
+                      press (#1649). `getDisplay` returns '' for a session
+                      index nothing has registered, and
+                      `.chat-dock__subtitle:empty` hides the badge rather than
+                      drawing an empty keycap.
+                    */}
                     {idx < 9 && (
-                      <span className="chat-dock__subtitle">⌘{idx + 1}</span>
+                      <span className="chat-dock__subtitle">
+                        {shortcutDisplay(`dock.session${idx + 1}`)}
+                      </span>
                     )}
                   </button>
                 );

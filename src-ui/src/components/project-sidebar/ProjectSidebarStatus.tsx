@@ -1,7 +1,10 @@
 import { useRef, useState } from 'react';
 import { buildLabel, buildTitle } from '../../build-info';
 import { useAgents } from '../../contexts/AgentsContext';
-import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
+import {
+  formatShortcutChord,
+  withShortcutHint,
+} from '../../contexts/KeyboardShortcutsContext';
 import { openChatsStore, useOpenChats } from '../../contexts/open-chats-store';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
@@ -123,7 +126,19 @@ export function ProjectSidebarStatus() {
             window.dispatchEvent(new CustomEvent('open-command-palette'))
           }
         >
-          ⌘K
+          {/*
+            The registry is the authority: it spells the chord for the
+            platform the user is on, and it tracks a rebinding from Settings.
+            A hardcoded `⌘K` advertised a chord Windows and Linux users
+            cannot press (#1649). `CommandPalette` registers the shortcut from
+            a lazily-loaded chunk, so for the first tick the registry has
+            nothing to say — the static default covers that window and is
+            superseded the moment the chunk lands. It can only be wrong about
+            a user's own rebinding, and only until then.
+          */}
+          {commandPaletteShortcut && commandPaletteShortcut !== 'Not set'
+            ? commandPaletteShortcut
+            : formatShortcutChord(['cmd'], 'k')}
         </button>
       </div>
     </div>

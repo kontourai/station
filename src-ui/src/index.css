@@ -3090,10 +3090,17 @@ button:hover {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   /* The branch glyph and the branch name are one token; without this the
-     header squeezed "main" onto a second line under the ⎇, and a long branch
+     header squeezed "main" onto a second line under the branch glyph, and a
+     long branch
      name broke across three. A squeezed badge ellipsises instead. */
   min-width: 0;
   white-space: nowrap;
+}
+/* Inline, not a flex item: `.git-badge__branch` owns the text-overflow
+   ellipsis that keeps a long branch name on one line, and that needs the
+   name to be text directly inside a non-flex box. */
+.git-badge__branch-icon {
+  vertical-align: -0.15em;
 }
 .git-badge__branch {
   min-width: 0;
