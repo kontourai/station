@@ -3160,14 +3160,16 @@ button:hover {
   font-size: var(--text-xs);
   /* The branch glyph and the branch name are one token; without this the
      header squeezed "main" onto a second line under the branch glyph, and a
-     long branch
-     name broke across three. A squeezed badge ellipsises instead. */
+     long branch name broke across three. A squeezed badge ellipsises
+     instead. */
   min-width: 0;
   white-space: nowrap;
 }
-/* Inline, not a flex item: `.git-badge__branch` owns the text-overflow
-   ellipsis that keeps a long branch name on one line, and that needs the
-   name to be text directly inside a non-flex box. */
+/* The glyph is inline rather than a flex item on purpose: `.git-badge__branch`
+   below owns the text-overflow ellipsis that keeps a long branch name on one
+   line, and that needs the name to be text directly inside a non-flex box.
+   An inline SVG sits on the text baseline, so nudge it onto the optical
+   centre of the name beside it. */
 .git-badge__branch-icon {
   vertical-align: -0.15em;
 }
