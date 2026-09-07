@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
+import { createRegionClearanceWriter } from '../regions/region-clearance';
 import { REGION_IDS } from '../regions/region-model';
 
 /**
@@ -41,6 +42,8 @@ const SELF = 'src-ui/src/__tests__/placement-vocabulary.test.ts';
 const GUARDED_MODULES = {
   regionIds: REGION_IDS,
   destinationCount: APP_DESTINATION_REGISTRY.getRegistered().length,
+  /** The clearance writer, for the retired CSS custom property below. */
+  clearanceWriter: createRegionClearanceWriter,
 } as const;
 const SCANNED_ROOTS = [
   'src-ui/src',
@@ -49,7 +52,16 @@ const SCANNED_ROOTS = [
   'scripts',
   'tests',
 ] as const;
-const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.mjs', '.mts', '.js'] as const;
+// `.css` is in scope because one retired name below IS a custom property,
+// and a stylesheet is where it would come back (#1374).
+const SOURCE_EXTENSIONS = [
+  '.ts',
+  '.tsx',
+  '.mjs',
+  '.mts',
+  '.js',
+  '.css',
+] as const;
 
 interface RetiredName {
   name: string;
@@ -74,6 +86,21 @@ const RETIRED_NAMES: readonly RetiredName[] = [
     name: 'app-shell/surface-registry (import path)',
     pattern: /app-shell\/surface-registry\b/,
   },
+  /**
+   * #1374. The pre-#928 side-width alias: ONE name for the width of "the
+   * side", which stopped being a thing that exists the moment a surface
+   * could occupy `left` while another occupies `right`. The reducer
+   * withheld it there rather than guess, which left every side reader on a
+   * shared literal, and while it existed it made one side's width the
+   * DECLARED fallback for the other. Side widths
+   * are `--region-left-size` and `--region-right-size`; the bottom-edge
+   * alias `--dock-slot-size` survives, because the space the dock takes
+   * along the bottom edge IS one number.
+   *
+   * This file is the one place the retired spelling appears, so a grep for
+   * it lands on the reason it is gone.
+   */
+  { name: '--chat-dock-width (CSS variable)', pattern: /--chat-dock-width\b/ },
 ];
 
 function listSourceFiles(): string[] {
@@ -132,6 +159,8 @@ describe('placement vocabulary (#928)', () => {
       'packages/contracts/src/workspace-pane.ts',
       'scripts/test-impact-manifest.mjs',
       'tests/e2e-manifest.mjs',
+      'src-ui/src/index.css',
+      'src-ui/src/components/notifications/BannerHost.css',
     ]) {
       expect(files, `enumeration lost ${sentinel}`).toContain(sentinel);
     }
@@ -161,8 +190,21 @@ describe('placement vocabulary (#928)', () => {
           'export { APP_DESTINATION_REGISTRY, retired };',
         ].join('\n'),
       );
-      expect(scanForRetiredNames([injected], dir)).toEqual([
+      // And the stylesheet half of the corpus, for the retired custom
+      // property: a `.ts` injection alone would leave the CSS pattern
+      // unproven on the file kind it exists for.
+      const injectedCss = join(dir, 'injected.css');
+      writeFileSync(
+        injectedCss,
+        [
+          '.banner-host {',
+          '  left: var(--region-left-size, var(--chat-dock-width, 400px));',
+          '}',
+        ].join('\n'),
+      );
+      expect(scanForRetiredNames([injected, injectedCss], dir)).toEqual([
         `${injected}:2 RegionLayout`,
+        `${injectedCss}:2 --chat-dock-width (CSS variable)`,
       ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
