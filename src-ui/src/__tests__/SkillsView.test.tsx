@@ -727,17 +727,40 @@ describe('SkillsView', () => {
    */
   describe('the Save action follows the server writability decision', () => {
     /**
-     * RESIDUAL, not a style choice: `any` on both parameters means no fixture
-     * in this file is typechecked against `SkillListing` or
-     * `SkillWriteRefusal`. That is the mechanism that let two fixtures keep
-     * pre-reword prose while a comment above them claimed they were what the
-     * server emits (round 8 fixed the instances; this names the class).
+     * RESIDUAL, not a style choice: `any` here and on `selectSkill` above means
+     * no fixture in this file is typechecked against `SkillListing` or
+     * `SkillWriteRefusal`. Two untyped helpers, not one — the drift below is
+     * split across both.
      *
-     * It has a second live consequence: `packageDirectory` is REQUIRED on
-     * `SkillWriteRefusal` — deliberately de-optionalised, see its docblock in
-     * `catalog.ts` — and 4 of the 11 `writeRefusal` fixtures here omit it, so
-     * they encode a shape no server can produce. Typing these parameters is the
-     * fix; it is a separate change because it will red every fixture at once.
+     * TWO STALE FIXTURES SURVIVE, and an earlier version of this note claimed
+     * the instances were fixed:
+     *   - 'an unresolvable name gets its own sentence, not an internal
+     *     diagnostic' (this describe): says the name "cannot locate a package
+     *     of its own to write"; the server says "cannot work out where it
+     *     would write this package".
+     *   - 'offers the install action, not a switch, on a read-only skill',
+     *     via `selectSkill`: interpolates BOTH the skill name and
+     *     `/pkgs/packaged-skill` into `detail` — precisely the shape
+     *     `LOCAL_BUT_NOT_WRITABLE`'s comment says the server stopped
+     *     producing, sitting in a fixture. The server's text is 'It is served
+     *     from a package that ships read-only.'
+     * Left as-is deliberately: correcting fixtures is a change with its own
+     * review, and this note exists so nobody reads silence as absence.
+     *
+     * On `packageDirectory`, which the contract REQUIRES (deliberately
+     * de-optionalised — see its docblock in `catalog.ts`): 5 of the 12
+     * `writeRefusal` fixtures here omit it, and the omissions are not one
+     * thing. THREE are deliberate and correct — the unknown-reason-code test,
+     * the 'renders no path element' test, and the inherited-key table all cast
+     * `as never` precisely because the type forbids what they construct on
+     * purpose (a server one release ahead, a build that dropped the field,
+     * prototype keys). Typing these helpers would not red them, and "fixing"
+     * them would delete their premise. TWO are drift: the same two named
+     * above.
+     *
+     * So typing the helpers is not simply "the fix" — it would catch the two
+     * drifted fixtures and would have to preserve the three deliberate casts.
+     * Nobody has measured what else it reds.
      */
     function selectRow(row: any, detail?: any) {
       selectionState.selectedId = row.name;

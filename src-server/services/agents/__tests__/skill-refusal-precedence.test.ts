@@ -1,12 +1,23 @@
 /**
  * The precedence contract, tested at the layer that owns it.
  *
- * The route suite exercises this through fixtures, which reaches four of the
- * eight condition combinations and left the other four unpinned — and one of
- * those unpinned cells is where an inverted ordering survived a review round
- * (an unsafe name co-occurring with a containment failure was published as the
+ * Fixtures reach almost none of this space. Measured, not estimated, by
+ * recording every condition set this picker is handed during a run: the route
+ * suite reaches ONE combination (`outside-writable-root`), and across all 107
+ * other suites in the related set the fixtures between them reach SIX of the
+ * sixteen: the empty set (writable), each of the four conditions alone, and
+ * exactly one pair — `unsafe-name` with `name-mismatch`. Ten combinations,
+ * every one of them a co-occurrence, are reached by nothing but the table
+ * below.
+ *
+ * One of those ten is where an inverted ordering survived a review round: an
+ * unsafe name co-occurring with a containment failure, published as the
  * containment refusal, advising an install that the resolver refuses on the
- * name before it ever looks at a root).
+ * name before it ever looks at a root. No fixture reaches that cell.
+ *
+ * (An earlier version of this paragraph said "four of the eight". Both numbers
+ * were wrong: the eight came from a premise since disproved, and nobody had
+ * ever measured the four. Round 10.)
  *
  * A fixture can only reach a combination the filesystem can produce; this table
  * enumerates directly. All SIXTEEN subsets of the four conditions appear below
