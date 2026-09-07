@@ -244,24 +244,46 @@ export function isDirectoryPhysicallyWithin(
   root: string,
   candidate: string,
 ): boolean {
-  if (!isDirectoryWithin(root, candidate)) return false;
+  return directoryContainmentVerdict(root, candidate) === 'within';
+}
+
+/**
+ * The same question with its THIRD answer kept: is `candidate` inside `root`,
+ * outside it, or unanswerable?
+ *
+ * Both non-`within` answers refuse, but they are not the same fact and a caller
+ * that reports them as one accuses the user's skill name of something the
+ * filesystem did. A home that cannot be read, holding an ordinary real skills
+ * root, said "it resolves outside" — nothing resolved outside anything; the
+ * walk could not read (delta review 4, M3).
+ */
+export type DirectoryContainmentVerdict = 'within' | 'outside' | 'unanswerable';
+
+export function directoryContainmentVerdict(
+  root: string,
+  candidate: string,
+): DirectoryContainmentVerdict {
+  if (!isDirectoryWithin(root, candidate)) return 'outside';
   const resolvedRoot = resolve(root);
   let realRoot: string;
   try {
     realRoot = realpathSync(resolvedRoot);
   } catch {
-    // Absent is an answer; unreadable is not. A dangling link at the root, or
-    // a component that cannot be traversed, leaves this unable to say where a
+    // Absent is an answer; unreadable is not. A root that is simply not there
+    // yet leaves the lexical containment above as the whole answer; a dangling
+    // link, an unreadable ancestor or a loop leaves this unable to say where a
     // write would land — and "I could not tell" must never read as "yes".
-    return !componentExists(resolvedRoot);
+    return componentExists(resolvedRoot) ? 'unanswerable' : 'within';
   }
   try {
     const realTarget = realpathSync(nearestExistingAncestor(candidate));
     // The ancestor may BE the root itself, which is inside itself for this
     // purpose: the skill directory below it has simply not been created.
-    return realTarget === realRoot || isDirectoryWithin(realRoot, realTarget);
+    return realTarget === realRoot || isDirectoryWithin(realRoot, realTarget)
+      ? 'within'
+      : 'outside';
   } catch {
-    return false;
+    return 'unanswerable';
   }
 }
 
@@ -295,7 +317,13 @@ export function assertSkillPackageDirectory(
       `Skill directory ${JSON.stringify(directory)} is not the package for ${JSON.stringify(name)}`,
     );
   }
-  if (!isDirectoryPhysicallyWithin(projectHomeDir, resolved)) {
+  const homeVerdict = directoryContainmentVerdict(projectHomeDir, resolved);
+  if (homeVerdict === 'unanswerable') {
+    throw new Error(
+      `Skill directory ${JSON.stringify(directory)} could not be read, so where a write would land is unknown`,
+    );
+  }
+  if (homeVerdict === 'outside') {
     throw new Error(
       `Skill directory ${JSON.stringify(directory)} resolves outside ${projectHomeDir}`,
     );
@@ -338,7 +366,13 @@ export function assertSkillPackageDirectory(
   // `resolveSkillDirectory` made exactly this call against `skillsRootDir(...)`
   // and refused it (`skill-paths.test.ts` pins that refusal); moving the
   // derivation must not drop the guarantee that came with it (review H2).
-  if (!isDirectoryPhysicallyWithin(root, resolved)) {
+  const rootVerdict = directoryContainmentVerdict(root, resolved);
+  if (rootVerdict === 'unanswerable') {
+    throw new Error(
+      `Skill directory ${JSON.stringify(directory)} could not be read, so where a write would land is unknown`,
+    );
+  }
+  if (rootVerdict === 'outside') {
     throw new Error(
       `Skill directory ${JSON.stringify(directory)} resolves outside ${root}`,
     );
@@ -368,7 +402,13 @@ export function resolveSkillDirectory(
   assertSafeSkillName(name);
   const root = skillsRootDir(projectHomeDir, projectSlug);
   const directory = join(root, name);
-  if (!isDirectoryPhysicallyWithin(root, directory)) {
+  const verdict = directoryContainmentVerdict(root, directory);
+  if (verdict === 'unanswerable') {
+    throw new Error(
+      `Cannot resolve a skill directory under ${root}: it exists but could not be read`,
+    );
+  }
+  if (verdict === 'outside') {
     throw new Error(
       `Invalid skill name ${JSON.stringify(name)}: it resolves outside ${root}`,
     );

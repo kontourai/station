@@ -396,7 +396,10 @@ export class SkillService {
     }
 
     const dirs = [
-      join(projectHomeDir, 'skills'),
+      // The machine root through the same builder as the project one below: it
+      // takes no slug so building it by hand was harmless, and it contradicted
+      // the principle the comment there states (delta review 4, nit).
+      skillsRootDir(projectHomeDir),
       join(projectHomeDir, 'plugins'),
     ];
     if (projectSlug) {

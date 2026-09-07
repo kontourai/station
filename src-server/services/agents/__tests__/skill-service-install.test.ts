@@ -155,47 +155,80 @@ describe('skill-service-install', () => {
       listAvailable: vi.fn().mockResolvedValue([]),
     };
 
+    const rediscover = vi.fn().mockResolvedValue(undefined);
     await expect(
       installSkillFromRegistry({
         name: 'deep-research',
         projectHomeDir: tempDir,
         configLoader: { saveSkillIn },
         providers: [{ provider }] as any,
-        rediscover: vi.fn().mockResolvedValue(undefined),
+        rediscover,
       }),
     ).rejects.toThrow(/containment refused/);
+
+    // The package was renamed into place BEFORE the record was attempted, and
+    // this branch makes a recordless package answerable from discovery
+    // (#1614) — so skipping rediscovery left a skill the install reported as
+    // failed turning up in the listing at whatever discovery ran next (delta
+    // review 4, L1). The published tree is deliberately not deleted: for the
+    // containment case it sits outside the roots Station just refused to
+    // touch.
+    expect(existsSync(join(tempDir, 'skills', 'deep-research'))).toBe(true);
+    expect(rediscover).toHaveBeenCalled();
   });
 
-  it('still installs when the provider cannot say what it served', async () => {
-    // The other side of that line: the version metadata is genuinely
-    // best-effort, and a registry that cannot answer `listAvailable` is not a
-    // failed install.
-    const saveSkillIn = vi.fn().mockResolvedValue(undefined);
-    const provider = {
-      install: vi
-        .fn()
-        .mockImplementation(async (_name: string, targetDir: string) => {
-          mkdirSync(join(targetDir, 'quiet'), { recursive: true });
-          writeFileSync(join(targetDir, 'quiet', 'SKILL.md'), '# Quiet');
-          return { success: true, message: 'ok' };
+  // The other side of that line: the version metadata is genuinely
+  // best-effort, and a registry that cannot answer `listAvailable` is not a
+  // failed install — for EVERY way it can fail to answer. Narrowed to
+  // `.catch()`, this held only for a rejected promise: a provider that threw
+  // synchronously failed an install whose package was already published
+  // (delta review 4, M1). Each shape is its own case because the earlier test
+  // used the one that still worked, so the gap read as covered.
+  it.each([
+    [
+      'a rejected promise',
+      () => vi.fn().mockRejectedValue(new Error('registry offline')),
+    ],
+    [
+      'a synchronous throw',
+      () =>
+        vi.fn(() => {
+          throw new Error('registry exploded');
         }),
-      listAvailable: vi.fn().mockRejectedValue(new Error('registry offline')),
-    };
+    ],
+    ['a non-promise return', () => vi.fn(() => undefined as never)],
+  ])(
+    'still installs when the provider answers with %s',
+    async (_label, listAvailable) => {
+      const saveSkillIn = vi.fn().mockResolvedValue(undefined);
+      const rediscover = vi.fn().mockResolvedValue(undefined);
+      const provider = {
+        install: vi
+          .fn()
+          .mockImplementation(async (_name: string, targetDir: string) => {
+            mkdirSync(join(targetDir, 'quiet'), { recursive: true });
+            writeFileSync(join(targetDir, 'quiet', 'SKILL.md'), '# Quiet');
+            return { success: true, message: 'ok' };
+          }),
+        listAvailable: listAvailable(),
+      };
 
-    const result = await installSkillFromRegistry({
-      name: 'quiet',
-      projectHomeDir: tempDir,
-      configLoader: { saveSkillIn },
-      providers: [{ provider }] as any,
-      rediscover: vi.fn().mockResolvedValue(undefined),
-    });
+      const result = await installSkillFromRegistry({
+        name: 'quiet',
+        projectHomeDir: tempDir,
+        configLoader: { saveSkillIn },
+        providers: [{ provider }] as any,
+        rediscover,
+      });
 
-    expect(result.success).toBe(true);
-    expect(saveSkillIn).toHaveBeenCalledWith(
-      join(tempDir, 'skills', 'quiet'),
-      expect.objectContaining({ version: 'unknown' }),
-    );
-  });
+      expect(result.success).toBe(true);
+      expect(saveSkillIn).toHaveBeenCalledWith(
+        join(tempDir, 'skills', 'quiet'),
+        expect.objectContaining({ version: 'unknown' }),
+      );
+      expect(rediscover).toHaveBeenCalled();
+    },
+  );
 
   it('removes an installed skill directory and rediscoveries skills', async () => {
     const skillDir = join(tempDir, 'skills', 'deep-research');

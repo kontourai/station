@@ -95,6 +95,7 @@ async function installSkillFromRegistryOwned({
   // Providers only ever receive an exclusive sibling staging parent.  They
   // therefore cannot observe or force-overwrite the live package, including
   // a winner created by setup or another Station process.
+  let published = false;
   for (const { provider } of providers) {
     // One provider gets one stage. A failed provider must not leave files for
     // the next provider to accidentally validate and publish.
@@ -132,11 +133,22 @@ async function installSkillFromRegistryOwned({
         return { success: false, message: `Skill '${name}' already exists` };
       }
       await rename(stagedSkillDir, skillDir);
+      published = true;
 
       // The best-effort half is the PROVIDER's metadata: a registry that
       // cannot say what version it just served is not a failed install, and
       // the package on disk is complete without it.
-      const items = await provider.listAvailable().catch(() => []);
+      //
+      // The try has to cover the CALL, not just its promise. Narrowed to
+      // `.catch()` this protected against a rejection only, so a provider that
+      // threw synchronously — or returned something that is not a promise —
+      // failed an install that had already published its package, which is the
+      // opposite of what the sentence above promises (delta review 4, M1).
+      let items: Awaited<ReturnType<typeof provider.listAvailable>> = [];
+      try {
+        const listed = await provider.listAvailable();
+        if (Array.isArray(listed)) items = listed;
+      } catch {}
       const item = items.find((entry) => entry.id === name);
       const version = item?.version ?? 'unknown';
       const installedAt = new Date().toISOString();
@@ -161,12 +173,20 @@ async function installSkillFromRegistryOwned({
         origin: 'registry',
       });
 
-      await rediscover();
       return result;
     } finally {
       // `stagingParent` is ours by mkdtemp construction. Never clean the live
       // target on provider failure or publication conflict.
       await rm(stagingParent, { recursive: true, force: true });
+      // REDISCOVER WHATEVER HAPPENED AFTER THE RENAME. The package is on disk
+      // from that moment, and this branch makes a recordless package
+      // answerable from discovery (#1614) — so a failed record write that
+      // skipped rediscovery left a skill the install reported as failed
+      // turning up in the listing anyway, at the next discovery somebody else
+      // ran (delta review 4, L1). Deleting the published tree instead would be
+      // wrong for the containment case, where the tree is outside the roots
+      // and Station has just refused to touch it.
+      if (published) await rediscover();
     }
   }
   return {

@@ -141,8 +141,10 @@ describe('resolveSkillDirectory refuses a symlinked-out skill directory', () => 
   test('the write seam refuses a dangling skills root', () => {
     symlinkSync(join(outside, 'never-created'), join(home, 'skills'), 'dir');
 
+    // Unanswerable, not "outside": the link is there and cannot be followed,
+    // which is a different fact from a resolved path landing elsewhere (M3).
     expect(() => resolveSkillDirectory(home, 'alpha')).toThrow(
-      /resolves outside/,
+      /could not be read/,
     );
   });
 
@@ -311,23 +313,28 @@ describe('assertSkillPackageDirectory', () => {
   //
   // Skipped where the process can read through mode 000 (running as root, as
   // some CI images do), because there the fixture cannot deny anything and a
-  // green would prove nothing. The loop case below covers the same branch
-  // without depending on that.
+  // green would prove nothing. The loop-at-home case below covers the same
+  // branch at the resolver without depending on that; this one covers both
+  // seams.
   test.skipIf(!canDenyAccess())(
     'refuses a root whose ancestor cannot be read',
     () => {
       symlinkSync(outside, join(home, 'skills'), 'dir');
       chmodSync(home, 0o000);
       try {
+        // Its OWN message: nothing resolved outside anything, the walk could
+        // not read, and reporting that as a containment fact accuses the
+        // user's skill name of something the filesystem did (delta review 4,
+        // M3).
         expect(() =>
           assertSkillPackageDirectory(
             home,
             'alpha',
             join(home, 'skills', 'alpha'),
           ),
-        ).toThrow();
+        ).toThrow(/could not be read/);
         expect(() => resolveSkillDirectory(home, 'alpha')).toThrow(
-          /resolves outside/,
+          /could not be read/,
         );
       } finally {
         chmodSync(home, 0o700);
@@ -335,21 +342,48 @@ describe('assertSkillPackageDirectory', () => {
     },
   );
 
-  // The same branch without needing permissions: a component that exists and
-  // cannot be resolved. `lstat` succeeds on each link, so the walk stops here
-  // and the resolution fails — which must refuse, not accept.
-  test('refuses a skills root that is a symlink loop', () => {
-    symlinkSync(join(home, 'loop-b'), join(home, 'loop-a'), 'dir');
-    symlinkSync(join(home, 'loop-a'), join(home, 'loop-b'), 'dir');
-    symlinkSync(join(home, 'loop-a'), join(home, 'skills'), 'dir');
+  // The same branch WITHOUT permissions, at the seam where it is observable.
+  //
+  // An earlier version of this put the loop at `<home>/skills` and claimed to
+  // cover the same branch: it did not. `lstat` does not follow a FINAL
+  // symlink, so the catch never ran and both versions refused for another
+  // reason — verified by restoring the catch-all, where it stayed green
+  // (delta review 4, M2). The loop has to sit where the path is TRAVERSED, so
+  // the home itself is the cycle and `lstat` on anything beneath it throws
+  // `ELOOP`. Under the catch-all that read as "nothing is there" and the
+  // resolver returned a path; it refuses now.
+  //
+  // The resolver is the seam: the package assertion refuses this shape either
+  // way, at the home-containment check on the candidate side.
+  test('refuses a home that cannot be traversed', () => {
+    const cycleHome = join(outside, 'cycle-a');
+    symlinkSync(join(outside, 'cycle-b'), cycleHome, 'dir');
+    symlinkSync(cycleHome, join(outside, 'cycle-b'), 'dir');
 
-    expect(() =>
-      assertSkillPackageDirectory(home, 'alpha', join(home, 'skills', 'alpha')),
-    ).toThrow();
-    expect(() => resolveSkillDirectory(home, 'alpha')).toThrow(
-      /resolves outside/,
+    expect(() => resolveSkillDirectory(cycleHome, 'alpha')).toThrow(
+      /could not be read/,
     );
   });
+
+  test.skipIf(!canDenyAccess())(
+    'an unreadable home is not reported as a containment failure',
+    () => {
+      // The shape M3 names: an ordinary REAL skills root under a home that
+      // cannot be read. Refusing is right; blaming the name is not.
+      mkdirSync(join(home, 'skills', 'alpha'), { recursive: true });
+      chmodSync(home, 0o000);
+      try {
+        expect(() => resolveSkillDirectory(home, 'alpha')).toThrow(
+          /could not be read/,
+        );
+        expect(() => resolveSkillDirectory(home, 'alpha')).not.toThrow(
+          /resolves outside/,
+        );
+      } finally {
+        chmodSync(home, 0o700);
+      }
+    },
+  );
 
   test('refuses a package directory symlinked elsewhere inside the home', () => {
     const elsewhere = join(home, 'not-a-skills-root');
