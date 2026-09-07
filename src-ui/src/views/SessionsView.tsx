@@ -375,12 +375,18 @@ export function SessionsView({
   intentToken?: number;
   onFocusConsumed?: () => void;
 }) {
+  // The SSE feed is per-session, so the list itself is kept fresh by polling.
+  // The query owns that poll: an interval beside it calling `refetch()` was a
+  // second scheduler over the same cache entry, and it kept running through
+  // every state React Query already pauses a `refetchInterval` for.
   const {
     data: sessions = [],
     isLoading,
     error: sessionsError,
     refetch,
-  } = useOrchestrationSessionsQuery();
+  } = useOrchestrationSessionsQuery({
+    refetchInterval: SESSION_LIST_REFRESH_MS,
+  });
   const agents = useAgents();
   const openChats = useOpenChats(agents, sessions);
   const openConversationIds = useMemo(
@@ -568,12 +574,6 @@ export function SessionsView({
     setSelection,
     armEvidenceReveal,
   ]);
-
-  // The SSE feed is per-session; keep the list itself fresh by polling.
-  useEffect(() => {
-    const timer = setInterval(() => refetch(), SESSION_LIST_REFRESH_MS);
-    return () => clearInterval(timer);
-  }, [refetch]);
 
   const toggleProjectFilter = useCallback((filterKey: string) => {
     setProjectFilter((current) => (current === filterKey ? null : filterKey));

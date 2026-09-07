@@ -37,21 +37,15 @@ export function ConversationStats({
     loading: isLoading,
   } = useStats(agentSlug, conversationId, apiBase, isVisible);
 
+  // One refresh trigger, not two. The transcript's message count is what
+  // actually moves these numbers, and it already drives a refetch; the
+  // two-second interval that sat beside it re-read the same endpoint on a
+  // schedule nothing in the conversation was tied to.
   useEffect(() => {
     if (messageCount !== undefined && messageCount > 0) {
       refetch();
     }
   }, [messageCount, refetch]);
-
-  useEffect(() => {
-    if (!isVisible) return;
-
-    const interval = setInterval(() => {
-      refetch();
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [isVisible, refetch]);
 
   useEffect(() => {
     if (!isVisible) return;
