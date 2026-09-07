@@ -55,6 +55,118 @@ transition and uncertainty semantics. For example, etcd documents atomic
 comparison/transaction operations in its [v3 API](https://etcd.io/docs/v3.6/learning/api/).
 Backend choice does not replace the write-path integration below.
 
+## Explicit participant pairing
+
+The runtime exposes `GET /api/home-authority/identity` for a separately paired
+participant carrying the explicit `home:transfer` permission. The `home-transfer`
+pairing preset contains only that permission. Existing default, standard,
+delegation and inference grants do not gain it on upgrade. It grants neither
+agent execution nor terminal access nor pairing administration.
+
+An operator creates a fresh offer on the intended controller with
+`POST /api/pairing/offers`, authenticated through the existing operator path:
+
+```json
+{"endpoint":"https://controller.example.test","scope":"home:transfer"}
+```
+
+Use the normal request, owner approval and exchange ceremony described in the
+[remote access model](../security/remote-access-threat-model.md). Create a
+separate pairing for each participant; do not copy the controller's operator
+credential or reuse one participant credential for both homes. An integration
+uses the exchanged credential through its authenticated client to read
+`GET /api/home-authority/identity`. Store credentials using the integration's
+private credential owner, never in a Project manifest or workspace package.
+
+The response contract is `PairedHomeIdentityObservation` in
+[`cloud-move`](../../packages/contracts/src/cloud-move.ts). It names the
+controller environment and its current paired-device ID, with `scope: personal`
+and both execution-transfer/resume flags false. The pair of IDs is meaningful
+only within that controller's registry. It survives an ordinary controller
+restart while the registry remains intact. It is not physical-machine
+attestation, a lease, or evidence that a credential has not been copied.
+
+The route reads the middleware-authenticated principal, then rechecks the real
+pairing registry before and after reading controller identity. Revoked pairings,
+ordinary device grants and operator credentials are refused. Responses are
+uncacheable; lookup errors return a generic unavailable result. Hosted mode is
+refused until paired identity is bound to actual tenant membership. A trusted
+tenant header alone does not bind this process-wide device registry to a tenant.
+
+Tests exercise real pairing records and the HTTP authentication middleware,
+separate participants, controller registry reopen, revoked credentials, revocation
+during a read, forged query fields, hosted refusal and sanitized errors. This is
+an enrollment observation prerequisite. The optional personal decision preparation below binds these participants to
+channel records. Actual source closure, restored-target verification and execution
+admission remain unfinished; no activation endpoint is exposed.
+
+## Personal controller decision preparation
+
+One personal Station process can compose the pairing service with an external
+SQLite decision store. Before starting that controller, create an owner-only
+POSIX directory outside its Station home and set:
+
+```bash
+mkdir -m 700 /private/controller-state
+export STATION_HOME_AUTHORITY_DATABASE=/private/controller-state/authority.sqlite
+```
+
+The parent directory must already exist; no authority database is created until
+an authenticated decision request arrives. The database uses private permissions,
+WAL journaling and FULL synchronization. It stays outside home exports and is
+opened and closed around each operation. Use one controller process and its own
+pairing registry: sharing a database between separately running controller
+processes does not synchronize their pairing revocations. Do not copy or promote
+this controller to create failover. Keep controller backups separate and stop the
+controller before backing it up. This slice adds no automated controller restore.
+Database and existing WAL/SHM/journal files must be private, regular single-link
+files owned by the controller user. Parent and database identity are rechecked
+around opening. The controller OS account is trusted: Node SQLite opens filenames,
+so these checks do not defend against an actively hostile same-user process
+renaming paths during a call. Do not rename, replace or copy active store files.
+
+After pairing distinct source and target participants as above, an integration
+uses these authenticated routes:
+
+| Method and path | Caller and body | Result |
+| --- | --- | --- |
+| `POST /api/home-authority/channels/:channelId/owner` | Controller operator credential; `{"sourceDeviceId":"<source paired ID>","policyRevision":"policy-1"}` | Initial revision-zero binding. A different existing owner cannot be replaced. |
+| `GET /api/home-authority/channels/:channelId` | Current source's transfer-scoped credential | Current personal owner decision. |
+| `POST /api/home-authority/transfers` | Source's transfer-scoped credential; `{"channelId":"<channel>","operationId":"<unique operation>","targetDeviceId":"<target paired ID>","policyRevision":"policy-1","expectedRevision":0}` | A durable prepared decision conditional on the existing owner and policy revision. |
+| `GET /api/home-authority/transfers/:operationId` | Source or target participant credential | Original decision for resolving a lost response. Both participant grants must remain active. |
+
+The operator chooses the existing channel identity and policy revision; this
+registration does not discover a channel, create a room or grant execution.
+Source identity and the private controller namespace come from server-owned
+security state. Bodies cannot supply tenant IDs or source home references.
+Requests are limited to 2 KiB and unknown body fields are rejected. The source
+and target pairings must be distinct, active and explicitly transfer-scoped.
+The transaction guard rechecks pairing and controller identity around storage
+access and before commit; revoked grants cannot mutate a decision.
+
+A stored response is HTTP 200 with `kind: stored` and a `value` conforming to
+`PersonalHomeDecisionObservation` in the
+[cloud-move contract](../../packages/contracts/src/cloud-move.ts). It omits the
+private storage namespace and checkpoint content. Both execution-transfer and
+resume flags remain false. Denied, missing, conflicting and unavailable results
+use 403, 404, 409 and 503 respectively; invalid and oversized input uses 400/413.
+With the database setting absent, decision routes return unavailable. Hosted
+requests are refused. Ordinary default device credentials cannot administer the
+binding even though their historical scope contains `access:manage`: the service
+requires current operator credential identity.
+
+Retry the same operation ID with the same intent after an uncertain response;
+read it back before deciding what happened. A different intent under that ID
+conflicts. Revocation may make resolution unavailable to the former participant;
+it does not authorize a new writer. There is no timeout-based reassignment or
+cancel/unseal/commit endpoint in this slice.
+
+HTTP tests use real owner-approved pairing, external SQLite connections and the
+runtime authentication middleware to initialize, prepare and read back decisions.
+Store tests cover restart, wrong participants and revocation. These are durable
+preparation tests, not source sealing, target verification or two-host execution
+handoff evidence.
+
 ## Planned-transfer decision storage
 
 The private [planned transfer store](../../src-server/services/orchestration/planned-home-transfer-store.ts)
@@ -66,6 +178,14 @@ The adapter requires a file-backed SQLite database with durable journaling and
 `synchronous=FULL` or `EXTRA`, checked at initialization and in every transaction.
 A later durability downgrade makes operations unavailable. These settings do
 not certify the underlying filesystem or storage hardware.
+A composing authority service uses `createAuthorizedSqlitePlannedHomeTransferStore`
+with a required caller-bound synchronous authorization predicate. The adapter first checks it before acquiring the write lock, then checks again
+under the transaction lock before access and before commit. Revocation rolls back the entire decision change and
+returns `denied`; a failed authority lookup returns `unavailable`. Promise-valued
+guards are refused, never treated as truthy grants. The callback must be owned
+by the service, not supplied by a request body. The guarded entry rejects an absent guard. The separate unguarded constructor
+retains the private storage-only API; it is not safe to expose directly.
+
 The adapter itself performs no home authentication, membership authorization,
 lease issuance, renewal or target activation. No runtime write path currently
 uses its decisions as execution authority.
@@ -91,6 +211,111 @@ before racing preparation, transaction rollback after an injected commit-write
 failure, duplicate decisions after reopening, and tenant-qualified lookups.
 They do not prove network partitions, a deployed witness, accepted-writer
 fencing, or live session continuation. Those remain integration requirements.
+
+## Authenticated remote room observation
+
+A prospective home exposes `POST /api/home-authority/rooms/:taskId/identity`
+under its own explicit `home:transfer` pairing permission. The controller must
+present a credential issued by that remote Station, separately from the
+participant credential used in the other direction. The body is exactly:
+
+```json
+{"channelId":"<expected room channel ID>","nonce":"<fresh request nonce>"}
+```
+
+The channel ID comes from the existing room identity, not an environment label
+or a Project slug. The remote runtime resolves the actual Task/Project scope
+through its existing request-principal and room-grant owners. It checks that the
+scope and principal remain current after asynchronous resolution. The probe
+never opens a room, drains a publication outbox, seals a source or starts work.
+The route rechecks the actual paired credential before delivering the response.
+Hosted mode remains refused.
+
+`HomeTransferRoomIdentityObservation` in the
+[cloud-move contract](../../packages/contracts/src/cloud-move.ts) binds the remote
+environment ID, remote-issued paired-device ID, exact Task and channel, and the
+request nonce. Both execution flags are false and responses are uncacheable.
+Unknown fields or invalid identifiers return 400, oversized bodies 413, wrong
+channel identity 409, absent Tasks 404, revoked/insufficient authority 403 and
+unavailable runtime state 503. Inputs are bounded to 2 KiB; channel and nonce
+strings are nonempty, bounded to 256 bytes, and cannot contain control characters.
+
+This observation proves the selected authenticated endpoint resolved that room;
+it is not hardware attestation or evidence that credentials were never copied.
+The [controller enrollment guide](../guides/home-transfer-controller.md) describes
+the implemented operator-approved participant-to-room mapping, server-owned peer
+lookup, nonce/environment/device/channel validation and live rechecks. Bound network readers now consume those mappings for decision advancement. Merely obtaining a successful observation does not enroll
+a target or authorize coordinator adapters.
+
+Tests cover real pairing/HTTP enforcement, revocation during lookup, exact-body
+validation, nonce reflection and wrong-channel refusal. A production runtime
+composition test verifies that the new route primes the existing room-principal
+resolver and leaves the durable room-head table empty. Runtime scope tests cover
+missing/moved Tasks and revoked/hosted authority without calling history methods.
+
+## Bound network decisions and local owner ports
+
+The [planned coordinator](../../src-server/services/orchestration/planned-home-transfer-coordinator.ts)
+accepts explicit source and target owner ports. Local server integrations use
+`createLocalProjectTaskRoomTransferOwners` to bind real history methods and frozen
+grants. The same local history cannot fill both roles. Arbitrary local ports
+remain a trusted server integration surface; they are never decoded from HTTP.
+
+Public `POST /api/home-authority/transfers/:operationId/advance` accepts only an
+empty JSON object and requires the prepared source participant. Its
+[network factory](../../src-server/services/orchestration/remote-home-transfer-coordinator.ts)
+resolves both owners from the stored operation and operator-enrolled bindings.
+It rejects shared environment identities or shared endpoint origins, re-probes
+the exact rooms, captures the peer fingerprints, and rechecks current controller,
+participants and binding records around every call and storage transition.
+Clients cannot provide endpoints, credentials, grants or owner adapters.
+
+Each remote `POST /api/home-authority/rooms/:taskId/seal-observation` reads an
+existing seal through the real runtime/history grant owners. Its exact body is
+`channelId`, `operationId`, `sourceHomeRef`, `targetHomeRef` and a fresh `nonce`.
+The response binds the remote environment, remote-issued device, Task, channel
+and nonce to either an unsealed outcome or the validated closing checkpoint and
+working-document digest. Identity responses are bounded to 4 KiB and seal
+responses to 8 KiB; redirects are refused and each complete RPC, including body
+reads, has a 15-second deadline. This is authenticated endpoint/credential/store
+identity, not hardware attestation or proof of unique physical hosts.
+
+The network source port only observes closure: an unsealed source returns
+`pending` with `source-not-closed`, without writing a closure record. A source
+owner must perform the separate closing operation. The network driver never
+commands source closure. Once that seal exists, it records the exact source
+checkpoint, reads the enrolled target's actual copied seal, compares canonical
+digests, records readiness and conditionally commits the metadata decision.
+Target-ready retries verify the target again. The shared canonical digest owner
+prevents JSON property ordering from changing the comparison.
+
+Local source ports can report publication-pending or execution-pending. An
+unsealed/unavailable target remains target-unavailable; corruption can produce
+that unavailable outcome and needs repair, not timeout promotion. Wrong
+operation, endpoint identity, nonce, target or checkpoint conflicts. Lost commit
+acknowledgements resolve to the stored operation. If another driver finishes
+during an idempotent closure/readiness acknowledgement, the first returns the
+same committed decision. Committed replay rechecks the original source caller
+and both controller-side participant grants, but does not re-probe endpoints or
+require outbound peer records: the source may already be offline. Revocation
+during an asynchronous local source closure
+can leave a sealed source and an unadvanced controller record; no error unseals it.
+
+The public result is `HomeTransferDecisionAdvanceObservation`: pending uses HTTP
+202 and a committed decision uses HTTP 200. The projected decision omits private
+controller namespaces and checkpoint content. Both execution flags remain false.
+There is no raw closure/readiness submission, remote source-close command, target
+activation, lease renewal or Agent launch endpoint in this profile.
+
+Tests use real pairing registries, persisted TaskGraph scope, EventStore room
+owners, controller SQLite and separate Hono endpoints. The source begins unsealed
+and cannot advance. An explicit fixture-owner action seals it; both stores close
+before a real database copy. After reopen, the network reader verifies the target
+and commits the decision while leaving both seals intact and source writes
+refused. A tampered target nonce conflicts without changing ownership; retrying
+the same operation with valid observations succeeds and is idempotent. These are
+three isolated runtime contexts in one test process, not independent-host,
+provider-continuation or target-activation qualification.
 
 ## Fence the operation, not only admission
 

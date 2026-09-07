@@ -87,6 +87,7 @@ export function ChatDockProjectSwitcherSheet({
 
   return (
     <ResponsiveDialogSurface
+      layer="popover"
       ariaLabel="Switch project"
       onClose={onClose}
       historyMode="entry"

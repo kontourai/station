@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, type Page, type Route, test } from '@playwright/test';
+import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-sequence';
 
 /**
  * Build gallery — an at-a-glance contact sheet of what the current build looks
@@ -1745,22 +1746,38 @@ const SCREENS: Screen[] = [
   // deterministic trigger (never the transient home-route redirect race —
   // see `newProjectOverlay`'s doc comment) so its shot is reproducible.
   {
-    name: 'overlay-dock-picker',
-    title: 'Overlay — Dock occupant picker menu',
+    // Renamed from `overlay-dock-picker` (#1541): the overlay it captured —
+    // the dock's own occupant picker — was deleted with the rest of the
+    // surface-owned docking path in #928 C2b, so the screen could not
+    // capture at all. Its successor is the header's Layout picker, which is
+    // where placement is chosen now; the baseline entry was renamed with it
+    // rather than left pointing at a shot nothing can reproduce.
+    name: 'overlay-layout-picker',
+    title: 'Overlay — Layout regions placement picker',
     path: '/?dock=open',
     viewport: DESKTOP,
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
-      // DockOccupantPicker's trigger names the current occupant
-      // ("Docked pane: Chat") — archive#4484 made DockShell own the chrome
-      // for every occupant, so this is present whenever the dock is open
-      // and not placed fullscreen (`?dock=open` is neither).
-      const trigger = page.getByRole('button', { name: /^Docked pane:/ });
+      // #1552 D2: one folded control in the toolbar opens a `role="group"`
+      // panel of per-surface `radiogroup` rows — a segmented choice over the
+      // regions each surface declares plus `Hidden` — replacing the list of
+      // placement VERBS the dock header used to carry.
+      const trigger = page.getByRole('button', {
+        name: 'Layout regions',
+        exact: true,
+      });
       await trigger.waitFor({ timeout: 10_000 });
       await trigger.click();
-      await expect(page.locator('.dock-occupant-menu')).toBeVisible({
-        timeout: 10_000,
-      });
+      const picker = page.getByRole('group', { name: 'Layout regions' });
+      await expect(picker).toBeVisible({ timeout: 10_000 });
+      // Rows, not just the panel: an empty panel would still be "visible"
+      // and would capture a shot of nothing.
+      await expect(
+        picker.getByRole('radiogroup', { name: 'Chat placement' }),
+      ).toBeVisible();
+      await expect(
+        picker.getByRole('radiogroup', { name: 'Activity placement' }),
+      ).toBeVisible();
     },
   },
   {
@@ -2531,49 +2548,65 @@ test('build gallery — capture key screens', async ({ page }) => {
         if (screen.beforeGoto) {
           await screen.beforeGoto(page);
         }
-        await page.goto(screen.path, { waitUntil: 'domcontentloaded' });
-        // Wait past the "Warming up" splash for the real app shell.
-        await page.waitForFunction(
-          () =>
-            !!document.querySelector('.app') &&
-            !document.body.textContent?.includes('Warming up'),
-          undefined,
-          { timeout: 20_000 },
-        );
-        if (screen.waitFor) {
-          await page.waitForSelector(screen.waitFor, { timeout: 10_000 });
-        }
-        // Let async panels settle so the shot reflects loaded data.
-        await page.waitForTimeout(1200);
-        // archive#4464: a web-font swap (FOUT/FOIT) landing mid-shot is a
-        // well-known source of exactly the kind of tiny, isolated
-        // text/border-edge pixel noise this feature's own
-        // two-consecutive-runs acceptance check was still catching after
-        // every other identified source was fixed — one capture can race the
-        // fallback-to-real-font swap and the next can miss it entirely.
-        await page.evaluate(() => document.fonts.ready);
-        if (!screen.expectSkeleton) {
-          await assertNoLoadingSkeleton(page);
-        }
-        if (screen.afterGoto) {
-          await screen.afterGoto(page);
-        }
-        // The identity-mismatch tile deliberately overrides the global healthy
-        // handshake and waits for its own deterministic blocked state. Every
-        // other screen must prove the gallery-wide route has reached the fixed
-        // healthy posture before capture rather than racing the opening probe.
-        if (screen.name !== 'overlay-connection-banner') {
-          await assertGalleryConnectionChrome(page);
-        }
-        await hideVolatileChrome(page);
-        await page.screenshot({
-          path: join(GALLERY_DIR, file),
-          fullPage: true,
-          // archive#4464: freeze CSS animations/transitions at their end state
-          // instead of racing them — `reducedMotion` above only sets the OS
-          // media-query preference, it does not itself stop an in-flight
-          // transition from being mid-frame at capture time.
-          animations: 'disabled',
+        // #1650: the ORDER of everything below lives in
+        // `runScreenshotCaptureSequence` so it is a unit a test can execute —
+        // a passing gallery run compares pixels and can never report a step
+        // having moved to the wrong side of another one. Each step's own
+        // reason stays here, next to the mechanic it performs. The web-font
+        // settle is the one step that module performs itself, against the page
+        // passed here, so the STEP MAP cannot wire in a settle that reads
+        // nothing. That the object passed here is the real page is checked by
+        // `typecheck:e2e` (the structural assignment on this line) and by
+        // reading the diff, like the other six steps.
+        await runScreenshotCaptureSequence(page, {
+          reachScreen: async () => {
+            await page.goto(screen.path, { waitUntil: 'domcontentloaded' });
+            // Wait past the "Warming up" splash for the real app shell.
+            await page.waitForFunction(
+              () =>
+                !!document.querySelector('.app') &&
+                !document.body.textContent?.includes('Warming up'),
+              undefined,
+              { timeout: 20_000 },
+            );
+            if (screen.waitFor) {
+              await page.waitForSelector(screen.waitFor, { timeout: 10_000 });
+            }
+            // Let async panels settle so the shot reflects loaded data.
+            await page.waitForTimeout(1200);
+          },
+          assertNoLoadingSkeleton: screen.expectSkeleton
+            ? null
+            : () => assertNoLoadingSkeleton(page),
+          // Called as a method on `screen`, not as a bare extracted function:
+          // no declared hook uses `this` today, and this keeps that from being
+          // a precondition of the refactor rather than a property of the file.
+          afterGoto: screen.afterGoto
+            ? async () => {
+                await screen.afterGoto?.(page);
+              }
+            : null,
+          // The identity-mismatch tile deliberately overrides the global
+          // healthy handshake and waits for its own deterministic blocked
+          // state. Every other screen must prove the gallery-wide route has
+          // reached the fixed healthy posture before capture rather than
+          // racing the opening probe.
+          assertConnectionChrome:
+            screen.name === 'overlay-connection-banner'
+              ? null
+              : () => assertGalleryConnectionChrome(page),
+          hideVolatileChrome: () => hideVolatileChrome(page),
+          screenshot: async () => {
+            await page.screenshot({
+              path: join(GALLERY_DIR, file),
+              fullPage: true,
+              // archive#4464: freeze CSS animations/transitions at their end
+              // state instead of racing them — `reducedMotion` above only sets
+              // the OS media-query preference, it does not itself stop an
+              // in-flight transition from being mid-frame at capture time.
+              animations: 'disabled',
+            });
+          },
         });
         shots.push({ screen, file, ok: true });
       } catch (error) {

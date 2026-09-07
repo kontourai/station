@@ -65,6 +65,7 @@ export function NewTerminalModal({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       ariaLabel="New terminal"
       overlayClassName="coding-layout__new-terminal-overlay"
       panelClassName="coding-layout__new-terminal-modal"

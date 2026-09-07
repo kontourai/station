@@ -152,6 +152,8 @@ describe('e2e manifest', () => {
       'tests/agents-new-model-turn.spec.ts',
       'tests/paired-device-chat.spec.ts',
       'tests/pr-smoke-live-chat-send.spec.ts',
+      'tests/native-conversation-restart.spec.ts',
+      'tests/chat-multi-turn-context.spec.ts',
       'tests/agents-new-cli-turn.spec.ts',
       'tests/agents-new-muse-echo-turn.spec.ts',
       'tests/csp-shell.spec.ts',
@@ -187,9 +189,12 @@ describe('e2e manifest', () => {
       'tests/cross-runtime-chat-switching.spec.ts': expect.any(String),
       'tests/daily-driver-scenarios.spec.ts': expect.any(String),
       'tests/daily-driver-switching.spec.ts': expect.any(String),
-      // M3: read-only against the shared instance; its only write is the
-      // browser context's own ambient dock document in localStorage.
+      // #1541: the two placement specs are read-only against the shared
+      // instance; their only writes are their own browser context's
+      // localStorage — the `regionArrangement` device setting and the
+      // dock-chrome settings a region write mirrors.
       'tests/activity-pane.spec.ts': expect.any(String),
+      'tests/project-architecture.spec.ts': expect.any(String),
     });
     expect(new Set(classified).size).toBe(classified.length);
     expect(new Set(classified)).toEqual(new Set(productSpecs));
@@ -287,17 +292,7 @@ describe('e2e manifest', () => {
       (entry) => entry.bucket === 'quarantine',
     );
 
-    // #574: chat-multi-turn-context.spec.ts is RED BY DESIGN — it
-    // proves a real multi-turn context-retention defect, not spec rot — so it
-    // cannot sit in a running bucket (smoke-live / verify:e2e:full) without
-    // permanently redding the gate. Quarantine is the manifest's own home for
-    // exactly this; `replacement` must still name the tracking issue.
-    expect(quarantined).toEqual([
-      expect.objectContaining({
-        path: 'tests/chat-multi-turn-context.spec.ts',
-        replacement: '#574',
-      }),
-    ]);
+    expect(quarantined).toEqual([]);
   });
 
   it('lets the runner list supported suites without starting Station', () => {

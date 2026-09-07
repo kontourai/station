@@ -162,3 +162,51 @@
   font-weight: 500;
   padding: 8px 10px;
 }
+
+/*
+ * #1582 A5: the SAME picker, rendered as a step of the first-run chapter.
+ *
+ * The chapter's `ResponsiveDialogSurface` already owns the layer, the scrim,
+ * the focus trap, the panel and the header — so this variant contributes no
+ * chrome at all, and its rows drop the modal's hand-picked blues for the
+ * surface's own tokens. A step that keeps its own palette is exactly the
+ * "two visual systems, one wizard" the audit found: a blue uppercase eyebrow
+ * standing in for the step counter, a 22px panel inside a 12px one, and a
+ * full-width slate primary beside the chapter's accent one.
+ */
+/* A plain block, not `display: contents`: the chapter's panel owns the
+   layout, but an element with no box is invisible to the browser-journey
+   suites that assert this step is on screen. */
+.engine-picker--step {
+  display: block;
+}
+
+.engine-picker--step .engine-picker__description {
+  font-size: var(--font-size-sm, 13px);
+  line-height: 1.5;
+  color: var(--color-text-secondary, var(--text-secondary));
+  margin-bottom: var(--space-4, 16px);
+}
+
+.engine-picker--step .engine-picker__options {
+  margin-bottom: var(--space-4, 16px);
+}
+
+.engine-picker--step .engine-picker__option {
+  border-radius: var(--radius-md, 8px);
+  border-color: var(--border-primary);
+  background: var(--bg-secondary);
+}
+
+.engine-picker--step .engine-picker__option--pending {
+  background: transparent;
+}
+
+.engine-picker--step .engine-picker__option--selected {
+  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
+}
+
+.engine-picker--step .engine-picker__option-detail {
+  color: var(--text-muted);
+}

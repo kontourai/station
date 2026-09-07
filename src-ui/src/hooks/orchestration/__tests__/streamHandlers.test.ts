@@ -830,6 +830,50 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
         const marker = (chat?.messages ?? []).find(
           (message) => message.turnId === 'turn-a',
         );
+        // station#1701. A missing marker used to reach the assertion below as
+        // `expected undefined to match object { role: 'user' }`, which — being
+        // a precondition — reported against whichever test called this helper.
+        // Twice on CI that pointed a reader at tool-outcome logic that was
+        // never involved.
+        //
+        // The discriminator is the MESSAGE COUNT, not the key list: this
+        // block's `beforeEach` calls `initChat(threadId)` on the same binding
+        // the helper reads, so `threadId` is always a key here and only
+        // "chat present" is reachable.
+        //
+        // Present-with-0-messages is the interesting one, and it has exactly
+        // one cause. `getChatKeyForExecutionSession` returns immediately when
+        // `chats[sessionId]` exists, and it does exist here, so a lookup miss
+        // in THIS store is impossible — the handler must be holding a
+        // different module instance (the station#1045 class). The silent
+        // `updateChat` no-op is not a competing explanation but how that looks
+        // from the other side: the handler's store never saw `initChat`, so
+        // its own lookup finds nothing and returns.
+        //
+        // One cause the investigation ruled out: `handleRuntimeErrorEvent` is
+        // synchronous end to end, so a not-yet-settled dispatch is not among
+        // them.
+        if (marker === undefined) {
+          const storeKeys = Object.keys(activeChatsStore.getSnapshot());
+          throw new Error(
+            `handleRuntimeErrorEvent left no readable turn-a marker for ` +
+              `"${threadId}". Store keys: [${storeKeys.join(', ')}]; the chat ` +
+              `is ${chat ? 'present' : 'ABSENT'} and holds ` +
+              `${chat?.messages?.length ?? 0} message(s).\n` +
+              `- Present, 0 messages: the write never reached THIS store. A ` +
+              `key miss here is impossible (the chat exists, so the lookup ` +
+              `returns its key directly), so the handler is holding a ` +
+              `different module instance and its own updateChat found no ` +
+              `chat and returned silently — the station#1045 class.\n` +
+              `- Present, >=1 messages: the write landed here and the ` +
+              `marker's turnId or role changed.\n` +
+              `- ABSENT: beforeEach's initChat did not take on the instance ` +
+              `this helper reads. That should not be reachable; treat it as a ` +
+              `harness bug.\n` +
+              `Look at this helper and handleRuntimeErrorEvent, not at the ` +
+              `behaviour the calling test names.`,
+          );
+        }
         // The precondition this test exists for: the only message carrying
         // turn A is a user-role marker.
         expect(marker).toMatchObject({ role: 'user' });

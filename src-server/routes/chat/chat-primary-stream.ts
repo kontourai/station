@@ -8,6 +8,7 @@ import {
   type AuthorizedTurnCorrelation,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import type { NativeMemoryHistoryCompanion } from '../../runtime/conversation/native-memory-history.js';
 import * as StreamOrchestrator from '../../runtime/conversation/stream-orchestrator.js';
 import { stripOutputDeclarationHandles } from '../../runtime/native-output-declaration.js';
 import {
@@ -103,6 +104,7 @@ interface StreamPrimaryAgentChatArgs {
   turnCorrelation?: AuthorizedTurnCorrelation;
   /** Private native-output capability from the authenticated internal relay. */
   nativeOutputGrant?: NativeOutputTurnContext;
+  nativeMemory?: NativeMemoryHistoryCompanion;
 }
 
 export function logDebugChatImages(
@@ -157,6 +159,7 @@ export function streamPrimaryAgentChat({
   projectSlug,
   turnCorrelation,
   nativeOutputGrant,
+  nativeMemory,
 }: StreamPrimaryAgentChatArgs): Response {
   c.header('Content-Type', 'text/event-stream');
   c.header('Cache-Control', 'no-cache');
@@ -699,7 +702,7 @@ export function streamPrimaryAgentChat({
     const write = () => writeStream(streamWriter);
     const correlated = () =>
       turnCorrelation
-        ? runWithAuthorizedTurnCorrelation(turnCorrelation, write)
+        ? runWithAuthorizedTurnCorrelation(turnCorrelation, write, nativeMemory)
         : write();
     return nativeOutputGrant
       ? runWithNativeOutputTurnContext(nativeOutputGrant, async () => {

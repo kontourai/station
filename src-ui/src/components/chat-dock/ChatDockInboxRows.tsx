@@ -141,6 +141,7 @@ export function SnoozeActions({
       )}
       {menuOpen && (
         <ResponsiveDialogSurface
+          layer="popover"
           ariaLabel={`Snooze ${item.title}`}
           onClose={() => setMenuOpen(false)}
           returnFocusTarget={triggerRef.current}

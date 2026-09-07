@@ -17,15 +17,16 @@ import { toolServerIntegrationMutationLockPath } from '../../services/plugins/to
 
 import {
   deleteIntegrationConfig,
-  deleteSkillConfig,
+  deleteSkillPackageAt,
   listIntegrationMetadata,
   loadACPConfigFile,
   loadIntegrationConfig,
   loadSkillConfig,
   saveACPConfigFile,
   saveIntegrationConfig,
-  saveSkillConfig,
+  saveSkillConfigIn,
   skillConfigExists,
+  skillRecordClaimsName,
   wasIntegrationEnabledExplicit,
 } from '../config-loader-storage.js';
 
@@ -34,24 +35,28 @@ describe('skill config storage resolves names through the shared seam', () => {
     const root = createTempDir();
     try {
       for (const name of ['../escaped', 'a/b', '__proto__', '..']) {
-        await expect(
-          saveSkillConfig(root, name, {
-            name,
-            source: 'local',
-            installedAt: '',
-            path: 'x',
-          }),
-          name,
-        ).rejects.toThrow(/Invalid skill name/);
+        // The name-addressed writers are gone (#1619) — the surviving
+        // entry points are the two readers and the two DIRECTORY-addressed
+        // writers, which assert the same name through
+        // `assertSkillPackageDirectory`.
         await expect(loadSkillConfig(root, name), name).rejects.toThrow(
-          /Invalid skill name/,
-        );
-        await expect(deleteSkillConfig(root, name), name).rejects.toThrow(
           /Invalid skill name/,
         );
         expect(() => skillConfigExists(root, name), name).toThrow(
           /Invalid skill name/,
         );
+        await expect(
+          saveSkillConfigIn(root, join(root, 'skills', name), {
+            name,
+            source: 'local',
+            path: 'x',
+          }),
+          name,
+        ).rejects.toThrow(/Invalid skill name/);
+        await expect(
+          deleteSkillPackageAt(root, name, join(root, 'skills', name)),
+          name,
+        ).rejects.toThrow(/Invalid skill name/);
       }
       // Nothing was written anywhere under the home.
       expect(existsSync(join(root, 'skills'))).toBe(false);
@@ -60,18 +65,51 @@ describe('skill config storage resolves names through the shared seam', () => {
     }
   });
 
+  // Review round 2, L3. A package copied into a new directory carries the
+  // record it was copied with. Answering `bar` with a record that says `foo`
+  // hands the caller `foo`'s identity — and `SkillService.updateLocalSkill`
+  // reads `name` back off this record, so a PUT on `bar` that requested no
+  // rename renamed it to `foo`.
+  test("a record that claims another name is not this name's record", async () => {
+    const root = createTempDir();
+    try {
+      const dir = join(root, 'skills', 'bar');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, 'skill.json'),
+        JSON.stringify({
+          name: 'foo',
+          source: 'local',
+          installedAt: '2020-01-01',
+          path: join(root, 'skills', 'foo'),
+        }),
+        'utf-8',
+      );
+
+      await expect(loadSkillConfig(root, 'bar')).rejects.toThrow(
+        "Skill 'bar' not found",
+      );
+      // Same answer as no record at all, which is what it is.
+      expect(skillRecordClaimsName({ name: 'bar' }, 'bar')).toBe(true);
+      expect(skillRecordClaimsName({ name: 'foo' }, 'bar')).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('an ordinary name still round-trips', async () => {
     const root = createTempDir();
     try {
-      await saveSkillConfig(root, 'alpha', {
+      const directory = join(root, 'skills', 'alpha');
+      await saveSkillConfigIn(root, directory, {
         name: 'alpha',
         source: 'local',
         installedAt: '2026-01-01',
-        path: join(root, 'skills', 'alpha'),
+        path: directory,
       });
       expect(skillConfigExists(root, 'alpha')).toBe(true);
       expect((await loadSkillConfig(root, 'alpha')).name).toBe('alpha');
-      await deleteSkillConfig(root, 'alpha');
+      await deleteSkillPackageAt(root, 'alpha', directory);
       expect(skillConfigExists(root, 'alpha')).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });

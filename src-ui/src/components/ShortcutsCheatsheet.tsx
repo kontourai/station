@@ -43,6 +43,7 @@ export function ShortcutsCheatsheet({
      * ordered against.
      */
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       ariaLabel="Keyboard shortcuts"
       overlayClassName="modal-overlay"

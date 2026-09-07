@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import { isProjectTaskRoomCheckpoint } from '@kontourai/station-contracts/project-task-room';
 import { plainDataObject } from './bounded-json.js';
+import {
+  checkChannelAdmissions,
+  PLANNED_HOME_ADMISSION_SCHEMA_SQL,
+} from './planned-home-admission-schema.js';
 import type { ProjectTaskRoomSourceSeal } from './project-task-room-source-seal.js';
 
 /** Storage decisions only. This adapter issues no leases or execution grants.
@@ -31,12 +35,16 @@ export interface PlannedHomeTransfer {
 }
 export type TransferStoreResult<T> =
   | { kind: 'stored'; value: T }
-  | { kind: 'conflict' | 'not-found' | 'unavailable' };
-interface Database {
+  | { kind: 'conflict' | 'not-found' | 'unavailable' | 'denied' };
+export type TransferCommitResult =
+  | TransferStoreResult<PlannedHomeTransfer>
+  | { kind: 'admission-pending' };
+export interface HomeTransferDurableDatabase {
   exec(sql: string): void;
   prepare(sql: string): {
-    run(...values: Array<string | number>): unknown;
-    get(...values: Array<string | number>): unknown;
+    run(...values: Array<string | number | null>): unknown;
+    get(...values: Array<string | number | null>): unknown;
+    all(...values: Array<string | number | null>): unknown[];
   };
 }
 const LIMIT = 8192;
@@ -105,7 +113,9 @@ function ownerValid(value: PlannedHomeOwner): boolean {
     revision(value.revision)
   );
 }
-function digest(closure: ProjectTaskRoomSourceSeal): string {
+export function plannedHomeTransferClosureDigest(
+  closure: ProjectTaskRoomSourceSeal,
+): string {
   // Canonical field order: insertion order of a caller's object is not identity.
   const c = closure.checkpoint;
   return createHash('sha256')
@@ -163,7 +173,7 @@ function transferValid(value: PlannedHomeTransfer): boolean {
     !['source-closed', 'target-ready', 'committed'].includes(value.phase) ||
     !value.closure ||
     !closureValid(value.closure, value.intent) ||
-    digest(value.closure) !== value.closureDigest
+    plannedHomeTransferClosureDigest(value.closure) !== value.closureDigest
   )
     return false;
   return value.phase === 'committed'
@@ -185,7 +195,9 @@ function sameIntent(
   );
 }
 
-function requireDurableDatabase(db: Database): void {
+export function assertDurableHomeTransferDatabase(
+  db: HomeTransferDurableDatabase,
+): void {
   const synchronous = db.prepare('PRAGMA synchronous').get() as {
     synchronous?: unknown;
   };
@@ -212,8 +224,63 @@ function requireDurableDatabase(db: Database): void {
     );
 }
 
-export function createSqlitePlannedHomeTransferStore(db: Database) {
-  requireDurableDatabase(db);
+/** Canonical bounded reader for the private current-owner authority record. */
+export function readPlannedHomeOwner(
+  db: HomeTransferDurableDatabase,
+  tenant: string,
+  channel: string,
+): PlannedHomeOwner | undefined {
+  const row = db
+    .prepare(`SELECT CASE WHEN length(CAST(record_json AS BLOB))<=${LIMIT}
+      THEN record_json END AS record_json FROM planned_home_owners WHERE tenant_id=? AND channel_id=?`)
+    .get(tenant, channel);
+  if (row === undefined) return undefined;
+  const json = (row as { record_json?: unknown }).record_json;
+  if (typeof json !== 'string') throw new Error('Invalid transfer record');
+  const value = JSON.parse(json) as PlannedHomeOwner;
+  if (
+    !ownerValid(value) ||
+    value.tenantId !== tenant ||
+    value.channelId !== channel
+  )
+    throw new Error('Invalid transfer record');
+  return value;
+}
+
+class TransferAuthorizationDenied extends Error {}
+
+export function createSqlitePlannedHomeTransferStore(
+  db: HomeTransferDurableDatabase,
+) {
+  return createSqliteStore(db);
+}
+
+/** The authority service must use this entry, with its caller-bound guard. */
+export function createAuthorizedSqlitePlannedHomeTransferStore(
+  db: HomeTransferDurableDatabase,
+  authorize: () => boolean,
+) {
+  if (typeof authorize !== 'function')
+    throw new Error('Transfer authorization guard is required');
+  return createSqliteStore(db, authorize);
+}
+
+function createSqliteStore(
+  db: HomeTransferDurableDatabase,
+  authorize?: () => boolean,
+) {
+  // The captured guard revalidates authority synchronously while this DB is locked.
+  function checkAuthorization(): void {
+    if (!authorize) return;
+    const allowed = authorize();
+    if (allowed !== true) {
+      // A JS caller may violate the synchronous contract. Never treat its
+      // Promise as truthy authority, or leave a rejected Promise unhandled.
+      void Promise.resolve(allowed).catch(() => {});
+      throw new TransferAuthorizationDenied();
+    }
+  }
+  assertDurableHomeTransferDatabase(db);
   db.exec(`CREATE TABLE IF NOT EXISTS planned_home_owners (
     tenant_id TEXT NOT NULL, channel_id TEXT NOT NULL, record_json TEXT NOT NULL,
     PRIMARY KEY(tenant_id,channel_id));
@@ -223,6 +290,7 @@ export function createSqlitePlannedHomeTransferStore(db: Database) {
     PRIMARY KEY(tenant_id,operation_id));
     CREATE UNIQUE INDEX IF NOT EXISTS idx_planned_home_pending
     ON planned_home_transfers(tenant_id,channel_id) WHERE pending=1;`);
+  db.exec(PLANNED_HOME_ADMISSION_SCHEMA_SQL);
   function parse<T>(
     row: unknown,
     validate: (value: T) => boolean,
@@ -238,16 +306,7 @@ export function createSqlitePlannedHomeTransferStore(db: Database) {
     tenant: string,
     channel: string,
   ): PlannedHomeOwner | undefined {
-    return parse(
-      db
-        .prepare(`SELECT CASE WHEN length(CAST(record_json AS BLOB))<=${LIMIT}
-      THEN record_json END AS record_json FROM planned_home_owners WHERE tenant_id=? AND channel_id=?`)
-        .get(tenant, channel),
-      (value: PlannedHomeOwner) =>
-        ownerValid(value) &&
-        value.tenantId === tenant &&
-        value.channelId === channel,
-    );
+    return readPlannedHomeOwner(db, tenant, channel);
   }
   function readTransfer(
     tenant: string,
@@ -281,25 +340,33 @@ export function createSqlitePlannedHomeTransferStore(db: Database) {
       json,
     );
   }
-  function transaction<T>(
-    run: () => TransferStoreResult<T>,
-  ): TransferStoreResult<T> {
+  function transaction<T, Extra = never>(
+    run: () => TransferStoreResult<T> | Extra,
+  ): TransferStoreResult<T> | Extra {
     let began = false;
     try {
+      checkAuthorization();
       db.exec('BEGIN IMMEDIATE');
       began = true;
-      requireDurableDatabase(db);
+      assertDurableHomeTransferDatabase(db);
+      checkAuthorization();
       const result = run();
+      checkAuthorization();
       db.exec('COMMIT');
       began = false;
       return result;
-    } catch {
+    } catch (error) {
       if (began) {
         try {
           db.exec('ROLLBACK');
         } catch {}
       }
-      return { kind: 'unavailable' };
+      return {
+        kind:
+          error instanceof TransferAuthorizationDenied
+            ? 'denied'
+            : 'unavailable',
+      };
     }
   }
   function matches(
@@ -394,13 +461,14 @@ export function createSqlitePlannedHomeTransferStore(db: Database) {
         if (!value) return { kind: 'not-found' };
         if (!closureValid(closure, value.intent)) return { kind: 'conflict' };
         if (value.closure)
-          return value.closureDigest === digest(closure)
+          return value.closureDigest ===
+            plannedHomeTransferClosureDigest(closure)
             ? { kind: 'stored', value }
             : { kind: 'conflict' };
         if (!matches(readOwner(tenant, value.intent.channelId), value.intent))
           return { kind: 'conflict' };
         value.closure = structuredClone(closure);
-        value.closureDigest = digest(closure);
+        value.closureDigest = plannedHomeTransferClosureDigest(closure);
         value.phase = 'source-closed';
         saveTransfer(value);
         return { kind: 'stored', value };
@@ -431,35 +499,39 @@ export function createSqlitePlannedHomeTransferStore(db: Database) {
         return { kind: 'stored', value };
       });
     },
-    commit(
-      tenant: string,
-      operation: string,
-    ): TransferStoreResult<PlannedHomeTransfer> {
-      return transaction<PlannedHomeTransfer>(() => {
-        const value = readTransfer(tenant, operation);
-        if (!value) return { kind: 'not-found' };
-        if (value.phase === 'committed') return { kind: 'stored', value };
-        if (
-          value.phase !== 'target-ready' ||
-          !matches(readOwner(tenant, value.intent.channelId), value.intent)
-        )
-          return { kind: 'conflict' };
-        const owner: PlannedHomeOwner = {
-          tenantId: tenant,
-          channelId: value.intent.channelId,
-          homeRef: value.intent.targetHomeRef,
-          policyRevision: value.intent.policyRevision,
-          revision: value.intent.expectedRevision + 1,
-        };
-        if (!ownerValid(owner)) return { kind: 'conflict' };
-        db.prepare(
-          'UPDATE planned_home_owners SET record_json=? WHERE tenant_id=? AND channel_id=?',
-        ).run(JSON.stringify(owner), tenant, owner.channelId);
-        value.phase = 'committed';
-        value.committedRevision = owner.revision;
-        saveTransfer(value);
-        return { kind: 'stored', value };
-      });
+    commit(tenant: string, operation: string): TransferCommitResult {
+      return transaction<PlannedHomeTransfer, { kind: 'admission-pending' }>(
+        () => {
+          const value = readTransfer(tenant, operation);
+          if (!value) return { kind: 'not-found' };
+          if (value.phase === 'committed') return { kind: 'stored', value };
+          if (
+            value.phase !== 'target-ready' ||
+            !matches(readOwner(tenant, value.intent.channelId), value.intent)
+          )
+            return { kind: 'conflict' };
+          if (
+            checkChannelAdmissions(db, tenant, value.intent.channelId) ===
+            'pending'
+          )
+            return { kind: 'admission-pending' };
+          const owner: PlannedHomeOwner = {
+            tenantId: tenant,
+            channelId: value.intent.channelId,
+            homeRef: value.intent.targetHomeRef,
+            policyRevision: value.intent.policyRevision,
+            revision: value.intent.expectedRevision + 1,
+          };
+          if (!ownerValid(owner)) return { kind: 'conflict' };
+          db.prepare(
+            'UPDATE planned_home_owners SET record_json=? WHERE tenant_id=? AND channel_id=?',
+          ).run(JSON.stringify(owner), tenant, owner.channelId);
+          value.phase = 'committed';
+          value.committedRevision = owner.revision;
+          saveTransfer(value);
+          return { kind: 'stored', value };
+        },
+      );
     },
   };
 }
@@ -507,7 +579,5 @@ export interface PlannedHomeTransferStore {
   commit(
     tenant: string,
     operation: string,
-  ):
-    | TransferStoreResult<PlannedHomeTransfer>
-    | Promise<TransferStoreResult<PlannedHomeTransfer>>;
+  ): TransferCommitResult | Promise<TransferCommitResult>;
 }

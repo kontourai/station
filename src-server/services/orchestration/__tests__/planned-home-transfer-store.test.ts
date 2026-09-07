@@ -3,7 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, test } from 'vitest';
+import { createPlannedHomeAdmissionStore } from '../planned-home-admission-store.js';
 import {
+  createAuthorizedSqlitePlannedHomeTransferStore,
   createSqlitePlannedHomeTransferStore,
   type PlannedHomeTransfer,
   type TransferStoreResult,
@@ -51,7 +53,9 @@ const closure: ProjectTaskRoomSourceSeal = {
   },
   workingStateDigest: 'c'.repeat(64),
 };
-function stored<T>(result: TransferStoreResult<T>): T {
+function stored<T>(
+  result: TransferStoreResult<T> | { kind: 'admission-pending' },
+): T {
   expect(result.kind).toBe('stored');
   if (result.kind !== 'stored') throw new Error('Missing stored result');
   return result.value;
@@ -211,18 +215,22 @@ test('identical channel and operation identifiers remain isolated by tenant', ()
 test('a write failure rolls ownership and operation state back together', () => {
   const { db, store } = fixture();
   ready(store);
+  let injectedFailureReached = false;
   const faulted = createSqlitePlannedHomeTransferStore({
     exec: (sql) => db.exec(sql),
     prepare(sql) {
       const statement = db.prepare(sql);
       return {
         get: (...values) => statement.get(...values),
+        all: (...values) => statement.all(...values),
         run: (...values) => {
           if (
             sql.startsWith('INSERT INTO planned_home_transfers') &&
             String(values.at(-1)).includes('"phase":"committed"')
-          )
+          ) {
+            injectedFailureReached = true;
             throw new Error('Injected persistence failure');
+          }
           return statement.run(...values);
         },
       };
@@ -231,6 +239,7 @@ test('a write failure rolls ownership and operation state back together', () => 
   expect(faulted.commit(owner.tenantId, intent.operationId).kind).toBe(
     'unavailable',
   );
+  expect(injectedFailureReached).toBe(true);
   expect(stored(store.inspect(owner.tenantId, owner.channelId))).toEqual(owner);
   expect(stored(store.resolve(owner.tenantId, intent.operationId)).phase).toBe(
     'target-ready',
@@ -326,3 +335,201 @@ test('a later durability downgrade cannot commit or silently reassign ownership'
     stored(store.commit(owner.tenantId, intent.operationId)).committedRevision,
   ).toBe(1);
 });
+
+test('a denied caller cannot inspect or mutate transfer decisions', () => {
+  const { db, store } = fixture();
+  const decision = ready(store);
+  const denied = createAuthorizedSqlitePlannedHomeTransferStore(
+    db,
+    () => false,
+  );
+  const results = [
+    denied.initialize(owner),
+    denied.inspect(owner.tenantId, owner.channelId),
+    denied.resolve(owner.tenantId, intent.operationId),
+    denied.prepare(intent),
+    denied.recordClosure(owner.tenantId, intent.operationId, closure),
+    denied.recordReady(
+      owner.tenantId,
+      intent.operationId,
+      'target',
+      decision.closureDigest!,
+    ),
+    denied.commit(owner.tenantId, intent.operationId),
+  ];
+  expect(results.every((result) => result.kind === 'denied')).toBe(true);
+  expect(stored(store.inspect(owner.tenantId, owner.channelId))).toEqual(owner);
+  expect(stored(store.resolve(owner.tenantId, intent.operationId))).toEqual(
+    decision,
+  );
+});
+test.each(['revoked', 'unavailable', 'async', 'resolved-async'] as const)(
+  'authorization %s before commit rolls the whole transition back',
+  (mode) => {
+    const { db, store } = fixture();
+    const decision = ready(store);
+    let checks = 0;
+    const guarded = createAuthorizedSqlitePlannedHomeTransferStore(db, (() => {
+      if (++checks <= 2) return true;
+      if (mode === 'unavailable')
+        throw new Error('Private authority backend detail');
+      if (mode === 'resolved-async') return Promise.resolve(true);
+      if (mode === 'async')
+        return Promise.reject(new Error('Asynchronous guard is unsupported'));
+      return false;
+    }) as () => boolean);
+    expect(guarded.commit(owner.tenantId, intent.operationId).kind).toBe(
+      mode === 'unavailable' ? 'unavailable' : 'denied',
+    );
+    expect(checks).toBe(3);
+    expect(stored(store.inspect(owner.tenantId, owner.channelId))).toEqual(
+      owner,
+    );
+    expect(stored(store.resolve(owner.tenantId, intent.operationId))).toEqual(
+      decision,
+    );
+    const allowed = createAuthorizedSqlitePlannedHomeTransferStore(
+      db,
+      () => true,
+    );
+    expect(
+      stored(allowed.commit(owner.tenantId, intent.operationId))
+        .committedRevision,
+    ).toBe(1);
+  },
+);
+
+test.each([undefined, null, false])(
+  'the guarded entry rejects a missing guard (%s)',
+  (guard) => {
+    const { db } = fixture();
+    expect(() =>
+      createAuthorizedSqlitePlannedHomeTransferStore(
+        db,
+        guard as unknown as () => boolean,
+      ),
+    ).toThrow('guard is required');
+  },
+);
+
+test('denied operations do not acquire the database transaction lock', () => {
+  const { db } = fixture();
+  const sql: string[] = [];
+  const guarded = createAuthorizedSqlitePlannedHomeTransferStore(
+    {
+      exec(statement) {
+        sql.push(statement);
+        db.exec(statement);
+      },
+      prepare: (statement) => db.prepare(statement),
+    },
+    () => false,
+  );
+  sql.length = 0;
+  expect(guarded.inspect(owner.tenantId, owner.channelId).kind).toBe('denied');
+  expect(sql).toEqual([]);
+});
+test('rejected asynchronous guards do not emit unhandled rejections', async () => {
+  const { db } = fixture();
+  const leaks: unknown[] = [];
+  const record = (reason: unknown) => {
+    leaks.push(reason);
+  };
+  process.on('unhandledRejection', record);
+  try {
+    const guarded = createAuthorizedSqlitePlannedHomeTransferStore(db, (() =>
+      Promise.reject(
+        new Error('unsupported asynchronous authorization'),
+      )) as unknown as () => boolean);
+    expect(guarded.inspect(owner.tenantId, owner.channelId).kind).toBe(
+      'denied',
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(leaks).toEqual([]);
+  } finally {
+    process.removeListener('unhandledRejection', record);
+  }
+});
+
+test('unresolved admission blocks commit across reopen until its exact receipt is finished', () => {
+  const { db, store, open } = fixture();
+  const input = {
+    tenantId: owner.tenantId,
+    channelId: owner.channelId,
+    admissionId: 'write-1',
+    ownerRevision: 0,
+    homeRef: owner.homeRef,
+    kind: 'room-write' as const,
+    intentDigest: 'd'.repeat(64),
+  };
+  const admissions = createPlannedHomeAdmissionStore(db, () => true);
+  expect(admissions.begin(input).kind).toBe('stored');
+  ready(store);
+  expect(store.commit(owner.tenantId, intent.operationId)).toEqual({
+    kind: 'admission-pending',
+  });
+  expect(stored(store.inspect(owner.tenantId, owner.channelId))).toEqual(owner);
+  db.close();
+  const reopened = open();
+  const resumed = createSqlitePlannedHomeTransferStore(reopened);
+  const resumedAdmissions = createPlannedHomeAdmissionStore(
+    reopened,
+    () => true,
+  );
+  expect(resumed.commit(owner.tenantId, intent.operationId)).toEqual({
+    kind: 'admission-pending',
+  });
+  expect(
+    resumedAdmissions.begin({ ...input, admissionId: 'write-2' }).kind,
+  ).toBe('conflict');
+  expect(resumedAdmissions.begin(input).kind).toBe('stored');
+  expect(
+    resumedAdmissions.finish({
+      ...input,
+      intentDigest: 'e'.repeat(64),
+      receiptDigest: 'f'.repeat(64),
+    }).kind,
+  ).toBe('conflict');
+  expect(resumed.commit(owner.tenantId, intent.operationId)).toEqual({
+    kind: 'admission-pending',
+  });
+  expect(
+    resumedAdmissions.finish({ ...input, receiptDigest: 'f'.repeat(64) }).kind,
+  ).toBe('stored');
+  const committed = stored(resumed.commit(owner.tenantId, intent.operationId));
+  expect(committed.phase).toBe('committed');
+  expect(stored(resumed.inspect(owner.tenantId, owner.channelId)).homeRef).toBe(
+    'target',
+  );
+  expect(resumed.commit(owner.tenantId, intent.operationId)).toEqual({
+    kind: 'stored',
+    value: committed,
+  });
+});
+
+test.each(['channel_id', 'tenant_id'])(
+  'corrupt admission %s cannot hide unresolved work from commit',
+  (column) => {
+    const { db, store } = fixture();
+    const admissions = createPlannedHomeAdmissionStore(db, () => true);
+    expect(
+      admissions.begin({
+        tenantId: owner.tenantId,
+        channelId: owner.channelId,
+        admissionId: 'write-corrupt',
+        ownerRevision: 0,
+        homeRef: owner.homeRef,
+        kind: 'room-write',
+        intentDigest: 'a'.repeat(64),
+      }).kind,
+    ).toBe('stored');
+    ready(store);
+    db.exec(`UPDATE planned_home_admissions SET ${column}='wrong-routing'`);
+    expect(store.commit(owner.tenantId, intent.operationId)).toEqual({
+      kind: 'unavailable',
+    });
+    expect(stored(store.inspect(owner.tenantId, owner.channelId))).toEqual(
+      owner,
+    );
+  },
+);

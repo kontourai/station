@@ -28,6 +28,7 @@ export function InstallPluginModal({
 }) {
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       ariaLabelledBy="install-plugin-title"
       overlayClassName="plugins__modal-overlay"

@@ -17,6 +17,7 @@ import { parseFrontmatter } from 'agent-skills-ts-sdk';
 
 const SKILL_ORIGINS: readonly SkillOrigin[] = [
   'user',
+  'project',
   'registry',
   'plugin',
   'package',
@@ -169,7 +170,9 @@ export function parseImportedSkillMarkdown(
 }
 
 export {
+  assertSafeProjectSlug,
   assertSafeSkillName,
+  assertSkillPackageDirectory,
   isDirectoryPhysicallyWithin,
   isDirectoryWithin,
   isSafeSkillName,

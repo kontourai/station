@@ -97,6 +97,7 @@ import { recoverCompletedTaskDispatches } from '../completed-task-dispatch-recov
 import { canResolveConversationContinuation } from '../conversation-lineage.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
+import * as nativeMemoryContinuity from '../native-memory-continuity.js';
 import {
   AdoptionContinuationInProgressError,
   OrchestrationCommandDispatchError,
@@ -3531,7 +3532,7 @@ describe('OrchestrationService', () => {
       { isCurrent: () => true },
     )!;
     const scope = authority.bindNativeCall(grant, 'native-deferred-call')!;
-    privateService.nativeOutputTurnGenerations.set(
+    privateService.nativeTurnGenerations.set(
       'native-deferred-thread',
       'native-deferred-turn',
     );
@@ -10008,6 +10009,10 @@ describe('OrchestrationService', () => {
   });
 
   test('binds an authorized Station-agent turn correlation before crossing the internal chat relay', async () => {
+    const captureMemory = vi.spyOn(
+      nativeMemoryContinuity,
+      'captureNativeMemoryContinuity',
+    );
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response('data: [DONE]\n\n', {
         status: 200,
@@ -10036,10 +10041,21 @@ describe('OrchestrationService', () => {
         input: {
           threadId: 'fleet-authorized-session',
           provider: 'station-agent',
-          metadata: { agentId: 'reviewer' },
+          cwd: tmp,
+          metadata: {
+            agentId: 'reviewer',
+            agentSlug: 'reviewer',
+            projectSlug: 'project-a',
+          },
         },
       },
       { userId: 'account-a' },
+      {
+        conversationIdentity: {
+          conversationId: 'fleet-authorized-session',
+          environmentId: 'local-environment',
+        },
+      },
     );
     // The HTTP route stamps this server-derived owner before it calls the
     // service. This unit test enters the service directly, so model that
@@ -10065,6 +10081,13 @@ describe('OrchestrationService', () => {
         },
       },
       { userId: 'account-a' },
+      {
+        nativeMemoryReadAuthority: sessionReadAuthorityFromRequest(
+          'account-a',
+          undefined,
+          undefined,
+        ),
+      },
     );
     const redelivery = await stationService.dispatch(
       {
@@ -10076,6 +10099,13 @@ describe('OrchestrationService', () => {
         },
       },
       { userId: 'account-a' },
+      {
+        nativeMemoryReadAuthority: sessionReadAuthorityFromRequest(
+          'account-a',
+          undefined,
+          undefined,
+        ),
+      },
     );
 
     const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<
@@ -10101,7 +10131,170 @@ describe('OrchestrationService', () => {
     expect(correlation?.correlationId).toMatch(/^fleet:[0-9a-f]{64}$/u);
     expect(redelivery.turnId).toBe(turn.turnId);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(captureMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: expect.objectContaining({
+          projectSlug: 'project-a',
+          cwd: tmp,
+          environmentId: 'local-environment',
+        }),
+      }),
+      expect.anything(),
+    );
     expect(JSON.stringify(headers)).not.toContain('private prompt');
+  });
+
+  test('native history capture uses fresh point reads without host-wide work per lineage leg', async () => {
+    const measure = async (count: number, unrelated: number) => {
+      const store = new EventStore(join(tmp, `native-cost-${count}.sqlite`));
+      const native = new FakeAdapter('station-agent');
+      const owned = new OrchestrationService({
+        adapterRegistry: createRegistry([native]),
+        eventBus: new EventBus(),
+        eventStore: store,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      const root = `native-cost-${count}-0`;
+      const current = `native-cost-${count}-${count - 1}`;
+      const createdAt = '2026-09-06T00:00:00.000Z';
+      for (let index = 0; index < count; index++) {
+        const id = `native-cost-${count}-${index}`;
+        if (index)
+          store.reserveNextConversationSession({
+            conversationId: root,
+            predecessorSessionId: `native-cost-${count}-${index - 1}`,
+            proposedSessionId: id,
+            createdAt,
+          });
+        store.upsertSession({
+          threadId: id,
+          provider: 'station-agent',
+          status: 'ready',
+          cwd: tmp,
+          persistSession: true,
+          createdAt,
+          updatedAt: createdAt,
+        });
+        store.appendEvent({
+          eventId: `${id}-start`,
+          threadId: id,
+          sessionId: id,
+          provider: 'station-agent',
+          method: 'session.started',
+          createdAt,
+          metadata: {
+            agentSlug: 'reviewer',
+            userId: 'account-a',
+            projectSlug: 'project-a',
+          },
+        });
+        // Old streaming history must not be read just to recertify identity.
+        for (let delta = 0; delta < 20; delta++)
+          store.appendEvent({
+            eventId: `${id}-delta-${delta}`,
+            threadId: id,
+            provider: 'station-agent',
+            method: 'content.text-delta',
+            createdAt,
+            turnId: 'historical',
+            itemId: 'text',
+            delta: 'retained transcript',
+          });
+      }
+      for (let index = 0; index < unrelated; index++)
+        store.upsertSession({
+          threadId: `unrelated-${count}-${index}`,
+          provider: 'claude',
+          status: 'closed',
+          createdAt,
+          updatedAt: createdAt,
+        });
+      await owned.listSessions(
+        sessionReadAuthorityFromRequest('account-a', undefined, undefined),
+      );
+      // listSessions starts boot recovery asynchronously. Measure the
+      // request owner after that existing one-time startup pass settles.
+      await waitFor(
+        () =>
+          (owned as unknown as { sessionAttachmentSettled: boolean })
+            .sessionAttachmentSettled,
+        (settled) => settled,
+      );
+      const adapterLists = vi.spyOn(native, 'listSessions');
+      const allRows = vi.spyOn(store, 'readSessions');
+      const fullEvents = vi.spyOn(store, 'listEvents');
+      const pointFacts = vi.spyOn(store, 'listSessionProjectionEvents');
+      const authority = sessionReadAuthorityFromRequest(
+        'account-a',
+        undefined,
+        undefined,
+      );
+      // Exercise the real OrchestrationService owner used by dispatch, with
+      // SQLite and its actual authorization/projection paths, not a fake
+      // readSession callback supplied to the continuity helper.
+      const capture = owned as unknown as {
+        captureNativeMemoryHistory(
+          id: string,
+          scope: SessionReadAuthority,
+          current: () => boolean,
+        ): Promise<
+          import('../../../runtime/conversation/native-memory-history.js').NativeMemoryHistoryCompanion
+        >;
+      };
+      try {
+        const history = await capture.captureNativeMemoryHistory(
+          current,
+          authority,
+          () => true,
+        );
+        expect(await history.isCurrent()).toBe(true);
+        const facts = pointFacts.mock.calls.length;
+        expect(adapterLists).toHaveBeenCalledTimes(1);
+        expect(allRows).not.toHaveBeenCalled();
+        expect(fullEvents).not.toHaveBeenCalled();
+        expect(new Set(pointFacts.mock.calls.map(([id]) => id)).size).toBe(
+          count,
+        );
+        // A new durable identity observation must invalidate the retained
+        // binding without another host-wide enumeration.
+        store.appendEvent({
+          eventId: `${current}-project-change`,
+          threadId: current,
+          sessionId: current,
+          provider: 'station-agent',
+          method: 'session.configured',
+          createdAt: '2026-09-06T00:01:00.000Z',
+          metadata: {
+            agentSlug: 'reviewer',
+            userId: 'account-a',
+            projectSlug: 'project-b',
+          },
+        });
+        expect(await history.isCurrent()).toBe(false);
+        expect(adapterLists).toHaveBeenCalledTimes(1);
+        await expect(
+          capture.captureNativeMemoryHistory(
+            current,
+            sessionReadAuthorityFromRequest(
+              'other-account',
+              undefined,
+              undefined,
+            ),
+            () => true,
+          ),
+        ).rejects.toMatchObject({
+          code: 'native_memory_continuity_unavailable',
+        });
+        return facts;
+      } finally {
+        await owned.shutdown();
+        store.close();
+      }
+    };
+    const small = await measure(4, 32);
+    const large = await measure(8, 256);
+    expect(small).toBeGreaterThan(0);
+    expect(large).toBeLessThanOrEqual(small * 2);
   });
 
   test('sendTurn composes ambient context into the model-facing input at the dispatch choke point (#685)', async () => {
@@ -12687,26 +12880,28 @@ describe('OrchestrationService', () => {
   });
 
   test('rejects an unavailable retained adoption plan before readiness or provider fork', async () => {
-    const sourceThreadId = 'external:bedrock:unavailable-adoption';
+    // A qualified engine reaches model-plan validation; an unqualified one
+    // would fail at the earlier continuation-support gate and mask this seam.
+    const sourceThreadId = 'external:claude:unavailable-adoption';
     const projectRoot = join(tmp, 'unavailable-adoption-project');
     mkdirSync(projectRoot, { recursive: true });
     installStationDeliveryFlow(projectRoot);
     configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
     eventStore.upsertSession({
-      provider: 'bedrock',
+      provider: 'claude',
       threadId: sourceThreadId,
       status: 'ready',
       cwd: projectRoot,
       model: 'source-model',
       controlMode: 'read-only-attached',
       attachedSource: {
-        kind: 'bedrock-transcript',
+        kind: 'claude-transcript',
         externalSessionId: 'source-session',
       },
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
     });
-    bedrock.metadata.modelLaunch = {
+    claude.metadata.modelLaunch = {
       defaultAtStart: 'station-resolved',
       omissionAtResume: 'retain-session-model',
       omissionPerTurn: 'retain-session-model',
@@ -12716,7 +12911,7 @@ describe('OrchestrationService', () => {
       // Deliberately absent: a retained Station-backed selector cannot be
       // accepted without the execution connection that validates it.
     };
-    const readiness = vi.spyOn(bedrock, 'getPrerequisites');
+    const readiness = vi.spyOn(claude, 'getPrerequisites');
     vi.mocked(modelLaunchResolutionTotal.add).mockClear();
 
     await expect(
@@ -12726,12 +12921,12 @@ describe('OrchestrationService', () => {
     );
 
     expect(readiness).not.toHaveBeenCalled();
-    expect(bedrock.adoptSession).not.toHaveBeenCalled();
+    expect(claude.adoptSession).not.toHaveBeenCalled();
     expect(modelLaunchResolutionTotal.add).toHaveBeenCalledTimes(1);
     expect(modelLaunchResolutionTotal.add).toHaveBeenCalledWith(
       1,
       expect.objectContaining({
-        provider: 'bedrock',
+        provider: 'claude',
         lifecycle: 'resume',
         requested_override: 'false',
         outcome: 'rejected',
@@ -12861,9 +13056,32 @@ describe('OrchestrationService', () => {
     ).toBe(false);
   });
 
-  test('refuses adoption when the source provider lacks independent-continuation support', async () => {
-    const sourceThreadId = 'external:bedrock:source';
+  test('refuses adoption when a qualified provider adapter lacks its continuation method', async () => {
+    const sourceThreadId = 'external:claude:source';
     const projectRoot = join(tmp, 'project');
+    mkdirSync(projectRoot, { recursive: true });
+    configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: sourceThreadId,
+      status: 'ready',
+      cwd: projectRoot,
+      controlMode: 'read-only-attached',
+      attachedSource: { kind: 'test', externalSessionId: 'vendor-source' },
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    Object.defineProperty(claude, 'adoptSession', { value: undefined });
+
+    await expect(
+      service.dispatch({ type: 'adoptSession', sourceThreadId }),
+    ).rejects.toThrow('does not support continuing attached sessions');
+    expect(claude.startSession).not.toHaveBeenCalled();
+  });
+
+  test('refuses an unqualified source engine even when its adapter implements continuation', async () => {
+    const sourceThreadId = 'external:bedrock:unqualified-source';
+    const projectRoot = join(tmp, 'unqualified-source-project');
     mkdirSync(projectRoot, { recursive: true });
     configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
     eventStore.upsertSession({
@@ -12876,12 +13094,17 @@ describe('OrchestrationService', () => {
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
     });
-    Object.defineProperty(bedrock, 'adoptSession', { value: undefined });
+    const readiness = vi.spyOn(bedrock, 'getPrerequisites');
+    expect(bedrock.adoptSession).toBeTypeOf('function');
+    expect(bedrock.discardSession).toBeTypeOf('function');
 
     await expect(
       service.dispatch({ type: 'adoptSession', sourceThreadId }),
-    ).rejects.toThrow('does not support continuing attached sessions');
+    ).rejects.toThrow('independent continuation support');
+    expect(readiness).not.toHaveBeenCalled();
+    expect(bedrock.adoptSession).not.toHaveBeenCalled();
     expect(bedrock.startSession).not.toHaveBeenCalled();
+    expect(eventStore.listCommandReceipts(sourceThreadId)).toEqual([]);
   });
 
   test('adoption does not inspect or depend on a Flow workspace', async () => {
