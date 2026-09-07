@@ -174,12 +174,37 @@ and unavailable storage/transport 503. A failed remote credential can appear as
 unavailable transport to the controller; never interpret it as permission to use
 another endpoint or start execution.
 
+## Private admission journal
+
+The controller storage adapter records unresolved room-write and execution
+admissions against the exact current home and owner revision. Preparing a move
+blocks new admissions; an identical unresolved admission can still be settled.
+Ownership commit returns HTTP 202 `admission-pending` while any admission for
+that channel remains unresolved. Finishing requires the exact admission identity
+and a stable receipt digest. A changed intent or receipt conflicts. Restarting,
+waiting, or losing a process does not finish an admission.
+
+This is private storage infrastructure: production room writers and Agent launch
+paths are not yet connected to it. Integrators must verify a durable local effect
+receipt before calling finish; storing a digest does not verify the receipt or
+prove that execution stopped. A previously finished record is historical replay,
+never permission to run the effect again. No public admission endpoint is shipped.
+
+The preview journal has a controller-wide limit of 4,096 records. At capacity,
+new admissions are refused; existing admissions can still finish or replay.
+Records are not automatically deleted. Commit checks the bounded journal's
+integrity, including routing columns, before checking the channel. Corruption
+or excess records fails closed. Production retention and runtime admission
+integration remain prerequisites for enabling sustained Agent execution.
+
 ## Reproduce the integration checks
 
 From an isolated repository worktree with managed dependencies installed:
 
 ```bash
 npm run test:focused -- \
+  src-server/services/orchestration/__tests__/planned-home-admission-store.test.ts \
+  src-server/services/orchestration/__tests__/planned-home-transfer-store.test.ts \
   src-server/services/orchestration/__tests__/home-transfer-room-binding.test.ts \
   src-server/services/orchestration/__tests__/home-transfer-room-probe.test.ts \
   src-server/routes/environments/__tests__/home-authority-routes.test.ts \

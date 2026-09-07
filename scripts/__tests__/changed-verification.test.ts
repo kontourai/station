@@ -1,16 +1,30 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
 import {
   changedPaths,
+  discoverRelatedTestFiles,
   escalateUnavailableExplicitTests,
+  parseRelatedTestDiscovery,
+  planChangedVitestExecutions,
   renderChangedVerificationSummary,
   runChangedVerification,
+  runOwnedChangedCommand,
   runRepresentativeNarrowDiffFixture,
   selectChangedVerification,
   validateChangedVerificationReceipt,
+  validateSelectedTestFiles,
 } from '../run-changed-verification.mjs';
 import {
   E2E_CONTRACT_BOUNDARIES,
@@ -123,11 +137,30 @@ function provenance(workspaceDigest = 'b'.repeat(64)) {
 
 function reportedRun({ status = 0, report = passingReport, result = {} } = {}) {
   return vi.fn((_command, args) => {
+    if (args.includes('--eval'))
+      return {
+        status: 0,
+        stdout: JSON.stringify([
+          'src-server/routes/chat/__tests__/chat-context.test.ts',
+        ]),
+      };
     const outputFile = args.find((arg) => arg.startsWith('--outputFile='));
     if (report && outputFile)
       writeFileSync(outputFile.slice('--outputFile='.length), report);
     return { status, ...result };
   });
+}
+
+function splitResourceGroups(files: string[]) {
+  return {
+    ordinary: files.slice(0, 1),
+    processHeavy: files.slice(1),
+    processExclusive: [],
+    coordinatorExclusive: [],
+    credentialLedgerExclusive: [],
+    sharedOutput: [],
+    dogfoodReconcile: [],
+  };
 }
 
 describe('changed verification selection', () => {
@@ -230,10 +263,10 @@ describe('changed verification selection', () => {
       ]),
     );
   });
-  test('executes a newly added red test directly and propagates its failure', () => {
-    const added = 'scripts/__tests__/new-red.test.ts';
+  test('executes a changed red test directly and propagates its failure', async () => {
+    const added = 'scripts/__tests__/changed-verification.test.ts';
     const run = reportedRun({ status: 1, report: failingReport });
-    const result = runChangedVerification(['--base=origin/main'], {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run,
       changedPathsFn: () => ({ mergeBase: 'base-sha', paths: [added] }),
@@ -243,7 +276,7 @@ describe('changed verification selection', () => {
     });
     expect(run).toHaveBeenCalledOnce();
     expect(run.mock.calls[0][1]).toEqual(
-      expect.arrayContaining(['run', added]),
+      expect.arrayContaining(['run', `./${added}`]),
     );
     expect(result.exitCode).toBe(1);
     expect(result.receipt.terminal).toMatchObject({
@@ -365,6 +398,14 @@ describe('changed verification selection', () => {
   });
   test.each([
     [
+      'packages/contracts/src/engine-capability-matrix.ts',
+      'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
+    ],
+    [
+      'src-server/services/orchestration/attached-session-adoption.ts',
+      'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
+    ],
+    [
       'src-server/runtime/frameworks/strands-message-sync.ts',
       'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
     ],
@@ -377,7 +418,7 @@ describe('changed verification selection', () => {
       'src-ui/src/__tests__/ChatDockActiveIdentity.overflow.test.tsx',
     ],
   ])(
-    'supplements graph coverage for the source-reading check of %s',
+    'supplements graph coverage for the explicit check of %s',
     (path, testPath) => {
       const selection = selectChangedVerification([path]);
       expect(selection.tests.map((entry) => entry.path)).toContain(testPath);
@@ -419,7 +460,7 @@ describe('changed verification selection', () => {
       'src-server/services/tailscale/__tests__/public-ingress-origin.test.ts',
     ]);
   });
-  test('bounds the acknowledgement repair to the SDK barrel and pairing guards', () => {
+  test('bounds the acknowledgement repair to the SDK barrel and pairing guards', async () => {
     const paths = [
       'packages/sdk/src/index.ts',
       'packages/sdk/src/queries.ts',
@@ -435,7 +476,7 @@ describe('changed verification selection', () => {
     ]);
 
     const run = reportedRun();
-    const result = runChangedVerification(['--base=origin/main'], {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run,
       changedPathsFn: () => ({ mergeBase: 'base-sha', paths }),
@@ -448,8 +489,8 @@ describe('changed verification selection', () => {
     expect(run.mock.calls[0][1]).toEqual(
       expect.arrayContaining([
         'run',
-        'packages/sdk/src/__tests__/publicBarrel.test.ts',
-        'src-server/security/__tests__/pairing-route-scopes.test.ts',
+        './packages/sdk/src/__tests__/publicBarrel.test.ts',
+        './src-server/security/__tests__/pairing-route-scopes.test.ts',
       ]),
     );
   });
@@ -552,10 +593,10 @@ describe('changed verification selection', () => {
       ].sort(),
     });
   });
-  test('runs related source selection without broad surface globs', () => {
+  test('runs related source selection without broad surface globs', async () => {
     const run = reportedRun();
     const writeReceipt = vi.fn();
-    const result = runChangedVerification(['--base=origin/main'], {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run,
       changedPathsFn: () => ({
@@ -565,12 +606,12 @@ describe('changed verification selection', () => {
       collectProvenance: provenance,
       writeReceipt,
     });
-    expect(run).toHaveBeenCalledOnce();
-    expect(run.mock.calls[0][1]).toEqual(
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(run.mock.calls[1][1]).toEqual(
       expect.arrayContaining([
-        'related',
-        '--run',
-        scenarios.sourceEdges.server,
+        'run',
+        '--maxWorkers=4',
+        './src-server/routes/chat/__tests__/chat-context.test.ts',
       ]),
     );
     expect(result.executed.map((entry) => entry.kind)).toEqual(['related']);
@@ -596,8 +637,365 @@ describe('changed verification selection', () => {
       '.kontourai/test-impact/changed-diagnostics.json',
     ]);
   });
-  test('records an integer exit and infrastructure error when the explicit Vitest child has no status', () => {
-    const result = runChangedVerification(['--base=origin/main'], {
+  test('deduplicates related and explicit files into canonical mixed resource groups', async () => {
+    const ordinary = 'src-server/routes/chat/__tests__/chat-context.test.ts';
+    const heavy = 'scripts/__tests__/changed-verification.test.ts';
+    const exclusive =
+      'src-server/routes/environments/__tests__/remote-home-transfer-decision.test.ts';
+    const planned = await planChangedVitestExecutions(
+      process.cwd(),
+      {
+        relatedPaths: ['src-server/services/orchestration/event-store.ts'],
+        tests: [
+          { path: heavy, reasons: ['explicit heavy'] },
+          { path: exclusive, reasons: ['explicit duplicate'] },
+        ],
+        lanes: [],
+      },
+      {
+        discoverRelated: () => [ordinary, exclusive],
+      },
+    );
+    expect(planned.map(({ resourceGroup }) => resourceGroup)).toEqual([
+      'ordinary',
+      'process-heavy',
+      'process-exclusive',
+    ]);
+    expect(planned[0]?.command).toEqual(
+      expect.arrayContaining(['--maxWorkers=4', `./${ordinary}`]),
+    );
+    expect(planned[1]?.command).toEqual(
+      expect.arrayContaining(['--maxWorkers=2', `./${heavy}`]),
+    );
+    expect(planned[2]?.command).toEqual(
+      expect.arrayContaining([
+        '--maxWorkers=1',
+        '--no-file-parallelism',
+        `./${exclusive}`,
+      ]),
+    );
+    expect(
+      planned
+        .flatMap(({ command }) => command)
+        .filter((arg) => arg === `./${exclusive}`),
+    ).toHaveLength(1);
+  });
+  test('rejects a mixed existing and missing selection before planning any group', async () => {
+    await expect(
+      planChangedVitestExecutions(process.cwd(), {
+        relatedPaths: [],
+        tests: [
+          {
+            path: 'src-server/routes/chat/__tests__/chat-context.test.ts',
+            reasons: ['existing'],
+          },
+          { path: 'src-server/missing.test.ts', reasons: ['missing'] },
+        ],
+        lanes: [],
+      }),
+    ).rejects.toThrow('test is missing: src-server/missing.test.ts');
+  });
+  test('rejects outside-workspace and symlink-selected test paths', () => {
+    expect(() =>
+      validateSelectedTestFiles(process.cwd(), ['../outside.test.ts']),
+    ).toThrow('unsafe test path');
+
+    const temporary = mkdtempSync(join(tmpdir(), 'station-selected-test-'));
+    const root = join(temporary, 'root');
+    const outside = join(temporary, 'outside.test.ts');
+    mkdirSync(root);
+    writeFileSync(outside, 'export {}\n');
+    symlinkSync(outside, join(root, 'linked.test.ts'));
+    try {
+      expect(() => validateSelectedTestFiles(root, ['linked.test.ts'])).toThrow(
+        'not a direct workspace file',
+      );
+    } finally {
+      rmSync(temporary, { recursive: true, force: true });
+    }
+  });
+  test('records empty related discovery as infrastructure failure without starting tests', async () => {
+    const run = vi.fn();
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: [scenarios.sourceEdges.server],
+      }),
+      discoverRelatedFiles: () => [],
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    expect(run).not.toHaveBeenCalled();
+    expect(result.executed).toEqual([]);
+    expect(result.preparation).toMatchObject({
+      phase: 'resource-plan',
+      childStarted: false,
+      infrastructureError: true,
+    });
+    expect(result.receipt.counts).toMatchObject({
+      executed: 0,
+      infrastructureErrors: 1,
+    });
+    expect(result.receipt.terminal.status).toBe('infrastructure_error');
+  });
+  test('redacts and bounds retained preparation failures with explicit truncation', async () => {
+    const writeReceipt = vi.fn();
+    const secret = 'fixture-preparation-secret';
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: vi.fn(),
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: [scenarios.sourceEdges.server],
+      }),
+      discoverRelatedFiles: async () => {
+        throw new Error(
+          `Authorization: Bearer ${secret}\n${'detail '.repeat(2_000)}`,
+        );
+      },
+      collectProvenance: provenance,
+      writeReceipt,
+    });
+    expect(result.preparation).toMatchObject({
+      errorTruncated: true,
+      infrastructureError: true,
+    });
+    expect(Buffer.byteLength(result.preparation.error)).toBeLessThanOrEqual(
+      2 * 1024,
+    );
+    expect(result.preparation.error).toContain('[REDACTED]');
+    expect(JSON.stringify(result)).not.toContain(secret);
+    const diagnostics = writeReceipt.mock.calls
+      .filter(
+        ([path]) => path === '.kontourai/test-impact/changed-diagnostics.json',
+      )
+      .map(([, contents]) => contents);
+    expect(diagnostics).not.toHaveLength(0);
+    expect(diagnostics.every((contents) => !contents.includes(secret))).toBe(
+      true,
+    );
+  });
+  test.each([
+    [{ status: 0, stdout: 'not-json' }, 'malformed JSON'],
+    [{ status: 0, stdout: '[]' }, 'no valid test files'],
+    [{ status: 1, stderr: 'discovery failed' }, 'discovery failed'],
+  ])('fails closed on malformed related discovery: %s', (result, message) => {
+    expect(() => parseRelatedTestDiscovery(result)).toThrow(message);
+  });
+  test('preserves a failed discovery launch as prelaunch provenance', async () => {
+    let failure:
+      | (Error & { childStarted?: boolean; phase?: string })
+      | undefined;
+    try {
+      await discoverRelatedTestFiles(
+        process.cwd(),
+        ['scripts/run-changed-verification.mjs'],
+        {
+          run: async () => ({
+            status: null,
+            signal: null,
+            stdout: '',
+            stderr: '',
+            error: new Error('spawn failed'),
+            launch: { attempted: true, started: false },
+          }),
+        },
+      );
+      throw new Error('expected discovery to fail');
+    } catch (error) {
+      failure = error as Error & { childStarted?: boolean; phase?: string };
+    }
+    expect(failure.phase).toBe('related-discovery');
+    expect(failure.childStarted).toBe(false);
+    expect(failure.message).toContain('spawn failed');
+  });
+  test('propagates failed discovery cleanup evidence', async () => {
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run: async () => ({
+        status: null,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        error: new Error('discovery tree did not settle'),
+        launch: { attempted: true, started: true },
+        cleanup: { status: 'failed', survivingOwnedChildren: 1 },
+      }),
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: [scenarios.sourceEdges.server],
+      }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    expect(result.preparation).toMatchObject({
+      childStarted: true,
+      cleanup: { status: 'failed', survivingOwnedChildren: 1 },
+    });
+    expect(result.receipt.cleanup).toEqual({
+      status: 'failed',
+      survivingOwnedChildren: 1,
+    });
+  });
+  test('does not launch an owned command for an already-aborted signal', async () => {
+    const controller = new AbortController();
+    controller.abort('cancelled before launch');
+    const execute = vi.fn();
+    const result = await runOwnedChangedCommand(
+      process.execPath,
+      ['--version'],
+      {
+        cwd: process.cwd(),
+        execute,
+        processLabel: 'pre-aborted fixture',
+        signal: controller.signal,
+      },
+    );
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.launch).toEqual({ attempted: false, started: false });
+    expect(result.error?.message).toContain('cancelled before launch');
+  });
+  test('cancels a ready owned parent and descendant and proves both settle', async () => {
+    const temporary = mkdtempSync(join(tmpdir(), 'station-owned-tree-'));
+    const readyPath = join(temporary, 'ready.json');
+    const controller = new AbortController();
+    let identities: { parent: number; descendant: number } | undefined;
+    const isAlive = (pid: number) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    try {
+      const pending = runOwnedChangedCommand(
+        process.execPath,
+        [
+          '--eval',
+          `const { spawn } = require('node:child_process');
+const { writeFileSync } = require('node:fs');
+const descendant = spawn(process.execPath, ['--eval', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+writeFileSync(process.argv[1], JSON.stringify({ parent: process.pid, descendant: descendant.pid }));
+setInterval(() => {}, 1000);`,
+          readyPath,
+        ],
+        {
+          cwd: process.cwd(),
+          processLabel: 'ready descendant fixture',
+          signal: controller.signal,
+          timeoutMs: 10_000,
+        },
+      );
+      const readyDeadline = Date.now() + 5_000;
+      while (!existsSync(readyPath) && Date.now() < readyDeadline)
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(existsSync(readyPath)).toBe(true);
+      identities = JSON.parse(readFileSync(readyPath, 'utf8'));
+      expect(isAlive(identities.parent)).toBe(true);
+      expect(isAlive(identities.descendant)).toBe(true);
+
+      controller.abort('fixture ready');
+      const result = await pending;
+      expect(result.launch).toEqual({ attempted: true, started: true });
+      expect(result.error?.message).toContain('fixture ready');
+      expect(isAlive(identities.parent)).toBe(false);
+      expect(isAlive(identities.descendant)).toBe(false);
+    } finally {
+      controller.abort('test cleanup');
+      for (const pid of identities
+        ? [identities.descendant, identities.parent]
+        : []) {
+        if (isAlive(pid)) process.kill(pid, 'SIGKILL');
+      }
+      rmSync(temporary, { recursive: true, force: true });
+    }
+  }, 20_000);
+  test('aggregates sequential resource reports and fails fast between groups', async () => {
+    const passingRun = reportedRun();
+    const common = {
+      root: process.cwd(),
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: [scenarios.sourceEdges.dynamicScript],
+      }),
+      resourcePartition: splitResourceGroups,
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    };
+    const passed = await runChangedVerification(['--base=origin/main'], {
+      ...common,
+      run: passingRun,
+    });
+    expect(passingRun).toHaveBeenCalledTimes(2);
+    expect(passed.receipt.counts).toMatchObject({ executed: 6, passed: 6 });
+
+    const failingRun = reportedRun({ status: 1, report: failingReport });
+    const failed = await runChangedVerification(['--base=origin/main'], {
+      ...common,
+      run: failingRun,
+    });
+    expect(failingRun).toHaveBeenCalledOnce();
+    expect(failed.executed).toHaveLength(1);
+    expect(failed.receipt.terminal.status).toBe('failed');
+  });
+  test('stops between resource groups without recording an unstarted child', async () => {
+    const controller = new AbortController();
+    const run = reportedRun();
+    const writeReceipt = vi.fn();
+    run.mockImplementationOnce((_command, args) => {
+      const outputFile = args.find((arg) => arg.startsWith('--outputFile='));
+      if (outputFile)
+        writeFileSync(outputFile.slice('--outputFile='.length), passingReport);
+      controller.abort('cancelled between groups');
+      return { status: 0 };
+    });
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run,
+      signal: controller.signal,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: [scenarios.sourceEdges.dynamicScript],
+      }),
+      resourcePartition: splitResourceGroups,
+      collectProvenance: provenance,
+      writeReceipt,
+    });
+    expect(run).toHaveBeenCalledOnce();
+    expect(result.executed).toHaveLength(1);
+    expect(result.preparation).toMatchObject({
+      phase: 'resource-execution',
+      childStarted: false,
+      infrastructureError: true,
+    });
+    expect(result.receipt).toMatchObject({
+      terminal: { status: 'infrastructure_error', passed: false },
+      counts: { executed: 3, infrastructureErrors: 1 },
+    });
+    const diagnostics = writeReceipt.mock.calls
+      .filter(
+        ([path]) => path === '.kontourai/test-impact/changed-diagnostics.json',
+      )
+      .map(([, contents]) => JSON.parse(contents));
+    expect(diagnostics).not.toHaveLength(0);
+    expect(diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          complete: false,
+          preparation: expect.objectContaining({
+            phase: 'resource-execution',
+            childStarted: false,
+          }),
+        }),
+      ]),
+    );
+    expect(diagnostics.every((entry) => entry.complete === false)).toBe(true);
+  });
+  test('records an integer exit and infrastructure error when the explicit Vitest child has no status', async () => {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: reportedRun({
         status: null,
@@ -620,17 +1018,62 @@ describe('changed verification selection', () => {
       }),
     ]);
   });
-  test('persists stable diagnostics before removing the temporary Vitest report', () => {
+  test('retains failed cleanup with a conservative nonzero survivor sentinel', async () => {
+    const terminate = vi.fn(async () => {});
+    const forceTerminate = vi.fn(async () => {});
+    const execution = {
+      child: { pid: 4242 },
+      completion: Promise.resolve({ status: 0, signal: null }),
+      completionRequiresCleanup: false,
+      isAlive: () => true,
+      terminate,
+      forceTerminate,
+    };
+    const run = (command, args, options) =>
+      runOwnedChangedCommand(command, args, {
+        ...options,
+        execute: () => execution,
+        waitForSettlement: async () => false,
+      });
+    const result = await runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: [scenarios.sourceEdges.dynamicScript],
+      }),
+      collectProvenance: provenance,
+      writeReceipt: vi.fn(),
+    });
+    expect(terminate).toHaveBeenCalledOnce();
+    expect(forceTerminate).toHaveBeenCalledOnce();
+    expect(result.receipt.cleanup).toEqual({
+      status: 'failed',
+      survivingOwnedChildren: 1,
+    });
+    expect(result.receipt.terminal).toMatchObject({
+      status: 'infrastructure_error',
+      passed: false,
+    });
+  });
+  test('persists stable diagnostics before removing the temporary Vitest report', async () => {
     let temporaryReport = '';
     let existedAtStableWrite = false;
     const run = vi.fn((_command, args) => {
+      if (args.includes('--eval'))
+        return {
+          status: 0,
+          stdout: JSON.stringify([
+            'src-server/routes/chat/__tests__/chat-context.test.ts',
+          ]),
+        };
       temporaryReport = args
         .find((arg) => arg.startsWith('--outputFile='))
         .slice('--outputFile='.length);
       writeFileSync(temporaryReport, passingReport);
       return { status: 0 };
     });
-    runChangedVerification(['--base=origin/main'], {
+    await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run,
       changedPathsFn: () => ({
@@ -646,9 +1089,9 @@ describe('changed verification selection', () => {
     expect(existedAtStableWrite).toBe(true);
     expect(existsSync(temporaryReport)).toBe(false);
   });
-  test('runs a specific dynamic target without duplicating it through related', () => {
+  test('runs a specific dynamic target without duplicating it through related', async () => {
     const run = reportedRun();
-    const result = runChangedVerification(['--base=origin/main'], {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run,
       changedPathsFn: () => ({
@@ -662,15 +1105,15 @@ describe('changed verification selection', () => {
     expect(run.mock.calls[0][1]).toEqual(
       expect.arrayContaining([
         'run',
-        'scripts/__tests__/prepush-tier.test.ts',
-        'scripts/__tests__/verification-lanes.test.ts',
+        './scripts/__tests__/prepush-tier.test.ts',
+        './scripts/__tests__/verification-lanes.test.ts',
       ]),
     );
     expect(result.executed.map((entry) => entry.kind)).toEqual(['explicit']);
   });
-  test('keeps broad related-test expansion deferred', () => {
+  test('keeps broad related-test expansion deferred', async () => {
     const run = vi.fn();
-    const result = runChangedVerification(['--base=origin/main'], {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run,
       changedPathsFn: () => ({
@@ -698,12 +1141,12 @@ describe('changed verification selection', () => {
   });
   test.each([false, true])(
     'runs known tests beside deferred obligations and propagates failures=%s',
-    (fails) => {
+    async (fails) => {
       const run = reportedRun({
         status: fails ? 1 : 0,
         report: fails ? failingReport : passingReport,
       });
-      const result = runChangedVerification(['--base=origin/main'], {
+      const result = await runChangedVerification(['--base=origin/main'], {
         root: process.cwd(),
         run,
         changedPathsFn: () => ({
@@ -720,8 +1163,8 @@ describe('changed verification selection', () => {
       expect(run.mock.calls[0][1]).toEqual(
         expect.arrayContaining([
           'run',
-          'src-ui/src/__tests__/NewChatModalEngineChips.test.tsx',
-          'src-ui/src/__tests__/NewChatModalSetupReturn.test.tsx',
+          './src-ui/src/__tests__/NewChatModalEngineChips.test.tsx',
+          './src-ui/src/__tests__/NewChatModalSetupReturn.test.tsx',
         ]),
       );
       expect(result.exitCode).toBe(fails ? 1 : 3);
@@ -733,32 +1176,38 @@ describe('changed verification selection', () => {
     },
   );
 
-  test('explains without execution but never records a pass', () => {
-    const result = runChangedVerification(['--base=origin/main', '--explain'], {
-      root: process.cwd(),
-      changedPathsFn: () => ({
-        mergeBase: 'base-sha',
-        paths: [scenarios.sourceEdges.server],
-      }),
-      collectProvenance: provenance,
-      writeReceipt: vi.fn(),
-    });
+  test('explains without execution but never records a pass', async () => {
+    const result = await runChangedVerification(
+      ['--base=origin/main', '--explain'],
+      {
+        root: process.cwd(),
+        changedPathsFn: () => ({
+          mergeBase: 'base-sha',
+          paths: [scenarios.sourceEdges.server],
+        }),
+        collectProvenance: provenance,
+        writeReceipt: vi.fn(),
+      },
+    );
     expect(result.exitCode).toBe(0);
     expect(result.receipt.terminal).toMatchObject({
       status: 'provisional',
       passed: false,
     });
   });
-  test('derives affected product-law routing from the manifest and names the law ID', () => {
-    const result = runChangedVerification(['--base=origin/main', '--explain'], {
-      root: process.cwd(),
-      changedPathsFn: () => ({
-        mergeBase: 'base-sha',
-        paths: ['src-ui/src/hooks/orchestration/queueDrain.ts'],
-      }),
-      collectProvenance: provenance,
-      writeReceipt: vi.fn(),
-    });
+  test('derives affected product-law routing from the manifest and names the law ID', async () => {
+    const result = await runChangedVerification(
+      ['--base=origin/main', '--explain'],
+      {
+        root: process.cwd(),
+        changedPathsFn: () => ({
+          mergeBase: 'base-sha',
+          paths: ['src-ui/src/hooks/orchestration/queueDrain.ts'],
+        }),
+        collectProvenance: provenance,
+        writeReceipt: vi.fn(),
+      },
+    );
     expect(result.productLaws).toEqual([
       'station.queue-dispatch.ordered-drain',
     ]);
@@ -801,9 +1250,9 @@ describe('changed verification selection', () => {
     expect(output).not.toContain('src/related-9.ts');
     expect(Buffer.byteLength(output)).toBeLessThan(3_000);
   });
-  test('counts an ordinary Vitest exit as a test failure, not infrastructure', () => {
+  test('counts an ordinary Vitest exit as a test failure, not infrastructure', async () => {
     const writeReceipt = vi.fn();
-    const result = runChangedVerification(['--base=origin/main'], {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: reportedRun({
         status: 1,
@@ -845,9 +1294,9 @@ describe('changed verification selection', () => {
       'fixture-super-secret-token',
     );
   });
-  test('marks aggregate failures without assertion identities incomplete', () => {
+  test('marks aggregate failures without assertion identities incomplete', async () => {
     const writeReceipt = vi.fn();
-    runChangedVerification(['--base=origin/main'], {
+    await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: reportedRun({
         status: 1,
@@ -877,9 +1326,9 @@ describe('changed verification selection', () => {
       failedTests: [],
     });
   });
-  test('does not trust green JSON when the Vitest child exits nonzero', () => {
+  test('does not trust green JSON when the Vitest child exits nonzero', async () => {
     const writeReceipt = vi.fn();
-    const result = runChangedVerification(['--base=origin/main'], {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: reportedRun({ status: 1 }),
       changedPathsFn: () => ({
@@ -906,10 +1355,10 @@ describe('changed verification selection', () => {
       ],
     });
   });
-  test('does not record an unstarted explicit plan as an execution after a related failure', () => {
+  test('does not record an unstarted explicit plan as an execution after a related failure', async () => {
     const run = reportedRun({ status: 1, report: passingReport });
     const writeReceipt = vi.fn();
-    const result = runChangedVerification(['--base=origin/main'], {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run,
       changedPathsFn: () => ({
@@ -922,20 +1371,22 @@ describe('changed verification selection', () => {
       collectProvenance: provenance,
       writeReceipt,
     });
-    expect(run).toHaveBeenCalledOnce();
-    expect(result.executed.map((entry) => entry.kind)).toEqual(['related']);
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(result.executed.map((entry) => entry.kind)).toEqual(['combined']);
     const diagnostics = JSON.parse(
       writeReceipt.mock.calls.find(
         ([path]) => path === '.kontourai/test-impact/changed-diagnostics.json',
       )?.[1],
     );
-    expect(diagnostics.executions.map(({ kind }) => kind)).toEqual(['related']);
+    expect(diagnostics.executions.map(({ kind }) => kind)).toEqual([
+      'combined',
+    ]);
     expect(diagnostics.incompleteReasons).toEqual([
-      'related: Vitest exited 1 without reporting a failed test',
+      'combined: Vitest exited 1 without reporting a failed test',
     ]);
   });
-  test('records spawn failures as infrastructure errors', () => {
-    const result = runChangedVerification(['--base=origin/main'], {
+  test('records spawn failures as infrastructure errors', async () => {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: reportedRun({
         result: { status: null, error: new Error('ENOENT') },
@@ -953,7 +1404,7 @@ describe('changed verification selection', () => {
       counts: { executed: 0, passed: 0, failed: 0, infrastructureErrors: 1 },
     });
   });
-  test('captures provenance before spawning and rejects a drifted result', () => {
+  test('captures provenance before spawning and rejects a drifted result', async () => {
     const events: string[] = [];
     const run = reportedRun();
     const orderedRun = vi.fn((...args: Parameters<typeof run>) => {
@@ -961,7 +1412,7 @@ describe('changed verification selection', () => {
       return run(...args);
     });
     let calls = 0;
-    const result = runChangedVerification(['--base=origin/main'], {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: orderedRun,
       changedPathsFn: () => ({
@@ -975,15 +1426,15 @@ describe('changed verification selection', () => {
       },
       writeReceipt: vi.fn(),
     });
-    expect(events).toEqual(['before', 'spawn', 'after']);
+    expect(events).toEqual(['before', 'spawn', 'spawn', 'after']);
     expect(result.receipt).toMatchObject({
       terminal: { status: 'completed', passed: false },
       provenance: { stable: false },
     });
     expect(result.exitCode).toBe(1);
   });
-  test('turns a valid zero-test report into a named provisional escalation', () => {
-    const result = runChangedVerification(['--base=origin/main'], {
+  test('turns a valid zero-test report into a named provisional escalation', async () => {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: reportedRun({ report: zeroTestReport }),
       changedPathsFn: () => ({
@@ -1002,9 +1453,9 @@ describe('changed verification selection', () => {
       passed: false,
     });
   });
-  test('reports a deliberate skip as skipped, not failed (#1737)', () => {
+  test('reports a deliberate skip as skipped, not failed (#1737)', async () => {
     const writeReceipt = vi.fn();
-    const result = runChangedVerification(['--base=origin/main'], {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: reportedRun({ status: 0, report: skippedReport }),
       changedPathsFn: () => ({
@@ -1041,8 +1492,8 @@ describe('changed verification selection', () => {
       counts: { failed: 0, skipped: 2, todo: 1 },
     });
   });
-  test('fails closed when a report leaves an outcome unaccounted for', () => {
-    const result = runChangedVerification(['--base=origin/main'], {
+  test('fails closed when a report leaves an outcome unaccounted for', async () => {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: reportedRun({
         report: JSON.stringify({
@@ -1070,8 +1521,8 @@ describe('changed verification selection', () => {
       'Vitest JSON report left 1 test outcome(s) unaccounted for',
     );
   });
-  test('fails closed when a report double-counts an outcome', () => {
-    const result = runChangedVerification(['--base=origin/main'], {
+  test('fails closed when a report double-counts an outcome', async () => {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: reportedRun({
         report: JSON.stringify({
@@ -1095,8 +1546,8 @@ describe('changed verification selection', () => {
       'Vitest JSON report counted overlapping test outcomes',
     );
   });
-  test('fails closed when a test never finished rather than calling it skipped', () => {
-    const result = runChangedVerification(['--base=origin/main'], {
+  test('fails closed when a test never finished rather than calling it skipped', async () => {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: reportedRun({
         report: JSON.stringify({
@@ -1135,9 +1586,9 @@ describe('changed verification selection', () => {
       'Vitest JSON report contains 1 test(s) that never finished',
     );
   });
-  test('escalates a selection in which every test declined to run', () => {
+  test('escalates a selection in which every test declined to run', async () => {
     const writeReceipt = vi.fn();
-    const result = runChangedVerification(['--base=origin/main'], {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: reportedRun({
         report: JSON.stringify({
@@ -1176,9 +1627,9 @@ describe('changed verification selection', () => {
       'related: Vitest executed zero of 3 selected test(s) (3 skipped, 0 todo)',
     ]);
   });
-  test('names the identity shortfall when failures outrun the identity bound', () => {
+  test('names the identity shortfall when failures outrun the identity bound', async () => {
     const writeReceipt = vi.fn();
-    runChangedVerification(['--base=origin/main'], {
+    await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: reportedRun({
         status: 1,
@@ -1218,8 +1669,8 @@ describe('changed verification selection', () => {
       'related: 25 failing test(s), 25 identified, 5 omitted',
     ]);
   });
-  test('fails closed when Vitest does not produce a valid JSON report', () => {
-    const result = runChangedVerification(['--base=origin/main'], {
+  test('fails closed when Vitest does not produce a valid JSON report', async () => {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: reportedRun({ report: '{not json' }),
       changedPathsFn: () => ({
@@ -1235,9 +1686,9 @@ describe('changed verification selection', () => {
       passed: false,
     });
   });
-  test('escalates a deleted related path to test-full without spawning', () => {
+  test('escalates a deleted related path to test-full without spawning', async () => {
     const run = vi.fn();
-    const result = runChangedVerification(['--base=origin/main'], {
+    const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run,
       changedPathsFn: () => ({
@@ -1401,7 +1852,7 @@ describe('changed verification selection', () => {
       );
     },
   );
-  test('runs the representative narrow diff through non-explain selection and reports timing/counts', () => {
+  test('runs the representative narrow diff through non-explain selection and reports timing/counts', async () => {
     const worktreeCommand = vi.fn();
     const runChanged = vi.fn(() => ({
       selection: {
@@ -1446,7 +1897,7 @@ describe('changed verification selection', () => {
       }
     });
     expect(
-      runRepresentativeNarrowDiffFixture({
+      await runRepresentativeNarrowDiffFixture({
         root: process.cwd(),
         runChanged,
         now,
