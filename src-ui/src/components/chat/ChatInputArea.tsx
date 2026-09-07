@@ -367,6 +367,7 @@ export function ChatInputArea({
     <div className="chat-input">
       {modelQuery !== null && !input.startsWith('/model ') && (
         <ResponsiveDialogSurface
+          layer="popover"
           ariaLabel="Model"
           onClose={onModelClose}
           historyMode="entry"

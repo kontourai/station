@@ -302,15 +302,18 @@ describe('project-page-frame.css import guard (#1636)', () => {
 
   /**
    * Every root the frame's classes appear in. `workspace-panes` is the one
-   * `SCAN_ROOTS` above does not cover, and it is where BOTH of the modules
-   * this issue is about live — the route that lost the frame and the picker
-   * that still applies one of its classes.
+   * `SCAN_ROOTS` above does not cover, and it is where the route this issue
+   * is about lives — `WorkspacePaneRouteView.tsx`, which carries the frame.
+   * `ProjectWorkspacePaneCatalog.tsx` (the picker) applied one of the frame's
+   * classes too until #1616 moved it onto the shared `Dialog` primitive
+   * instead; it is no longer frame-classed, so this root's count drops from
+   * two to one.
    */
   const FRAME_SCAN_ROOTS = [
     { dir: 'views', frameClassedCount: 2 },
     { dir: 'pages', frameClassedCount: 0 },
     { dir: 'components', frameClassedCount: 0 },
-    { dir: 'workspace-panes', frameClassedCount: 2 },
+    { dir: 'workspace-panes', frameClassedCount: 1 },
   ] as const;
 
   /**
@@ -343,19 +346,13 @@ describe('project-page-frame.css import guard (#1636)', () => {
         'root-classed owner owns the import. Both halves of that claim are ' +
         'computed by the test below, because a SECOND host mounting it from a ' +
         'chunk with neither sheet is exactly what already happened to the ' +
-        'picker in the next entry.',
-    },
-    {
-      file: 'workspace-panes/ProjectWorkspacePaneCatalog.tsx',
-      reason:
-        'Applies `project-page__modal-description` and imports no stylesheet ' +
-        'at all. Unlike the entry above this is NOT safe: ' +
-        '`app-shell/ProjectLayoutRenderer.tsx` mounts this picker on the ' +
-        'layout route, which renders no frame root and loads neither ' +
-        'ProjectPage.css nor the frame sheet, so that paragraph is unstyled ' +
-        'there today — a live instance of exactly the shape #1636 fixed, ' +
-        'pre-existing and unchanged by it. The #1616 picker lane deletes this ' +
-        'usage; this entry retires with it.',
+        'picker recorded here until #1616 (archive of that entry: it applied ' +
+        '`project-page__modal-description` and imported no stylesheet, unsafe ' +
+        'because `app-shell/ProjectLayoutRenderer.tsx` mounts it on the ' +
+        'layout route with neither ProjectPage.css nor the frame sheet ' +
+        'loaded — #1616 deleted the usage by moving the picker onto the ' +
+        'shared `Dialog` primitive, so it is no longer frame-classed at all ' +
+        'and is covered by NOT_FRAME_CLASSED_FIXTURES instead).',
     },
   ];
 
@@ -379,7 +376,6 @@ describe('project-page-frame.css import guard (#1636)', () => {
     'views/ProjectPage.tsx',
     'views/project-page/ProjectLayoutsSection.tsx',
     'workspace-panes/WorkspacePaneRouteView.tsx',
-    'workspace-panes/ProjectWorkspacePaneCatalog.tsx',
   ];
 
   /**
@@ -394,6 +390,7 @@ describe('project-page-frame.css import guard (#1636)', () => {
     'views/project-page/ProjectTasksSection.tsx',
     'workspace-panes/WorkspacePaneFrame.tsx',
     'workspace-panes/WorkspacePaneAvailabilityList.tsx',
+    'workspace-panes/ProjectWorkspacePaneCatalog.tsx',
   ];
 
   it('scans a real corpus (scope honesty)', () => {

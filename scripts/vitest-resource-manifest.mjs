@@ -657,6 +657,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // disclosure toggle vs. the message text's own line rects) at a phone
   // viewport.
   'src-ui/src/components/notifications/__tests__/BannerHost.disclosure-overlap.test.tsx',
+  // station#1638: same shape again — launches a real Chromium via
+  // `@playwright/test` to hit-test the banner host against an open modal
+  // surface trapped inside the dock's stacking context.
+  'src-ui/src/components/notifications/__tests__/BannerHost.dialog-stacking.test.tsx',
   // station#4474: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved layout (sibling
   // toolbar control x-offsets across connection states).
@@ -707,6 +711,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // to measure real cascade-resolved flex geometry (which of the dock identity
   // row's parts truncates first, and whether any two of them overlap).
   'src-ui/src/__tests__/ChatDockActiveIdentity.overflow.test.tsx',
+  // #1666: same shape again — launches a real Chromium to measure the detail
+  // header's cascade-resolved flex geometry in a narrowed region, which is the
+  // only layer where a collapse-instead-of-wrap is observable at all.
+  'src-ui/src/__tests__/DetailHeaderRegionWidth.geometry.test.tsx',
   // #1536 F (review round): same shape again — launches a real Chromium to
   // hit-test the dock header's portalled More menu against the dock it now
   // paints over. `verification:policy:gate` keys on a `child_process` import
