@@ -152,20 +152,34 @@ test('phone first run recovers from no provider to a real streamed reply', async
   // before the two waits below were widened to this file's 20 s (readiness
   // +10 s, the chat dock +15 s). 62 + 30 + 25 ≈ 117 s, rounded up.
   //
-  // That arithmetic was derived when the readiness wait's own budget was 20 s.
-  // It is now LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS = 33.4 s (#1639 gave the gate
-  // a bounded retry, so its worst case covers a full ladder, the reload, and one
-  // more answer), which adds 13.4 s to the readiness step's worst case. 150 s
-  // still covers the measured path plus its last step; the sentence below is why
-  // the sum of the declared budgets is not what this number bounds.
+  // That arithmetic was derived when the readiness wait's own budget was 20 s, so
+  // every later move of that budget is a term added to it. Carried forward as
+  // arithmetic rather than as a new number, because the next person to move a step
+  // budget has to recompute this and cannot do that from a total:
   //
-  // This covers the measured path plus its last step. It is NOT a bound on the
-  // sum of the steps: their declared budgets already total ~195 s, so a run
-  // where several of them each spend theirs still ends here. What it buys is
-  // that the ordinary slow-host failure arrives as the failing assertion's own
-  // sentence rather than as a test timeout, which names nothing. No individual
-  // budget is relaxed by this.
-  test.setTimeout(150_000);
+  //   117 s  measured path (62.3) + last step's own budget (30) + the widening of
+  //          this file's two waits to 20 s (readiness +10, chat dock +15)
+  //   +13.4  readiness 20 -> 33.4 s (#1639: the gate got a bounded retry, so its
+  //          worst case became a full ladder, the reload, and one more answer)
+  //   +19.6  readiness 33.4 -> 53.0 s (#1661: each identity read now has the
+  //          gate's own deadline instead of the proxy's 30 s, and the budget
+  //          derives from those deadlines rather than scaling one 6.6 s sample)
+  //   = 150 s of estimate, under a 170 s ceiling: 20 s of margin.
+  //
+  // ALL of the growth is the readiness step; no other step's budget has moved
+  // since the 117 s figure was measured. The ceiling rose from 150 s for the last
+  // term alone, which RESTORES margin this change consumes rather than adding
+  // headroom: 19.6 s (13.1%) before, 20.0 s (11.8%) after.
+  //
+  // Raising it costs the same 20 s on a genuinely hung journey, and nothing else:
+  // it is NOT a bound on the sum of the steps, whose declared budgets already
+  // total ~195 s, so a run where several of them each spend theirs still ends
+  // here. What it buys is that the ordinary slow-host failure arrives as the
+  // failing assertion's own sentence rather than as a test timeout, which names
+  // nothing — and the readiness wait throws ITS own sentence at its own 53 s
+  // budget, roughly two minutes before this ceiling, so raising this delays no
+  // real failure report. No individual budget is relaxed by this.
+  test.setTimeout(170_000);
 
   let ollamaServer: Server | null = null;
   const chatRequests: unknown[] = [];

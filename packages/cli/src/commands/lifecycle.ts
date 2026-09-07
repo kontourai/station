@@ -604,8 +604,27 @@ export function uiRequestHandler(deps: UiServerDeps) {
         return;
       }
       if (timedOut) {
-        res.writeHead(504, { 'Content-Type': 'text/plain' });
-        res.end('Gateway Timeout');
+        // station#1654: this used to answer `text/plain` "Gateway Timeout",
+        // which is byte-identical to what any intermediary between the browser
+        // and this proxy emits — so no client could tell THIS proxy's timeout
+        // from a stranger's, and `src-ui/src/lib/station-ui-proxy.ts` had
+        // nothing to recognise. It declined the answer, the browser's session
+        // gate read a non-OK response as "this browser has no access", and a
+        // slow host was reported as a browser that needed to pair.
+        //
+        // The signal is the ENVELOPE, deliberately the same one the error path
+        // below has always sent: both statuses mean "this proxy is up, its
+        // sibling host could not answer", and the status is what separates the
+        // causes. Nothing derives a `reason` field, so there is none.
+        //
+        // Literal rather than a shared constant BY NECESSITY: this handler is
+        // serialized into the spawned UI process via `Function.prototype`
+        // `.toString()` (see `buildUiServerScript`), where an imported binding
+        // is `undefined` — the same hazard the `HOP_BY_HOP_HEADERS` comment
+        // above records. The consumer's fixture is pinned to these exact bytes
+        // by `lifecycle.test.ts` instead.
+        res.writeHead(504, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ready: false, status: 'unavailable' }));
         return;
       }
       res.writeHead(503, { 'Content-Type': 'application/json' });

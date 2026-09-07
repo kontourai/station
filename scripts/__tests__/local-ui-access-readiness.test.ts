@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { LOCAL_UI_SESSION_ATTEMPT_LIMIT } from '../../src-ui/src/lib/local-ui-session-retry.js';
+import {
+  LOCAL_UI_SESSION_ATTEMPT_LIMIT,
+  LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS,
+  localUiSessionIdentityDeadlineMs,
+  OBSERVED_SLOW_IDENTITY_ANSWER_MS,
+} from '../../src-ui/src/lib/local-ui-session-retry.js';
 import {
   LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS,
   type LocalUiAccessObservation,
@@ -65,6 +70,56 @@ function observation(
  * `if` at the top of `waitForLocalUiAccessReadiness`, which needs a real
  * Playwright `Page` and worker to execute, so it is verified by reading.
  */
+describe('the identity deadline schedule the budget derives from (#1661)', () => {
+  test('every attempt has its own deadline, so none runs unbounded', () => {
+    // A short list would hand a later attempt `undefined`. The production reader
+    // falls back to the final deadline rather than to no deadline, so this pin is
+    // what keeps that fallback unreachable — and the fallback is what keeps a
+    // drifting list bounded if it ever becomes reachable.
+    expect(LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS).toHaveLength(
+      LOCAL_UI_SESSION_ATTEMPT_LIMIT,
+    );
+    for (let attempt = 0; attempt < LOCAL_UI_SESSION_ATTEMPT_LIMIT; attempt++) {
+      expect(localUiSessionIdentityDeadlineMs(attempt)).toBeGreaterThan(0);
+    }
+    expect(
+      localUiSessionIdentityDeadlineMs(LOCAL_UI_SESSION_ATTEMPT_LIMIT),
+    ).toBe(
+      LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS[
+        LOCAL_UI_SESSION_ATTEMPT_LIMIT - 1
+      ],
+    );
+  });
+
+  test('the first deadline stays clear of the slowest answer ever measured', () => {
+    // The one live measurement (6.6 s) is what the first deadline answers to: a
+    // host that answers that slowly must still get in on attempt ONE, or the
+    // deadline has converted the measured condition into two aborted reads. 1.5x
+    // is the margin this was calibrated at; shrinking the deadline toward the
+    // sample fails here rather than on a user's page load.
+    expect(LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS[0]).toBeGreaterThanOrEqual(
+      OBSERVED_SLOW_IDENTITY_ANSWER_MS * 1.5,
+    );
+  });
+
+  test('the last attempt waits longest, because it is the last chance', () => {
+    const [first] = LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS;
+    const last =
+      LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS[
+        LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS.length - 1
+      ];
+    expect(last).toBeGreaterThan(first);
+  });
+
+  test('the budget is the schedule, and moving it re-derives the first-run ceiling', () => {
+    // A literal, deliberately: `tests/first-run-live.spec.ts` carries a written
+    // derivation that names this number and sets its own `test.setTimeout` from
+    // it. Changing a deadline must therefore fail HERE, where the comment says
+    // what else to recompute, rather than silently invalidate that arithmetic.
+    expect(LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS).toBe(53_000);
+  });
+});
+
 describe('readiness refuses a test timeout it cannot fit inside', () => {
   test('a caller under the default 30 s timeout is refused, naming both numbers', () => {
     const refusal = readinessTestTimeoutRefusal(

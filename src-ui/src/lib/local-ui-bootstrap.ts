@@ -1,5 +1,8 @@
 import { PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH } from '@kontourai/station-contracts/environment-security';
-import { LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS } from './local-ui-session-retry';
+import {
+  LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS,
+  localUiSessionIdentityDeadlineMs,
+} from './local-ui-session-retry';
 import { isStationUiProxyUnavailableResponse } from './station-ui-proxy';
 
 const FRAGMENT_KEY = 'station-ui-bootstrap';
@@ -71,36 +74,97 @@ export function captureLocalUiBootstrapToken(): string | undefined {
   return token;
 }
 
+/**
+ * A DECISION ABOUT THIS BROWSER: the host read the launcher token and would not
+ * accept it. Retrying cannot change that answer, and the user needs the sentence.
+ *
+ * A distinct class rather than a message match (#1654), because the alternative
+ * — one `Error` for every throw on this path — is exactly what conflated a
+ * refusal with a host that could not be reached.
+ */
+export class LocalUiBootstrapRefusedError extends Error {}
+
+/**
+ * NO ANSWER AT ALL: the request never reached a responder, or its deadline
+ * expired. Says nothing about whether this browser has access, so it must not be
+ * reported as a browser that needs to pair.
+ */
+export class LocalUiHostUnreachableError extends Error {}
+
 /** Exchange an explicit launcher capability exactly once before protected UI work begins. */
 export async function bootstrapLocalUiSession(
   apiBase: string,
 ): Promise<boolean> {
   const token = captureLocalUiBootstrapToken();
   if (!token) return false;
-  const response = await fetch(
-    `${apiBase}${PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH}`,
-    {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-    },
-  );
+  let response: Response;
+  // Scoped to the `fetch` call and nothing else, so what it catches IS a
+  // transport failure — no message sniffing, and no risk of swallowing a
+  // programming error from the lines below.
+  try {
+    response = await fetch(
+      `${apiBase}${PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH}`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      },
+    );
+  } catch {
+    throw new LocalUiHostUnreachableError(
+      'Could not reach this Station to exchange its start link.',
+    );
+  }
   if (!response.ok) {
-    throw new Error(
+    throw new LocalUiBootstrapRefusedError(
       `Local UI bootstrap was refused (${response.status}). Open a fresh Station start link.`,
     );
   }
   return true;
 }
 
+/**
+ * One identity read, bounded by this attempt's own deadline (#1661).
+ *
+ * The deadline is the gate's, not the proxy's: without it the only bound was the
+ * UI proxy's 30 s upstream timeout, so a loaded host could hold the gate for
+ * longer than the whole retry ladder was budgeted to take. An expired deadline is
+ * reported as `host-unavailable`, which is what puts it INSIDE the ladder — the
+ * retry is the recovery, and a host that answers late still gets in on a later,
+ * longer rung.
+ *
+ * An owned `AbortController` rather than `AbortSignal.timeout`, matching
+ * `probeServerConnection` in `serverHealth.ts`: the timer is cleared when the
+ * read settles, so nothing outlives the request it belonged to.
+ */
 async function readLocalUiIdentity(
   apiBase: string,
+  attemptIndex: number,
 ): Promise<LocalUiSessionResolution> {
-  const response = await fetch(`${apiBase}/api/system/identity`, {
-    credentials: 'include',
-    headers: { Accept: 'application/json' },
-  });
+  const controller = new AbortController();
+  const deadline = setTimeout(
+    () => controller.abort(),
+    localUiSessionIdentityDeadlineMs(attemptIndex),
+  );
+  let response: Response;
+  try {
+    response = await fetch(`${apiBase}/api/system/identity`, {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+  } catch {
+    // #1654: a thrown fetch used to share one outcome — and one message — with a
+    // REFUSED launcher token, so being offline, or having no route to the host,
+    // rendered the pairing screen. Nothing was answered here, so nothing was
+    // decided about this browser; this is the same statement the proxy's
+    // readiness envelope makes, and it is retried on the same rungs. The deadline
+    // above lands here too.
+    return { kind: 'host-unavailable' };
+  } finally {
+    clearTimeout(deadline);
+  }
   if (await isStationUiProxyUnavailableResponse(response)) {
     // The Station-owned UI proxy answered, but its sibling host could not.
     // That says nothing about whether this browser's existing HttpOnly
@@ -117,21 +181,32 @@ async function readLocalUiIdentity(
  * not turn that into repeated protected requests or auth-rate-limit traffic.
  *
  * `host-unavailable` is the ONE outcome retried here (#1639), because it is the
- * one that can answer differently with nothing about this browser changed: the
- * UI proxy answered its documented readiness envelope, which says its sibling
- * host was away or starved — measured live at 503 after a 6.6 s wait on a loaded
- * host, where the only way forward was a user-initiated reload. Every other
- * outcome is a decision ABOUT this browser or this request:
+ * one that can answer differently with nothing about this browser changed. Three
+ * observations now reach it, and #1654 is what added the second and third:
+ *
+ *  - the UI proxy answered its documented readiness envelope, which says its
+ *    sibling host was away or starved — measured live at 503 after a 6.6 s wait
+ *    on a loaded host, where the only way forward was a user-initiated reload —
+ *    and, since #1654, on the 504 its upstream TIMEOUT answers with, which used
+ *    to fall through to the pairing screen;
+ *  - the identity read threw: offline, no route, a refused connection. Nothing
+ *    answered, so nothing was decided about this browser;
+ *  - this attempt's deadline expired (#1661), which is the same statement with a
+ *    clock behind it.
+ *
+ * Every other outcome is a decision ABOUT this browser, and none is retried:
  *
  *  - `access-required` from a non-OK answer is a refusal (401/403). Repeating it
  *    cannot change the answer and spends this browser's auth rate limit, which
  *    is the traffic this function's memoization exists to prevent.
- *  - `access-required` from a thrown fetch keeps the same single attempt. The
- *    throw is not one class: `bootstrapLocalUiSession` refusing a launcher token
- *    arrives here too, and that IS a refusal. It also lands on the pairing
- *    screen rather than the reload-only recovery screen, so the user is not
- *    stranded the way #1639 describes. Splitting a retryable transport failure
- *    out of that class is #1654.
+ *  - `access-required` from a REFUSED launcher token, thrown as
+ *    `LocalUiBootstrapRefusedError` and carrying its sentence to the pairing
+ *    screen. A named class, not a message match: before #1654 this shared one
+ *    `Error` — and one outcome — with a host that could not be reached, which is
+ *    how being offline came to read as a browser without access.
+ *  - `access-required` with the raw message for anything ELSE thrown here. That
+ *    is a programming error, and it stays visible on screen rather than being
+ *    absorbed into "the host is away", which would make it silent.
  *
  * Only the identity read is inside the ladder. There are TWO separate properties
  * about the launcher-token exchange here, they are held by different mechanisms,
@@ -195,7 +270,9 @@ export function resolveLocalUiSession(
         return { kind: 'authenticated' };
       }
       for (let retry = 0; ; retry += 1) {
-        const resolution = await readLocalUiIdentity(apiBase);
+        // `retry` is also the attempt's index into the deadline schedule, which
+        // escalates: the last rung waits longest because it is the last chance.
+        const resolution = await readLocalUiIdentity(apiBase, retry);
         if (resolution.kind !== 'host-unavailable') return resolution;
         // Superseded: answer whatever the last real observation was and stop.
         if (generation !== resolutionGeneration) return resolution;
@@ -209,6 +286,18 @@ export function resolveLocalUiSession(
         if (generation !== resolutionGeneration) return resolution;
       }
     } catch (error) {
+      // Only the launcher-token exchange can throw into here — the identity read
+      // above catches its own transport failure and reports it as the host being
+      // away — so this splits the one class #1654 was filed about (see the three
+      // bullets in the doc block).
+      if (error instanceof LocalUiHostUnreachableError) {
+        // The exchange never reached a responder. Its token is already spent
+        // (captured and stripped), so nothing here can re-present it, and the
+        // ladder cannot help: this returns the outcome that says the host was
+        // away, and the reload the recovery screen offers is what tries again.
+        // What it must NOT do is claim this browser has no access.
+        return { kind: 'host-unavailable' };
+      }
       return {
         kind: 'access-required',
         message: error instanceof Error ? error.message : String(error),

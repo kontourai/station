@@ -1,0 +1,425 @@
+/** @vitest-environment jsdom */
+
+import { PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH } from '@kontourai/station-contracts/environment-security';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import { type ReactNode, StrictMode, useEffect } from 'react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { LocalUiSessionGate } from '../components/LocalUiSessionGate';
+import { ApiBaseProvider } from '../contexts/ApiBaseContext';
+import { resetLocalUiBootstrapForTests } from '../lib/local-ui-bootstrap';
+import {
+  LOCAL_UI_SESSION_ATTEMPT_LIMIT,
+  LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS,
+  LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS,
+  LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS,
+} from '../lib/local-ui-session-retry';
+import { PlatformBootstrap } from '../platform/PlatformProfileContext';
+
+vi.mock('../components/GuidedConnect', () => ({
+  GuidedConnect: () => (
+    <button type="button" onClick={() => {}}>
+      Complete pairing
+    </button>
+  ),
+}));
+
+/**
+ * #1654 and #1661, through the gate.
+ *
+ * Two inputs to `resolveLocalUiSession` used to land on the pairing screen — the
+ * screen that says this browser has no access and offers to pair it — when
+ * neither was an answer about this browser at all: the UI proxy's own upstream
+ * TIMEOUT answer (a 504 the envelope test declined), and a thrown fetch, which
+ * shared one outcome with a REFUSED launcher token. A third input did not exist
+ * yet: the gate had no deadline of its own, so one read could hold it for the
+ * proxy's 30 s.
+ *
+ * Every test here drives the REAL gate against the REAL resolution and asserts on
+ * the screen a user would be looking at, because that is where the defect lived.
+ * A test on the derivation alone would have been green while the gate still asked
+ * a slow host's browser to pair. The fetch fakes honour `signal` the way a real
+ * `fetch` does, so the deadline under test is the production one.
+ */
+
+/** The exact bytes `proxyToBackend` writes, pinned in `lifecycle.test.ts`. */
+const PROXY_UNAVAILABLE_BODY = { ready: false, status: 'unavailable' } as const;
+
+/** The proxy's upstream-ERROR answer. */
+function proxyUnavailable(): Response {
+  return Response.json(PROXY_UNAVAILABLE_BODY, { status: 503 });
+}
+
+/** The proxy's upstream-TIMEOUT answer, which used to reach the pairing screen. */
+function proxyUpstreamTimeout(): Response {
+  return Response.json(PROXY_UNAVAILABLE_BODY, { status: 504 });
+}
+
+/** Some intermediary's 504: the same status, none of the evidence. */
+function strangerGatewayTimeout(): Response {
+  return new Response('Gateway Timeout', {
+    status: 504,
+    headers: { 'Content-Type': 'text/plain' },
+  });
+}
+
+/** A fetch that never answers and rejects on abort, as a real fetch does. */
+function neverAnswers(signal: AbortSignal | undefined): Promise<Response> {
+  return new Promise<Response>((_resolve, reject) => {
+    signal?.addEventListener('abort', () => {
+      reject(new DOMException('The operation was aborted.', 'AbortError'));
+    });
+  });
+}
+
+function ProtectedDataProbe({ onMount }: { onMount: () => void }) {
+  useEffect(onMount, [onMount]);
+  return <div>Protected application mounted</div>;
+}
+
+const API_BASE = 'http://127.0.0.1:42694';
+const UI_BOOTSTRAP_URL = `${API_BASE}${PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH}`;
+const IDENTITY_URL = `${API_BASE}/api/system/identity`;
+
+function renderGate(children: ReactNode) {
+  return render(
+    <StrictMode>
+      <PlatformBootstrap>
+        <ApiBaseProvider>
+          <LocalUiSessionGate apiBase={API_BASE}>{children}</LocalUiSessionGate>
+        </ApiBaseProvider>
+      </PlatformBootstrap>
+    </StrictMode>,
+  );
+}
+
+function requestedUrls(fetchMock: { mock: { calls: unknown[][] } }): string[] {
+  return fetchMock.mock.calls.map(([url]) => String(url));
+}
+
+/** Long enough for the whole ladder plus scheduling, and no longer. */
+const PAST_THE_LADDER_MS = LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS + 750;
+
+function settleForLongerThanTheLadder(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, PAST_THE_LADDER_MS);
+  });
+}
+
+/** The pairing screen, by the control the access-required branch mounts. */
+function pairingOffered(): boolean {
+  return screen.queryByRole('button', { name: 'Complete pairing' }) !== null;
+}
+
+afterEach(() => {
+  resetLocalUiBootstrapForTests();
+  window.history.replaceState(null, '', '/');
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe('the UI proxy’s timeout answer is the host being away (#1654)', () => {
+  test('a proxy upstream timeout is retried, and never asks this browser to pair', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(proxyUpstreamTimeout()));
+    const protectedMount = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderGate(<ProtectedDataProbe onMount={protectedMount} />);
+
+    // The screen this issue is about: before the fix, a 504 fell through to
+    // `access-required` and this browser was offered pairing on attempt one.
+    await screen.findByRole(
+      'heading',
+      { name: 'Reconnecting to this Station' },
+      { timeout: PAST_THE_LADDER_MS },
+    );
+    expect(pairingOffered()).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(LOCAL_UI_SESSION_ATTEMPT_LIMIT);
+    expect(protectedMount).not.toHaveBeenCalled();
+  });
+
+  test('a host that recovers after a proxy timeout mounts the protected tree with no reload', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.resolve(proxyUpstreamTimeout()))
+      .mockImplementation(() =>
+        Promise.resolve(new Response('{}', { status: 200 })),
+      );
+    const protectedMount = vi.fn();
+    const reload = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('location', { ...window.location, reload });
+
+    renderGate(<ProtectedDataProbe onMount={protectedMount} />);
+
+    await waitFor(() => expect(protectedMount).toHaveBeenCalled(), {
+      timeout: PAST_THE_LADDER_MS,
+    });
+    expect(pairingOffered()).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test('a 504 WITHOUT the proxy’s envelope is still an unknown responder, and still asks this browser to pair', async () => {
+    // The other direction of the same strictness, and the reason widening the
+    // status test alone would have been the wrong fix: an intermediary's bare 504
+    // carries no evidence about this Station's host, so it must keep reading as a
+    // response this browser cannot interpret — one attempt, and the pairing
+    // screen. This is what fails if the derivation ever keys on the status alone.
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(strangerGatewayTimeout()));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderGate(<div>Protected application mounted</div>);
+
+    await screen.findByRole('button', { name: 'Complete pairing' });
+    expect(
+      screen.queryByRole('heading', { name: 'Reconnecting to this Station' }),
+    ).toBeNull();
+
+    await settleForLongerThanTheLadder();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the gate’s own per-attempt deadline (#1661)', () => {
+  test('a read that outlives its deadline is retried, and a later attempt gets this browser in', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockImplementationOnce((_url: string, init?: RequestInit) =>
+          neverAnswers(init?.signal ?? undefined),
+        )
+        .mockImplementation(() =>
+          Promise.resolve(new Response('{}', { status: 200 })),
+        );
+      const protectedMount = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      renderGate(<ProtectedDataProbe onMount={protectedMount} />);
+
+      // One millisecond short of the deadline the first attempt was given: the
+      // read is still out, and nothing has been decided.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS[0] - 1,
+        );
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(protectedMount).not.toHaveBeenCalled();
+      expect(pairingOffered()).toBe(false);
+
+      // Past it: the gate stops waiting, treats the silence as the host being
+      // away, and climbs a rung — it does NOT report a browser without access.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          1 + LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS[0],
+        );
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(protectedMount).toHaveBeenCalled();
+      expect(pairingOffered()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a host that never answers spends the whole schedule and then reports itself away', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockImplementation((_url: string, init?: RequestInit) =>
+          neverAnswers(init?.signal ?? undefined),
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      renderGate(<div>Protected application mounted</div>);
+      // The gate's effect and the resolution's first await, before any clock moves.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      // Each rung: its own deadline, then its backoff. Asserting the request
+      // count at every step is what pins the ESCALATION — a schedule collapsed to
+      // one value would advance on the wrong tick.
+      for (
+        let attempt = 0;
+        attempt < LOCAL_UI_SESSION_ATTEMPT_LIMIT;
+        attempt += 1
+      ) {
+        expect(fetchMock).toHaveBeenCalledTimes(attempt + 1);
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(
+            LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS[attempt] +
+              (LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS[attempt] ?? 0),
+          );
+        });
+      }
+      expect(fetchMock).toHaveBeenCalledTimes(LOCAL_UI_SESSION_ATTEMPT_LIMIT);
+      expect(
+        screen.getByRole('heading', { name: 'Reconnecting to this Station' }),
+      ).toBeTruthy();
+      expect(pairingOffered()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('a refusal and an unreachable host are different answers (#1654)', () => {
+  test('a refused identity read reaches pairing and is requested exactly once', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(new Response('{}', { status: 401 })),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderGate(<div>Protected application mounted</div>);
+
+    await screen.findByRole('button', { name: 'Complete pairing' });
+    // The COUNT is the property, not the screen: a refusal that were retried
+    // would still land here, having spent this browser's auth rate limit on
+    // answers that cannot change. Waited past the whole ladder first, so a
+    // second request has had its chance to be made.
+    await settleForLongerThanTheLadder();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(requestedUrls(fetchMock)).toEqual([IDENTITY_URL]);
+  });
+
+  test('a refused launcher token reaches pairing with its own sentence, and is exchanged exactly once', async () => {
+    window.location.hash = `#station-ui-bootstrap=${'b'.repeat(43)}`;
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(new Response('{}', { status: 403 })),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderGate(<div>Protected application mounted</div>);
+
+    await screen.findByRole('button', { name: 'Complete pairing' });
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Local UI bootstrap was refused (403)',
+    );
+    // Never retried, and never followed by an identity read on this resolution:
+    // the refusal is terminal. The count is the assertion.
+    await settleForLongerThanTheLadder();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(requestedUrls(fetchMock)).toEqual([UI_BOOTSTRAP_URL]);
+  });
+
+  test('a transport failure on the identity read is the host being away, not a browser without access', async () => {
+    // Offline, no route, connection refused. Before the fix this shared one
+    // outcome AND one message with the refusal above, so being offline rendered
+    // "Failed to fetch" over an offer to pair.
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.reject(new TypeError('Failed to fetch')),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderGate(<div>Protected application mounted</div>);
+
+    await screen.findByRole(
+      'heading',
+      { name: 'Reconnecting to this Station' },
+      { timeout: PAST_THE_LADDER_MS },
+    );
+    expect(pairingOffered()).toBe(false);
+    // Retried, unlike the refusal: the same request can answer differently once
+    // the network is back.
+    expect(fetchMock).toHaveBeenCalledTimes(LOCAL_UI_SESSION_ATTEMPT_LIMIT);
+  });
+
+  test('a transport failure on the launcher-token exchange is the host being away, and is not retried', async () => {
+    window.location.hash = `#station-ui-bootstrap=${'c'.repeat(43)}`;
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.reject(new TypeError('Failed to fetch')),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderGate(<div>Protected application mounted</div>);
+
+    await screen.findByRole(
+      'heading',
+      { name: 'Reconnecting to this Station' },
+      { timeout: PAST_THE_LADDER_MS },
+    );
+    expect(pairingOffered()).toBe(false);
+    // One POST and no identity read: the token was captured and stripped on the
+    // way out, so nothing here can re-present it and the ladder cannot help. The
+    // reload the recovery screen offers is what tries again.
+    await settleForLongerThanTheLadder();
+    expect(requestedUrls(fetchMock)).toEqual([UI_BOOTSTRAP_URL]);
+  });
+
+  test('a genuine refusal still reaches pairing when the host answered slowly first', async () => {
+    // The composition the two fixes create together, and the one a reader is most
+    // likely to fear: a host that times out and THEN refuses must still end at the
+    // pairing screen. A ladder that had absorbed the refusal into the timeout
+    // class would strand this browser on the recovery screen instead.
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockImplementationOnce((_url: string, init?: RequestInit) =>
+          neverAnswers(init?.signal ?? undefined),
+        )
+        .mockImplementation(() =>
+          Promise.resolve(new Response('{}', { status: 401 })),
+        );
+      vi.stubGlobal('fetch', fetchMock);
+
+      renderGate(<div>Protected application mounted</div>);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS[0] +
+            LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS[0],
+        );
+      });
+      expect(pairingOffered()).toBe(true);
+      expect(
+        screen.queryByRole('heading', { name: 'Reconnecting to this Station' }),
+      ).toBeNull();
+
+      // And the refusal ends it: the remaining rung is not spent.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS[1] +
+            LOCAL_UI_SESSION_HOST_RETRY_DELAYS_MS[1],
+        );
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('the proxy’s unavailable envelope still reads as before', () => {
+  test('a 503 envelope is retried exactly as it was, so the #1654 change did not move it', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(proxyUnavailable()));
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderGate(<div>Protected application mounted</div>);
+
+    await screen.findByRole(
+      'heading',
+      { name: 'Reconnecting to this Station' },
+      { timeout: PAST_THE_LADDER_MS },
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(LOCAL_UI_SESSION_ATTEMPT_LIMIT);
+    expect(pairingOffered()).toBe(false);
+  });
+});

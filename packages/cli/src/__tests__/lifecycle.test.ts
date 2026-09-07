@@ -5070,6 +5070,18 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     try {
       const res = await fetch(`http://127.0.0.1:${port}/api/system/status`);
       expect(res.status).toBe(504);
+      // station#1654: the browser has to be able to tell THIS proxy's timeout
+      // from any intermediary's 504, and the only thing that can tell it is
+      // this envelope — the same one the 503 error path sends. These are the
+      // exact bytes `src-ui/src/lib/station-ui-proxy.ts` recognises and the
+      // exact bytes its fixture is built from, so this is the producer half of
+      // a contract that cannot be shared as a constant (the handler is
+      // serialized into the spawned UI process, where an import is undefined).
+      expect(res.headers.get('content-type')).toBe('application/json');
+      await expect(res.json()).resolves.toEqual({
+        ready: false,
+        status: 'unavailable',
+      });
     } finally {
       server.close();
     }
