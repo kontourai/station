@@ -1,31 +1,123 @@
 import type { Page } from '@playwright/test';
+import {
+  LOCAL_UI_SESSION_ATTEMPT_LIMIT,
+  LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS,
+} from '../../src-ui/src/lib/local-ui-session-retry';
+
+/**
+ * On a loaded host, one `/api/system/identity` request has been observed waiting
+ * this long before the Station-owned UI proxy answered
+ * `{"ready":false,"status":"unavailable"}` (station#1617). It is the slowest real
+ * dependency of everything below.
+ *
+ * A SAMPLE, not a bound, and the name says so on purpose: the UI proxy's own
+ * upstream timeout is 30 s (`proxyToBackend` in
+ * `packages/cli/src/commands/lifecycle.ts`), so one request can legitimately take
+ * that long. A SINGLE such attempt is reachable today and already grazes the
+ * budget below — 30 s leaves 3.4 s of this 4 s render allowance, so on exactly
+ * the loaded host the allowance exists for, the wait expires before the gate
+ * settles and reports "never settled" instead of the accurate refusal.
+ *
+ * What caps the long attempts at ONE is today's MISCLASSIFICATION: a proxy
+ * timeout answers 504, the ladder reads that as a refusal, and the ladder ends.
+ * So #1654's prescribed fix — classify that timeout as `host-unavailable` — puts
+ * a 30 s response INSIDE the ladder and multiplies it by the attempt limit,
+ * roughly 90 s against this 33.4 s budget. Fixing #1654 UNCAPS them, and after
+ * it the failure is not a possible misdiagnosis but a guaranteed timeout. The
+ * remedy #1661 needs is therefore a per-request deadline on the identity read,
+ * not a larger allowance here.
+ */
+const OBSERVED_SLOW_IDENTITY_ANSWER_MS = 6_600;
+/** The navigation's module graph and the gate's first render. */
+const NAVIGATION_AND_RENDER_ALLOWANCE_MS = 4_000;
+/** Tearing the document down and back up for a gate-directed reload. */
+const GATE_DIRECTED_RELOAD_ALLOWANCE_MS = 2_000;
 
 /**
  * A post-navigation budget for the access gate to SETTLE, plus the reload the
  * gate itself asks for when this browser's host was momentarily away.
  *
- * Derived from the slowest real dependency, not from the UI's degraded window.
- * `LocalUiSessionGate` resolves this browser's device session with exactly one
- * `/api/system/identity` request per page lifetime, and on a loaded host that
- * request has been observed waiting 6.6 s before the Station-owned UI proxy
- * answered `{"ready":false,"status":"unavailable"}` (station#1617). This budget
- * covers the navigation's module graph, that request, the gate-directed reload
- * when it answers `unavailable`, and a second request — which is also this
- * journey's established budget for "a UI surface appears after a goto".
- *
- * The previous budget was `DEGRADED_QUERY_TIMEOUT_MS + 2_000`, which measured
+ * Derived from the slowest real dependency, not from the UI's degraded window
+ * (the previous budget was `DEGRADED_QUERY_TIMEOUT_MS + 2_000`, which measured
  * the wrong thing: the degraded window is when the UI starts EXPLAINING a slow
- * resolution, not a deadline by which the resolution must have arrived.
+ * resolution, not a deadline by which the resolution must have arrived).
+ *
+ * `LocalUiSessionGate` no longer makes exactly one identity request per page
+ * lifetime: since #1639 a resolution retries an `unavailable` answer up to
+ * `LOCAL_UI_SESSION_ATTEMPT_LIMIT` attempts with backoff between them, both
+ * imported here so the two cannot drift. That makes the recovery screen RARER —
+ * a host that comes back during the ladder never renders it — and makes the
+ * worst case, a host that stays away, take longer to reach it. Budget for the
+ * worst case: a full ladder on the first page, the reload, and one more answer
+ * on the reloaded page.
+ *
+ * This EXCEEDS `PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS`, the runner default
+ * `playwright.config.ts` sets, so a caller that has not raised its own
+ * `test.setTimeout` dies as a bare test timeout — naming nothing, which is the
+ * exact failure this helper exists to replace with a sentence. That obligation is
+ * not left to this comment: `readinessTestTimeoutRefusal` below derives it from
+ * the running test's own timeout and refuses with a sentence of this helper's
+ * own, and the premise (that the default really is below this budget) is pinned
+ * against the same constant the config reads rather than a transcribed number.
  */
-export const LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS = 20_000;
+export const LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS =
+  NAVIGATION_AND_RENDER_ALLOWANCE_MS +
+  OBSERVED_SLOW_IDENTITY_ANSWER_MS * LOCAL_UI_SESSION_ATTEMPT_LIMIT +
+  LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS +
+  GATE_DIRECTED_RELOAD_ALLOWANCE_MS +
+  OBSERVED_SLOW_IDENTITY_ANSWER_MS;
 
 /**
  * A bound on the loop itself, not a second budget — the deadline above is what
- * actually stops this wait. Two reloads means three consecutive `unavailable`
- * answers are needed before this wait gives up, and a host answering that way
- * three times inside the deadline is not merely restarting.
+ * actually stops this wait. Each reload costs a fresh in-page ladder of
+ * `LOCAL_UI_SESSION_ATTEMPT_LIMIT` attempts, so two reloads means the host
+ * answered `unavailable` three ladders running before this wait gives up. A host
+ * doing that inside the deadline is not merely restarting.
  */
 export const MAX_HOST_RECOVERY_RELOADS = 2;
+
+/**
+ * Why this wait cannot run under the test timeout it has been given, or
+ * `undefined` when it can.
+ *
+ * A caller whose per-test timeout is at or below this wait's own budget cannot
+ * reach the wait's failure sentences at all: the test dies first, as a bare
+ * `Test timeout of Nms exceeded`, which names neither the gate nor the host.
+ * Refusing up front converts that into a sentence that says what to change.
+ *
+ * `0` is Playwright's "no timeout" and passes. The comparison is `<=`, not `<`:
+ * a test whose ENTIRE timeout is this wait's budget has nothing left for the
+ * navigation that precedes it or the assertions that follow, so equality is
+ * already doomed rather than borderline.
+ */
+export function readinessTestTimeoutRefusal(
+  perTestTimeoutMs: number,
+  budgetMs: number,
+): string | undefined {
+  if (perTestTimeoutMs === 0 || perTestTimeoutMs > budgetMs) return undefined;
+  return (
+    `Local UI access readiness cannot run under this test's ${perTestTimeoutMs}ms timeout: ` +
+    `the access gate is allowed ${budgetMs}ms to settle, so the test would expire before ` +
+    'this wait could report what the gate did. Raise `test.setTimeout` above ' +
+    `${budgetMs}ms plus the rest of the journey (see LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS).`
+  );
+}
+
+/**
+ * The running test's own timeout, or `undefined` outside a Playwright worker —
+ * which is how the pure-function tests in
+ * `scripts/__tests__/local-ui-access-readiness.test.ts` import this module. The
+ * import is lazy for the same reason: nothing in a vitest run should pull the
+ * Playwright runner in.
+ */
+async function currentTestTimeoutMs(): Promise<number | undefined> {
+  try {
+    const { test } = await import('@playwright/test');
+    return test.info().timeout;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Every screen `LocalUiSessionGate` can put on this page, as hooks that do not
@@ -76,9 +168,11 @@ export type SettledLocalUiAccessScreen =
   | 'access-required'
   /**
    * The gate's "Reconnecting to this Station" screen: the UI proxy answered
-   * but its sibling host could not. This browser keeps its access, and the
-   * gate caches the resolution for the page's lifetime, so the reload the
-   * screen offers is the only way forward.
+   * but its sibling host could not, `LOCAL_UI_SESSION_ATTEMPT_LIMIT` times in a
+   * row — the gate's own bounded retry (#1639) is already spent by the time
+   * this screen renders. This browser keeps its access, and the gate caches the
+   * resolution for the page's lifetime, so the reload the screen offers is the
+   * only way forward.
    */
   | 'host-unavailable'
   /** Nothing has settled: the gate's loading sentence, or its degraded alert. */
@@ -111,6 +205,18 @@ export type LocalUiAccessObservation = {
    * if the screen has no such control to take.
    */
   reloadAfterHostRecovery(timeoutMs: number): Promise<void>;
+  /**
+   * The running test's own timeout in ms, or `undefined` when it cannot be known
+   * (outside a Playwright worker).
+   *
+   * A DATA READ, and on the interface for that reason: the DECISION it feeds is
+   * `readinessTestTimeoutRefusal`, applied at the top of
+   * `waitForLocalUiAccessReadinessThrough` below, where the fixture in
+   * `scripts/__tests__/local-ui-access-readiness.test.ts` drives it. Making the
+   * refusal a step in the browser adapter instead left it unreachable from any
+   * executed test, so a lane that reordered or dropped it kept every pin green.
+   */
+  perTestTimeoutMs(): number | undefined;
   now(): number;
 };
 
@@ -141,6 +247,15 @@ export async function waitForLocalUiAccessReadinessThrough(
   observation: LocalUiAccessObservation,
   timeoutMs = LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS,
 ): Promise<{ hostRecoveryReloads: number }> {
+  // Before anything is observed: a caller whose per-test timeout is at or below
+  // this budget cannot reach any sentence below, so refuse with one of ours
+  // rather than let the runner kill the test with a message that names neither
+  // the gate nor the host.
+  const perTestTimeoutMs = observation.perTestTimeoutMs();
+  if (perTestTimeoutMs !== undefined) {
+    const refusal = readinessTestTimeoutRefusal(perTestTimeoutMs, timeoutMs);
+    if (refusal) throw new Error(refusal);
+  }
   const startedAt = observation.now();
   const deadline = startedAt + timeoutMs;
   let hostRecoveryReloads = 0;
@@ -190,18 +305,33 @@ export async function waitForLocalUiAccessReadinessThrough(
  * Browser adapter binding the gate's screens to their real locators.
  *
  * MAY NAVIGATE: when the gate reports its host away, this follows the recovery
- * screen's own instruction and reloads — which would be unsafe for a caller
- * that entered on a one-shot `#station-ui-bootstrap` fragment. It cannot
- * happen: `host-unavailable` is reachable only after `bootstrapLocalUiSession`
- * returned false, which it does only when no such token was in the address. A
- * token that is present and accepted resolves `authenticated` before the
- * identity request is made, and one that is refused throws to
- * `access-required`. Either way this reload is unreachable.
+ * screen's own instruction and reloads — which would be unsafe if that reload
+ * could re-present a one-shot `#station-ui-bootstrap` token. It cannot.
+ * `host-unavailable` is reachable only after `bootstrapLocalUiSession` returned
+ * false, which is only when the capture DECLINED, and that happens for exactly
+ * two reasons: no valid token was in the address, or the latch had already spent
+ * one (in which case the fragment was stripped when it was spent). Either way
+ * there is no token in the address for this reload to carry. A token that is
+ * present and accepted resolves `authenticated` before the identity request is
+ * made, and one that is refused throws to `access-required`, so neither reaches
+ * this screen at all.
+ *
+ * This is the same terminal-bootstrap property `resolveLocalUiSession`
+ * (`src-ui/src/lib/local-ui-bootstrap.ts`) documents, with the same two-case
+ * enumeration. Keep them in step: an earlier revision of both derived "no token
+ * was ever present" from the decline, which silently dropped case (b) — the one a
+ * pairing recheck actually takes.
  */
 export async function waitForLocalUiAccessReadiness(
   page: Page,
   timeoutMs = LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS,
 ): Promise<{ hostRecoveryReloads: number }> {
+  // Read once, here, because the read is async (the lazy Playwright import) and
+  // the observation's accessor is not. The DECISION is not taken here — the core
+  // takes it, where a test can drive it. Reading it before the locators below is
+  // arbitrary: constructing a locator performs no page work, so either order
+  // behaves identically.
+  const perTestTimeoutMs = await currentTestTimeoutMs();
   const authenticatedShell = page.locator(AUTHENTICATED_SHELL_SELECTOR);
   const accessRequired = page.getByRole('region', {
     name: ACCESS_REQUIRED_REGION_NAME,
@@ -299,6 +429,7 @@ export async function waitForLocalUiAccessReadiness(
           // write: fall through and let the deadline report what is on screen.
           .catch(() => undefined);
       },
+      perTestTimeoutMs: () => perTestTimeoutMs,
       now: () => Date.now(),
     },
     timeoutMs,

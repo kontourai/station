@@ -220,8 +220,10 @@ class NavigationStore {
       // documented per the reviewer's request — the alternative was "any
       // navigation heals it," rejected because dockMode also drives
       // immediately-visible layout: the `chat-dock--right`/`--bottom` class
-      // and the `--chat-dock-width`/`--dock-slot-size` CSS vars in
-      // `useChatDockState.ts`. Subscribing here gives it the same live-store
+      // and the shell-clearance CSS vars (`--region-<id>-size` and
+      // `--dock-slot-size`) published by `regions/region-clearance.ts` —
+      // the single-side width alias they used to include was retired in
+      // #1374. Subscribing here gives it the same live-store
       // guarantee `useDeviceSettings` gives `useChatDockState`'s
       // reasoning/tool-details/font-size fix in this same,
       // instead of leaving dockMode stale until the next unrelated
