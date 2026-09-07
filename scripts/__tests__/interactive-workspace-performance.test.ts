@@ -2042,12 +2042,6 @@ describe('interactive workspace performance contract', () => {
     expect(bridgeSpec).toContain('installTelemetryDialogDismissal');
     expect(bridgeSpec).toContain('page.addLocatorHandler');
     expect(bridgeSpec).toContain('removeTelemetryDialogHandler');
-    expect(bridgeSpec).toContain(
-      'WORK_BOARD_ONE_HOUR_REFERENCE_TIMEOUT_MS = 65 * 60 * 1000',
-    );
-    expect(bridgeSpec).toContain(
-      'WORK_BOARD_REFERENCE_ENABLED\n          ? 80 * 60 * 1000',
-    );
     expect(workflow).not.toContain('STATION_PERFORMANCE_UI_URL:');
   });
 });

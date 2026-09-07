@@ -23,6 +23,7 @@ import {
   CLASS_LABELS,
   FULL_REGRESSION_PHASES,
   FULL_REGRESSION_TIMEOUT_MS,
+  INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS,
   invalidationRule,
   LANE_CLASSES,
   LANE_IDS,
@@ -363,6 +364,15 @@ describe('lane ownedOutputs truthfulness', () => {
       'packages/cli/dist/',
       'src-desktop/target/',
     ]);
+  });
+
+  it('keeps the enclosing E2E deadline longer than every reference profile', () => {
+    const deadline = resolveLane('verify-e2e-full').timeoutMs;
+    for (const reference of Object.values(
+      INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS,
+    )) {
+      expect(deadline).toBeGreaterThan(reference);
+    }
   });
 
   it('declares the mutable outputs the E2E lane creates', () => {

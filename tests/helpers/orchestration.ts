@@ -803,7 +803,9 @@ export async function seedOrchestrationRoutes(
   const conversations = options?.conversations ?? DEFAULT_CONVERSATIONS;
   const conversationLookups: Record<string, ConversationLookupFixture> =
     options?.conversationLookups ?? DEFAULT_CONVERSATION_LOOKUPS;
-  if (!conversationSessionReaders.has(page)) {
+  // A test may replace the default catalog after its beforeEach setup. Its
+  // event-window/open resolver must follow the same replacement snapshot.
+  if (!conversationSessionReaders.has(page) || options?.conversationLookups) {
     await installMockOrchestrationConversationEventWindow(page, (id) => {
       const conversation = conversationLookups[id];
       return conversation ? [conversation.currentSessionId] : [];

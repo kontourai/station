@@ -18,7 +18,7 @@ async function openBundledPluginInRegistry(
   if (await decideLater.isVisible().catch(() => false)) {
     await decideLater.click();
   }
-  await page.getByRole('button', { name: 'Plugins', exact: true }).click();
+  await page.getByRole('tab', { name: 'Plugins', exact: true }).click();
   await page
     .getByRole('button', { name: 'View Minimal Layout details' })
     .click();
