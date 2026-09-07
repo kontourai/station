@@ -152,6 +152,13 @@ test('phone first run recovers from no provider to a real streamed reply', async
   // before the two waits below were widened to this file's 20 s (readiness
   // +10 s, the chat dock +15 s). 62 + 30 + 25 ≈ 117 s, rounded up.
   //
+  // That arithmetic was derived when the readiness wait's own budget was 20 s.
+  // It is now LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS = 33.4 s (#1639 gave the gate
+  // a bounded retry, so its worst case covers a full ladder, the reload, and one
+  // more answer), which adds 13.4 s to the readiness step's worst case. 150 s
+  // still covers the measured path plus its last step; the sentence below is why
+  // the sum of the declared budgets is not what this number bounds.
+  //
   // This covers the measured path plus its last step. It is NOT a bound on the
   // sum of the steps: their declared budgets already total ~195 s, so a run
   // where several of them each spend theirs still ends here. What it buys is
