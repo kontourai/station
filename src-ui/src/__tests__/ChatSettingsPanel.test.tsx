@@ -79,8 +79,8 @@ describe('ChatSettingsPanel accessibility', () => {
 
   test('dismisses from the non-tabbable overlay without exposing a backdrop button', () => {
     const panelProps = props();
-    const { container } = render(<ChatSettingsPanel {...panelProps} />);
-    const overlay = container.querySelector('.chat-settings-overlay');
+    render(<ChatSettingsPanel {...panelProps} />);
+    const overlay = document.querySelector('.chat-settings-overlay');
     expect(overlay).toBeTruthy();
     fireEvent.pointerDown(overlay as Element);
     expect(panelProps.onClose).toHaveBeenCalledOnce();

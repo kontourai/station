@@ -188,6 +188,7 @@ export function RequestInspectionDialog({
       : undefined;
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       ariaLabel="Inspect request"
       onClose={onClose}
       overlayClassName="request-inspection-overlay"
