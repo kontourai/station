@@ -358,7 +358,13 @@ Baseline artifacts (both committed):
   the committed baseline — a last resort, not a first move. `screenshot:diff`
   then skips it **loudly** (named in the table as `skipped-volatile`),
   never silently folding it into "unchanged" and never failing the run over
-  it.
+  it. Such a screen gets no `<name>.png`: `screenshot:baseline` stores no
+  image for it and `screenshot:diff` never reads one. If you want a reference
+  purely for human eyeballing, hand-add it as
+  `tests/screenshots.baseline/<name>.reference.png` — a name no capture
+  writes, and the only one a full-run regeneration preserves (#1652). A file
+  at `<name>.png` for a volatile entry is an unclaimed leftover and the next
+  full-run regeneration deletes it; a partial run prunes nothing either way.
 
 Typical loop: `npm run test:e2e:screenshot -- --screens=<touched screens>`,
 then `npm run screenshot:diff -- --screens=<touched screens>` to see whether

@@ -76,15 +76,27 @@ export function readDocumentFontsReady(): Promise<unknown> {
  * (#1650).
  *
  * What it is NOT: evidence about any particular screen's measured run-to-run
- * variance. `overlay-connection-banner` opens a disclosure in its own
- * `afterGoto` and has been measured varying between two runs of an unchanged
- * tree with a sub-pixel border-edge difference — the signature described above
- * — which makes an unsettled font a PLAUSIBLE contributor and nothing more.
- * Nothing here has been shown to fix it.
+ * variance — and the screen this was first hypothesised against now argues the
+ * other way. `overlay-connection-banner` opens a disclosure in its own
+ * `afterGoto` and does differ between runs of an unchanged tree, but #1645
+ * measured that on macOS as a difference confined to the thickness of one
+ * active-tab underline, and #1665 identifies it on the pinned CI container as
+ * the one CONFIRMED CONTENT RACE among the 48 screens — a sentence that changes
+ * the banner's line count and shifts everything below it, which no font settle
+ * can fix. This settle is correct ordering on its own terms; it is not offered
+ * as a fix for that screen or any other.
  *
- * This module performs the settle rather than accepting it as a step so that no
- * caller can supply an inert one: a step map cannot hand in a settle that never
- * reads the font set, because it no longer hands in a settle at all.
+ * This module performs the settle rather than accepting it as a step so the STEP
+ * MAP cannot supply an inert one: it no longer hands in a settle at all.
+ *
+ * The risk moved rather than vanished, and it is worth naming precisely. It is
+ * now the passed-in OBJECT, and this module's own test doubles are exactly such
+ * a caller — they record the page function and return without invoking it, which
+ * is an inert settle wired in by a caller. What binds the real one is
+ * `typecheck:e2e`: `FontSettleTarget` is asserted against Playwright's `Page` at
+ * the spec's call site, so an object without a usable `evaluate` fails that
+ * lane. Beyond the type, that the spec passes its real page is checked by
+ * reading the diff, exactly like the other six steps.
  */
 async function settleWebFonts(page: FontSettleTarget): Promise<void> {
   await page.evaluate(readDocumentFontsReady);

@@ -199,6 +199,10 @@ export function baselineImagesDir(baselinePath) {
  * giving it its own suffix instead of reusing `<name>.png`: it makes the keep
  * set below a derivation of what the manifest DECLARES rather than of whatever
  * file happens to be sitting in the directory.
+ *
+ * Survival is a property of the REPLACE path specifically: a full-run
+ * regeneration preserves this name and prunes everything unclaimed, while a
+ * partial run takes the merge path and prunes nothing at all.
  */
 export const VOLATILE_REFERENCE_SUFFIX = '.reference.png';
 
@@ -405,6 +409,13 @@ export function runBaseline(options, { log = console.log } = {}) {
     // Hence the distinct suffix. A volatile entry claims only
     // `<name>.reference.png`, which no capture can write, so an auto-generated
     // leftover is still pruned and only a deliberate human artifact survives.
+    //
+    // Precondition, because it is easy to read the above as unconditional: this
+    // whole block is REPLACE-only. A partial or not-fully-successful capture
+    // merges instead, prunes nothing, and leaves a stale `<name>.png` in place
+    // indefinitely — so "pruned" throughout means "pruned by the next full-run
+    // regeneration", which is also the only thing that could have deleted a
+    // reference in the first place.
     const keep = new Set([...nextByName.values()].map(baselineImageFileName));
     for (const file of existsSync(imagesDir) ? readdirSync(imagesDir) : []) {
       if (!keep.has(file)) rmSync(join(imagesDir, file), { force: true });

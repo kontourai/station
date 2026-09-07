@@ -2554,7 +2554,10 @@ test('build gallery — capture key screens', async ({ page }) => {
         // having moved to the wrong side of another one. Each step's own
         // reason stays here, next to the mechanic it performs. The web-font
         // settle is the one step that module performs itself, against the page
-        // passed here, so no caller can wire in a settle that reads nothing.
+        // passed here, so the STEP MAP cannot wire in a settle that reads
+        // nothing. That the object passed here is the real page is checked by
+        // `typecheck:e2e` (the structural assignment on this line) and by
+        // reading the diff, like the other six steps.
         await runScreenshotCaptureSequence(page, {
           reachScreen: async () => {
             await page.goto(screen.path, { waitUntil: 'domcontentloaded' });

@@ -497,6 +497,13 @@ describe('runBaseline and runDiff (in-process)', () => {
       join(imagesDir, 'retired-screen.png'),
       solidPng(12, 9, [3, 2, 1]),
     );
+    // The mirror case: 'a' is NOT volatile, so it claims 'a.png' and nothing
+    // else. A reference-suffixed file beside it is unclaimed and must prune like
+    // any other orphan — the suffix is not a blanket exemption.
+    writeFileSync(
+      join(imagesDir, 'a.reference.png'),
+      solidPng(9, 9, [4, 5, 6]),
+    );
 
     writeCapture(
       dir,
@@ -512,6 +519,7 @@ describe('runBaseline and runDiff (in-process)', () => {
     );
 
     expect(existsSync(join(imagesDir, 'retired-screen.png'))).toBe(false);
+    expect(existsSync(join(imagesDir, 'a.reference.png'))).toBe(false);
     expect(existsSync(join(imagesDir, 'b.reference.png'))).toBe(true);
     expect(existsSync(join(imagesDir, 'a.png'))).toBe(true);
   });

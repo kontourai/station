@@ -18,10 +18,17 @@ import {
  * could not see order, a rename, or a step moved inside a conditional.
  *
  * The sequence performs the settle ITSELF against the passed page rather than
- * accepting it as a caller-supplied step, so these tests also close the hole a
- * step map would leave open: a caller cannot wire in a settle that reads
- * nothing, and the last test below proves the evaluated callback really does
- * read the font set's ready promise.
+ * accepting it as a caller-supplied step, so these tests close the hole a step
+ * map would leave open: the STEP MAP cannot wire in a settle that reads nothing,
+ * and the last two tests prove the evaluated callback really does read the font
+ * set's ready promise.
+ *
+ * What that does NOT close — and the stub in this very file is the proof — is the
+ * passed-in object. `recordingSteps`'s `page` captures the page function and
+ * returns without invoking it, which is an inert settle supplied by a caller. No
+ * test here binds the object. What binds the real one is `typecheck:e2e`, where
+ * `FontSettleTarget` is asserted against Playwright's `Page` at the spec's call
+ * site, plus reading the diff — the same standing the other six steps have.
  */
 
 type StepName =
@@ -215,6 +222,12 @@ describe('runScreenshotCaptureSequence', () => {
    * A getter, not a plain property, because reading is the observable act — a
    * callback that returned the font set, or the document, without touching
    * `ready` would satisfy any assertion about the returned value.
+   *
+   * Environment note: this installs and removes a global `document`, which is
+   * safe only because this lane runs `environment: 'node'` (vitest.config.ts),
+   * where no such global exists. Under a DOM environment the `delete` would
+   * throw on a non-configurable global — so if this file is ever moved to a
+   * jsdom lane, save and restore rather than delete.
    */
   it('evaluates a callback that reads the font set ready promise, both times', async () => {
     const { evaluated, page, steps } = recordingSteps();
