@@ -506,7 +506,7 @@ async function runProof() {
       })),
       paneHtml:
         document
-          .querySelector('.project-page__workspace-pane-route')
+          .querySelector('[data-workspace-pane-route]')
           ?.innerHTML.slice(0, 5_000) ?? null,
       errors:
         (window as unknown as { __tauriShellErrors?: string[] })

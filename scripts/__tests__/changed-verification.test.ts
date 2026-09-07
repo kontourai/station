@@ -398,6 +398,14 @@ describe('changed verification selection', () => {
   });
   test.each([
     [
+      'packages/contracts/src/engine-capability-matrix.ts',
+      'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
+    ],
+    [
+      'src-server/services/orchestration/attached-session-adoption.ts',
+      'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
+    ],
+    [
       'src-server/runtime/frameworks/strands-message-sync.ts',
       'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
     ],
@@ -410,7 +418,7 @@ describe('changed verification selection', () => {
       'src-ui/src/__tests__/ChatDockActiveIdentity.overflow.test.tsx',
     ],
   ])(
-    'supplements graph coverage for the source-reading check of %s',
+    'supplements graph coverage for the explicit check of %s',
     (path, testPath) => {
       const selection = selectChangedVerification([path]);
       expect(selection.tests.map((entry) => entry.path)).toContain(testPath);

@@ -43,8 +43,29 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
   ]),
 );
 
-/** Repository data read directly by tests, invisible to import analysis. */
+/** Repository data readers and explicit runtime seams supplementing import analysis. */
 export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
+  {
+    pattern: 'packages/contracts/src/engine-capability-matrix.ts',
+    related: true,
+    tests: [
+      'packages/contracts/src/__tests__/engine-capability-matrix.test.ts',
+      'src-server/services/orchestration/__tests__/attached-session-adoption.test.ts',
+      'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
+    ],
+    reason:
+      'engine continuation declarations control adoption command admission',
+  },
+  {
+    pattern: 'src-server/services/orchestration/attached-session-adoption.ts',
+    related: true,
+    tests: [
+      'src-server/services/orchestration/__tests__/attached-session-adoption.test.ts',
+      'src-server/services/orchestration/__tests__/orchestration-service.test.ts',
+    ],
+    reason:
+      'adoption support, model planning, and adapter readiness must compose',
+  },
   {
     pattern: 'src-server/runtime/frameworks/strands-message-sync.ts',
     related: true,
