@@ -146,7 +146,26 @@ test('phone first run recovers from no provider to a real streamed reply', async
   page,
   authenticatedRequest,
 }) => {
-  test.setTimeout(90_000);
+  // Measured, not guessed (#1617). On a host under sibling load this journey
+  // spent 62.3 s reaching its last step — the streamed reply — with that step's
+  // own 30 s budget still ahead, so 90 s could not cover a slow reply even
+  // before the two waits below were widened to this file's 20 s (readiness
+  // +10 s, the chat dock +15 s). 62 + 30 + 25 ≈ 117 s, rounded up.
+  //
+  // That arithmetic was derived when the readiness wait's own budget was 20 s.
+  // It is now LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS = 33.4 s (#1639 gave the gate
+  // a bounded retry, so its worst case covers a full ladder, the reload, and one
+  // more answer), which adds 13.4 s to the readiness step's worst case. 150 s
+  // still covers the measured path plus its last step; the sentence below is why
+  // the sum of the declared budgets is not what this number bounds.
+  //
+  // This covers the measured path plus its last step. It is NOT a bound on the
+  // sum of the steps: their declared budgets already total ~195 s, so a run
+  // where several of them each spend theirs still ends here. What it buys is
+  // that the ordinary slow-host failure arrives as the failing assertion's own
+  // sentence rather than as a test timeout, which names nothing. No individual
+  // budget is relaxed by this.
+  test.setTimeout(150_000);
 
   let ollamaServer: Server | null = null;
   const chatRequests: unknown[] = [];
@@ -248,7 +267,13 @@ test('phone first run recovers from no provider to a real streamed reply', async
     // Chat remains the independent dock beside the Workspace Pane host. The
     // route opens the named session directly; no workspace tab owns it.
     const chatDock = page.getByRole('region', { name: 'Chat dock' });
-    await expect(chatDock).toBeVisible();
+    // The dock is this journey's first post-navigation surface, so it gets the
+    // same budget as everything else that appears after a goto here. It was
+    // carrying Playwright's 5 s default, which made the 20 s below unreachable
+    // — you cannot see the empty state before its own region — and on a loaded
+    // host it red with the layout mid-load ("Convincing electrons to
+    // cooperate…") rather than missing (#1617).
+    await expect(chatDock).toBeVisible({ timeout: 20_000 });
     const emptyState = chatDock.getByTestId('chat-empty-state-unconfigured');
     await expect(emptyState).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(/^Error:/)).toHaveCount(0);
