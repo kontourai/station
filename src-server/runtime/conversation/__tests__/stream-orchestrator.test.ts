@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   createElicitationCallback,
-  SSE_KEEPALIVE_INTERVAL_MS,
+  CHAT_STREAM_KEEPALIVE_INTERVAL_MS,
   startSSEKeepalive,
   writeSSEChunk,
   writeSSEError,
@@ -146,14 +146,14 @@ describe('startSSEKeepalive (station#1207)', () => {
     // has actually elapsed, not immediately on start.
     expect(streamWriter.write).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(CHAT_STREAM_KEEPALIVE_INTERVAL_MS);
     expect(writes).toEqual([':ping\n\n']);
     // Deliberately NOT a `data: ` frame — every SSE consumer (this route's
     // own client in `chatRuntimeStream.ts`, browsers' EventSource) ignores
     // a bare comment line with zero parser changes.
     expect(writes[0]).not.toMatch(/^data: /);
 
-    await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(CHAT_STREAM_KEEPALIVE_INTERVAL_MS);
     expect(writes).toEqual([':ping\n\n', ':ping\n\n']);
   });
 
@@ -168,14 +168,14 @@ describe('startSSEKeepalive (station#1207)', () => {
     };
 
     const stop = startSSEKeepalive(streamWriter);
-    await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(CHAT_STREAM_KEEPALIVE_INTERVAL_MS);
     expect(writes).toHaveLength(1);
 
     stop();
 
     // Many more intervals' worth of (fake) time passes with no writer
     // activity at all — an uncleared interval would keep firing.
-    await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE_INTERVAL_MS * 5);
+    await vi.advanceTimersByTimeAsync(CHAT_STREAM_KEEPALIVE_INTERVAL_MS * 5);
     expect(writes).toHaveLength(1);
   });
 
@@ -192,7 +192,7 @@ describe('startSSEKeepalive (station#1207)', () => {
 
     const stop = startSSEKeepalive(streamWriter);
     try {
-      await vi.advanceTimersByTimeAsync(SSE_KEEPALIVE_INTERVAL_MS * 2);
+      await vi.advanceTimersByTimeAsync(CHAT_STREAM_KEEPALIVE_INTERVAL_MS * 2);
     } finally {
       stop();
       process.off('unhandledRejection', onUnhandledRejection);

@@ -147,6 +147,12 @@ export function createStreamingPipeline(
 }
 
 /**
+ * Named for its stream. `src-server/constants.ts` exports its own
+ * `SSE_KEEPALIVE_INTERVAL_MS` (30s) for the long-lived operations streams —
+ * `/api/orchestration/events`, monitoring and scheduler — and two exported
+ * constants with the same name and different values is a reference a reader
+ * has to resolve by import path. Neither cadence changes here.
+ *
  * archive#1207: how often the `/chat` SSE stream emits a keepalive comment
  * while the agent is between content events — e.g. a long tool call
  * (delegateTask sub-agent, a slow MCP/shell tool) that legitimately
@@ -161,7 +167,7 @@ export function createStreamingPipeline(
  * client gives up — one dropped frame (network jitter, a slow event-loop
  * tick) must never look like a dead server.
  */
-export const SSE_KEEPALIVE_INTERVAL_MS = 15_000;
+export const CHAT_STREAM_KEEPALIVE_INTERVAL_MS = 15_000;
 
 /**
  * A standard SSE comment line. Deliberately NOT a `data: ` frame: every SSE
@@ -186,7 +192,7 @@ export function startSSEKeepalive(streamWriter: any): () => void {
     void Promise.resolve(streamWriter.write(SSE_KEEPALIVE_FRAME)).catch(
       () => {},
     );
-  }, SSE_KEEPALIVE_INTERVAL_MS);
+  }, CHAT_STREAM_KEEPALIVE_INTERVAL_MS);
   return () => clearInterval(timer);
 }
 
