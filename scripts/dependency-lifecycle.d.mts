@@ -55,3 +55,9 @@ export function reportCliFailure(
   error: unknown,
   options?: { log?: (line: string) => void },
 ): number;
+export const BASIS_MCP_APP_GENERATOR: string;
+export function stationOwnedHooks(options?: {
+  run?: (command: string, args: string[]) => unknown;
+  exists?: (path: string) => boolean;
+  log?: (line: string) => void;
+}): void;
