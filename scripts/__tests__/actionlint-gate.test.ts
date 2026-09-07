@@ -2611,13 +2611,14 @@ describe('the real workflow corpus', () => {
 
   test('uses one host-manifest lifetime that covers every admitted timeout without heartbeat renewal', () => {
     let directCapacityJobs = 0;
+    const capacityFiles: string[] = [];
     let recoveryJobs = 0;
     let reusableCapacityJobs = 0;
 
-    for (const { document } of workflows) {
+    for (const { file, document } of workflows) {
       const jobs =
         (document as { jobs?: Record<string, ParsedWorkflowJob> }).jobs ?? {};
-      for (const job of Object.values(jobs)) {
+      for (const [jobId, job] of Object.entries(jobs)) {
         const capacityStep = job.steps?.find(
           (step) =>
             typeof step?.uses === 'string' &&
@@ -2627,6 +2628,7 @@ describe('the real workflow corpus', () => {
         );
         if (capacityStep) {
           directCapacityJobs += 1;
+          capacityFiles.push(`${file}#${jobId}`);
           expect(String(capacityStep.with?.['owner-lifetime-seconds'])).toBe(
             '7800',
           );
@@ -2659,7 +2661,22 @@ describe('the real workflow corpus', () => {
       }
     }
 
-    expect(directCapacityJobs).toBe(9);
+    // 9 until #1668 moved `nightly-gallery` off the fleet and onto a hosted
+    // container, which removed its capacity step and left this pin behind —
+    // `main` went red on this line, not on the change that tripped it. A bare
+    // count names whoever gates next rather than whoever moved it; the
+    // contributing files are listed below so the next removal says which one.
+    expect(directCapacityJobs).toBe(8);
+    expect(capacityFiles.sort()).toEqual([
+      '.github/workflows/ci-extended.yml#coverage',
+      '.github/workflows/ci-extended.yml#playwright-full',
+      '.github/workflows/container-smoke.yml#smoke',
+      '.github/workflows/interactive-workspace-performance.yml#one-hour-collaboration-reference',
+      '.github/workflows/interactive-workspace-performance.yml#one-hour-work-board-reference',
+      '.github/workflows/interactive-workspace-performance.yml#reference-performance',
+      '.github/workflows/windows-verification.yml#portable-floor',
+      '.github/workflows/windows-vitest-diagnostic.yml#diagnostic',
+    ]);
     expect(recoveryJobs).toBe(2);
     expect(reusableCapacityJobs).toBe(0);
   });
