@@ -292,10 +292,15 @@ interface Shape {
    * COVERED by an open popover. This pins an accepted reversal rather than a
    * fix, so it is deliberately narrow.
    *
-   * `BannerHost.css` puts the host — and under #920 a blocking
-   * pairing/credential card's own item and cap — at
-   * `calc(var(--layer-dock) + 1)` (9201), expressly so only a critical card
-   * crosses the dock layer. `--layer-surface-popover` is 9250, so an open
+   * `BannerHost.css` raises a blocking pairing/credential card's own item and
+   * cap to `calc(var(--layer-dock) + 1)` (9201) expressly so only a critical
+   * card crosses the dock layer. Note which element carries that value: under
+   * #920 the HOST computes `auto` (it gives up its stacking context so the
+   * raised child can cross), which is why this test's own failure message
+   * prints `host z-index auto` rather than 9201. The raised value belongs to
+   * the item and cap, and those are the controls this shape measures — an
+   * earlier draft of this docblock attributed 9201 to the host and read as
+   * contradicting the message printed beside it. `--layer-surface-popover` is 9250, so an open
    * popover now covers it, where on `origin/main` a dock-trapped popover did
    * not. `tokens.css` records why that trade was accepted: the occlusion is
    * user-initiated and dismissible, unlike the click theft #1638 reports.

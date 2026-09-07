@@ -39,15 +39,26 @@ type InitialFocusPolicy = 'always' | 'desktop' | 'panel';
  * - `system`   — an explicit system blocker; supersedes everything.
  *
  * THE BOUNDARY OF THAT GUARANTEE, because a required prop can only bind the
- * callers that pass props. It covers consumers of THIS component. Four
- * hand-rolled overlays in the dock apply `responsive-surface-overlay` as a
- * literal class string instead, so they take `--layer-dialog` from the bare
- * rule in `index.css` without declaring anything, and no compile-time check
- * could ever have reached them. They split two ways, which matters:
+ * callers that pass props. It covers consumers of THIS component. SIX
+ * components apply `responsive-surface-overlay` as a literal class string
+ * instead, so they take `--layer-dialog` from the bare rule in `index.css`
+ * without declaring anything, and no compile-time check could ever have
+ * reached them. (An earlier draft of this comment said four. The set was
+ * never re-derived after the two portaling ones were identified, which is a
+ * different mistake from the one it was correcting.) Five are in the dock,
+ * where the layer they take is clamped:
  *
  * - `DelegationLauncher` (#1180) and `MobileTaskSwitcher` portal themselves,
  *   so they already escape the dock and the free dialog layer is true for
  *   them.
+ * - `ShareTargetPickerModal` reaches the dock through `ShareIntakeController`,
+ *   which `ChatDock` mounts, and does NOT portal. It is inert today — the
+ *   controller returns null unless the `share-intake` capability reports
+ *   `enabled` — so it is a latent third instance rather than a live defect,
+ *   and it is why "portal the two" is not the whole remedy.
+ *
+ * The sixth, `ProjectKnowledgeViewerModal`, is not in the dock at all, so
+ * nothing clamps it; it still takes the dialog layer without declaring one.
  * - `CommandLauncher` and `ActiveWorkContextFrame` do NOT portal. They mount
  *   inside the dock, so the dialog layer they take is clamped by the dock's
  *   stacking context exactly as #1638 describes, and a notice covers them.
