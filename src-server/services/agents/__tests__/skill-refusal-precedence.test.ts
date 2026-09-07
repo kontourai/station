@@ -1,28 +1,24 @@
 /**
  * The precedence contract, tested at the layer that owns it.
  *
- * Fixtures reach a fraction of this space, and ONE FILE carries nearly all of
- * it. Measured by recording every condition set this picker is handed during a
- * run, per file rather than in aggregate:
+ * TEN of the sixteen combinations are reached by no fixture anywhere — so for
+ * those ten, this table is the only thing exercising the ordering at all. That
+ * was measured by recording every condition set the picker is handed during a
+ * run, across the related set and the statically-reachable suites outside it.
  *
- *   - `skills.routes.writable.test.ts` — SIX combinations: the empty set
- *     (writable), each of the four conditions alone, and one pair
- *     (`unsafe-name` with `name-mismatch`).
- *   - `skills.routes.test.ts` — ONE (`outside-writable-root`).
- *   - the other 106 suites in the related set, between them — TWO, both
- *     already in the six above. They add NOTHING.
+ * Fixture reach is concentrated in one file: `skills.routes.writable.test.ts`
+ * reaches six combinations — the empty set (writable), each condition alone,
+ * and one pair (`unsafe-name` with `name-mismatch`). `skills.routes.test.ts`,
+ * the other route suite, reaches one. No fixture anywhere reaches a
+ * combination outside those six.
  *
- * Two earlier versions of this paragraph got this wrong in opposite
- * directions. The first said "four of the eight", where the eight came from a
- * premise since disproved and nobody had measured the four. The second said
- * "the route suite reaches one" — true only of `skills.routes.test.ts`, while
- * the phrase had always meant the writability suite, which reaches all six —
- * and then credited those six to "all 107 other suites … between them", which
- * attributed the richest fixture reach in the repo to an anonymous corpus that
- * contributes none of it. Name the file (round 11).
- *
- * Ten of the sixteen are reached by no fixture ANYWHERE in this corpus, and are
- * exercised only by the table below.
+ * Deliberately no third figure here. Four attempts at a per-suite breakdown
+ * produced four different wrong numbers, the last by excluding this file from
+ * the measurement and then leaving it in the denominator. A plain count also
+ * misleads: most suites in the related set cannot import the picker at all, so
+ * "N suites contribute two combinations" reads as a broad survey that came
+ * back thin, when almost none of it was ever able to reach the code. The claim
+ * above needs no such count and does not go stale when a test file is added.
  *
  * "Reached by no fixture" is a fact about THIS CORPUS, not about the
  * filesystem. The measurement cannot tell "no filesystem state produces this
