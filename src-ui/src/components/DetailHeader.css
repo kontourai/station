@@ -48,7 +48,14 @@
   gap: 12px;
   min-width: 0;
   /* The basis is the wrap threshold: below it the actions take their own row
-     rather than shrinking the identity further. */
+     rather than shrinking the identity further.
+
+     `flex-basis` sizes the MAIN axis, so this number is a WIDTH only while
+     this header is a row. Any rule that switches `.detail-header` to
+     `flex-direction: column` must reset it — see the two that do, below and
+     in `views/MonitoringWidgets.css`. Left unreset it reads as 320px of
+     HEIGHT: a 23px identity measured 320px tall and a 108px phone header
+     measured 405px. */
   flex: 1 1 20rem;
 }
 
@@ -164,6 +171,12 @@
     flex-wrap: nowrap;
     gap: 12px;
     padding: 14px 16px;
+  }
+
+  .detail-header__left {
+    /* The main axis is vertical here, so the wrap threshold above would size
+       the identity's HEIGHT. Content decides it instead. */
+    flex-basis: auto;
   }
 
   .detail-header__actions {

@@ -6,18 +6,26 @@
  * to nothing and the subtitle wrapped one word per line down six lines.
  *
  * The cause is geometry, and it is invisible to jsdom, which lays nothing out.
- * `.detail-header__left` carried `min-width: 0`, which removes a flex child's
+ * `.detail-header__left` carries `min-width: 0`, which removes a flex child's
  * automatic min-content floor, so against a `flex-shrink: 0` actions block it
  * absorbed the entire shortfall and was driven to ZERO instead of truncating.
  * The rule that would have wrapped the row was keyed on a VIEWPORT media
  * query, and this header's width is set by its REGION — so in a 1440px window
  * with a docked pane it could never match.
  *
- * That is what these measurements pin: at a narrow region inside a WIDE
- * viewport (where no media query helps), the identity keeps real width, the
- * title is never clipped, and the subtitle stays legible. Asserting a class
- * name or a CSS declaration would not have caught it — both were "present"
- * throughout the defect.
+ * Three failure modes are pinned here, because the fix has to hold all three
+ * at once and two of them were introduced by candidate fixes for the first:
+ *
+ *   COLLAPSE   the identity starved to nothing beside a wide actions block.
+ *   OVERFLOW   `min-width: 0` removed to give the identity a floor — which
+ *              stops a long title ellipsizing and runs it past the region.
+ *   COLUMN     the wrap threshold expressed as a `flex-basis`, which is the
+ *              MAIN size — a width while the header is a row, a HEIGHT once a
+ *              responsive block stacks it, where it inflated a 23px identity
+ *              to 320px.
+ *
+ * Asserting a class name or a CSS declaration would not have caught any of
+ * them: every declaration involved was "present" throughout every defect.
  */
 
 import { dirname, resolve } from 'node:path';
@@ -45,7 +53,7 @@ const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 /**
  * Telemetry's real header: a wide actions cluster (the session summary plus
  * the live controls) beside a title and subtitle. The actions are what starve
- * the identity, so a fixture without them cannot reproduce the defect.
+ * the identity, so a fixture without them cannot reproduce the collapse.
  */
 function headerMarkup(): string {
   const { container, unmount } = render(
@@ -84,10 +92,10 @@ function headerMarkup(): string {
 }
 
 /**
- * A long title with actions — the shape `min-width: 0` on `__left` exists to
- * serve. A fix that removes that floor makes this OVERFLOW its region instead
- * of ellipsizing, on desktop and on a phone, which is why it is measured here
- * rather than assumed.
+ * A title longer than any region measured here, with actions — the shape
+ * `min-width: 0` on `__left` exists to serve. A fix that removes that floor
+ * makes this OVERFLOW its region instead of ellipsizing, on desktop and on a
+ * phone, which is why it is measured rather than assumed.
  */
 function longTitleMarkup(): string {
   const { container, unmount } = render(
@@ -108,13 +116,20 @@ function longTitleMarkup(): string {
   return html;
 }
 
-function fixtureHtml(markup: string, regionWidth: number): string {
+function fixtureHtml(
+  markup: string,
+  regionWidth: number,
+  wrapperClass?: string,
+): string {
   const css = CSS_PATHS.map((path) => resolveCssImports(path)).join('\n');
   assertNoImportsSurvive(css);
+  const inner = wrapperClass
+    ? `<div class="${wrapperClass}">${markup}</div>`
+    : markup;
   return `<!doctype html>
 <html><head><style>${css}</style></head>
 <body style="margin:0">
-  <div id="region" style="width:${regionWidth}px">${markup}</div>
+  <div id="region" style="width:${regionWidth}px">${inner}</div>
 </body></html>`;
 }
 
@@ -134,40 +149,50 @@ describe.skipIf(!chromiumAvailable)(
     async function measure(
       regionWidth: number,
       viewportWidth: number,
-      markup: string = headerMarkup(),
+      options: { markup?: string; wrapperClass?: string } = {},
     ) {
+      const markup = options.markup ?? headerMarkup();
       const page = await browser!.newPage({
         viewport: { width: viewportWidth, height: 900 },
       });
       try {
-        await page.setContent(fixtureHtml(markup, regionWidth));
+        await page.setContent(
+          fixtureHtml(markup, regionWidth, options.wrapperClass),
+        );
         return await page.evaluate(() => {
           const pick = (selector: string) =>
             document.querySelector(selector) as HTMLElement | null;
-          const subtitle = pick('.detail-header__subtitle');
+          const header = pick('.detail-header');
           const title = pick('.detail-header__title');
           const left = pick('.detail-header__left');
-          if (!subtitle || !title || !left) throw new Error('header not found');
-          const lineHeight = Number.parseFloat(
-            getComputedStyle(subtitle).lineHeight,
-          );
+          const region = document.getElementById('region');
+          if (!header || !title || !left || !region) {
+            throw new Error('header not found');
+          }
+          // Optional: several consumers render no subtitle at all, and the
+          // long-title fixture below is one of them.
+          const subtitle = pick('.detail-header__subtitle');
+          const lineHeight = subtitle
+            ? Number.parseFloat(getComputedStyle(subtitle).lineHeight)
+            : 0;
+          const regionRight = region.getBoundingClientRect().right;
           return {
             identityWidth: Math.round(left.getBoundingClientRect().width),
-            subtitleWidth: Math.round(subtitle.getBoundingClientRect().width),
-            subtitleLines: Math.round(
-              subtitle.getBoundingClientRect().height / lineHeight,
-            ),
+            // The identity's own box height. `flex-basis` is the MAIN size, so
+            // a wrap threshold written as one is read as a HEIGHT wherever a
+            // responsive block stacks this header into a column.
+            identityHeight: Math.round(left.getBoundingClientRect().height),
+            subtitleWidth: subtitle
+              ? Math.round(subtitle.getBoundingClientRect().width)
+              : null,
+            subtitleLines: subtitle
+              ? Math.round(subtitle.getBoundingClientRect().height / lineHeight)
+              : null,
             titleWidth: Math.round(title.getBoundingClientRect().width),
             titleClipped: title.scrollWidth > title.clientWidth + 1,
             // How far the identity runs past its region's content box.
             overflow: Math.round(
-              Math.max(
-                0,
-                left.getBoundingClientRect().right -
-                  (
-                    document.getElementById('region') as HTMLElement
-                  ).getBoundingClientRect().right,
-              ),
+              Math.max(0, left.getBoundingClientRect().right - regionRight),
             ),
           };
         });
@@ -177,10 +202,10 @@ describe.skipIf(!chromiumAvailable)(
     }
 
     /**
-     * 1440px is the gallery's desktop viewport and is deliberately far above
-     * every media-query breakpoint in this file, so nothing viewport-keyed can
-     * be what makes these pass. 500 and 600 are the region widths at which the
-     * pre-fix header measured 0px and 76px of identity respectively.
+     * COLLAPSE. 1440px is the gallery's desktop viewport and is deliberately
+     * far above every media-query breakpoint in this file, so nothing
+     * viewport-keyed can be what makes these pass. 500 and 600 are the region
+     * widths at which the pre-fix header measured 0px and 76px of identity.
      *
      * These four are the GUARDRAIL: literals with deliberate headroom between
      * pass and fail, chosen against the pre-fix measurements (0px identity,
@@ -224,34 +249,82 @@ describe.skipIf(!chromiumAvailable)(
 
     /**
      * The property the fix is really about: the header's layout is a function
-     * of the REGION it occupies, not of the window it happens to sit in. Two
+     * of the REGION it occupies, not of the window it happens to sit in. Three
      * viewports that straddle every breakpoint in this file must agree, given
      * the same region width.
      */
     test('the same region width lays out identically across viewports', async () => {
-      // 1440 and 700 both sit outside the 769-1180 tablet band, which
+      // 1440, 1000 and 700 all sit outside the 769-1180 tablet band, which
       // deliberately gives the actions their own row as a property of the
       // viewport class rather than of this header's width. Everywhere else,
       // one region width must mean one layout.
       const wide = await measure(600, 1440);
+      const mid = await measure(600, 1000);
       const narrowViewport = await measure(600, 700);
+      expect(mid).toEqual(wide);
       expect(narrowViewport).toEqual(wide);
     }, 120_000);
 
     /**
-     * The regression a floor-based fix introduces, pinned so it cannot come
-     * back: removing `min-width: 0` from `__left` stops a long title
-     * ellipsizing and pushes the identity past its region — measured at 470px
-     * inside a 390px phone region, and 470px inside a 500px desktop region.
+     * OVERFLOW. The regression a floor-based fix introduces, pinned so it
+     * cannot come back: dropping `min-width: 0` from `__left` stops a long
+     * title ellipsizing and pushes the identity past its region.
+     *
+     * `titleClipped` is the discriminator, not decoration. `overflow === 0`
+     * alone would also pass for a fixture whose title simply fit, so this
+     * additionally asserts that the title IS being truncated at these widths —
+     * i.e. the region really is the binding constraint and ellipsis is what
+     * absorbs it. Both are needed: the floor-based variant made `titleClipped`
+     * false and `overflow` large at exactly these two widths.
      */
     test.each([
+      // Phone, where the header stacks into a column.
       [390, 390],
+      // Desktop viewport, narrow region — no media query is involved at all.
       [500, 1440],
     ])(
       'a long title ellipsizes rather than overflowing a %ipx region',
       async (regionWidth, viewportWidth) => {
-        const m = await measure(regionWidth, viewportWidth, longTitleMarkup());
+        const m = await measure(regionWidth, viewportWidth, {
+          markup: longTitleMarkup(),
+        });
         expect(m.overflow).toBe(0);
+        expect(m.titleClipped).toBe(true);
+        expect(m.identityWidth).toBeLessThanOrEqual(regionWidth);
+      },
+      60_000,
+    );
+
+    /**
+     * COLUMN. Every responsive block that stacks this header makes the main
+     * axis vertical, and the wrap threshold on `__left` is a `flex-basis` —
+     * the MAIN size. Unreset, 20rem stops being a wrap threshold and becomes
+     * 320px of height: a 23px identity measured 320px and a 108px phone header
+     * measured 405px, on every one of this primitive's consumers.
+     *
+     * Both stacking rules are covered, because they are in different files and
+     * cover different bands: `DetailHeader.css` stacks at <= 640px, and
+     * `views/MonitoringWidgets.css` stacks `.monitoring-page`'s header at
+     * <= 768px — so the 641-768px band is reachable only through the second.
+     */
+    test.each([
+      [390, 390, undefined],
+      [430, 430, undefined],
+      [700, 700, 'monitoring-page'],
+      [760, 760, 'monitoring-page'],
+    ])(
+      'a stacked %ipx header is the height of its content, not of the wrap threshold',
+      async (regionWidth, viewportWidth, wrapperClass) => {
+        const m = await measure(regionWidth, viewportWidth, {
+          wrapperClass,
+        });
+        // Content measures 45px here (title row + subtitle). 320px is the
+        // basis being read as a height; 120 leaves headroom on both sides.
+        expect(m.identityHeight).toBeLessThan(120);
+        // A stacked header hands the identity the full region, so nothing
+        // truncates and nothing runs past the edge.
+        expect(m.overflow).toBe(0);
+        expect(m.titleClipped).toBe(false);
       },
       60_000,
     );
