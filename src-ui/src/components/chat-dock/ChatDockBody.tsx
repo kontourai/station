@@ -24,7 +24,7 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { drainQueuedMessageOnTurnCompleted } from '../../hooks/orchestration/queueDrain';
 import { useActiveChatTranscript } from '../../hooks/orchestration/useActiveChatTranscript';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
-import { useMessageContext } from '../../hooks/useMessageContext';
+import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useShareReceiver } from '../../hooks/useShareReceiver';
 import type { SlashCommand } from '../../hooks/useSlashCommands';
 import { useSTT } from '../../hooks/useSTT';
@@ -339,7 +339,7 @@ export function ChatDockBody({
   const { settings } = useFeatureSettings();
   const stt = useSTT();
   const tts = useTTS();
-  const { getComposedContext } = useMessageContext();
+  const { getComposedContext } = useMessageContextContext();
   // A reopened conversation retains the admission decision that opened this
   // tab. Provider/model availability today cannot convert a recovery view
   // into a writable continuation of a different child session.

@@ -82,8 +82,8 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
   }),
 }));
 
-vi.mock('../hooks/useMessageContext', () => ({
-  useMessageContext: () => ({ getComposedContext: () => '' }),
+vi.mock('../contexts/MessageContextContext', () => ({
+  useMessageContextContext: () => ({ getComposedContext: () => '' }),
 }));
 
 vi.mock('../hooks/useShareReceiver', () => ({
