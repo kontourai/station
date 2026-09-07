@@ -22,6 +22,21 @@ const resultKeys = [
   'status',
   'summary',
 ];
+// Veritas 1.6.0 added `diagnostic` and `remediation` to governance-block
+// findings; required-artifacts findings kept the two-key shape.
+const findingKeysByRule: Record<string, string[]> = {
+  'required-station-governance-artifacts': ['artifact', 'kind'],
+  'ai-instruction-files-synced': [
+    'artifact',
+    'diagnostic',
+    'kind',
+    'remediation',
+  ],
+};
+const INVALID_RESULT_MESSAGE =
+  'Veritas returned an invalid governance policy result.';
+const POLICY_FAILURE_MESSAGE =
+  'Veritas reported a blocking governance policy failure.';
 const temporaryDirs = new Set<string>();
 
 function temporaryRoot(prefix: string) {
@@ -74,12 +89,17 @@ async function unimplementedResult(ruleId: string) {
   return result;
 }
 
-function expectSingleGenericBlock(ruleId: string, result: unknown) {
+function expectSingleGenericBlock(
+  ruleId: string,
+  result: unknown,
+  message?: string,
+) {
   const findings = findingsForRepoGovernanceResult(ruleId, result);
   expect(findings).toEqual([
     expect.objectContaining({
       id: ruleId,
       severity: 'block',
+      ...(message === undefined ? {} : { message }),
     }),
   ]);
   expect(
@@ -131,16 +151,21 @@ describe('repo-governance Veritas result boundary', () => {
       });
       expect(result.findings).not.toEqual([]);
       for (const finding of result.findings) {
-        expect(Object.keys(finding).sort()).toEqual(['artifact', 'kind']);
+        expect(Object.keys(finding).sort()).toEqual(findingKeysByRule[ruleId]);
         expect(typeof finding.kind).toBe('string');
         expect(typeof finding.artifact).toBe('string');
+        if (ruleId === 'ai-instruction-files-synced') {
+          expect(typeof finding.diagnostic).toBe('string');
+          expect(typeof finding.remediation).toBe('string');
+          expect(finding.remediation).not.toBe('');
+        }
       }
 
       const findings = expectSingleGenericBlock(ruleId, result);
       expect(findings).toEqual([
         {
           id: ruleId,
-          message: 'Veritas reported a blocking governance policy failure.',
+          message: POLICY_FAILURE_MESSAGE,
           severity: 'block',
         },
       ]);
@@ -167,14 +192,19 @@ describe('repo-governance Veritas result boundary', () => {
       failedRoot,
     );
 
-    expectSingleGenericBlock('required-station-governance-artifacts', {
-      ...failure,
-      findings: [],
-    });
-    expectSingleGenericBlock('required-station-governance-artifacts', {
-      ...pass,
-      findings: [{ kind: 'missing-artifact', artifact: 'AGENTS.md' }],
-    });
+    expectSingleGenericBlock(
+      'required-station-governance-artifacts',
+      { ...failure, findings: [] },
+      INVALID_RESULT_MESSAGE,
+    );
+    expectSingleGenericBlock(
+      'required-station-governance-artifacts',
+      {
+        ...pass,
+        findings: [{ kind: 'missing-artifact', artifact: 'AGENTS.md' }],
+      },
+      INVALID_RESULT_MESSAGE,
+    );
   });
 
   it('accepts the exact installed unimplemented-result variant but keeps required governance red', async () => {
@@ -260,6 +290,10 @@ describe('repo-governance Veritas result boundary', () => {
       'ai-instruction-files-synced',
       failedRoot,
     );
+    // Every hostile finding below is one mutation away from the installed
+    // Veritas shape, so each is rejected for the reason its case names rather
+    // than for an unrelated key-count mismatch.
+    const [realFinding] = failure.findings;
     const accessor = { ...pass };
     Object.defineProperty(accessor, 'summary', {
       enumerable: true,
@@ -267,10 +301,7 @@ describe('repo-governance Veritas result boundary', () => {
         throw new Error('must not be read');
       },
     });
-    const findingAccessor = {
-      kind: 'missing-governance-file',
-      artifact: 'AGENTS.md',
-    };
+    const findingAccessor = { ...realFinding };
     Object.defineProperty(findingAccessor, 'artifact', {
       enumerable: true,
       get() {
@@ -283,10 +314,14 @@ describe('repo-governance Veritas result boundary', () => {
       },
     };
     const subclassedFindings = new (class extends Array {})();
-    subclassedFindings.push({
-      kind: 'missing-governance-file',
-      artifact: 'AGENTS.md',
-    });
+    subclassedFindings.push({ ...realFinding });
+
+    // Positive control: the unmutated installed shape is a policy failure.
+    expectSingleGenericBlock(
+      'ai-instruction-files-synced',
+      { ...failure, findings: [{ ...realFinding }] },
+      POLICY_FAILURE_MESSAGE,
+    );
 
     for (const result of [
       undefined,
@@ -294,38 +329,36 @@ describe('repo-governance Veritas result boundary', () => {
       Object.assign(Object.create(null), pass),
       { ...pass, unexpected: 'unknown field' },
       accessor,
+      { ...failure, findings: [{ ...realFinding, kind: 'unexpected-kind' }] },
+      { ...failure, findings: [{ ...realFinding, artifact: 7 }] },
+      { ...failure, findings: [{ ...realFinding, artifact: '' }] },
       {
         ...failure,
-        findings: [{ kind: 'unexpected-kind', artifact: 'AGENTS.md' }],
+        findings: [{ ...realFinding, artifact: hostileToString }],
       },
       {
         ...failure,
-        findings: [{ kind: 'missing-governance-file', artifact: 7 }],
+        findings: [{ ...realFinding, diagnostic: 'unexpected-diagnostic' }],
       },
+      { ...failure, findings: [{ ...realFinding, remediation: '' }] },
+      { ...failure, findings: [{ ...realFinding, remediation: 7 }] },
+      // The pre-1.6.0 two-key shape is no longer the installed contract.
       {
         ...failure,
-        findings: [{ kind: 'missing-governance-file', artifact: '' }],
-      },
-      {
-        ...failure,
-        findings: [
-          { kind: 'missing-governance-file', artifact: hostileToString },
-        ],
+        findings: [{ kind: realFinding.kind, artifact: realFinding.artifact }],
       },
       { ...failure, findings: subclassedFindings },
       { ...failure, findings: [findingAccessor] },
       {
         ...failure,
-        findings: [
-          {
-            kind: 'missing-governance-file',
-            artifact: 'AGENTS.md',
-            message: 'unexpected field',
-          },
-        ],
+        findings: [{ ...realFinding, message: 'unexpected field' }],
       },
     ]) {
-      expectSingleGenericBlock('ai-instruction-files-synced', result);
+      expectSingleGenericBlock(
+        'ai-instruction-files-synced',
+        result,
+        INVALID_RESULT_MESSAGE,
+      );
     }
   });
 
@@ -352,6 +385,31 @@ describe('repo-governance Veritas result boundary', () => {
     expect(renderedError).not.toContain(secret);
     expect(findings[0]).not.toHaveProperty('artifact');
     expect(findings[0]).not.toHaveProperty('kind');
+
+    // A valid governance-block finding's 1.6.0 remediation text is raw
+    // Veritas data too: it must not reach the lane's findings either.
+    const governanceFailure = await evaluatedResult(
+      'ai-instruction-files-synced',
+      failedRoot,
+    );
+    const [governanceFinding] = governanceFailure.findings;
+    const governanceFindings = expectSingleGenericBlock(
+      'ai-instruction-files-synced',
+      {
+        ...governanceFailure,
+        findings: [
+          {
+            ...governanceFinding,
+            artifact: secret,
+            remediation: `${governanceFinding.remediation} ${secret}`,
+          },
+        ],
+      },
+      POLICY_FAILURE_MESSAGE,
+    );
+    expect(JSON.stringify(governanceFindings)).not.toContain(secret);
+    expect(governanceFindings[0]).not.toHaveProperty('remediation');
+    expect(governanceFindings[0]).not.toHaveProperty('diagnostic');
 
     const unknownRuleFindings = findingsForRepoGovernanceResult(
       secret,
