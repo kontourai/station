@@ -2622,19 +2622,14 @@ export class StationRuntime {
   private captureSelectedPackageFingerprint(
     composition?: PluginActivationComposition,
   ): string | null {
-    // A runtime with no package-admission capability at all — no event store,
-    // or a store that does not provide the journal — has nothing that could
-    // have been admitted, so its selected set is verifiably EMPTY: the same
-    // fingerprint the loop below yields for zero installations. This is not
-    // the fail-closed case: a journal that exists but reports `unavailable`
-    // (unreadable, id mismatch, corrupt) still returns null and blocks the
-    // reload, because THAT set is genuinely unverifiable.
+    // No store, or a store without the admission journal, cannot say what is
+    // selected; that is the same unverifiable set as a corrupt journal, so it
+    // fails closed rather than manufacturing an empty fingerprint.
     if (
       typeof this.orchestrationEventStore?.createPackageMcpAdmissionJournal !==
       'function'
-    ) {
-      return createHash('sha256').update(JSON.stringify([])).digest('hex');
-    }
+    )
+      return null;
     try {
       const journal =
         this.orchestrationEventStore.createPackageMcpAdmissionJournal();
