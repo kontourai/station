@@ -334,6 +334,51 @@
   --border-dashed: var(--k-line);
   --overlay-modal: rgba(0, 0, 0, 0.7);
   --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.5);
+  /* Overlay elevation + radius come from the shared @kontourai/ui token layer
+     (--k-*), so every product tunes lift/roundness in one place, and the local
+     aliases keep Station's call sites (var(--elevation-overlay)) stable.
+
+     They are declared ONCE, here, and that is not the same reason --error-fill
+     and --accent-acp are: those are literal values that happen to suit both
+     themes. These two are an INDIRECTION. `var(--k-elevation-overlay)` is not
+     resolved where it is written — it is resolved on the element that reads
+     it, against whichever --k-* declaration wins there. Console Kit ships
+     --k-elevation-overlay twice (`:root` and its own `[data-theme="light"]`
+     override), so one alias declaration yields the dark shadow on a dark root
+     and the light shadow on a light one. Duplicating it per theme would be
+     noise, not safety.
+
+     #1637: both lived inside [data-theme="light"] instead, under a comment
+     saying no per-theme override was needed. That was true of the value and
+     false of the placement. `main.tsx` stamps `data-theme` on the root before
+     first render (dark by default), and a `data-theme="dark"` root matches
+     neither `[data-theme="light"]` nor anything else that declared these — so
+     both names were undefined, `var()` with no fallback is invalid at
+     computed-value time, and every rule reading them was dropped: every
+     .station-dialog (i.e. every Dialog), .command-palette, .modal-dialog,
+     .agent-selector__menu and .acp-add-dialog rendered square and flat.
+     (`.toast` at :1029 reads --elevation-overlay too but has no live surface;
+     the notification card is `.toast-card`, which sets its own shadow.)
+
+     `:root` is the half of this selector that carries the fix, and it carries
+     it for EVERY theme: it matches unconditionally, so one declaration here
+     covers dark, light, and the unstamped first frame. `[data-theme="dark"]`
+     is redundant beside it — it only re-matches a subset — and is present
+     because it is this block's existing selector, not because it guards
+     anything. Both halves were removed in a live browser and re-read to settle
+     it rather than argue it: dropping `[data-theme="dark"]` changed nothing in
+     any of the three states; dropping `:root` left dark correct and returned
+     `""` under `[data-theme="light"]` and on an unstamped root — the same
+     defect, mirrored. So narrowing this selector is as dangerous as deleting
+     the lines, and it fails in the theme you are least likely to be looking at.
+
+     What does NOT restore the defect is re-adding the pair to the light block
+     on top of this one; that is duplication and renders identically.
+     tests/overlay-elevation-tokens.spec.ts covers all of it — the real
+     `data-theme="dark"` document as the primary case, then light and the
+     unstamped frame, so a narrowed selector reds as loudly as a deletion. */
+  --elevation-overlay: var(--k-elevation-overlay);
+  --radius-overlay: var(--k-radius-overlay);
   --accent-subtle: color-mix(in srgb, var(--k-brand) 6%, transparent);
   --accent-border: color-mix(in srgb, var(--k-brand) 30%, transparent);
 }
@@ -465,13 +510,14 @@
   --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.2);
   --shadow-xl: 0 18px 40px rgba(0, 0, 0, 0.12);
   --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.3);
-  /* Overlay elevation + radius now come from the shared @kontourai/ui token
-     layer (--k-*), so every product tunes lift/roundness in one place. The
-     local aliases keep Station's call sites (var(--elevation-overlay)) stable;
-     --k-elevation-overlay carries its own light/dark variants, so no per-theme
-     override is needed here. */
-  --elevation-overlay: var(--k-elevation-overlay);
-  --radius-overlay: var(--k-radius-overlay);
+  /* --elevation-overlay / --radius-overlay are deliberately absent here. They
+     alias --k-* tokens that resolve on the reading element, and Console Kit
+     already overrides --k-elevation-overlay under this same selector, so the
+     `:root` declaration above resolves to the light shadow on a light root —
+     measured. Re-adding them here would render identically; it is duplication,
+     not a fix. #1637 was the opposite shape: they were declared ONLY here, so a
+     `data-theme="dark"` root (what `main.tsx` stamps by default) matched no
+     declaration at all and every overlay lost its radius and its lift. */
 
   /* Semantic aliases */
   --color-bg: var(--bg-primary);
@@ -5608,10 +5654,36 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   margin-bottom: 6px;
 }
 
-.usage-telemetry-disclosure__lede {
+.usage-telemetry-disclosure__lede,
+.usage-telemetry-disclosure__summary {
   color: var(--text-secondary);
   line-height: 1.6;
   margin-bottom: 20px;
+}
+
+/*
+ * #1600: the standalone disclosure holds the inventory behind the same
+ * collapsed summary the first-run step does, and offers the same two named
+ * decisions. Its rules live here rather than in `FirstRunHomeChapter.css`
+ * because this surface is mounted by `OnboardingGate` and by Settings, neither
+ * of which loads the chapter's stylesheet.
+ */
+.usage-telemetry-disclosure__inventory {
+  margin-bottom: 16px;
+}
+
+.usage-telemetry-disclosure__inventory > summary {
+  cursor: pointer;
+  padding: 8px 0;
+  color: var(--text-secondary);
+}
+
+.usage-telemetry-disclosure__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 16px;
 }
 
 .usage-telemetry-disclosure__event + .usage-telemetry-disclosure__event {
