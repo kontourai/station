@@ -365,6 +365,38 @@ then `npm run screenshot:diff -- --screens=<touched screens>` to see whether
 the change moved any pixels, without paying for a full 29-screen run or
 committing a new baseline until the change is intentional.
 
+#### Where the gate runs, and which renderer the baseline is bound to
+
+`.github/workflows/nightly-gallery.yml` runs the capture and the exact diff
+daily, in a **digest-pinned Playwright container** on a hosted runner. That is
+not an implementation detail: the comparator hashes a decoded RGBA buffer with
+no threshold, so a baseline is only meaningful against the renderer that
+produced it, and that renderer has to be reproducible. `--font-sans` resolves
+to `"DM Sans", system-ui, sans-serif` and the bundled woff2 subsets cover
+latin + latin-ext only, so the glyphs the UI draws for `⌘`, `⋯`, `─`, `→`,
+`●` and `✓` come from the **host's** fonts — pinning the image by digest pins
+the rasterizer, fontconfig and that font set together. The job logs the
+Playwright build and the resolved font families for exactly this reason.
+
+Two consequences worth stating plainly:
+
+- **Regenerate a baseline from the CI renderer, not from a laptop**, and as its
+  own commit that changes nothing else. A regeneration on a developer machine
+  bakes in that machine's fonts along with whatever upstream drift has
+  accumulated, under whoever happens to be holding the branch.
+- **Bump the container in lockstep with `@playwright/test`**, and expect a
+  re-baseline to be part of that change. A rebuilt base image published under
+  the same tag is a different renderer wearing the same name, which is why the
+  pin is a digest rather than `v1.62.1-noble`.
+
+  What is enforced, and what is not: `ci-workflow-contract.test.ts` asserts the
+  **version** in the image reference equals the `@playwright/test` version
+  resolved in `pnpm-lock.yaml` (the lockfile, not the caret range in
+  `package.json`, so a resolved minor bump cannot slip past). The **digest** is
+  not checked and cannot be — nothing in this repository derives it. A digest
+  that no longer matches its tag's contents therefore surfaces as a Playwright
+  launch error in the nightly, not as a silent renderer change.
+
 ### Region grid parity (`scripts/region-grid-parity.mjs`)
 
 The dock grid in `src-ui/src/index.css` keys its tracks on the shell's
