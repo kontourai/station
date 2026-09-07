@@ -344,6 +344,15 @@ interface PackageOwnershipRefusal {
  * directory, and no test able to see it. That is the defect this projection
  * exists to prevent, in the mechanism that prevents it. The `satisfies` below
  * makes the next addition a compile error instead.
+ *
+ * The residual it does NOT close: nothing forces a new condition to take a NEW
+ * reason code. Reusing `served-in-place` or `canonical-package` compiles and
+ * keeps the uniqueness test green, because that test ranges only over
+ * `SKILL_REFUSAL_STATEMENT` while those two codes are emitted inline above it —
+ * so the collision happens somewhere the test cannot see. The result ships a
+ * remedy the reader cannot follow, since the UI's table is keyed by the code
+ * and would offer the wrong one. (Reuse WITHIN the record is caught: the codes
+ * there would no longer be distinct.) Review round 8.
  */
 const SKILL_CONDITION_PRECEDENCE = [
   'unsafe-name',
@@ -2282,7 +2291,7 @@ export class SkillService {
         // silently reverted every ownership refusal to a false 404 (delta
         // review).
         reason: 'not-owned',
-        message: `Cannot remove '${name}': ${refusal}.`,
+        message: `Cannot remove '${name}': ${refusal.messageFragment}.`,
       };
     }
     return removeInstalledSkill({

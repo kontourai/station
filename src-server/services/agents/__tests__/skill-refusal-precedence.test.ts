@@ -9,7 +9,13 @@
  * name before it ever looks at a root).
  *
  * A fixture can only reach a combination the filesystem can produce; this table
- * enumerates all eight directly, so the ordering is pinned rather than sampled.
+ * enumerates directly. `unsafe-name` aside, three conditions co-occur freely,
+ * and all eight of their subsets appear below — so the ordering among them is
+ * pinned rather than sampled. The `unsafe-name` rows then cover it against each
+ * of the other three and against all of them at once. An earlier version of
+ * this sentence claimed eight combinations while listing eight ROWS, which is
+ * not the same count: four cells were unpinned under a docblock promising
+ * completeness (review round 8).
  */
 import { describe, expect, test } from 'vitest';
 import type { SkillPackageDirectoryCondition } from '../../../domain/skill-paths.js';
@@ -69,6 +75,26 @@ const CASES: Array<{
     ],
     spokenAbout: 'unsafe-name',
     why: 'the resolver refuses on the name before it looks at a root, so any install advice is guaranteed to fail',
+  },
+  {
+    held: ['unreadable', 'name-mismatch'],
+    spokenAbout: 'unreadable',
+    why: 'a directory name cannot be compared against a location that could not be read',
+  },
+  {
+    held: ['unreadable', 'name-mismatch', 'outside-writable-root'],
+    spokenAbout: 'unreadable',
+    why: 'nothing below it can be claimed while where the write would land is unknown',
+  },
+  {
+    held: ['unsafe-name', 'name-mismatch', 'unreadable'],
+    spokenAbout: 'unsafe-name',
+    why: 'the name blocks resolution, so the unreadable location was never reached',
+  },
+  {
+    held: ['unsafe-name', 'name-mismatch', 'outside-writable-root'],
+    spokenAbout: 'unsafe-name',
+    why: 'renaming is still the first thing to fix when the root is also wrong',
   },
 ];
 

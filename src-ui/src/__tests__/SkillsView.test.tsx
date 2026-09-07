@@ -756,7 +756,7 @@ describe('SkillsView', () => {
         // text, and the path in its own field. A fixture that inlined the path
         // would agree with a claim the server stopped making.
         detail:
-          'It is served from a directory that is not a skills root Station writes.',
+          'Station does not write the directory this package resolves to.',
         packageDirectory: '/station/plugins/vendor/skills/vendor-tool',
       },
     };
@@ -968,7 +968,7 @@ describe('SkillsView', () => {
         writeRefusal: {
           reason: 'outside-writable-root' as const,
           detail:
-            'It is served from a directory that is not a skills root Station writes.',
+            'Station does not write the directory this package resolves to.',
           packageDirectory: hostileDirectory,
         },
       });
