@@ -21,6 +21,7 @@ describe('loadRuntimePluginAssets', () => {
     );
 
     expect(loadProviders).toHaveBeenCalledWith({
+      packageMcpJournal: undefined,
       logger: expect.anything(),
       projectHomeDir: '/tmp/project',
       loadPluginOverrides: expect.any(Function),

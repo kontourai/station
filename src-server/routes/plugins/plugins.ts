@@ -1,8 +1,10 @@
+import type { PluginProviderReadView } from '../../providers/registries/registry.js';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 /**
  * Plugin Routes — top-level composer for plugin discovery, install, and public bridge routes.
  */
 
-import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import {
@@ -14,14 +16,16 @@ import {
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
-import { computePluginContentDigest } from '../../services/plugins/plugin-content-integrity.js';
 import { createPluginGrantReconciliationService } from '../../services/plugins/plugin-grant-reconciliation.js';
 import {
   publishGrantedPluginProviderGeneration,
   withPluginInstallationGeneration,
 } from '../../services/plugins/plugin-installation-generation-fence.js';
-import { readPluginManifestFile } from '../../services/plugins/plugin-manifest-loader.js';
-import { getPluginGrants } from '../../services/plugins/plugin-permissions.js';
+import {
+  hasGrant,
+  readPluginGrantState,
+} from '../../services/plugins/plugin-permissions.js';
+import { capturePluginRuntimeArtifact } from '../../services/plugins/plugin-runtime-artifact.js';
 import type { Logger } from '../../utils/logger.js';
 import { buildPlugin } from './plugin-bundles.js';
 import { registerPluginConfigRoutes } from './plugin-config-routes.js';
@@ -38,12 +42,17 @@ export function createPluginRoutes(
   logger: Logger,
   eventBus?: EventBus,
   runtime?: {
+    installationHost?: PluginInstallationHost;
+    packageMcpJournal?: PackageMcpAdmissionJournal;
     /** archive#3677: the distinct-origin consent surface (host approvals). */
     consentChannel?: ConsentChannelService;
     applyConfigurationMutation: AgentConfigurationMutationRunner;
     refreshKitObservability?: () => void;
     settleProviderAdapterRetirements: () => Promise<void>;
-    reconcileEngineConnections?: (plugin: string) => Promise<void>;
+    reconcileEngineConnections?: (
+      plugin: string,
+      view?: PluginProviderReadView,
+    ) => Promise<void>;
     removeEngineConnections?: (plugin: string) => Promise<void>;
     quiesceEventSubscriptions?: (
       pluginName?: string,
@@ -56,21 +65,35 @@ export function createPluginRoutes(
   const app = new Hono();
   const pluginsDir = join(projectHomeDir, 'plugins');
   const agentsDir = join(projectHomeDir, 'agents');
+  const capture = (name: string) =>
+    capturePluginRuntimeArtifact(pluginsDir, name, runtime?.packageMcpJournal);
+  const artifactGeneration = (artifact: ReturnType<typeof capture>) => {
+    return {
+      installed: !!artifact,
+      installationGeneration: artifact
+        ? JSON.stringify([artifact.generation ?? null, artifact.digest])
+        : null,
+    };
+  };
+  const captureGeneration = (name: string) => artifactGeneration(capture(name));
+
   const grantReconciliation =
     runtime?.quiesceEventSubscriptions &&
     runtime.reconcileEventSubscriptions &&
     runtime.removeEngineConnections &&
     runtime.reconcileEngineConnections
       ? createPluginGrantReconciliationService({
-          snapshot: async (pluginName) => ({
-            installed: existsSync(join(pluginsDir, pluginName, 'plugin.json')),
-            installationGeneration: computePluginContentDigest(
-              pluginsDir,
-              pluginName,
-            ),
-            providerGeneration: pluginProviderSourceGeneration(pluginName),
-            grants: getPluginGrants(projectHomeDir, pluginName),
-          }),
+          snapshot: async (pluginName) => {
+            const artifact = capture(pluginName);
+            return {
+              ...artifactGeneration(artifact),
+              providerGeneration: pluginProviderSourceGeneration(pluginName),
+              grants: artifact
+                ? readPluginGrantState(projectHomeDir, pluginName, artifact)
+                    .granted
+                : [],
+            };
+          },
           quiesceModule: (pluginName) =>
             quiescePluginPublicServerModule(pluginsDir, pluginName),
           quiesceSubscriptions: (pluginName) =>
@@ -85,23 +108,41 @@ export function createPluginRoutes(
               pluginsDir,
               pluginName,
               expected,
+              capture: () => captureGeneration(pluginName),
               effect: async () => {
-                const manifest = await readPluginManifestFile(
-                  join(pluginsDir, pluginName, 'plugin.json'),
-                );
+                const artifact = capture(pluginName);
+                if (!artifact) return 'superseded' as const;
+                const manifest = artifact.manifest;
                 const prepared = await preparePluginProviders(
                   pluginsDir,
                   pluginName,
                   manifest,
                   logger,
-                  { strict: true },
+                  {
+                    strict: true,
+                    packageRoot: artifact.packageRoot,
+                    artifact,
+                    visibility: {
+                      ready: () =>
+                        artifact.isCurrent() &&
+                        hasGrant(
+                          projectHomeDir,
+                          pluginName,
+                          'providers.register',
+                          undefined,
+                          artifact,
+                        ),
+                      permits: () => false,
+                    },
+                  },
                 );
                 return publishGrantedPluginProviderGeneration({
                   projectHomeDir,
                   pluginName,
                   expectedProviderGeneration: expected.providerGeneration,
                   prepared,
-                  isCurrent,
+                  isCurrent: () => isCurrent() && artifact.isCurrent(),
+                  artifact,
                 });
               },
             });
@@ -133,6 +174,7 @@ export function createPluginRoutes(
               pluginsDir,
               pluginName,
               expected,
+              capture: () => captureGeneration(pluginName),
               effect: () =>
                 withPluginProviderSourceGeneration(
                   pluginName,
@@ -158,14 +200,18 @@ export function createPluginRoutes(
   // and for that one name, HTTP removal is intentionally forfeited (see
   // reserved-plugin-identities.ts).
   registerPluginHomeRoleRoutes(app, {
+    packageMcpJournal: runtime?.packageMcpJournal,
     eventBus,
     pluginsDir,
     projectHomeDir,
     consentChannel: runtime?.consentChannel,
   });
   registerPluginLifecycleRoutes(app, {
+    packageMcpJournal: runtime?.packageMcpJournal,
+    installationHost: runtime?.installationHost,
     agentsDir,
-    buildPlugin: (pluginDir, name) => buildPlugin(pluginDir, name, logger),
+    buildPlugin: (pluginDir, name, manifest) =>
+      buildPlugin(pluginDir, name, logger, manifest),
     eventBus,
     logger,
     pluginsDir,
@@ -178,12 +224,15 @@ export function createPluginRoutes(
     quiesceEventSubscriptions: runtime?.quiesceEventSubscriptions,
   });
   registerPluginConfigRoutes(app, {
+    packageMcpJournal: runtime?.packageMcpJournal,
     eventBus,
     logger,
     pluginsDir,
     projectHomeDir,
   });
   registerPluginInstallRoutes(app, {
+    packageMcpJournal: runtime?.packageMcpJournal,
+    installationHost: runtime?.installationHost,
     agentsDir,
     applyConfigurationMutation: runtime?.applyConfigurationMutation,
     eventBus,
@@ -198,6 +247,7 @@ export function createPluginRoutes(
       : undefined,
   });
   registerPluginHostApprovalRoutes(app, {
+    packageMcpJournal: runtime?.packageMcpJournal,
     eventBus,
     pluginsDir,
     projectHomeDir,
@@ -205,6 +255,7 @@ export function createPluginRoutes(
     grantReconciliation,
   });
   registerPluginPublicRoutes(app, {
+    packageMcpJournal: runtime?.packageMcpJournal,
     eventBus,
     logger,
     pluginsDir,

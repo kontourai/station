@@ -46,7 +46,20 @@
       "items": { "$ref": "#/$defs/command" }
     },
     "links": {},
-    "agents": { "type": "array", "items": { "type": "object" } },
+    "agents": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["slug", "source"],
+        "properties": {
+          "slug": { "$ref": "#/$defs/id" },
+          "source": { "$ref": "#/$defs/pluginRelativePath" }
+        }
+      }
+    },
+    "workspacePaneHost": { "type": "object" },
     "workspacePanes": {
       "type": "array",
       "maxItems": 64,
@@ -65,7 +78,7 @@
         "required": ["type", "module"],
         "additionalProperties": false,
         "properties": {
-          "type": { "$ref": "#/$defs/id" },
+          "type": { "$ref": "#/$defs/hostKey" },
           "module": { "$ref": "#/$defs/pluginRelativePath" },
           "layout": false
         }
@@ -82,6 +95,12 @@
       "minLength": 1,
       "maxLength": 128,
       "pattern": "^[a-z0-9](?:[a-z0-9._:-]*[a-z0-9])?$"
+    },
+    "hostKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.:-]*$"
     },
     "nonEmptyString": { "type": "string", "minLength": 1 },
     "pluginRelativePath": {
@@ -106,7 +125,7 @@
       "type": "object",
       "required": ["key", "title", "type"],
       "properties": {
-        "key": { "$ref": "#/$defs/id" },
+        "key": { "$ref": "#/$defs/hostKey" },
         "title": { "type": "string", "minLength": 1, "maxLength": 128 },
         "type": { "enum": ["string", "number", "boolean", "select"] },
         "description": { "type": "string" },
@@ -208,7 +227,7 @@
       "additionalProperties": false,
       "required": ["key", "title"],
       "properties": {
-        "key": { "$ref": "#/$defs/id" },
+        "key": { "$ref": "#/$defs/hostKey" },
         "title": { "type": "string", "minLength": 1, "maxLength": 128 },
         "description": { "type": "string" },
         "required": { "type": "boolean" }
@@ -258,7 +277,14 @@
           "required": ["kind", "label"],
           "properties": {
             "kind": {
-              "enum": ["text", "project", "task", "session", "file", "registry-item"]
+              "enum": [
+                "text",
+                "project",
+                "task",
+                "session",
+                "file",
+                "registry-item"
+              ]
             },
             "label": { "type": "string", "minLength": 1, "maxLength": 64 },
             "required": { "type": "boolean" }

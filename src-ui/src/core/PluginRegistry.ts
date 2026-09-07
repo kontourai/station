@@ -256,7 +256,12 @@ export class PluginRegistry {
 
       let allBundlesLoaded = true;
       for (const plugin of plugins) {
-        if (!plugin.hasBundle) continue;
+        if (
+          !plugin.hasBundle ||
+          (plugin.installationReadiness !== undefined &&
+            plugin.installationReadiness?.state !== 'ready')
+        )
+          continue;
         if (remoteBrowserIsolation || remoteNativeIsolation) {
           if (!this.registerIsolatedPlugin(plugin, registryGeneration)) {
             allBundlesLoaded = false;
