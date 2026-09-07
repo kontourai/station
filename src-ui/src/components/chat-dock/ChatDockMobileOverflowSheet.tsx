@@ -72,6 +72,7 @@ export function ChatDockMobileOverflowSheet({
 
   return (
     <ResponsiveDialogSurface
+      layer="popover"
       ariaLabel="Chat actions"
       onClose={onClose}
       historyMode="entry"

@@ -271,6 +271,7 @@ export function NewProjectModalContent({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={dismiss}
       historyMode="route"
       ariaLabelledBy={

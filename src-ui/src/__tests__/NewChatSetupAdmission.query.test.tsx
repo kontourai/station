@@ -132,7 +132,7 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
     defaultOptions: { queries: { retry: false, gcTime: Infinity } },
   });
   const onSelect = vi.fn();
-  const view = render(
+  render(
     <QueryClientProvider client={client}>
       <NavigationProvider>
         <NewChatModal
@@ -153,7 +153,7 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
       .available,
   ).toBe(true);
   expect(
-    view.container.querySelector<HTMLButtonElement>('[data-agent-slug="other"]')
+    document.querySelector<HTMLButtonElement>('[data-agent-slug="other"]')
       ?.disabled,
   ).toBe(false);
   fireEvent.click(screen.getByRole('button', { name: 'Connect Needs setup' }));
@@ -170,7 +170,7 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
   expect(client.getQueryState(['agents'])?.status).toBe('error');
   expect(queued.length).toBeGreaterThan(0);
   expect(screen.getByText("Couldn't recheck chat setup")).toBeTruthy();
-  expect(view.container.querySelector('[data-agent-slug="other"]')).toBeNull();
+  expect(document.querySelector('[data-agent-slug="other"]')).toBeNull();
   expect(onSelect).not.toHaveBeenCalled();
   // Caller props still contain OLD_READY. A successful retry must consume the
   // SDK's fresh same-ID projection before queued observer notifications run.
@@ -180,7 +180,7 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
     await vi.advanceTimersByTimeAsync(0);
   });
   expect(
-    view.container.querySelector<HTMLButtonElement>('[data-agent-slug="other"]')
+    document.querySelector<HTMLButtonElement>('[data-agent-slug="other"]')
       ?.disabled,
   ).toBe(true);
   expect(screen.getByRole('button', { name: 'Model: New' })).toBeTruthy();

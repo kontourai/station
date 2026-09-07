@@ -70,6 +70,7 @@ export function PromptModal({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onCancel}
       ariaLabelledBy="prompt-modal-title"
       overlayClassName="modal-overlay"

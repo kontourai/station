@@ -95,7 +95,7 @@ const entries: readonly ResolvedWorkspacePaneCatalogEntry[] = [
 
 /** The picker's own markup, exactly as either route mounts it. */
 function pickerMarkup(): string {
-  const { container, unmount } = render(
+  const { unmount } = render(
     <ProjectWorkspacePaneModal
       show
       onClose={vi.fn()}
@@ -108,7 +108,9 @@ function pickerMarkup(): string {
       canExecuteAction={vi.fn(() => false)}
     />,
   );
-  const overlay = container.firstElementChild;
+  // The surface portals to `document.body`, so the overlay is not in the
+  // render container.
+  const overlay = document.querySelector('.responsive-surface-overlay');
   if (!overlay) throw new Error('the picker rendered nothing');
   const html = overlay.outerHTML;
   unmount();
