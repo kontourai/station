@@ -83,6 +83,18 @@ describe('which condition a refusal speaks about', () => {
     }
   });
 
+  // The compile-time guard for this lives in the service; this is the runtime
+  // half, so deleting that guard does not silently reopen the hole. An unranked
+  // condition makes the picker return `undefined` for a non-empty set, which the
+  // caller reads as WRITABLE — the one failure here that fails toward a grant.
+  test('every condition with a statement is also ranked', () => {
+    for (const condition of Object.keys(
+      SKILL_REFUSAL_STATEMENT,
+    ) as SkillPackageDirectoryCondition[]) {
+      expect(worstSkillPackageCondition([condition])).toBe(condition);
+    }
+  });
+
   test('every condition has a statement, and no two share a reason code', () => {
     const reasons = Object.values(SKILL_REFUSAL_STATEMENT).map((s) => s.reason);
     expect(new Set(reasons).size).toBe(reasons.length);

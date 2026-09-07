@@ -352,6 +352,26 @@ const SKILL_CONDITION_PRECEDENCE = [
   'name-mismatch',
 ] as const satisfies readonly SkillPackageDirectoryCondition[];
 
+/**
+ * Every condition must be RANKED, not merely have a statement.
+ *
+ * `satisfies` above only proves each entry is a real condition; it does not
+ * prove the list is complete, and an unranked condition would make
+ * `worstSkillPackageCondition` return `undefined` for a non-empty condition set
+ * — which this caller reads as "writable". So the hole the exhaustive `Record`s
+ * below close for the PROSE was open here for the DECISION, and it failed
+ * toward a grant. Found by adding a fifth condition and watching the statements
+ * fail to compile while the ranking silently accepted it.
+ */
+type UnrankedCondition = Exclude<
+  SkillPackageDirectoryCondition,
+  (typeof SKILL_CONDITION_PRECEDENCE)[number]
+>;
+const _everyConditionIsRanked: UnrankedCondition extends never
+  ? true
+  : ['unranked skill package condition', UnrankedCondition] = true;
+void _everyConditionIsRanked;
+
 export function worstSkillPackageCondition(
   conditions: readonly SkillPackageDirectoryCondition[],
 ): SkillPackageDirectoryCondition | undefined {
