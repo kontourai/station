@@ -200,6 +200,14 @@ function subtitledCompactActionsMarkup(): string {
  * why the literal thresholds need real margin rather than tight ones: a
  * different fallback face on another platform shifts every width here by a few
  * percent, and a threshold with no headroom would fail for that alone.
+ *
+ * LINE COUNTS are the sharp edge of this and are treated separately below. A
+ * width scales with the region and survives a face change; a line count is a
+ * step function of glyph metrics and does not. This file learned that the
+ * expensive way — a `subtitleLines <= 2` passed here and reddened on a Linux
+ * runner at three lines, with every property the test existed for still true.
+ * So line counts are asserted only in the DIRECTION that discriminates, with
+ * the face-independent width carrying the actual claim.
  */
 function fixtureHtml(
   markup: string,
@@ -343,8 +351,16 @@ describe.skipIf(!chromiumAvailable)(
 
         // The subtitle must reflow, not collapse into a one-word column.
         // Pre-fix: 0-32px wide across six lines.
+        //
+        // The width is the face-independent half: the subtitle's box is the
+        // identity's, so it tracks the region rather than the glyphs. The line
+        // count is the opposite — it is a function of the fallback face this
+        // harness ends up with (see `fixtureHtml`), and the same text measured
+        // two lines here and three on a Linux runner. The bound is 3 rather
+        // than 2 for that reason, which still discriminates by a factor of two
+        // against the six lines the defect produced.
         expect(m.subtitleWidth).toBeGreaterThan(120);
-        expect(m.subtitleLines).toBeLessThanOrEqual(2);
+        expect(m.subtitleLines).toBeLessThanOrEqual(3);
       },
       60_000,
     );
@@ -519,8 +535,11 @@ describe.skipIf(!chromiumAvailable)(
       expect(m.identityWidth).toBeLessThan(550);
       expect(m.titleClipped).toBe(false);
       expect(m.overflow).toBe(0);
-      // And it is still a legible subtitle, not a starved one.
-      expect(m.subtitleLines).toBeLessThanOrEqual(2);
+      // And it is still a legible subtitle, not a starved one. Width only:
+      // the discriminator here is `identityWidth`, and a line count would add
+      // nothing except a dependence on the fallback face — this assertion was
+      // `subtitleLines <= 2` and reddened on a Linux runner at three lines
+      // while every property the test exists for still held.
       expect(m.subtitleWidth).toBeGreaterThan(300);
     }, 60_000);
 
@@ -544,7 +563,10 @@ describe.skipIf(!chromiumAvailable)(
       });
       // 62ch measures 508px here; uncapped this subtitle takes 1051px.
       expect(m.subtitleWidth).toBeLessThan(600);
-      expect(m.subtitleLines).toBe(2);
+      // Uncapped, this subtitle fits on ONE line at this region. Capped, it
+      // cannot — so "two or more" is the property, and an exact count would
+      // only pin whichever fallback face this platform supplied.
+      expect(m.subtitleLines).toBeGreaterThanOrEqual(2);
     }, 60_000);
   },
 );
