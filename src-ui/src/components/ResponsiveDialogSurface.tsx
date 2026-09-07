@@ -401,6 +401,42 @@ export function ResponsiveDialogSurface({
       className={`${overlayClassName} responsive-surface-overlay`.trim()}
       style={{ ...visualViewport.style, ...anchorVars, ...overlayStyle }}
       data-responsive-layer={layer}
+      /**
+       * #1638: a modal or popover surface is not part of the dock's resize
+       * gesture, whether or not it happens to be a DOM descendant of it. This
+       * is the opt-out `useChatDockVerticalDrag` already honours (its
+       * `NO_DOCK_DRAG` bail, which `ChatDockMobileHeader` uses in three
+       * places), so nothing new is invented here.
+       *
+       * WITHOUT IT, PORTALLING BREAKS EVERY CONTROL IN A DOCK-MOUNTED SURFACE.
+       * `ChatDockMobileHeader` is the drag surface and renders its sheets
+       * inside itself, so a press on a sheet control reaches the hook's
+       * `onPointerDown`. That hook captures the pointer immediately and says
+       * why: "capture retargets the native click at the surface, where it
+       * activates nothing" — so it compensates by REPLAYING the click on the
+       * pressed control. The replay is gated on
+       * `target.contains(pressedControl)`, DOM containment against the drag
+       * surface. A portaled panel is not a DOM descendant, so the capture
+       * still fires and the compensation is switched off: the click is
+       * consumed and never replayed, and the control's handler never runs.
+       * Measured live — the mobile project switcher stopped switching
+       * projects at every phone width, with no pointer-interception error
+       * because there was no click to intercept.
+       *
+       * WHY A LISTENER SWEEP DOES NOT FIND THIS. The handler is neither on the
+       * document nor the window: it is a React prop on the drag surface, and
+       * React events cross a portal through the COMPONENT tree. So an audit
+       * that concludes "every listener is on the document or the window" is
+       * true and irrelevant twice over — the attachment point is a third
+       * thing, and the attachment point was never what breaks. What breaks
+       * under a portal is what a predicate TESTS.
+       *
+       * It also closes a defect that predates the portal: a press inside an
+       * open dialog was captured as a potential dock drag and replayed, so
+       * the dock could be resized by dragging from inside a dialog. Nothing
+       * intended that, but someone may have built a habit on it.
+       */
+      data-no-dock-drag=""
       data-anchored={anchorVars ? '' : undefined}
       role="presentation"
       onPointerDown={(event) => {
