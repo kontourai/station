@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -170,6 +170,63 @@ describe('repo-governance Veritas result boundary', () => {
         },
       ]);
     }
+
+    // Instruction files that exist but are not canonical reach the boundary
+    // through the other two governance-block kinds and their diagnostics.
+    const staleRoot = temporaryRoot('station-veritas-stale-');
+    writeFileSync(join(staleRoot, 'AGENTS.md'), '# No governance markers\n');
+    writeFileSync(
+      join(staleRoot, 'CLAUDE.md'),
+      [
+        '<!-- veritas:governance-block:start -->',
+        'Not the canonical block.',
+        '<!-- veritas:governance-block:end -->',
+        '',
+      ].join('\n'),
+    );
+    const stale = await evaluatedResult(
+      'ai-instruction-files-synced',
+      staleRoot,
+    );
+    expect(stale).toMatchObject({ implemented: true, passed: false });
+    expect(
+      stale.findings.map(
+        (finding: { artifact: string; kind: string; diagnostic: string }) => ({
+          artifact: finding.artifact,
+          kind: finding.kind,
+          diagnostic: finding.diagnostic,
+        }),
+      ),
+    ).toEqual([
+      {
+        artifact: 'AGENTS.md',
+        kind: 'missing-governance-block',
+        diagnostic: 'missing-governance-markers',
+      },
+      {
+        artifact: 'CLAUDE.md',
+        kind: 'stale-governance-block',
+        diagnostic: 'stale-governance-content',
+      },
+    ]);
+    for (const finding of stale.findings) {
+      expect(Object.keys(finding).sort()).toEqual(
+        findingKeysByRule['ai-instruction-files-synced'],
+      );
+    }
+    expect(
+      expectSingleGenericBlock(
+        'ai-instruction-files-synced',
+        stale,
+        POLICY_FAILURE_MESSAGE,
+      ),
+    ).toEqual([
+      {
+        id: 'ai-instruction-files-synced',
+        message: POLICY_FAILURE_MESSAGE,
+        severity: 'block',
+      },
+    ]);
   });
 
   it('does not let an invented stage downgrade a reported failure', async () => {
