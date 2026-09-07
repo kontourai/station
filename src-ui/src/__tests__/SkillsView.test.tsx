@@ -919,6 +919,36 @@ describe('SkillsView', () => {
       expect(screen.getAllByDisplayValue(hostile).length).toBeGreaterThan(0);
     });
 
+    // This change adds a fourth reason code, so the previous desktop build
+    // talking to this server is exactly the case below — not a hypothetical.
+    // The remedy table is keyed by a closed union that only closes at COMPILE
+    // time; `reason` itself arrives over HTTP.
+    test('a reason code this build does not know drops the remedy, not into prose', () => {
+      selectRow({
+        name: 'from-a-newer-server',
+        source: 'local',
+        writable: false,
+        writeRefusal: {
+          // Deliberately outside the union: a server one release ahead.
+          reason: 'sealed-by-policy' as never,
+          detail: 'It is served from a root this Station does not write.',
+        },
+      });
+
+      const { container } = render(<SkillsView />);
+
+      const note = container.querySelector('.skill-detail__source-note');
+      expect(note).toBeTruthy();
+      // The server's own sentence still stands...
+      expect(note?.textContent ?? '').toContain(
+        'It is served from a root this Station does not write.',
+      );
+      // ...and no placeholder leaked into Station's explanation.
+      expect(note?.textContent ?? '').not.toContain('undefined');
+      // Save stays withheld: an unknown reason is still a refusal.
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    });
+
     test('Create is still offered while authoring a new skill', () => {
       // `isCreating` short-circuits the decision on purpose: nothing is
       // discovered under a name that does not exist yet, so there is no package

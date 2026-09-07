@@ -301,9 +301,10 @@ describe('the projection agrees with what PUT enforces', () => {
 
 describe('the decision does not outlive the registry that made it', () => {
   test('a package that moves out of the writable root stops reading as writable', async () => {
-    // The projection is read once per row, so the decision is cached for the
-    // registry generation it was computed in. This is the invalidation: the
-    // same NAME, resolving to a different package after rediscovery.
+    // Nothing memoises across calls, so this is not an invalidation test so
+    // much as a statement of the property that makes one unnecessary: the same
+    // NAME, resolving to a different package after rediscovery, is decided
+    // afresh by whoever asks next.
     const writablePackage = join(home, 'skills', 'movable');
     writePackage(writablePackage, 'movable', {
       source: 'local',
@@ -327,7 +328,7 @@ describe('the decision does not outlive the registry that made it', () => {
 
     const row = (await listing(app)).get('movable');
     expect(row?.writable).toBe(false);
-    // And the route agrees, from the same cache.
+    // And the route's own gate agrees, from the same derivation.
     expect(service.isSkillWritable('movable', home)).toBe(false);
   });
 });
@@ -561,19 +562,33 @@ describe('a decision made while discovery is in flight does not outlive it', () 
     await listing(app);
     await discovery;
 
-    expect(service.isSkillWritable('shipped', home)).toBe(false);
-    const row = (await listing(app)).get('shipped');
-    expect(row?.writable).toBe(false);
-    expect(refusalOf(row).reason).toBe('canonical-package');
-
-    // The consequence, not just the label: the gate refuses, and no shadow
-    // package appears under the machine root.
+    // THE DAMAGE IS ASSERTED FIRST, so a regression's failure text names the
+    // granted write rather than a stale boolean: the gate refuses, and no
+    // shadow package is published under the machine root. Under the memo review
+    // rejected, this PUT was admitted and `<home>/skills/shipped` appeared —
+    // that write, not the label, is what made the finding a HIGH.
     const refused = await app.request('/shipped', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ command: { enabled: true } }),
     });
-    expect(refused.status).toBe(409);
-    expect(existsSync(join(home, 'skills', 'shipped'))).toBe(false);
+    expect({
+      refusedWithConflict: refused.status === 409,
+      shadowedUnderMachineRoot: existsSync(join(home, 'skills', 'shipped')),
+    }).toEqual({ refusedWithConflict: true, shadowedUnderMachineRoot: false });
+
+    // And every reader agrees with what the gate just did — the predicate, the
+    // listing and the DETAIL read, because all three go through the one
+    // derivation and none of them may carry an answer out of that window.
+    expect(service.isSkillWritable('shipped', home)).toBe(false);
+    const row = (await listing(app)).get('shipped');
+    expect(row?.writable).toBe(false);
+    expect(refusalOf(row).reason).toBe('canonical-package');
+    const detail = (await json(await app.request('/shipped'))).data as Record<
+      string,
+      unknown
+    >;
+    expect(detail.writable).toBe(false);
+    expect(refusalOf(detail).reason).toBe('canonical-package');
   });
 });

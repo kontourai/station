@@ -1,5 +1,6 @@
 import type {
   Skill,
+  SkillWriteRefusal,
   SkillWriteRefusalReason,
 } from '@kontourai/station-contracts/catalog';
 import { skillCommandNameError } from '@kontourai/station-contracts/skill-command';
@@ -70,6 +71,26 @@ const SKILL_WRITE_REMEDY: Record<SkillWriteRefusalReason, string> = {
   'outside-writable-root': 'Install it into your workspace to author it here.',
   'unresolvable-name': 'Rename it to author it here.',
 };
+
+/**
+ * The refusal sentence: WHAT is wrong, in the server's own words, then WHAT TO
+ * DO, chosen by the reason code.
+ *
+ * The lookup is guarded because `reason` arrives over HTTP from a server that
+ * may be NEWER than this build — this change itself adds a fourth reason code,
+ * so a desktop app on the previous build meeting this server is the live
+ * instance of that, not a hypothetical. An unrecognised code drops the remedy
+ * rather than rendering `undefined` inside a paragraph the reader takes for
+ * Station's own explanation; the server's sentence still says what is wrong,
+ * and Save is withheld either way. The `Record` above is what keeps the union
+ * exhaustive at COMPILE time, which this guard does not weaken.
+ */
+function skillWriteRefusalNote(refusal: SkillWriteRefusal): string {
+  const remedy: string | undefined = SKILL_WRITE_REMEDY[refusal.reason];
+  return remedy
+    ? `Read-only. ${refusal.detail} ${remedy}`
+    : `Read-only. ${refusal.detail}`;
+}
 
 export function SkillsView({
   basePath = '/skills',
@@ -605,9 +626,7 @@ export function SkillsView({
                     {!editableLocal && (
                       <p className="skill-detail__source-note">
                         {selected?.writeRefusal
-                          ? `Read-only. ${selected.writeRefusal.detail} ${
-                              SKILL_WRITE_REMEDY[selected.writeRefusal.reason]
-                            }`
+                          ? skillWriteRefusalNote(selected.writeRefusal)
                           : 'This skill is read-only here. Browse Registry to discover or install skills; create a new workspace skill to author one.'}
                       </p>
                     )}
