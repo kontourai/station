@@ -287,6 +287,24 @@ interface Shape {
    * scrim-less popover is not.
    */
   readonly expectsChromeReachable: boolean;
+  /**
+   * #1638/#1662: whether the notice host's own control is expected to be
+   * COVERED by an open popover. This pins an accepted reversal rather than a
+   * fix, so it is deliberately narrow.
+   *
+   * `BannerHost.css` puts the host — and under #920 a blocking
+   * pairing/credential card's own item and cap — at
+   * `calc(var(--layer-dock) + 1)` (9201), expressly so only a critical card
+   * crosses the dock layer. `--layer-surface-popover` is 9250, so an open
+   * popover now covers it, where on `origin/main` a dock-trapped popover did
+   * not. `tokens.css` records why that trade was accepted: the occlusion is
+   * user-initiated and dismissible, unlike the click theft #1638 reports.
+   *
+   * Asserted so a later change is a visible decision and not a silent one. If
+   * the layer order moves — popover under the banner, or the banner up — this
+   * goes red and the reasoning in `tokens.css` has to be revisited.
+   */
+  readonly expectsCriticalBannerCoveredByPopover: boolean;
 }
 
 const BOTTOM_DOCK = 'chat-dock chat-dock--bottom';
@@ -301,6 +319,7 @@ const SHAPES: readonly Shape[] = [
     expectsDialogReachable: true,
     expectsNoticeOverlap: true,
     expectsChromeReachable: false,
+    expectsCriticalBannerCoveredByPopover: false,
   },
   {
     name: "a maximized dock's sheet under #920's critical card",
@@ -310,6 +329,7 @@ const SHAPES: readonly Shape[] = [
     expectsDialogReachable: true,
     expectsNoticeOverlap: true,
     expectsChromeReachable: false,
+    expectsCriticalBannerCoveredByPopover: false,
   },
   {
     // MEASURED, and the reason this shape asserts only the portal property:
@@ -330,6 +350,7 @@ const SHAPES: readonly Shape[] = [
     expectsDialogReachable: false,
     expectsNoticeOverlap: false,
     expectsChromeReachable: false,
+    expectsCriticalBannerCoveredByPopover: false,
   },
   {
     name: 'two region docks, the dialog in one of them',
@@ -342,6 +363,7 @@ const SHAPES: readonly Shape[] = [
     expectsDialogReachable: true,
     expectsNoticeOverlap: false,
     expectsChromeReachable: false,
+    expectsCriticalBannerCoveredByPopover: false,
   },
   {
     name: 'a desktop region-grid dock, the dialog inside it',
@@ -351,6 +373,7 @@ const SHAPES: readonly Shape[] = [
     expectsDialogReachable: true,
     expectsNoticeOverlap: false,
     expectsChromeReachable: false,
+    expectsCriticalBannerCoveredByPopover: false,
   },
   {
     name: 'only a scrim-less popover open: the toast stays reachable',
@@ -360,6 +383,21 @@ const SHAPES: readonly Shape[] = [
     expectsDialogReachable: false,
     expectsNoticeOverlap: false,
     expectsChromeReachable: true,
+    expectsCriticalBannerCoveredByPopover: false,
+  },
+  {
+    // The mirror of the second shape above, which pairs #920's critical card
+    // with a DIALOG (where superseding a notice is the documented contract).
+    // Pairing it with a POPOVER is the case this branch reverses, and until
+    // this shape existed nothing pinned it.
+    name: "a scrim-less popover over #920's critical card",
+    viewport: PHONE,
+    critical: true,
+    docks: [{ className: MAXIMIZED_DOCK, surface: 'drafts' }],
+    expectsDialogReachable: false,
+    expectsNoticeOverlap: false,
+    expectsChromeReachable: false,
+    expectsCriticalBannerCoveredByPopover: true,
   },
 ];
 
@@ -423,6 +461,13 @@ interface Measured {
     point: { x: number; y: number };
     hit: string;
     hitsItself: boolean;
+  }[];
+  bannerControls: {
+    control: string;
+    point: { x: number; y: number };
+    hit: string;
+    hitsItself: boolean;
+    underOverlay: boolean;
   }[];
 }
 
@@ -519,6 +564,28 @@ describe.skipIf(!chromiumAvailable)(
             document.querySelectorAll('.notification-container button'),
           ).map(hitFor);
 
+          // The notice host's own controls, plus whether the open surface's
+          // overlay geometrically covers each one. `underOverlay` is the power
+          // guard: "covered" means nothing if no overlay is over the control.
+          const overlayBox = overlay?.getBoundingClientRect() ?? null;
+          const bannerHits = bannerControls.map((control) => {
+            const entry = hitFor(control);
+            const box = control.getBoundingClientRect();
+            const point = entry.point;
+            return {
+              ...entry,
+              underOverlay: Boolean(
+                overlayBox &&
+                  point.x >= overlayBox.left &&
+                  point.x <= overlayBox.right &&
+                  point.y >= overlayBox.top &&
+                  point.y <= overlayBox.bottom &&
+                  box.width > 0 &&
+                  box.height > 0,
+              ),
+            };
+          });
+
           return {
             dockWouldTrap: docks.every((dock) => {
               const style = getComputedStyle(dock);
@@ -532,6 +599,7 @@ describe.skipIf(!chromiumAvailable)(
             dialogControls,
             dialogOverlaps,
             chromeControls,
+            bannerControls: bannerHits,
           };
         });
       } finally {
@@ -619,6 +687,56 @@ describe.skipIf(!chromiumAvailable)(
           stolen,
           `the notice host took a click from a dialog control (host z-index ${measured.hostZIndex}, ` +
             `overlay z-index ${measured.overlayZIndex}, docks at ${measured.dockZIndexes.join(', ')}):\n${stolen
+              .map(
+                (entry) =>
+                  `  ${entry.control} at (${entry.point.x}, ${entry.point.y}) hit ${entry.hit}`,
+              )
+              .join('\n')}`,
+        ).toEqual([]);
+      },
+    );
+
+    test.each(
+      SHAPES.filter((shape) => shape.expectsCriticalBannerCoveredByPopover),
+    )(
+      "an open popover covers #920's critical card — accepted, not a fix: $name",
+      async (shape) => {
+        const measured = await measure(shape);
+        assertTheDockWouldStillTrapASurface(measured);
+
+        // Power guard 1: the host has to have rendered a control at all.
+        expect(
+          measured.bannerControls.length,
+          'the notice host rendered no control that takes pointer events, so ' +
+            'this shape cannot observe whether a popover covers it.',
+        ).toBeGreaterThan(0);
+
+        // Power guard 2: "covered" is only meaningful where the popover's
+        // overlay is actually over the control. Without this, a host that
+        // simply moved out from under the popover would read as covered.
+        const under = measured.bannerControls.filter(
+          (entry) => entry.underOverlay,
+        );
+        expect(
+          under.length,
+          "the popover's overlay does not cover any notice-host control, so " +
+            'this measurement proves nothing about layer order. The geometry ' +
+            'moved — restore the overlap rather than deleting the test.',
+        ).toBeGreaterThan(0);
+
+        // The accepted reversal, asserted so a later change to it is visible.
+        // `tokens.css` carries the reasoning; if this goes red, that reasoning
+        // is what has to be revisited.
+        const reachable = under.filter((entry) => entry.hitsItself);
+        expect(
+          reachable,
+          'a notice-host control under the popover is reachable, so the ' +
+            'popover no longer outranks the banner at ' +
+            `calc(--layer-dock + 1) (host z-index ${measured.hostZIndex}, ` +
+            `overlay z-index ${measured.overlayZIndex}). That REVERSES the ` +
+            'trade recorded on `--layer-surface-popover` in `tokens.css`. If ' +
+            'the layer order was moved deliberately, update that reasoning ' +
+            `and this shape together:\n${reachable
               .map(
                 (entry) =>
                   `  ${entry.control} at (${entry.point.x}, ${entry.point.y}) hit ${entry.hit}`,
