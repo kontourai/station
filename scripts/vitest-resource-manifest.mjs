@@ -62,6 +62,12 @@ export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
   // Runs the real Play upload wrapper through SIGTERM escalation and asserts
   // exact owned-PID cleanup; overlap would weaken the ownership boundary.
   'scripts/__tests__/play-upload-retry.test.ts',
+  // Composes two real remote-home fixtures, each with EventStore history and
+  // working-state workers, plus separate operator-history workers. Source and
+  // target open calls are awaited sequentially, but those worker owners are
+  // initialized concurrently before the opens and must not share an outer
+  // Vitest pool with another bootstrap-heavy file.
+  'src-server/routes/environments/__tests__/remote-home-transfer-decision.test.ts',
 ]);
 
 export const CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES = Object.freeze([
@@ -212,6 +218,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Drives the changed-verification CLI through spawnSync against a real
   // fixture worktree to prove its dependency and selection behavior.
   'scripts/__tests__/changed-verification.test.ts',
+  // Builds a disposable diverged Git graph and runs real Git commands to
+  // distinguish candidate-only changes from base-only and direct-push ranges.
+  'scripts/__tests__/classify-ci-change.test.ts',
   // #3033: runs the pre-push UI-bundle guardrail as a real child process so
   // its exit STATUS is asserted, not just its pure decision functions — a
   // rejection path that has never executed is unproven.
@@ -930,6 +939,81 @@ export function assertOrdinaryVitestSelection(
   return selected;
 }
 
+/** Apply the canonical resource ownership map to one exact, bounded subset. */
+export function partitionVitestResourceSubset(
+  files,
+  { root = process.cwd(), manifest = VITEST_RESOURCE_MANIFEST } = {},
+) {
+  if (!Array.isArray(files) || files.length === 0)
+    throw new Error('Vitest resource subset requires at least one test file');
+  const normalizedFiles = files.map(normalizedPath).sort();
+  if (normalizedFiles.some((file) => !isSafeRelativeFile(file)))
+    throw new Error('Vitest resource subset contains an unsafe path');
+  if (new Set(normalizedFiles).size !== normalizedFiles.length)
+    throw new Error('Vitest resource subset contains duplicate test paths');
+  const explicit = explicitFiles(manifest);
+  if (new Set(explicit).size !== explicit.length)
+    throw new Error('Vitest resource groups must be disjoint');
+  if (
+    explicit.some(
+      (file) => !isSafeRelativeFile(file) || isDogfoodReconcileFile(file),
+    )
+  )
+    throw new Error(
+      'Vitest resource manifest contains an invalid explicit path',
+    );
+
+  const groups = {
+    ordinary: [],
+    processHeavy: [],
+    processExclusive: [],
+    coordinatorExclusive: [],
+    credentialLedgerExclusive: [],
+    sharedOutput: [],
+    dogfoodReconcile: [],
+  };
+  for (const file of normalizedFiles) {
+    if (isDogfoodReconcileFile(file)) groups.dogfoodReconcile.push(file);
+    else if (manifest.sharedOutput.files.includes(file))
+      groups.sharedOutput.push(file);
+    else if (manifest.processExclusive.files.includes(file))
+      groups.processExclusive.push(file);
+    else if (manifest.coordinatorExclusive.files.includes(file))
+      groups.coordinatorExclusive.push(file);
+    else if (manifest.credentialLedgerExclusive.files.includes(file))
+      groups.credentialLedgerExclusive.push(file);
+    else if (manifest.processHeavy.files.includes(file))
+      groups.processHeavy.push(file);
+    else groups.ordinary.push(file);
+  }
+  for (const file of groups.ordinary) {
+    if (
+      existsSync(resolve(root, file)) &&
+      hasDirectChildProcessImport(
+        readFileSync(resolve(root, file), 'utf8'),
+        file,
+      )
+    )
+      throw new Error(
+        `direct node:child_process importer needs an explicit resource classification: ${file}`,
+      );
+  }
+  const classified = Object.values(groups).flat();
+  if (
+    classified.length !== normalizedFiles.length ||
+    new Set(classified).size !== normalizedFiles.length
+  )
+    throw new Error('Vitest resource groups do not exactly cover subset');
+  return Object.freeze(
+    Object.fromEntries(
+      Object.entries(groups).map(([name, selected]) => [
+        name,
+        Object.freeze(selected),
+      ]),
+    ),
+  );
+}
+
 /**
  * Validate and partition a discovered corpus.  Throws rather than returning a
  * partial selection: a false-green test command is worse than a slow one.
@@ -971,65 +1055,17 @@ export function buildVitestResourceGroups(
     }
   }
 
-  const groups = {
-    ordinary: [],
-    processHeavy: [],
-    processExclusive: [],
-    coordinatorExclusive: [],
-    credentialLedgerExclusive: [],
-    sharedOutput: [],
-    dogfoodReconcile: [],
-  };
-  for (const file of normalizedDiscovered) {
-    if (isDogfoodReconcileFile(file)) groups.dogfoodReconcile.push(file);
-    else if (manifest.sharedOutput.files.includes(file))
-      groups.sharedOutput.push(file);
-    else if (manifest.processExclusive.files.includes(file))
-      groups.processExclusive.push(file);
-    else if (manifest.coordinatorExclusive.files.includes(file))
-      groups.coordinatorExclusive.push(file);
-    else if (manifest.credentialLedgerExclusive.files.includes(file))
-      groups.credentialLedgerExclusive.push(file);
-    else if (manifest.processHeavy.files.includes(file))
-      groups.processHeavy.push(file);
-    else groups.ordinary.push(file);
-  }
+  const groups = partitionVitestResourceSubset(normalizedDiscovered, {
+    root,
+    manifest,
+  });
   if (groups.dogfoodReconcile.length === 0) {
     throw new Error(
       'Vitest resource manifest discovered no dogfood-reconcile files',
     );
   }
 
-  // New process-tree tests are deliberately noisy until a reviewer chooses a
-  // resource group.  Shared-output and dogfood placement are valid reviewed
-  // exceptions; ordinary placement is never implicit for these imports.
-  for (const file of normalizedDiscovered) {
-    const source = readFileSync(resolve(root, file), 'utf8');
-    if (
-      hasDirectChildProcessImport(source, file) &&
-      groups.ordinary.includes(file)
-    ) {
-      throw new Error(
-        `direct node:child_process importer needs an explicit resource classification: ${file}`,
-      );
-    }
-  }
-
-  const classified = Object.values(groups).flat();
-  if (
-    classified.length !== normalizedDiscovered.length ||
-    new Set(classified).size !== normalizedDiscovered.length
-  ) {
-    throw new Error('Vitest resource groups do not exactly cover discovery');
-  }
-  return Object.freeze(
-    Object.fromEntries(
-      Object.entries(groups).map(([name, files]) => [
-        name,
-        Object.freeze(files),
-      ]),
-    ),
-  );
+  return groups;
 }
 
 export function discoverVitestResourceGroups(options = {}) {

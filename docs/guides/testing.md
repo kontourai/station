@@ -84,6 +84,18 @@ marks incomplete identities instead of presenting aggregate counts as a
 diagnosable bundle, and `incompleteReasons` names every shortfall in words
 rather than leaving a bare `complete: false`.
 
+Changed-test execution discovers Vitest's related files first, combines them
+with the enabled explicit manifest targets, and runs each selected file once.
+The subset uses the same resource groups and worker limits as `test:full`:
+ordinary files use four workers, process-heavy files use two, and exclusive
+or shared-output groups run serially. Groups run in sequence. Deferred lanes
+remain deferred; this grouping does not broaden a bounded CI selection.
+Discovery has a 60-second deadline and a 1 MiB output limit. Discovery and
+test commands own their process trees, including cancellation and settlement.
+Missing or unsafe selected files and discovery failures stop execution and
+produce a preparation error in the diagnostic; they never count as executed
+tests or a passing empty selection.
+
 Test outcomes are read from Vitest's own report, never derived by subtraction.
 `executed` counts what actually ran (`passed + failed`); a deliberate skip
 (`describe.skipIf`) and a `test.todo` are itemised as `skipped` and `todo`
@@ -107,6 +119,14 @@ evidence: it runs base-pinned affected Vitest tests followed by fixed bounded
 invariants, not the global static/build chain or full corpus.
 Ordinary pull requests use focused evidence plus `npm run ci:fast`.
 GitHub's merge queue runs the required checks on the synthesized latest-main candidate.
+The iOS relevance check compares pull-request and merge-queue candidates from
+their merge base to the candidate head, so changes added only to a newer base
+do not trigger a candidate build. The shared change classifier retains direct
+before-to-after ranges for push classification, while the iOS workflow keeps
+running every admitted push and manual dispatch. The `pull_request_target` job
+executes the base-controlled classifier and runs the iOS check when that
+classifier is missing, fails, or returns anything other than one exact
+`relevant=true` or `relevant=false` line.
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
@@ -521,7 +541,7 @@ If verification succeeds but guard finalization cannot finish, the runner report
 next install until it is inspected. Unexpected guard children are never
 recursively deleted. This is cooperative install coordination and a recovery
 aid for generated dependencies, not a rollback transaction or user-data backup:
-workspace-local dependency trees and lockfiles remain npm-owned, and no
+workspace-local dependency trees and lockfiles remain pnpm-owned, and no
 hostile same-user/path-swap or power-loss archive guarantee is made.
 
 `npm run dependencies:ci` does **not** provision Playwright browsers. The
