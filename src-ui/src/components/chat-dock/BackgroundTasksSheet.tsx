@@ -261,6 +261,7 @@ export function BackgroundTasksSheet({
 
   return (
     <ResponsiveDialogSurface
+      layer="popover"
       onClose={onClose}
       ariaLabel="Background tasks"
       overlayClassName="background-tasks-sheet-overlay background-tasks-sheet-overlay--start"

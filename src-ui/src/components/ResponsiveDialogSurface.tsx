@@ -23,7 +23,22 @@ const FOCUSABLE =
   'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])';
 
 type InitialFocusPolicy = 'always' | 'desktop' | 'panel';
-type ResponsiveSurfaceLayer = 'dialog' | 'system';
+/**
+ * #1638/#1662: which layer this surface owns, and every consumer states it —
+ * there is no default. A default was wrong for some consumer three times on
+ * this branch (an anchored-popover proxy, a scrim proxy, and `'dialog'` for
+ * surfaces that are not dialogs), and an omission is now a type error at the
+ * call site rather than a click the wrong surface swallows at runtime.
+ *
+ * - `dialog`   — owns the viewport until dismissed; supersedes notifications.
+ * - `popover`  — belongs to its trigger. Escapes the dock (every surface
+ *                portals now, so the dock cannot clamp it) and outranks it,
+ *                but stays below the chrome a user needs in order to act:
+ *                `NotificationContainer.css` states that only dialogs and
+ *                system blockers supersede a notification.
+ * - `system`   — an explicit system blocker; supersedes everything.
+ */
+type ResponsiveSurfaceLayer = 'dialog' | 'popover' | 'system';
 type DialogHistoryMode = 'entry' | 'route' | 'none';
 
 export interface ResponsiveDialogSurfaceProps {
@@ -46,7 +61,8 @@ export interface ResponsiveDialogSurfaceProps {
   initialFocusPolicy?: InitialFocusPolicy;
   returnFocusTarget?: HTMLElement | null;
   dismissible?: boolean;
-  layer?: ResponsiveSurfaceLayer;
+  /** Required: see {@link ResponsiveSurfaceLayer}. There is no default. */
+  layer: ResponsiveSurfaceLayer;
   historyMode?: DialogHistoryMode;
   /**
    * Desktop-popover anchor. When set and the viewport is not mobile, the
@@ -175,7 +191,7 @@ export function ResponsiveDialogSurface({
   initialFocusPolicy = 'panel',
   returnFocusTarget,
   dismissible = true,
-  layer = 'dialog',
+  layer,
   historyMode = 'entry',
   anchorRef,
 }: ResponsiveDialogSurfaceProps) {

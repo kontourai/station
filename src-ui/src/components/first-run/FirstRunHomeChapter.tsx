@@ -480,6 +480,7 @@ export function FirstRunHomeChapter() {
       <FirstRunHomeCard onOpen={openChapter} />
       {open ? (
         <ResponsiveDialogSurface
+          layer="dialog"
           onClose={defer}
           ariaLabelledBy="first-run-chapter-title"
           overlayClassName="first-run-chapter__overlay"

@@ -64,6 +64,7 @@ export function ChatSettingsPanel({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       overlayClassName="chat-settings-overlay"
       panelClassName="chat-settings-modal"

@@ -74,6 +74,16 @@
   --layer-popover: 1000;
   --layer-notice: 9000;
   --layer-dock: 9200;
+  /* A popover/menu that belongs to a dock control. It ESCAPES the dock (its
+     surface portals to the body, so the dock can no longer clamp it) and must
+     therefore outrank it — but it is not a dialog, and
+     `NotificationContainer.css` states the rule this position is derived
+     from: notifications "remain reachable above the chat dock while dialogs
+     and system blockers still supersede both surfaces". A scrim-less popover
+     is neither of those, so it sits above the dock and below every layer the
+     shell keeps persistently over the dock: the floating action, navigation,
+     notifications, the palette and dialogs. */
+  --layer-surface-popover: 9250;
   --layer-floating-action: 9300;
   --layer-navigation: 9350;
   --layer-notification: 9400;

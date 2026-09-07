@@ -171,6 +171,7 @@ function ClassedModal() {
     surfaceClassesOf(NEW_CHAT_MODAL_PATH);
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       ariaLabel="New Chat"
       overlayClassName={overlayClassName}
       panelClassName={panelClassName}
@@ -193,6 +194,7 @@ function ClassedModal() {
 function BareModal() {
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       ariaLabel="Replace engine context"
       onClose={() => {}}
     >
@@ -248,6 +250,7 @@ function Chrome() {
               priority: 'high',
               status: 'delivered',
               createdAt: new Date(0).toISOString(),
+              updatedAt: new Date(0).toISOString(),
             }}
             onDismiss={() => {}}
           />

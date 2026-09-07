@@ -34,6 +34,7 @@ export default function SnoozeMenu({
   const presets = snoozePresetTargets(now);
   return (
     <ResponsiveDialogSurface
+      layer="popover"
       ariaLabel={`Snooze ${itemTitle}`}
       onClose={onClose}
       historyMode="entry"

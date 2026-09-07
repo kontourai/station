@@ -866,11 +866,39 @@ button:hover {
 .responsive-surface-overlay {
   --responsive-visual-viewport-height: 100dvh;
   --responsive-visual-viewport-top: 0px;
-  z-index: var(--layer-dialog) !important;
+}
+
+/* #1638/#1662: the layer is the `layer` prop every consumer of
+ * `ResponsiveDialogSurface` is REQUIRED to declare, keyed here off the
+ * attribute the component stamps from it, so the number a surface gets is the
+ * kind its author named rather than whatever its feature stylesheet happened
+ * to say.
+ *
+ * NO `!important`, deliberately, and this is the reason it could be dropped:
+ * these are attribute rules at (0,2,0), and every feature overlay that sets a
+ * z-index of its own does so with a single class at (0,1,0), so specificity
+ * decides it now. The `!important` these replace was load-bearing before the
+ * surfaces portaled — nine feature overlays set their own z-index and six are
+ * BELOW the dock (`.tool-call-batch-sheet__overlay` and `.drill-down-overlay`
+ * resolve to 1000, `.mobile-task-switcher__overlay` 70,
+ * `.delegation-launcher__overlay` 35, `.command-launcher__overlay` 30,
+ * `.active-work-frame__overlay` 20), so a portaled surface reading its
+ * feature value would land behind the dock entirely. Two others
+ * (`.new-project-layout-browser__overlay`, `.plugins__confirm-overlay`) ask
+ * for `--layer-dialog + 1` to cover a sibling dialog; the old `!important`
+ * already defeated them, so they were inert before this change and are inert
+ * after it — a stacked confirm resolves against its sibling by DOM order,
+ * which is what it already did. */
+.responsive-surface-overlay[data-responsive-layer="dialog"] {
+  z-index: var(--layer-dialog);
+}
+
+.responsive-surface-overlay[data-responsive-layer="popover"] {
+  z-index: var(--layer-surface-popover);
 }
 
 .responsive-surface-overlay[data-responsive-layer="system"] {
-  z-index: var(--layer-system) !important;
+  z-index: var(--layer-system);
 }
 
 /* station#753: one open transition for every dialog/sheet that renders

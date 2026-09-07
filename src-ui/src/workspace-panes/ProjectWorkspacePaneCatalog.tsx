@@ -100,6 +100,7 @@ export function ProjectWorkspacePaneModal({
   if (!show) return null;
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       ariaLabelledBy="project-add-pane-title"
       overlayClassName="project-page__modal-overlay"
