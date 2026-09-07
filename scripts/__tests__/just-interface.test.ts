@@ -118,7 +118,7 @@ describe('just contributor Interface', () => {
 
   it('keeps every convenience recipe mapped to an existing canonical command', () => {
     const expected = {
-      setup: 'npm ci',
+      setup: 'npm run dependencies:ci',
       check: 'npm run verify:static',
       full: 'npm run full:regression',
       desktop: 'npm run dev:desktop',

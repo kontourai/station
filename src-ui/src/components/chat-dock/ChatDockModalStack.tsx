@@ -1,7 +1,8 @@
 import type { ConversationListItem } from '@kontourai/station-sdk';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
-import type { ChatSession, DockMode } from '../../types';
+import type { ChatSession } from '../../types';
 import type { EffectiveModelSource } from '../../utils/execution';
 import { LazyBoundary } from '../LazyBoundary';
 import type { NewChatModalMode } from '../modals/NewChatModal';
@@ -33,16 +34,13 @@ interface ChatDockModalStackProps {
   newChatProjectOverride?: { slug: string; name: string } | null;
   sessions: ChatSession[];
   showNewChatModal: boolean;
+  newChatRequestEpoch?: number;
   showChatSettings: boolean;
   showSessionPicker: boolean;
   chatFontSize: number;
   defaultFontSize: number;
   showReasoning: boolean;
   showToolDetails: boolean;
-  dockMode: DockMode;
-  storedDockSlotPlacement: DockMode;
-  availableDockSlotPlacements: readonly DockMode[];
-  pathname: string;
   autoHideEnabled: boolean;
   onSelectNewChat: (
     agent: AgentData,
@@ -66,7 +64,6 @@ interface ChatDockModalStackProps {
   onChatFontSizeChange: (fn: (prev: number) => number) => void;
   onShowReasoningChange: (show: boolean) => void;
   onShowToolDetailsChange: (show: boolean) => void;
-  onDockModeChange: (mode: DockMode, pathname: string) => void;
   onAutoHideChange: (v: boolean) => void;
   /** #3310: the settings panel's "Summarize session" entry point. */
   sessionSummary?: {
@@ -87,16 +84,13 @@ export function ChatDockModalStack({
   newChatProjectOverride,
   sessions,
   showNewChatModal,
+  newChatRequestEpoch,
   showChatSettings,
   showSessionPicker,
   chatFontSize,
   defaultFontSize,
   showReasoning,
   showToolDetails,
-  dockMode,
-  storedDockSlotPlacement,
-  availableDockSlotPlacements,
-  pathname,
   autoHideEnabled,
   onSelectNewChat,
   onCloseNewChat,
@@ -106,7 +100,6 @@ export function ChatDockModalStack({
   onChatFontSizeChange,
   onShowReasoningChange,
   onShowToolDetailsChange,
-  onDockModeChange,
   onAutoHideChange,
   sessionSummary,
   forkSource,
@@ -121,14 +114,18 @@ export function ChatDockModalStack({
     else onSelectNewChat(agent, ...args);
   };
 
+  const requestAuthority = useHostRequestAuthorityScope();
+
   return (
     <>
       {showNewChatModal && (
         <LazyBoundary
+          key={newChatRequestEpoch}
           load={loadNewChatModal}
           componentProps={{
             agents,
             projects,
+            requestAuthority,
             activeProjectSlug:
               newChatProjectOverride?.slug ?? activeProjectSlug,
             onSelect: handleNewChatSelect,
@@ -154,11 +151,6 @@ export function ChatDockModalStack({
             setShowReasoning: onShowReasoningChange,
             showToolDetails,
             setShowToolDetails: onShowToolDetailsChange,
-            dockMode,
-            storedDockSlotPlacement,
-            availableDockSlotPlacements,
-            onDockModeChange: (mode: DockMode) =>
-              onDockModeChange(mode, pathname),
             autoHideEnabled,
             setAutoHideEnabled: onAutoHideChange,
             sessionSummary,

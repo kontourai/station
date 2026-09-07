@@ -4,6 +4,7 @@ import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
   installMockOrchestrationSse,
+  openChatRegion,
   seedActiveChats,
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
@@ -68,9 +69,7 @@ test.describe('Orchestration Recovery', () => {
 
     await page.goto('/projects/dev/layouts/code?chat=conv-restore');
     await dismissSetupLauncher(page);
-    await page
-      .getByRole('button', { name: 'Expand chat dock', exact: true })
-      .click();
+    await openChatRegion(page);
     await emitMockOrchestrationEvent(page, 'orchestration:snapshot', {
       sessions: [
         {
@@ -83,7 +82,7 @@ test.describe('Orchestration Recovery', () => {
     });
 
     await page.getByPlaceholder('Type a message...').fill('Resume work');
-    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     await expect.poll(() => executionRequests.length).toBe(1);
     expect(executionRequests[0]).toMatchObject({
@@ -167,15 +166,13 @@ test.describe('Orchestration Recovery', () => {
 
     await page.goto('/projects/dev/layouts/code?chat=conv-closed');
     await dismissSetupLauncher(page);
-    await page
-      .getByRole('button', { name: 'Expand chat dock', exact: true })
-      .click();
+    await openChatRegion(page);
     await emitMockOrchestrationEvent(page, 'orchestration:snapshot', {
       sessions: [],
     });
 
     await page.getByPlaceholder('Type a message...').fill('Restart session');
-    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     await expect.poll(() => executionRequests.length).toBe(1);
     expect(executionRequests[0]).toMatchObject({

@@ -74,6 +74,7 @@ interface TriageContext {
     version: string;
     channel: string;
     sourceRevision: string;
+    artifactBuiltAt: string | null;
   };
   target: {
     station: string | null;
@@ -604,6 +605,7 @@ function cliIdentity(
       version: bundle.version,
       channel: bundle.channel,
       sourceRevision: bundle.sourceSha,
+      artifactBuiltAt: bundle.builtAt ?? null,
     };
   }
   return {
@@ -611,6 +613,7 @@ function cliIdentity(
     version: readCliVersion(),
     channel: 'development',
     sourceRevision: sourceRevision?.() ?? 'unavailable',
+    artifactBuiltAt: null,
   };
 }
 
@@ -720,6 +723,9 @@ async function remoteFacts(
   try {
     // This helper is the only place a profile credential may be materialized;
     // triage itself never reads a keyring value or persists the flag/env value.
+    // A `true` return can also mean a local self-heal resolver was installed
+    // (#1098) rather than a credential in hand — if that heal later fails,
+    // the diagnostics request below surfaces it as an ordinary HTTP 401.
     if (!configureApiCredential(parsed, resolved.apiBase)) {
       return {
         status: 'unavailable',
@@ -820,6 +826,7 @@ export function validateTriageContext(value: TriageContext): void {
       'version',
       'channel',
       'sourceRevision',
+      'artifactBuiltAt',
     ]) ||
     !hasExactKeys(value.target, [
       'station',
@@ -928,6 +935,7 @@ function renderMarkdown(context: TriageContext): string {
     '## Capability boundary',
     '',
     `- CLI: ${context.cli.distribution} (${context.cli.channel})`,
+    `- CLI artifact built at: ${context.cli.artifactBuiltAt ?? 'unavailable (development source or unstamped package)'}`,
     `- Local host filesystem: ${context.capabilities.localHostFilesystem}`,
     `- Source doctor: ${context.capabilities.sourceDoctor}`,
     `- Recent logs: ${context.capabilities.recentLogs}`,

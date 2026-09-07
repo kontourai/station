@@ -1,4 +1,5 @@
 import type { StationProfileCredentialRef } from '@kontourai/station-contracts';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import React, {
   createContext,
   useCallback,
@@ -312,7 +313,7 @@ export function ConnectionsProvider({
   const resolvedStore = store;
   const activation = useRef({
     activeConnectionId: resolvedStore.getActive()?.id ?? null,
-    instanceId: crypto.randomUUID(),
+    instanceId: randomCorrelationId(),
     sequence: 0,
   });
   const advanceActivation = useCallback(() => {

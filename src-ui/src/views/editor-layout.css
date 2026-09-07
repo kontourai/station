@@ -2098,7 +2098,8 @@
   min-width: 0;
 }
 
-.agent-engine-choice strong {
+.agent-engine-choice strong,
+.agent-engine-choice .engine-chip {
   font-size: var(--text-md);
   font-weight: 600;
   color: var(--text-primary);

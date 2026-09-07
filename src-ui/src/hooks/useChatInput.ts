@@ -104,7 +104,7 @@ interface UseChatInputOptions {
   runtimeConnection?: {
     engineId?: string;
     type?: string;
-    config?: { engineId?: unknown; executionClass?: unknown };
+    config?: { engineId?: unknown };
   } | null;
   agentDefaultModel?: string;
   defaultModelSource?: EffectiveModelSource;
@@ -189,6 +189,7 @@ export function useChatInput({
     agentSlug,
     activeChatState,
     bindingStatus,
+    availableModels,
   );
   const handleSlashCommand = useSlashCommandHandler();
 

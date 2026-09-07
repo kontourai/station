@@ -1,50 +1,12 @@
-import { useEffect, useState } from 'react';
-
-/**
- * The mobile dock header can afford its in-bar occupant picker only once the
- * viewport reaches the encoded 481px identity-extras boundary. Below this,
- * occupant switching remains available through the header's overflow sheet.
- */
-export const MOBILE_DOCK_OCCUPANT_PICKER_QUERY = '(min-width: 481px)';
-
-/**
- * Subscribes to the in-bar occupant-picker boundary. Missing `matchMedia`
- * (SSR and jsdom by default) deliberately reads as hidden: rendering an extra
- * fixed-width control before the browser can prove there is room would undo
- * the identity-legibility invariant this gate protects.
- */
-export function useMobileDockOccupantPicker(): boolean {
-  const [showPicker, setShowPicker] = useState(() =>
-    readMobileDockOccupantPickerMatch(),
-  );
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const query = window.matchMedia(MOBILE_DOCK_OCCUPANT_PICKER_QUERY);
-    const onChange = (event: MediaQueryListEvent) =>
-      setShowPicker(event.matches);
-    setShowPicker(query.matches);
-    query.addEventListener('change', onChange);
-    return () => query.removeEventListener('change', onChange);
-  }, []);
-
-  return showPicker;
-}
-
-function readMobileDockOccupantPickerMatch(): boolean {
-  if (typeof window === 'undefined' || !window.matchMedia) return false;
-  return window.matchMedia(MOBILE_DOCK_OCCUPANT_PICKER_QUERY).matches;
-}
-
 export interface MobileDockFullscreenInput {
   isMobile: boolean;
   isDockOpen: boolean;
   isDockMaximized: boolean;
   /**
-   * Whether the currently displayed view is one the ambient dock owns —
-   * ANY occupant (Chat, Home, Activity), not Chat specifically
-   * (station#4460: the shared `DockShell` behaves identically regardless of
-   * which occupant is docked, so this predicate no longer names "chat").
+   * Whether the currently displayed view is one the ambient dock owns — a
+   * route-type fact (`isDockOwnedViewType`), not a Chat-specific one: the
+   * shared `DockShell` behaves identically for every region surface it
+   * hosts (station#4460), so this predicate does not name "chat".
    */
   isDockOwnedView: boolean;
 }
@@ -94,53 +56,4 @@ export function isMobileDockFullscreen({
  */
 export function isDockOwnedViewType(viewType: string): boolean {
   return viewType !== 'layout' && viewType !== 'workspace-pane';
-}
-
-/**
- * station#520 (mobile dock-and-empty contract): whether docking a pane
- * "as only content" (`WorkspacePaneDockAction`'s "Dock this pane", called by
- * a pane on itself — see `WorkspacePaneDockAction` on
- * `WorkspacePaneDockContext` for the full contract this implements) should
- * also force the dock open MAXIMIZED, rather than leaving it at whatever
- * snap it already had.
- *
- * True only when BOTH hold: the device is mobile (every mobile dock is a
- * bottom bar — desktop's side/bottom panel already leaves room beside it,
- * so this is a phone-only behavior change) AND the dock action actually
- * admitted the pane (`docked`) — maximizing after a REFUSED request would
- * open the dock over nothing, which is a bug this guards against, not the
- * contract (station#520 review).
- */
-export function shouldMaximizeAfterDockingAsOnlyContent(
-  isMobile: boolean,
-  docked: boolean,
-): boolean {
-  return isMobile && docked;
-}
-
-/**
- * station#520 (review round 2, M3): `DockOccupantPicker`'s onChoose seam.
- * Closing the picker's own gap in the mobile dock-and-empty contract — a
- * picker choice is a different call site from "Dock this pane"
- * (`WorkspacePaneDockAction`), but picking Home from the picker WHILE
- * standing on `/` reproduces the exact same stranding: the main area is
- * already `/`'s route, and docking Home there makes it the away-state
- * placeholder with nothing else behind it.
- *
- * True only when the device is mobile AND the picked pane's OWN route
- * (`ambientDockOccupantRouteViewType`) is the CURRENT route
- * (`currentViewType`, from `resolveViewFromPath(pathname).type`) — i.e. the
- * main area IS that pane's route right now, so docking it would strand
- * that same area behind the dock. Picking Home while standing on
- * `/settings`, or Chat (whose `pickedViewType` is always `null` — it has no
- * route of its own), never matches.
- */
-export function shouldMaximizeOnOccupantChoice(
-  isMobile: boolean,
-  currentViewType: string,
-  pickedViewType: string | null,
-): boolean {
-  return (
-    isMobile && pickedViewType !== null && pickedViewType === currentViewType
-  );
 }

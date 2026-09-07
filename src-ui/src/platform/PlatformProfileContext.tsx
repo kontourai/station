@@ -24,7 +24,10 @@ import {
 import { nativePlatformPromise } from './native';
 import { primeNativeNotifications } from './native/notify';
 import type { NativeStationProfileStorage } from './native/stationProfileStorage';
-import type { NativeCompileTarget } from './native/types';
+import type {
+  NativeClientBuildProvenance,
+  NativeCompileTarget,
+} from './native/types';
 
 export interface PlatformProfile {
   /** True when running inside the Tauri native shell (desktop or mobile). */
@@ -53,6 +56,8 @@ export interface PlatformProfile {
   pairingDeepLinkScheme?: string;
   /** Trusted, secret-free mobile bootstrap; explicit saved selection wins. */
   mobileDefaultEndpoint?: string;
+  /** Build evidence for this native app, never the connected Station host. */
+  clientBuild?: NativeClientBuildProvenance;
 }
 
 const WEB_PROFILE: PlatformProfile = {
@@ -154,6 +159,9 @@ async function resolvePlatformProfile(): Promise<PlatformProfile> {
     pairingDeepLinkScheme: report.value.pairingDeepLinkScheme,
     ...(isMobile && report.value.mobileDefaultEndpoint
       ? { mobileDefaultEndpoint: report.value.mobileDefaultEndpoint }
+      : {}),
+    ...(report.value.clientBuild
+      ? { clientBuild: report.value.clientBuild }
       : {}),
   };
 }

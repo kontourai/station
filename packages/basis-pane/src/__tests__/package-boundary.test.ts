@@ -13,6 +13,14 @@ const external = [
   '@kontourai/*',
 ];
 
+// The complete V1 public browser boundary is the native SessionInventory
+// renderer (2,351 gzip bytes alone) plus the separately exported
+// session-inventory-view model (2,029 gzip bytes alone). The bundled entry is
+// exactly 4,067 gzip bytes: it contains no private Station dependency or
+// accidental duplicate module. Keep this cap exact rather than reserving
+// unearned headroom for the V1 desktop/mobile progressive-disclosure contract.
+const SESSION_INVENTORY_V1_BROWSER_GZIP_BYTES = 4_067;
+
 async function bundledGzipBytes(entry: string) {
   const result = await build({
     entryPoints: [join(source, entry)],
@@ -73,12 +81,17 @@ describe('@kontourai/station-basis-pane package boundary', () => {
     expect(await bundledGzipBytes('StationBasisPane.tsx')).toBeLessThanOrEqual(
       5_512,
     );
-    expect(await bundledGzipBytes('index.ts')).toBeLessThanOrEqual(6_800);
+    // Raised from 6_800 for #1536 B3: telling the route's deliberate 404 apart
+    // from a read that could not be performed costs the affordance the
+    // `AnswerBasisRequestError` check, and review H3 added the title that
+    // states what is true of BOTH 404 cases without claiming which.
+    // Measured 6_862 at that change.
+    expect(await bundledGzipBytes('index.ts')).toBeLessThanOrEqual(6_880);
     expect(
       await bundledGzipBytes('workspace-basis-pane.ts'),
     ).toBeLessThanOrEqual(1_536);
     expect(await combinedSessionInventoryGzipBytes()).toBeLessThanOrEqual(
-      2_944,
+      SESSION_INVENTORY_V1_BROWSER_GZIP_BYTES,
     );
 
     const css = await readFile(join(source, 'station-basis-pane.css'));

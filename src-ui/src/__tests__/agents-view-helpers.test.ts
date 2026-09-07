@@ -180,9 +180,9 @@ describe('agents view helpers', () => {
     );
 
     expect(onboarding).toContain('No agents of your own yet');
-    expect(onboarding).toContain(
-      'Start from a model connection or an installed agent CLI.',
-    );
+    // renderToStaticMarkup escapes the apostrophe in "you've", so match the
+    // distinctive prefix rather than the full sentence.
+    expect(onboarding).toContain('Pick the engine that runs it');
 
     const emptyState = renderToStaticMarkup(
       buildAgentsViewEmptyContent({

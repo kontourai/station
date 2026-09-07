@@ -366,6 +366,7 @@ function ToolResultInspector({
   const result = inspection.data;
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       ariaLabel="Tool result"
       panelClassName="station-basis-pane__inspector"
       onClose={onClose}

@@ -258,6 +258,13 @@ export function createAgentRoutes(
     const connection = agentConnectionId
       ? connections.find((entry) => entry.id === agentConnectionId)
       : undefined;
+    // A matched runtime connection without its canonical engine identity is
+    // not a usable capability subject. Its display name is user-facing
+    // metadata, never authority to borrow a vendor matrix from; report the
+    // optional validation as unknown instead of inventing that authority.
+    if (connection && !connection.engineId) {
+      return { kind: 'degraded' };
+    }
     const matrix = resolveEngineCapabilityMatrix(agentConnectionId, connection);
     const authored: AuthoredCapabilityFlags = {
       prompt: !!spec.prompt?.trim(),
@@ -370,6 +377,17 @@ export function createAgentRoutes(
     return error instanceof StationEngineIsAppSettingError ? 409 : 400;
   }
 
+  /** Match the repository's canonical top-level coded error envelope. */
+  function mutationErrorEnvelope(error: unknown) {
+    return {
+      success: false as const,
+      error: errorMessage(error),
+      ...(error instanceof StationEngineIsAppSettingError
+        ? { code: error.code }
+        : {}),
+    };
+  }
+
   // Create new agent
   app.post('/', validate(agentCreateSchema), async (c) => {
     try {
@@ -439,10 +457,7 @@ export function createAgentRoutes(
         configurationMutationStatus(mutation.activation, 201),
       );
     } catch (error: unknown) {
-      return c.json(
-        { success: false, error: errorMessage(error) },
-        mutationErrorStatus(error),
-      );
+      return c.json(mutationErrorEnvelope(error), mutationErrorStatus(error));
     }
   });
 
@@ -541,10 +556,7 @@ export function createAgentRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
-      return c.json(
-        { success: false, error: errorMessage(error) },
-        mutationErrorStatus(error),
-      );
+      return c.json(mutationErrorEnvelope(error), mutationErrorStatus(error));
     }
   });
 

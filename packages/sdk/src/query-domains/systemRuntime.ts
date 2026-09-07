@@ -10,6 +10,7 @@ import { isTerminalConnectionStatus } from '@kontourai/station-contracts/http';
 import type {
   DevicePresentation,
   ExternalEngineReadinessProjection,
+  HomeRecoveryDisclosure,
 } from '@kontourai/station-contracts/system-status';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
@@ -84,6 +85,7 @@ export interface SystemBuildProvenance {
 }
 
 export interface SystemStatus {
+  homeRecovery?: HomeRecoveryDisclosure;
   build?: SystemBuildProvenance;
   /**
    * The answering instance's own endpoint identity (#2551): bound listen
@@ -139,6 +141,12 @@ export interface SystemStatus {
     {
       ready: boolean;
       source: string | null;
+      /**
+       * Specific, actionable cause recorded by the producer when `ready` is
+       * false — e.g. the `terminal` capability's node-pty load failure
+       * (station#1244). Absent when nothing specific was observed.
+       */
+      reason?: string;
     }
   >;
   recommendation?: {

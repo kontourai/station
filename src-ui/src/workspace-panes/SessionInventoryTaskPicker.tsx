@@ -1,6 +1,7 @@
 import type { StationSessionOutputRow } from '@kontourai/station-contracts/session-inventory';
 import { useTasksQuery } from '@kontourai/station-sdk';
 import { useKeepSessionOutputMutation } from '@kontourai/station-sdk/session-output-actions';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { TaskPicker } from '../components/chat/TaskPicker';
 
 /** Loaded only after a user explicitly chooses to keep a Session output. */
@@ -42,7 +43,7 @@ export function SessionInventoryTaskPicker({
           taskId,
           sessionId: target.output.ref.sessionId,
           eventId: target.output.ref.eventId,
-          operationId: crypto.randomUUID(),
+          operationId: randomCorrelationId(),
           requestScope,
         })
       }

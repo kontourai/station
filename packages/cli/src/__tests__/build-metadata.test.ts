@@ -67,6 +67,7 @@ describe('CLI bundle metadata', () => {
         GIT_INDEX_FILE: '/hostile/index',
         STATION_CHANNEL: 'stable',
       },
+      builtAt: '2026-08-30T12:00:00.000Z',
       git: (args, cwd, env) => {
         calls.push({ args, cwd, env });
         return args[0] === 'rev-parse'
@@ -78,6 +79,7 @@ describe('CLI bundle metadata', () => {
     expect(metadata).toEqual({
       version: '0.6.0',
       sourceSha: `${SHA}-dirty`,
+      builtAt: '2026-08-30T12:00:00.000Z',
       channel: 'development',
     });
     expect(calls.map((call) => call.cwd)).toEqual([
@@ -100,10 +102,12 @@ describe('CLI bundle metadata', () => {
           STATION_CLI_SOURCE_SHA: 'not-a-sha',
           STATION_CLI_BUILD_CHANNEL: 'Stable!',
         },
+        builtAt: 'bad',
       }),
     ).toEqual({
       version: '0.6.0',
       sourceSha: 'source-unavailable',
+      builtAt: undefined,
       channel: 'development',
     });
 

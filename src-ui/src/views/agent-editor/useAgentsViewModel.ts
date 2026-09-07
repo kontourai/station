@@ -3,9 +3,9 @@ import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engi
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
   isAgentToolsActivatingError,
-  useAgentConnectionsQuery,
   useAgentQuery,
   useAgentToolsQuery,
+  useEngineConnectionsQuery,
   useIntegrationsQuery,
   useMaterializeEngineAgentMutation,
   useModelConnectionsQuery,
@@ -43,6 +43,7 @@ import {
   buildAgentsViewItems,
 } from './agentsViewHelpers';
 import {
+  agentSaveErrorMessage,
   buildAgentPayload,
   cloneableAgentFields,
   createEmptyAgentForm,
@@ -147,7 +148,7 @@ export function useAgentsViewModel({
     null,
   );
   const [search, setSearch] = useState('');
-  const { data: agentConnections = [] } = useAgentConnectionsQuery() as {
+  const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data?: ConnectionConfig[];
   };
   const { data: modelConnections = [] } = useModelConnectionsQuery() as {
@@ -219,7 +220,6 @@ export function useAgentsViewModel({
   const receivedFreshDetail =
     agentLoadSucceeded &&
     !agentLoadFailed &&
-    !isFetching &&
     (dataUpdatedAt > detailRoute.baselineDataUpdatedAt ||
       (isFetchedAfterMount && detailRoute.fromNoSelection));
   const successfulMismatch =
@@ -542,7 +542,7 @@ export function useAgentsViewModel({
     });
   }
 
-  /** §4 "Chat with a model": Station's engine, Basics + §3.3 + Instructions. */
+  /** §4 "Run it on Station": Station's engine, Basics + §3.3 + Instructions. */
   function handleStartWithModel() {
     setEngineKindOverride('model');
     setForm((current) => ({
@@ -658,8 +658,8 @@ export function useAgentsViewModel({
         await updateAgent(selectedSlug!, payload);
         setSavedForm(savedSnapshot);
       }
-    } catch (err: any) {
-      setActionError(err.message);
+    } catch (err: unknown) {
+      setActionError(agentSaveErrorMessage(err));
     } finally {
       setIsSaving(false);
     }

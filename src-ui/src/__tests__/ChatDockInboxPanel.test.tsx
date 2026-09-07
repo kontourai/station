@@ -418,7 +418,7 @@ describe('ChatDockInboxPanel', () => {
     expect(onOpenSession).not.toHaveBeenCalled();
   });
 
-  it('navigates to /activity for a session Station cannot rehydrate (read-only-attached)', () => {
+  it('reveals the Activity surface for a session Station cannot rehydrate (read-only-attached)', () => {
     const onOpenConversation = vi.fn();
     const onOpenSession = vi.fn();
     const readOnlyItem: HomeWorkItem = {
@@ -461,7 +461,7 @@ describe('ChatDockInboxPanel', () => {
   // `useOpenConversation.test.tsx` for the tab-teardown proof at that
   // deeper layer) both resolve `false` here, so this one component-level
   // test covers the `onOpenSession` fallback for both causes.
-  it('falls back to /activity when rehydrating fails (agent no longer exists)', async () => {
+  it('falls back to the Activity surface when rehydrating fails (agent no longer exists)', async () => {
     const onOpenConversation = vi.fn().mockResolvedValue(false);
     const onOpenSession = vi.fn();
     const orphanedItem: HomeWorkItem = {
@@ -565,9 +565,9 @@ describe('ChatDockInboxPanel', () => {
   // archive#1797: collapsing the inbox is now the caller's responsibility —
   // `ChatDock.tsx` mounts this component only while expanded, so there is no
   // in-component collapsed rail/state to render or test here any more. The
-  // sole expand/collapse control lives in the dock header (archive#3309; see
-  // `ChatDockHeaderWorkspaceControls.test.tsx`'s `chat-dock__inbox-toggle`
-  // coverage).
+  // sole expand/collapse control lives in the dock header (archive#3309; a row
+  // of its More menu since #1536 F — see
+  // `ChatDockHeaderWorkspaceControls.test.tsx`'s chat-list coverage).
 });
 
 /**

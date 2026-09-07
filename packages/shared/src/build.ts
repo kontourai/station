@@ -10,7 +10,7 @@ import {
   symlinkSync,
   unlinkSync,
 } from 'node:fs';
-import { dirname, join, resolve, sep } from 'node:path';
+import { dirname, join, matchesGlob, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
@@ -464,29 +464,65 @@ function linkHostProvidedPackages(pluginDir: string): void {
 function ensurePluginDeps(pluginDir: string): void {
   if (!existsSync(join(pluginDir, 'package.json'))) return;
 
-  // Station, React, and other runtime externals are supplied by the host.
-  // Modern npm otherwise tries to download those peer dependencies before we
-  // can link local workspace packages, making plugin builds depend on whether
-  // host packages happen to be published. Install plugin-owned dependencies
-  // only; the host/runtime contract is resolved below and by the bundle shim.
-  // npm resolves the "project" by walking up from cwd, so when a scaffolded
-  // plugin sits inside this monorepo the install reaches the workspace root and
-  // rewrites the ROOT package-lock.json — under --legacy-peer-deps, which
-  // resolves as if peerDependencies were not declared and so drops required
-  // peer entries (graphql, via graphql-request under @voltagent/core). That
-  // makes `npm ci` fail on every clean checkout, breaking the container image,
-  // the desktop clean-checkout build, Android, iOS and the portable bundle —
-  // and it comes back every time the plugin e2e runs, which is how it kept
-  // reappearing after being fixed by hand.
-  //
-  // --no-save keeps the plugin's dependencies installing exactly as before
-  // while writing no lockfile, so the host's lock is untouched. Only applied
-  // inside the host workspace; a standalone plugin outside it still gets its
-  // own lockfile.
-  const insideHostWorkspace = hostWorkspaceRootFor(pluginDir) !== null;
+  const hostRoot = hostWorkspaceRootFor(realpathSync(pluginDir));
+  if (hostRoot) {
+    const hostManifest = JSON.parse(
+      readFileSync(join(hostRoot, 'package.json'), 'utf8'),
+    ) as {
+      workspaces?: string[] | { packages?: string[] };
+      packageManager?: string;
+    };
+    const workspaces = Array.isArray(hostManifest.workspaces)
+      ? hostManifest.workspaces
+      : (hostManifest.workspaces?.packages ?? []);
+    const pluginPath = relative(hostRoot, realpathSync(pluginDir)).replaceAll(
+      '\\',
+      '/',
+    );
+    if (workspaces.some((pattern) => matchesGlob(pluginPath, pattern))) {
+      const pluginManifest = JSON.parse(
+        readFileSync(join(pluginDir, 'package.json'), 'utf8'),
+      ) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      const missing = Object.keys({
+        ...pluginManifest.dependencies,
+        ...pluginManifest.devDependencies,
+      }).filter((name) => {
+        let scope = realpathSync(pluginDir);
+        for (;;) {
+          if (
+            existsSync(
+              join(scope, 'node_modules', ...name.split('/'), 'package.json'),
+            )
+          )
+            return false;
+          if (scope === hostRoot) return true;
+          const parent = dirname(scope);
+          if (parent === scope) return true;
+          scope = parent;
+        }
+      });
+      const marker = hostManifest.packageManager?.startsWith('pnpm@')
+        ? join(hostRoot, 'node_modules', '.modules.yaml')
+        : join(hostRoot, 'node_modules');
+      if (!existsSync(marker) || missing.length) {
+        throw new Error(
+          `Workspace plugin dependencies are missing${missing.length ? `: ${missing.join(', ')}` : ''}. Run npm run dependencies:ci in ${hostRoot} before building this plugin.`,
+        );
+      }
+      // The managed workspace owns installation and links. Even a lockfile-free
+      // npm install here can prune or replace the host dependency tree.
+      return;
+    }
+  }
+  // Standalone plugin installation stays npm-based. Both the explicit local
+  // prefix and disabled workspaces are required to keep a nested plugin from
+  // walking upward and mutating the Station installation.
   const installArgs = [
-    'npm install --ignore-scripts --legacy-peer-deps',
-    insideHostWorkspace ? '--no-save' : '',
+    'npm install --prefix . --workspaces=false --ignore-scripts --legacy-peer-deps',
+    hostRoot ? '--no-save' : '',
   ]
     .filter(Boolean)
     .join(' ');

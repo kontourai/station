@@ -1,3 +1,7 @@
+import {
+  type MCPLocalConnectionCustody,
+  MCPLocalCustodyError,
+} from '@kontourai/station-shared/mcp';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import {
   type OptionalNetworkShutdownTask,
@@ -15,6 +19,7 @@ export async function shutdownRuntimeServices({
   consoleBridgeService,
   voltAgent,
   mcpConfigs,
+  mcpCustody,
   retiredMcpConfigs,
   activeAgents,
   acpBridge,
@@ -41,6 +46,7 @@ export async function shutdownRuntimeServices({
   consoleBridgeService?: { stop(): Promise<void> };
   voltAgent?: { shutdown(): Promise<void> };
   mcpConfigs: Map<string, { disconnect(): Promise<void> }>;
+  mcpCustody?: MCPLocalConnectionCustody;
   retiredMcpConfigs?: Set<{ disconnect(): Promise<void> }>;
   activeAgents: Map<string, any>;
   acpBridge: { shutdown(): Promise<void> };
@@ -60,6 +66,8 @@ export async function shutdownRuntimeServices({
   optionalNetworkShutdownBudgetMs?: number;
 }): Promise<void> {
   logger.info('Shutting down Station Runtime...');
+  // Fence admissions synchronously, before any unrelated shutdown awaits.
+  const localMcpCleanup = mcpCustody?.shutdown();
 
   const failures: Error[] = [];
   const attempt = async (
@@ -110,41 +118,53 @@ export async function shutdownRuntimeServices({
     voltAgent ? () => voltAgent.shutdown() : undefined,
   );
 
-  for (const [key, mcpConfig] of mcpConfigs.entries()) {
-    await attempt(`mcpConfigs.${key}.disconnect`, async () => {
-      await mcpConfig.disconnect();
-      logger.info('MCP disconnected', { mcp: key });
+  if (localMcpCleanup) {
+    await attempt('mcpCustody.shutdown', async () => {
+      const cleanup = await localMcpCleanup;
+      if (cleanup.state !== 'settled')
+        throw new MCPLocalCustodyError(cleanup.state);
+      mcpConfigs.clear();
+      retiredMcpConfigs?.clear();
     });
-  }
+  } else {
+    for (const [key, mcpConfig] of mcpConfigs.entries()) {
+      await attempt(`mcpConfigs.${key}.disconnect`, async () => {
+        await mcpConfig.disconnect();
+        if (mcpConfigs.get(key) === mcpConfig) mcpConfigs.delete(key);
+        logger.info('MCP disconnected', { mcp: key });
+      });
+    }
 
-  mcpConfigs.clear();
-  if (retiredMcpConfigs) {
-    const entries = Array.from(retiredMcpConfigs);
-    const retained = new Set<{ disconnect(): Promise<void> }>();
-    await Promise.all(
-      entries.map((config, index) =>
-        attempt(`retiredMcpConfigs.${index}.disconnect`, async () => {
-          const disconnect = Promise.resolve().then(() => config.disconnect());
-          disconnect.catch(() => undefined);
-          const settled = await awaitSettlementWithin(
-            disconnect,
-            RETIRED_MCP_DISCONNECT_TIMEOUT_MS,
-          );
-          if (!settled) {
-            retained.add(config);
-            throw new Error('Retired MCP disconnect timed out.');
-          }
-          try {
-            await disconnect;
-          } catch (error) {
-            retained.add(config);
-            throw error;
-          }
-        }),
-      ),
-    );
-    retiredMcpConfigs.clear();
-    for (const config of retained) retiredMcpConfigs.add(config);
+    if (retiredMcpConfigs) {
+      const entries = Array.from(retiredMcpConfigs);
+      const retained = new Set<{ disconnect(): Promise<void> }>();
+      await Promise.all(
+        entries.map((config, index) =>
+          attempt(`retiredMcpConfigs.${index}.disconnect`, async () => {
+            const disconnect = Promise.resolve().then(() =>
+              config.disconnect(),
+            );
+            disconnect.catch(() => undefined);
+            const settled = await awaitSettlementWithin(
+              disconnect,
+              RETIRED_MCP_DISCONNECT_TIMEOUT_MS,
+            );
+            if (!settled) {
+              retained.add(config);
+              throw new Error('Retired MCP disconnect timed out.');
+            }
+            try {
+              await disconnect;
+            } catch (error) {
+              retained.add(config);
+              throw error;
+            }
+          }),
+        ),
+      );
+      retiredMcpConfigs.clear();
+      for (const config of retained) retiredMcpConfigs.add(config);
+    }
   }
   activeAgents.clear();
 

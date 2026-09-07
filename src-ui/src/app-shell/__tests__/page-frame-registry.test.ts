@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { NavigationView } from '../../types';
+import { APP_DESTINATION_REGISTRY } from '../destination-registry';
 import { resolvePageFrame } from '../page-frame-registry';
-import { APP_SURFACE_REGISTRY } from '../surface-registry';
 
 /**
  * Every route in the app, once. `resolvePageFrame` is typed as a `Record` over
@@ -17,18 +17,17 @@ const ROUTES: NavigationView[] = [
   { type: 'agent-edit', slug: 'a' },
   { type: 'guidance' },
   { type: 'connections' },
-  { type: 'connections-providers' },
-  { type: 'connections-provider-edit', id: 'p' },
+  { type: 'connections-models' },
+  { type: 'connections-model-edit', id: 'p' },
   { type: 'connections-engines' },
-  { type: 'connections-runtime-edit', id: 'r' },
-  { type: 'connections-acp-new', providerId: 'p' },
+  { type: 'connections-engine-edit', id: 'r' },
+  { type: 'connections-engine-new', providerId: 'p' },
   { type: 'connections-tools' },
   { type: 'connections-tool-edit', id: 't' },
   { type: 'connections-knowledge' },
   { type: 'plugins' },
   { type: 'registry' },
   { type: 'review-queue' },
-  { type: 'activity' },
   { type: 'developer' },
   { type: 'schedule' },
   { type: 'settings' },
@@ -106,13 +105,13 @@ describe('page-frame registry', () => {
     // the view mounts — this is only what shows before that.
     for (const route of ROUTES) {
       const spec = resolvePageFrame(route);
-      const surface = APP_SURFACE_REGISTRY.getSurfaceForView(route);
-      if (!spec || !surface) continue;
+      const destination = APP_DESTINATION_REGISTRY.getDestinationForView(route);
+      if (!spec || !destination) continue;
       // Routes that state their own title in the table keep it (Connections'
       // hub is 'Connections'; the ACP sub-route is 'Provider setup').
       const stated = new Set([
         'connections',
-        'connections-acp-new',
+        'connections-engine-new',
         'connections-knowledge',
         'registry',
         'schedule',
@@ -121,7 +120,9 @@ describe('page-frame registry', () => {
         'notifications',
       ]);
       if (stated.has(route.type)) continue;
-      expect(spec.title, `${route.type} fallback title`).toBe(surface.label());
+      expect(spec.title, `${route.type} fallback title`).toBe(
+        destination.label(),
+      );
     }
   });
 
@@ -139,12 +140,11 @@ describe('page-frame registry', () => {
   it('gives every split-pane route the same frame shape', () => {
     for (const type of [
       'agents',
-      'connections-providers',
+      'connections-models',
       'connections-engines',
       'connections-tools',
       'plugins',
       'review-queue',
-      'activity',
       'guidance',
     ] as const) {
       const spec = resolvePageFrame({ type } as NavigationView);
@@ -201,7 +201,7 @@ describe('page-frame registry', () => {
   it('gives every subpage with a static eyebrow just its parent, not a breadcrumb trail', () => {
     expect(resolvePageFrame({ type: 'developer' })?.eyebrow).toBe('Developer');
     for (const route of [
-      { type: 'connections-acp-new', providerId: 'p' },
+      { type: 'connections-engine-new', providerId: 'p' },
       { type: 'connections-knowledge' },
     ] as const) {
       const spec = resolvePageFrame(route as NavigationView);

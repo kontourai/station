@@ -3,17 +3,18 @@ import {
   ENGINE_CAPABILITY_MATRICES,
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { EngineCapabilitySummary } from '../../components/acp-connections/EngineCapabilitySummary';
+import { EngineChip } from '../../components/badges/EngineChip';
 import { navigationStore } from '../../contexts/navigation-store';
 import {
-  agentConnectionLabel,
   connectionStatusLabel,
   isAgentConnectionSelectable,
 } from '../../utils/execution';
 import type { AgentEditorFormProps, AgentFormData } from './types';
 
-/** "Use a model connection" (Station's own engine) or "Use an installed agent CLI". */
+/** Creation-only branch state: Station, or an external engine not named yet. */
 export type EngineKind = 'model' | 'cli';
 
 /** The enabled engine connections a person may actually wrap. */
@@ -31,10 +32,10 @@ export function externalEngineOptions(
 }
 
 /**
- * DESIGN.md §3.2 — the engine question, asked first, as two radio cards.
+ * DESIGN.md §3.2 — the engine question, asked first, as peer engine rows.
  *
  * `engineKind` is a PROP, not a derivation, for one case the derivation
- * cannot express: during creation "Wrap an installed agent CLI" is chosen
+ * cannot express: during creation an external engine row is chosen
  * BEFORE any CLI is, and an absent `agentConnectionId` reads as Station
  * everywhere else in the codebase (`docs/design/agent-engine-unification.md`
  * §7.1) — so a derived answer would silently bounce the user back to the
@@ -69,6 +70,18 @@ export function AgentEditorEngineSelection({
     resolveEngineCapabilityMatrix(boundConnectionId, boundConnection)
       .engineId === 'station';
   const cliOptions = externalEngineOptions(agentConnections);
+  const engineDescriptor = (connection: ConnectionConfig) => {
+    const engineId = resolveEngineCapabilityMatrix(
+      connection.id,
+      connection,
+    ).engineId;
+    return {
+      name:
+        engineId === 'acp'
+          ? connection.name
+          : (engineDisplayLabel(engineId) ?? connection.name),
+    };
+  };
 
   const bindEngine = (value: string) => {
     setForm((current: AgentFormData) => {
@@ -119,7 +132,13 @@ export function AgentEditorEngineSelection({
           {isStationBound
             ? 'Station'
             : (boundConnection?.name ??
-              agentConnectionLabel(boundConnectionId))}
+              engineDisplayLabel(
+                resolveEngineCapabilityMatrix(
+                  boundConnectionId,
+                  boundConnection,
+                ).engineId,
+              ) ??
+              boundConnectionId)}
         </output>
         <span className="editor-hint">
           The built-in Agent runs on whichever engine this Station is set up to
@@ -150,7 +169,13 @@ export function AgentEditorEngineSelection({
             isStationBound
               ? 'Station'
               : (boundConnection?.name ??
-                agentConnectionLabel(boundConnectionId))
+                engineDisplayLabel(
+                  resolveEngineCapabilityMatrix(
+                    boundConnectionId,
+                    boundConnection,
+                  ).engineId,
+                ) ??
+                boundConnectionId)
           }
         />
       </div>
@@ -159,7 +184,6 @@ export function AgentEditorEngineSelection({
 
   return (
     <div className="editor-field">
-      <span className="editor-label">Which engine runs this agent?</span>
       <div
         className="agent-engine-choices"
         role="radiogroup"
@@ -177,69 +201,41 @@ export function AgentEditorEngineSelection({
             }}
           />
           <span>
-            <strong>Use a model connection</strong>
-            <small>
-              Station’s own engine runs the agent on a Model connection you
-              choose (Bedrock, OpenAI, Ollama…).
-            </small>
+            <EngineChip engine={{ name: 'Station' }} />
+            <small>Runs on a model you pick below.</small>
           </span>
         </label>
-        <label className="agent-engine-choice">
-          <input
-            type="radio"
-            name="ae-engine"
-            checked={engineKind === 'cli'}
-            disabled={locked}
-            onChange={() => {
-              onEngineKindChange('cli');
-              // Do NOT auto-bind the first CLI: DESIGN.md §4 makes choosing
-              // one an explicit step, and Create stays disabled until it is
-              // made. Binding here would let a person create an agent on an
-              // engine they never named.
-              bindEngine('');
-            }}
-          />
-          <span>
-            <strong>Use an installed agent CLI</strong>
-            <small>
-              An agent CLI on this machine runs itself. Station sets only what
-              the CLI lets it set.
-            </small>
-          </span>
-        </label>
-      </div>
-
-      {engineKind === 'cli' && (
-        <div
-          className="agent-engine-choices agent-engine-choices--nested"
-          role="radiogroup"
-          aria-label="Installed agent CLI"
-        >
-          {cliOptions.length === 0 ? (
-            <p className="editor-hint">
-              No agent CLI is enabled on this machine yet.{' '}
-              <button
-                type="button"
-                className="agent-editor__capability-banner-action"
-                onClick={() =>
-                  navigationStore.navigate('/connections?section=engines')
-                }
-              >
-                Set one up
-              </button>
-            </p>
-          ) : (
-            cliOptions.map((connection) => (
+        {cliOptions.length === 0
+          ? engineKind === 'cli' && (
+              <p className="editor-hint">
+                No external engine is enabled on this machine yet.{' '}
+                <button
+                  type="button"
+                  className="agent-editor__capability-banner-action"
+                  onClick={() =>
+                    navigationStore.navigate('/connections?section=engines')
+                  }
+                >
+                  Set one up
+                </button>
+              </p>
+            )
+          : cliOptions.map((connection) => (
               <label className="agent-engine-choice" key={connection.id}>
                 <input
                   type="radio"
-                  name="ae-cli-engine"
-                  checked={boundConnectionId === connection.id}
+                  name="ae-engine"
+                  checked={
+                    engineKind === 'cli' && boundConnectionId === connection.id
+                  }
                   disabled={locked || !isAgentConnectionSelectable(connection)}
-                  onChange={() => bindEngine(connection.id)}
+                  onChange={() => {
+                    onEngineKindChange('cli');
+                    bindEngine(connection.id);
+                  }}
                 />
                 <span>
-                  <strong>{connection.name}</strong>
+                  <EngineChip engine={engineDescriptor(connection)} />
                   {/* The SERVER's readiness sentence (archive#3649 evidence), not
                       the evidence KIND — "Catalog: Live" is internal
                       vocabulary (Y5). */}
@@ -262,10 +258,8 @@ export function AgentEditorEngineSelection({
                   )}
                 </span>
               </label>
-            ))
-          )}
-        </div>
-      )}
+            ))}
+      </div>
 
       {/* archive#3722: the two-row capability summary for the engine
           this agent is actually bound to. The MODEL branch resolves to the

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { LazyBoundary } from '../LazyBoundary';
 import type { ForkTurnSource } from './fork-turn-source';
-import { ShareAnswerButton } from './ShareAnswerButton';
 import './TurnActionsMenu.css';
 
 const loadConnectedAttachAnswerToTaskButton = () =>
@@ -11,7 +10,6 @@ const loadConnectedAttachAnswerToTaskButton = () =>
   }));
 
 export interface TurnActionsMenuProps {
-  provenance?: unknown;
   taskTarget?: { sessionId: string; turnId: string; projectId?: string };
   forkSource?: ForkTurnSource | null;
   onForkFromTurn?: (source: ForkTurnSource) => void;
@@ -19,7 +17,6 @@ export interface TurnActionsMenuProps {
 
 /** Lazy per-turn overflow, using the same focus primitive as app header menus. */
 export default function TurnActionsMenu({
-  provenance,
   taskTarget,
   forkSource,
   onForkFromTurn,
@@ -54,9 +51,6 @@ export default function TurnActionsMenu({
             }
           }}
         >
-          {provenance !== undefined && (
-            <ShareAnswerButton provenance={provenance} menuItem />
-          )}
           {taskTarget && (
             <LazyBoundary
               load={loadConnectedAttachAnswerToTaskButton}

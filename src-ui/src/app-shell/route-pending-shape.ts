@@ -75,21 +75,17 @@ function baseShape(
  * So the overlap is a consequence, not a definition, and any future route whose
  * pane opens on a detail without changing its identity belongs here and not
  * there. Deliberately a switch and not a truthiness test over unknown fields:
- * `plugins`, `review-queue`, `connections-providers`, `connections-engines`,
- * `connections-tools` and bare `agents` name no record and open on their list,
- * and Activity without an id is the "all sessions" list rather than one
- * session.
+ * `plugins`, `review-queue`, `connections-models`, `connections-engines`,
+ * `connections-tools` and bare `agents` name no record and open on their list.
  */
 export function routeOpensDetailPane(view: NavigationView): boolean {
   switch (view.type) {
     case 'agent-new':
     case 'agent-edit':
-    case 'connections-provider-edit':
-    case 'connections-runtime-edit':
+    case 'connections-model-edit':
+    case 'connections-engine-edit':
     case 'connections-tool-edit':
       return true;
-    case 'activity':
-      return view.sessionId !== undefined;
     // `/guidance/new` selects `__new__` in the tab's own pane, so any selected
     // id — including the literal `new` — opens the detail.
     case 'guidance':
@@ -113,10 +109,10 @@ function paneIdForRoute(view: NavigationView): string | null {
     case 'agent-edit':
       return AGENTS_PANE_ID;
     case 'connections-engines':
-    case 'connections-runtime-edit':
+    case 'connections-engine-edit':
       return CONNECTIONS_ENGINES_PANE_ID;
-    case 'connections-providers':
-    case 'connections-provider-edit':
+    case 'connections-models':
+    case 'connections-model-edit':
       return CONNECTIONS_MODELS_PANE_ID;
     default:
       return null;

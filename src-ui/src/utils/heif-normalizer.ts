@@ -3,6 +3,8 @@
  * browser-native adapter, not a bundled HEIF codec: Station does not have an
  * affirmative licence policy for the LGPL-3.0 `heic-to` distribution.
  */
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+
 export const HEIF_MAX_SOURCE_BYTES = 25 * 1024 * 1024;
 export const HEIF_MAX_AGGREGATE_SOURCE_BYTES = 50 * 1024 * 1024;
 export const HEIF_MAX_METADATA_BYTES = 1024 * 1024;
@@ -434,7 +436,7 @@ function decodeOnce(
     .then(async () => {
       try {
         abortIfNeeded(signal);
-        const id = crypto.randomUUID();
+        const id = randomCorrelationId();
         const worker = (options?.createWorker ?? createBrowserWorker)();
         return await new Promise<Uint8Array>((resolve, reject) => {
           let settled = false;

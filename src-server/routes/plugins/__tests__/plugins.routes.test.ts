@@ -1,8 +1,17 @@
-import { cpSync, existsSync, lstatSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, readFileSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { hasGrant } from '../../../services/plugins/plugin-permissions.js';
+
+// This route unit fixture replaces the filesystem/process probes. The shared
+// lifecycle suite separately exercises real publication/content-lock ordering.
+vi.mock('@kontourai/station-shared/lifecycle-events', async (original) => ({
+  ...(await original<
+    typeof import('@kontourai/station-shared/lifecycle-events')
+  >()),
+  acquireFileMutationLockAsync: vi.fn(async () => async () => {}),
+}));
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   pluginInstalls: { add: vi.fn() },
@@ -14,6 +23,21 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 const clearPluginProviders = vi.hoisted(() => vi.fn());
 const replacePluginProviders = vi.hoisted(() => vi.fn());
 const replacePluginProvidersForSource = vi.hoisted(() => vi.fn());
+const replacePluginProvidersForSourceGeneration = vi.hoisted(() =>
+  vi.fn(async () => 'activated' as const),
+);
+const pluginProviderSourceGeneration = vi.hoisted(() => vi.fn(() => 1));
+const retirePluginProvidersForSourceGeneration = vi.hoisted(() =>
+  vi.fn(async () => 'retired' as const),
+);
+const withPluginProviderSourceGeneration = vi.hoisted(() =>
+  vi.fn(
+    async (_source: string, _generation: number, operation: () => unknown) => ({
+      kind: 'applied' as const,
+      value: await operation(),
+    }),
+  ),
+);
 const agentRegistryProvider = vi.hoisted(() => ({
   install: vi.fn().mockResolvedValue({ success: true }),
   listAvailable: vi.fn().mockResolvedValue([]),
@@ -35,9 +59,15 @@ const pluginRegistryProviderEntries = vi.hoisted<
   Array<{ provider: any; source: string }>
 >(() => []);
 vi.mock('../../../providers/registries/registry.js', () => ({
+  disposePreparedPluginProviders: vi.fn(async () => {}),
   clearPluginProviders,
   replacePluginProviders,
   replacePluginProvidersForSource,
+  replacePluginProvidersForSourceGeneration,
+  pluginProviderSourceGeneration,
+  pluginProviderRegistryGeneration: vi.fn(() => 1),
+  retirePluginProvidersForSourceGeneration,
+  withPluginProviderSourceGeneration,
   getAgentRegistryProvider: vi.fn().mockReturnValue(agentRegistryProvider),
   getIntegrationRegistryProvider: vi
     .fn()
@@ -46,7 +76,11 @@ vi.mock('../../../providers/registries/registry.js', () => ({
 }));
 
 const loadPluginProviders = vi.hoisted(() => vi.fn().mockResolvedValue(0));
-vi.mock('../plugin-loader.js', () => ({ loadPluginProviders }));
+const preparePluginProviders = vi.hoisted(() => vi.fn().mockResolvedValue([]));
+vi.mock('../plugin-loader.js', () => ({
+  loadPluginProviders,
+  preparePluginProviders,
+}));
 
 // The scanner the install/lifecycle routes actually call. It used to be
 // `plugin-prompt-generation.js`, which was DELETED with the copy-into-a-store
@@ -89,6 +123,19 @@ const snapshotPluginGrantEntry = vi.hoisted(() =>
 );
 const restorePluginGrantEntry = vi.hoisted(() => vi.fn());
 vi.mock('../../../services/plugins/plugin-permissions.js', () => ({
+  withPluginProviderGrantSnapshot: vi.fn(
+    async (_home: string, resolve: () => unknown) => ({
+      snapshot: 'fixture-grant-snapshot',
+      value: resolve(),
+    }),
+  ),
+  withPluginProviderGrantsPublication: vi.fn(
+    async (
+      _home: string,
+      names: string[],
+      publish: (granted: Set<string>) => unknown,
+    ) => publish(new Set(names)),
+  ),
   getPermissionTier: vi.fn().mockReturnValue('standard'),
   getPluginGrants: vi.fn().mockReturnValue(['network']),
   grantPermissions: vi.fn(),
@@ -111,6 +158,8 @@ vi.mock('../../../services/plugins/plugin-permissions.js', () => ({
   ]),
   restorePluginGrantEntry,
   revokeAllGrants: vi.fn(),
+  readPluginDependencyOwnership: vi.fn().mockReturnValue([]),
+  removePluginHostRecord: vi.fn().mockResolvedValue(undefined),
   snapshotPluginGrantEntry,
   PluginGrantsUnavailableError: class PluginGrantsUnavailableError extends Error {},
   PluginContentUnavailableError: class PluginContentUnavailableError extends Error {},
@@ -141,12 +190,21 @@ const mockManifest = vi.hoisted(() => ({
   agents: [],
   links: null,
 }));
+const mockRegistryInstallAliases = vi.hoisted<
+  Record<string, { pluginName: string; registryKey: string }>
+>(() => ({}));
 
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
   return {
     ...actual,
     existsSync: vi.fn((p: string) => {
+      if (
+        typeof p === 'string' &&
+        p.endsWith('/config/registry-installs.json')
+      ) {
+        return Object.keys(mockRegistryInstallAliases).length > 0;
+      }
       if (typeof p === 'string' && p.includes('nonexistent')) return false;
       if (typeof p === 'string' && p.includes('plugins')) return true;
       if (typeof p === 'string' && p.includes('dist/bundle')) return true;
@@ -165,6 +223,12 @@ vi.mock('node:fs', async (importOriginal) => {
       if (typeof p === 'string' && p.includes('.schema.json')) {
         return actual.readFileSync(p, enc as any);
       }
+      if (
+        typeof p === 'string' &&
+        p.endsWith('/config/registry-installs.json')
+      ) {
+        return JSON.stringify(mockRegistryInstallAliases);
+      }
       return JSON.stringify(mockManifest);
     }),
     lstatSync: vi.fn(() => ({ isSymbolicLink: () => false })),
@@ -173,6 +237,9 @@ vi.mock('node:fs', async (importOriginal) => {
     rmSync: vi.fn(),
     cpSync: vi.fn(),
     writeFileSync: vi.fn(),
+    // Alias removal now uses the canonical atomic writer. This unit fixture
+    // mocks its staging write too, so publishing must not touch real /tmp.
+    renameSync: vi.fn(),
   };
 });
 
@@ -283,7 +350,14 @@ describe('Plugin Routes', () => {
     scanPluginPromptFileSafety.mockClear();
     execGit.mockClear();
     vi.mocked(cpSync).mockClear();
+    vi.mocked(rmSync).mockClear();
     vi.mocked(existsSync).mockImplementation((p) => {
+      if (
+        typeof p === 'string' &&
+        p.endsWith('/config/registry-installs.json')
+      ) {
+        return Object.keys(mockRegistryInstallAliases).length > 0;
+      }
       if (typeof p === 'string' && p.includes('nonexistent')) return false;
       if (typeof p === 'string' && p.includes('plugins')) return true;
       if (typeof p === 'string' && p.includes('dist/bundle')) return true;
@@ -296,6 +370,9 @@ describe('Plugin Routes', () => {
     for (const key of Object.keys(mockOverrides)) {
       delete mockOverrides[key];
     }
+    for (const key of Object.keys(mockRegistryInstallAliases)) {
+      delete mockRegistryInstallAliases[key];
+    }
   });
 
   test('POST /reload clears stale providers even when the plugins directory is absent', async () => {
@@ -305,7 +382,10 @@ describe('Plugin Routes', () => {
     const body = await json(await app.request('/reload', { method: 'POST' }));
 
     expect(body).toEqual({ success: true, loaded: 0 });
-    expect(replacePluginProviders).toHaveBeenCalledWith([]);
+    expect(replacePluginProviders).toHaveBeenCalledWith(
+      [],
+      expect.any(Function),
+    );
   });
 
   test('rejects a plugin identity change and restores the prior provider source', async () => {
@@ -1154,7 +1234,7 @@ describe('Plugin Routes', () => {
 
     const response = await app.request('/test-plugin', { method: 'DELETE' });
 
-    await expect(json(response)).resolves.toMatchObject({ success: true });
+    await expect(json(response)).resolves.toEqual({ success: true });
     expect(response.status).toBe(200);
     expect(applyConfigurationMutation).toHaveBeenCalledOnce();
     expect(beginMutation).toHaveBeenCalledOnce();
@@ -1163,6 +1243,113 @@ describe('Plugin Routes', () => {
       [],
     );
     expect(settleProviderAdapterRetirements).toHaveBeenCalledOnce();
+  });
+
+  test('removes a direct local plugin without consulting an unavailable registry', async () => {
+    pluginRegistryProvider.listInstalled.mockRejectedValue(
+      new Error('unrelated registry is offline'),
+    );
+    const app = setup({
+      applyConfigurationMutation: vi.fn(async (operation) =>
+        operation(vi.fn(), { status: 'applied' }),
+      ),
+      settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
+    });
+
+    let response: Response;
+    try {
+      response = await app.request('/test-plugin', { method: 'DELETE' });
+    } finally {
+      pluginRegistryProvider.listInstalled.mockResolvedValue([]);
+    }
+
+    expect(response.status).toBe(200);
+    await expect(json(response)).resolves.toMatchObject({ success: true });
+    expect(pluginRegistryProvider.listInstalled).not.toHaveBeenCalled();
+  });
+
+  test('removes an aliased registry plugin by its validated installed target', async () => {
+    vi.mocked(existsSync).mockImplementation((path) => {
+      if (typeof path !== 'string') return false;
+      if (path.endsWith('/config/registry-installs.json')) return true;
+      if (path.includes('/plugins/demo')) return false;
+      if (path.includes('/plugins/actual-plugin')) return true;
+      if (path.includes('plugins')) return true;
+      return false;
+    });
+    pluginRegistryProvider.listInstalled.mockResolvedValue([
+      {
+        id: 'demo',
+        installedPluginName: 'actual-plugin',
+        version: '1.0.0',
+        installed: true,
+      },
+    ]);
+    mockRegistryInstallAliases.demo = {
+      pluginName: 'actual-plugin',
+      registryKey: 'test-plugin-registry',
+    };
+    const app = setup({
+      applyConfigurationMutation: vi.fn(async (operation) =>
+        operation(vi.fn(), { status: 'applied' }),
+      ),
+      settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const response = await app.request('/demo', { method: 'DELETE' });
+
+    expect(response.status, JSON.stringify(await json(response.clone()))).toBe(
+      200,
+    );
+    expect(vi.mocked(rmSync)).toHaveBeenCalledWith(
+      '/tmp/project/plugins/actual-plugin',
+      { recursive: true, force: true },
+    );
+    expect(vi.mocked(rmSync)).not.toHaveBeenCalledWith(
+      '/tmp/project/plugins/demo',
+      expect.anything(),
+    );
+  });
+
+  test('refuses an alias collision without deleting the rejected directory', async () => {
+    vi.mocked(existsSync).mockImplementation((path) => {
+      if (typeof path !== 'string') return false;
+      if (path.endsWith('/config/registry-installs.json')) return true;
+      if (path.includes('/plugins/demo')) return true;
+      if (path.includes('/plugins/actual-plugin')) return true;
+      if (path.includes('plugins')) return true;
+      return false;
+    });
+    pluginRegistryProvider.listInstalled.mockResolvedValue([
+      {
+        id: 'demo',
+        installedPluginName: 'actual-plugin',
+        version: '1.0.0',
+        installed: true,
+      },
+    ]);
+    mockRegistryInstallAliases.demo = {
+      pluginName: 'actual-plugin',
+      registryKey: 'test-plugin-registry',
+    };
+    const applyConfigurationMutation = vi.fn();
+    const app = setup({
+      applyConfigurationMutation,
+      settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const response = await app.request('/demo', { method: 'DELETE' });
+    const body = await json(response);
+
+    expect(response.status).toBe(400);
+    expect(body).toMatchObject({
+      success: false,
+      error: expect.stringContaining(
+        "resolves to installed plugin 'actual-plugin', but plugin 'demo' also exists",
+      ),
+    });
+    expect(applyConfigurationMutation).not.toHaveBeenCalled();
+    expect(vi.mocked(rmSync)).not.toHaveBeenCalled();
   });
 
   test('rejects plugin lifecycle names that escape the plugin root', async () => {
@@ -1233,6 +1420,38 @@ describe('Plugin Routes', () => {
       expect.arrayContaining([
         expect.objectContaining({ permission: 'providers.register' }),
       ]),
+    );
+  });
+
+  test('GET / keeps a rejected manifest visible with exact recovery copy', async () => {
+    vi.mocked(readFileSync).mockImplementationOnce(
+      () => '{"name":"test-plugin","version":',
+    );
+
+    const body = await json(await setup().request('/'));
+
+    expect(body.plugins).toEqual([
+      {
+        status: 'rejected',
+        name: 'test-plugin',
+        displayName: 'test-plugin',
+        rejection: {
+          code: 'malformed-json',
+          reason: 'plugin.json contains malformed JSON.',
+          recovery: {
+            kind: 'repair-manifest',
+            instruction:
+              'Repair plugin.json so it is valid JSON, then choose Reload plugins.',
+          },
+        },
+      },
+    ]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Installed plugin manifest rejected',
+      expect.objectContaining({
+        pluginDirectory: 'test-plugin',
+        code: 'malformed-json',
+      }),
     );
   });
 

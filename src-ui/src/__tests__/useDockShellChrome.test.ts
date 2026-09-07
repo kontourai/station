@@ -3,7 +3,9 @@
  */
 
 import { act, renderHook } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { RegionModelProvider as RegionModelProviderComponent } from '../contexts/RegionModelContext';
 import type { useDockShellChrome as UseDockShellChromeFn } from '../hooks/useDockShellChrome';
 
 const setDockState = vi.fn();
@@ -64,6 +66,27 @@ async function freshUseDockShellChrome(): Promise<typeof UseDockShellChromeFn> {
   return mod.useDockShellChrome;
 }
 
+/**
+ * The same fresh-module import, plus the region model's own provider from the
+ * SAME post-reset module registry — a provider imported before `resetModules`
+ * would create a different `RegionModelContext` than the hook then reads, so
+ * `useRegionModelOptional` would still see `null`.
+ */
+async function freshDockShellChromeInRegionModel(): Promise<{
+  useDockShellChrome: typeof UseDockShellChromeFn;
+  wrapper: ({ children }: { children: ReactNode }) => ReactNode;
+}> {
+  vi.resetModules();
+  const chrome = await import('../hooks/useDockShellChrome');
+  const region = await import('../contexts/RegionModelContext');
+  const Provider =
+    region.RegionModelProvider as typeof RegionModelProviderComponent;
+  return {
+    useDockShellChrome: chrome.useDockShellChrome,
+    wrapper: ({ children }) => createElement(Provider, null, children),
+  };
+}
+
 describe('useDockShellChrome', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -118,13 +141,22 @@ describe('useDockShellChrome', () => {
     expect(result.current.dockWidth).toBe(280);
   });
 
+  // #928 step 3b: drag release no longer writes `chatDockHeight` itself — it
+  // writes the bottom region's size, and `RegionModelProvider`'s mirror is what
+  // persists the device setting. The property this test exists for is unchanged
+  // (no per-frame persistence; exactly one final write carrying the final
+  // value), so it is asserted at the new seam: the hook inside a REAL region
+  // model, still measured on the storage write.
   test('does not persist drag frames and writes the final height once on drag end', async () => {
-    const useDockShellChrome = await freshUseDockShellChrome();
-    const { result } = renderHook(() =>
-      useDockShellChrome({
-        publishesDockSlotClearance: true,
-        registersDockShortcuts: true,
-      }),
+    const { useDockShellChrome, wrapper } =
+      await freshDockShellChromeInRegionModel();
+    const { result } = renderHook(
+      () =>
+        useDockShellChrome({
+          publishesDockSlotClearance: true,
+          registersDockShortcuts: true,
+        }),
+      { wrapper },
     );
     const storageWrite = vi.spyOn(Storage.prototype, 'setItem');
 
@@ -152,10 +184,10 @@ describe('useDockShellChrome', () => {
         useDockShellChrome({
           publishesDockSlotClearance: true,
           registersDockShortcuts: true,
-          onGeometryChange,
+          onRenderedRegionGeometryChange: onGeometryChange,
         }),
       );
-      expect(onGeometryChange).toHaveBeenCalledWith({
+      expect(onGeometryChange).toHaveBeenCalledWith('bottom', {
         size: 320,
         width: null,
       });
@@ -168,22 +200,38 @@ describe('useDockShellChrome', () => {
         useDockShellChrome({
           publishesDockSlotClearance: true,
           registersDockShortcuts: true,
-          onGeometryChange,
+          onRenderedRegionGeometryChange: onGeometryChange,
         }),
       );
       onGeometryChange.mockClear();
       act(() => result.current.setLiveDragHeight(512));
-      expect(onGeometryChange).toHaveBeenCalledWith({
+      expect(onGeometryChange).toHaveBeenCalledWith('bottom', {
         size: 512,
         width: null,
       });
 
       onGeometryChange.mockClear();
       act(() => result.current.setLiveDragHeight(null));
-      expect(onGeometryChange).toHaveBeenCalledWith({
+      expect(onGeometryChange).toHaveBeenCalledWith('bottom', {
         size: 320,
         width: null,
       });
+    });
+
+    // #1386 delta review: the model-less mount hands `shellOccupant` the
+    // literal 'chat', not null, so a fallback chained off the occupant reads
+    // the lowercase id and the header says "Hide chat". Nothing asserted
+    // `surfaceTitle` from this hook at all, which is why that shipped green
+    // for a round. Two cases have no occupant to name and both are Chat's.
+    test('the model-less mount names Chat, not its occupant id', async () => {
+      const useDockShellChrome = await freshUseDockShellChrome();
+      const { result } = renderHook(() =>
+        useDockShellChrome({
+          publishesDockSlotClearance: true,
+          registersDockShortcuts: true,
+        }),
+      );
+      expect(result.current.surfaceTitle).toBe('Chat');
     });
 
     test('a fullscreen Chat placement does not publish phantom dock-slot clearance', async () => {
@@ -193,7 +241,7 @@ describe('useDockShellChrome', () => {
         useDockShellChrome({
           publishesDockSlotClearance: false,
           registersDockShortcuts: true,
-          onGeometryChange,
+          onRenderedRegionGeometryChange: onGeometryChange,
         }),
       );
       expect(onGeometryChange).not.toHaveBeenCalled();
@@ -368,6 +416,32 @@ describe('useDockShellChrome', () => {
       // value live; it just isn't the one reconciling it against deletion
       // (archive#4460's single-writer pattern, extended to this cleanup).
       expect(result.current.activeProjectSlug).toBe('alpha');
+    });
+
+    test('an Activity region shell never runs the Chat project-binding cleanup', async () => {
+      projectsForDockShellChrome = [{ slug: 'alpha' }];
+      const { useDockShellChrome, wrapper } =
+        await freshDockShellChromeInRegionModel();
+      const { useRegionModel } = await import('../contexts/RegionModelContext');
+      const { result, rerender } = renderHook(
+        () => ({
+          chrome: useDockShellChrome({
+            publishesDockSlotClearance: true,
+            registersDockShortcuts: false,
+            regionId: 'right',
+          }),
+          model: useRegionModel(),
+        }),
+        { wrapper },
+      );
+      act(() => result.current.model.placeSurface('activity', 'right'));
+      act(() => result.current.chrome.setActiveProjectSlug('alpha'));
+
+      projectsForDockShellChrome = [];
+      projectsConfirmedLoadedForDockShellChrome = true;
+      rerender();
+
+      expect(result.current.chrome.activeProjectSlug).toBe('alpha');
     });
 
     test('nothing in this hook clears the binding merely because it mounted (no reset-on-mount)', async () => {

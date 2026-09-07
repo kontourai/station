@@ -1,3 +1,4 @@
+import type { SchedulerSchedule } from '@kontourai/station-contracts/scheduler';
 import { Empty, FilteredEmpty } from '../../components/state';
 import { getScheduleStarterTemplates } from './utils';
 
@@ -9,7 +10,7 @@ export function ScheduleEmptyState({
   filterText: string;
   onSelectTemplate: (template: {
     name: string;
-    cron: string;
+    schedule: SchedulerSchedule;
     prompt: string;
   }) => void;
   onClearFilter: () => void;
@@ -39,7 +40,7 @@ export function ScheduleEmptyState({
                 onClick={() =>
                   onSelectTemplate({
                     name: template.name,
-                    cron: template.cron,
+                    schedule: template.schedule,
                     prompt: template.prompt,
                   })
                 }

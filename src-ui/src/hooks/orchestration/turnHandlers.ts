@@ -1,9 +1,13 @@
 import {
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
+  ENGINE_TURN_FAILED_CODE,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
-import { activeChatsStore } from '../../contexts/active-chats-store';
+import {
+  type ActiveChatsStore,
+  activeChatsStore,
+} from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
 import {
   formatChatErrorDisplay,
@@ -50,6 +54,10 @@ function reconcileDurableTurn(sessionId: string, providerTurnId: string): void {
 
 export function handleTurnStartedEvent(
   event: Extract<OrchestrationEvent, { method: 'turn.started' }>,
+  store: Pick<
+    ActiveChatsStore,
+    'getChatForExecutionSession' | 'updateChat'
+  > = activeChatsStore,
 ) {
   // Durable per-turn confirmation of the actually-applied approval mode
   // (archive#727 3) — clears/updates the pending-apply chip
@@ -67,9 +75,7 @@ export function handleTurnStartedEvent(
     !Array.isArray(event.metadata.effectiveModelOptions)
       ? (event.metadata.effectiveModelOptions as Record<string, unknown>)
       : undefined;
-  const currentChat = activeChatsStore.getChatForExecutionSession(
-    event.threadId,
-  );
+  const currentChat = store.getChatForExecutionSession(event.threadId);
   const acceptedExplicitChoice = acknowledgesModelRequest(
     currentChat?.requestedModel,
     currentChat?.defaultModel,
@@ -100,7 +106,7 @@ export function handleTurnStartedEvent(
       )
       .catch(() => undefined);
   }
-  activeChatsStore.updateChat(event.threadId, {
+  store.updateChat(event.threadId, {
     // The dispatch this turn came from has started; the pre-start cancel
     // window it named is over
     pendingClientTurnId: undefined,
@@ -302,10 +308,11 @@ export function handleRuntimeErrorEvent(
   // reported symptom) — translate it through the same table
   // `ChatDockBody`'s marker rendering already uses, instead of showing the
   // engine's raw prose as if it were an ordinary reply. Every other
-  // `runtime.error` (no code, or a different code) keeps today's exact raw
+  // `runtime.error` without either supported code keeps today's exact raw
   // `event.message` display — unchanged.
   const translation =
-    event.code === ENGINE_SESSION_BINDING_DEAD_CODE
+    event.code === ENGINE_SESSION_BINDING_DEAD_CODE ||
+    event.code === ENGINE_TURN_FAILED_CODE
       ? translateChatError({ message: event.message, code: event.code })
       : undefined;
   const errorPartPrefix = translation

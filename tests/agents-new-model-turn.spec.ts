@@ -17,7 +17,7 @@ import {
 } from './helpers/ollama-fixture';
 
 /**
- * E2 — "Chat with a model" end to end, on a real engine
+ * E2 — "Run it on Station" end to end, on a real engine
  * (`reports/agents-lane/DESIGN.md` §4).
  *
  * Two halves, and the first is the one the redesign exists for: DESIGN §4 says
@@ -132,7 +132,7 @@ async function provisionFixtureConnection(
 }
 
 /**
- * Walk §4's "Chat with a model" beat to a created agent and return its slug.
+ * Walk §4's "Run it on Station" beat to a created agent and return its slug.
  *
  * The System Instructions field is filled because a Station-engine agent must
  * author one. archive#3741 landed the other half — the field says so, and
@@ -174,7 +174,7 @@ async function createModelAgent(page: Page, name: string): Promise<string> {
   return slug;
 }
 
-test.describe('New agent — Chat with a model', () => {
+test.describe('New agent — Run it on Station', () => {
   test('Create waits on a ready model connection and offers the repair inline', async ({
     page,
     authenticatedRequest,
@@ -215,7 +215,7 @@ test.describe('New agent — Chat with a model', () => {
   });
 });
 
-test.describe('New agent — Chat with a model at 390x844', () => {
+test.describe('New agent — Run it on Station at 390x844', () => {
   test.use({
     viewport: { width: 390, height: 844 },
     isMobile: true,

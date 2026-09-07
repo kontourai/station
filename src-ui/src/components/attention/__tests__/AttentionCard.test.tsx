@@ -7,6 +7,7 @@ import type {
   AttentionItem,
   DevicePairingAttentionItem,
   SessionFailedAttentionItem,
+  SetupIncompleteAttentionItem,
 } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
@@ -120,7 +121,7 @@ function baseFailure(
     createdAt: now,
     updatedAt: now,
     sessionId: 'thread-boom',
-    openHref: '/activity?session=thread-boom',
+    openHref: '/?surface=activity&session=thread-boom',
     source: { threadId: 'thread-boom' },
     ...overrides,
   };
@@ -226,7 +227,9 @@ describe('AttentionCard — dismiss affordance', () => {
     ).toBe('Fix the login redirect');
     expect(screen.getByText('Engine exited with code 1')).toBeTruthy();
     const link = screen.getByRole('link', { name: 'Open session' });
-    expect(link.getAttribute('href')).toBe('/activity?session=thread-boom');
+    expect(link.getAttribute('href')).toBe(
+      '/?surface=activity&session=thread-boom',
+    );
   });
 
   // archive#1914: a failed session's failure is not an approval to decide,
@@ -474,7 +477,9 @@ describe('AttentionCard — opening acknowledges (#3203)', () => {
     // destination's own `/api/attention` read races the write it depends on.
     expect(navigate).not.toHaveBeenCalled();
     await vi.waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity?session=thread-boom'),
+      expect(navigate).toHaveBeenCalledWith(
+        '/?surface=activity&session=thread-boom',
+      ),
     );
   });
 
@@ -485,7 +490,9 @@ describe('AttentionCard — opening acknowledges (#3203)', () => {
     screen.getByRole('link', { name: 'Open session' }).click();
 
     await vi.waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity?session=thread-boom'),
+      expect(navigate).toHaveBeenCalledWith(
+        '/?surface=activity&session=thread-boom',
+      ),
     );
   });
 
@@ -499,5 +506,49 @@ describe('AttentionCard — opening acknowledges (#3203)', () => {
 
     expect(acknowledgeAsync).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * #1536 D8. The row exists because the inbox used to say "Nothing needs you
+ * right now" while Station's own Agent could not run at all.
+ */
+describe('AttentionCard — setup incomplete (#1536 D8)', () => {
+  function setupIncomplete(
+    overrides: Partial<SetupIncompleteAttentionItem> = {},
+  ): SetupIncompleteAttentionItem {
+    const now = new Date().toISOString();
+    return {
+      id: 'setup-incomplete:model-connection:station',
+      kind: 'setup-incomplete',
+      title: 'Station cannot run yet',
+      body: 'No enabled LLM provider connection is configured.',
+      createdAt: now,
+      updatedAt: now,
+      source: { requirement: 'model-connection', agentSlug: 'station' },
+      openHref: '/connections/models',
+      ...overrides,
+    };
+  }
+
+  test("names the requirement in the server's own sentence and offers the route out", () => {
+    renderCard(setupIncomplete());
+
+    expect(screen.getByText('Setup incomplete')).toBeTruthy();
+    expect(screen.getByText('Station cannot run yet')).toBeTruthy();
+    expect(
+      screen.getByText('No enabled LLM provider connection is configured.'),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole('link', { name: 'Open model connections' })
+        .getAttribute('href'),
+    ).toBe('/connections/models');
+  });
+
+  test('cannot be dismissed — it clears when the requirement is met, not when it is hidden', () => {
+    renderCard(setupIncomplete());
+
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
   });
 });

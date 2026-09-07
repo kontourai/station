@@ -79,6 +79,42 @@ function lockedCargoPackages(
   });
 }
 
+function resolvedCargoPackages(
+  source = execFileSync(
+    'cargo',
+    [
+      'metadata',
+      '--locked',
+      '--format-version',
+      '1',
+      '--manifest-path',
+      resolve(native, 'Cargo.toml'),
+    ],
+    { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 120_000 },
+  ),
+): LockedCargoPackage[] {
+  const metadata = JSON.parse(source);
+  if (
+    !Array.isArray(metadata.packages) ||
+    !Array.isArray(metadata.resolve?.nodes)
+  )
+    throw new Error('Cargo metadata has no resolved package graph');
+  const packages = new Map(
+    metadata.packages.map((value: any) => [value?.id, value]),
+  );
+  return metadata.resolve.nodes.map(({ id }: any) => {
+    const value: any = packages.get(id);
+    if (
+      typeof value?.name !== 'string' ||
+      !value.name ||
+      typeof value?.version !== 'string' ||
+      !value.version
+    )
+      throw new Error('Cargo metadata resolved an unknown package');
+    return { name: value.name, version: value.version };
+  });
+}
+
 function exactlyOneLockedPackage(
   lockedPackages: LockedCargoPackage[],
   name: string,
@@ -141,6 +177,17 @@ version = "2.3.2"
   ).toThrow('Cargo.lock must contain exactly one tauri-plugin-process record');
 });
 
+test('resolved Cargo graph parser fails closed on incomplete metadata', () => {
+  expect(() => resolvedCargoPackages('{}')).toThrow(
+    'Cargo metadata has no resolved package graph',
+  );
+  expect(() =>
+    resolvedCargoPackages(
+      JSON.stringify({ packages: [], resolve: { nodes: [{ id: 'missing' }] } }),
+    ),
+  ).toThrow('Cargo metadata resolved an unknown package');
+});
+
 test.skipIf(!hasProducerToolchain)(
   'cargo-cyclonedx proof executes the literal workflow producer command and public-safe graph (skips where the release toolchain is absent)',
   () => {
@@ -151,9 +198,12 @@ test.skipIf(!hasProducerToolchain)(
     });
     const source = JSON.parse(readFileSync(output, 'utf8'));
     expect(source.specVersion).toBe('1.5');
-    const lockedPackages = lockedCargoPackages();
-    exactlyOneLockedPackage(lockedPackages, 'station');
-    const expectedDependencyComponents = lockedPackages.length - 1;
+    // Cargo.lock may retain unreachable historical records. The authoritative
+    // completeness boundary for the producer is Cargo's exact locked resolved
+    // graph, which cargo-cyclonedx consumes, not every record in the lockfile.
+    const resolvedPackages = resolvedCargoPackages();
+    exactlyOneLockedPackage(resolvedPackages, 'station');
+    const expectedDependencyComponents = resolvedPackages.length - 1;
     expect(source.components).toHaveLength(expectedDependencyComponents);
     const components = cyclonedxComponents(source, 'cargo', output);
     expect(components).toHaveLength(expectedDependencyComponents);
@@ -167,7 +217,7 @@ test.skipIf(!hasProducerToolchain)(
     const pluginNames = ['tauri-plugin-process', 'tauri-plugin-updater'];
     const expectedPlugins = pluginNames
       .map((name) => {
-        const locked = exactlyOneLockedPackage(lockedPackages, name);
+        const locked = exactlyOneLockedPackage(resolvedPackages, name);
         return {
           name,
           version: locked.version,

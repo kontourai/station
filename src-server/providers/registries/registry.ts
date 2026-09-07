@@ -54,8 +54,76 @@ export interface PreparedPluginProviderRegistration {
 }
 
 const PREPARED_ADAPTER_CLEANUP_TIMEOUT_MS = 2_000;
-const retainedPreparedAdapterCleanup = new Set<ProviderAdapterShape>();
+/**
+ * Prepared adapters can start processes before registry publication. Keep a
+ * failed disposal bound to the plugin source that prepared it so that source's
+ * winning grant reconciliation can settle the exact debt before reporting
+ * completion. Shutdown may still drain every source by omitting the filter.
+ */
+interface PreparedAdapterCleanupAttempt {
+  sources: Set<string>;
+  cleanup: Promise<void>;
+  state: 'pending' | 'rejected';
+}
+
+const retainedPreparedAdapterCleanup = new Map<
+  ProviderAdapterShape,
+  PreparedAdapterCleanupAttempt
+>();
+
+function preparedAdapterCleanup(
+  sources: ReadonlySet<string>,
+  adapter: ProviderAdapterShape,
+): Promise<void> {
+  const retained = retainedPreparedAdapterCleanup.get(adapter);
+  if (retained?.state === 'pending') {
+    for (const source of sources) retained.sources.add(source);
+    return retained.cleanup;
+  }
+
+  // Publish ownership before invoking plugin code. A deadline only bounds the
+  // waiter, never the teardown itself: every retry joins this exact promise
+  // until it settles. Only a terminal rejection authorizes another attempt.
+  const attempt: PreparedAdapterCleanupAttempt = {
+    sources: new Set([...(retained?.sources ?? []), ...sources]),
+    cleanup: Promise.resolve().then(() => adapter.stopAll()),
+    state: 'pending',
+  };
+  retainedPreparedAdapterCleanup.set(adapter, attempt);
+  void attempt.cleanup.then(
+    () => {
+      if (retainedPreparedAdapterCleanup.get(adapter) === attempt) {
+        retainedPreparedAdapterCleanup.delete(adapter);
+      }
+    },
+    () => {
+      if (retainedPreparedAdapterCleanup.get(adapter) === attempt) {
+        attempt.state = 'rejected';
+      }
+    },
+  );
+  return attempt.cleanup;
+}
 let pluginProviderMutationQueue = Promise.resolve();
+const pluginProviderSourceGenerations = new Map<string, number>();
+
+let pluginProviderGeneration = 0;
+
+export function pluginProviderRegistryGeneration(): number {
+  return pluginProviderGeneration;
+}
+
+function advancePluginProviderSourceGeneration(source: string): void {
+  pluginProviderGeneration += 1;
+  pluginProviderSourceGenerations.set(
+    source,
+    (pluginProviderSourceGenerations.get(source) ?? 0) + 1,
+  );
+}
+
+export function pluginProviderSourceGeneration(source: string): number {
+  return pluginProviderSourceGenerations.get(source) ?? 0;
+}
 
 function serializePluginProviderMutation<T>(
   operation: () => Promise<T>,
@@ -111,33 +179,27 @@ function splitPreparedPluginProviders(
 export async function disposePreparedPluginProviders(
   registrations: PreparedPluginProviderRegistration[],
 ): Promise<void> {
-  const adapters = new Set(
-    registrations
-      .filter((registration) => registration.type === 'providerAdapter')
-      .map((registration) => registration.provider as ProviderAdapterShape),
-  );
+  const adapters = new Map<ProviderAdapterShape, Set<string>>();
+  for (const registration of registrations) {
+    if (registration.type !== 'providerAdapter') continue;
+    const adapter = registration.provider as ProviderAdapterShape;
+    const sources = adapters.get(adapter) ?? new Set<string>();
+    sources.add(registration.source);
+    adapters.set(adapter, sources);
+  }
   const results = await Promise.allSettled(
-    [...adapters].map(async (adapter) => {
-      const cleanup = Promise.resolve().then(() => adapter.stopAll());
+    [...adapters].map(async ([adapter, sources]) => {
+      // Deduplicate the teardown, not its owners. All sources must be retained
+      // before plugin cleanup runs so any source-specific drain joins the debt.
+      const cleanup = preparedAdapterCleanup(sources, adapter);
       const settled = await awaitSettlementWithin(
         cleanup,
         PREPARED_ADAPTER_CLEANUP_TIMEOUT_MS,
       );
       if (!settled) {
-        retainedPreparedAdapterCleanup.add(adapter);
-        void cleanup.then(
-          () => retainedPreparedAdapterCleanup.delete(adapter),
-          () => undefined,
-        );
         throw new Error('Prepared plugin provider cleanup timed out.');
       }
-      try {
-        await cleanup;
-        retainedPreparedAdapterCleanup.delete(adapter);
-      } catch (error) {
-        retainedPreparedAdapterCleanup.add(adapter);
-        throw error;
-      }
+      await cleanup;
     }),
   );
   const failures = results
@@ -153,13 +215,21 @@ export async function disposePreparedPluginProviders(
   }
 }
 
-export async function disposeRetainedPreparedPluginProviders(): Promise<void> {
+export async function disposeRetainedPreparedPluginProviders(
+  source?: string,
+): Promise<void> {
   await disposePreparedPluginProviders(
-    [...retainedPreparedAdapterCleanup].map((provider) => ({
-      type: 'providerAdapter',
-      provider,
-      source: 'retained-cleanup',
-    })),
+    [...retainedPreparedAdapterCleanup].flatMap(([provider, attempt]) =>
+      [...attempt.sources]
+        .filter((retainedSource) =>
+          source === undefined ? true : retainedSource === source,
+        )
+        .map((retainedSource) => ({
+          type: 'providerAdapter' as const,
+          provider,
+          source: retainedSource,
+        })),
+    ),
   );
 }
 
@@ -213,6 +283,7 @@ export function registerProvider(
   const targetAdditiveStore = opts?.plugin
     ? pluginAdditiveStore
     : additiveStore;
+  if (opts?.plugin) advancePluginProviderSourceGeneration(source);
   // For additive types, push to array.
   if (PROVIDER_TYPE_META[type] === 'additive') {
     if (!targetAdditiveStore.has(type)) targetAdditiveStore.set(type, []);
@@ -258,10 +329,20 @@ export function clearAll(): void {
   const hadProviderAdapters =
     (additiveStore.get('providerAdapter')?.length ?? 0) > 0 ||
     (pluginAdditiveStore.get('providerAdapter')?.length ?? 0) > 0;
+  const pluginSources = new Set([
+    ...[...pluginStore.values()].flatMap((entries) =>
+      [...entries.values()].map((entry) => entry.source),
+    ),
+    ...[...pluginAdditiveStore.values()].flatMap((entries) =>
+      entries.map((entry) => entry.source),
+    ),
+  ]);
   store.clear();
   pluginStore.clear();
   additiveStore.clear();
   pluginAdditiveStore.clear();
+  for (const source of pluginSources)
+    advancePluginProviderSourceGeneration(source);
   if (hadProviderAdapters) commitProviderAdapterLaunchabilityRevision();
 }
 
@@ -272,8 +353,17 @@ export function clearAll(): void {
 export function clearPluginProviders(): void {
   const pluginAdapterCount =
     pluginAdditiveStore.get('providerAdapter')?.length ?? 0;
+  const sources = new Set([
+    ...[...pluginStore.values()].flatMap((entries) =>
+      [...entries.values()].map((entry) => entry.source),
+    ),
+    ...[...pluginAdditiveStore.values()].flatMap((entries) =>
+      entries.map((entry) => entry.source),
+    ),
+  ]);
   pluginStore.clear();
   pluginAdditiveStore.clear();
+  for (const source of sources) advancePluginProviderSourceGeneration(source);
   if (pluginAdapterCount > 0) commitProviderAdapterLaunchabilityRevision();
 }
 
@@ -318,69 +408,161 @@ export async function registerPreparedPluginProviders(
   await replacePluginProvidersForSource(source, registrations);
 }
 
-export async function replacePluginProvidersForSource(
+async function replacePluginProvidersForSourceInsideMutation(
   source: string,
   registrations: PreparedPluginProviderRegistration[],
-): Promise<void> {
+  canCommit: () => boolean = () => true,
+): Promise<'replaced' | 'superseded'> {
   if (registrations.some((registration) => registration.source !== source)) {
     throw new Error(
       'Plugin provider source replacement received mixed sources.',
     );
   }
-  await serializePluginProviderMutation(async () => {
-    const { active, displaced } = splitPreparedPluginProviders(registrations);
+  const { active, displaced } = splitPreparedPluginProviders(registrations);
+  try {
+    await disposePreparedPluginProviders(displaced);
+  } catch (error) {
+    const cleanupErrors: unknown[] = [error];
     try {
-      await disposePreparedPluginProviders(displaced);
-    } catch (error) {
-      const cleanupErrors: unknown[] = [error];
-      try {
-        await disposePreparedPluginProviders(active);
-      } catch (cleanupError) {
-        cleanupErrors.push(cleanupError);
-      }
-      throw new AggregateError(
-        cleanupErrors,
-        'Plugin provider registration preparation failed.',
-      );
+      await disposePreparedPluginProviders(active);
+    } catch (cleanupError) {
+      cleanupErrors.push(cleanupError);
     }
-    const nextStore = new Map<string, Map<string, ProviderEntry>>();
-    for (const [type, entries] of pluginStore) {
-      const retained = new Map(
-        [...entries].filter(([, entry]) => entry.source !== source),
-      );
-      if (retained.size > 0) nextStore.set(type, retained);
-    }
-    const nextAdditiveStore = new Map<string, ProviderEntry[]>();
-    for (const [type, entries] of pluginAdditiveStore) {
-      const retained = entries.filter((entry) => entry.source !== source);
-      if (retained.length > 0) nextAdditiveStore.set(type, retained);
-    }
-    for (const registration of active) {
-      registerPreparedInto(nextStore, nextAdditiveStore, registration);
-    }
-
-    const hadSourceAdapters = (
-      pluginAdditiveStore.get('providerAdapter') ?? []
-    ).some((entry) => entry.source === source);
-    const hasSourceAdapters = active.some(
-      (registration) => registration.type === 'providerAdapter',
+    throw new AggregateError(
+      cleanupErrors,
+      'Plugin provider registration preparation failed.',
     );
-    pluginStore.clear();
-    for (const [type, entries] of nextStore) pluginStore.set(type, entries);
-    pluginAdditiveStore.clear();
-    for (const [type, entries] of nextAdditiveStore) {
-      pluginAdditiveStore.set(type, entries);
+  }
+  if (!canCommit()) {
+    await disposePreparedPluginProviders(active);
+    return 'superseded';
+  }
+  const nextStore = new Map<string, Map<string, ProviderEntry>>();
+  for (const [type, entries] of pluginStore) {
+    const retained = new Map(
+      [...entries].filter(([, entry]) => entry.source !== source),
+    );
+    if (retained.size > 0) nextStore.set(type, retained);
+  }
+  const nextAdditiveStore = new Map<string, ProviderEntry[]>();
+  for (const [type, entries] of pluginAdditiveStore) {
+    const retained = entries.filter((entry) => entry.source !== source);
+    if (retained.length > 0) nextAdditiveStore.set(type, retained);
+  }
+  for (const registration of active) {
+    registerPreparedInto(nextStore, nextAdditiveStore, registration);
+  }
+
+  const hadSourceAdapters = (
+    pluginAdditiveStore.get('providerAdapter') ?? []
+  ).some((entry) => entry.source === source);
+  const hasSourceAdapters = active.some(
+    (registration) => registration.type === 'providerAdapter',
+  );
+  pluginStore.clear();
+  for (const [type, entries] of nextStore) pluginStore.set(type, entries);
+  pluginAdditiveStore.clear();
+  for (const [type, entries] of nextAdditiveStore) {
+    pluginAdditiveStore.set(type, entries);
+  }
+  advancePluginProviderSourceGeneration(source);
+  if (hadSourceAdapters || hasSourceAdapters) {
+    commitProviderAdapterLaunchabilityRevision();
+  }
+  return 'replaced';
+}
+
+export async function replacePluginProvidersForSource(
+  source: string,
+  registrations: PreparedPluginProviderRegistration[],
+): Promise<void> {
+  await serializePluginProviderMutation(() =>
+    replacePluginProvidersForSourceInsideMutation(source, registrations),
+  );
+}
+
+/**
+ * Publishes one prepared source only while both the provider source generation
+ * and the caller's owning lifecycle generation remain current. The final
+ * predicate runs after staged duplicate cleanup and immediately before the
+ * synchronous store commit, so no newer revocation can be observed and then
+ * overwritten by stale retained activation work.
+ */
+export async function replacePluginProvidersForSourceGeneration(
+  source: string,
+  expectedGeneration: number,
+  registrations: PreparedPluginProviderRegistration[],
+  isCurrent: () => boolean,
+): Promise<'activated' | 'superseded'> {
+  const current = () => {
+    try {
+      return (
+        pluginProviderSourceGeneration(source) === expectedGeneration &&
+        isCurrent() === true
+      );
+    } catch {
+      return false;
     }
-    if (hadSourceAdapters || hasSourceAdapters) {
-      commitProviderAdapterLaunchabilityRevision();
+  };
+  const result = await serializePluginProviderMutation(() =>
+    replacePluginProvidersForSourceInsideMutation(
+      source,
+      registrations,
+      current,
+    ),
+  );
+  return result === 'replaced' ? 'activated' : 'superseded';
+}
+
+export async function retirePluginProvidersForSourceGeneration(
+  source: string,
+  expectedGeneration: number,
+): Promise<'retired' | 'superseded'> {
+  return serializePluginProviderMutation(async () => {
+    if (pluginProviderSourceGeneration(source) !== expectedGeneration) {
+      return 'superseded';
     }
+    await replacePluginProvidersForSourceInsideMutation(source, []);
+    return 'retired';
+  });
+}
+
+/**
+ * Runs a non-registry side effect while the exact plugin provider generation
+ * remains current. Provider replacement for this or any other source queues
+ * behind the operation, so callers can make generation-qualified cleanup a
+ * single CAS boundary instead of checking and then acting on stale state.
+ * The callback must not call a serialized provider mutation recursively.
+ */
+export async function withPluginProviderSourceGeneration<T>(
+  source: string,
+  expectedGeneration: number,
+  operation: () => Promise<T>,
+): Promise<
+  | { readonly kind: 'applied'; readonly value: T }
+  | { readonly kind: 'superseded' }
+> {
+  return serializePluginProviderMutation(async () => {
+    if (pluginProviderSourceGeneration(source) !== expectedGeneration) {
+      return { kind: 'superseded' };
+    }
+    return { kind: 'applied', value: await operation() };
   });
 }
 
 export async function replacePluginProviders(
   registrations: PreparedPluginProviderRegistration[],
+  isCurrent: () => boolean = () => true,
 ): Promise<void> {
   await serializePluginProviderMutation(async () => {
+    const priorSources = new Set([
+      ...[...pluginStore.values()].flatMap((entries) =>
+        [...entries.values()].map((entry) => entry.source),
+      ),
+      ...[...pluginAdditiveStore.values()].flatMap((entries) =>
+        entries.map((entry) => entry.source),
+      ),
+    ]);
     const { active, displaced } = splitPreparedPluginProviders(registrations);
     try {
       await disposePreparedPluginProviders(displaced);
@@ -394,6 +576,12 @@ export async function replacePluginProviders(
       throw new AggregateError(
         cleanupErrors,
         'Plugin provider generation preparation failed.',
+      );
+    }
+    if (!isCurrent()) {
+      await disposePreparedPluginProviders(active);
+      throw new Error(
+        'Plugin provider generation was superseded before publication.',
       );
     }
     const nextStore = new Map<string, Map<string, ProviderEntry>>();
@@ -411,6 +599,10 @@ export async function replacePluginProviders(
     pluginAdditiveStore.clear();
     for (const [type, entries] of nextAdditiveStore) {
       pluginAdditiveStore.set(type, entries);
+    }
+    const nextSources = new Set(active.map((entry) => entry.source));
+    for (const source of new Set([...priorSources, ...nextSources])) {
+      advancePluginProviderSourceGeneration(source);
     }
     if (hadPluginAdapters || hasPluginAdapters) {
       commitProviderAdapterLaunchabilityRevision();

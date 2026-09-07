@@ -8,6 +8,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { formatArtifactBuildTimestamp } from '@kontourai/station-shared/build-provenance';
 import { bundleInfo } from '../distribution.js';
 
 export function readCliVersion(): string {
@@ -30,10 +31,21 @@ export function readCliVersion(): string {
 export function versionText(): string {
   const bundle = bundleInfo();
   if (bundle) {
-    return `station ${bundle.version}\n  ${bundle.channel} ${bundle.sourceSha}\n`;
+    const built = formatArtifactBuildTimestamp(bundle.builtAt);
+    return [
+      `station ${bundle.version}`,
+      `  ${bundle.channel} ${bundle.sourceSha}`,
+      `  ${built.description}`,
+      '',
+    ].join('\n');
   }
   // A source checkout is development even when a nearby backend build
   // manifest has a non-prerelease version. Backend STATION_CHANNEL is not CLI
   // artifact provenance and must not relabel this command as Stable.
-  return `station ${readCliVersion()}\n  development source checkout\n`;
+  return [
+    `station ${readCliVersion()}`,
+    '  development source checkout',
+    `  ${formatArtifactBuildTimestamp(undefined, { development: true }).description}`,
+    '',
+  ].join('\n');
 }

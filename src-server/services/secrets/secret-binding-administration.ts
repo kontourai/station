@@ -170,7 +170,19 @@ export class SecretBindingIntegrationService
     private readonly logger?: {
       info(message: string, attributes?: Record<string, unknown>): void;
     },
+    private readonly mutateIntegration?: <T>(
+      id: string,
+      operation: () => Promise<T>,
+    ) => Promise<T>,
   ) {}
+
+  private updateIntegration(
+    id: string,
+    update: (current: ToolDef) => ToolDef,
+  ): Promise<ToolDef> {
+    const write = () => this.configLoader.updateIntegration(id, update);
+    return this.mutateIntegration ? this.mutateIntegration(id, write) : write();
+  }
 
   async getIntegrationBindings(input: { integrationId: string }): Promise<{
     integrationId: string;
@@ -233,16 +245,13 @@ export class SecretBindingIntegrationService
           },
         });
     try {
-      await this.configLoader.updateIntegration(
-        input.integrationId,
-        (current) => ({
-          ...current,
-          secretEnvRefs: {
-            ...(current.secretEnvRefs ?? {}),
-            [input.envName]: input.id,
-          },
-        }),
-      );
+      await this.updateIntegration(input.integrationId, (current) => ({
+        ...current,
+        secretEnvRefs: {
+          ...(current.secretEnvRefs ?? {}),
+          [input.envName]: input.id,
+        },
+      }));
       const result = this.outcome(input, binding, 'complete');
       this.auditConsumer('bind', result, 'success');
       return result;
@@ -291,24 +300,21 @@ export class SecretBindingIntegrationService
     );
     // Config FIRST: after this point the child cannot consume the binding,
     // even if the independent grant revocation fails.
-    await this.configLoader.updateIntegration(
-      input.integrationId,
-      (current) => {
-        const refs = { ...(current.secretEnvRefs ?? {}) };
-        if (refs[input.envName] && refs[input.envName] !== input.id)
-          throw new Error(
-            'The integration environment is bound to a different secret binding.',
-          );
-        // Missing is an intentional retry state after config-first partial.
-        if (!refs[input.envName]) return current;
-        delete refs[input.envName];
-        if (Object.keys(refs).length === 0)
-          delete (current as ToolDef).secretEnvRefs;
-        return Object.keys(refs).length > 0
-          ? { ...current, secretEnvRefs: refs }
-          : current;
-      },
-    );
+    await this.updateIntegration(input.integrationId, (current) => {
+      const refs = { ...(current.secretEnvRefs ?? {}) };
+      if (refs[input.envName] && refs[input.envName] !== input.id)
+        throw new Error(
+          'The integration environment is bound to a different secret binding.',
+        );
+      // Missing is an intentional retry state after config-first partial.
+      if (!refs[input.envName]) return current;
+      delete refs[input.envName];
+      if (Object.keys(refs).length === 0)
+        delete (current as ToolDef).secretEnvRefs;
+      return Object.keys(refs).length > 0
+        ? { ...current, secretEnvRefs: refs }
+        : current;
+    });
     try {
       // Revocation is terminal: the retained grant is historical evidence,
       // not a live authorization. Config-first removal has already prevented

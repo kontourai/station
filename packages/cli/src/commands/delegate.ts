@@ -45,7 +45,9 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   type ApprovalDecision,
+  type ContinueForegroundMessageInput,
   continueDelegatedTask,
+  continueExecutionMessage,
   type DelegatedCapabilityDelivery,
   type DelegatedTaskEventPage,
   type DelegatedTaskFollowUpHandle,
@@ -57,11 +59,13 @@ import {
   type DelegationProjectSlugJoin,
   delegateTask,
   discoverDelegationOptions,
+  type ForegroundMessageReceipt,
   interruptDelegatedTask,
   observeDelegatedTask,
   observeDelegatedTaskEvents,
   respondToDelegatedTaskRequest,
 } from '@kontourai/station-sdk/client';
+import { listPendingForThread } from './approvals.js';
 import {
   getResolvedApiBase,
   loadTextInput,
@@ -81,6 +85,7 @@ import {
   type OnRequestMode,
   resolveOnRequestMode,
 } from './model-options.js';
+import { buildApprovalsRespondCommand } from './session-client.js';
 
 const VALID_DECISIONS: ApprovalDecision[] = [
   'accept',
@@ -656,14 +661,38 @@ async function runDelegateContinuation(
   // Rejected explicitly (not silently dropped) rather than accepted and
   // ignored.
   const { modelOptions, cwd } = collectModelOptions(parsed);
-  if (cwd) {
+  if (
+    cwd ||
+    optionalValueFlag(parsed, 'project') ||
+    optionalValueFlag(parsed, 'project-path')
+  ) {
     throw new Error(
-      '--cwd has no effect when continuing a conversation: its workspace is fixed when the conversation is created.',
+      'Workspace flags have no effect when continuing a conversation: its workspace is fixed when the conversation is created.',
     );
   }
   // station#979: usage error before any request, same as every other flag
   // check above.
   const onRequest = resolveOnRequestMode(parsed);
+  if (!options.deprecatedAlias) {
+    return runConversationContinuation(
+      apiBase,
+      options.conversationId,
+      {
+        environment,
+        message,
+        ...(model || modelOptions
+          ? {
+              model: {
+                ...(model ? { override: model } : {}),
+                ...(modelOptions ? { options: modelOptions } : {}),
+              },
+            }
+          : {}),
+      },
+      onRequest,
+      jsonMode,
+    );
+  }
   if (options.deprecatedAlias) {
     process.stderr.write(
       "Deprecated: 'station delegate continue <id> <message>' remains available for one release; use 'station delegate --session=<conversation-id> <message>'.\n",
@@ -702,6 +731,92 @@ async function runDelegateContinuation(
     process.stderr.write(
       `Warning: could not check for a pending request on conversation ${data.conversationId} (${message}) — the conversation was continued successfully regardless.\n`,
     );
+  }
+  printDelegateResult('continue', data, jsonMode);
+}
+
+/** The selector names a Conversation; only the legacy alias requires a Task. */
+async function runConversationContinuation(
+  apiBase: string,
+  conversationId: string,
+  input: ContinueForegroundMessageInput,
+  onRequest: OnRequestMode,
+  jsonMode: boolean,
+): Promise<void> {
+  let receipt: ForegroundMessageReceipt;
+  try {
+    receipt = await continueExecutionMessage(apiBase, conversationId, input);
+  } catch (error) {
+    return handleDelegateFailure(error, getResolvedApiBase());
+  }
+  const data = {
+    ...receipt,
+    currentSessionId: receipt.sessionId,
+    status: 'dispatched' as const,
+  };
+  // This is a best-effort snapshot after acceptance, like delegated create.
+  // Observation failure must not cause a second provider invocation.
+  if (onRequest === 'fail') {
+    try {
+      let pending:
+        | {
+            requestId: string;
+            requestType: string;
+            title: string;
+            respondCommand: string;
+          }
+        | undefined;
+      if (input.environment?.kind === 'saved') {
+        // Existing remote Task supervision remains available. A remote
+        // non-Task Conversation may refuse this probe; report that gap below
+        // without inventing a Task or reading a same-named local Session.
+        const observed = await observeDelegatedTask(
+          apiBase,
+          receipt.conversationId,
+          { environmentId: input.environment.id },
+        );
+        if (observed.pendingRequest)
+          pending = {
+            requestId: observed.pendingRequest.id,
+            requestType: observed.pendingRequest.type ?? 'unknown',
+            title: observed.pendingRequest.title ?? '',
+            respondCommand: `${buildDelegateRespondCommand(observed.taskId, observed.pendingRequest.id)} --on=${shellQuote(input.environment.id)}`,
+          };
+      } else {
+        const observed = (
+          await listPendingForThread(apiBase, receipt.sessionId)
+        )[0];
+        if (observed)
+          pending = {
+            requestId: observed.requestId,
+            requestType: observed.requestType,
+            title: observed.title,
+            respondCommand: buildApprovalsRespondCommand(
+              receipt.sessionId,
+              observed.requestId,
+            ),
+          };
+      }
+      if (pending) {
+        if (jsonMode)
+          printDelegateResult(
+            'continue',
+            { ...data, pendingRequest: pending },
+            true,
+          );
+        else
+          console.log(
+            `Conversation ${receipt.conversationId} has a pending request in Session ${receipt.sessionId}: ${pending.requestId}\nRespond: ${pending.respondCommand}`,
+          );
+        process.exit(EXIT_ON_REQUEST_FAIL);
+        return;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(
+        `Warning: could not check for a pending request on conversation ${receipt.conversationId} (${message}) — the conversation was continued successfully regardless.\n`,
+      );
+    }
   }
   printDelegateResult('continue', data, jsonMode);
 }

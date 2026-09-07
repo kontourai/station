@@ -1,3 +1,4 @@
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 import type { DeveloperTab, NavigationView } from '../types';
 import {
@@ -5,9 +6,9 @@ import {
   canonicalConnectionPath,
 } from '../views/connections-hub/connection-sections';
 import {
-  APP_SURFACE_REGISTRY,
-  type ManagementSurfaceId,
-} from './surface-registry';
+  APP_DESTINATION_REGISTRY,
+  type ManagementDestinationId,
+} from './destination-registry';
 
 export const DEVELOPER_TABS = [
   'logs',
@@ -27,6 +28,17 @@ true satisfies DeveloperTabsExhaustive;
 export function isDeveloperTab(value: string): value is DeveloperTab {
   return (DEVELOPER_TABS as readonly string[]).includes(value);
 }
+
+/**
+ * The spellings that used to mount Activity's standalone placement. Retired
+ * as a route (#928), permanent as a URL.
+ */
+const RETIRED_ACTIVITY_PATHS = new Set([
+  '/activity',
+  '/activity/',
+  '/sessions',
+  '/sessions/',
+]);
 
 export function getLegacyPathRedirect(path: string): string | null {
   const queryIndex = path.indexOf('?');
@@ -134,13 +146,47 @@ export function getLegacyPathRedirect(path: string): string | null {
     if (redirect) return redirect;
   }
 
+  // #928: Activity has no standalone placement any more — it is a region
+  // surface, revealed by the shell rather than rendered by a route. The URL
+  // still has to work (`docs/design/pane-or-shell.md`: converting a surface
+  // must not break a URL), so both retired spellings land on the surface's
+  // canonical deep link instead of 404ing. `/sessions` was already a
+  // permanent redirect boundary for persisted notifications and old Discord
+  // messages (archive#3280); it now points one hop further rather than at a
+  // route that no longer resolves.
+  //
+  // The target is MINTED by the contracts builder that every producer uses
+  // (`activityDeepLink`, also the source of a notification's `openHref`, the
+  // web-push click target and Discord's completion line), so the redirect
+  // cannot drift from the shape those links already carry — including its
+  // rule that `focus` without a session means nothing and is dropped.
+  //
+  // Only `session` and `focus` survive: those are the whole payload the
+  // retired route ever read, and the canonical deep link has no place to put
+  // anything else. This narrows what a stored link can carry through, and
+  // the narrowing is unobserved rather than free: no producer has ever put
+  // another param on these two paths (`dock`/`chat` are minted only on
+  // `/projects/<slug>` and `/`, and the service worker appends nothing), so
+  // there is no live link this drops anything from. `dock` in particular
+  // WOULD survive a plain navigation — it is shell-scoped
+  // (`SHELL_SCOPED_QUERY_PARAMS`) and deliberately outlives a route change —
+  // so if a producer ever starts minting it here, this is the line to widen.
+  //
+  // Trailing slash for the same reason `/tasks/` and `/review/` carry one:
+  // an exact-lookup table 404s the copy-mangled spelling otherwise.
+  if (RETIRED_ACTIVITY_PATHS.has(pathname)) {
+    const params = new URLSearchParams(search);
+    const sessionId = params.get('session')?.trim();
+    if (!sessionId) return activityDeepLink();
+    return activityDeepLink({
+      sessionId,
+      ...(params.get('focus') === 'evidence'
+        ? { focus: 'evidence' as const }
+        : {}),
+    });
+  }
+
   const exactRedirects: Readonly<Record<string, string>> = {
-    // archive#3280: Activity is canonical before v1. Existing notification
-    // and Discord deep links remain valid through this permanent redirect.
-    // Both spellings: hand-typed and copy-mangled links commonly carry a
-    // trailing slash, and an exact-lookup table would 404 it
-    '/sessions': '/activity',
-    '/sessions/': '/activity',
     '/monitoring': '/developer/telemetry',
     '/sys/monitoring': '/developer/telemetry',
     '/sys/schedule': '/schedule',
@@ -148,15 +194,16 @@ export function getLegacyPathRedirect(path: string): string | null {
     '/tools': '/connections/tools',
     // #765 D2: there is no task-collection view — a Task is only ever opened
     // by id (`/tasks/:id`), and task lists live inside their project surfaces
-    // and on Home. Redirecting the bare path (both spellings, like
-    // '/sessions' above) sends a hand-typed or truncated URL to the surface
+    // and on Home. Redirecting the bare path (both spellings, like the
+    // retired Activity paths above) sends a hand-typed or truncated URL to the surface
     // that does list tasks instead of a "No view matches /tasks" 404. Task
     // deep links are exact-lookup-safe: `/tasks/<id>` never matches here.
     '/tasks': '/',
     '/tasks/': '/',
     // #765 residue (D2 class): the nav item says "Review" but the canonical
     // route is '/review-queue', so the hand-typed short spelling 404'd.
-    // Both spellings, like '/sessions' above. Exact-only is safe: no view
+    // Both spellings, like the retired Activity paths above. Exact-only is
+    // safe: no view
     // ever mounts under a '/review/<id>' deep link.
     '/review': '/review-queue',
     '/review/': '/review-queue',
@@ -218,8 +265,8 @@ export function resolveViewFromPath(
   const queryIndex = path.indexOf('?');
   const search = queryIndex >= 0 ? path.slice(queryIndex + 1) : '';
   path = queryIndex >= 0 ? path.slice(0, queryIndex) : path;
-  const exactSurface = APP_SURFACE_REGISTRY.resolveExactRoute(path);
-  if (exactSurface) return exactSurface;
+  const exactDestination = APP_DESTINATION_REGISTRY.resolveExactRoute(path);
+  if (exactDestination) return exactDestination;
 
   if (path.startsWith('/agents/')) {
     // Preserve the historically accepted trailing-slash spelling while the
@@ -262,26 +309,16 @@ export function resolveViewFromPath(
     }
     return { type: 'registry' };
   }
-  if (path === '/activity') {
-    const params = new URLSearchParams(search);
-    const sessionId = params.get('session')?.trim();
-    if (!sessionId) return { type: 'activity' };
-    // `focus=evidence` is a one-shot intent that only means anything when it
-    // names a session; any other value is ignored rather than carried.
-    return params.get('focus') === 'evidence'
-      ? { type: 'activity', sessionId, focus: 'evidence' }
-      : { type: 'activity', sessionId };
-  }
   if (path.startsWith('/plugins/')) {
     return { type: 'plugins' };
   }
   if (path === '/connections/models') {
-    return { type: 'connections-providers' };
+    return { type: 'connections-models' };
   }
   if (path.startsWith('/connections/models/')) {
     const id = path.split('/')[3];
     if (id) {
-      return { type: 'connections-provider-edit', id };
+      return { type: 'connections-model-edit', id };
     }
   }
   // `new/<providerId>` is the command-backed provider setup, not an engine
@@ -293,12 +330,12 @@ export function resolveViewFromPath(
     const providerId = decodeURIComponent(
       path.slice('/connections/engines/new/'.length),
     );
-    if (providerId) return { type: 'connections-acp-new', providerId };
+    if (providerId) return { type: 'connections-engine-new', providerId };
   }
   if (path.startsWith('/connections/engines/')) {
     const id = path.split('/')[3];
     if (id) {
-      return { type: 'connections-runtime-edit', id };
+      return { type: 'connections-engine-edit', id };
     }
   }
   if (path === '/connections/engines') {
@@ -495,21 +532,17 @@ export function getPathForView(view: NavigationView): string | null {
       return view.tab ? `/registry/${view.tab}` : '/registry';
     case 'review-queue':
       return '/review-queue';
-    case 'activity':
-      return view.sessionId
-        ? `/activity?session=${encodeURIComponent(view.sessionId)}${view.focus === 'evidence' ? '&focus=evidence' : ''}`
-        : '/activity';
     case 'connections':
       return '/connections';
-    case 'connections-providers':
+    case 'connections-models':
       return '/connections/models';
-    case 'connections-provider-edit':
+    case 'connections-model-edit':
       return `/connections/models/${view.id}`;
     case 'connections-engines':
       return '/connections/engines';
-    case 'connections-runtime-edit':
+    case 'connections-engine-edit':
       return `/connections/engines/${view.id}`;
-    case 'connections-acp-new':
+    case 'connections-engine-new':
       return `/connections/engines/new/${encodeURIComponent(view.providerId)}`;
     case 'connections-tools':
       return '/connections/tools';
@@ -564,21 +597,47 @@ export function getPathForView(view: NavigationView): string | null {
   }
 }
 
-/** Returns Station's semantic parent, independent of browser arrival history. */
+/**
+ * Returns Station's semantic parent, independent of browser arrival history.
+ *
+ * A parent is DECLARED here, never assumed. The fallback used to be
+ * `{ type: 'home' }`, which handed every unlisted view a parent it does not
+ * have: a top-level sidebar destination is not below anything, so the single
+ * consumer of this — `app.escapeUp` in App.tsx — was armed on those pages and
+ * Escape navigated away from them. #1582 H3 measured it on Schedule (open Add
+ * Job, Escape closes the dialog, Escape again lands on Home), but the dialog
+ * was never involved: one Escape on the resting page did the same, and so did
+ * Agents, Connections, Plugins, Guidance, Review, Notifications, Developer and
+ * Profile. `null` means "no level up", which is what those pages are.
+ */
 export function getParentView(view: NavigationView): NavigationView | null {
   switch (view.type) {
     case 'home':
       return null;
+    // Top-level destinations: nothing above them to go up to.
+    case 'agents':
+    case 'connections':
+    case 'guidance':
+    case 'plugins':
+    case 'review-queue':
+    case 'developer':
+    case 'schedule':
+    case 'notifications':
+    case 'profile':
+      return null;
     case 'agent-edit':
     case 'agent-new':
       return { type: 'agents' };
-    case 'connections-provider-edit':
-      return { type: 'connections-providers' };
-    case 'connections-runtime-edit':
+    case 'connections-model-edit':
+      return { type: 'connections-models' };
+    case 'connections-engine-edit':
+    case 'connections-engine-new':
       return { type: 'connections-engines' };
+    case 'connections-computers':
+      return { type: 'connections' };
     case 'connections-tool-edit':
       return { type: 'connections-tools' };
-    case 'connections-providers':
+    case 'connections-models':
     case 'connections-engines':
     case 'connections-tools':
     case 'connections-knowledge':
@@ -598,27 +657,32 @@ export function getParentView(view: NavigationView): NavigationView | null {
     case 'layout':
       return { type: 'project', slug: view.projectSlug };
     case 'task':
+    // Settings behaves as a full-page overlay of Home rather than a sibling
+    // destination, and its Escape has always closed back to Home.
+    case 'settings':
+    case 'project':
+    case 'project-new':
+    case 'board':
+    case 'not-found':
       return { type: 'home' };
-    case 'activity':
-      return view.sessionId ? { type: 'activity' } : { type: 'home' };
     case 'registry':
-      return view.tab ? { type: 'registry' } : { type: 'home' };
+      return view.tab ? { type: 'registry' } : null;
     default:
-      return { type: 'home' };
+      return null;
   }
 }
 
-export type ManagementNavigationGroup = ManagementSurfaceId;
+export type ManagementNavigationGroup = ManagementDestinationId;
 
 export function getManagementNavigationGroup(
   view: NavigationView,
 ): ManagementNavigationGroup | null {
-  const surface = APP_SURFACE_REGISTRY.getSurfaceForView(view);
-  return surface?.managementGroup ?? null;
+  const destination = APP_DESTINATION_REGISTRY.getDestinationForView(view);
+  return destination?.managementGroup ?? null;
 }
 
 export function getPathForManagementNavigationGroup(
   group: ManagementNavigationGroup,
 ): string {
-  return APP_SURFACE_REGISTRY.get(group)?.route ?? '/';
+  return APP_DESTINATION_REGISTRY.get(group)?.route ?? '/';
 }

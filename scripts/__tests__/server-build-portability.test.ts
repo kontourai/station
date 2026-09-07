@@ -21,6 +21,7 @@ import { promisify } from 'node:util';
 import * as esbuild from 'esbuild';
 import { load } from 'js-yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { EventStore } from '../../src-server/services/orchestration/event-store.js';
 import {
   DESKTOP_SERVER_RUNTIME_BUDGET,
   DESKTOP_SERVER_RUNTIME_PACKAGES,
@@ -39,7 +40,7 @@ const DESKTOP_SERVER_READINESS_TIMEOUT_MS = 60_000;
 const DESKTOP_SERVER_READINESS_POLL_INTERVAL_MS = 250;
 const DESKTOP_SERVER_OUTPUT_TAIL_BYTES = 4_096;
 
-class DesktopLivenessTransportError extends Error {}
+class DesktopProbeTransportError extends Error {}
 
 interface DesktopIdentityProbeOptions {
   fetchImpl?: typeof fetch;
@@ -180,6 +181,126 @@ async function buildDesktopResourceFixture(root: string) {
   expect(
     existsSync(join(serverOutput, 'project-task-room-working-state-worker.js')),
   ).toBe(true);
+  // Execute the shipped Task worker from an unrelated cwd with the real
+  // staged runtime dependencies. Presence alone would not prove resolution.
+  const taskReaderProbe = join(serverOutput, 'task-search-reader-probe.mjs');
+  await esbuild.build({
+    stdin: {
+      contents: `export { createIsolatedTaskSearch } from ${JSON.stringify(join(repoRoot, 'src-server/services/search/isolated-task-search.ts'))}; export { sessionReadAuthorityFromRequest } from ${JSON.stringify(join(repoRoot, 'packages/contracts/src/tenancy.ts'))};`,
+      resolveDir: repoRoot,
+    },
+    outfile: taskReaderProbe,
+    bundle: true,
+    platform: 'node',
+    target: 'node24',
+    format: 'esm',
+  });
+  const taskProbe = await execFileAsync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `
+    import { pathToFileURL } from 'node:url';
+    const { createIsolatedTaskSearch, sessionReadAuthorityFromRequest } = await import(pathToFileURL(${JSON.stringify(taskReaderProbe)}));
+    const reader = createIsolatedTaskSearch({
+      storePath: ${JSON.stringify(join(root, 'uncreated-task-home', 'task-graph.json'))}, stationId:'packaged-station'
+    });
+    try {
+      const reply = await reader.provider.search({version:'station.unified-search/v1',query:'parser',limit:8},new AbortController().signal);
+      const opened = await reader.open({taskId:'missing',projectId:'project',authority:sessionReadAuthorityFromRequest('user',undefined,undefined),current:()=>true});
+      process.stdout.write(JSON.stringify({reply,opened}));
+    } finally { await reader.close(); }
+  `,
+    ],
+    { cwd: root, encoding: 'utf8', timeout: 15_000, windowsHide: true },
+  );
+  expect(JSON.parse(taskProbe.stdout)).toEqual({
+    reply: {
+      version: 'station.unified-search/v1',
+      state: 'available',
+      results: [],
+    },
+    opened: { state: 'not-found' },
+  });
+  const transcriptPath = join(root, 'canonical-transcript.sqlite');
+  const transcriptStore = new EventStore(transcriptPath);
+  try {
+    transcriptStore.appendEvent({
+      eventId: 'packaged-start',
+      provider: 'claude',
+      threadId: 'packaged-thread',
+      createdAt: '2026-09-03T00:00:00.000Z',
+      method: 'session.started',
+      sessionId: 'packaged-thread',
+      metadata: { userId: 'packaged-user' },
+    });
+    transcriptStore.appendEvent({
+      eventId: 'packaged-turn',
+      provider: 'claude',
+      threadId: 'packaged-thread',
+      turnId: 'packaged-turn-id',
+      createdAt: '2026-09-03T00:00:01.000Z',
+      method: 'turn.started',
+      prompt: 'packaged cobalt transcript',
+    });
+  } finally {
+    transcriptStore.close();
+  }
+  const transcriptReaderProbe = join(
+    serverOutput,
+    'transcript-reader-probe.mjs',
+  );
+  await esbuild.build({
+    entryPoints: [
+      join(
+        repoRoot,
+        'src-server/services/search/isolated-transcript-search.ts',
+      ),
+    ],
+    outfile: transcriptReaderProbe,
+    bundle: true,
+    platform: 'node',
+    target: 'node24',
+    format: 'esm',
+  });
+  const transcriptProbe = await execFileAsync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `
+    import { pathToFileURL } from 'node:url';
+    const { createIsolatedTranscriptReads } = await import(pathToFileURL(${JSON.stringify(transcriptReaderProbe)}));
+    const reader = createIsolatedTranscriptReads(${JSON.stringify(transcriptPath)});
+    try {
+      const rows = await reader.search({query:'cobalt',ownerUserId:'packaged-user',limit:20});
+      const owner = await reader.readOwner('packaged-thread');
+      const opened = await reader.readMessage({threadId:'packaged-thread',matchedEventId:'packaged-turn',ownerUserId:'packaged-user'});
+      const session = await reader.readSession({threadId:'packaged-thread',ownerUserId:'packaged-user'});
+      process.stdout.write(JSON.stringify({rows,owner,opened,session}));
+    } finally { await reader.close(); }
+  `,
+    ],
+    { cwd: root, encoding: 'utf8', timeout: 15_000, windowsHide: true },
+  );
+  expect(JSON.parse(transcriptProbe.stdout)).toMatchObject({
+    owner: 'packaged-user',
+    opened: {
+      conversationId: 'packaged-thread',
+      matchedEventId: 'packaged-turn',
+      messageId: 'packaged-turn:user',
+    },
+    session: { conversationId: 'packaged-thread' },
+    rows: [
+      {
+        conversationId: 'packaged-thread',
+        messageId: 'packaged-turn:user',
+        role: 'user',
+        excerpt: 'packaged cobalt transcript',
+      },
+    ],
+  });
   // jsonc-parser's CommonJS UMD `main` entry loads these files with dynamic
   // relative requires. A single-file dist-server cannot carry those sibling
   // modules, so rejecting the emitted shape here makes this packaging failure
@@ -300,7 +421,7 @@ async function probeDesktopIdentityOnce(
       signal: AbortSignal.timeout(DESKTOP_SERVER_READINESS_POLL_INTERVAL_MS),
     });
   } catch (error) {
-    throw new DesktopLivenessTransportError('Liveness transport failed', {
+    throw new DesktopProbeTransportError('Liveness transport failed', {
       cause: error,
     });
   }
@@ -319,13 +440,17 @@ async function probeDesktopIdentityOnce(
       'Packaged desktop server did not persist its operator credential',
     );
   }
-  const identity = await fetchImpl(
-    `http://127.0.0.1:${port}/api/system/identity`,
-    {
+  let identity: Response;
+  try {
+    identity = await fetchImpl(`http://127.0.0.1:${port}/api/system/identity`, {
       headers: { Authorization: `Bearer ${securityRecord.credential}` },
       signal: AbortSignal.timeout(DESKTOP_SERVER_READINESS_POLL_INTERVAL_MS),
-    },
-  );
+    });
+  } catch (error) {
+    throw new DesktopProbeTransportError('Identity transport failed', {
+      cause: error,
+    });
+  }
   if (!identity.ok) {
     throw new Error(
       `Packaged desktop identity probe failed with ${identity.status}`,
@@ -349,7 +474,7 @@ async function waitForDesktopIdentity(
     try {
       return await probeDesktopIdentityOnce(port, launched.homeDir);
     } catch (error) {
-      if (!(error instanceof DesktopLivenessTransportError)) throw error;
+      if (!(error instanceof DesktopProbeTransportError)) throw error;
       // The resource-shaped server is still starting.
     }
     await new Promise((resolve) =>
@@ -475,6 +600,26 @@ describe('server build package portability', () => {
     );
   });
 
+  it('classifies a transient authenticated identity transport failure as retryable', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ live: true }))
+      .mockRejectedValueOnce(
+        new DOMException(
+          'The operation was aborted due to timeout',
+          'TimeoutError',
+        ),
+      );
+    await expect(
+      probeDesktopIdentityOnce(3142, '/unused', {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        readCredentialRecord: () =>
+          JSON.stringify({ credential: 'fixture-credential' }),
+      }),
+    ).rejects.toThrow(DesktopProbeTransportError);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it('fails on a missing persisted credential without requesting identity', async () => {
     const fetchImpl = vi.fn(async () => Response.json({ live: true }));
     await expect(
@@ -523,9 +668,19 @@ describe('server build package portability', () => {
       'usr/share/Station/dist-server': '../dist-server',
       'usr/share/Station/node_modules': '../dist-desktop-runtime/node_modules',
     });
-    expect(packageConfig.scripts['build:desktop:resources']).toContain(
-      'scripts/stage-desktop-server-runtime.mjs',
+    // The portable wrapper owns one immutable client-build transaction, then
+    // delegates server staging after that stamp has been reused. Keep this
+    // assertion at the package boundary and verify the nested staging command
+    // rather than making the package script duplicate shell-specific env syntax.
+    expect(packageConfig.scripts['build:desktop:resources']).toBe(
+      'node scripts/build-desktop-resources.mjs',
     );
+    expect(
+      readFileSync(
+        join(repoRoot, 'scripts', 'build-desktop-resources.mjs'),
+        'utf8',
+      ),
+    ).toContain('scripts/stage-desktop-server-runtime.mjs');
     expect(packageConfig.scripts.clean).toContain('dist-desktop-runtime');
     expect(packageConfig.scripts.clean).toContain('dist-desktop-wix-resources');
     // station#3379: Tauri's NSIS template removes resources with `Delete`

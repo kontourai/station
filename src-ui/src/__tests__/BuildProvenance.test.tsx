@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vitest';
 import {
   BuildProvenance,
   formatBuildAge,
+  InstalledAppBuildProvenance,
 } from '../views/settings/BuildProvenance';
 
 const build = {
@@ -17,18 +18,18 @@ const build = {
 };
 
 describe('BuildProvenance', () => {
-  test('renders an accessible deployed artifact identity', () => {
-    render(<BuildProvenance build={build} />);
+  test('renders backend provenance distinctly from the installed app', () => {
+    const { container } = render(<BuildProvenance build={build} />);
 
     expect(
-      screen.getByRole('group', { name: 'Deployed build provenance' }),
+      screen.getByRole('group', { name: 'Connected Station build provenance' }),
     ).toBeTruthy();
     expect(screen.getByText('abcdef0').getAttribute('title')).toBe(
       build.fullSha,
     );
-    expect(screen.getByText('2 minutes ago').getAttribute('title')).toBe(
-      build.builtAt,
-    );
+    expect(
+      container.querySelector('dd[title]')?.getAttribute('title'),
+    ).toContain(build.builtAt);
     expect(screen.getByText('main')).toBeTruthy();
     expect(screen.getByText('phone-dogfood')).toBeTruthy();
   });
@@ -36,7 +37,7 @@ describe('BuildProvenance', () => {
   test('states when release metadata is unavailable', () => {
     render(<BuildProvenance />);
     expect(
-      screen.getByText('Build provenance is unavailable for this instance.'),
+      screen.getByText('Connected Station build provenance is unavailable.'),
     ).toBeTruthy();
   });
 
@@ -45,7 +46,7 @@ describe('BuildProvenance', () => {
   // produces an empty <dd>, which no value-based assertion can see.
   const ROWS = {
     Revision: 'abcdef0',
-    Built: '2 minutes ago',
+    Built: 'Jul 10, 2026 18:00 UTC · 2 minutes ago',
     Branch: 'main',
     Instance: 'phone-dogfood',
   } as const;
@@ -72,17 +73,19 @@ describe('BuildProvenance', () => {
       expect(screen.getByText(value)).toBeTruthy();
     }
     expect(
-      screen.queryByText('Build provenance is unavailable for this instance.'),
+      screen.queryByText('Connected Station build provenance is unavailable.'),
     ).toBeNull();
   });
 
   test('an empty provenance object still reads as unavailable', () => {
     render(<BuildProvenance build={{}} />);
     expect(
-      screen.getByText('Build provenance is unavailable for this instance.'),
+      screen.getByText('Connected Station build provenance is unavailable.'),
     ).toBeTruthy();
     expect(
-      screen.queryByRole('group', { name: 'Deployed build provenance' }),
+      screen.queryByRole('group', {
+        name: 'Connected Station build provenance',
+      }),
     ).toBeNull();
   });
 
@@ -95,5 +98,22 @@ describe('BuildProvenance', () => {
     [172_800, '2 days ago'],
   ])('formats age %i as %s', (seconds, expected) => {
     expect(formatBuildAge(seconds)).toBe(expected);
+  });
+
+  test('renders installed client build without consulting a backend', () => {
+    render(
+      <InstalledAppBuildProvenance
+        development={false}
+        build={{
+          fullSha: '1234567890abcdef1234567890abcdef12345678',
+          branch: 'nightly',
+          builtAt: '2026-08-30T12:00:00.000Z',
+        }}
+      />,
+    );
+    expect(
+      screen.getByRole('group', { name: 'Installed app build provenance' }),
+    ).toBeTruthy();
+    expect(screen.getByText(/Store upload and install dates are/)).toBeTruthy();
   });
 });

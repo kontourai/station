@@ -1,8 +1,7 @@
 # Work-Plane Composition: Station as the Native Host of the Kontour Work Plane
 
 - **Status:** Shaped (builder.shape session `work-plane-composition`, 2026-07-20)
-- **Owner:** Brian Anderson
-- **Provenance:** Shaped interactively with the owner; decisions below record owner calls made during that session.
+- **Provenance:** Shaped interactively; decisions below record the calls made during that session.
 
 ## Thesis
 

@@ -114,6 +114,6 @@ export interface AgentEditorFormProps {
    */
   engineKind: EngineKind;
   onEngineKindChange: (kind: EngineKind) => void;
-  /** The Station-engine connection to bind when "Use a model connection" wins. */
+  /** The Station-engine connection to bind when the Station row wins. */
   stationConnectionId: string;
 }

@@ -14,7 +14,7 @@ type StoredBoundary = Pick<
 
 const KEY_PREFIX = 'station.conversation-context-boundary.v1:';
 
-function key(conversationId: string) {
+export function contextBoundaryUiStorageKey(conversationId: string): string {
   return `${KEY_PREFIX}${encodeURIComponent(conversationId)}`;
 }
 
@@ -58,7 +58,7 @@ export function readConversationContextBoundaryUiState(
 ): StoredBoundary | null {
   try {
     return parse(
-      window.localStorage.getItem(key(conversationId)),
+      window.localStorage.getItem(contextBoundaryUiStorageKey(conversationId)),
       conversationId,
     );
   } catch {
@@ -85,7 +85,7 @@ export function writeConversationContextBoundaryUiState(
   };
   try {
     window.localStorage.setItem(
-      key(boundary.conversationId),
+      contextBoundaryUiStorageKey(boundary.conversationId),
       JSON.stringify(stored),
     );
   } catch {
@@ -98,12 +98,8 @@ export function clearConversationContextBoundaryUiState(
   conversationId: string,
 ): void {
   try {
-    window.localStorage.removeItem(key(conversationId));
+    window.localStorage.removeItem(contextBoundaryUiStorageKey(conversationId));
   } catch {
     // The durable server projection still reconciles on the next available read.
   }
-}
-
-export function contextBoundaryUiStorageKey(conversationId: string): string {
-  return key(conversationId);
 }

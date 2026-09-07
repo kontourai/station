@@ -13,6 +13,14 @@ import { Suspense } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PageFrame } from '../components/page-frame';
 
+// `RegionModelProvider` wraps the whole application, so `useShowSurface`
+// requires it. This harness mounts a fragment of that tree, and nothing
+// here asserts a surface reveal, so the command hook is supplied directly.
+const showSurfaceStub = vi.hoisted(() => vi.fn());
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurfaceStub,
+}));
+
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   const q = { data: undefined, isLoading: false, isError: false };

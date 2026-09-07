@@ -78,7 +78,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     conversationQueries: {
       inventory: () => ({ queryKey: ['conversation-inventory'] }),
     },
-    useAgentConnectionsQuery: () => agentConnectionsMock(),
+    useEngineConnectionsQuery: () => agentConnectionsMock(),
     useInvalidateQuery: () => invalidateMock,
     interruptOrchestrationTurn: (...args: unknown[]) =>
       interruptOrchestrationTurnMock(...args),

@@ -21,6 +21,7 @@ import {
   useSessionInventoryQuery,
 } from '@kontourai/station-sdk/session-inventory';
 import { useKeepSessionOutputMutation } from '@kontourai/station-sdk/session-output-actions';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { buildBasisPanelViewModel } from '@kontourai/surface/basis/view';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -38,6 +39,7 @@ import {
   commitSessionInventorySelection,
   readSessionInventoryKnownScopes,
   readSessionInventorySelection,
+  sessionInventoryScopeKey,
   useSessionInventorySelection,
 } from './sessionInventorySelection';
 import './SessionInventory.css';
@@ -128,14 +130,16 @@ function ConnectedSessionInventorySurface({
   const selection =
     !initialScope ||
     (storedSelection &&
-      scopeKey(storedSelection.scope) === scopeKey(initial.scope))
+      sessionInventoryScopeKey(storedSelection.scope) ===
+        sessionInventoryScopeKey(initial.scope))
       ? observedSelection
       : initial;
   useEffect(() => {
     if (
       initialScope &&
       (!storedSelection ||
-        scopeKey(storedSelection.scope) !== scopeKey(initial.scope))
+        sessionInventoryScopeKey(storedSelection.scope) !==
+          sessionInventoryScopeKey(initial.scope))
     )
       commitSessionInventorySelection(selectionKey, initial);
   }, [initial, initialScope, selectionKey, storedSelection]);
@@ -165,7 +169,7 @@ function ConnectedSessionInventorySurface({
     continuation: string;
     scopeKey: string;
   } | null>(null);
-  const selectedScopeKey = scopeKey(selection.scope);
+  const selectedScopeKey = sessionInventoryScopeKey(selection.scope);
   const previousScopeKey = useRef(selectedScopeKey);
   const [loadedPages, setLoadedPages] = useState<
     readonly { key: string; page: AnySessionInventoryGroupPage }[]
@@ -187,7 +191,11 @@ function ConnectedSessionInventorySurface({
   );
   useEffect(() => {
     const received = page.data;
-    if (!received || scopeKey(received.scope) !== selectedScopeKey) return;
+    if (
+      !received ||
+      sessionInventoryScopeKey(received.scope) !== selectedScopeKey
+    )
+      return;
     const key = `${selectedScopeKey}\u0000${received.group.id}\u0000${nextPage?.continuation ?? ''}`;
     setLoadedPages((current) =>
       current.some((entry) => entry.key === key)
@@ -245,10 +253,12 @@ function ConnectedSessionInventorySurface({
       <SessionInventory
         model={model}
         onSelect={(next) => commitSessionInventorySelection(selectionKey, next)}
-        scopeOptions={availableScopes(
-          selection.scope,
-          readSessionInventoryKnownScopes(selectionKey),
-        )}
+        scopeOptions={[
+          { kind: 'whole-session', sessionId: selection.scope.sessionId },
+          ...readSessionInventoryKnownScopes(selectionKey).filter(
+            (scope) => scope.kind !== 'whole-session',
+          ),
+        ]}
         onScopeChange={(scope) =>
           commitSessionInventorySelection(selectionKey, {
             scope,
@@ -325,27 +335,6 @@ function currentAnswerStandingIdentity(
     scope.sessionId,
     scope.turnId,
   ]);
-}
-
-function availableScopes(
-  scope: SessionInventoryScope,
-  known: readonly SessionInventoryScope[],
-) {
-  const whole = { kind: 'whole-session' as const, sessionId: scope.sessionId };
-  const all = [
-    whole,
-    ...known.filter((candidate) => candidate.kind !== 'whole-session'),
-  ];
-  return all.filter(
-    (candidate, index) =>
-      all.findIndex(
-        (other) => JSON.stringify(other) === JSON.stringify(candidate),
-      ) === index,
-  );
-}
-
-function scopeKey(scope: SessionInventoryScope): string {
-  return JSON.stringify(scope);
 }
 
 function InventoryAction(props: {
@@ -536,7 +525,7 @@ function KeepOutputInTask({
               taskId,
               sessionId: row.output.ref.sessionId,
               eventId: row.output.ref.eventId,
-              operationId: crypto.randomUUID(),
+              operationId: randomCorrelationId(),
               requestScope,
             })
             .then(

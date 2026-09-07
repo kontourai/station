@@ -21,7 +21,9 @@ requests.
 ## Make a change
 
 Work from a branch or isolated worktree based on current `main`. Do not use
-`git stash`: its ref is shared by every worktree.
+`git stash`: its ref is shared by every worktree. Source-setup prerequisites
+(including the Linux-only C++ toolchain for `node-pty`) are listed in the
+[Developer guide](docs/guides/development.md#source-prerequisites).
 
 Use the repository's current contributor and testing guidance rather than
 copying commands from an issue or pull request:
@@ -30,8 +32,11 @@ copying commands from an issue or pull request:
 - [Agent and repository instructions](AGENTS.md)
 - [Developer guide](docs/guides/development.md)
 - [Testing guide](docs/guides/testing.md)
+- [Workspace release notes](.changeset/README.md)
 - [Code-quality guide](docs/guides/code-quality.md)
 - [Module map](docs/architecture/module-map.md)
+- [Repository layout and naming](docs/guides/repository-layout.md)
+- [Maintaining documentation](docs/guides/documentation.md)
 
 The pull-request template is the handoff contract: state the user outcome,
 issue and closure condition, exact commands and receipts, manual inspection,

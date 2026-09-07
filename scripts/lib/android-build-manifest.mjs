@@ -38,6 +38,7 @@ import { join } from 'node:path';
 import {
   BUILD_MANIFEST_FILENAME,
   deriveBuildManifest,
+  readNativeClientBuildManifest,
 } from './desktop-build-manifest.mjs';
 
 /**
@@ -93,7 +94,12 @@ export function writeAndroidBuildManifest(
       `Cannot stage Android build provenance: ${generatedProject} does not exist. Run \`npx tauri android init\` before building the APK.`,
     );
   }
-  const manifest = deriveBuildManifest(projectRoot, options);
+  // A native artifact gets one wall-clock sample at the client staging seam.
+  // Android must carry that exact source-derived record, not a later asset
+  // writer timestamp. Direct utility callers retain the documented fallback.
+  const manifest =
+    readNativeClientBuildManifest(projectRoot) ??
+    deriveBuildManifest(projectRoot, options);
   if (!manifest) return null;
   const assetsRoot = join(projectRoot, assetsDir);
   mkdirSync(assetsRoot, { recursive: true });

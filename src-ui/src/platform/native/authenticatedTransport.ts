@@ -3,6 +3,8 @@
  * and status only; the selected Station's bearer is resolved by Rust for each
  * request and is deliberately absent from this module's API.
  */
+
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { Channel, invoke } from '@tauri-apps/api/core';
 import { readNativeCommandError } from './nativeCommandError';
 
@@ -62,7 +64,7 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
     const url = request?.url ?? String(input);
     const headers = new Headers(request?.headers);
     new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
-    const requestId = crypto.randomUUID();
+    const requestId = randomCorrelationId();
     const signal = init?.signal ?? request?.signal;
     let streamController:
       | ReadableStreamDefaultController<Uint8Array>

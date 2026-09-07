@@ -23,10 +23,22 @@ vi.mock('@kontourai/station-connect', () => ({
 vi.mock('@kontourai/station-sdk', () => ({
   authenticatedFetch: vi.fn(),
   StationReadOnlyError: class extends Error {},
-  useAgentConnectionsQuery: () => ({ data: [] }),
+  useEngineConnectionsQuery: () => ({ data: [] }),
   useAnswerSharesQuery: () => ({ data: [] }),
   useRevokeAnswerShareMutation: () => ({ mutate: vi.fn(), isError: false }),
   useConfigProvenanceQuery: () => ({ data: {} }),
+  // Settings mounts `UsageTelemetryDisclosure`, and #1608 made its decision
+  // hook read the shared `['config']` query and its write path so the offered
+  // choice cannot contradict a setting changed since the inventory was
+  // fetched. Both are reached before the disclosure's own early return, so
+  // this factory has to answer them even though the surface renders nothing
+  // in this file. The shapes are the ORDINARY case — config in hand, nothing
+  // in flight, no error — because the state under test here is the settings
+  // catalog, and a loading or failed telemetry read would make the decision
+  // hook derive an unsettled state that is not what any assertion below is
+  // about.
+  useConfigQuery: () => ({ data: { telemetryEnabled: true } }),
+  useUpdateConfigMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useInvalidateQuery: () => vi.fn(),
   useSystemStatusForApiBaseQuery: () => ({
     data: {

@@ -148,7 +148,18 @@ export function createInsightsRoutes(
 
     const toolUsage: Record<
       string,
-      { calls: number; errors: number; outcomeUnknown: number }
+      {
+        calls: number;
+        errors: number;
+        outcomeUnknown: number;
+        /**
+         * station#1558: results the producer explicitly reported as
+         * `unresolved` — the session ended with the call still open. Kept
+         * apart from `errors` (nothing observed a failure) and from
+         * `outcomeUnknown` (nothing was reported at all).
+         */
+        unresolved: number;
+      }
     > = {};
     const hourlyActivity: number[] = new Array(24).fill(0);
     const agentUsage: Record<string, { chats: number; tokens: number }> = {};
@@ -159,6 +170,7 @@ export function createInsightsRoutes(
     let totalToolCalls = 0;
     let totalErrors = 0;
     let totalOutcomeUnknown = 0;
+    let totalUnresolved = 0;
 
     if (!existsSync(monitoringDir))
       return c.json({
@@ -175,6 +187,7 @@ export function createInsightsRoutes(
           // sanity-check here, so dropping the honest denominator and the
           // applied-filter echo is exactly the wrong place to do it.
           totalOutcomeUnknown: 0,
+          totalUnresolved: 0,
           days,
           ...(filters.agent !== undefined ||
           filters.tool !== undefined ||
@@ -333,7 +346,12 @@ export function createInsightsRoutes(
                   ? toolValue
                   : UNNAMED_TOOL;
               if (!toolUsage[tool]) {
-                toolUsage[tool] = { calls: 0, errors: 0, outcomeUnknown: 0 };
+                toolUsage[tool] = {
+                  calls: 0,
+                  errors: 0,
+                  outcomeUnknown: 0,
+                  unresolved: 0,
+                };
               }
               toolUsage[tool].calls++;
             }
@@ -348,11 +366,25 @@ export function createInsightsRoutes(
                   ? toolValue
                   : UNNAMED_TOOL;
               if (!toolUsage[tool]) {
-                toolUsage[tool] = { calls: 0, errors: 0, outcomeUnknown: 0 };
+                toolUsage[tool] = {
+                  calls: 0,
+                  errors: 0,
+                  outcomeUnknown: 0,
+                  unresolved: 0,
+                };
               }
               if (outcome === 'error') {
                 totalErrors++;
                 toolUsage[tool].errors++;
+              } else if (outcome === 'unresolved') {
+                // station#1558: an explicitly reported non-outcome. It is
+                // NOT an error — nothing observed the tool fail — and it is
+                // not `outcomeUnknown` either, which means the producer said
+                // nothing at all. Counting it as either would move the error
+                // rate for a population whose outcome Station knows it does
+                // not know.
+                totalUnresolved++;
+                toolUsage[tool].unresolved++;
               } else if (outcome !== 'success') {
                 // The emitter OMITS the outcome when the producer reported
                 // no terminal status, so these results are neither successes
@@ -391,6 +423,13 @@ export function createInsightsRoutes(
          * error rate computed without them silently flatters itself.
          */
         totalOutcomeUnknown,
+        /**
+         * station#1558: tool results whose producer reported that no outcome
+         * will ever arrive (the session ended with the call open). In
+         * `totalToolCalls`, and neither successes, failures, nor silent
+         * non-reports.
+         */
+        totalUnresolved,
         days,
         ...(filters.agent !== undefined ||
         filters.tool !== undefined ||

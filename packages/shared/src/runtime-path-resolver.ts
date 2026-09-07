@@ -42,6 +42,34 @@ export function resolveStationRoot(
   return home;
 }
 
+/**
+ * The `STATION_ROOT` a spawned Station runtime must carry for `home`, or
+ * `undefined` when it must be left UNSET.
+ *
+ * `undefined` is the self-rooted case -- `--home`, `--base`, `--temp-home`, or
+ * an external `STATION_HOME` naming a raw directory -- where
+ * `resolveStationRoot` roots the home at itself. Writing that value into the
+ * child's environment is not redundant, it is fatal: `admitStationRuntimeHome`
+ * has no way to tell a root DERIVED from this home apart from a foreign root
+ * the home would swallow, because provenance is not observable from the
+ * environment. It reads the absence of `STATION_ROOT` as that proof, so
+ * spelling out `STATION_ROOT === STATION_HOME` is rejected by design and the
+ * runtime cannot boot. The child re-derives the identical root from
+ * `STATION_HOME` alone -- `resolveStationRoot` reads nothing else -- so
+ * omitting it loses no information.
+ *
+ * An operator-set `STATION_ROOT` is always passed through unchanged, including
+ * when it equals the home: that is the original escape, and it stays rejected.
+ */
+export function spawnedStationRoot(
+  home: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const root = resolveStationRoot({ ...env, STATION_HOME: home });
+  if (env.STATION_ROOT?.trim()) return root;
+  return sameRuntimePath(root, home) ? undefined : root;
+}
+
 export class StationRuntimeHomeAdmissionError extends Error {
   readonly code = 'STATION_RUNTIME_HOME_REJECTED';
 

@@ -11,7 +11,9 @@ on:
     paths:
       - '.github/workflows/windows-verification.yml'
       - 'package.json'
-      - 'package-lock.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
       - '.nvmrc'
       - 'biome.json'
       - 'tsconfig*.json'
@@ -57,6 +59,10 @@ jobs:
           lease-weight: "5"
           timeout-seconds: "600"
           owner-lifetime-seconds: "7800"
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
 
       - run: npm run dependencies:ci
 

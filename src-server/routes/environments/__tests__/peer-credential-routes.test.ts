@@ -18,8 +18,12 @@ function store() {
   };
   return {
     list: vi.fn(() => [summary]),
-    upsert: vi.fn(() => summary),
-    remove: vi.fn(() => true),
+    upsert: vi.fn(
+      (..._args: Parameters<PeerCredentialStore['upsert']>) => summary,
+    ),
+    remove: vi.fn(
+      (..._args: Parameters<PeerCredentialStore['remove']>) => true,
+    ),
     get: vi.fn((): (typeof summary & { credential: string }) | null => ({
       ...summary,
       credential: 'the-actual-secret',
@@ -73,7 +77,8 @@ describe('peer credential routes (station#1123 slice 2)', () => {
 
   test('lists and creates through typed routes, never returning a credential', async () => {
     const mock = store();
-    const app = createPeerCredentialRoutes(mock as any);
+    const authorize = vi.fn(() => true);
+    const app = createPeerCredentialRoutes(mock as any, undefined, authorize);
 
     const list = await json<{ success: boolean; data: unknown[] }>(
       await app.request('/'),
@@ -93,13 +98,19 @@ describe('peer credential routes (station#1123 slice 2)', () => {
       }),
     });
     expect(created.status).toBe(201);
-    expect(mock.upsert).toHaveBeenCalledWith({
-      environmentId: 'environment-peer-b',
-      apiBase: 'https://box-b.example.test',
-      credential: 'peer-bearer-credential-0123456789abcdef',
-      scope: 'orchestration:read orchestration:operate',
-      label: 'box-b',
-    });
+    expect(mock.upsert).toHaveBeenCalledWith(
+      {
+        environmentId: 'environment-peer-b',
+        apiBase: 'https://box-b.example.test',
+        credential: 'peer-bearer-credential-0123456789abcdef',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+      },
+      expect.any(Function),
+    );
+    const current = mock.upsert.mock.calls[0]?.[1];
+    expect(current?.()).toBe(true);
+    expect(authorize).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(await json(created))).not.toContain(
       'peer-bearer-credential-0123456789abcdef',
     );
@@ -107,19 +118,82 @@ describe('peer credential routes (station#1123 slice 2)', () => {
 
   test('removes an existing environmentId and 404s a missing one', async () => {
     const mock = store();
-    const app = createPeerCredentialRoutes(mock as any);
+    const app = createPeerCredentialRoutes(mock as any, undefined, () => true);
 
     const removed = await app.request('/environment-peer-b', {
       method: 'DELETE',
     });
     expect(removed.status).toBe(200);
-    expect(mock.remove).toHaveBeenCalledWith('environment-peer-b');
+    expect(mock.remove).toHaveBeenCalledWith(
+      'environment-peer-b',
+      expect.any(Function),
+    );
 
     mock.remove.mockReturnValueOnce(false);
     const missing = await app.request('/environment-nowhere', {
       method: 'DELETE',
     });
     expect(missing.status).toBe(404);
+  });
+
+  test('fails closed for public mutations when no current-caller authorizer is composed', async () => {
+    const mock = store();
+    const app = createPeerCredentialRoutes(mock as any);
+
+    const created = await app.request('/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        environmentId: 'environment-peer-b',
+        apiBase: 'https://box-b.example.test',
+        credential: 'peer-bearer-credential-0123456789abcdef',
+        scope: 'orchestration:read',
+      }),
+    });
+    const removed = await app.request('/environment-peer-b', {
+      method: 'DELETE',
+    });
+
+    expect(created.status).toBe(403);
+    expect(removed.status).toBe(403);
+    expect(mock.upsert).not.toHaveBeenCalled();
+    expect(mock.remove).not.toHaveBeenCalled();
+  });
+
+  test('withholds a peer write when caller authority is revoked while its file lock is queued', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'station-peer-route-lock-'));
+    wireHomes.push(homeDir);
+    const seeded = new PeerCredentialStore(homeDir);
+    await seeded.upsert({
+      environmentId: 'environment-existing',
+      apiBase: 'https://existing.example.test',
+      scope: 'orchestration:read',
+      credential: 'existing-credential-0123456789abcdef',
+    });
+    let current = true;
+    const guarded = new PeerCredentialStore(homeDir, {
+      acquireMutationLock: async () => {
+        current = false;
+        return () => {};
+      },
+    });
+    const app = createPeerCredentialRoutes(guarded, undefined, () => current);
+
+    const response = await app.request('/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        environmentId: 'environment-revoked',
+        apiBase: 'https://revoked.example.test',
+        credential: 'revoked-credential-0123456789abcdef',
+        scope: 'orchestration:read',
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(new PeerCredentialStore(homeDir).list()).toEqual([
+      expect.objectContaining({ environmentId: 'environment-existing' }),
+    ]);
   });
 
   test("the credential leaf 403s any request not carrying this Station's own internal API token", async () => {
@@ -168,7 +242,11 @@ describe('peer credential routes (station#1123 slice 2)', () => {
     test('adds a non-blocking warning when the environmentId already has an SSH profile', async () => {
       const mock = store();
       const hasSshProfile = vi.fn(() => true);
-      const app = createPeerCredentialRoutes(mock as any, hasSshProfile);
+      const app = createPeerCredentialRoutes(
+        mock as any,
+        hasSshProfile,
+        () => true,
+      );
 
       const created = await app.request('/', {
         method: 'POST',
@@ -194,7 +272,11 @@ describe('peer credential routes (station#1123 slice 2)', () => {
     test('omits the warning when no SSH profile matches, or when no lookup is provided', async () => {
       const mock = store();
       const hasSshProfile = vi.fn(() => false);
-      const app = createPeerCredentialRoutes(mock as any, hasSshProfile);
+      const app = createPeerCredentialRoutes(
+        mock as any,
+        hasSshProfile,
+        () => true,
+      );
 
       const created = await app.request('/', {
         method: 'POST',
@@ -209,7 +291,11 @@ describe('peer credential routes (station#1123 slice 2)', () => {
       const body = await json<{ warning?: string }>(created);
       expect(body.warning).toBeUndefined();
 
-      const noLookupApp = createPeerCredentialRoutes(mock as any);
+      const noLookupApp = createPeerCredentialRoutes(
+        mock as any,
+        undefined,
+        () => true,
+      );
       const createdNoLookup = await noLookupApp.request('/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

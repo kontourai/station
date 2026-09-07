@@ -4,10 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import {
-  NEEDS_MAINTAINER,
-  NEEDS_REPORTER,
-} from './issue-lifecycle-reducer.mjs';
+import { NEEDS_MAINTAINER, NEEDS_REPORTER } from './lifecycle-labels.mjs';
 
 export const MANIFEST_PATH = '.github/labels.json';
 export const REPOSITORY = 'kontourai/station';

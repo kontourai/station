@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   chmodSync,
   copyFileSync,
@@ -15,11 +16,17 @@ import {
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  describeFailure,
+  INERT_INSTALL_TIMEOUT_ENV,
   inertInstallTimeout,
+  pnpmInvocation,
   preflightInstalledLifecycle,
+  reportCliFailure,
   resolveNpmCli,
+  runApprovedHooks,
+  verifyLifecycleArtifacts,
 } from '../dependency-lifecycle.mjs';
 import {
   checkWorkflowDirectory,
@@ -29,16 +36,21 @@ import {
 import { installGitIntegration } from '../install-git-hooks.mjs';
 import {
   allowlistDigest,
+  assertNodePtyPrebuildConsistency,
   assertPtyHandshakeOutcome,
   confinedPackageTarget,
+  degradableLifecycleCapability,
   evaluateLifecyclePolicy,
   expectedLifecyclePurls,
   platformMatches,
   prepareLifecycleArtifacts,
   readLifecycleLocks,
+  readNodePtyPrebuildManifest,
+  stageNodePtyPrebuild,
   verifyArtifact,
   verifyNodePtyHandshake,
 } from '../lib/dependency-lifecycle-policy.mjs';
+import { readPnpmWorkspace } from '../lib/pnpm-lockfile.mjs';
 import {
   classifyDependencySpec,
   findWorkspaceDependencyProblems,
@@ -54,13 +66,24 @@ const policy = JSON.parse(
 const nodes = readLifecycleLocks(root);
 const shellLauncherTest = process.platform === 'win32' ? it.skip : it;
 
+// `installGitIntegration` compares `resolve(toplevel)` against `root`, so the
+// fixture root has to be an absolute path for THIS platform: a hardcoded POSIX
+// '/repo' resolves to '<cwd-drive>:\repo' on Windows and can never equal the
+// '/repo' passed as `root`, which failed the enclosing-repo guard spuriously.
+// Real `git rev-parse --show-toplevel` reports forward slashes on every
+// platform (Git for Windows prints 'C:/checkout'), so feed the toplevel in that
+// form and let production's `resolve()` normalise it — that is exactly the
+// conversion the guard relies on, now actually exercised on Windows.
+const gitFixtureRoot = resolve(tmpdir(), 'station-git-integration-repo');
+const gitFixtureToplevel = gitFixtureRoot.replaceAll('\\', '/');
+
 describe('git integration installer', () => {
   it('writes and reads back hooks and every merge-driver setting', () => {
     const config = new Map<string, string>();
     const calls: string[][] = [];
     const runGit = (args: string[]) => {
       calls.push(args);
-      if (args[0] === 'rev-parse') return '/repo';
+      if (args[0] === 'rev-parse') return gitFixtureToplevel;
       if (args[1] === '--local' && args[2] === '--get')
         return config.get(args[3]) ?? '';
       if (args[0] === 'config' && args[1] === '--local') {
@@ -71,7 +94,7 @@ describe('git integration installer', () => {
     };
 
     installGitIntegration({
-      root: '/repo',
+      root: gitFixtureRoot,
       runGit,
       pathExists: () => true,
     });
@@ -100,7 +123,7 @@ describe('git integration installer', () => {
   it('fails when a merge-driver write does not read back exactly', () => {
     const config = new Map<string, string>();
     const runGit = (args: string[]) => {
-      if (args[0] === 'rev-parse') return '/repo';
+      if (args[0] === 'rev-parse') return gitFixtureToplevel;
       if (args[1] === '--local' && args[2] === '--get') {
         if (args[3] === 'merge.station-ui-bundle-budget.driver') return '';
         return config.get(args[3]) ?? '';
@@ -111,7 +134,7 @@ describe('git integration installer', () => {
 
     expect(() =>
       installGitIntegration({
-        root: '/repo',
+        root: gitFixtureRoot,
         runGit,
         pathExists: () => true,
       }),
@@ -182,7 +205,8 @@ function launcherFixture({
     join(checkout, 'scripts', 'node-runtime-contract.mjs'),
     runtimeFailure ? 'process.exit(42);' : '',
   );
-  if (lockfile) writeFileSync(join(checkout, 'package-lock.json'), '{}');
+  if (lockfile) writeFileSync(join(checkout, 'pnpm-lock.yaml'), '{}');
+  writeFileSync(join(checkout, 'pnpm-workspace.yaml'), '{}');
   if (warm) mkdirSync(join(checkout, 'node_modules'));
   executable(
     join(bin, 'npm'),
@@ -364,17 +388,10 @@ describe('dependency lifecycle policy', () => {
     expect(result.stderr).toContain('did not exit naturally');
   });
 
-  it('matches every root, SDK, and Shared lifecycle marker exactly', () => {
+  it('matches every installed lifecycle package against the single workspace lock', () => {
     expect(evaluateLifecyclePolicy({ allowlist: policy, nodes })).toEqual([]);
     expect(allowlistDigest(policy)).toMatch(/^[a-f0-9]{64}$/);
     expect(expectedLifecyclePurls(policy)).toContain('pkg:npm/node-pty@1.1.0');
-  });
-
-  it('keeps Station-owned lifecycle hooks out of the lock marker inventory', () => {
-    const lock = JSON.parse(
-      readFileSync(resolve(root, 'package-lock.json'), 'utf8'),
-    );
-    expect(lock.packages[''].hasInstallScript).not.toBe(true);
   });
 
   it.each([
@@ -533,30 +550,446 @@ describe('dependency lifecycle policy', () => {
     }
   });
 
-  it('restores only the approved node-pty spawn-helper execute bit', () => {
+  it('degrades only the terminal-backing node-pty entry, never other proofs (#1244)', () => {
+    const ptyEntry = policy.entries.find(
+      (item: any) => item.name === 'node-pty',
+    );
+    const degradable = degradableLifecycleCapability(ptyEntry);
+    expect(degradable?.capability).toBe('terminal');
+    expect(degradable?.remediation).toContain('npm run dependencies:install');
+    for (const entry of policy.entries) {
+      if (entry.name === 'node-pty') continue;
+      expect(
+        degradableLifecycleCapability(entry),
+        `${entry.name} must not silently become degradable`,
+      ).toBeUndefined();
+    }
+  });
+
+  it('converts a failed degradable build into a loud DEGRADED report and keeps installing (#1244)', () => {
     const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-lifecycle-'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const writeFixturePackage = (
+        name: string,
+        script: string,
+        source: string,
+      ) => {
+        const packageRoot = resolve(fixtureRoot, 'node_modules', name);
+        mkdirSync(resolve(packageRoot, 'scripts'), { recursive: true });
+        writeFileSync(
+          resolve(packageRoot, 'package.json'),
+          JSON.stringify({
+            name,
+            version: '1.0.0',
+            scripts: { install: `node scripts/${script}` },
+          }),
+        );
+        writeFileSync(resolve(packageRoot, 'scripts', script), source);
+        return packageRoot;
+      };
+      writeFixturePackage('fixture-degradable', 'fail.mjs', 'process.exit(1);');
+      const survivorRoot = writeFixturePackage(
+        'fixture-survivor',
+        'ok.mjs',
+        "import { writeFileSync } from 'node:fs'; writeFileSync('built.marker', 'ok');",
+      );
+      const entryBase = {
+        scope: 'root',
+        lock: 'package-lock.json',
+        version: '1.0.0',
+        decision: 'execute',
+        platform: { os: [], cpu: [] },
+      };
+      const allowlist = {
+        entries: [
+          {
+            ...entryBase,
+            path: 'node_modules/fixture-degradable',
+            name: 'fixture-degradable',
+            hooks: [{ name: 'install', command: 'node scripts/fail.mjs' }],
+            // node-pty-smoke marks the one entry whose failure degrades the
+            // terminal capability instead of aborting the install.
+            artifact: { path: 'missing.node', proof: 'node-pty-smoke' },
+          },
+          {
+            ...entryBase,
+            path: 'node_modules/fixture-survivor',
+            name: 'fixture-survivor',
+            hooks: [{ name: 'install', command: 'node scripts/ok.mjs' }],
+            artifact: { path: 'built.marker', proof: 'fixture' },
+          },
+        ],
+      };
+      runApprovedHooks(allowlist, { cwd: fixtureRoot });
+      // The failure was loud and specific…
+      const degradedLine = warn.mock.calls
+        .map((call) => String(call[0]))
+        .find((line) => line.includes('DEGRADED terminal'));
+      expect(degradedLine).toBeDefined();
+      expect(degradedLine).toContain('terminal panes will be unavailable');
+      expect(degradedLine).toContain('npm run dependencies:install');
+      // …and did not abort the entries behind it.
+      expect(existsSync(resolve(survivorRoot, 'built.marker'))).toBe(true);
+    } finally {
+      warn.mockRestore();
+      log.mockRestore();
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('a non-degradable hook failure still aborts the install (#1244)', () => {
+    const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-lifecycle-'));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const packageRoot = resolve(
+        fixtureRoot,
+        'node_modules',
+        'fixture-required',
+      );
+      mkdirSync(resolve(packageRoot, 'scripts'), { recursive: true });
+      writeFileSync(
+        resolve(packageRoot, 'package.json'),
+        JSON.stringify({
+          name: 'fixture-required',
+          version: '1.0.0',
+          scripts: { install: 'node scripts/fail.mjs' },
+        }),
+      );
+      writeFileSync(
+        resolve(packageRoot, 'scripts', 'fail.mjs'),
+        'process.exit(1);',
+      );
+      const allowlist = {
+        entries: [
+          {
+            scope: 'root',
+            lock: 'package-lock.json',
+            path: 'node_modules/fixture-required',
+            name: 'fixture-required',
+            version: '1.0.0',
+            decision: 'execute',
+            platform: { os: [], cpu: [] },
+            hooks: [{ name: 'install', command: 'node scripts/fail.mjs' }],
+            artifact: { path: 'built.marker', proof: 'fixture' },
+          },
+        ],
+      };
+      expect(() => runApprovedHooks(allowlist, { cwd: fixtureRoot })).toThrow();
+    } finally {
+      log.mockRestore();
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('verifies degradable artifacts as loud degraded results while others fail closed (#1244)', () => {
+    const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-lifecycle-'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       const packageRoot = resolve(fixtureRoot, 'node_modules', 'node-pty');
-      const helper = resolve(
-        packageRoot,
-        'prebuilds/darwin-arm64/spawn-helper',
-      );
-      mkdirSync(resolve(helper, '..'), { recursive: true });
+      mkdirSync(packageRoot, { recursive: true });
       writeFileSync(
         resolve(packageRoot, 'package.json'),
         JSON.stringify({ name: 'node-pty', version: '1.1.0' }),
       );
-      writeFileSync(helper, '#!/bin/sh\nexit 0\n');
-      chmodSync(helper, 0o644);
-      const entry = policy.entries.find(
-        (item: any) => item.name === 'node-pty',
+      // `optionalPackageMayBeAbsent` reads every lifecycle lock from cwd.
+      const emptyLock = JSON.stringify({ packages: {} });
+      writeFileSync(resolve(fixtureRoot, 'package-lock.json'), emptyLock);
+      for (const scoped of ['sdk', 'shared']) {
+        mkdirSync(resolve(fixtureRoot, 'packages', scoped), {
+          recursive: true,
+        });
+        writeFileSync(
+          resolve(fixtureRoot, 'packages', scoped, 'package-lock.json'),
+          emptyLock,
+        );
+      }
+      const degradableEntry = {
+        scope: 'root',
+        lock: 'package-lock.json',
+        path: 'node_modules/node-pty',
+        name: 'node-pty',
+        version: '1.1.0',
+        platform: { os: [], cpu: [] },
+        artifact: { path: 'build/Release/pty.node', proof: 'node-pty-smoke' },
+      };
+      const results = verifyLifecycleArtifacts(
+        { entries: [degradableEntry] },
+        { cwd: fixtureRoot },
       );
-      prepareLifecycleArtifacts(fixtureRoot, entry, 'darwin', 'arm64');
-      expect(statSync(helper).mode & 0o111).not.toBe(0);
+      expect(results).toEqual([
+        expect.objectContaining({ degraded: true, skipped: false }),
+      ]);
+      expect(
+        warn.mock.calls
+          .map((call) => String(call[0]))
+          .some((line) => line.includes('DEGRADED terminal')),
+      ).toBe(true);
+
+      // The same missing artifact on a NON-degradable entry still fails closed.
+      const requiredEntry = {
+        ...degradableEntry,
+        artifact: { path: 'build/Release/pty.node', proof: 'fixture' },
+      };
+      expect(() =>
+        verifyLifecycleArtifacts(
+          { entries: [requiredEntry] },
+          { cwd: fixtureRoot },
+        ),
+      ).toThrow(/missing lifecycle artifact/);
     } finally {
+      warn.mockRestore();
       rmSync(fixtureRoot, { recursive: true, force: true });
     }
   });
+
+  // Review finding `dependency-lifecycle-fail-open` on #1257. Being the
+  // terminal-backing entry buys a pass on "was never built" and nothing else.
+  // verifyArtifact also rejects redirected paths, escapes, version drift and a
+  // failed PTY handshake; degrading those would accept a TAMPERED native
+  // module as merely unavailable, which inverts the gate.
+  it.skipIf(process.platform === 'win32')(
+    'aborts on a redirected degradable artifact instead of degrading it (#1257)',
+    () => {
+      const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-lifecycle-'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const packageRoot = resolve(fixtureRoot, 'node_modules', 'node-pty');
+        mkdirSync(resolve(packageRoot, 'build/Release'), { recursive: true });
+        writeFileSync(
+          resolve(packageRoot, 'package.json'),
+          JSON.stringify({ name: 'node-pty', version: '1.1.0' }),
+        );
+        const emptyLock = JSON.stringify({ packages: {} });
+        writeFileSync(resolve(fixtureRoot, 'package-lock.json'), emptyLock);
+        for (const scoped of ['sdk', 'shared']) {
+          mkdirSync(resolve(fixtureRoot, 'packages', scoped), {
+            recursive: true,
+          });
+          writeFileSync(
+            resolve(fixtureRoot, 'packages', scoped, 'package-lock.json'),
+            emptyLock,
+          );
+        }
+        // Present, but redirected out of the package — a trust-boundary
+        // failure, not an absent artifact.
+        const outside = resolve(fixtureRoot, 'outside.node');
+        writeFileSync(outside, 'planted');
+        symlinkSync(outside, resolve(packageRoot, 'build/Release/pty.node'));
+
+        const degradableEntry = {
+          scope: 'root',
+          lock: 'package-lock.json',
+          path: 'node_modules/node-pty',
+          name: 'node-pty',
+          version: '1.1.0',
+          platform: { os: [], cpu: [] },
+          artifact: { path: 'build/Release/pty.node', proof: 'node-pty-smoke' },
+        };
+
+        expect(() =>
+          verifyLifecycleArtifacts(
+            { entries: [degradableEntry] },
+            { cwd: fixtureRoot },
+          ),
+        ).toThrow(/redirected by a symlink/);
+        expect(
+          warn.mock.calls
+            .map((call) => String(call[0]))
+            .some((line) => line.includes('DEGRADED')),
+        ).toBe(false);
+      } finally {
+        warn.mockRestore();
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  describe('node-pty Linux prebuild staging (#1245)', () => {
+    const ptyEntry = () =>
+      policy.entries.find((item: any) => item.name === 'node-pty');
+
+    function stagingFixture({ digest }: { digest?: string } = {}) {
+      const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-prebuilds-'));
+      const packageRoot = resolve(fixtureRoot, 'node_modules', 'node-pty');
+      mkdirSync(packageRoot, { recursive: true });
+      writeFileSync(
+        resolve(packageRoot, 'package.json'),
+        JSON.stringify({ name: 'node-pty', version: '1.1.0' }),
+      );
+      const artifactDir = resolve(
+        fixtureRoot,
+        'packaging/node-pty-prebuilds/linux-arm64',
+      );
+      mkdirSync(artifactDir, { recursive: true });
+      const artifact = Buffer.from('not a real addon, digest is what matters');
+      writeFileSync(resolve(artifactDir, 'pty.node'), artifact);
+      const sha256 =
+        digest ?? createHash('sha256').update(artifact).digest('hex');
+      writeFileSync(
+        resolve(fixtureRoot, 'packaging/node-pty-prebuilds/manifest.json'),
+        JSON.stringify({
+          schemaVersion: 1,
+          package: 'node-pty',
+          version: '1.1.0',
+          artifacts: { 'linux-arm64': { sha256 } },
+        }),
+      );
+      return { fixtureRoot, packageRoot };
+    }
+
+    it('stages the pinned artifact into the package prebuilds directory', () => {
+      const { fixtureRoot, packageRoot } = stagingFixture();
+      try {
+        const result = stageNodePtyPrebuild(fixtureRoot, ptyEntry(), {
+          platform: 'linux',
+          arch: 'arm64',
+          env: {},
+        });
+        expect(result.staged).toBe(true);
+        expect(
+          existsSync(resolve(packageRoot, 'prebuilds/linux-arm64/pty.node')),
+        ).toBe(true);
+      } finally {
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('aborts on a digest mismatch instead of staging a tampered artifact', () => {
+      const { fixtureRoot, packageRoot } = stagingFixture({
+        digest: 'a'.repeat(64),
+      });
+      try {
+        expect(() =>
+          stageNodePtyPrebuild(fixtureRoot, ptyEntry(), {
+            platform: 'linux',
+            arch: 'arm64',
+            env: {},
+          }),
+        ).toThrow(/digest mismatch/);
+        expect(
+          existsSync(resolve(packageRoot, 'prebuilds/linux-arm64/pty.node')),
+        ).toBe(false);
+      } finally {
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('keeps the compile path for source-build opt-out, non-linux, and unpinned targets', () => {
+      const { fixtureRoot } = stagingFixture();
+      try {
+        expect(
+          stageNodePtyPrebuild(fixtureRoot, ptyEntry(), {
+            platform: 'linux',
+            arch: 'arm64',
+            env: { npm_config_build_from_source: 'true' },
+          }).staged,
+        ).toBe(false);
+        expect(
+          stageNodePtyPrebuild(fixtureRoot, ptyEntry(), {
+            platform: 'darwin',
+            arch: 'arm64',
+            env: {},
+          }).staged,
+        ).toBe(false);
+        expect(
+          stageNodePtyPrebuild(fixtureRoot, ptyEntry(), {
+            platform: 'linux',
+            arch: 'x64',
+            env: {},
+          }).staged,
+        ).toBe(false);
+      } finally {
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('requires the manifest and the allowlist to flip together', () => {
+      // The committed state must be consistent…
+      expect(() =>
+        assertNodePtyPrebuildConsistency(
+          policy,
+          readNodePtyPrebuildManifest(root),
+        ),
+      ).not.toThrow();
+      // …a pinned artifact without the allowlist flip fails…
+      expect(() =>
+        assertNodePtyPrebuildConsistency(policy, {
+          schemaVersion: 1,
+          package: 'node-pty',
+          version: '1.1.0',
+          artifacts: { 'linux-arm64': { sha256: 'a'.repeat(64) } },
+        }),
+      ).toThrow(/disagree for linux-arm64/);
+      // …and an allowlist flip without a pinned artifact fails too.
+      const flipped = structuredClone(policy);
+      flipped.entries.find(
+        (item: any) => item.name === 'node-pty',
+      ).artifact.platforms['linux/arm64'] = ['prebuilds/linux-arm64/pty.node'];
+      expect(() =>
+        assertNodePtyPrebuildConsistency(
+          flipped,
+          readNodePtyPrebuildManifest(root),
+        ),
+      ).toThrow(/disagree for linux-arm64/);
+      // A version drift between manifest and approved entry fails.
+      expect(() =>
+        assertNodePtyPrebuildConsistency(
+          (() => {
+            const consistent = structuredClone(policy);
+            consistent.entries.find(
+              (item: any) => item.name === 'node-pty',
+            ).artifact.platforms['linux/arm64'] = [
+              'prebuilds/linux-arm64/pty.node',
+            ];
+            return consistent;
+          })(),
+          {
+            schemaVersion: 1,
+            package: 'node-pty',
+            version: '1.0.0',
+            artifacts: { 'linux-arm64': { sha256: 'a'.repeat(64) } },
+          },
+        ),
+      ).toThrow(/pins version 1.0.0/);
+    });
+  });
+
+  // POSIX-only: the assertion is about a real execute bit surviving in the
+  // filesystem's mode. Windows has no per-file execute permission — Node's
+  // `chmodSync` only toggles the read-only attribute and `statSync().mode`
+  // reports a synthesised 0o666/0o444, so `mode & 0o111` is 0 both before and
+  // after `prepareLifecycleArtifacts`. The production call still runs here (the
+  // fixture passes darwin/arm64 explicitly, so the win32 early-return does not
+  // apply); it is only the observable bit that Windows cannot represent.
+  it.skipIf(process.platform === 'win32')(
+    'restores only the approved node-pty spawn-helper execute bit',
+    () => {
+      const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-lifecycle-'));
+      try {
+        const packageRoot = resolve(fixtureRoot, 'node_modules', 'node-pty');
+        const helper = resolve(
+          packageRoot,
+          'prebuilds/darwin-arm64/spawn-helper',
+        );
+        mkdirSync(resolve(helper, '..'), { recursive: true });
+        writeFileSync(
+          resolve(packageRoot, 'package.json'),
+          JSON.stringify({ name: 'node-pty', version: '1.1.0' }),
+        );
+        writeFileSync(helper, '#!/bin/sh\nexit 0\n');
+        chmodSync(helper, 0o644);
+        const entry = policy.entries.find(
+          (item: any) => item.name === 'node-pty',
+        );
+        prepareLifecycleArtifacts(fixtureRoot, entry, 'darwin', 'arm64');
+        expect(statSync(helper).mode & 0o111).not.toBe(0);
+      } finally {
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('keeps the cold bootstrap validator dependency-free', () => {
     const source = readFileSync(
@@ -749,9 +1182,30 @@ describe('dependency lifecycle policy', () => {
   });
 
   it('gives Windows inert installs a bounded extended cache-miss deadline', () => {
-    expect(inertInstallTimeout('darwin')).toBe(600_000);
-    expect(inertInstallTimeout('linux')).toBe(600_000);
-    expect(inertInstallTimeout('win32')).toBe(1_200_000);
+    expect(inertInstallTimeout('darwin', {})).toBe(600_000);
+    expect(inertInstallTimeout('linux', {})).toBe(600_000);
+    expect(inertInstallTimeout('win32', {})).toBe(1_200_000);
+  });
+
+  it('lets a slow host raise the inert install deadline without losing it', () => {
+    const env = { [INERT_INSTALL_TIMEOUT_ENV]: '1800000' };
+    expect(inertInstallTimeout('linux', env)).toBe(1_800_000);
+    expect(inertInstallTimeout('win32', env)).toBe(1_800_000);
+  });
+
+  it('ignores an unset or empty override rather than treating it as zero', () => {
+    expect(inertInstallTimeout('linux', {})).toBe(600_000);
+    expect(
+      inertInstallTimeout('linux', { [INERT_INSTALL_TIMEOUT_ENV]: '' }),
+    ).toBe(600_000);
+  });
+
+  it('refuses a malformed override instead of silently restoring the default', () => {
+    for (const value of ['0', '-1', 'soon', '1.5', 'Infinity']) {
+      expect(() =>
+        inertInstallTimeout('linux', { [INERT_INSTALL_TIMEOUT_ENV]: value }),
+      ).toThrow(INERT_INSTALL_TIMEOUT_ENV);
+    }
   });
 
   shellLauncherTest(
@@ -806,7 +1260,7 @@ describe('dependency lifecycle policy', () => {
         const missingLockResult = runLauncher(missingLock, ['doctor']);
         expect(missingLockResult.status).toBe(1);
         expect(missingLockResult.stderr).toContain(
-          'dependency lockfile is missing',
+          'dependency lockfile or workspace configuration is missing',
         );
       } finally {
         rmSync(warm.fixtureRoot, { recursive: true, force: true });
@@ -996,5 +1450,234 @@ describe('dependency lifecycle policy', () => {
         expect.stringContaining('raw npm rebuild'),
       ]),
     );
+  });
+
+  it('rejects pnpm lifecycle bypasses across aliases, scopes, chaining, and configuration', () => {
+    for (const command of [
+      'pnpm install',
+      'pnpm i',
+      'pnpm add left-pad',
+      'pnpm update',
+      'pnpm up',
+      'pnpm upgrade',
+      'pnpm rebuild',
+      'pnpm rb',
+      'pnpm approve-builds',
+      'pnpm -w install',
+      'pnpm -C packages/sdk install',
+      'pnpm --dir packages/sdk --filter @kontourai/station-sdk install',
+      'pnpm -r --filter=@kontourai/station-sdk rebuild',
+      'pnpm.cmd install',
+      'npm run dependencies:check && pnpm install',
+      'pnpm run build;pnpm install',
+      'corepack pnpm install',
+      'npm exec -- pnpm install',
+      'pnpm --ignore-scripts=false run build',
+      'pnpm --ignore-scripts false run build',
+      'pnpm --config.ignoreScripts=false run build',
+      'pnpm --no-ignore-scripts run build',
+      'pnpm config set ignoreScripts false',
+      'pnpm config set verifyDepsBeforeRun install',
+      'pnpm --verify-deps-before-run=install run dependencies:ci',
+      'pnpm install --lockfile-only && pnpm run x --ignore-scripts',
+      'pnpm_config_ignore_scripts=false pnpm run build',
+      'env:\n  PNPM_CONFIG_IGNORE_SCRIPTS: false',
+      'verifyDepsBeforeRun: install',
+      'verifyDepsBeforeRun: prompt',
+      'ignoreScripts: false',
+      'run_install: true',
+      '      - uses: pnpm/setup@pinned\n        with: { install: true }',
+      '      - uses: pnpm/setup@pinned\n      - run: npm run dependencies:ci',
+    ])
+      expect(collectRawNpmLifecycleBypasses(command), command).not.toEqual([]);
+    for (const command of [
+      'pnpm run dependencies:ci',
+      'pnpm -w run dependencies:ci',
+      'pnpm install --lockfile-only --ignore-scripts',
+      'pnpm update --lockfile-only --ignore-scripts',
+      'npm install --package-lock-only --ignore-scripts --force',
+      'verifyDepsBeforeRun: false',
+      'ignoreScripts: true',
+      'uses: pnpm/action-setup@pinned',
+      '      - uses: pnpm/setup@pinned\n        with: { install: false }',
+      'run_install: false',
+    ])
+      expect(collectRawNpmLifecycleBypasses(command), command).toEqual([]);
+  });
+
+  it('the pinned pnpm CLI runs cold managed bootstrap without auto-installing or executing dependency hooks', () => {
+    const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-pnpm-cold-'));
+    try {
+      const workspace = readPnpmWorkspace(root);
+      const manifest = JSON.parse(
+        readFileSync(join(root, 'package.json'), 'utf8'),
+      );
+      const hookMarker = join(fixtureRoot, 'unapproved-hook.marker');
+      const managedMarker = join(fixtureRoot, 'managed.marker');
+      mkdirSync(join(fixtureRoot, 'hook-package'));
+      writeFileSync(
+        join(fixtureRoot, 'hook-package/package.json'),
+        JSON.stringify({
+          name: 'station-pnpm-hook-fixture',
+          version: '1.0.0',
+          scripts: { postinstall: 'node hook.cjs' },
+        }),
+      );
+      writeFileSync(
+        join(fixtureRoot, 'hook-package/hook.cjs'),
+        'require("node:fs").writeFileSync(process.env.STATION_TEST_HOOK_MARKER, "executed");',
+      );
+      writeFileSync(
+        join(fixtureRoot, 'managed.cjs'),
+        'require("node:fs").writeFileSync("managed.marker", "managed preflight reached");',
+      );
+      writeFileSync(
+        join(fixtureRoot, 'package.json'),
+        JSON.stringify({
+          name: 'station-pnpm-cold-fixture',
+          private: true,
+          packageManager: manifest.packageManager,
+          scripts: { 'dependencies:ci': 'node managed.cjs' },
+          dependencies: { 'station-pnpm-hook-fixture': 'file:./hook-package' },
+        }),
+      );
+      // JSON is valid YAML. Read the real policy settings, so reverting either
+      // guard changes the child process behavior instead of merely a regex.
+      writeFileSync(
+        join(fixtureRoot, 'pnpm-workspace.yaml'),
+        JSON.stringify({
+          packages: ['.'],
+          verifyDepsBeforeRun: workspace.verifyDepsBeforeRun,
+          ignoreScripts: workspace.ignoreScripts,
+          nodeLinker: 'hoisted',
+          storeDir: join(fixtureRoot, 'store'),
+          allowBuilds: { 'station-pnpm-hook-fixture@file:hook-package': true },
+        }),
+      );
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        CI: 'true',
+        COREPACK_ENABLE_NETWORK: '0',
+        STATION_TEST_HOOK_MARKER: hookMarker,
+      };
+      delete env.npm_config_ignore_scripts;
+      delete env.pnpm_config_verify_deps_before_run;
+      const cli = pnpmInvocation({ cwd: root, env });
+      const prefix = [...cli.args];
+      if (prefix[1] === 'exec') prefix.splice(2, 0, '--offline');
+      const run = (args: string[]) =>
+        spawnSync(cli.command, [...prefix, ...args], {
+          cwd: fixtureRoot,
+          env,
+          encoding: 'utf8',
+          timeout: 30_000,
+          windowsHide: true,
+        });
+      const version = run(['--version']);
+      expect(version.status, version.stderr).toBe(0);
+      expect(version.stdout.trim()).toBe(
+        manifest.packageManager.slice('pnpm@'.length),
+      );
+      const bootstrap = run(['run', 'dependencies:ci']);
+      expect(bootstrap.status, bootstrap.stderr).toBe(0);
+      expect(readFileSync(managedMarker, 'utf8')).toBe(
+        'managed preflight reached',
+      );
+      expect(existsSync(join(fixtureRoot, 'node_modules'))).toBe(false);
+      expect(existsSync(hookMarker)).toBe(false);
+      // The second guard also suppresses a dependency's otherwise approved
+      // hook during an explicit local/offline fixture install.
+      const install = run(['install', '--offline', '--no-frozen-lockfile']);
+      expect(install.status, install.stderr).toBe(0);
+      expect(
+        existsSync(join(fixtureRoot, 'node_modules/station-pnpm-hook-fixture')),
+      ).toBe(true);
+      expect(existsSync(hookMarker)).toBe(false);
+      const settingsPath = join(fixtureRoot, 'pnpm-workspace.yaml');
+      const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+      settings.ignoreScripts = false;
+      writeFileSync(settingsPath, JSON.stringify(settings));
+      const enabled = run(['rebuild', 'station-pnpm-hook-fixture']);
+      expect(enabled.status, enabled.stderr).toBe(0);
+      expect(readFileSync(hookMarker, 'utf8')).toBe('executed');
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  }, 60_000);
+});
+
+describe('describeFailure surfaces the cause chain', () => {
+  it('reports the reason a retired install attached as cause', () => {
+    // The real shape: `retireDependencyInstall` reports the guard directory
+    // and attaches the actual constraint as `cause`. The CLI printed only
+    // `error.message`, so CI logs named a runner directory that is never
+    // uploaded, and no reason at all -- the failure was diagnosable only by
+    // reproducing it locally (dependabot #1353 sat blocked on exactly this).
+    const cause = new Error(
+      'lifecycle artifact esbuild:bin/esbuild is missing after install',
+    );
+    const thrown = new Error(
+      'Dependencies are not verified. Installer state is retained at "/x".',
+      { cause },
+    );
+
+    const described = describeFailure(thrown);
+
+    expect(described).toContain('Dependencies are not verified');
+    expect(described).toContain(
+      'lifecycle artifact esbuild:bin/esbuild is missing after install',
+    );
+  });
+
+  it('walks more than one level and marks each hop', () => {
+    const described = describeFailure(
+      new Error('outer', {
+        cause: new Error('middle', { cause: new Error('root') }),
+      }),
+    );
+    expect(described.split('\n')).toEqual([
+      'outer',
+      '  caused by: middle',
+      '  caused by: root',
+    ]);
+  });
+
+  it('terminates on a cause cycle rather than looping', () => {
+    const a = new Error('a');
+    const b = new Error('b', { cause: a });
+    (a as { cause?: unknown }).cause = b;
+    // Without the seen-set this never returns.
+    expect(describeFailure(a).split('\n')).toEqual(['a', '  caused by: b']);
+  });
+
+  it('bounds depth and message length rather than trusting them', () => {
+    let deepest: Error | undefined;
+    for (let i = 0; i < 40; i += 1)
+      deepest = new Error(`level ${i}`, { cause: deepest });
+    expect(describeFailure(deepest).split('\n')).toHaveLength(8);
+    expect(describeFailure(new Error('x'.repeat(5000))).length).toBe(2000);
+  });
+
+  it('handles a non-Error throw without inventing structure', () => {
+    expect(describeFailure('plain string')).toBe('plain string');
+  });
+
+  it('reports the cause chain, not just the outermost message', () => {
+    // The seam that actually matters. Testing `describeFailure` alone does
+    // NOT cover this: reverting the reporter to `error.message` leaves every
+    // test above green, which is exactly how the cause came to be discarded.
+    // Fault-injected both ways before this test was accepted.
+    const lines: string[] = [];
+    const code = reportCliFailure(
+      new Error('Dependencies are not verified.', {
+        cause: new Error('esbuild:bin/esbuild missing after install'),
+      }),
+      { log: (line: string) => lines.push(line) },
+    );
+
+    expect(code).toBe(1);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('Dependencies are not verified.');
+    expect(lines[0]).toContain('esbuild:bin/esbuild missing after install');
   });
 });

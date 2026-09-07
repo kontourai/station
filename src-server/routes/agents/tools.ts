@@ -210,6 +210,7 @@ export function createToolRoutes(
             live: recovery.rebuilt,
             restartRequired: !recovery.rebuilt,
             restartRequiredScope: recovery.rebuilt ? undefined : recovery.scope,
+            localCleanup: recovery.localCleanup,
             activationError: errorMessage(activationError),
             reconciliationError: errorMessage(rollbackError),
           },

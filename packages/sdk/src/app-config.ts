@@ -1,4 +1,5 @@
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { apiErrorMessage } from './api-core';
 import { authenticatedFetch } from './client/http';
 export interface UpdateAppLogLevelResult {
@@ -48,7 +49,7 @@ export async function updateAppLogLevel(
     headers: {
       'Content-Type': 'application/json',
       'If-Match': current.revision,
-      'Idempotency-Key': crypto.randomUUID(),
+      'Idempotency-Key': randomCorrelationId(),
     },
     body: JSON.stringify({ value }),
   });

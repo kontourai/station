@@ -3,6 +3,7 @@ import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
   installMockOrchestrationSse,
+  openChatRegion,
   seedActiveChats,
   seedOrchestrationRoutes,
   waitForMockOrchestrationSse,
@@ -106,9 +107,7 @@ async function openChatDockAndStream(page: Page): Promise<void> {
   );
   await page.reload();
   await dismissSetupLauncher(page);
-  await page
-    .getByRole('button', { name: 'Expand chat dock', exact: true })
-    .click();
+  await openChatRegion(page);
   await waitForMockOrchestrationSse(page);
 }
 

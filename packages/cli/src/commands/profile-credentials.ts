@@ -71,6 +71,20 @@ export function assertCredentialTransportAllowed(endpoint: string): void {
   }
 }
 
+/**
+ * One local self-authorization owns one immutable keyring account, in the
+ * exact id shape the desktop's self-provision mints
+ * (`src-desktop/src/lib.rs`: `local-grant:<uuid>`), so a shared
+ * `profiles.json` never carries two spellings for the same mint kind.
+ */
+export function newLocalGrantCredentialRef(
+  transactionId: string = randomUUID(),
+): StationProfileCredentialRef {
+  if (!transactionId || transactionId.trim().length === 0)
+    throw new Error('A local-grant credential transaction id cannot be empty.');
+  return profileCredentialRef(`local-grant:${transactionId}`);
+}
+
 /** One pairing attempt owns one immutable keyring account. */
 export function newPairingCredentialRef(
   environmentId: string,

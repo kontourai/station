@@ -12,6 +12,7 @@ import {
   isStationAgentIdentity,
 } from '@kontourai/station-contracts/agent-identity';
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 
 type Agent = any;
 
@@ -98,10 +99,11 @@ export class UnknownEngineIdentityError extends Error {
  * result. A silent no-op is the label-vs-derivation defect wearing a success
  * code: the caller is told its write took effect and it did not.
  *
- * The UI never reaches this (its Engine row states the value and points at
- * Settings) and station-control's typed tool does not expose `execution`, but
- * REST, the SDK and the CLI all do — so the refusal lives at the SERVICE seam
- * they share rather than in any one route.
+ * The Agent editor's payload builder removes this read-only projection for the
+ * reserved identity while its Engine row states the value and points at
+ * Settings. station-control's typed tool does not expose `execution`, but
+ * REST, the SDK and the CLI all do — so the refusal remains at the SERVICE
+ * seam they share rather than in any one route.
  *
  * Only a NON-EMPTY `agentConnectionId` is refused. `execution: null` (the
  * editor's "runs on Station's own engine" signal) and a modelId-only
@@ -250,7 +252,7 @@ export class AgentService {
    * Names a command-backed engine connection the way its owner named it.
    *
    * RT-11: connecting an ACP CLI adds a `defaultAgents` entry, and the naming
-   * below has no capability-matrix `displayName` for a non-native connection,
+   * below uses the live connection name for a non-native connection,
    * so the alias fell straight through to the bare id — the Agents list
    * rendered `opencode / opencode / opencode`, the raw slug three times. The
    * ACP config is where that connection's name actually lives, so the fallback
@@ -319,11 +321,13 @@ export class AgentService {
             // connection actually being NATIVE: an ACP/plugin connection
             // whose id merely collides with a matrix key must keep its own
             // identity, never wear the engine's brand (the matrix's own
-            // displayName:null convention for 'acp').
+            // canonical label of a native engine).
             name:
               (nativeConnectionIds.has(String(agent.engineConnectionId))
-                ? ENGINE_CAPABILITY_MATRICES[String(agent.engineConnectionId)]
-                    ?.displayName
+                ? engineDisplayLabel(
+                    ENGINE_CAPABILITY_MATRICES[String(agent.engineConnectionId)]
+                      ?.engineId ?? String(agent.engineConnectionId),
+                  )
                 : acpNames.get(String(agent.engineConnectionId))) ?? agent.id,
             execution: {
               // Agent bindings are public EngineConnectionIds — the only

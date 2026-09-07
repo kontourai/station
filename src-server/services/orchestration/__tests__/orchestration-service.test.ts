@@ -21,6 +21,7 @@ import {
 import type { OrchestrationCommand } from '@kontourai/station-contracts/orchestration';
 import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import type { ProjectTaskRoomGrant } from '@kontourai/station-contracts/project-task-room';
 import { SESSION_CAPABILITY_DELIVERY_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
@@ -89,10 +90,14 @@ import {
 } from '../../infra/server-log-store.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import type { CwdShadowSample } from '../../projects/project-resource-shadow.js';
+import { composeTaskDispatcher } from '../../projects/task-dispatch-composition.js';
+import { TaskGraphService } from '../../projects/task-graph-service.js';
 import type { AdoptionLedger } from '../adoption-ledger.js';
+import { recoverCompletedTaskDispatches } from '../completed-task-dispatch-recovery.js';
 import { canResolveConversationContinuation } from '../conversation-lineage.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
+import * as nativeMemoryContinuity from '../native-memory-continuity.js';
 import {
   AdoptionContinuationInProgressError,
   OrchestrationCommandDispatchError,
@@ -103,6 +108,7 @@ import {
   anyPersonalOrchestrationStreamPresenceSubject,
   OrchestrationStreamPresence,
 } from '../orchestration-stream-presence.js';
+import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import {
   ACTIVE_TURN_FOLD_METHODS,
@@ -113,7 +119,9 @@ import {
   wireTurnCompletionNotifications,
 } from '../turn-completion-notifications.js';
 
-vi.mock('../../../telemetry/metrics.js', () => ({
+vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../telemetry/metrics.js')>()),
+  agentCapabilityUndelivered: { add: vi.fn() },
   attachedSessionMutationRejected: { add: vi.fn() },
   adapterReadiness: { add: vi.fn() },
   adapterSessionStartDuration: { record: vi.fn() },
@@ -247,11 +255,9 @@ class FakeAdapter implements ProviderAdapterShape {
           : provider,
       ),
       builtin: true,
-      executionClass: provider === 'bedrock' ? 'managed' : 'connected',
       // archive#980: the private `station-agent` adapter carries the real
-      // `engineId: 'station'` (station-agent-adapter.ts:237), not the legacy
-      // `executionClass` — mirrored here so `engineExecutionForAdapter`
-      // resolves `'station'` for it exactly as it does in production.
+      // `engineId: 'station'` (station-agent-adapter.ts:237), so this fixture
+      // resolves the same way as production.
       modelLaunch:
         provider === 'acp'
           ? {
@@ -768,6 +774,409 @@ describe('OrchestrationService', () => {
     receiptBus.resetForTest();
   });
 
+  test('public session metadata cannot mint a room execution binding', async () => {
+    const threadId = 'public-metadata-binding';
+    const result = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId,
+          provider: 'claude',
+          metadata: {
+            roomExecutionBinding: {
+              projectId: 'spoofed-project',
+              taskId: 'spoofed-task',
+            },
+          },
+        },
+      },
+      { userId: 'owner-user' },
+    );
+    expect(result.status).toBe('accepted');
+    // A metadata-derived binding would make this exact server association conflict.
+    expect(
+      eventStore.bindProjectTaskRoomExecution({
+        projectId: 'real-project',
+        taskId: 'real-task',
+        sessionId: threadId,
+      }),
+    ).toEqual({ kind: 'bound' });
+  });
+
+  test.each([false, true])(
+    'boot recovers only completed dispatch finalization (provider start uncertain: %s)',
+    async (uncertain) => {
+      const root = join(tmp, 'completed-dispatch-recovery');
+      mkdirSync(root, { recursive: true });
+      const graph = new TaskGraphService(root, {
+        projectService: {
+          getProject: (slug) => ({
+            id: slug,
+            slug,
+            name: slug,
+            workingDirectory: tmp,
+            createdAt: '2026-09-05T00:00:00.000Z',
+            updatedAt: '2026-09-05T00:00:00.000Z',
+          }),
+        },
+      });
+      const task = await graph.createTask({
+        projectId: 'recovery-project',
+        title: 'Recover finalization',
+        agentId: 'codex',
+      });
+      if (uncertain)
+        claude.startSession.mockRejectedValueOnce(
+          new Error('lost provider response'),
+        );
+      const dispatcher = composeTaskDispatcher(
+        graph,
+        { orchestrationService: service },
+        {
+          prepareAgentStarted: async () => {
+            throw new Error('crash before publication acknowledgement');
+          },
+          publishAgentStarted: async () => {},
+        },
+      );
+      const dispatched = await dispatcher.dispatch(task.id, {
+        runtimeConfig: { provider: 'claude', cwd: tmp },
+      });
+      expect(dispatched.kind).toBe(uncertain ? 'indeterminate' : 'dispatched');
+      const sessionId = graph.readTaskView(task.id)!.sessionId!;
+      expect(
+        eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(sessionId),
+      ).toEqual({ kind: 'available', active: true });
+      const livePrepare = vi.fn();
+      expect(
+        await recoverCompletedTaskDispatches({
+          eventStore,
+          taskGraph: graph,
+          room: {
+            prepareAgentStarted: livePrepare,
+            publishAgentStarted: async () => {},
+          },
+        }),
+      ).toEqual({ recovered: 0, unresolved: 0 });
+      expect(livePrepare).not.toHaveBeenCalled();
+      const dbPath = join(tmp, 'orchestration.sqlite');
+      eventStore.close();
+      const restarted = new EventStore(dbPath);
+      const room = new ProjectTaskRoomRuntime({
+        taskGraph: graph,
+        projectForId: (id) =>
+          id === task.projectId ? { id, slug: id } : undefined,
+        history: (authority) =>
+          restarted.createProjectTaskRoomHistory(authority),
+        working: restarted.createProjectTaskRoomWorkingState(),
+        requestAuthority: {
+          resolve: async () => ({
+            kind: 'granted',
+            operatorId: 'user',
+            deviceId: 'device',
+            policyRevision: 'test',
+          }),
+        },
+      });
+      try {
+        if (!uncertain) {
+          const binding =
+            restarted.readProjectTaskRoomExecutionBinding(sessionId)!;
+          const association =
+            graph.readCompletedDispatchForRecovery(sessionId)!;
+          const session = restarted.readSessionByThread(sessionId)!;
+          const prepare = vi.spyOn(room, 'prepareAgentStarted');
+          const faults = [
+            () =>
+              vi
+                .spyOn(restarted, 'readProjectTaskRoomExecutionBinding')
+                .mockReturnValueOnce({
+                  ...binding,
+                  projectId: 'wrong-project',
+                }),
+            () =>
+              vi
+                .spyOn(graph, 'readCompletedDispatchForRecovery')
+                .mockReturnValueOnce({
+                  ...association,
+                  dispatch: { ...association.dispatch, taskId: 'wrong-task' },
+                }),
+            () =>
+              vi
+                .spyOn(restarted, 'readSessionByThread')
+                .mockReturnValueOnce({ ...session, provider: 'codex' }),
+          ];
+          for (const inject of faults) {
+            const fault = inject();
+            try {
+              expect(
+                await recoverCompletedTaskDispatches({
+                  eventStore: restarted,
+                  taskGraph: graph,
+                  room,
+                }),
+              ).toEqual({ recovered: 0, unresolved: 1 });
+              expect(prepare).not.toHaveBeenCalled();
+              expect(
+                restarted
+                  .sessionTurnBoundaryAuthority()
+                  .hasPossibleEffect(sessionId),
+              ).toEqual({ kind: 'available', active: true });
+            } finally {
+              fault.mockRestore();
+            }
+          }
+          prepare.mockRestore();
+          const unavailable = await recoverCompletedTaskDispatches({
+            eventStore: restarted,
+            taskGraph: graph,
+            room: {
+              prepareAgentStarted: async () => {
+                throw new Error('disk unavailable');
+              },
+              publishAgentStarted: async () => {},
+            },
+          });
+          expect(unavailable).toEqual({ recovered: 0, unresolved: 1 });
+          expect(
+            restarted
+              .sessionTurnBoundaryAuthority()
+              .hasPossibleEffect(sessionId),
+          ).toEqual({ kind: 'available', active: true });
+        }
+        const recovered = await recoverCompletedTaskDispatches({
+          eventStore: restarted,
+          taskGraph: graph,
+          room,
+        });
+        expect(recovered).toEqual(
+          uncertain
+            ? { recovered: 0, unresolved: 1 }
+            : { recovered: 1, unresolved: 0 },
+        );
+        expect(
+          restarted.sessionTurnBoundaryAuthority().hasPossibleEffect(sessionId),
+        ).toEqual({ kind: 'available', active: uncertain });
+        expect(claude.startSession).toHaveBeenCalledTimes(1);
+        if (!uncertain) {
+          expect(
+            await recoverCompletedTaskDispatches({
+              eventStore: restarted,
+              taskGraph: graph,
+              room,
+            }),
+          ).toEqual({ recovered: 0, unresolved: 0 });
+          const history = await room.history({
+            taskId: task.id,
+            request: new Request('http://station'),
+            project: true,
+          });
+          expect(JSON.stringify(history)).toContain('live-work-started');
+        }
+      } finally {
+        await room.close();
+        restarted.close();
+      }
+    },
+  );
+
+  test('source closure waits through real Task claim, provider creation and dispatch finalization', async () => {
+    mkdirSync(join(tmp, 'transfer-task-graph'), { recursive: true });
+    const graph = new TaskGraphService(join(tmp, 'transfer-task-graph'), {
+      projectService: {
+        getProject: (slug) => ({
+          id: slug,
+          slug,
+          name: slug,
+          workingDirectory: tmp,
+          createdAt: '2026-09-05T00:00:00.000Z',
+          updatedAt: '2026-09-05T00:00:00.000Z',
+        }),
+      },
+    });
+    const task = await graph.createTask({
+      projectId: 'transfer-project',
+      title: 'Bound execution',
+      workItemRef: 'github:example/transfer#1',
+    });
+    const releaseClaim = deferred<void>();
+    const releasePublication = deferred<void>();
+    let claimEntered = false;
+    let publicationEntered = false;
+    const dispatcher = composeTaskDispatcher(
+      graph,
+      {
+        orchestrationService: service,
+        resolveProjectWorkspace: () => tmp,
+        assignmentClaimService: {
+          claim: vi.fn(async () => {
+            claimEntered = true;
+            await releaseClaim.promise;
+            return {
+              outcome: 'claimed',
+              record: { claimed_at: '2026-09-05T00:00:00.000Z' },
+            } as never;
+          }),
+          release: vi.fn(),
+          status: vi.fn(),
+        },
+      },
+      {
+        prepareAgentStarted: async () => {
+          publicationEntered = true;
+          await releasePublication.promise;
+        },
+        publishAgentStarted: async () => {},
+      },
+    );
+    const release = deferred<void>();
+    let entered = false;
+    const original = claude.startSession.getMockImplementation()!;
+    claude.startSession.mockImplementationOnce(async (input) => {
+      entered = true;
+      await release.promise;
+      return original(input);
+    });
+    const dispatched = dispatcher.dispatch(task.id, {
+      runtimeConfig: { provider: 'claude', cwd: tmp },
+    });
+    const scope = {
+      projectId: task.projectId,
+      projectSlug: task.projectId,
+      taskId: task.id,
+    };
+    const grant = <K extends 'discover' | 'home-transfer'>(capability: K) =>
+      Object.freeze({
+        schemaVersion: 'station.project-task-room-grant/v1',
+        capability,
+        opaqueToken: 'transfer-test',
+      }) as ProjectTaskRoomGrant<K>;
+    const room = eventStore.createProjectTaskRoomHistory({
+      capabilities: {
+        resolve: async ({ required }) => ({
+          kind: 'granted',
+          receipt: {
+            receiptId: `transfer-test-${required}`,
+            capability: required,
+            scope,
+            principal: {
+              kind: 'operator',
+              operatorId: 'operator',
+              deviceId: 'device',
+            },
+            policyRevision: 'transfer-test-policy',
+          },
+        }),
+      },
+    });
+    const intent = {
+      grant: grant('home-transfer'),
+      operationId: 'transfer-test-operation',
+      sourceHomeRef: 'source',
+      targetHomeRef: 'target',
+    };
+    try {
+      await waitFor(
+        () => claimEntered,
+        (value) => value,
+        5000,
+      );
+      expect(entered).toBe(false);
+      await room.open({ grant: grant('discover') });
+      expect(await room.sealSource(intent)).toEqual({
+        kind: 'execution-pending',
+      });
+      releaseClaim.resolve();
+      await waitFor(
+        () => entered,
+        (value) => value,
+        5000,
+      );
+      expect(await room.sealSource(intent)).toEqual({
+        kind: 'execution-pending',
+      });
+      release.resolve();
+      await waitFor(
+        () => publicationEntered,
+        (value) => value,
+        5000,
+      );
+      expect(await room.sealSource(intent)).toEqual({
+        kind: 'execution-pending',
+      });
+      releasePublication.resolve();
+      const result = await dispatched;
+      expect(result.kind).toBe('dispatched');
+      if (result.kind !== 'dispatched')
+        throw new Error('Expected real Task dispatch');
+      expect(await room.sealSource(intent)).toMatchObject({ kind: 'sealed' });
+      const restarted = await service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: {
+            threadId: result.result.dispatch.sessionId,
+            provider: 'claude',
+            cwd: tmp,
+          },
+        },
+        {},
+        {
+          roomExecutionBinding: { projectId: task.projectId, taskId: task.id },
+        },
+      );
+      expect(restarted.status).toBe('failed');
+      expect(claude.startSession).toHaveBeenCalledTimes(1);
+      await expect(
+        service.dispatch({
+          type: 'sendTurn',
+          input: {
+            threadId: result.result.dispatch.sessionId,
+            input: 'after source closure',
+          },
+        }),
+      ).rejects.toThrow('coordination is temporarily unavailable');
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+    } finally {
+      releaseClaim.resolve();
+      releasePublication.resolve();
+      release.resolve();
+      await dispatched;
+      await room.close();
+    }
+  });
+
+  test('retains a possibly completed adapter start and refuses a duplicate provider call', async () => {
+    claude.startSession.mockRejectedValueOnce(
+      new Error('response lost after provider invocation'),
+    );
+    const command = {
+      type: 'start-session' as const,
+      input: {
+        threadId: 'uncertain-provider-start',
+        provider: 'claude' as const,
+      },
+    };
+    const result = await service.sessionCommands.execute(command, {
+      userId: 'owner-user',
+    });
+    expect(result).toMatchObject({
+      status: 'indeterminate',
+      receiptStatus: 'unavailable',
+    });
+    expect(
+      eventStore
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect(command.input.threadId),
+    ).toEqual({ kind: 'available', active: true });
+    expect(eventStore.readCommandReceipt(result.receipt.commandId)).toBeNull();
+    expect(claude.startSession).toHaveBeenCalledTimes(1);
+    const retry = await service.sessionCommands.execute(command, {
+      userId: 'owner-user',
+    });
+    expect(retry.status).not.toBe('accepted');
+    expect(claude.startSession).toHaveBeenCalledTimes(1);
+  });
+
   test('starts a session through the closed SessionCommandModule with its durable receipt', async () => {
     const outcome = await service.sessionCommands.execute(
       {
@@ -786,6 +1195,11 @@ describe('OrchestrationService', () => {
     expect(eventStore.readCommandReceipt(outcome.receipt.commandId)).toEqual(
       outcome.receipt,
     );
+    expect(
+      eventStore
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect('module-start'),
+    ).toEqual({ kind: 'available', active: false });
   });
 
   /**
@@ -3118,7 +3532,7 @@ describe('OrchestrationService', () => {
       { isCurrent: () => true },
     )!;
     const scope = authority.bindNativeCall(grant, 'native-deferred-call')!;
-    privateService.nativeOutputTurnGenerations.set(
+    privateService.nativeTurnGenerations.set(
       'native-deferred-thread',
       'native-deferred-turn',
     );
@@ -6781,6 +7195,7 @@ describe('OrchestrationService', () => {
         provider: 'claude',
         metadata: { agentSlug: 'delegated-agent', delegation },
       }),
+      undefined,
     );
     expect(lifecycle).toEqual(['pre-tool-installed', 'replayed']);
     await restartService.shutdown();
@@ -9594,6 +10009,10 @@ describe('OrchestrationService', () => {
   });
 
   test('binds an authorized Station-agent turn correlation before crossing the internal chat relay', async () => {
+    const captureMemory = vi.spyOn(
+      nativeMemoryContinuity,
+      'captureNativeMemoryContinuity',
+    );
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response('data: [DONE]\n\n', {
         status: 200,
@@ -9622,10 +10041,21 @@ describe('OrchestrationService', () => {
         input: {
           threadId: 'fleet-authorized-session',
           provider: 'station-agent',
-          metadata: { agentId: 'reviewer' },
+          cwd: tmp,
+          metadata: {
+            agentId: 'reviewer',
+            agentSlug: 'reviewer',
+            projectSlug: 'project-a',
+          },
         },
       },
       { userId: 'account-a' },
+      {
+        conversationIdentity: {
+          conversationId: 'fleet-authorized-session',
+          environmentId: 'local-environment',
+        },
+      },
     );
     // The HTTP route stamps this server-derived owner before it calls the
     // service. This unit test enters the service directly, so model that
@@ -9651,6 +10081,13 @@ describe('OrchestrationService', () => {
         },
       },
       { userId: 'account-a' },
+      {
+        nativeMemoryReadAuthority: sessionReadAuthorityFromRequest(
+          'account-a',
+          undefined,
+          undefined,
+        ),
+      },
     );
     const redelivery = await stationService.dispatch(
       {
@@ -9662,6 +10099,13 @@ describe('OrchestrationService', () => {
         },
       },
       { userId: 'account-a' },
+      {
+        nativeMemoryReadAuthority: sessionReadAuthorityFromRequest(
+          'account-a',
+          undefined,
+          undefined,
+        ),
+      },
     );
 
     const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<
@@ -9687,7 +10131,170 @@ describe('OrchestrationService', () => {
     expect(correlation?.correlationId).toMatch(/^fleet:[0-9a-f]{64}$/u);
     expect(redelivery.turnId).toBe(turn.turnId);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(captureMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: expect.objectContaining({
+          projectSlug: 'project-a',
+          cwd: tmp,
+          environmentId: 'local-environment',
+        }),
+      }),
+      expect.anything(),
+    );
     expect(JSON.stringify(headers)).not.toContain('private prompt');
+  });
+
+  test('native history capture uses fresh point reads without host-wide work per lineage leg', async () => {
+    const measure = async (count: number, unrelated: number) => {
+      const store = new EventStore(join(tmp, `native-cost-${count}.sqlite`));
+      const native = new FakeAdapter('station-agent');
+      const owned = new OrchestrationService({
+        adapterRegistry: createRegistry([native]),
+        eventBus: new EventBus(),
+        eventStore: store,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      const root = `native-cost-${count}-0`;
+      const current = `native-cost-${count}-${count - 1}`;
+      const createdAt = '2026-09-06T00:00:00.000Z';
+      for (let index = 0; index < count; index++) {
+        const id = `native-cost-${count}-${index}`;
+        if (index)
+          store.reserveNextConversationSession({
+            conversationId: root,
+            predecessorSessionId: `native-cost-${count}-${index - 1}`,
+            proposedSessionId: id,
+            createdAt,
+          });
+        store.upsertSession({
+          threadId: id,
+          provider: 'station-agent',
+          status: 'ready',
+          cwd: tmp,
+          persistSession: true,
+          createdAt,
+          updatedAt: createdAt,
+        });
+        store.appendEvent({
+          eventId: `${id}-start`,
+          threadId: id,
+          sessionId: id,
+          provider: 'station-agent',
+          method: 'session.started',
+          createdAt,
+          metadata: {
+            agentSlug: 'reviewer',
+            userId: 'account-a',
+            projectSlug: 'project-a',
+          },
+        });
+        // Old streaming history must not be read just to recertify identity.
+        for (let delta = 0; delta < 20; delta++)
+          store.appendEvent({
+            eventId: `${id}-delta-${delta}`,
+            threadId: id,
+            provider: 'station-agent',
+            method: 'content.text-delta',
+            createdAt,
+            turnId: 'historical',
+            itemId: 'text',
+            delta: 'retained transcript',
+          });
+      }
+      for (let index = 0; index < unrelated; index++)
+        store.upsertSession({
+          threadId: `unrelated-${count}-${index}`,
+          provider: 'claude',
+          status: 'closed',
+          createdAt,
+          updatedAt: createdAt,
+        });
+      await owned.listSessions(
+        sessionReadAuthorityFromRequest('account-a', undefined, undefined),
+      );
+      // listSessions starts boot recovery asynchronously. Measure the
+      // request owner after that existing one-time startup pass settles.
+      await waitFor(
+        () =>
+          (owned as unknown as { sessionAttachmentSettled: boolean })
+            .sessionAttachmentSettled,
+        (settled) => settled,
+      );
+      const adapterLists = vi.spyOn(native, 'listSessions');
+      const allRows = vi.spyOn(store, 'readSessions');
+      const fullEvents = vi.spyOn(store, 'listEvents');
+      const pointFacts = vi.spyOn(store, 'listSessionProjectionEvents');
+      const authority = sessionReadAuthorityFromRequest(
+        'account-a',
+        undefined,
+        undefined,
+      );
+      // Exercise the real OrchestrationService owner used by dispatch, with
+      // SQLite and its actual authorization/projection paths, not a fake
+      // readSession callback supplied to the continuity helper.
+      const capture = owned as unknown as {
+        captureNativeMemoryHistory(
+          id: string,
+          scope: SessionReadAuthority,
+          current: () => boolean,
+        ): Promise<
+          import('../../../runtime/conversation/native-memory-history.js').NativeMemoryHistoryCompanion
+        >;
+      };
+      try {
+        const history = await capture.captureNativeMemoryHistory(
+          current,
+          authority,
+          () => true,
+        );
+        expect(await history.isCurrent()).toBe(true);
+        const facts = pointFacts.mock.calls.length;
+        expect(adapterLists).toHaveBeenCalledTimes(1);
+        expect(allRows).not.toHaveBeenCalled();
+        expect(fullEvents).not.toHaveBeenCalled();
+        expect(new Set(pointFacts.mock.calls.map(([id]) => id)).size).toBe(
+          count,
+        );
+        // A new durable identity observation must invalidate the retained
+        // binding without another host-wide enumeration.
+        store.appendEvent({
+          eventId: `${current}-project-change`,
+          threadId: current,
+          sessionId: current,
+          provider: 'station-agent',
+          method: 'session.configured',
+          createdAt: '2026-09-06T00:01:00.000Z',
+          metadata: {
+            agentSlug: 'reviewer',
+            userId: 'account-a',
+            projectSlug: 'project-b',
+          },
+        });
+        expect(await history.isCurrent()).toBe(false);
+        expect(adapterLists).toHaveBeenCalledTimes(1);
+        await expect(
+          capture.captureNativeMemoryHistory(
+            current,
+            sessionReadAuthorityFromRequest(
+              'other-account',
+              undefined,
+              undefined,
+            ),
+            () => true,
+          ),
+        ).rejects.toMatchObject({
+          code: 'native_memory_continuity_unavailable',
+        });
+        return facts;
+      } finally {
+        await owned.shutdown();
+        store.close();
+      }
+    };
+    const small = await measure(4, 32);
+    const large = await measure(8, 256);
+    expect(small).toBeGreaterThan(0);
+    expect(large).toBeLessThanOrEqual(small * 2);
   });
 
   test('sendTurn composes ambient context into the model-facing input at the dispatch choke point (#685)', async () => {
@@ -11651,6 +12258,7 @@ describe('OrchestrationService', () => {
 
     expect(resolveSessionAgent).toHaveBeenCalledWith(
       expect.objectContaining({ threadId: 'thread-resolve-agent' }),
+      undefined,
     );
     expect(claude.startSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -12060,6 +12668,7 @@ describe('OrchestrationService', () => {
       expect.objectContaining({
         metadata: expect.objectContaining({ agentSlug: 'my-agent' }),
       }),
+      undefined,
     );
     expect(claude.startSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -12271,26 +12880,28 @@ describe('OrchestrationService', () => {
   });
 
   test('rejects an unavailable retained adoption plan before readiness or provider fork', async () => {
-    const sourceThreadId = 'external:bedrock:unavailable-adoption';
+    // A qualified engine reaches model-plan validation; an unqualified one
+    // would fail at the earlier continuation-support gate and mask this seam.
+    const sourceThreadId = 'external:claude:unavailable-adoption';
     const projectRoot = join(tmp, 'unavailable-adoption-project');
     mkdirSync(projectRoot, { recursive: true });
     installStationDeliveryFlow(projectRoot);
     configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
     eventStore.upsertSession({
-      provider: 'bedrock',
+      provider: 'claude',
       threadId: sourceThreadId,
       status: 'ready',
       cwd: projectRoot,
       model: 'source-model',
       controlMode: 'read-only-attached',
       attachedSource: {
-        kind: 'bedrock-transcript',
+        kind: 'claude-transcript',
         externalSessionId: 'source-session',
       },
       createdAt: '2026-08-01T00:00:00.000Z',
       updatedAt: '2026-08-01T00:00:00.000Z',
     });
-    bedrock.metadata.modelLaunch = {
+    claude.metadata.modelLaunch = {
       defaultAtStart: 'station-resolved',
       omissionAtResume: 'retain-session-model',
       omissionPerTurn: 'retain-session-model',
@@ -12300,7 +12911,7 @@ describe('OrchestrationService', () => {
       // Deliberately absent: a retained Station-backed selector cannot be
       // accepted without the execution connection that validates it.
     };
-    const readiness = vi.spyOn(bedrock, 'getPrerequisites');
+    const readiness = vi.spyOn(claude, 'getPrerequisites');
     vi.mocked(modelLaunchResolutionTotal.add).mockClear();
 
     await expect(
@@ -12310,12 +12921,12 @@ describe('OrchestrationService', () => {
     );
 
     expect(readiness).not.toHaveBeenCalled();
-    expect(bedrock.adoptSession).not.toHaveBeenCalled();
+    expect(claude.adoptSession).not.toHaveBeenCalled();
     expect(modelLaunchResolutionTotal.add).toHaveBeenCalledTimes(1);
     expect(modelLaunchResolutionTotal.add).toHaveBeenCalledWith(
       1,
       expect.objectContaining({
-        provider: 'bedrock',
+        provider: 'claude',
         lifecycle: 'resume',
         requested_override: 'false',
         outcome: 'rejected',
@@ -12445,9 +13056,32 @@ describe('OrchestrationService', () => {
     ).toBe(false);
   });
 
-  test('refuses adoption when the source provider lacks independent-continuation support', async () => {
-    const sourceThreadId = 'external:bedrock:source';
+  test('refuses adoption when a qualified provider adapter lacks its continuation method', async () => {
+    const sourceThreadId = 'external:claude:source';
     const projectRoot = join(tmp, 'project');
+    mkdirSync(projectRoot, { recursive: true });
+    configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
+    eventStore.upsertSession({
+      provider: 'claude',
+      threadId: sourceThreadId,
+      status: 'ready',
+      cwd: projectRoot,
+      controlMode: 'read-only-attached',
+      attachedSource: { kind: 'test', externalSessionId: 'vendor-source' },
+      createdAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:00.000Z',
+    });
+    Object.defineProperty(claude, 'adoptSession', { value: undefined });
+
+    await expect(
+      service.dispatch({ type: 'adoptSession', sourceThreadId }),
+    ).rejects.toThrow('does not support continuing attached sessions');
+    expect(claude.startSession).not.toHaveBeenCalled();
+  });
+
+  test('refuses an unqualified source engine even when its adapter implements continuation', async () => {
+    const sourceThreadId = 'external:bedrock:unqualified-source';
+    const projectRoot = join(tmp, 'unqualified-source-project');
     mkdirSync(projectRoot, { recursive: true });
     configuredProjects.push({ slug: 'project', workingDirectory: projectRoot });
     eventStore.upsertSession({
@@ -12460,12 +13094,17 @@ describe('OrchestrationService', () => {
       createdAt: '2026-07-22T00:00:00.000Z',
       updatedAt: '2026-07-22T00:00:00.000Z',
     });
-    Object.defineProperty(bedrock, 'adoptSession', { value: undefined });
+    const readiness = vi.spyOn(bedrock, 'getPrerequisites');
+    expect(bedrock.adoptSession).toBeTypeOf('function');
+    expect(bedrock.discardSession).toBeTypeOf('function');
 
     await expect(
       service.dispatch({ type: 'adoptSession', sourceThreadId }),
-    ).rejects.toThrow('does not support continuing attached sessions');
+    ).rejects.toThrow('independent continuation support');
+    expect(readiness).not.toHaveBeenCalled();
+    expect(bedrock.adoptSession).not.toHaveBeenCalled();
     expect(bedrock.startSession).not.toHaveBeenCalled();
+    expect(eventStore.listCommandReceipts(sourceThreadId)).toEqual([]);
   });
 
   test('adoption does not inspect or depend on a Flow workspace', async () => {
@@ -12863,14 +13502,21 @@ describe('OrchestrationService', () => {
   // thread with a very large event log — that single `.all()` wedged the whole
   // server. It uses the complete, method-targeted projection + COUNT pair so
   // old load-bearing facts remain authoritative and `eventCount` stays true.
-  // Deliberately writes a 50k-event delta (see the assertions below: the
+  // Deliberately writes a 5k-event delta (see the assertions below: the
   // point is that facts at the START of a very large transcript survive,
-  // which a bounded recent-tail read would lose), so the fixture build alone
-  // costs ~30s of synchronous appends — far past the 5s default. Budget it
-  // explicitly rather than shrinking the delta, which would weaken exactly
-  // what the test proves.
+  // which a bounded recent-tail read would lose). 5,000 is chosen against
+  // the numeric tails on the reads this path could plausibly be rewritten
+  // to use (`LIMIT 1001` on the recent-by-thread read, 250 on the paged
+  // read, 1,000 recent events / 100 records in conversation history) with a
+  // 5x margin, so a tail-shaped regression still loses the head facts. The
+  // reads the fold actually uses are bounded by projection cardinality, not
+  // by a row cap -- which is what the `< 60` guard below pins directly and
+  // at any fixture size. The previous 50k proved nothing more and cost ~30s
+  // of synchronous appends alone (~125s under corpus load), making this one
+  // test the critical path of its ordinary shard. Budget the fixture
+  // explicitly rather than relying on the 30s default.
   test('listSessionReadModel uses a complete targeted projection and accurate total count (station#1867)', {
-    timeout: 180_000,
+    timeout: 60_000,
   }, async () => {
     const threadId = 'read-model-bounded-1867';
     const now = '2026-07-22T00:00:00.000Z';
@@ -12900,7 +13546,7 @@ describe('OrchestrationService', () => {
       method: 'policy.hooks-attached',
       cwd: '/workspace/policy',
     } as never);
-    const total = 50_000;
+    const total = 5_000;
     for (let i = 0; i < total; i += 1) {
       eventStore.appendEvent({
         eventId: `evt-1867-rm-${i}`,
@@ -12922,7 +13568,7 @@ describe('OrchestrationService', () => {
     // `countEventsByThreads` and asserted only `toHaveBeenCalledWith(...)` —
     // that passed even when the first version of
     // `listSessionProjectionEventsForThreads` fetched EVERY one of this
-    // fixture's 50,002 rows unfiltered (an independent review caught it: the
+    // fixture's 5,002 rows unfiltered (an independent review caught it: the
     // spy watched a NAME, not the row/attachment work behind it). `mapEventRow`
     // (called once per SQL row actually materialized with its payload) and
     // `hydrateAttachments` (called once per `mapEventRow`, and the one that
@@ -12959,19 +13605,19 @@ describe('OrchestrationService', () => {
       expect.arrayContaining([threadId]),
     );
     expect(countSpy).toHaveBeenCalled();
-    // THE bounded-work guard: this thread has 50,002 rows, but the fold's
+    // THE bounded-work guard: this thread has 5,002 rows, but the fold's
     // reachable rows are bounded by construction, independent of transcript
     // length: at most 2 ranked rows per PROJECTION_FOLD_METHOD (first+last,
     // 11 methods) plus the latest-any-method, first-prompted, turn-terminal
     // and own-turn-start companions — ~26 on a maximally fold-rich thread
     // (delta review measured 25). 60 = that derivation with margin; the
-    // defect this guards produced 50,002, three orders of magnitude away,
+    // defect this guards produced 5,002, two orders of magnitude away,
     // so the headroom costs no power while letting the fixture grow a
     // turn.started without a false red.
     expect(mapEventRowSpy.mock.calls.length).toBeLessThan(60);
     expect(hydrateAttachmentsSpy.mock.calls.length).toBeLessThan(60);
 
-    // The facts at the beginning of a 50k-delta transcript remain available
+    // The facts at the beginning of a 5k-delta transcript remain available
     // to their consumers. A recent tail would make both of these false/null.
     const targetedService = service as unknown as {
       flowPolicy: {
@@ -18486,10 +19132,15 @@ describe('OrchestrationService', () => {
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0]).toMatchObject({
       severity: 'error',
-      code: 'session_recovery_failed',
-      retriable: true,
-      message: 'This conversation could not be reopened: resume failed',
+      code: 'SESSION_START_INDETERMINATE',
+      retriable: false,
+      message: expect.stringContaining('resume failed'),
     });
+    expect(
+      eventStore
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect('thread-closed'),
+    ).toEqual({ kind: 'available', active: true });
   });
 
   test('recovery re-settles a project-bound session that was persisted without a cwd (#1011)', async () => {

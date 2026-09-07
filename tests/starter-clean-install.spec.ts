@@ -62,7 +62,12 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
     await page.getByRole('button', { name: 'Continue Without Setup' }).click();
     const disclosure = page.getByTestId('first-run-disclosure');
     await expect(disclosure).toBeVisible({ timeout: 20_000 });
-    await disclosure.getByRole('button', { name: 'I understand' }).click();
+    // #1582 A3 renamed this action to the decision it makes; this spec still
+    // clicked the acknowledgement that named neither choice, so it could not
+    // reach the engine chapter at all.
+    await disclosure
+      .getByRole('button', { name: 'Keep usage telemetry on' })
+      .click();
     const engineChapter = page.getByTestId('first-run-engines');
     await expect(engineChapter).toBeVisible({ timeout: 20_000 });
     await engineChapter.getByRole('button', { name: 'Not now' }).click();
@@ -105,7 +110,7 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
     await resumedEngines.getByRole('button', { name: 'Continue' }).click();
     await page
       .getByTestId('first-run-about-you')
-      .getByRole('button', { name: 'Skip' })
+      .getByRole('button', { name: 'Take the tour' })
       .click();
     await expect
       .poll(async () => {
@@ -144,7 +149,7 @@ test('fresh Station completes real Work and reopens its exact Scheduler receipt'
         new URL(response.url()).pathname === '/api/orchestration/chat' &&
         response.request().method() === 'POST',
     );
-    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
     const dispatch = await foregroundResponse;
     expect(dispatch.status()).toBe(200);
     const receipt = (await dispatch.json()) as ApiEnvelope<{

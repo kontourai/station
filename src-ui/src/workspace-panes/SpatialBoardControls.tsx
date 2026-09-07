@@ -9,6 +9,7 @@ import {
   useSetSpatialBoardCameraMutation,
   useSetSpatialBoardTitleMutation,
 } from '@kontourai/station-sdk/spatial-board';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import type { FormEvent, RefObject } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/Button';
@@ -203,7 +204,7 @@ export function AddPinForm({
                 : { kind, id: trimmed };
     if (!reference) return;
     const pin: SpatialBoardPin = {
-      id: crypto.randomUUID(),
+      id: randomCorrelationId(),
       reference,
       x: 24 + (board.pins.length % 4) * 220,
       y: 24 + Math.floor(board.pins.length / 4) * 280,

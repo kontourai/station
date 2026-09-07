@@ -154,7 +154,7 @@ test.describe('agent editor gates', () => {
 
     await page.goto('/agents/new');
     await page
-      .getByRole('button', { name: /Chat with a model/i })
+      .getByRole('button', { name: /Run it on Station/i })
       .first()
       .click({ timeout: 20_000 });
     await expect(page.locator('#ae-name')).toBeVisible({ timeout: 20_000 });
@@ -192,7 +192,7 @@ test.describe('agent editor gates', () => {
 
     await page.goto('/agents/new');
     await page
-      .getByRole('button', { name: /Chat with a model/i })
+      .getByRole('button', { name: /Run it on Station/i })
       .first()
       .click({ timeout: 20_000 });
     await expect(page.locator('#ae-name')).toBeVisible({ timeout: 20_000 });

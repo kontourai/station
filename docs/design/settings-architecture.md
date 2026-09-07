@@ -1,9 +1,9 @@
 # Settings Architecture: scope-first settings for Station
 
 Status: incremental implementation (2026-07-30). Research base: comparative review of four reference
-agent-tooling products' settings systems (attributed analysis lives in the private
-ops workspace, per this repo's no-competitor-names policy), plus a full audit of
-Station's current settings surface at `73381430`. Companion backlog: #572 (navigation grouping),
+agent-tooling products' settings systems, plus a full audit of Station's current
+settings surface at `73381430`. The separate attributed research record is not
+required to understand or implement this design. Companion backlog: #572 (navigation grouping),
 #536 (agent-oriented hierarchy), #175 (CLI config divergence), #983 (config watcher
 has no subscriber), #802 (layout removal discoverability).
 
@@ -60,8 +60,8 @@ Station's settings grew page-by-page, not model-first. The audit found:
 
 ## 2. What the reference products taught us
 
-Patterns adopted from the comparative review (four reference agent-tooling
-products; attributed per-product analysis lives in the private ops workspace):
+Patterns adopted from the comparative review of four reference agent-tooling
+products:
 
 - **Per-field provenance** — the settings API tells clients where each value came
   from (file / env / default), so a surface can name the source instead of

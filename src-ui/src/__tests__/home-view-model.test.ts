@@ -339,8 +339,22 @@ describe('buildHomeWorkItems', () => {
           messages: [],
           status: 'error',
         },
-        missingA: { agentSlug: 'a', title: 'A', createdAt: 20, messages: [] },
-        missingB: { agentSlug: 'b', title: 'B', createdAt: 20, messages: [] },
+        // #1582 B9: a chat nothing has been put into is not open work at
+        // all, so the "no conversation id" case this test is about has to be
+        // a chat mid-first-turn — sent, not yet receipted — rather than an
+        // untouched draft.
+        missingA: {
+          agentSlug: 'a',
+          title: 'A',
+          createdAt: 20,
+          messages: [{ timestamp: 20 }],
+        },
+        missingB: {
+          agentSlug: 'b',
+          title: 'B',
+          createdAt: 20,
+          messages: [{ timestamp: 20 }],
+        },
         other: {
           conversationId: 'other',
           agentSlug: 'other',
@@ -709,13 +723,19 @@ describe('buildHomeWorkItems', () => {
       chats: {
         local: {
           agentSlug: 'codex',
-          messages: [],
+          // #1582 B9: a message-less, conversation-less chat is a draft and
+          // no longer reaches Home at all. This one is a real chat.
+          messages: [{ timestamp: 20 }],
         },
       } as any,
       agents: [],
       sessions: [
         {
-          threadId: 'thread-virtual',
+          // This opaque execution id is intentionally distinct from both the
+          // visible Codex engine and the public assigned-agent slug. If Home
+          // falls back to its internal session identity, the assertion below
+          // must fail instead of mistaking a valid Codex label for a leak.
+          threadId: 'codex-runtime',
           provider: 'codex',
           assignedAgentSlug: 'codex',
           status: 'ready',
@@ -730,19 +750,19 @@ describe('buildHomeWorkItems', () => {
     });
     expect(tasks).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ title: 'codex Chat' }),
+        expect.objectContaining({ title: 'Codex Chat' }),
         // archive#3227 A2: was `'codex task'` — see the engine-vs-agent note
         // above. `agentLabel` still pins the slug, which is what this test
         // is actually about (no raw runtime id reaches either field).
         expect.objectContaining({
           title: 'Codex session',
-          agentLabel: 'codex',
+          agentLabel: 'Codex',
         }),
       ]),
     );
     expect(
       tasks.map((task) => `${task.title} ${task.agentLabel}`).join(' '),
-    ).not.toContain('codex');
+    ).not.toContain('codex-runtime');
   });
 
   test('shows a durable Task once while removing only exactly correlated chats and sessions', () => {
@@ -1343,6 +1363,11 @@ describe('station#1795: a chat with no messages yet is not epoch-0', () => {
     const tasks = buildHomeWorkItems({
       chats: {
         fresh: {
+          // #1582 B9: the message-less chat that still reaches Home is the
+          // REHYDRATED one — messages are not persisted across a reload, but
+          // the conversation id is, so this is exactly the shape #1795
+          // reported. An untouched draft is no longer work at all.
+          conversationId: 'conversation-untouched',
           agentSlug: 'agent',
           title: 'Untouched chat',
           createdAt,
@@ -1369,6 +1394,7 @@ describe('station#1795: a chat with no messages yet is not epoch-0', () => {
     const tasks = buildHomeWorkItems({
       chats: {
         bare: {
+          conversationId: 'conversation-bare',
           agentSlug: 'agent',
           title: 'Bare chat',
         },

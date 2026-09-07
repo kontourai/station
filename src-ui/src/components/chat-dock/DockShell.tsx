@@ -1,14 +1,18 @@
 import type { ReactNode } from 'react';
+import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import type { DockSlotGeometry } from '../../hooks/dock-slot-geometry';
 import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
+import type { DockMode } from '../../types';
 import { ChatDockResizeHandle } from './ChatDockResizeHandle';
 
 /**
- * The one dock chrome shell, mounted ONCE by the ambient host and shared by
- * every occupant it docks (Chat, Home, Activity — station#4460). It owns:
+ * The dock chrome shell, mounted once per occupied region by the ambient host
+ * (`RegionShells`, #928) and shared by every occupant it docks: the legacy
+ * ambient occupants (Chat and Home — station#4460) and region surfaces such
+ * as Activity (`ActivityRegionShell`). It owns:
  *
  * - the root `.chat-dock` element and its placement/state classes, so the
  *   large existing CSS surface (`:is(.chat-dock, .dock-slot)` and friends)
@@ -17,7 +21,7 @@ import { ChatDockResizeHandle } from './ChatDockResizeHandle';
  * - geometry, snap and drag state via `useDockShellChrome` — the single
  *   authority an occupant switch cannot desync, because this component (not
  *   the occupant) is what stays mounted across a switch;
- * - `dock.toggle` / `dock.maximize`.
+ * - `dock.maximize` (region visibility lives in the app toolbar).
  *
  * What it does NOT own: the header's occupant-specific content (identity,
  * project context, session controls) and the body. Those are composed by
@@ -27,36 +31,56 @@ import { ChatDockResizeHandle } from './ChatDockResizeHandle';
  * different content, not copy-pasted per occupant.
  */
 export function DockShell({
-  onGeometryChange,
+  onRenderedRegionGeometryChange,
+  regionId,
   children,
 }: {
-  onGeometryChange?: (geometry: DockSlotGeometry | null) => void;
+  onRenderedRegionGeometryChange?: (
+    regionId: DockMode,
+    geometry: DockSlotGeometry | null,
+  ) => void;
+  regionId?: DockMode;
   children: (chrome: DockShellChrome) => ReactNode;
 }) {
+  const regionModel = useRegionModelOptional();
+  const occupant =
+    regionId && regionModel ? regionModel.regions[regionId].occupant : 'chat';
+  const landmarkLabel =
+    occupant === 'chat'
+      ? 'Dock'
+      : (regionModel?.surfaces.get(occupant ?? '')?.title ?? 'Dock');
+  const resizeLabel =
+    occupant === 'chat' ? 'Resize chat dock' : `Resize ${landmarkLabel}`;
   const chrome = useDockShellChrome({
     publishesDockSlotClearance: true,
-    // `DockShell` is the ambient owner — always registers `dock.toggle` /
-    // `dock.maximize` (station#4460 review H1).
-    registersDockShortcuts: true,
-    onGeometryChange,
+    // `DockShell` owns the region maximize command, and only the shell
+    // holding chat registers it: the registry is last-register-wins, so a
+    // second shell's retraction would leave ⌘M dead (#1202's shape).
+    registersDockShortcuts: occupant === 'chat',
+    regionId,
+    onRenderedRegionGeometryChange,
   });
 
   const isPaneOpen = chrome.isDockOpen;
   const isPaneMaximized = chrome.isDockMaximized;
-  const isSidePanel = chrome.effectiveDockSlotPlacement !== 'bottom';
+  // Rendered region, not `regionId`: coarse pointers fold side placements to
+  // bottom (useIsMobile.ts `availablePlacements`) and index.css keys the grid
+  // tracks on this attribute, so both must come from the one expression. The
+  // fold also means every shell on a coarse device renders bottom, so at most
+  // one shell may mount there (RegionShells.tsx).
+  const renderedRegion = chrome.effectiveDockSlotPlacement;
+  const isSidePanel = renderedRegion !== 'bottom';
 
   return (
     <section
-      id="chat-dock"
-      // A landmark region (station#4460 review L2): the per-occupant
-      // `aria-label`s `.dock-slot` used to carry ("Home dock"/"Activity
-      // dock") don't apply once the shell — not the occupant — owns the box.
-      // "Dock" names the shell itself, not whichever occupant is docked;
-      // `DockOccupantPicker`'s "Docked pane: X" trigger names the occupant.
-      // `<section>` with an accessible name carries an implicit `region`
-      // role — no explicit `role` needed (biome a11y/useSemanticElements).
-      aria-label="Dock"
-      className={`chat-dock ${!isPaneOpen && !chrome.isCollapsedDragPreview ? 'is-collapsed' : ''} ${isPaneMaximized ? 'is-maximized' : ''} ${chrome.isDragging ? 'is-dragging' : ''} chat-dock--${isSidePanel ? chrome.effectiveDockSlotPlacement : 'bottom'}`}
+      id={occupant === 'chat' ? 'chat-dock' : undefined}
+      data-region={renderedRegion}
+      // Chat keeps the parity-pinned "Dock" landmark. A second shell needs a
+      // distinct accessible name, so a non-Chat region uses its registered
+      // surface title (#928). `<section>` with an accessible name carries an
+      // implicit `region` role — no explicit role is needed.
+      aria-label={landmarkLabel}
+      className={`chat-dock ${!isPaneOpen && !chrome.isCollapsedDragPreview ? 'is-collapsed' : ''} ${isPaneMaximized ? 'is-maximized' : ''} ${chrome.isDragging ? 'is-dragging' : ''} chat-dock--${renderedRegion}`}
       style={
         isSidePanel
           ? {
@@ -81,8 +105,8 @@ export function DockShell({
           <button
             type="button"
             tabIndex={-1}
-            className={`chat-dock__resize-handle chat-dock__resize-handle--horizontal${chrome.effectiveDockSlotPlacement === 'left' ? ' chat-dock__resize-handle--left' : ''}`}
-            aria-label="Resize chat dock"
+            className={`chat-dock__resize-handle chat-dock__resize-handle--horizontal${renderedRegion === 'left' ? ' chat-dock__resize-handle--left' : ''}`}
+            aria-label={resizeLabel}
             onPointerDown={chrome.onSidePanelResizePointerDown}
             // M5 (station#4460 review): this handle sits OUTSIDE any
             // occupant's file-drop boundary (Chat's, when Chat is docked;
@@ -98,6 +122,7 @@ export function DockShell({
         )
       ) : (
         <ChatDockResizeHandle
+          ariaLabel={resizeLabel}
           mode={chrome.isMobile ? 'mobile-snap' : 'desktop-free'}
           currentHeight={chrome.dockHeight}
           snap={

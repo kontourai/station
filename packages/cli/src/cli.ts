@@ -32,6 +32,7 @@ import {
 import { Command } from 'commander';
 import { build as buildPlugin } from './commands/build.js';
 import { runCheckpointsCommand } from './commands/checkpoints.js';
+import { runCloudCommand } from './commands/cloud.js';
 import { configGet, configSet } from './commands/config.js';
 import { runCoreCommand } from './commands/core.js';
 import {
@@ -448,6 +449,7 @@ const INDIVIDUAL_COMMANDS = [
   'stop',
   'fresh',
   'home',
+  'cloud',
   'upgrade',
   'doctor',
   'link',
@@ -998,6 +1000,14 @@ function buildProgram(
       return;
     }
     await runServiceCommand(args, lifecycleArgs);
+    // Signpost only on the DIRECT plumbing invocation: `setup local` composes
+    // this same install and must not tell the user to run setup again (#1098
+    // follow-up: the bare install writes no client profile, by design).
+    if (args[0] === 'install') {
+      console.log(
+        'Service installed. To use it from this machine (CLI and browser), save it as your default Station: station setup local',
+      );
+    }
   });
 
   register('setup', async (args) => {
@@ -1071,6 +1081,8 @@ function buildProgram(
       uiPort: lifecycleArgs.uiPort,
     });
   });
+
+  register('cloud', (args) => runCloudCommand(args));
 
   register('home', (args) => {
     const [homeAction, ...homeArgs] = args;
@@ -1175,12 +1187,17 @@ function buildProgram(
             homeDir: result.homeDir,
             previousHome: result.previousHome,
             restoredFrom: backupDir,
+            recovery: result.recovery,
             fileCount: result.manifest.files.length,
             totalBytes: result.manifest.totalBytes,
           }),
         );
       else {
         console.log(`✓ Restored Station home from ${backupDir}`);
+        console.log(
+          `  Recovered from a copy captured at ${result.recovery.snapshotCreatedAt}. Work after that snapshot may be missing.`,
+        );
+        console.log('  This restore did not transfer execution authority.');
         if (result.previousHome)
           console.log(`  Previous home retained at ${result.previousHome}`);
       }

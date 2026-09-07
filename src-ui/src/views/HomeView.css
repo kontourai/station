@@ -5,66 +5,6 @@
   overflow-x: hidden;
 }
 
-.starter-work-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin: 0 0 1.25rem;
-  padding: 1rem 1.25rem;
-  border: 1px solid var(--border-color, #334155);
-  border-radius: 0.75rem;
-}
-
-.starter-work-card__title {
-  margin: 0;
-  font-weight: 650;
-}
-.starter-work-card__body {
-  margin: 0.25rem 0 0;
-  color: var(--text-muted, #94a3b8);
-}
-
-/* A SkeletonBlock's children are percentage-width blocks. As an auto-sized
-   flex child they previously resolved against a collapsed intrinsic width,
-   leaving only the card's outline visible on a pending fresh Home. */
-.starter-work-card--loading > .skeleton-block {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-/* Home has no PageFrame action cell
-   (`page-frame-registry.ts` maps `home: null`), so `WorkspacePaneDockAction`
-   used to render as a bare sibling stacked directly above the intro,
-   colliding with the `Your work` eyebrow. This row gives it the same
-   top-of-content action position Activity's `PageFrameActions` provides,
-   without claiming a page frame Home does not have. */
-.home-view__top-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-/* When the dock action renders null (Home docked as an ambient occupant
-   provides a null dock context), the wrapper must not consume the row's gap
-   as a zero-size flex item — desktop eats 16px silently, the short
-   coarse-pointer branch showed 12px of dead vertical space. */
-.home-view__top-actions:empty {
-  display: none;
-}
-
-.home-view__top-actions {
-  flex: 0 0 auto;
-}
-
-/* Docking is desktop composition. At phone/tablet widths the ambient dock
-   already owns the mobile pane picker/maximize contract, so this second
-   in-content control is both redundant and visually stranded. */
-@media (max-width: 1024px) {
-  .home-view__top-actions {
-    display: none;
-  }
-}
 .home-view__intro {
   max-width: 680px;
 }
@@ -350,13 +290,6 @@
     /* The shell reserves the dock (--dock-bottom-clearance on .content-view,
        station#3902); this is only the page's own bottom gutter. */
     padding: 24px 16px 32px;
-  }
-  /* A narrow viewport has no width to spare beside the intro's h1 — stack
-     the dock action below it instead of squeezing the row. */
-  .home-view__top-row {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
   }
   .home-view__actions {
     grid-template-columns: 1fr;

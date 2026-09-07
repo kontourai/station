@@ -10,6 +10,7 @@ describe('E2E browser bootstrap wiring', () => {
     expect(source).toContain(
       'STATION_E2E_BROWSER_SESSION_CREDENTIAL: browserSessionCredential',
     );
+    expect(source).toContain('STATION_E2E_HOME: stationHome');
   });
 
   test('does not attach an operator credential to browser-wide requests', () => {

@@ -141,11 +141,67 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
         screen.queryByText('Add a model connection to power chats and agents.'),
       ).toBeNull();
       expect(screen.queryByText('Select a model connection')).toBeNull();
-      // The quickstart/detected-actions panel and the (always-useful)
-      // provider stack overview still stand alone.
+      // The quickstart/detected-actions panel still stands alone.
       expect(
         screen.getByRole('button', { name: /Add detected Ollama/ }),
       ).toBeTruthy();
+    });
+
+    // #1536 D7: the provider stack's per-capability cards said the same
+    // thing twice more, beside the list that had already said it once.
+    test('genuinely empty: the provider stack states the fix, not the absence again', () => {
+      render(<ProviderSettingsView onNavigate={onNavigate} />);
+
+      expect(
+        screen.queryByText('No language model connection configured'),
+      ).toBeNull();
+      expect(
+        screen.queryByText(
+          'No embedding connection — required for knowledge search',
+        ),
+      ).toBeNull();
+      // What the panel is for when nothing exists: the way out.
+      expect(screen.getByText('Quick Setup')).toBeTruthy();
+      expect(screen.getAllByText('No model connections yet')).toHaveLength(1);
+    });
+
+    test('one capability configured: the breakdown returns, because it now distinguishes', () => {
+      modelConnections = [
+        {
+          id: 'bedrock-prod',
+          kind: 'model',
+          type: 'bedrock',
+          name: 'Bedrock · Prod',
+          config: {},
+          enabled: true,
+          capabilities: ['llm'],
+          status: 'ready',
+          prerequisites: [],
+        },
+      ];
+      render(<ProviderSettingsView onNavigate={onNavigate} />);
+
+      expect(
+        screen.getByText(
+          'No embedding connection — required for knowledge search',
+        ),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText('No language model connection configured'),
+      ).toBeNull();
+    });
+
+    test('the model-connections description does not point at the page it is on', () => {
+      render(<ProviderSettingsView onNavigate={onNavigate} />);
+
+      const description = screen.getByText(/Connections used by Station/);
+      expect(description.textContent).toContain(
+        'Engine connections are under the Engines tab.',
+      );
+      // Review L8: the JSX-newline form could never appear in rendered text,
+      // so asserting its absence proved nothing. The rendered sentence is what
+      // the reader sees, and it must not point at the page it is on.
+      expect(description.textContent).not.toMatch(/appear in Connections/);
     });
 
     test('filtered to nothing: FilteredEmpty is the one message, the detail panel defers too', () => {
@@ -398,7 +454,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     // to a generated id the server has never heard of — that navigation is
     // what destroyed the draft.
     for (const call of onNavigate.mock.calls) {
-      expect(call[0]).toEqual({ type: 'connections-provider-edit', id: 'new' });
+      expect(call[0]).toEqual({ type: 'connections-model-edit', id: 'new' });
     }
     expect(saveMutate).not.toHaveBeenCalled();
     expect(testMutate).not.toHaveBeenCalled();
@@ -425,7 +481,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       saveMutationOptions.onSuccess?.({ id: created.connection.id }, undefined);
     });
     expect(onNavigate).toHaveBeenCalledWith({
-      type: 'connections-provider-edit',
+      type: 'connections-model-edit',
       id: created.connection.id,
     });
   });
@@ -473,13 +529,13 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       screen.getByRole('dialog', { name: 'Unsaved Changes' }),
     ).toBeTruthy();
     expect(onNavigate).not.toHaveBeenCalledWith({
-      type: 'connections-provider-edit',
+      type: 'connections-model-edit',
       id: 'second',
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(onNavigate).toHaveBeenCalledWith({
-      type: 'connections-provider-edit',
+      type: 'connections-model-edit',
       id: 'second',
     });
   });

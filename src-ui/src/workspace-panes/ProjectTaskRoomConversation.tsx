@@ -4,6 +4,7 @@ import {
   useProjectTaskRoomDiscoveryQuery,
   useProjectTaskRoomHistoryQuery,
 } from '@kontourai/station-sdk/project-task-rooms';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useId, useState } from 'react';
 import { useProjectTaskRoomContext } from './ProjectTaskRoomContext';
 import { taskRoomRevisionLink } from './taskRoomRevisionLink';
@@ -55,7 +56,7 @@ export function ProjectTaskRoomConversation({ taskId }: { taskId: string }) {
     const text = draft.trim();
     if (!text || !writable || append.isPending) return;
     void append
-      .mutateAsync({ proposalId: crypto.randomUUID(), text })
+      .mutateAsync({ proposalId: randomCorrelationId(), text })
       .then((outcome) => {
         if (outcome.kind === 'committed' || outcome.kind === 'duplicate')
           setDraft('');

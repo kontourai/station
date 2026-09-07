@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   assertNightlyVersionRelationship,
   ghAttestationArgs,
@@ -11,6 +11,8 @@ import {
   parseLatestUpdaterManifest,
   parseMacosInfoPlist,
   parseVerifiedAttestation,
+  verifyAndroidAabIdentity,
+  verifyMacosArchive,
 } from '../verify-release-cohort.mjs';
 
 const sourceSha = 'a'.repeat(40);
@@ -48,7 +50,7 @@ const certificate = {
   certificateIssuer: 'CN=Fulcio',
   issuer: 'https://token.actions.githubusercontent.com',
   subjectAlternativeName:
-    'https://github.com/kontourai/station/.github/workflows/nightly-native-cohort.yml@refs/heads/main',
+    'https://github.com/kontourai/station/.github/workflows/nightly-native-stage.yml@refs/heads/main',
   runInvocationURI:
     'https://github.com/kontourai/station/actions/runs/112061/attempts/1',
 };
@@ -83,7 +85,7 @@ describe('protected release cohort verifier parsers', () => {
       '--source-digest',
       sourceSha,
       '--cert-identity',
-      'https://github.com/kontourai/station/.github/workflows/nightly-native-cohort.yml@refs/heads/main',
+      'https://github.com/kontourai/station/.github/workflows/nightly-native-stage.yml@refs/heads/main',
       '--cert-oidc-issuer',
       'https://token.actions.githubusercontent.com',
       '--deny-self-hosted-runners',
@@ -113,6 +115,8 @@ describe('protected release cohort verifier parsers', () => {
       ),
     ).toMatchObject({
       subjectDigest: `sha256:${record.sha256}`,
+      signerWorkflow:
+        'kontourai/station/.github/workflows/nightly-native-stage.yml',
       authenticatedWorkflowRunId: '112061',
       verifiedTimestampDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     });
@@ -278,7 +282,7 @@ describe('protected release cohort verifier parsers', () => {
     expect(verifier).toMatch(
       /async function main[\s\S]*station\.release-cohort-final\/v1/,
     );
-    expect(verifier).toContain('defaultSpawnSync(apkanalyzer.apkanalyzerPath');
+    expect(verifier).toContain('verifyAndroidAabIdentity(');
     expect(verifier).toContain("['-xOzf', path, '--', plists[0]]");
     expect(verifier).not.toContain("['-xzf', path, '-C'");
     expect(verifier).not.toContain('mkdtempSync');
@@ -297,4 +301,92 @@ describe('protected release cohort verifier parsers', () => {
     expect(() => parseMacosInfoPlist('')).toThrow('not valid JSON');
     expect(() => parseMacosInfoPlist('{}')).toThrow('required string identity');
   });
+});
+
+test('verifies an AAB through bundletool with literal argv and rejects a mismatched identity', () => {
+  const run = vi.fn(() => ({
+    status: 0,
+    stdout:
+      '<manifest package="io.kontourai.station.nightly" android:versionCode="242800" android:versionName="0.1.3-nightly.2428"/>',
+    stderr: '',
+  }));
+  const tools = { bundletoolPath: '/fixture tools/bundletool.jar' };
+  expect(
+    verifyAndroidAabIdentity(
+      '/fixture;literal.aab',
+      identity.android,
+      tools,
+      run as unknown as typeof spawnSync,
+    ),
+  ).toEqual(identity.android);
+  expect(run).toHaveBeenCalledWith(
+    'java',
+    [
+      '-jar',
+      tools.bundletoolPath,
+      'dump',
+      'manifest',
+      '--bundle=/fixture;literal.aab',
+    ],
+    expect.objectContaining({
+      shell: false,
+      windowsHide: true,
+      timeout: 60000,
+    }),
+  );
+  expect(() =>
+    verifyAndroidAabIdentity(
+      '/fixture.aab',
+      { ...identity.android, versionCode: 242801 },
+      tools,
+      run as unknown as typeof spawnSync,
+    ),
+  ).toThrow(/AAB manifest identity/);
+  run.mockReturnValueOnce({ status: 1, stdout: '', stderr: 'invalid bundle' });
+  expect(() =>
+    verifyAndroidAabIdentity(
+      '/invalid.aab',
+      identity.android,
+      tools,
+      run as unknown as typeof spawnSync,
+    ),
+  ).toThrow(/bundletool Android identity verification/);
+});
+
+test('verifies archive listings beyond the child-process default buffer without relaxing archive safety', () => {
+  const listing = `${'Station.app/Contents/Resources/a-long-but-safe-bundled-module-path.js\n'.repeat(20000)}Station.app/Contents/Info.plist\n`;
+  const run = vi.fn((command, args, options) => {
+    let stdout =
+      args[0] === '-tzf'
+        ? listing
+        : args[0] === '-tvzf'
+          ? `-rw-r--r-- ${listing}`
+          : '<plist/>';
+    if (command === '/usr/bin/plutil')
+      stdout = JSON.stringify({
+        CFBundleIdentifier: 'io.kontourai.station.nightly',
+        CFBundleShortVersionString: identity.desktop.version,
+        CFBundleVersion: identity.desktop.bundleVersion,
+      });
+    if (Buffer.byteLength(stdout) > (options.maxBuffer ?? 1024 * 1024))
+      return { status: null, error: new Error('ENOBUFS') };
+    return { status: 0, stdout, stderr: '' };
+  });
+  expect(() =>
+    verifyMacosArchive('/fixture.app.tar.gz', identity.desktop, {
+      run: run as unknown as typeof spawnSync,
+      platform: 'darwin',
+    }),
+  ).not.toThrow();
+  run.mockImplementationOnce(() => ({
+    status: 0,
+    stdout: '../escape\n',
+    stderr: '',
+  }));
+  expect(() =>
+    verifyMacosArchive('/unsafe.app.tar.gz', identity.desktop, {
+      run: run as unknown as typeof spawnSync,
+      platform: 'darwin',
+    }),
+  ).toThrow(/unsafe/);
 });

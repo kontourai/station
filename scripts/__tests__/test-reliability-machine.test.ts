@@ -27,10 +27,20 @@ describe('machineConditions', () => {
     const conditions = machineConditions();
     // A ratio is the comparable quantity: load 11 means something different on
     // 4 cores than on 15, which is exactly how #844's numbers misled.
-    expect(conditions.loadPerCpu).toBeCloseTo(
-      conditions.loadAverage[1] / conditions.cpuCount,
-      2,
+    expect(conditions.loadPerCpu).toBe(
+      Math.round((conditions.loadPerCpu ?? 0) * 100) / 100,
     );
+    // Both published values are independently rounded to two decimals. Their
+    // ratio may therefore differ by one half-unit from each rounding, even
+    // though both came from the same raw load sample.
+    const maximumDoubleRoundingError =
+      0.005 + 0.005 / conditions.cpuCount + 1e-12;
+    expect(
+      Math.abs(
+        (conditions.loadPerCpu ?? 0) -
+          conditions.loadAverage[1] / conditions.cpuCount,
+      ),
+    ).toBeLessThanOrEqual(maximumDoubleRoundingError);
   });
 
   test('does not pass judgement on the run', () => {

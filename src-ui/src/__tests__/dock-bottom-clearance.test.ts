@@ -74,7 +74,7 @@ describe('the dock clearance is one derivation (station#3902)', () => {
   });
 
   test("the shell's route outlet reserves it, so every route clears the dock", () => {
-    // The BASE rule. The compound `.app__main--dock-left/right/bottom > …`
+    // The BASE rule. The compound `.app__main:has(> [data-region]) > …`
     // rules deliberately zero it: in those modes the dock is a real grid row
     // beside the content rather than fixed over it.
     const bodies = ruleBodies(indexCss, '\n.content-view');
@@ -120,12 +120,16 @@ describe('the dock clearance is one derivation (station#3902)', () => {
     expect(source).not.toMatch(/\.dock-slot\s*\{/);
   });
 
-  test('the ambient host is the sole --dock-slot-size writer', () => {
+  test('the clearance reducer is the sole --dock-slot-size writer', () => {
+    // A file that names the variable as a string and writes inline styles
+    // is a writer; the reducer passes the name through its `write` helper,
+    // so the two are never adjacent there.
     const writers = sourceFiles(uiSrc).flatMap((path) => {
       const source = readFileSync(path, 'utf8');
-      return [
-        ...source.matchAll(/\.style\.setProperty\(\s*['"]--dock-slot-size/g),
-      ].map(() => path.slice(uiSrc.length + 1));
+      return /['"]--dock-slot-size['"]/.test(source) &&
+        /\.style\.setProperty\(/.test(source)
+        ? [path.slice(uiSrc.length + 1)]
+        : [];
     });
 
     // archive#3929: Chat supplies live geometry to the ambient slot, but the
@@ -134,6 +138,6 @@ describe('the dock clearance is one derivation (station#3902)', () => {
     expect(
       writers,
       `second dock-slot publisher(s): ${writers.join(', ')}`,
-    ).toEqual(['workspace-panes/AmbientChatDockPaneHost.tsx']);
+    ).toEqual(['regions/region-clearance.ts']);
   });
 });

@@ -192,13 +192,13 @@ Recorded so the temptation is answered once rather than re-litigated:
 
 ## 7. Where the work lives
 
-Rule: **if closing it requires merging code into station, it lives in station's
-tracker; if closing it requires a decision about customers, money, or cross-repo
-sequencing, it lives in the ops workspace.**
+Rule: **if closing it requires merging code into Station, it lives in Station's
+tracker; if closing it requires a portfolio or cross-repository decision, it
+lives in the suite-level planning tracker.**
 
 - **station:** #1859, #1707, #1425, #741, #1878, #1730, #1212, and #1392's
   mechanics — engineering contracts.
-- **ops:** the commercial half of #1393 (tiers, pricing, hosted-vs-enterprise,
+- **Suite-level planning:** the commercial half of #1393 (tiers, pricing, hosted-vs-enterprise,
   whitelabel), and the **trigger register** for §5 — demand-evidence watching,
   the same pattern the S5 extraction framework already runs. The station epics
   carry one line each: "blocked on trigger, see ops."

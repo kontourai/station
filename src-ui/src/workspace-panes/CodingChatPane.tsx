@@ -1,7 +1,6 @@
 import type { WorkspacePaneAvailability } from '@kontourai/station-contracts/workspace-pane-availability';
 import { useEffect } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
-import { useDockModePreference } from '../hooks/useDockModePreference';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { BrowserPreviewPaneLauncher } from './BrowserPreviewPaneLauncher';
 import { createFilePreviewPaneInstance } from './filePreviewPaneInstance';
@@ -26,7 +25,6 @@ export function CodingChatPane({
   const isMobile = useIsMobile();
   const { openFilePreviewIntent, setDockState, updateParams } = useNavigation();
   const paneHostOpen = useWorkspacePaneHostOpenAction();
-  useDockModePreference('coding', 'right');
 
   useEffect(() => {
     if (!isMobile) return;
@@ -47,6 +45,14 @@ export function CodingChatPane({
     };
     const instance = createFilePreviewPaneInstance(state, projectId);
     if (!instance) return;
+    // #1596: a refused deep link is left unreported ON PURPOSE, and this is the
+    // one place in the change where a reason is available and not shown. This
+    // component has no notice slot to put it in — it renders the Browser
+    // Preview launcher or literally nothing, so a sentence here would be a new
+    // surface invented at a refusal site, in a pane whose own job is to select
+    // existing chat behaviour. The intent also survives in the URL, so the
+    // deep link is retried rather than lost. Giving this a voice means giving
+    // the Coding chat pane a notice region first; that is a separate change.
     if (
       paneHostOpen.open(
         instance,
@@ -55,7 +61,7 @@ export function CodingChatPane({
           instance.stateKey,
           state,
         ),
-      )
+      ).ok
     ) {
       updateParams(clearOpenFilePreviewIntent());
     }

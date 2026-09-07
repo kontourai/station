@@ -1,8 +1,23 @@
 # Getting Started
 
-Station is a local-first workspace for agent work. This guide covers a signed
-macOS/Linux install when its release ring is published, first launch, Provider
-setup, and routine lifecycle.
+Station is a local-first workspace for agent work. This guide covers the ways
+to run Station today, a verified macOS/Linux install when its release ring is
+published, first launch, connection setup, and routine lifecycle.
+
+## Ways To Run Station Today
+
+Station is open source and under active development. No signed stable or beta
+release ring has been published yet, so the verified installer below cannot
+run yet. Choose one of these paths today:
+
+| Path | Platforms | Use it when |
+| --- | --- | --- |
+| Run from source | macOS, Linux | You want the current `main` branch and are comfortable with a Node.js checkout. Follow the [developer guide](https://github.com/kontourai/station/blob/main/docs/guides/development.md#local-runtime). |
+| Nightly desktop build | macOS (Apple silicon) | You want a native app for testing. Download the [Nightly desktop pre-release](https://github.com/kontourai/station/releases/tag/nightly-desktop). It installs alongside a stable Station and is not a stable release. |
+
+Once a signed stable or beta ring is published, [Install Or Upgrade](#install-or-upgrade)
+below becomes the supported macOS and Linux path. The remaining sections
+describe that verified install and the first-run flow that every path shares.
 
 ## Before You Install
 
@@ -15,6 +30,16 @@ You need:
 
 Authentication is used for GitHub release metadata and attestation checks.
 There is no unsigned fallback.
+
+Optional, Linux only: a C++ toolchain (`g++`, `make`, `python3`) to compile
+the `node-pty` native module that powers interactive terminal panes. macOS
+and Windows use shipped prebuilds. Without a toolchain on Linux, Station
+still installs and runs, but terminal panes are unavailable and `station
+doctor` reports the degraded terminal capability with the remediation
+(`npm run dependencies:install` after installing the toolchain, then
+restart — that runs the reviewed lifecycle path, unlike a direct
+`npm rebuild`).
+Agent execution does not use `node-pty` and works either way.
 
 ## Install Or Upgrade
 
@@ -37,27 +62,57 @@ the **beta** channel. It uses a separate `~/.station/installs/beta` install root
 retired `STATION_CHANNEL=preview`; the installer refuses it. The exact channel
 identity, launcher, and port mapping are verified by the release installer.
 
-## Choose A Provider
+## Choose A Model Connection Or Engine
 
-A Provider is anything that can power an agent: a local or hosted model service
-such as Ollama or Bedrock, or an agent app such as Claude Code or Codex.
+Two kinds of connection can power an agent. A **Model connection** is a local
+or hosted model service that Station's own engine runs inference on. An
+**Engine** is an installed agent CLI, or a custom engine you connected, that
+runs its own agent loop.
 
 1. Open **Connections**.
-2. Choose a detected Provider or select **Add Provider**.
+2. On the **Models** tab choose a detected service or **Add model connection**;
+   on the **Engines** tab choose a detected engine or **Add engine**. During
+   first run, a detected Engine can be ticked to connect it and create its
+   External agent in the same confirmed action.
 3. Follow its setup action until it reports **Ready**.
 
-For a credential-free first path, install [Ollama](https://ollama.com), pull a
-model such as `llama3.1` or `qwen2.5`, and then return to Connections. Detection
-is read-only: Station does not create a connection or read credentials merely
-because it finds a Provider.
+For a credential-free first path, use a supported local model service and then
+return to Connections. Detection is read-only: Station does not create a
+connection or read credentials merely because it finds one. The
+[Connections guide](https://github.com/kontourai/station/blob/main/docs/guides/connections.md)
+lists current integrations and their exact setup steps.
 
 Choose the simplest path for what you want to do:
 
 | You want to… | Start with… |
 | --- | --- |
-| Keep inference on this machine | Ollama, a local Model, and a Station agent |
-| Use an existing coding agent app | Claude Code or Codex and its External agent |
-| Use a hosted model through Station | A hosted Model Provider and a Station agent |
+| Keep inference on this machine | A local Model connection and a Station agent |
+| Use an existing agent engine | A supported Engine and its External agent |
+| Use a hosted model through Station | A hosted Model connection and a Station agent |
+
+## Start Your First Chat
+
+At the end of first-run setup, choose **Start your first chat**. Station saves
+any personalization answers you selected, then opens New Chat. Unanswered
+questions add no profile. A failed save keeps setup open so you can retry.
+
+New Chat lets you choose an Agent, Model, and workspace. It shows loading,
+connection errors, or setup actions when a choice is not ready. Opening it does
+not send a message. **Take the tour** is an optional alternative that saves the
+same selected answers before showing Station's key surfaces.
+
+### Finish setup and return
+
+If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
+Connections**, use that action to open the owning setup page. The picker steps
+aside while keeping your chosen workspace, Agent, Model, and selected context.
+Use **Return to New Chat** when finished, or browser Back to return to the page
+you left. Station rechecks setup before you choose an Agent; returning sends no
+message. If a choice was removed or access changed, choose an available option.
+
+**Cancel return**, opening a fresh New Chat, navigating elsewhere, changing
+Stations or authorization, and reloading the page end this temporary return
+flow. Connection changes you already saved remain saved.
 
 ## Start Your First Task
 
@@ -139,11 +194,11 @@ execution only; read
 its findings and decide what to do rather than treating completion as a passed
 gate.
 
-For example, open the Station repository as a Project, create a Task named
-“Update the documentation,” and choose the Codex External agent. That work's
-first execution is a Session. Reopen the Task later to see its files, evidence,
-and receipts together. For a one-off question that does not need that durable
-history, use a direct chat instead.
+For example, open a repository as a Project, create a Task named “Update the
+documentation,” and choose a ready External agent. That work's first execution
+is a Session. Reopen the Task later to see its files, evidence, and receipts
+together. For a one-off question that does not need that durable history, use a
+direct chat instead.
 
 ## Update, Stop, Or Uninstall
 
@@ -164,7 +219,7 @@ station stop
 station start
 ```
 
-To uninstall the stable program while preserving Projects, Providers, Tasks,
+To uninstall the stable program while preserving Projects, connections, Tasks,
 and Sessions:
 
 ```bash
@@ -184,3 +239,36 @@ directory for manual review.
 - Read [Station concepts](concepts.md).
 - Customize [keyboard shortcuts](../guides/keyboard-shortcuts.md).
 - Review the [Station privacy policy](https://kontourai.io/privacy/station/).
+
+## Inspect a learning source
+
+Open **Developer → Memory** and select a record from a personal Default File
+Store, then choose **Inspect learning source**. If Developer is hidden, enable
+developer tools in Settings. The inspector requires local access to the Station
+that owns the store; remote pairing or an operator API credential alone is not
+enough. Hosted Stations and tenant-scoped requests are not supported by this
+personal-store inspection.
+
+The inspector shows the source text, provenance, and observation time. **Refresh
+source** reads it again. If the store was replaced, access changed, or the source
+cannot be verified, the old content is withheld. Inspection does not repair or
+change the source.
+
+A record marked active is not evidence that a learning was activated. This view
+shows source records only; candidate decisions, active learning revisions, and
+observed effects require records from their respective owners. It offers no
+promotion or retirement action.
+
+## Return to a decision
+
+Open Notifications to find work that needs your attention. When an approval or
+permission has recorded request evidence, **Inspect request** opens its current
+details. Choose **Approve once** or **Deny** only after reviewing the request.
+You can expand **Request identity** for its exact record or open the Session for
+more context.
+
+A resolved or changed request must be inspected again from refreshed attention.
+A request that cannot currently be answered remains visible without decision
+buttons. If the decision cannot be confirmed, **Check request again** refreshes
+its state before another attempt. Other notifications retain their existing
+Session and action controls.

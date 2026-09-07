@@ -1,7 +1,11 @@
 export const PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS: number;
+export const WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS: number;
+/** @deprecated Use WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS. */
 export const WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS: number;
+export const WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS: number;
 export const WINDOWS_OWN_PROCESS_BIRTH_ATTEMPTS: number;
 export const WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS: number;
+export const WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS: number;
 export type ExactProcessIdentity = { pid: number; start: string };
 export type ExactProcessIdentityProbe =
   | { state: 'dead' }
@@ -14,6 +18,9 @@ export type ProcessIdentityDependencies = {
   kill?: (pid: number, signal?: number) => void;
   timeoutMs?: number;
   wait?: (milliseconds: number) => void;
+  now?: () => number;
+  retryDelayMs?: number;
+  deadlineMs?: number;
   /** execFileSync-shaped seam; #1669 added it to the impl but not here. */
   exec?: (
     file: string,

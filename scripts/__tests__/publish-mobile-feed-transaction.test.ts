@@ -30,6 +30,7 @@ type TransactionRunOptions = {
   hangRoot?: boolean;
   timeoutMs?: number;
   allowTimeoutResult?: boolean;
+  withFeed?: boolean;
 };
 
 async function run({
@@ -43,6 +44,7 @@ async function run({
   hangRoot = false,
   timeoutMs,
   allowTimeoutResult,
+  withFeed = true,
 }: TransactionRunOptions = {}) {
   const root = mkdtempSync(join(tmpdir(), 'station-feed-transaction-'));
   roots.push(root);
@@ -51,15 +53,20 @@ async function run({
   const node = join(root, 'node');
   const feed = join(root, 'feed.json');
   const state = join(root, 'draft.state');
+  const nodeLog = join(root, 'node.log');
   const bashEnvironment = join(root, 'bash-environment');
   writeFileSync(log, '');
   writeFileSync(feed, '{}');
   writeFileSync(state, 'true');
+  writeFileSync(nodeLog, '');
   writeFileSync(
     gh,
     '#!/usr/bin/env bash\necho "$*" >> "$GH_LOG"\nif [[ "$1 $2" == "release view" ]]; then [[ "$VIEW_UNAVAILABLE" == 1 ]] && exit 8; cat "$STATE_FILE"; exit 0; fi\nif [[ "$*" == *"--draft=false"* ]]; then [[ "$PUBLISH_FAILS_NO_COMMIT" == 1 ]] && exit 9; [[ "$PUBLISH_NOOP" == 1 ]] || echo false > "$STATE_FILE"; [[ "$PUBLISH_COMMITS_THEN_FAILS" == 1 ]] && exit 9; fi\nif [[ "$*" == *"--draft=true"* ]]; then [[ "$REDRAFT_FAILS" == 1 ]] && exit 9; echo true > "$STATE_FILE"; fi\n',
   );
-  writeFileSync(node, '#!/usr/bin/env bash\nexit "$DEPLOY_STATUS"\n');
+  writeFileSync(
+    node,
+    '#!/usr/bin/env bash\necho "$*" >> "$NODE_LOG"\nif [[ "$*" == *"validate-config"* ]]; then exit 0; fi\nexit "$DEPLOY_STATUS"\n',
+  );
   writeFileSync(
     bashEnvironment,
     // biome-ignore lint/suspicious/noTemplateCurlyInString: bash variable expansion literal
@@ -69,7 +76,10 @@ async function run({
   chmodSync(node, 0o755);
   const result = await runBoundedFixture(
     'bash',
-    [resolve('scripts/publish-mobile-feed-transaction.sh'), feed],
+    [
+      resolve('scripts/publish-mobile-feed-transaction.sh'),
+      ...(withFeed ? [feed] : []),
+    ],
     {
       cwd: resolve('.'),
       env: {
@@ -78,6 +88,7 @@ async function run({
         RELEASE_TAG: 'v1.2.3',
         GH_LOG: log,
         DEPLOY_STATUS: String(deploy),
+        NODE_LOG: nodeLog,
         REDRAFT_FAILS: redraftFails ? '1' : '0',
         STATION_TEST_SIGNAL: signal,
         STATE_FILE: state,
@@ -87,6 +98,22 @@ async function run({
         PUBLISH_FAILS_NO_COMMIT: publishFailsNoCommit ? '1' : '0',
         BASH_ENV: bashEnvironment,
         STATION_TEST_HANG_ROOT: hangRoot ? '1' : undefined,
+        VITE_NATIVE_APP_UPDATE_CHANNEL: 'stable',
+        VITE_NATIVE_APP_VERSION: '1.2.3',
+        VITE_NATIVE_APP_UPDATE_FEED_URL: withFeed
+          ? 'https://updates.example.test/mobile/stable.json'
+          : undefined,
+        VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: withFeed
+          ? 'https://updates.example.test'
+          : undefined,
+        NATIVE_APP_UPDATE_ACTION_URL: withFeed
+          ? 'https://downloads.example.test/station.apk'
+          : undefined,
+        NATIVE_APP_UPDATE_ACTION_KIND: withFeed ? 'artifact' : undefined,
+        NATIVE_APP_UPDATE_ACTION_ORIGINS: withFeed
+          ? 'https://downloads.example.test'
+          : undefined,
+        NATIVE_APP_UPDATE_PUBLISH_TOKEN: withFeed ? 'token' : undefined,
       },
       allowTimeoutResult,
       timeoutMs,
@@ -95,10 +122,21 @@ async function run({
   return {
     result,
     log: readFileSync(log, 'utf8'),
+    nodeLog: readFileSync(nodeLog, 'utf8'),
+    state: readFileSync(state, 'utf8').trim(),
   };
 }
 
 describe('mobile feed publication compensation', () => {
+  test('publishes without feed deployment when the custom feed is absent', async () => {
+    const { result, log, nodeLog, state } = await run({ withFeed: false });
+    expect(result.status).toBe(0);
+    expect(state).toBe('false');
+    expect(log).toContain('--draft=false');
+    expect(nodeLog).toContain('native-update-feed.mjs validate-config');
+    expect(nodeLog).not.toContain('native-update-feed.mjs deploy');
+  });
+
   test(
     'safe deploy failure re-drafts the public release',
     async () => {

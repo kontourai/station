@@ -78,12 +78,12 @@ export function ChatEmptyState({ agentSlug, agentName }: ChatEmptyStateProps) {
     const targetView: NavigationView =
       content.actionTarget === 'engine' && content.engineConnectionId
         ? {
-            type: 'connections-runtime-edit',
+            type: 'connections-engine-edit',
             id: content.engineConnectionId,
           }
         : content.actionTarget === 'connections'
           ? { type: 'connections' }
-          : { type: 'connections-providers' };
+          : { type: 'connections-models' };
 
     return (
       <div className="empty-state" data-testid="chat-empty-state-unconfigured">

@@ -1,0 +1,48 @@
+{
+  "name": "workspace-pane-starter",
+  "version": "1.0.0",
+  "sdkVersion": "^0.7.0",
+  "displayName": "Session Activity Pane",
+  "description": "A data-only Workspace Pane backed by a sandboxed MCP App",
+  "permissions": [],
+  "workspacePanes": [
+    {
+      "version": "1.0",
+      "id": "session-activity",
+      "name": "Session activity",
+      "description": "Read-only activity from the selected Station",
+      "rendererId": "workspace-pane-starter.session-activity",
+      "renderer": {
+        "kind": "mcp-tool-ui",
+        "ref": "station-sessions-mcp/sessions_panel",
+        "approvalPolicy": "read-only"
+      },
+      "requiredRendererCapabilities": ["sandboxed-mcp-app"],
+      "placement": {
+        "supportedRegions": ["secondary", "standalone"],
+        "preferredRegion": "secondary"
+      },
+      "modes": [
+        {
+          "id": "project",
+          "contextRequirement": { "project": true }
+        }
+      ],
+      "actions": [
+        {
+          "type": "prompt",
+          "label": "Summarize activity",
+          "data": "Summarize the visible session activity."
+        }
+      ],
+      "provenance": {
+        "origin": "plugin",
+        "pluginId": "workspace-pane-starter",
+        "mcpServerId": "station-sessions-mcp"
+      },
+      "lifecycle": { "stage": "stable" }
+    }
+  ],
+  "integrations": { "required": ["station-sessions-mcp"] },
+  "tools": { "required": ["sessions_panel"] }
+}

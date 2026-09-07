@@ -2,14 +2,13 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "types": ["node"],
+    "jsx": "react-jsx",
     "noEmit": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": ["tests/**/*", "playwright.config.ts"],
-  // The fresh-home walkthrough runs under tsx and imports src-ui routing
-  // tables directly; pulling that graph into this project would typecheck
-  // @kontourai/station-sdk's source-first .tsx exports without jsx support.
-  // The walkthrough is plain JS (allowJs, checkJs off), so exclusion loses
-  // no checking the config performed before.
+  // The plain-JS fresh-home walkthrough remains outside this TypeScript lane
+  // (allowJs, checkJs off). Typed installed-plugin fixtures are included and
+  // use the same automatic JSX runtime as the real host bundle.
   "exclude": ["node_modules", "tests/live/fresh-home-walkthrough*.mjs"]
 }

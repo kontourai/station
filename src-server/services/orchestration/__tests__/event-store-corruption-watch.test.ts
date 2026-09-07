@@ -19,6 +19,11 @@ const { corruptionObserved } = vi.hoisted(() => ({
   corruptionObserved: { add: vi.fn() },
 }));
 
+// Measured in 400-event increments: 2,000 leaves the damaged tail outside the
+// synchronous listEvents read, while 2,400 is the first volume that makes the
+// intended StatementSync path observe real corrupt row bytes.
+const ROW_DAMAGE_SEED_EVENTS = 2400;
+
 vi.mock('../../../telemetry/metrics.js', () => ({
   orchestrationEventsPersisted: { add: vi.fn() },
   orchestrationEventPersistDuration: { record: vi.fn() },
@@ -43,6 +48,8 @@ describe('EventStore notices corruption that develops after boot', () => {
   });
 
   afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
     rmSync(dir, { recursive: true, force: true });
     // Module-scope mock: without this, "not called" would only mean "not
     // called in the FIRST test that ran", which is not the claim.
@@ -89,6 +96,13 @@ describe('EventStore notices corruption that develops after boot', () => {
     expect(from).toBeGreaterThan(91 * 4096);
     bytes.fill(0x5a, from);
     writeFileSync(databasePath, bytes);
+  }
+
+  function holdUnrelatedMessageSearchBackfill(): void {
+    // EventStore schedules an independent message-search backfill with
+    // setImmediate. Hold only that timer so corruption is first observed by
+    // the synchronous StatementSync read this pair of tests exists to prove.
+    vi.useFakeTimers({ toFake: ['setImmediate'] });
   }
 
   test('damage to cursor-key storage is observed while the store opens', () => {
@@ -170,7 +184,8 @@ describe('EventStore notices corruption that develops after boot', () => {
     });
     // Open healthy, damage after: this claim is about the WATCH's observer
     // on a store that is already open, not about a failing open.
-    seed(4000);
+    seed(ROW_DAMAGE_SEED_EVENTS);
+    holdUnrelatedMessageSearchBackfill();
     const store = new EventStore(databasePath);
     expect(readCorruptionMarker(databasePath)).toBeNull();
     damageRowPages();
@@ -230,7 +245,8 @@ describe('EventStore notices corruption that develops after boot', () => {
     // cannot see at all: the store opened on a HEALTHY file, so no stub is
     // needed anywhere here, and the damage appears afterwards. The real
     // StatementSync read is the only way to prove the watch's statement path.
-    seed(4000);
+    seed(ROW_DAMAGE_SEED_EVENTS);
+    holdUnrelatedMessageSearchBackfill();
     const store = new EventStore(databasePath);
     expect(readCorruptionMarker(databasePath)).toBeNull();
 

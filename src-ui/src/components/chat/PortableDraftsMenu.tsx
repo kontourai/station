@@ -46,10 +46,12 @@ export function PortableDraftsMenu({
       </button>
       {open && (
         <ResponsiveDialogSurface
+          layer="popover"
           ariaLabel="Portable drafts"
           onClose={close}
           historyMode="entry"
-          panelClassName="composer-popover-panel portable-drafts-menu"
+          overlayClassName="composer-popover-overlay composer-popover-overlay--end"
+          panelClassName="composer-popover-panel"
         >
           <ResponsiveDialogHeader
             title="Portable drafts"

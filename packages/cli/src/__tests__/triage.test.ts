@@ -571,6 +571,7 @@ describe('station triage', () => {
       version: '0.6.0',
       channel,
       sourceRevision: 'a'.repeat(40),
+      artifactBuiltAt: null,
     });
     expect(result.context.capabilities.localHostFilesystem).toBe('unavailable');
   });

@@ -6,6 +6,10 @@ import type {
 } from './layout.js';
 import type { RegistryLifecycleRecord } from './registry-lifecycle.js';
 
+/** Current catalog identity grammar, including Agent Plugins 1.0 names. */
+export const LAYOUT_CATALOG_ITEM_ID_PATTERN =
+  /^(?:builtin:[a-z0-9][a-z0-9-]{0,62}(?::[a-z0-9][a-z0-9-]{0,62})?|plugin:(?![^:]*--)(?![^:]*\.\.)[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?(?::[a-z0-9][a-z0-9-]{0,62})?)$/;
+
 /** A profile is a presentation/default policy, never evidence that code is installed. */
 export interface DistributionProfile {
   /** Stable, path-safe identifier. `standard` and `minimal` are reserved. */

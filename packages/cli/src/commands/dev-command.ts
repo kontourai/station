@@ -12,6 +12,7 @@
 import { chmodSync, lstatSync, mkdirSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname } from 'node:path';
+import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import {
   allocateDevPorts,
   deriveDevInstanceAndHome,
@@ -196,7 +197,12 @@ export async function runDevCommand(
     worktreePath,
     devInstance,
     cwd,
-    stationRoot: env.STATION_ROOT,
+    // Derived, not read raw: the source bootstrap deliberately leaves
+    // STATION_ROOT UNSET for a self-rooted external STATION_HOME, because
+    // spelling it out makes the runtime home guard refuse the home (#1109).
+    // Reading the variable would then fall back to the ambient ~/.station and
+    // start a dev instance under a root the operator did not choose.
+    stationRoot: resolveStationRoot(env),
   });
 
   const bindHost = host ?? '0.0.0.0';

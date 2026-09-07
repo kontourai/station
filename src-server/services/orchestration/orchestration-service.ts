@@ -4,8 +4,13 @@ import { isAbsolute, relative, resolve } from 'node:path';
 import type { FlowEvidenceEntry } from '@kontourai/flow';
 import {
   type AgentExecutionConfig,
+  type AgentSpec,
   isSupportedAgentIconToken,
 } from '@kontourai/station-contracts/agent';
+import type {
+  AttentionRequestInspection,
+  AttentionRequestReference,
+} from '@kontourai/station-contracts/attention';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
@@ -16,6 +21,7 @@ import {
   ENGINE_CAPABILITY_MATRICES,
   sessionDeliveryChannels,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
   AgentRunSummary,
   ConversationHandoffStatusProjection,
@@ -100,6 +106,10 @@ import {
   createAuthorizedTurnCorrelation,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import {
+  createNativeMemoryHistoryCompanion,
+  type NativeMemoryHistoryCompanion,
+} from '../../runtime/conversation/native-memory-history.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import {
   requiredMissingPrerequisites,
@@ -202,6 +212,10 @@ import type {
   PersistedRuntimeEvent,
 } from './event-store.js';
 import { FlowPolicySidecar } from './flow-policy-sidecar.js';
+import {
+  type ForegroundInvocationAdmission,
+  ForegroundInvocationUnavailableError,
+} from './foreground-invocation-admission.js';
 import { InternalStopSuppression } from './internal-stop-suppression.js';
 import {
   type InterruptedTurnMemoryAdapter,
@@ -215,6 +229,12 @@ import {
   normalizeOmittedModelId,
 } from './model-launch-planning.js';
 import {
+  captureNativeMemoryContinuity,
+  NativeMemoryContinuityUnavailableError,
+  type NativeMemorySessionIdentity,
+} from './native-memory-continuity.js';
+import {
+  projectRequestAnswerability,
   type RequestReplayOutcome,
   type SessionAnswerabilityObservation,
 } from './open-requests.js';
@@ -231,6 +251,10 @@ import {
 } from './orchestration-session-state.js';
 import { type OrchestrationStreamPresenceSubject } from './orchestration-stream-presence.js';
 import { type RecoveryDispatchAdapter } from './recovery-dispatch-adapter.js';
+import {
+  inspectRequestEvent,
+  RequestEventGuardError,
+} from './request-inspection.js';
 import { servingInstanceIdentity } from './serving-instance.js';
 import { sessionAgentStartUnavailableReason } from './session-agent-resolution.js';
 import { SessionAuthorization } from './session-authorization.js';
@@ -272,7 +296,11 @@ import {
 } from './session-query-module.js';
 import { SessionRecoveryCoordinator } from './session-recovery-coordinator.js';
 import { SessionTranscriptReads } from './session-transcript-reads.js';
-import { createInMemorySessionTurnBoundaryAuthority } from './session-turn-boundary.js';
+import {
+  createInMemorySessionTurnBoundaryAuthority,
+  runSessionStartWithBoundary,
+  type SessionTurnBoundaryAuthority,
+} from './session-turn-boundary.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
@@ -303,6 +331,12 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  /** Request authority forwarded only by the server-owned foreground resolver. */
+  nativeMemoryReadAuthority?: SessionReadAuthority;
+  sessionStartAdmission?: SessionCommandInternalOptions['sessionStartAdmission'];
+  /** Exact server-owned Task reservation scope; never read from public metadata. */
+  roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
+  foregroundInvocationAdmission?: ForegroundInvocationAdmission;
   /** Skip the modelOptions per-provider support check for this one command. */
   skipModelOptionSupportCheck?: boolean;
   /**
@@ -351,8 +385,8 @@ function chatStartGateReason(error: unknown): string {
 
 /**
  * Station-vs-external collapse of an adapter's engine identity
- * (docs/design/agent-engine-unification.md §4.1; archive#1003 Phase B —
- * replaces the `executionClass` read) for telemetry/projection sites that
+ * (docs/design/agent-engine-unification.md §4.1; archive#1003 Phase B) for
+ * telemetry/projection sites that
  * only need the binary distinction (plus 'unknown' for an unresolvable
  * adapter), not the full engine id. `acp` is not derived through here —
  * callers that want it check `adapter.provider === 'acp'` first, since it's
@@ -587,6 +621,7 @@ interface OrchestrationServiceOptions {
    */
   resolveSessionAgent?: (
     input: ProviderSessionStartInput,
+    captured?: { agentId: string; spec: AgentSpec },
   ) => Promise<ProviderSessionStartInput>;
   /** Optional immutable presentation source for a newly created Agent session. */
   loadAgentPresentation?: (
@@ -1012,6 +1047,7 @@ export class OrchestrationService {
   readonly sessionLifecycles: SessionLifecycleModule;
   private usageTelemetry?: UsageTelemetryObserver;
   private readonly sessionExecutionCoordinator: SessionExecutionCoordinator;
+  private readonly sessionStartBoundaries: SessionTurnBoundaryAuthority;
   /** Private native-output authority; no public Session/Thread API exposes it. */
   private readonly nativeOutputGrants = createNativeOutputGrantAuthority();
   /** Pending opaque handles; durable admission occurs only at terminal append. */
@@ -1019,7 +1055,7 @@ export class OrchestrationService {
     typeof createNativeOutputDeclarationOperation
   >;
   /** Exact active generation until the ordered durable terminal event commits. */
-  private readonly nativeOutputTurnGenerations = new Map<string, string>();
+  private readonly nativeTurnGenerations = new Map<string, string>();
   private readonly consumedAdapterEventStreams =
     new WeakSet<ProviderAdapterShape>();
   private readonly activeEventAdapters = new Map<
@@ -1059,6 +1095,15 @@ export class OrchestrationService {
   private readonly turnProgress: TurnProgressTracker;
   /** Transcript read/search/usage projections (epic archive#4024, archive#4144). */
   private readonly transcriptReads: SessionTranscriptReads;
+  private readonly transcriptReadEventStore: EventStore | undefined;
+  private isolatedTranscriptSearch?: ReturnType<
+    SessionTranscriptReads['createIsolatedSearch']
+  >;
+  private isolatedTranscriptSource?: ReturnType<
+    EventStore['createIsolatedTranscriptReads']
+  >;
+  private isolatedTranscriptRetired = false;
+  private transcriptSearchStopped = false;
   /** Event paging & stream replay (epic archive#4024, archive#4155). */
   private readonly sessionEventReads: SessionEventReads;
   /** Tenancy & owner authorization (epic archive#4024, archive#4166). */
@@ -1195,8 +1240,11 @@ export class OrchestrationService {
     // Constructed FIRST: SessionAuthorization holds only raw option values
     // and no back-references, so building it before every other collaborator
     // means no later closure can capture an undefined authz seam.
+    this.transcriptReadEventStore = options.eventStore;
     this.sessionAuthz = new SessionAuthorization({
-      ...(options.eventStore ? { eventStore: options.eventStore } : {}),
+      ...(this.transcriptReadEventStore
+        ? { eventStore: this.transcriptReadEventStore }
+        : {}),
       ...(options.requireTenantExecutionContext !== undefined
         ? {
             requireTenantExecutionContext:
@@ -1314,9 +1362,11 @@ export class OrchestrationService {
           payload,
         ),
     });
-    this.sessionExecutionCoordinator = new SessionExecutionCoordinator(
+    this.sessionStartBoundaries =
       options.eventStore?.sessionTurnBoundaryAuthority() ??
-        createInMemorySessionTurnBoundaryAuthority(),
+      createInMemorySessionTurnBoundaryAuthority();
+    this.sessionExecutionCoordinator = new SessionExecutionCoordinator(
+      this.sessionStartBoundaries,
     );
     this.turnDeduplicator =
       options.turnDeduplicator ?? options.eventStore?.createTurnDeduplicator();
@@ -1446,10 +1496,21 @@ export class OrchestrationService {
         return { persisted, loaded };
       },
       projectConversation: ({ persisted, loaded }, events) => {
+        const summaryThreadId = persisted?.threadId ?? loaded?.threadId ?? '';
+        // See `listSessionReadModel`: a continuation child folds only its own
+        // events, which start at the second prompt.
+        const conversationFirstPromptedTurn = summaryThreadId
+          ? this.options.eventStore?.conversationRootFirstPromptedTurn(
+              summaryThreadId,
+            )?.payload
+          : undefined;
         const session = buildOrchestrationSessionSummary({
           persisted,
           loaded,
           events: [...events],
+          ...(conversationFirstPromptedTurn
+            ? { conversationFirstPromptedTurn }
+            : {}),
           turnProgress: this.turnProgress.read(
             persisted?.threadId ?? loaded?.threadId ?? '',
           ),
@@ -2164,7 +2225,11 @@ export class OrchestrationService {
       let session: ProviderSession;
       try {
         session = await withTenantExecutionContext(tenantExecutionContext, () =>
-          adapter.startSession(startInput),
+          runSessionStartWithBoundary(
+            this.sessionStartBoundaries,
+            startInput.threadId,
+            () => adapter.startSession(startInput),
+          ),
         );
       } finally {
         admissionLease?.release();
@@ -2194,12 +2259,25 @@ export class OrchestrationService {
    */
   private async resolveSessionAgentForStart(
     input: ProviderSessionStartInput,
+    admission?: ForegroundInvocationAdmission,
   ): Promise<ProviderSessionStartInput> {
     const agentSlug = input.metadata?.agentSlug;
-    const withCredentialProfile =
-      await this.applyAgentCredentialProfileRef(input);
+    if (
+      admission &&
+      (agentSlug !== admission.agentId ||
+        !sessionDeliveryChannels(input.provider) ||
+        !this.options.resolveSessionAgent)
+    )
+      throw new ForegroundInvocationUnavailableError();
+    const captured = admission
+      ? { agentId: admission.agentId, spec: admission.agentSpec }
+      : undefined;
+    const withCredentialProfile = await this.applyAgentCredentialProfileRef(
+      captured ? { ...input, agent: undefined } : input,
+      captured?.spec,
+    );
     const resolved = this.options.resolveSessionAgent
-      ? await this.options.resolveSessionAgent(withCredentialProfile)
+      ? await this.options.resolveSessionAgent(withCredentialProfile, captured)
       : withCredentialProfile;
     const unavailableReason = sessionAgentStartUnavailableReason({
       provider: input.provider,
@@ -2215,7 +2293,27 @@ export class OrchestrationService {
         sessionDeliveryChannels(input.provider) === undefined,
     });
     if (unavailableReason) throw new Error(unavailableReason);
-    await this.turnProgress.setWindow(input.threadId, agentSlug);
+    await this.turnProgress.setWindow(
+      input.threadId,
+      agentSlug,
+      captured ? { execution: captured.spec.execution } : undefined,
+    );
+    if (captured) {
+      return {
+        ...resolved,
+        metadata: {
+          ...resolved.metadata,
+          [SESSION_AGENT_DISPLAY_NAME_METADATA_KEY]: captured.spec.name.slice(
+            0,
+            SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
+          ),
+          ...(captured.spec.icon &&
+          isSupportedAgentIconToken(captured.spec.icon)
+            ? { [SESSION_AGENT_ICON_METADATA_KEY]: captured.spec.icon }
+            : {}),
+        },
+      };
+    }
     return await this.withSessionAgentPresentation(resolved);
   }
 
@@ -2300,7 +2398,18 @@ export class OrchestrationService {
    */
   private async applyAgentCredentialProfileRef(
     input: ProviderSessionStartInput,
+    captured?: AgentSpec,
   ): Promise<ProviderSessionStartInput> {
+    if (captured) {
+      const ref = captured.execution?.credentialProfileRef;
+      if (
+        input.credentialProfileRef !== undefined &&
+        input.credentialProfileRef !== ref
+      ) {
+        throw new ForegroundInvocationUnavailableError();
+      }
+      return ref ? { ...input, credentialProfileRef: ref } : input;
+    }
     if (input.credentialProfileRef) return input;
     const agentSlug = input.metadata?.agentSlug;
     if (typeof agentSlug !== 'string' || !agentSlug) return input;
@@ -2372,11 +2481,14 @@ export class OrchestrationService {
   }
 
   async shutdown(): Promise<void> {
+    this.transcriptSearchStopped = true;
+    this.sessionAuthz.stopTranscriptReads();
+    const transcriptRetirement = this.isolatedTranscriptSearch?.close();
     // Revoke private native-output scopes before any provider cleanup. A
     // stop/retirement rejection must not leave a callback capable of
     // admitting output while this service is already shutting down.
     this.nativeOutputGrants.dispose();
-    this.nativeOutputTurnGenerations.clear();
+    this.nativeTurnGenerations.clear();
     // A delta still buffered is text the model produced and nobody saw.
     // Flush before anything else here can tear the publish path down —
     // guarded, because this runs first and a failed final publish must not
@@ -2408,6 +2520,16 @@ export class OrchestrationService {
     // double-stops. Pinned by a source invariant.
     const retiringAdapters = this.adapterRetirement.retiringAdapters();
     const cleanupResults = await Promise.allSettled([
+      ...(transcriptRetirement
+        ? [
+            transcriptRetirement.then(() => {
+              if (this.isolatedTranscriptSearch?.inspect().phase !== 'closed')
+                throw new Error(
+                  'Transcript reader retirement is still pending',
+                );
+            }),
+          ]
+        : []),
       ...this.adapterRetirement.shutdownRetirementTasks(),
       ...currentAdapters
         .filter((adapter) => !retiringAdapters.has(adapter))
@@ -2683,6 +2805,14 @@ export class OrchestrationService {
     const eventCountByThread =
       eventStore?.countEventsByThreads(readableThreadIds) ??
       new Map<string, number>();
+    // #1536 B4: batched beside the two reads above, never per row — a
+    // continuation child's own events begin at the SECOND prompt, so without
+    // the conversation's own first prompted turn every surface that titles a
+    // session from `displayTitle` renamed the conversation each turn.
+    const conversationFirstPromptedTurnByThread =
+      eventStore?.conversationRootFirstPromptedTurnForThreads(
+        readableThreadIds,
+      ) ?? new Map<string, PersistedRuntimeEvent>();
     return readableThreadIds
       .map((threadId) => {
         // archive#1867: summary facts are queried by their load-bearing
@@ -2698,12 +2828,17 @@ export class OrchestrationService {
         const eventCount = eventCountByThread.get(threadId) ?? 0;
         const persisted = persistedByThread.get(threadId);
         const loaded = this.sessionReadModel.get(threadId);
+        const conversationFirstPromptedTurn =
+          conversationFirstPromptedTurnByThread.get(threadId)?.payload;
         return buildOrchestrationSessionSummary({
           persisted,
           loaded,
           events: events.map((event) => event.payload),
           eventCount,
           turnProgress: this.turnProgress.read(threadId),
+          ...(conversationFirstPromptedTurn
+            ? { conversationFirstPromptedTurn }
+            : {}),
           answerability: this.observeAnswerability(
             threadId,
             (loaded ?? persisted)?.provider,
@@ -2926,12 +3061,21 @@ export class OrchestrationService {
     );
 
     const recovery = this.recoveryCoordinator?.latestProjection(threadId);
+    // See `listSessionReadModel`: a continuation child folds only its own
+    // events, which start at the second prompt.
+    const conversationFirstPromptedTurn =
+      this.options.eventStore?.conversationRootFirstPromptedTurn(
+        threadId,
+      )?.payload;
     return {
       session: buildOrchestrationSessionSummary({
         persisted,
         loaded,
         events,
         turnProgress: this.turnProgress.read(threadId),
+        ...(conversationFirstPromptedTurn
+          ? { conversationFirstPromptedTurn }
+          : {}),
         answerability: this.observeAnswerability(
           threadId,
           (loaded ?? persisted)?.provider,
@@ -3169,6 +3313,71 @@ export class OrchestrationService {
   // bodies live in SessionEventReads (session-event-reads.ts). Flat
   // same-named forwarders keep the test Proxy's authority injection (T3)
   // and the per-method initialize() latch (T9) exactly as the bodies had.
+  inspectAttentionRequest(
+    reference: AttentionRequestReference,
+    authority: SessionReadScope,
+  ): AttentionRequestInspection | null {
+    this.initialize();
+    let persisted: ProviderSession | undefined;
+    try {
+      persisted = this.options.eventStore?.readSessionByThread(
+        reference.threadId,
+      );
+    } catch {
+      return null;
+    }
+    if (persisted)
+      this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
+    const session = this.sessionReadModel.get(reference.threadId) ?? persisted;
+    if (
+      !session ||
+      !this.sessionAuthz.canReadSession(reference.threadId, authority)
+    )
+      return null;
+    // Establish the exact bounded record before any additional lifecycle facts.
+    const inspected = inspectRequestEvent(
+      this.options.eventStore,
+      reference,
+      session.provider,
+    );
+    if (inspected.state !== 'open') return inspected;
+    let answerability: ReturnType<typeof projectRequestAnswerability>;
+    try {
+      answerability = projectRequestAnswerability({
+        ...this.observeAnswerability(
+          reference.threadId,
+          session.provider,
+          new Date().toISOString(),
+        ),
+        lifecycleState: projectSessionLifecycle({
+          session,
+          events:
+            this.options.eventStore
+              ?.listSessionProjectionEvents(reference.threadId, {
+                requestId: reference.requestId,
+              })
+              .map((event) => event.payload) ?? [],
+        }).lifecycleState,
+      });
+    } catch {
+      return {
+        state: 'unavailable',
+        reference,
+        message: 'This request could not be verified.',
+      };
+    }
+    return {
+      ...inspected,
+      answerability,
+      canRespond:
+        answerability.answerable &&
+        this.options.adapterRegistry.get(session.provider) !== undefined &&
+        !this.quarantinedThreads.has(reference.threadId) &&
+        !this.isReadOnlyAttachedSession(reference.threadId) &&
+        !this.isPeerDelegationActivityRecord(reference.threadId),
+    };
+  }
+
   readRequestOutcome(
     threadId: string,
     requestId: string,
@@ -3279,6 +3488,50 @@ export class OrchestrationService {
   ): ReturnType<SessionTranscriptReads['searchSessionMessages']> {
     this.initialize();
     return this.transcriptReads.searchSessionMessages(query, authority, limit);
+  }
+
+  /**
+   * Compose once after runtime initialization, never as request-time bootstrap.
+   * Runtime search routes use this owner. Branded authority remains with this same
+   * SessionAuthorization instance; EventStore owns worker shutdown custody.
+   */
+  createIsolatedTranscriptSearch() {
+    if (
+      !this.started ||
+      this.transcriptSearchStopped ||
+      !this.transcriptReadEventStore
+    )
+      throw new Error(
+        'Initialize an EventStore-backed runtime before composing transcript reads',
+      );
+    if (!this.isolatedTranscriptSearch) {
+      this.isolatedTranscriptSource =
+        this.transcriptReadEventStore.createIsolatedTranscriptReads();
+      this.isolatedTranscriptSearch = this.transcriptReads.createIsolatedSearch(
+        this.isolatedTranscriptSource,
+        this.sessionAuthz,
+        () => !this.transcriptSearchStopped && this.sessionAttachmentSettled,
+      );
+    }
+    return this.isolatedTranscriptSearch;
+  }
+
+  /** Narrow failed-initialization cleanup; does not stop providers or discard their work. */
+  async retireIsolatedTranscriptSearchAfterFailedInitialization(): Promise<{
+    state: 'closed' | 'winding-down' | 'incomplete';
+  }> {
+    this.transcriptSearchStopped = true;
+    this.sessionAuthz.stopTranscriptReads();
+    if (this.isolatedTranscriptRetired) return { state: 'closed' };
+    if (!this.isolatedTranscriptSearch || !this.isolatedTranscriptSource)
+      return { state: 'closed' };
+    const result = await this.isolatedTranscriptSearch.close();
+    if (result.state !== 'closed') return result;
+    this.isolatedTranscriptRetired =
+      this.transcriptReadEventStore?.releaseClosedIsolatedTranscriptReads(
+        this.isolatedTranscriptSource,
+      ) === true;
+    return { state: this.isolatedTranscriptRetired ? 'closed' : 'incomplete' };
   }
 
   /**
@@ -3572,6 +3825,22 @@ export class OrchestrationService {
             throw new Error(
               'Credential profile selection is reserved for Station-managed recovery.',
             );
+          if (internal?.roomExecutionBinding) {
+            if (this.options.requireTenantExecutionContext?.())
+              throw new Error(
+                'Room execution binding is unavailable in hosted mode.',
+              );
+            const bound = this.options.eventStore?.bindProjectTaskRoomExecution(
+              {
+                ...internal.roomExecutionBinding,
+                sessionId: input.threadId,
+              },
+            );
+            if (bound?.kind !== 'bound')
+              throw new Error(
+                'Room execution binding is unavailable; the provider was not started.',
+              );
+          }
         },
         validateReattachAgainstPersisted: (input, session) => {
           // archive#3493 residual 6: the reattach conflicts that need no
@@ -3616,8 +3885,8 @@ export class OrchestrationService {
             );
         },
         requireAdapter: (provider) => this.requireAdapter(provider),
-        materializeRestoredSession: (threadId) =>
-          this.materializeRecoveredSession(threadId),
+        materializeRestoredSession: (threadId, admission) =>
+          this.materializeRecoveredSession(threadId, admission),
         prepareStart: async (input, context, internal, adapter) => {
           if (!internal?.skipModelOptionSupportCheck) {
             const unsupported = unsupportedModelOptionKeys(
@@ -3705,7 +3974,10 @@ export class OrchestrationService {
             adapter,
             startInput,
           );
-          startInput = await this.resolveSessionAgentForStart(startInput);
+          startInput = await this.resolveSessionAgentForStart(
+            startInput,
+            internal?.foregroundInvocationAdmission,
+          );
           throwIfAborted(startInput.signal);
           this.assertAdapterCurrent(adapter);
           chatStartGate.add(1, {
@@ -3728,10 +4000,26 @@ export class OrchestrationService {
           );
           let session: ProviderSession;
           try {
-            session = await withTenantExecutionContext(
-              context.tenantExecutionContext,
-              () => adapter.startSession(input),
-            );
+            const invoke = () =>
+              withTenantExecutionContext(context.tenantExecutionContext, () =>
+                runSessionStartWithBoundary(
+                  this.sessionStartBoundaries,
+                  input.threadId,
+                  () => adapter.startSession(input),
+                  internal?.sessionStartAdmission,
+                ),
+              );
+            session = await (internal?.foregroundInvocationAdmission
+              ? internal.foregroundInvocationAdmission.invoke(
+                  'start',
+                  {
+                    threadId: input.threadId,
+                    agentId: input.metadata?.agentSlug,
+                    projectSlug: input.metadata?.projectSlug,
+                  },
+                  invoke,
+                )
+              : invoke());
           } finally {
             admissionLease?.release();
           }
@@ -3814,6 +4102,24 @@ export class OrchestrationService {
    * `ForegroundMessageIndeterminateError` handling. Never call this from a
    * route handling a client-supplied command body.
    */
+  /** Server-only Task reservation admission, before any assignment/provider effect. */
+  claimTaskDispatchBoundary(input: {
+    projectId: string;
+    taskId: string;
+    sessionId: string;
+  }): ReturnType<SessionTurnBoundaryAuthority['claimTaskDispatch']> {
+    if (
+      this.options.requireTenantExecutionContext?.() ||
+      this.options.eventStore?.bindProjectTaskRoomExecution(input).kind !==
+        'bound'
+    )
+      return { kind: 'unavailable' };
+    return this.sessionStartBoundaries.claimTaskDispatch(
+      input.sessionId,
+      new Date().toISOString(),
+    );
+  }
+
   async startSessionInternal(
     command: SessionCommand,
     context: SessionCommandContext,
@@ -3840,6 +4146,8 @@ export class OrchestrationService {
        * keeps working; the emitted event simply carries no `principal`.
        */
       principal?: PrincipalRef;
+      /** Captured HTTP principal liveness; never supplied by the command body. */
+      requestCurrent?: () => boolean;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -3898,6 +4206,7 @@ export class OrchestrationService {
        * keeps working; the emitted event simply carries no `principal`.
        */
       principal?: PrincipalRef;
+      requestCurrent?: () => boolean;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -4300,195 +4609,244 @@ export class OrchestrationService {
                   ) {
                     throw new SessionEndedError();
                   }
-                  const begun = boundary.beginInvocation(
-                    new Date().toISOString(),
-                  );
-                  if (begun.kind !== 'applied') {
-                    claimOutcome = 'retain';
-                    boundary.indeterminate(new Date().toISOString());
-                    throw new SessionTurnStartIndeterminateError();
-                  }
-                  let providerAccepted = false;
-                  let turnCorrelation:
-                    | ReturnType<typeof createAuthorizedTurnCorrelation>
-                    | undefined;
-                  let nativeOutputRelay:
-                    | ReturnType<typeof createNativeOutputRelayCompanion>
-                    | undefined;
-                  try {
-                    // SessionExecutionCoordinator serializes this callback per
-                    // thread, so one bounded in-flight origin is sufficient.
-                    this.clientOriginTurns.begin(
-                      turnInput.threadId,
-                      context?.clientOrigin,
-                      context?.principal,
+                  const invoke = async () => {
+                    const begun = boundary.beginInvocation(
+                      new Date().toISOString(),
                     );
-                    // The Station-agent adapter owns the canonical provider
-                    // turn id for this engine, so mint it before crossing its
-                    // internal HTTP relay. The resulting ALS scope is only
-                    // available to that relay's model invocation; external
-                    // adapters ignore it and no caller can supply it through
-                    // the public command schema. An ownerless/internal turn
-                    // deliberately receives no correlation rather than an
-                    // invented account join.
-                    const accountId =
-                      adapter.provider === 'station-agent'
-                        ? (this.sessionAuthz.sessionOwnerUserId(
-                            turnInput.threadId,
-                          ) ?? context?.userId)
-                        : undefined;
-                    turnCorrelation =
-                      typeof accountId === 'string' && accountId.trim() !== ''
-                        ? createAuthorizedTurnCorrelation({
-                            accountId,
-                            sessionId: turnInput.threadId,
-                            ...(turnInput.clientTurnId
-                              ? { clientTurnId: turnInput.clientTurnId }
-                              : {}),
-                            ...((context?.tenantExecutionContext ?? boundTenant)
+                    if (begun.kind !== 'applied') {
+                      claimOutcome = 'retain';
+                      boundary.indeterminate(new Date().toISOString());
+                      throw new SessionTurnStartIndeterminateError();
+                    }
+                    let providerAccepted = false;
+                    let turnCorrelation:
+                      | ReturnType<typeof createAuthorizedTurnCorrelation>
+                      | undefined;
+                    let nativeMemory: NativeMemoryHistoryCompanion | undefined;
+                    let nativeOutputRelay:
+                      | ReturnType<typeof createNativeOutputRelayCompanion>
+                      | undefined;
+                    try {
+                      // SessionExecutionCoordinator serializes this callback per
+                      // thread, so one bounded in-flight origin is sufficient.
+                      this.clientOriginTurns.begin(
+                        turnInput.threadId,
+                        context?.clientOrigin,
+                        context?.principal,
+                      );
+                      // The Station-agent adapter owns the canonical provider
+                      // turn id for this engine, so mint it before crossing its
+                      // internal HTTP relay. The resulting ALS scope is only
+                      // available to that relay's model invocation; external
+                      // adapters ignore it and no caller can supply it through
+                      // the public command schema. An ownerless/internal turn
+                      // deliberately receives no correlation rather than an
+                      // invented account join.
+                      const accountId =
+                        adapter.provider === 'station-agent'
+                          ? (this.sessionAuthz.sessionOwnerUserId(
+                              turnInput.threadId,
+                            ) ?? context?.userId)
+                          : undefined;
+                      turnCorrelation =
+                        typeof accountId === 'string' && accountId.trim() !== ''
+                          ? createAuthorizedTurnCorrelation({
+                              accountId,
+                              sessionId: turnInput.threadId,
+                              ...(turnInput.clientTurnId
+                                ? { clientTurnId: turnInput.clientTurnId }
+                                : {}),
+                              ...((context?.tenantExecutionContext ??
+                              boundTenant)
+                                ? {
+                                    tenantId: String(
+                                      (context?.tenantExecutionContext ??
+                                        boundTenant)!.tenantId,
+                                    ),
+                                  }
+                                : {}),
+                            })
+                          : undefined;
+                      // The native-output companion is composed only after the
+                      // command's normal read authorization gate above. Its
+                      // PrincipalRef is attribution; this live lease repeats
+                      // authorization, adapter identity, quarantine, and exact
+                      // turn generation on every native-call admission.
+                      const nativeTurn = turnCorrelation;
+                      if (
+                        adapter.provider === 'station-agent' &&
+                        nativeTurn &&
+                        context?.principal &&
+                        typeof context.userId === 'string' &&
+                        context.userId.trim() !== ''
+                      ) {
+                        const nativeTurnId = nativeTurn.turnId;
+                        nativeOutputRelay = createNativeOutputRelayCompanion({
+                          authority: this.nativeOutputGrants,
+                          facts: {
+                            threadId: turnInput.threadId,
+                            turnId: nativeTurnId,
+                            principal: context.principal,
+                            ...((context.tenantExecutionContext ?? boundTenant)
                               ? {
                                   tenantId: String(
-                                    (context?.tenantExecutionContext ??
+                                    (context.tenantExecutionContext ??
                                       boundTenant)!.tenantId,
                                   ),
                                 }
                               : {}),
-                          })
-                        : undefined;
-                    // The native-output companion is composed only after the
-                    // command's normal read authorization gate above. Its
-                    // PrincipalRef is attribution; this live lease repeats
-                    // authorization, adapter identity, quarantine, and exact
-                    // turn generation on every native-call admission.
-                    const nativeTurn = turnCorrelation;
-                    if (
-                      adapter.provider === 'station-agent' &&
-                      nativeTurn &&
-                      context?.principal &&
-                      typeof context.userId === 'string' &&
-                      context.userId.trim() !== ''
-                    ) {
-                      const nativeTurnId = nativeTurn.turnId;
-                      nativeOutputRelay = createNativeOutputRelayCompanion({
-                        authority: this.nativeOutputGrants,
-                        facts: {
-                          threadId: turnInput.threadId,
-                          turnId: nativeTurnId,
-                          principal: context.principal,
-                          ...((context.tenantExecutionContext ?? boundTenant)
-                            ? {
-                                tenantId: String(
-                                  (context.tenantExecutionContext ??
-                                    boundTenant)!.tenantId,
-                                ),
-                              }
-                            : {}),
-                          adapterId: adapter.provider,
-                          ...((this.sessionReadModel.get(turnInput.threadId)
-                            ?.cwd ??
-                          this.options.eventStore?.readSessionByThread(
-                            turnInput.threadId,
-                          )?.cwd)
-                            ? {
-                                workspaceRoot:
-                                  this.sessionReadModel.get(turnInput.threadId)
-                                    ?.cwd ??
-                                  this.options.eventStore?.readSessionByThread(
-                                    turnInput.threadId,
-                                  )?.cwd,
-                              }
-                            : {}),
-                        },
-                        sourceLease: {
-                          isCurrent: () =>
-                            this.nativeOutputTurnGenerations.get(
+                            adapterId: adapter.provider,
+                            ...((this.sessionReadModel.get(turnInput.threadId)
+                              ?.cwd ??
+                            this.options.eventStore?.readSessionByThread(
                               turnInput.threadId,
-                            ) === nativeTurnId &&
+                            )?.cwd)
+                              ? {
+                                  workspaceRoot:
+                                    this.sessionReadModel.get(
+                                      turnInput.threadId,
+                                    )?.cwd ??
+                                    this.options.eventStore?.readSessionByThread(
+                                      turnInput.threadId,
+                                    )?.cwd,
+                                }
+                              : {}),
+                          },
+                          sourceLease: {
+                            isCurrent: () =>
+                              this.nativeTurnGenerations.get(
+                                turnInput.threadId,
+                              ) === nativeTurnId &&
+                              !this.quarantinedThreads.has(
+                                turnInput.threadId,
+                              ) &&
+                              this.isAdapterCurrent(adapter) &&
+                              this.sessionAuthz.canReadSessionForCommand(
+                                turnInput.threadId,
+                                context.userId,
+                                context.tenantExecutionContext ?? boundTenant,
+                              ),
+                          },
+                          declarationOperation: this.nativeOutputDeclarations,
+                        });
+                        if (nativeOutputRelay) {
+                          this.nativeTurnGenerations.set(
+                            turnInput.threadId,
+                            nativeTurnId,
+                          );
+                        }
+                      }
+                      if (
+                        nativeTurn &&
+                        internal?.nativeMemoryReadAuthority &&
+                        this.options.eventStore
+                      ) {
+                        this.nativeTurnGenerations.set(
+                          turnInput.threadId,
+                          nativeTurn.turnId,
+                        );
+                        nativeMemory = await this.captureNativeMemoryHistory(
+                          turnInput.threadId,
+                          internal.nativeMemoryReadAuthority,
+                          () =>
+                            this.nativeTurnGenerations.get(
+                              turnInput.threadId,
+                            ) === nativeTurn.turnId &&
                             !this.quarantinedThreads.has(turnInput.threadId) &&
                             this.isAdapterCurrent(adapter) &&
-                            this.sessionAuthz.canReadSessionForCommand(
-                              turnInput.threadId,
-                              context.userId,
-                              context.tenantExecutionContext ?? boundTenant,
-                            ),
-                        },
-                        declarationOperation: this.nativeOutputDeclarations,
-                      });
-                      if (nativeOutputRelay) {
-                        this.nativeOutputTurnGenerations.set(
-                          turnInput.threadId,
-                          nativeTurnId,
+                            context?.requestCurrent?.() !== false,
                         );
                       }
-                    }
-                    const accepted = await withTenantExecutionContext(
-                      context?.tenantExecutionContext ?? boundTenant,
-                      () =>
-                        turnCorrelation
-                          ? runWithAuthorizedTurnCorrelation(
-                              turnCorrelation,
-                              () =>
-                                nativeOutputRelay
-                                  ? runWithNativeOutputRelayCompanion(
-                                      nativeOutputRelay,
-                                      () => adapter.sendTurn(turnInput),
-                                    )
-                                  : adapter.sendTurn(turnInput),
-                            )
-                          : adapter.sendTurn(turnInput),
-                    );
-                    providerAccepted = true;
-                    // The provider has now named the exact turn. Publish a
-                    // buffered early start before local settlement can turn
-                    // the command indeterminate; receipt state cannot erase
-                    // an already-observed canonical runtime fact.
-                    const earlyOriginEvent = this.clientOriginTurns.settle(
-                      turnInput.threadId,
-                      accepted.turnId,
-                      context?.clientOrigin,
-                      context?.principal,
-                    );
-                    if (earlyOriginEvent) {
-                      this.projectAndPublishEvent(earlyOriginEvent);
-                    }
-                    const settled = boundary.accepted(
-                      accepted.turnId,
-                      new Date().toISOString(),
-                    );
-                    if (settled.kind !== 'applied') {
-                      claimOutcome = 'retain';
-                      throw new SessionTurnStartIndeterminateError();
-                    }
-                    if (
-                      !this.sessionExecutionCoordinator.markTurnAccepted(
+                      const accepted = await withTenantExecutionContext(
+                        context?.tenantExecutionContext ?? boundTenant,
+                        () =>
+                          turnCorrelation
+                            ? runWithAuthorizedTurnCorrelation(
+                                turnCorrelation,
+                                () =>
+                                  nativeOutputRelay
+                                    ? runWithNativeOutputRelayCompanion(
+                                        nativeOutputRelay,
+                                        () => adapter.sendTurn(turnInput),
+                                      )
+                                    : adapter.sendTurn(turnInput),
+                                nativeMemory,
+                              )
+                            : adapter.sendTurn(turnInput),
+                      );
+                      providerAccepted = true;
+                      // The provider has now named the exact turn. Publish a
+                      // buffered early start before local settlement can turn
+                      // the command indeterminate; receipt state cannot erase
+                      // an already-observed canonical runtime fact.
+                      const earlyOriginEvent = this.clientOriginTurns.settle(
                         turnInput.threadId,
                         accepted.turnId,
-                      )
-                    ) {
+                        context?.clientOrigin,
+                        context?.principal,
+                      );
+                      if (earlyOriginEvent) {
+                        this.projectAndPublishEvent(earlyOriginEvent);
+                      }
+                      const settled = boundary.accepted(
+                        accepted.turnId,
+                        new Date().toISOString(),
+                      );
+                      if (settled.kind !== 'applied') {
+                        claimOutcome = 'retain';
+                        throw new SessionTurnStartIndeterminateError();
+                      }
+                      if (
+                        !this.sessionExecutionCoordinator.markTurnAccepted(
+                          turnInput.threadId,
+                          accepted.turnId,
+                        )
+                      ) {
+                        claimOutcome = 'retain';
+                        throw new SessionTurnStartIndeterminateError();
+                      }
+                      return accepted;
+                    } catch (error) {
+                      if (!providerAccepted) {
+                        this.clientOriginTurns.cancel(turnInput.threadId);
+                        if (
+                          (nativeOutputRelay ||
+                            internal?.nativeMemoryReadAuthority) &&
+                          turnCorrelation
+                        ) {
+                          this.nativeTurnGenerations.delete(turnInput.threadId);
+                          this.nativeOutputGrants.retireTerminal(
+                            turnInput.threadId,
+                            turnCorrelation.turnId,
+                          );
+                        }
+                      }
+                      if (error instanceof SessionTurnStartIndeterminateError) {
+                        throw error;
+                      }
                       claimOutcome = 'retain';
+                      boundary.indeterminate(new Date().toISOString());
                       throw new SessionTurnStartIndeterminateError();
                     }
-                    return accepted;
-                  } catch (error) {
-                    if (!providerAccepted) {
-                      this.clientOriginTurns.cancel(turnInput.threadId);
-                      if (nativeOutputRelay && turnCorrelation) {
-                        this.nativeOutputTurnGenerations.delete(
-                          turnInput.threadId,
-                        );
-                        this.nativeOutputGrants.retireTerminal(
-                          turnInput.threadId,
-                          turnCorrelation.turnId,
-                        );
-                      }
-                    }
-                    if (error instanceof SessionTurnStartIndeterminateError) {
-                      throw error;
-                    }
-                    claimOutcome = 'retain';
-                    boundary.indeterminate(new Date().toISOString());
-                    throw new SessionTurnStartIndeterminateError();
-                  }
+                  };
+                  return internal?.foregroundInvocationAdmission
+                    ? internal.foregroundInvocationAdmission.invoke(
+                        'turn',
+                        {
+                          threadId: turnInput.threadId,
+                          // `sendTurn` carries no Agent/Project fields. The
+                          // capability bound this exact thread at guarded
+                          // start, so its captured identities are the only
+                          // non-inferred facts available here.
+                          agentId:
+                            internal.foregroundInvocationAdmission.agentId,
+                          projectSlug:
+                            internal.foregroundInvocationAdmission.project.slug,
+                          message: turnInput.displayInput ?? turnInput.input,
+                        },
+                        invoke,
+                      )
+                    : invoke();
                 },
               );
             } catch (error) {
@@ -4688,11 +5046,11 @@ export class OrchestrationService {
           ) {
             // Interrupt revokes now; the later terminal append remains the
             // normal retirement/cleanup boundary for non-interrupted turns.
-            const nativeTurnId = this.nativeOutputTurnGenerations.get(
+            const nativeTurnId = this.nativeTurnGenerations.get(
               command.threadId,
             );
             if (nativeTurnId) {
-              this.nativeOutputTurnGenerations.delete(command.threadId);
+              this.nativeTurnGenerations.delete(command.threadId);
               this.nativeOutputGrants.retireTerminal(
                 command.threadId,
                 nativeTurnId,
@@ -4732,7 +5090,7 @@ export class OrchestrationService {
           const engineId = matrix?.engineId ?? engineIdForAdapter(adapter);
           steerMetricEngine = engineId;
           const engineName =
-            matrix?.displayName ?? adapter.metadata.displayName;
+            engineDisplayLabel(engineId) ?? adapter.metadata.displayName;
           if (!matrix?.midTurnSteer || !adapter.steerTurn) {
             const result: SteerTurnResult = {
               outcome: 'unsupported-engine',
@@ -4907,6 +5265,56 @@ export class OrchestrationService {
             adapters: this.options.adapterRegistry.list(),
           });
           this.assertAdapterCurrent(adapter);
+          if (command.expectedRequestEventId !== undefined) {
+            if (context?.requestCurrent && !context.requestCurrent())
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'Request authority changed before the decision.',
+              );
+            // Adapter resolution can await. Recheck authorization and the exact
+            // current request immediately before its synchronous adapter handoff.
+            if (
+              context?.userId !== undefined &&
+              !this.sessionAuthz.canReadSessionForCommand(
+                command.threadId,
+                context.userId,
+                context.tenantExecutionContext,
+              )
+            )
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'This request is no longer available to you.',
+              );
+            const inspected = this.inspectAttentionRequest(
+              {
+                threadId: command.threadId,
+                requestId: command.requestId,
+                requestEventId: command.expectedRequestEventId,
+              },
+              INTERNAL_SESSION_READ_SCOPE,
+            );
+            if (!inspected || inspected.state === 'unavailable') {
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'This request could not be verified. Inspect it again before responding.',
+              );
+            }
+            if (inspected.state !== 'open')
+              throw new RequestEventGuardError(
+                'request_event_changed',
+                inspected.message,
+              );
+            if (inspected.provider !== adapter.provider)
+              throw new RequestEventGuardError(
+                'request_event_changed',
+                'The request engine changed. Inspect the current request before responding.',
+              );
+            if (!inspected.canRespond)
+              throw new RequestEventGuardError(
+                'request_verification_unavailable',
+                'This session cannot currently answer the request.',
+              );
+          }
           await adapter.respondToRequest(
             command.threadId,
             command.requestId,
@@ -5000,7 +5408,8 @@ export class OrchestrationService {
           error instanceof SessionEndedError ||
           // archive#3493 fix round: a Stop refused because the session is
           // still starting is a refusal to act, not a failed action.
-          error instanceof SessionStopWhileStartingError
+          error instanceof SessionStopWhileStartingError ||
+          error instanceof RequestEventGuardError
             ? ('rejected' as const)
             : ('failed' as const),
       };
@@ -5017,7 +5426,8 @@ export class OrchestrationService {
         // deliberately — widening which codes leak through this seam is a
         // separate, per-code decision.
         error instanceof SessionEndedError ||
-          error instanceof SessionStopWhileStartingError
+          error instanceof SessionStopWhileStartingError ||
+          error instanceof RequestEventGuardError
           ? error.code
           : undefined,
       );
@@ -5606,9 +6016,9 @@ export class OrchestrationService {
     // Deletion, quarantine, and replacement all converge through this owned
     // teardown seam. Revoke before clearing the auth/adapter maps so a late
     // callback cannot observe a half-retired generation.
-    const nativeTurnId = this.nativeOutputTurnGenerations.get(threadId);
+    const nativeTurnId = this.nativeTurnGenerations.get(threadId);
     if (nativeTurnId) {
-      this.nativeOutputTurnGenerations.delete(threadId);
+      this.nativeTurnGenerations.delete(threadId);
       this.nativeOutputGrants.retireTerminal(threadId, nativeTurnId);
     }
     this.sessionAdapters.delete(threadId);
@@ -6021,10 +6431,10 @@ export class OrchestrationService {
         projectedEvent.turnId,
       );
       if (
-        this.nativeOutputTurnGenerations.get(projectedEvent.threadId) ===
+        this.nativeTurnGenerations.get(projectedEvent.threadId) ===
         projectedEvent.turnId
       ) {
-        this.nativeOutputTurnGenerations.delete(projectedEvent.threadId);
+        this.nativeTurnGenerations.delete(projectedEvent.threadId);
       }
     }
     // Already observed raw at the coalescing seam above; observing the merged
@@ -6239,8 +6649,17 @@ export class OrchestrationService {
    * archive#3476: the engine-start half of recovery, shared by every caller
    * that needs a restored session to have a live engine.
    */
-  private recoveredSessionStartOptions(): RecoveredSessionStartOptions {
+  private recoveredSessionStartOptions(
+    admission?: SessionCommandInternalOptions['sessionStartAdmission'],
+  ): RecoveredSessionStartOptions {
     return {
+      invokeSessionStart: (threadId, invoke) =>
+        runSessionStartWithBoundary(
+          this.sessionStartBoundaries,
+          threadId,
+          invoke,
+          admission,
+        ),
       eventStore: this.options.eventStore,
       assertAdapterReady: (adapter, connectionId) =>
         this.assertAdapterReady(adapter, connectionId),
@@ -6310,20 +6729,23 @@ export class OrchestrationService {
    */
   private materializeRecoveredSession(
     threadId: string,
+    admission?: SessionCommandInternalOptions['sessionStartAdmission'],
   ): Promise<ProviderAdapterShape | undefined> {
     const inFlight = this.materializingSessions.get(threadId);
     if (inFlight) return inFlight;
-    const started = this.materializeRecoveredSessionOnce(threadId).finally(
-      () => {
-        this.materializingSessions.delete(threadId);
-      },
-    );
+    const started = this.materializeRecoveredSessionOnce(
+      threadId,
+      admission,
+    ).finally(() => {
+      this.materializingSessions.delete(threadId);
+    });
     this.materializingSessions.set(threadId, started);
     return started;
   }
 
   private async materializeRecoveredSessionOnce(
     threadId: string,
+    admission?: SessionCommandInternalOptions['sessionStartAdmission'],
   ): Promise<ProviderAdapterShape | undefined> {
     if (this.quarantinedThreads.has(threadId)) return undefined;
     if (this.isReadOnlyAttachedSession(threadId)) return undefined;
@@ -6344,7 +6766,7 @@ export class OrchestrationService {
       session,
       adapter,
       ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
-      options: this.recoveredSessionStartOptions(),
+      options: this.recoveredSessionStartOptions(admission),
     });
     return adapter;
   }
@@ -6390,15 +6812,160 @@ export class OrchestrationService {
    * survives for this thread (recovery still proceeds; ACP falls back to
    * its resume cursor's connectionId).
    */
+  /** The configured local owner can supply native prompt history across Session boundaries. */
+  supportsNativeMemoryContinuity(): boolean {
+    return this.options.eventStore !== undefined;
+  }
+
+  private async captureNativeMemoryHistory(
+    threadId: string,
+    authority: SessionReadAuthority,
+    generationIsCurrent: () => boolean,
+  ): Promise<NativeMemoryHistoryCompanion> {
+    const store = this.options.eventStore;
+    if (!store || !isSessionReadAuthority(authority))
+      throw new NativeMemoryContinuityUnavailableError();
+    const projectIdentity = (
+      detail: OrchestrationSessionDetail | null,
+    ): NativeMemorySessionIdentity | null => {
+      if (!detail) return null;
+      const { session } = detail;
+      const id = session.threadId;
+      const metadata = this.readLatestSessionStartMetadata(id, detail.events);
+      return {
+        sessionId: session.threadId,
+        provider: session.provider,
+        agentId: session.assignedAgentSlug,
+        userId: this.sessionAuthz.sessionOwnerUserId(id),
+        tenantId: session.tenantExecutionContext?.tenantId,
+        projectSlug: session.projectSlug,
+        cwd: session.cwd,
+        environmentId: session.environmentId,
+        connectionId:
+          typeof metadata?.connectionId === 'string'
+            ? metadata.connectionId
+            : undefined,
+        status: session.status,
+        persistSession: session.persistSession,
+      };
+    };
+    // Refresh adapter-owned state once at this request seam. Revalidating
+    // each lineage leg must not enumerate every host Session or its full
+    // transcript again; fresh point reads below still certify every check.
+    await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
+    const readIdentity = async (id: string) => {
+      const persisted = store.readSessionByThread(id);
+      if (persisted)
+        this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
+      const loaded = this.sessionReadModel.get(id);
+      if (
+        (!persisted && !loaded) ||
+        !generationIsCurrent() ||
+        !this.sessionAuthz.canReadSession(id, authority)
+      )
+        return null;
+      const events = store
+        .listSessionProjectionEvents(id)
+        .map((event) => event.payload);
+      const session = buildOrchestrationSessionSummary({
+        persisted,
+        loaded,
+        events,
+        turnProgress: this.turnProgress.read(id),
+        answerability: this.observeAnswerability(
+          id,
+          (loaded ?? persisted)?.provider,
+          new Date().toISOString(),
+        ),
+      });
+      if (
+        !generationIsCurrent() ||
+        !this.sessionAuthz.canReadSession(id, authority)
+      )
+        return null;
+      return projectIdentity({ session, events });
+    };
+    const current = await readIdentity(threadId);
+    if (current?.provider !== 'station-agent' || !current.agentId)
+      throw new NativeMemoryContinuityUnavailableError();
+    const allowMissingCurrentRecord =
+      store.latestEventByMethod(threadId, 'turn.started') === undefined;
+    const binding = await captureNativeMemoryContinuity(
+      {
+        currentSessionId: threadId,
+        scope: {
+          ...current,
+          provider: 'station-agent',
+          agentId: current.agentId,
+        },
+      },
+      {
+        conversationForSession: (id) => store.conversationForSession(id),
+        conversationSessions: (id) => store.conversationSessions(id),
+        contextBoundaryForSuccessor: (id) =>
+          store.conversationContextBoundaryForSuccessor(id),
+        readSession: readIdentity,
+        isAuthorityCurrent: () =>
+          generationIsCurrent() &&
+          this.sessionAuthz.canReadSession(threadId, authority),
+      },
+    );
+    return createNativeMemoryHistoryCompanion({
+      binding,
+      allowMissingCurrentRecord,
+      readCanonicalSession: async (id) => {
+        if (!this.sessionAuthz.canReadSession(id, authority))
+          throw new NativeMemoryContinuityUnavailableError();
+        return this.readSessionMessages(id, authority).flatMap((message) => {
+          if (message.role !== 'user' && message.role !== 'assistant')
+            return [];
+          const parts = message.parts.flatMap((part) =>
+            typeof part.text === 'string' && !part.runtimeError
+              ? [{ type: 'text' as const, text: part.text }]
+              : [],
+          );
+          return parts.length
+            ? [
+                {
+                  id: `native-prefix:${id}:${message.id}`,
+                  role: message.role,
+                  parts,
+                  ...(message.metadata?.timestamp !== undefined
+                    ? { metadata: { timestamp: message.metadata.timestamp } }
+                    : {}),
+                },
+              ]
+            : [];
+        });
+      },
+    });
+  }
+
   private readLatestSessionStartMetadata(
     threadId: string,
+    snapshot?: readonly CanonicalRuntimeEvent[],
   ): Record<string, unknown> | undefined {
-    const event = this.options.eventStore?.latestEventByMethod(
-      threadId,
-      'session.started',
-    );
-    const metadata = (event?.payload as { metadata?: Record<string, unknown> })
-      ?.metadata;
+    let payload: CanonicalRuntimeEvent | undefined;
+    if (snapshot) {
+      for (let index = snapshot.length - 1; index >= 0; index -= 1) {
+        const candidate = snapshot[index];
+        if (
+          candidate?.threadId === threadId &&
+          candidate.method === 'session.started'
+        ) {
+          payload = candidate;
+          break;
+        }
+      }
+    } else {
+      payload = this.options.eventStore?.latestEventByMethod(
+        threadId,
+        'session.started',
+      )?.payload;
+    }
+    const metadata = (
+      payload as { metadata?: Record<string, unknown> } | undefined
+    )?.metadata;
     return metadata ? stripReservedOrchestrationMetadata(metadata) : undefined;
   }
 

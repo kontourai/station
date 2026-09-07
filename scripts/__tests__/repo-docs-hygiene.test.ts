@@ -32,6 +32,35 @@ describe('repo docs hygiene', () => {
     expect(byFile.size).toBe(0);
   });
 
+  it('distinguishes a filename suffix from a complete private hostname', () => {
+    expect(
+      findingsFor(
+        ['docs/new.md'],
+        read({
+          'docs/new.md':
+            'Use `.claude/settings.local.json` and settings.internal.json.',
+        }),
+      ).size,
+    ).toBe(0);
+    for (const host of [
+      'settings.local',
+      'build.internal',
+      'node.corp',
+      'node.lan',
+      'node.home.arpa',
+    ]) {
+      const findings = findingsFor(
+        ['docs/new.md'],
+        read({
+          'docs/new.md': `Connect to https://${host}:443/path or ${host}.`,
+        }),
+      );
+      expect(
+        evaluate({ byFile: findings, grandfathered: [] }).failures.join('\n'),
+      ).toContain(`private-hostname: ${host}`);
+    }
+  });
+
   it('a grandfathered file holds exactly its pinned findings without failing', () => {
     const byFile = findingsFor(
       ['docs/old.md'],

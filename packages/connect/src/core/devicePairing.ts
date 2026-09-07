@@ -12,6 +12,7 @@ import {
   parsePairingScope,
 } from '@kontourai/station-contracts/environment-security';
 import type { StationProfileCredentialRef } from '@kontourai/station-contracts/station-profile';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 
 const PAYLOAD_PREFIX = 'station-pairing:v1:';
 const CANONICAL_SCANNED_PAIRING_OFFER_FIELDS = new Set([
@@ -422,7 +423,7 @@ export function pairingClientInstanceIdForOrigin(
       selectedStorage?.setItem(key, volatile);
       return volatile;
     }
-    const instanceId = globalThis.crypto.randomUUID();
+    const instanceId = randomCorrelationId();
     selectedStorage?.setItem(key, instanceId);
     volatilePairingClientInstanceIds.set(key, instanceId);
     return instanceId;
@@ -432,7 +433,7 @@ export function pairingClientInstanceIdForOrigin(
     // only replacement semantics across launches are unavailable.
     const existing = volatilePairingClientInstanceIds.get(key);
     if (existing) return existing;
-    const instanceId = globalThis.crypto.randomUUID();
+    const instanceId = randomCorrelationId();
     volatilePairingClientInstanceIds.set(key, instanceId);
     return instanceId;
   }
@@ -740,7 +741,7 @@ export function exchangeDevicePairing(input: {
     clientInstanceId:
       input.clientInstanceId ??
       pairingClientInstanceIdForOrigin(input.endpoint),
-    operationId: input.operationId ?? globalThis.crypto.randomUUID(),
+    operationId: input.operationId ?? randomCorrelationId(),
   };
   const exchange = nativePairingExchangeTransport
     ? nativePairingExchangeTransport(exchangeInput)

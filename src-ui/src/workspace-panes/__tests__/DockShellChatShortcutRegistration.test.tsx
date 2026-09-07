@@ -37,6 +37,14 @@ import { navigationStore } from '../../contexts/navigation-store';
 // (a real store, no provider needed) and the keyboard-shortcut registry stay
 // real — those are exactly what the shortcut registry exercises.
 
+// `RegionModelProvider` wraps the whole application, so `useShowSurface`
+// requires it. This harness mounts a fragment of that tree, and nothing
+// here asserts a surface reveal, so the command hook is supplied directly.
+const showSurfaceStub = vi.hoisted(() => vi.fn());
+vi.mock('../../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurfaceStub,
+}));
+
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
   useHostRequestAuthorityScope: () => undefined,
@@ -186,8 +194,7 @@ vi.mock('../../components/chat/ShareIntakeController', () => ({
 // `HomeSurface` and can resolve AFTER this test file's environment tears
 // down, throwing an unhandled rejection that Vitest warns can produce false
 // positives elsewhere. Stubbed to a no-op component so the prewarm has
-// nothing async to chase; `AmbientDockShellApi` (the only thing this test
-// imports FROM that module) is a type-only import and is erased at runtime.
+// nothing async to chase.
 vi.mock('../../workspace-panes/AmbientChatDockPaneHost', () => ({
   AmbientChatDockPaneHost: () => null,
 }));
@@ -199,7 +206,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     ...actual,
     telemetry: { track: () => {} },
     useAcknowledgeConversationMutation: () => ({ mutate: () => {} }),
-    useAgentConnectionsQuery: () => ({ data: [] }),
+    useEngineConnectionsQuery: () => ({ data: [] }),
     useConversationInventoryQuery: () => ({ data: [] }),
     useGenerateSessionSummaryMutation: () => ({ mutate: () => {} }),
     useInvalidateQuery: () => () => {},
@@ -242,15 +249,7 @@ function DockedFixture({ occupant }: { occupant: 'chat' | 'other' }) {
     <DockShell>
       {(shellChrome) =>
         occupant === 'chat' ? (
-          <ChatWorkspacePane
-            placement="dock"
-            shellChrome={{
-              ...shellChrome,
-              dockPane: () => {},
-              dockPaneAsOnlyContent: () => {},
-              occupantPicker: null,
-            }}
-          />
+          <ChatWorkspacePane placement="dock" shellChrome={shellChrome} />
         ) : (
           <div data-testid="other-occupant" />
         )
@@ -312,8 +311,8 @@ function rerenderWithOccupant(
   );
 }
 
-describe('dock.toggle / dock.maximize registration with Chat docked (station#4460 H1/H2)', () => {
-  test('dock.maximize is registered exactly once while Chat is docked', async () => {
+describe('dock.maximize registration with Chat docked (station#4460 H1/H2)', () => {
+  test('DockShell owns maximize but no longer registers the app-toolbar region toggle', async () => {
     renderFixture();
     await waitFor(() => {
       expect(document.querySelector('.chat-dock')).not.toBeNull();
@@ -327,7 +326,7 @@ describe('dock.toggle / dock.maximize registration with Chat docked (station#446
     // replaced the first" — the round-trip test below does. This asserts
     // the weaker, still-necessary fact: the registration exists at all.
     expect(maximizeEntries.length).toBe(1);
-    expect(toggleEntries.length).toBe(1);
+    expect(toggleEntries.length).toBe(0);
   });
 
   test('a maximize -> restore round trip through the registry survives a switch to Home and back', async () => {

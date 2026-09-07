@@ -21,6 +21,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -36,7 +37,9 @@ import {
   loadAppConfigFile,
   mergeAppConfigUpdate,
   saveAppConfigFile,
+  saveAppConfigFileWithMutationAuthority,
   updateAppConfigFile,
+  withAppConfigMutationAuthority,
 } from '../config-loader-app.js';
 
 const createTempDir = () => mkdtempSync(join(tmpdir(), 'station-app-config-'));
@@ -205,6 +208,39 @@ describe('config-loader-app', () => {
     );
   });
 
+  it('refuses a forged app-config mutation authority', async () => {
+    const config = await loadAppConfigFile(tempDir);
+
+    await expect(
+      saveAppConfigFileWithMutationAuthority(
+        tempDir,
+        {},
+        { ...config, defaultModel: 'forged-authority-model' },
+      ),
+    ).rejects.toThrow(
+      'app configuration mutation authority is no longer active',
+    );
+  });
+
+  it('refuses an app-config mutation authority retained after its lock callback', async () => {
+    const config = await loadAppConfigFile(tempDir);
+    let lateSave: Promise<void> | undefined;
+
+    await withAppConfigMutationAuthority(tempDir, async (authority) => {
+      lateSave = saveAppConfigFileWithMutationAuthority(tempDir, authority, {
+        ...config,
+        defaultModel: 'retained-authority-model',
+      });
+    });
+
+    await expect(lateSave).rejects.toThrow(
+      'app configuration mutation authority is no longer active',
+    );
+    expect((await loadAppConfigFile(tempDir)).defaultModel).toBe(
+      config.defaultModel,
+    );
+  });
+
   it('rejects an app config larger than the persisted input budget', async () => {
     const configDir = join(tempDir, 'config');
     mkdirSync(configDir, { recursive: true });
@@ -358,12 +394,18 @@ describe('config-loader-app', () => {
     await loader.loadAppConfig();
     const appPath = join(tempDir, 'config', 'app.json');
     const originalSnapshot = loader.stableAppConfigFileSnapshot.bind(loader);
+    let externalGeneration = 0;
     loader.stableAppConfigFileSnapshot = (path: string) => {
       const snapshot = originalSnapshot(path);
+      externalGeneration += 1;
+      // Every retry receives a new, longer external generation. Relying on a
+      // same-size rewrite to advance mtime/ctime makes this fixture depend on
+      // the host filesystem's metadata granularity instead of the conflict
+      // contract it is meant to prove.
       writeFileSync(
         appPath,
         JSON.stringify({
-          defaultModel: 'external-model',
+          defaultModel: `external-model-${'x'.repeat(externalGeneration)}`,
           invokeModel: '',
           structureModel: '',
           systemPrompt: DEFAULT_SYSTEM_PROMPT,
@@ -373,12 +415,21 @@ describe('config-loader-app', () => {
       return snapshot;
     };
 
+    let derived = false;
     await expect(
-      loader.updateAppConfig({ defaultModel: 'station-model' }),
+      loader.mutateAppConfig(() => {
+        derived = true;
+        return { defaultModel: 'station-model' };
+      }),
     ).rejects.toThrow('App configuration changed');
+    expect(derived).toBe(false);
     expect((await loadAppConfigFile(tempDir)).defaultModel).toBe(
-      'external-model',
+      `external-model-${'x'.repeat(externalGeneration)}`,
     );
+    // The same external write is an in-window conflict, not a stale read to
+    // retry. A second injection would mean the mutation abandoned its owned
+    // authority and tried to derive again after observing that external edit.
+    expect(externalGeneration).toBe(1);
   });
 
   it('rejects a save with a stale source signature', async () => {
@@ -453,7 +504,12 @@ describe('config-loader-app', () => {
 
     writeFileSync(appPath, '{"defaultModel":"model-between"}', 'utf8');
     (loader as any).notifyConfigFileEvent('change', appPath);
-    writeFileSync(appPath, '{"defaultModel":"model-a"}', 'utf8');
+    const replacementPath = join(configDir, 'app.external.json');
+    writeFileSync(replacementPath, '{"defaultModel":"model-a"}', 'utf8');
+    // Both observations are queued, so they may run only after the final A is
+    // present. Give that final external commit its own observable generation
+    // instead of relying on an in-place timestamp tick.
+    renameSync(replacementPath, appPath);
     (loader as any).notifyConfigFileEvent('change', appPath);
     await (loader as any).launchabilityObservationQueue;
 
@@ -469,7 +525,14 @@ describe('config-loader-app', () => {
     expect(loader.getLaunchabilityRevision()).toBe(0);
 
     writeFileSync(appPath, '{"defaultModel":"model-b"}', 'utf8');
-    writeFileSync(appPath, '{"defaultModel":"model-a"}', 'utf8');
+    const replacementPath = join(configDir, 'app.external.json');
+    writeFileSync(replacementPath, '{"defaultModel":"model-a"}', 'utf8');
+    // An in-place A-to-B-to-A that returns both bytes and metadata to the
+    // original state is information-theoretically indistinguishable from no
+    // mutation to an observer that runs afterward. External atomic commits
+    // are detectable because the final generation has a new inode; model that
+    // observable contract explicitly instead of relying on a timestamp tick.
+    renameSync(replacementPath, appPath);
 
     expect(loader.getLaunchabilityRevision()).toBe(1);
   });

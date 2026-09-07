@@ -5,6 +5,8 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -14,6 +16,7 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { productLawObservationTimeoutMs } from '../lib/product-laws.mjs';
 import {
+  digestVerificationDependencies,
   machineConditions,
   resolveVerificationToolchain,
 } from '../lib/test-reliability.mjs';
@@ -583,7 +586,10 @@ describe('findStaleInstalledDependencies malformed lockfile (station#4109 review
       expect(error.message).toContain(
         'package-lock.json unreadable/unsupported shape',
       );
-      expect(error.message).toContain('run npm run dependencies:ci');
+      expect(error.message).toContain(
+        `run \`npm run dependencies:ci\` in ${realpathSync(temp.root)}`,
+      );
+      expect(error.repositoryRoot).toBe(realpathSync(temp.root));
     } finally {
       temp.remove();
     }
@@ -657,7 +663,75 @@ describe('assertInstalledDependenciesMatchLockfile (station#4109)', () => {
         { name: 'left-pad', relDir: '', installed: '1.2.0', locked: '1.3.0' },
       ]);
       expect(error.message).toContain(
-        'root → left-pad: installed 1.2.0, locked 1.3.0 (run npm run dependencies:ci)',
+        'root → left-pad: installed 1.2.0, locked 1.3.0',
+      );
+    } finally {
+      temp.remove();
+    }
+  });
+
+  it('reports the realpath target when handed a symlinked root, on every platform', () => {
+    // `names the inspected tree` (below) rides tmpdir's incidental
+    // /var -> /private/var symlink, which exists on macOS and NOT on the Linux
+    // lane that gates CI — there its assertion degrades to expect(x).toBe(x).
+    // This test creates its own symlink, so it is the one that pins
+    // canonicalization wherever the suite runs.
+    const temp = tempRoot('station-env-preflight-');
+    try {
+      const target = join(temp.root, 'target');
+      const link = join(temp.root, 'link');
+      mkdirSync(target, { recursive: true });
+      writeCleanWorktree(target);
+      makeStale(target);
+      symlinkSync(target, link);
+      let caught: unknown;
+      try {
+        assertInstalledDependenciesMatchLockfile({ repositoryRoot: link });
+      } catch (error) {
+        caught = error;
+      }
+      const error = caught as InstanceType<
+        typeof VerificationEnvironmentStaleError
+      >;
+      expect(error.repositoryRoot).toBe(realpathSync(target));
+      expect(error.repositoryRoot).not.toBe(link);
+      expect(error.message).toContain(realpathSync(target));
+    } finally {
+      temp.remove();
+    }
+  });
+
+  it('names the inspected tree, because the remedy runs there and not in the caller', () => {
+    // `orchestration-transfer-gate.mjs` inspects a root the caller is not
+    // standing in — the prepared baseline sibling, whose node_modules a fresh
+    // baseline does not have. An unqualified "run npm run dependencies:ci"
+    // sends the operator to repair their own tree, which changes nothing and
+    // reproduces the identical error. (The coordinator and submission callers
+    // pass their own git toplevel; for them the root disambiguates which lane
+    // worktree was read.)
+    const temp = tempRoot('station-env-preflight-');
+    try {
+      writeCleanWorktree(temp.root);
+      makeStale(temp.root);
+      let caught: unknown;
+      try {
+        assertInstalledDependenciesMatchLockfile({ repositoryRoot: temp.root });
+      } catch (error) {
+        caught = error;
+      }
+      const error = caught as InstanceType<
+        typeof VerificationEnvironmentStaleError
+      >;
+      // NOTE: this assertion only discriminates where tmpdir is itself
+      // symlinked (macOS). On the Linux lane realpathSync(temp.root) ===
+      // temp.root, so it reads expect(x).toBe(x) and would pass with the
+      // canonicalization reverted. `reports the realpath target when handed a
+      // symlinked root` (above) is the one that pins it on every platform —
+      // do not delete that as a duplicate of this.
+      const inspected = realpathSync(temp.root);
+      expect(error.repositoryRoot).toBe(inspected);
+      expect(error.message).toContain(
+        `run \`npm run dependencies:ci\` in ${inspected}`,
       );
     } finally {
       temp.remove();
@@ -906,14 +980,146 @@ describe('run-verification CLI end-to-end preflight (station#4109)', () => {
           error: (message: string) => errors.push(message),
         }),
       ).resolves.toBe(2);
-      expect(errors).toHaveLength(1);
       expect(errors[0]).toContain('environment-stale');
       expect(errors[0]).toContain(
-        'root → left-pad: installed 1.2.0, locked 1.3.0 (run npm run dependencies:ci)',
+        'root → left-pad: installed 1.2.0, locked 1.3.0',
       );
+      // The operator surface is what matters, not the error object: `errorText`
+      // scrubs absolute paths to `[PATH]`, so asserting the root only on the
+      // thrown error proves nothing about what anyone actually reads. This
+      // asserts the tree is named in the CLI's own output.
+      // Two lines exactly: the redacted message, then the unscrubbed root.
+      // The previous round dropped a `toHaveLength` here and replaced it with
+      // `toContain` over a join, which cannot see a duplicate.
+      expect(errors).toHaveLength(2);
+      const rendered = errors.join('\n');
+      expect(rendered).toContain(realpathSync(fixture));
+      expect(rendered).toContain('run `npm run dependencies:ci` there');
     } finally {
       process.chdir(originalCwd);
       rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('pnpm dependency authority', () => {
+  function fixture(root: string) {
+    writeJson(join(root, 'package.json'), {
+      packageManager: 'pnpm@11.25.0',
+      workspaces: ['packages/widget'],
+      dependencies: { shared: '1.0.0' },
+    });
+    mkdirSync(join(root, 'packages/widget'), { recursive: true });
+    writeJson(join(root, 'packages/widget/package.json'), {
+      name: 'widget',
+      dependencies: { shared: '2.0.0' },
+    });
+    writeFileSync(
+      join(root, 'pnpm-workspace.yaml'),
+      'packages: [packages/widget]\nnodeLinker: hoisted\npackageImportMethod: clone-or-copy\n',
+    );
+    writeFileSync(
+      join(root, 'pnpm-lock.yaml'),
+      JSON.stringify({
+        lockfileVersion: '9.0',
+        packages: {},
+        importers: {
+          '.': {
+            dependencies: { shared: { specifier: '1.0.0', version: '1.0.0' } },
+          },
+          'packages/widget': {
+            dependencies: {
+              shared: { specifier: '2.0.0', version: '2.0.0(peer@1.0.0)' },
+            },
+          },
+        },
+      }),
+    );
+    writeInstalledPackage(root, 'shared', '1.0.0');
+    writeInstalledPackage(root, 'shared', '2.0.0', 'packages/widget');
+  }
+
+  it('compares each importer against its own installed version, including peer suffixes and hoisting', () => {
+    const temp = tempRoot('station-pnpm-preflight-');
+    try {
+      fixture(temp.root);
+      expect(
+        findStaleInstalledDependencies({ repositoryRoot: temp.root })
+          .mismatches,
+      ).toEqual([]);
+      writeInstalledPackage(temp.root, 'shared', '1.0.0', 'packages/widget');
+      expect(
+        findStaleInstalledDependencies({ repositoryRoot: temp.root })
+          .mismatches,
+      ).toEqual([
+        {
+          name: 'shared',
+          relDir: 'packages/widget',
+          installed: '1.0.0',
+          locked: '2.0.0',
+        },
+      ]);
+      removeInstalledPackage(temp.root, 'shared', 'packages/widget');
+      expect(
+        findStaleInstalledDependencies({ repositoryRoot: temp.root })
+          .mismatches,
+      ).toHaveLength(1);
+    } finally {
+      temp.remove();
+    }
+  });
+
+  it('refuses missing, malformed, and incomplete pnpm locks even when an npm lock remains', () => {
+    const temp = tempRoot('station-pnpm-preflight-');
+    try {
+      fixture(temp.root);
+      writeJson(join(temp.root, 'package-lock.json'), { packages: {} });
+      for (const value of [
+        null,
+        'bad: [',
+        JSON.stringify({
+          lockfileVersion: '9.0',
+          packages: {},
+          importers: { '.': {} },
+        }),
+      ]) {
+        if (value === null) rmSync(join(temp.root, 'pnpm-lock.yaml'));
+        else writeFileSync(join(temp.root, 'pnpm-lock.yaml'), value);
+        expect(() =>
+          assertInstalledDependenciesMatchLockfile({
+            repositoryRoot: temp.root,
+          }),
+        ).toThrow('pnpm-lock.yaml unreadable/unsupported shape');
+      }
+    } finally {
+      temp.remove();
+    }
+  });
+
+  it('binds lock, workspace configuration, and patch contents into receipt identity', () => {
+    const temp = tempRoot('station-pnpm-preflight-');
+    try {
+      fixture(temp.root);
+      const initial = digestVerificationDependencies(temp.root);
+      writeFileSync(
+        join(temp.root, 'pnpm-workspace.yaml'),
+        'packages: [packages/widget]\nnodeLinker: hoisted\npackageImportMethod: copy\n',
+      );
+      const changedConfig = digestVerificationDependencies(temp.root);
+      expect(changedConfig).not.toBe(initial);
+      mkdirSync(join(temp.root, 'patches'));
+      writeFileSync(join(temp.root, 'patches/native.patch'), 'patch one');
+      const patchOne = digestVerificationDependencies(temp.root);
+      expect(patchOne).not.toBe(changedConfig);
+      writeFileSync(join(temp.root, 'patches/native.patch'), 'patch two');
+      expect(digestVerificationDependencies(temp.root)).not.toBe(patchOne);
+      expect(initial).not.toBe(
+        createHash('sha256')
+          .update(readFileSync(join(temp.root, 'pnpm-lock.yaml')))
+          .digest('hex'),
+      );
+    } finally {
+      temp.remove();
     }
   });
 });

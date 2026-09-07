@@ -20,13 +20,23 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderWithIsolatedConnections as render } from '../../../__tests__/renderWithIsolatedConnections';
 
 const updateConfig = vi.fn();
 const recordFirstRunDecision = vi.fn();
 const materializeEngineAgent = vi.fn();
-const configValue: { firstRun?: FirstRunState; userProfile?: unknown } = {};
+// A DISTINCT spy, not a second reference to the one above: #1559 gave the
+// detected-but-unconnected rows their own server path, and sharing one spy
+// would make "connected then materialized" and "materialized" indistinguishable
+// to any assertion here.
+const connectAndMaterializeEngine = vi.fn();
+const configValue: {
+  firstRun?: FirstRunState;
+  userProfile?: unknown;
+  builtinAgentEngineConnectionId?: string | null;
+} = {};
 const setupState = { launcherWouldShow: false };
 const configState = { settled: true };
 /** Every value the chapter published about owning the screen  */
@@ -65,6 +75,14 @@ vi.mock('../../../contexts/AgentsContext', () => ({
 vi.mock('@kontourai/station-sdk', () => ({
   useMaterializeEngineAgentMutation: () => ({
     mutateAsync: materializeEngineAgent,
+  }),
+  // #1559 added a second enable path (connect an ACP engine that is detected but
+  // not yet a connection, then materialize it) and taught its own
+  // `EnginesStep.test.tsx` about it, but not this suite — which renders the same
+  // `FirstRunEnginesChapter` and so calls the same hook. Unmocked, the chapter
+  // threw on render and took 36 of this file's 47 tests with it.
+  useConnectAndMaterializeEngineMutation: () => ({
+    mutateAsync: connectAndMaterializeEngine,
   }),
   useDevicePresentation: () => undefined,
 }));
@@ -106,19 +124,10 @@ const { dismissUsageTelemetryDisclosure } = vi.hoisted(() => ({
 vi.mock('../../UsageTelemetryDisclosure', () => ({
   useUsageTelemetryDisclosureState: () => disclosureState,
   dismissUsageTelemetryDisclosure,
-  UsageTelemetryDisclosureStep: ({
-    onAdvance,
-    onDefer,
-  }: {
-    onAdvance: () => void;
-    onDefer: () => void;
-  }) => (
+  UsageTelemetryDisclosureStep: ({ onAdvance }: { onAdvance: () => void }) => (
     <div data-testid="first-run-disclosure">
-      <button type="button" onClick={onDefer}>
-        Not now
-      </button>
       <button type="button" onClick={onAdvance}>
-        I understand
+        Keep usage telemetry on
       </button>
     </div>
   ),
@@ -132,8 +141,63 @@ vi.mock('../../../hooks/useSystemStatus', () => ({
     isFetching: engineState.statusLoading || engineState.statusRestored,
   }),
 }));
+/**
+ * #1582 A5: the picker renders as a STEP of this chapter — no chrome of its
+ * own, and its title reported UP so the chapter's shared header prints it.
+ * The stub carries exactly that contract; the picker's own rendering is
+ * covered in `EnginePicker.test.tsx`.
+ */
+vi.mock('../../EnginePicker', () => ({
+  EnginePicker: ({
+    variant,
+    title,
+    onChosen,
+    onDismiss,
+    onTitleChange,
+  }: {
+    variant?: string;
+    title?: string;
+    onChosen: () => void;
+    onDismiss: () => void;
+    onTitleChange?: (title: string) => void;
+  }) => {
+    // The real picker reports the title it RENDERED, which is the caller's
+    // `title` unless the panel answers a different question. Mirrored here
+    // because a stub that reported nothing hid a live defect: the chapter had
+    // stopped passing `title` at all, the picker fell back to its own default
+    // ("Choose what powers your default assistant"), and the shared header
+    // printed a name this run's step table does not have.
+    useEffect(() => {
+      onTitleChange?.(title ?? '');
+    }, [onTitleChange, title]);
+    return (
+      <div data-testid="engine-picker" data-variant={variant}>
+        {enginePickerTitleOverride ? (
+          <button
+            type="button"
+            onClick={() => onTitleChange?.(enginePickerTitleOverride ?? '')}
+          >
+            Report a different title
+          </button>
+        ) : null}
+        <button type="button" onClick={onChosen}>
+          Use selected engine
+        </button>
+        <button type="button" onClick={onDismiss}>
+          Decide later
+        </button>
+      </div>
+    );
+  },
+}));
+/** Set by the one test that proves the header follows the picker's own title. */
+let enginePickerTitleOverride: string | null = null;
 
-import { FirstRunHomeChapter } from '../FirstRunHomeChapter';
+import {
+  FirstRunHomeChapter,
+  firstRunStepCounterLabel,
+  planFirstRunChapterSteps,
+} from '../FirstRunHomeChapter';
 import { firstRunStore } from '../first-run-store';
 
 const READY_CODEX = {
@@ -165,6 +229,7 @@ const UNVERIFIABLE_CLAUDE = {
 } as ExternalEngineReadinessProjection;
 
 beforeEach(() => {
+  enginePickerTitleOverride = null;
   updateConfig.mockReset().mockResolvedValue(undefined);
   recordFirstRunDecision.mockReset().mockResolvedValue(undefined);
   presence.length = 0;
@@ -181,6 +246,9 @@ beforeEach(() => {
   setupState.launcherWouldShow = false;
   configState.settled = true;
   configValue.userProfile = undefined;
+  // Existing tests exercise the chapter transitions after an engine choice.
+  // A dedicated case below covers the genuinely unchosen first-run state.
+  configValue.builtinAgentEngineConnectionId = 'codex';
   engineState.engines = [READY_CODEX];
   engineState.statusLoading = false;
   engineState.statusRestored = false;
@@ -195,6 +263,21 @@ afterEach(() => {
 });
 
 describe('AC1 — the gate is a durable fact about the home', () => {
+  test('asks which engine powers Station before advancing past engine setup', async () => {
+    configValue.builtinAgentEngineConnectionId = undefined;
+    engineState.engines = [];
+    render(<FirstRunHomeChapter />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByTestId('engine-picker')).toBeTruthy();
+    expect(screen.queryByTestId('first-run-about-you')).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Use selected engine' }),
+    );
+    expect(screen.getByTestId('first-run-about-you')).toBeTruthy();
+  });
+
   test('a home that has never answered opens the chapter on the first render', () => {
     render(<FirstRunHomeChapter />);
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
@@ -537,7 +620,9 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
       expect(screen.getByTestId('first-run-about-you')).toBeTruthy(),
     );
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Start your first chat' }),
+      );
     });
 
     expect(recordFirstRunDecision.mock.calls.map((call) => call[0])).toEqual([
@@ -568,7 +653,9 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
       expect(screen.getByTestId('first-run-about-you')).toBeTruthy(),
     );
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Start your first chat' }),
+      );
     });
     // The card is still on screen until the config refetch lands, so the
     // chapter is re-openable inside that window — and closing it must not
@@ -633,7 +720,9 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
       expect(screen.getByTestId('first-run-about-you')).toBeTruthy(),
     );
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Start your first chat' }),
+      );
     });
 
     expect(
@@ -728,34 +817,77 @@ describe('the disclosure is the first step of the run, not a modal over it', () 
     // The engines step is BEHIND it, not beside it.
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
 
-    // Acknowledging is the ONLY way forward; the counter follows the steps
+    // Deciding is the ONLY way forward; the counter follows the steps
     // the run actually rendered.
-    fireEvent.click(screen.getByRole('button', { name: 'I understand' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Keep usage telemetry on' }),
+    );
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
     expect(screen.getByText('Step 2 of 3')).toBeTruthy();
     expect(screen.queryByTestId('first-run-disclosure')).toBeNull();
   });
 
-  test('"Not now" on the disclosure step CLOSES the run, never advances (#765 B1)', async () => {
-    // Reproduced live: "Not now" on "Step 1 of 3" advanced to step 2, which
-    // reads as the modal refusing to be dismissed. Declining the disclosure
-    // is a deferral of the run — the dialog closes, the durable fact is
-    // written, and the Home card keeps offering the run.
+  test('closing over the disclosure step CLOSES the run, never advances (#765 B1)', async () => {
+    // Reproduced live: declining on "Step 1 of 3" advanced to step 2, which
+    // reads as the modal refusing to be dismissed. #1582 A3 replaced the
+    // step's own "Not now" with the two named telemetry decisions, so the
+    // dialog's close is now the ONLY exit that decides nothing — and it must
+    // still behave exactly as the declined step did: the dialog closes, the
+    // durable fact is written, and the Home card keeps offering the run.
     disclosureState.outstanding = true;
     render(<FirstRunHomeChapter />);
     expect(screen.getByTestId('first-run-disclosure')).toBeTruthy();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Close setup' }));
     });
 
     expect(
       screen.queryByTestId('first-run-engines'),
-      '"Not now" advanced into the engines step',
+      'closing the disclosure step advanced into the engines step',
     ).toBeNull();
     expect(screen.queryByTestId('first-run-disclosure')).toBeNull();
     expect(recordFirstRunDecision).toHaveBeenCalledWith({ status: 'skipped' });
     expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
+  });
+
+  test('#1582 L2: advancing a step keeps focus inside the dialog', async () => {
+    // The surface focuses its panel on MOUNT and only then, and the panel
+    // stays mounted across steps — so the control that advances the run
+    // unmounts under the user's own focus and drops it to <body>, outside
+    // the dialog, with the next screen unannounced.
+    disclosureState.outstanding = true;
+    render(<FirstRunHomeChapter />);
+    const panel = document.querySelector('.first-run-chapter');
+    expect(panel).toBeTruthy();
+
+    const advance = screen.getByRole('button', {
+      name: 'Keep usage telemetry on',
+    });
+    // FOCUS IT FIRST, which is what activating it does in a browser and what
+    // jsdom's `click()` does NOT do on its own. Without this the panel still
+    // holds the mount focus, the panel never unmounts, and the assertion
+    // below passes whether or not anything refocuses — an injection that
+    // removed the refocus was green until this line existed.
+    advance.focus();
+    expect(document.activeElement).toBe(advance);
+    await act(async () => {
+      advance.click();
+    });
+
+    expect(screen.getByTestId('first-run-engines')).toBeTruthy();
+    expect(
+      document.activeElement,
+      'advancing dropped focus to <body>, outside the dialog',
+    ).not.toBe(document.body);
+    expect(
+      document.activeElement &&
+        panel?.contains(document.activeElement) === true,
+    ).toBe(true);
+    expect(
+      (document.activeElement as HTMLElement | null)?.className,
+      'focus did not land on the step region the next screen lives in',
+    ).toContain('first-run-chapter__step');
   });
 
   test('an already-acknowledged home runs two steps and says so', () => {
@@ -818,5 +950,298 @@ describe('the disclosure is the first step of the run, not a modal over it', () 
     });
     expect(recordFirstRunDecision).toHaveBeenCalledWith({ status: 'skipped' });
     expect(dismissUsageTelemetryDisclosure).not.toHaveBeenCalled();
+  });
+});
+
+describe('first useful chat handoff', () => {
+  async function openQuestions() {
+    engineState.engines = [];
+    render(<FirstRunHomeChapter />);
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByTestId('first-run-about-you');
+  }
+
+  test.each([
+    ['Start your first chat', 'station:open-new-chat', 'done'],
+    ['Take the tour', 'station-start-first-run-tour', 'tour'],
+  ] as const)(
+    '%s saves intentional answers before its canonical intent',
+    async (label, eventName, chapter) => {
+      await openQuestions();
+      fireEvent.click(screen.getByRole('radio', { name: 'Engineer' }));
+      let finishSave!: () => void;
+      updateConfig.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishSave = resolve;
+          }),
+      );
+      const intent = vi.fn();
+      const otherIntent = vi.fn();
+      const otherEvent =
+        eventName === 'station:open-new-chat'
+          ? 'station-start-first-run-tour'
+          : 'station:open-new-chat';
+      window.addEventListener(eventName, intent);
+      window.addEventListener(otherEvent, otherIntent);
+      try {
+        fireEvent.click(screen.getByRole('button', { name: label }));
+        expect(updateConfig).toHaveBeenCalledWith({
+          userProfile: { role: 'engineer' },
+        });
+        expect(intent).not.toHaveBeenCalled();
+        expect(recordFirstRunDecision).not.toHaveBeenCalled();
+        expect(
+          (
+            screen.getByRole('button', {
+              name: 'Start your first chat',
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(true);
+        expect(
+          (
+            screen.getByRole('button', {
+              name: 'Take the tour',
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(true);
+        await act(async () => finishSave());
+        expect(intent).toHaveBeenCalledTimes(1);
+        expect(otherIntent).not.toHaveBeenCalled();
+        expect(firstRunStore.getSnapshot().chapter).toBe(chapter);
+        expect(screen.queryByTestId('first-run-about-you')).toBeNull();
+      } finally {
+        window.removeEventListener(eventName, intent);
+        window.removeEventListener(otherEvent, otherIntent);
+      }
+    },
+  );
+
+  test.each(['Start your first chat', 'Take the tour'])(
+    '%s stays recoverable when selected answers cannot be saved',
+    async (label) => {
+      await openQuestions();
+      fireEvent.click(screen.getByRole('radio', { name: 'Engineer' }));
+      updateConfig.mockRejectedValueOnce(new Error('offline'));
+      const intent = vi.fn();
+      window.addEventListener('station:open-new-chat', intent);
+      window.addEventListener('station-start-first-run-tour', intent);
+      try {
+        await act(async () =>
+          fireEvent.click(screen.getByRole('button', { name: label })),
+        );
+        expect(screen.getByRole('alert').textContent).toContain('offline');
+        expect(screen.getByTestId('first-run-about-you')).toBeTruthy();
+        expect(recordFirstRunDecision).not.toHaveBeenCalled();
+        expect(intent).not.toHaveBeenCalled();
+        await act(async () =>
+          fireEvent.click(screen.getByRole('button', { name: label })),
+        );
+        expect(intent).toHaveBeenCalledTimes(1);
+      } finally {
+        window.removeEventListener('station:open-new-chat', intent);
+        window.removeEventListener('station-start-first-run-tour', intent);
+      }
+    },
+  );
+});
+
+describe('leaving during personalization save', () => {
+  test.each(['Start your first chat', 'Take the tour'])(
+    '%s does not navigate after setup is closed',
+    async (label) => {
+      engineState.engines = [];
+      render(<FirstRunHomeChapter />);
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await screen.findByTestId('first-run-about-you');
+      fireEvent.click(screen.getByRole('radio', { name: 'Engineer' }));
+      let finishSave!: () => void;
+      updateConfig.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finishSave = resolve;
+          }),
+      );
+      const intent = vi.fn();
+      window.addEventListener('station:open-new-chat', intent);
+      window.addEventListener('station-start-first-run-tour', intent);
+      try {
+        fireEvent.click(screen.getByRole('button', { name: label }));
+        fireEvent.click(screen.getByRole('button', { name: 'Close setup' }));
+        await act(async () => finishSave());
+        expect(intent).not.toHaveBeenCalled();
+        expect(
+          recordFirstRunDecision.mock.calls.map((call) => call[0].status),
+        ).toEqual(['skipped']);
+        expect(screen.queryByTestId('first-run-about-you')).toBeNull();
+        expect(firstRunStore.getSnapshot().deferred).toBe(true);
+      } finally {
+        window.removeEventListener('station:open-new-chat', intent);
+        window.removeEventListener('station-start-first-run-tour', intent);
+      }
+    },
+  );
+});
+
+/**
+ * #1536 A8: four modals numbered as three. The run showed "Step 1 of 3",
+ * "Step 2 of 3", an unnumbered "Choose what powers Station", then
+ * "Step 3 of 3" — so the one screen with no number read as something that had
+ * escaped the wizard.
+ */
+describe('the engine-role screen is a counted step of the run', () => {
+  test('plans it only when the role is unanswered', () => {
+    expect(
+      planFirstRunChapterSteps({
+        disclosureOutstanding: true,
+        engineRoleUnanswered: true,
+      }),
+    ).toEqual(['disclosure', 'engines', 'engine-role', 'about-you']);
+    expect(
+      planFirstRunChapterSteps({
+        disclosureOutstanding: false,
+        engineRoleUnanswered: false,
+      }),
+    ).toEqual(['engines', 'about-you']);
+  });
+
+  test('says nothing rather than "Step 0 of N" for a step this run is not showing', () => {
+    expect(
+      firstRunStepCounterLabel(['engines', 'about-you'], 'engine-role'),
+    ).toBeUndefined();
+  });
+
+  test('counts every screen the run shows, and numbers the role screen among them', async () => {
+    disclosureState.outstanding = true;
+    configValue.builtinAgentEngineConnectionId = undefined;
+    engineState.engines = [];
+    render(<FirstRunHomeChapter />);
+
+    expect(screen.getByText('Step 1 of 4')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Keep usage telemetry on' }),
+    );
+    expect(screen.getByText('Step 2 of 4')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByTestId('engine-picker');
+    // #1582 A5: the role screen is a step INSIDE this dialog, so the number
+    // and the title come from the SAME header steps 1 and 2 use — not from a
+    // second overlay's own eyebrow, which is what left it reading as a
+    // fourth screen in a three-step wizard.
+    expect(screen.getByText('Step 3 of 4')).toBeTruthy();
+    expect(
+      document.getElementById('first-run-chapter-title')?.textContent,
+    ).toBe('Choose what powers Station');
+    expect(
+      screen.getByTestId('engine-picker').getAttribute('data-variant'),
+      'the role step rendered the picker in its own modal chrome',
+    ).toBe('step');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Use selected engine' }),
+    );
+    expect(screen.getByText('Step 4 of 4')).toBeTruthy();
+  });
+
+  test.each([
+    ['the header close', 'Close setup'],
+    ['Escape', null],
+  ] as const)(
+    '#1582 A5: %s on the role step defers the whole run, like every other step',
+    async (_label, closeLabel) => {
+      // A DISCLOSED BEHAVIOUR CHANGE, and the only test that executes it.
+      // The role screen used to be a second overlay whose own × called
+      // `onDismiss` and went on to About you; as a step of THIS dialog its
+      // close is the run's close, so it writes `skipped` and leaves the Home
+      // card offering the run — the same contract steps 1, 2 and 4 have. Its
+      // own named controls ("Decide later" / "Got it") still advance, which
+      // the counter test above exercises.
+      disclosureState.outstanding = false;
+      configValue.builtinAgentEngineConnectionId = undefined;
+      engineState.engines = [];
+      render(<FirstRunHomeChapter />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await screen.findByTestId('engine-picker');
+
+      await act(async () => {
+        if (closeLabel) {
+          fireEvent.click(screen.getByRole('button', { name: closeLabel }));
+          return;
+        }
+        // Escape is a React `onKeyDown` on the surface's PANEL, so it has to
+        // be pressed from inside the dialog to reach it — which is where a
+        // keyboard user is, and (after #1582 L2) where focus actually sits
+        // once a step swaps. Dispatching on `document` reaches nothing.
+        const focused = document.activeElement as HTMLElement;
+        expect(
+          document.querySelector('.first-run-chapter')?.contains(focused),
+          'focus was not inside the dialog to press Escape from',
+        ).toBe(true);
+        fireEvent.keyDown(focused, { key: 'Escape', code: 'Escape' });
+      });
+
+      expect(recordFirstRunDecision).toHaveBeenCalledWith({
+        status: 'skipped',
+      });
+      expect(
+        screen.queryByTestId('engine-picker'),
+        'the role step survived the run being closed',
+      ).toBeNull();
+      expect(
+        screen.queryByTestId('first-run-about-you'),
+        'closing the role step advanced the run instead of deferring it',
+      ).toBeNull();
+      expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
+    },
+  );
+
+  test('the shared header prints the title the role step actually rendered', async () => {
+    // #1582 A5 moved the role screen inside this dialog, so the header is the
+    // only title on screen — and "Choose what powers Station" over a panel
+    // that says nothing here CAN power Station is a question the screen
+    // cannot answer. The picker reports what it rendered; the header follows.
+    disclosureState.outstanding = false;
+    configValue.builtinAgentEngineConnectionId = undefined;
+    engineState.engines = [];
+    enginePickerTitleOverride =
+      'No connected engine can run the built-in assistant';
+    render(<FirstRunHomeChapter />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByTestId('engine-picker');
+    expect(
+      document.getElementById('first-run-chapter-title')?.textContent,
+    ).toBe('Choose what powers Station');
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Report a different title' }),
+      );
+    });
+    expect(
+      document.getElementById('first-run-chapter-title')?.textContent,
+      'the header kept asking a question the step had stopped answering',
+    ).toBe('No connected engine can run the built-in assistant');
+  });
+
+  test('stops counting the role screen when the role is answered mid-run', async () => {
+    disclosureState.outstanding = false;
+    configValue.builtinAgentEngineConnectionId = undefined;
+    engineState.engines = [];
+    render(<FirstRunHomeChapter />);
+
+    // Planned as three: engines, engine-role, about-you.
+    expect(screen.getByText('Step 1 of 3')).toBeTruthy();
+    // Settings in another tab answers the role while this run is open.
+    configValue.builtinAgentEngineConnectionId = 'codex';
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.queryByTestId('engine-picker')).toBeNull();
+    expect(screen.getByTestId('first-run-about-you')).toBeTruthy();
+    // Not "Step 3 of 3" over a run that only ever showed two screens.
+    expect(screen.getByText('Step 2 of 2')).toBeTruthy();
   });
 });

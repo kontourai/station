@@ -16,6 +16,7 @@
  */
 import { expect, test } from '@playwright/test';
 import {
+  openChatRegion,
   seedActiveChats,
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
@@ -507,18 +508,14 @@ test.describe('Voice Providers — VoiceOrb in chat input', () => {
     page,
   }) => {
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
-    await page
-      .getByRole('button', { name: 'Expand chat dock', exact: true })
-      .click();
+    await openChatRegion(page);
     const orb = page.locator('[data-testid="voice-orb"]');
     await expect(orb).toBeVisible({ timeout: 10000 });
   });
 
   test('VoiceOrb changes appearance while listening', async ({ page }) => {
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
-    await page
-      .getByRole('button', { name: 'Expand chat dock', exact: true })
-      .click();
+    await openChatRegion(page);
 
     const orb = page.locator('[data-testid="voice-orb"]');
     await expect(orb).toBeVisible();

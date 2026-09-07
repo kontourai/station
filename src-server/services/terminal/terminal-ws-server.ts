@@ -1,4 +1,6 @@
+import { terminalPtyUnavailableReason } from '@kontourai/station-shared/terminal-capability';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
+import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
 import type { TerminalEvent } from '../../domain/terminal-types.js';
 import {
   type ExternalSurfaceCapabilityRule,
@@ -318,6 +320,22 @@ export class TerminalWebSocketServer {
           correlationId: failure.correlationId,
           error: sanitizedTransportError(err),
         });
+        // A degraded terminal must be loud and specific (#1244). The text is
+        // the product-owned constant from station-shared — never the thrown
+        // error's message — so the outward-sanitization doctrine holds: no
+        // provider, filesystem, or loader detail crosses the socket. The
+        // dynamic load cause stays in the correlated server log above.
+        if (isPtyUnavailableError(err)) {
+          ws.send(
+            JSON.stringify({
+              type: 'error',
+              code: 'terminal-unavailable',
+              correlationId: failure.correlationId,
+              message: terminalPtyUnavailableReason(),
+            }),
+          );
+          return;
+        }
         ws.send(
           JSON.stringify({
             type: 'error',

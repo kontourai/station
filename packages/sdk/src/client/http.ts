@@ -23,6 +23,7 @@ import {
   type ConnectionRetryClassification,
   isTerminalConnectionStatus,
 } from '@kontourai/station-contracts/http';
+import { boundResponse } from './bounded-response.js';
 import { withClientOriginHeaders } from './client-origin.js';
 
 /**
@@ -68,6 +69,12 @@ export interface ClientRequestOptions {
   /** Origin the credential belongs to. Credentials are never sent elsewhere. */
   credentialOrigin?: string;
   authentication?: 'required' | 'omit';
+  /** Require a matching bearer credential or current authenticated host transport. */
+  requireCredential?: boolean;
+  /** Identity probes must not follow a response to another listener. */
+  redirect?: 'error';
+  /** Optional byte ceiling for a GET response body. */
+  maxResponseBytes?: number;
   /**
    * Per-call request deadline in milliseconds. `null` (or `0`) opts the call
    * out of the host-configured default — use it for streams and long polls
@@ -200,6 +207,7 @@ async function fetchWithDeadline(
   const signal = init?.signal
     ? AbortSignal.any([init.signal, deadline])
     : deadline;
+  signal.throwIfAborted();
   // `fetch` defaults an init without a method to GET, so reading GET here is a
   // derivation of what was actually sent, not a stand-in for an unknown.
   const method =
@@ -597,6 +605,15 @@ function resolveRequestHeaders(
   opts?: ClientRequestOptions,
 ): Record<string, string> | undefined {
   const headers = withClientOriginHeaders(opts?.headers) ?? {};
+  if (
+    opts?.requireCredential &&
+    (opts.authentication === 'omit' ||
+      new Headers(headers).has('Authorization'))
+  ) {
+    throw new Error(
+      'Enrolled requests require SDK-owned credential attachment',
+    );
+  }
   if (opts?.authentication === 'omit') {
     return Object.keys(headers).length > 0 ? headers : undefined;
   }
@@ -620,6 +637,20 @@ function resolveRequestHeaders(
     throw new StationCredentialConflictError(url);
   }
   const source = explicit ?? configured;
+  if (
+    opts?.requireCredential &&
+    (!source ||
+      !sameOrigin(url, source.origin) ||
+      (!source.credential &&
+        !(
+          configured?.transport &&
+          configured.transportBindingIsCurrent?.() === true
+        )))
+  ) {
+    throw new Error(
+      'An enrolled Station credential for this target is required',
+    );
+  }
   if (
     source?.credential &&
     sameOrigin(url, source.origin) &&
@@ -931,7 +962,13 @@ export async function getJson(
   opts?: ClientRequestOptions,
 ): Promise<Response> {
   const requestOptions = snapshotRequestOptions(opts);
-  const init: RequestInit = { method: 'GET' };
+  const maximum = requestOptions?.maxResponseBytes;
+  if (maximum !== undefined && (!Number.isSafeInteger(maximum) || maximum < 1))
+    throw new Error('Invalid response byte limit');
+  const init: RequestInit = {
+    method: 'GET',
+    ...(requestOptions?.redirect ? { redirect: requestOptions.redirect } : {}),
+  };
   if (requestOptions?.signal) init.signal = requestOptions.signal;
   const configured = await resolveRequestCredential(requestOptions);
   const assertAuthority = bindRequestAuthority(url, requestOptions, configured);
@@ -970,9 +1007,13 @@ export async function getJson(
     requestOptions,
     assertAuthority,
   );
+  const result =
+    maximum === undefined
+      ? response
+      : boundResponse(response, maximum, assertAuthority);
   return needsAuthorityGuard(url, requestOptions, configured)
-    ? guardResponseAuthority(response, assertAuthority)
-    : response;
+    ? guardResponseAuthority(result, assertAuthority)
+    : result;
 }
 
 /**
@@ -1087,8 +1128,9 @@ export interface FetchSseOptions extends ClientRequestOptions {
    */
   healthyConnectionMs?: number;
   onOpen?: (response: Response) => void;
-  onMessage: (message: FetchSseMessage) => void;
-  /** A consumed SSE checkpoint, after its frame was delivered to onMessage. */
+  /** Return false when the frame was rejected and must not advance its checkpoint. */
+  onMessage: (message: FetchSseMessage) => unknown;
+  /** An accepted SSE checkpoint, after its frame was delivered to onMessage. */
   onCheckpoint?: (checkpoint: { id?: string; retry?: number }) => void;
   onError?: (error: unknown) => void;
   /**
@@ -1334,8 +1376,8 @@ function classifySseFailure(error: unknown): ConnectionRetryClassification {
 
 function dispatchSseFrame(
   lines: string[],
-  onMessage: (message: FetchSseMessage) => void,
-): { id?: string; retry?: number } {
+  onMessage: (message: FetchSseMessage) => unknown,
+): { accepted: boolean; id?: string; retry?: number } {
   let event = 'message';
   let id: string | undefined;
   let retry: number | undefined;
@@ -1351,14 +1393,16 @@ function dispatchSseFrame(
     else if (field === 'id' && !value.includes('\0')) id = value;
     else if (field === 'retry' && /^\d+$/.test(value)) retry = Number(value);
   }
-  if (data.length > 0) onMessage({ data: data.join('\n'), event, id });
-  return { id, retry };
+  const accepted =
+    data.length === 0 ||
+    onMessage({ data: data.join('\n'), event, id }) !== false;
+  return { accepted, id, retry };
 }
 
 async function consumeSseResponse(
   response: Response,
   signal: AbortSignal,
-  onMessage: (message: FetchSseMessage) => void,
+  onMessage: (message: FetchSseMessage) => unknown,
   onCheckpoint: (checkpoint: { id?: string; retry?: number }) => void,
 ): Promise<void> {
   if (!response.ok) {
@@ -1385,7 +1429,7 @@ async function consumeSseResponse(
       buffer = frames.pop() ?? '';
       for (const frame of frames) {
         const result = dispatchSseFrame(frame.split(/\r?\n/), onMessage);
-        onCheckpoint(result);
+        if (result.accepted) onCheckpoint(result);
       }
       if (chunk.done) break;
     }
@@ -1487,8 +1531,9 @@ export function fetchSSE(
           response,
           controller.signal,
           (message) => {
-            attemptMessages++;
-            opts.onMessage(message);
+            const accepted = opts.onMessage(message) !== false;
+            if (accepted) attemptMessages++;
+            return accepted;
           },
           (checkpoint) => {
             if (checkpoint.id !== undefined) {

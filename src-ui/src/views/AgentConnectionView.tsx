@@ -1,11 +1,13 @@
 import {
   type EngineConnectionId,
   engineConnectionId,
+  engineId as toEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type {
   CredentialProfile,
   CredentialProfileApplicationProjection,
 } from '@kontourai/station-contracts/connection-recovery';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
   AgentConnectionView as AgentConnectionViewData,
   ConnectionConfig,
@@ -13,13 +15,13 @@ import type {
 import {
   useAgentConnectionCatalogQuery,
   useAgentConnectionQuery,
-  useAgentConnectionsQuery,
   useAppHomeProfileQuery,
   useApplyCredentialProfileMutation,
   useClearAppHomeProfileMutation,
   useCredentialRecoveryQuery,
   useDeleteAgentConnectionMutation,
   useDeleteCredentialProfileMutation,
+  useEngineConnectionsQuery,
   useImportAppHomeSnapshotMutation,
   useImportCredentialProfileSnapshotMutation,
   useSaveAgentConnectionMutation,
@@ -49,10 +51,8 @@ import {
 import type { NavigationView } from '../types';
 import {
   capabilityLabel,
-  connectionDisplayLabel,
   connectionEngineId,
   connectionStatusLabel,
-  connectionTypeLabel,
   prerequisiteCategoryLabel,
   prerequisiteStatusLabel,
   runtimeCatalogSourceLabel,
@@ -112,7 +112,7 @@ export function AgentConnectionView({
     isLoading,
     error: runtimesError,
     refetch: refetchRuntimes,
-  } = useAgentConnectionsQuery() as {
+  } = useEngineConnectionsQuery() as {
     data?: AgentConnectionViewData[];
     isLoading?: boolean;
     error?: unknown;
@@ -134,7 +134,7 @@ export function AgentConnectionView({
   );
   const onChooseCommand = (choice: ACPConnectionRegistryEntry | 'custom') =>
     onNavigate({
-      type: 'connections-acp-new',
+      type: 'connections-engine-new',
       providerId: choice === 'custom' ? 'custom' : choice.id,
     });
 
@@ -169,7 +169,7 @@ export function AgentConnectionView({
       setForm(saved);
       setError(null);
       setShowAddCatalog(false);
-      onNavigate({ type: 'connections-runtime-edit', id: saved.id });
+      onNavigate({ type: 'connections-engine-edit', id: saved.id });
     },
     onError: (mutationError: Error) => {
       setError(mutationError.message);
@@ -187,16 +187,13 @@ export function AgentConnectionView({
 
   const testMutation = useTestAgentConnectionMutation();
 
-  const externalAgentApps = useMemo(
-    () =>
-      runtimes.filter(
-        (connection) => connectionEngineId(connection) !== 'station',
-      ),
-    [runtimes],
-  );
-  const availableAgentApps = useMemo(() => {
+  // #1054 stopped excluding Station here: the Station engine is a row this
+  // view legitimately shows, and its test asserts so. This branch renames the
+  // binding and must not reinstate the filter that rename predates.
+  const externalEngines = runtimes;
+  const availableEngines = useMemo(() => {
     const addedIds = new Set(
-      externalAgentApps.filter(isAddedEngine).map(({ id }) => id),
+      externalEngines.filter(isAddedEngine).map(({ id }) => id),
     );
     return (
       catalog
@@ -212,14 +209,14 @@ export function AgentConnectionView({
         .filter((connection) => !isAddedEngine(connection))
         .filter((connection) => !addedIds.has(connection.id))
     );
-  }, [catalog, externalAgentApps]);
-  const addedAgentApps = useMemo(
-    () => externalAgentApps.filter(isAddedEngine),
-    [externalAgentApps],
+  }, [catalog, externalEngines]);
+  const addedEngines = useMemo(
+    () => externalEngines.filter(isAddedEngine),
+    [externalEngines],
   );
   const items = useMemo(
     () =>
-      addedAgentApps
+      addedEngines
         .filter((connection) => {
           if (!search) return true;
           const query = search.toLowerCase();
@@ -237,10 +234,15 @@ export function AgentConnectionView({
           // The row is already named; the subtitle says what is true of it.
           subtitle: `${connectionStatusLabel(connection.status)} · ${runtimeCatalogSourceSentence(connection.runtimeCatalog?.source ?? 'none')}`,
           icon: (
-            <BrandIcon name={connection.name} id={connection.id} size={22} />
+            <BrandIcon
+              name={connection.name}
+              id={connection.id}
+              engineId={connectionEngineId(connection)}
+              size={22}
+            />
           ),
         })),
-    [addedAgentApps, search],
+    [addedEngines, search],
   );
 
   function setField<K extends keyof ConnectionConfig>(
@@ -265,8 +267,13 @@ export function AgentConnectionView({
   }
 
   const providerLabel = form
-    ? connectionDisplayLabel(form)
-    : connectionTypeLabel('');
+    ? typeof form.config?.providerLabel === 'string' &&
+      form.config.providerLabel.trim()
+      ? form.config.providerLabel
+      : form.name.trim() ||
+        engineDisplayLabel(connectionEngineId(form) ?? form.type) ||
+        form.type
+    : '';
   const runtimeCatalog = (form as AgentConnectionViewData | null)
     ?.runtimeCatalog;
   const capabilityInventory = (form as AgentConnectionViewData | null)
@@ -316,7 +323,7 @@ export function AgentConnectionView({
       selectedId={isAddRoute ? null : (selectedRuntimeId ?? null)}
       onSelect={(id) => {
         setShowAddCatalog(false);
-        onNavigate({ type: 'connections-runtime-edit', id });
+        onNavigate({ type: 'connections-engine-edit', id });
       }}
       onDeselect={() => {
         setShowAddCatalog(false);
@@ -325,7 +332,7 @@ export function AgentConnectionView({
       onSearch={setSearch}
       searchValue={search}
       listFilteredEmptyNoun="engines"
-      collectionEmpty={addedAgentApps.length === 0}
+      collectionEmpty={addedEngines.length === 0}
       /* empty-state action: the section frame's "Add engine" is adjacent. Copy
          stays action-shaped (matching the sibling providers list) rather than
          a bespoke "No engines yet" — the state-primitives ratchet exists to
@@ -337,7 +344,7 @@ export function AgentConnectionView({
       emptyContent={
         addCatalogOpen ? (
           <EngineAddCatalog
-            connections={availableAgentApps}
+            connections={availableEngines}
             commandEntries={availableCommandEntries}
             error={error}
             pendingId={
@@ -359,7 +366,14 @@ export function AgentConnectionView({
         <div className="editor-layout">
           <DetailHeader
             title={form.name}
-            icon={<BrandIcon name={form.name} id={form.id} size={28} />}
+            icon={
+              <BrandIcon
+                name={form.name}
+                id={form.id}
+                engineId={connectionEngineId(form)}
+                size={28}
+              />
+            }
           />
           <div className="agent-editor__section">
             <nav
@@ -428,7 +442,9 @@ export function AgentConnectionView({
                 <div className="editor-field">
                   <span className="editor-label">Type</span>
                   <div className="editor-input editor-input--readonly">
-                    {connectionTypeLabel(form.type)}
+                    {engineDisplayLabel(
+                      connectionEngineId(form) ?? form.type,
+                    ) ?? form.type}
                   </div>
                 </div>
 
@@ -563,7 +579,9 @@ export function AgentConnectionView({
                   <AppHomeProfileField
                     connectionId={form.id}
                     engineLabel={
-                      form.type === 'claude' ? 'Claude Code' : 'Codex'
+                      engineDisplayLabel(
+                        connectionEngineId(form) ?? form.type,
+                      ) ?? form.name
                     }
                     useAppHome={form.config.useAppHome === true}
                     onToggle={(value) => setConfigField('useAppHome', value)}
@@ -848,7 +866,12 @@ function EngineAddCatalog({
           });
           return (
             <div className="plugins__registry-item" key={connection.id}>
-              <BrandIcon name={connection.name} id={connection.id} size={28} />
+              <BrandIcon
+                name={connection.name}
+                id={connection.id}
+                engineId={connectionEngineId(connection)}
+                size={28}
+              />
               <div className="plugins__registry-info">
                 <div className="plugins__registry-name">
                   {connection.name}
@@ -891,7 +914,12 @@ function EngineAddCatalog({
           });
           return (
             <div className="plugins__registry-item" key={entry.id}>
-              <BrandIcon name={entry.name} id={entry.id} size={28} />
+              <BrandIcon
+                name={entry.name}
+                id={entry.id}
+                engineId={toEngineId(entry.id)}
+                size={28}
+              />
               <div className="plugins__registry-info">
                 <div className="plugins__registry-name">
                   {entry.name}

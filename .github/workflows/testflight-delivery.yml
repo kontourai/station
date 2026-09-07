@@ -28,20 +28,30 @@ on:
         required: true
         type: string
       update_feed_url:
-        required: true
+        required: false
         type: string
       update_provider_origin:
-        required: true
+        required: false
         type: string
       update_action_url:
-        required: true
+        required: false
         type: string
       update_action_kind:
-        required: true
+        required: false
         type: string
       update_action_origins:
-        required: true
+        required: false
         type: string
+      delivery:
+        description: >-
+          build-and-upload (default) builds, audits, and uploads in one call;
+          build stops after the audited IPA is retained as the staged run
+          artifact; upload consumes that staged artifact from the same run and
+          never rebuilds. Nightly stages during native staging and uploads only
+          after Android and macOS promotion (#1454).
+        required: false
+        type: string
+        default: build-and-upload
 
 permissions:
   contents: read
@@ -50,7 +60,9 @@ permissions:
 
 jobs:
   deliver:
-    runs-on: macos-15
+    name: Build, sign and audit IPA
+    if: ${{ inputs.delivery != 'upload' }}
+    runs-on: macos-26
     timeout-minutes: 90
     # Stable retains the existing protected environment. Beta and Nightly are
     # intentionally distinct environments: their profile, app ID and group ID
@@ -83,31 +95,70 @@ jobs:
           ref: ${{ inputs.source_sha }}
           fetch-depth: 1
           persist-credentials: false
+      - name: Select reviewed Xcode and enforce App Store SDK minimum
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          node scripts/check-ios-store-sdk.mjs "$(xcrun --sdk iphoneos --show-sdk-version)"
       - name: Reconfirm exact frozen source
         run: |
           [[ "$STATION_RELEASE_LABEL" =~ ^[A-Za-z0-9._-]+$ ]]
           test "$(git rev-parse HEAD)" = '${{ inputs.source_sha }}'
+          # Written inside the workspace so the staged artifact keeps one flat
+          # root: upload-artifact roots a multi-path upload at the paths'
+          # common ancestor, and $RUNNER_TEMP sits outside the workspace.
+          mkdir -p staged-identity
           source_date=$(node -e 'process.stdout.write(new Date(process.argv[1]).toISOString())' "$(git show -s --format=%cI HEAD)")
           short_sha=$(git rev-parse --short=12 HEAD)
-          printf '{"schemaVersion":1,"kind":"testflight-source-identity","sourceSha":"%s","shortSha":"%s","sourceDateUtc":"%s","channel":"%s","marketingVersion":"%s","bundleVersion":"%s"}\n' '${{ inputs.source_sha }}' "$short_sha" "$source_date" '${{ inputs.channel }}' '${{ inputs.marketing_version }}' '${{ inputs.bundle_version }}' > "$RUNNER_TEMP/source-identity.json"
+          printf '{"schemaVersion":1,"kind":"testflight-source-identity","sourceSha":"%s","shortSha":"%s","sourceDateUtc":"%s","channel":"%s","marketingVersion":"%s","bundleVersion":"%s"}\n' '${{ inputs.source_sha }}' "$short_sha" "$source_date" '${{ inputs.channel }}' '${{ inputs.marketing_version }}' '${{ inputs.bundle_version }}' > staged-identity/source-identity.json
           source_ref='${{ inputs.source_ref }}'
-          [[ "$source_ref" =~ ^refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[1-9][0-9]*)?|nightly-version-code/[0-9]+)$ ]]
+          [[ "$source_ref" =~ ^refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[1-9][0-9]*)?|nightly-version-code/[0-9]+|ios-testflight/(stable|beta|nightly)/v[0-9]+\.[0-9]+\.[0-9]+/[0-9]+)$ ]]
           git fetch --no-tags origin "$source_ref:$source_ref"
           node scripts/verify-ios-testflight-authority.mjs --source-ref "$source_ref" --source-sha '${{ inputs.source_sha }}'
           echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"
+      - name: Reverify immutable internal authority immediately before signing
+        if: startsWith(inputs.source_ref, 'refs/tags/ios-testflight/')
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TESTFLIGHT_AUTHORITY_GPG_PUBLIC_KEY: ${{ vars.TESTFLIGHT_AUTHORITY_GPG_PUBLIC_KEY }}
+          TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT: ${{ vars.TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          test -n "$TESTFLIGHT_AUTHORITY_GPG_PUBLIC_KEY"
+          [[ "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT" =~ ^[A-F0-9]{40}$ ]]
+          authority_key="$RUNNER_TEMP/testflight-authority.pub"
+          printf '%s' "$TESTFLIGHT_AUTHORITY_GPG_PUBLIC_KEY" | base64 --decode > "$authority_key"
+          chmod 600 "$authority_key"
+          gpg --batch --import "$authority_key"
+          rm -f "$authority_key"
+          tag_name='${{ inputs.source_ref }}'
+          tag_name="${tag_name#refs/tags/}"
+          gpg_status="$RUNNER_TEMP/testflight-authority-gpg-status.txt"
+          git verify-tag --raw "$tag_name" > "$gpg_status" 2>&1
+          local_tag_object_sha=$(git rev-parse "$tag_name^{tag}")
+          github_ref="$RUNNER_TEMP/testflight-authority-ref.json"
+          github_tag="$RUNNER_TEMP/testflight-authority-tag.json"
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag_name" > "$github_ref"
+          github_tag_object_sha=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.object?.type!=="tag"||!/^[0-9a-f]{40}$/.test(value.object?.sha??"")) process.exit(1); process.stdout.write(value.object.sha)' "$github_ref")
+          gh api "repos/$GITHUB_REPOSITORY/git/tags/$github_tag_object_sha" > "$github_tag"
+          node scripts/verify-ios-testflight-internal-tag.mjs --source-ref '${{ inputs.source_ref }}' --source-sha '${{ inputs.source_sha }}' --channel '${{ inputs.channel }}' --marketing-version '${{ inputs.marketing_version }}' --bundle-version '${{ inputs.bundle_version }}' --expected-fingerprint "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT" --local-tag-object-sha "$local_tag_object_sha" --github-ref "$github_ref" --github-tag "$github_tag" --gpg-status "$gpg_status"
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
+      - run: npm run dependencies:ci
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-apple-ios }
       - run: brew install xcodegen libimobiledevice cocoapods
-      - name: Fail closed on channel-owned secrets and endpoint
+      - name: Fail closed on channel-owned secrets and exact iOS identity
         run: |
-          for name in APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD APPLE_DEVELOPMENT_TEAM APPLE_SIGNING_IDENTITY APPLE_PROVISIONING_PROFILE_BASE64 TESTFLIGHT_INTERNAL_GROUP_ID STATION_MOBILE_DEFAULT_ENDPOINT VITE_NATIVE_APP_UPDATE_FEED_URL VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN VITE_NATIVE_APP_UPDATE_CHANNEL VITE_NATIVE_APP_VERSION NATIVE_APP_UPDATE_ACTION_URL NATIVE_APP_UPDATE_ACTION_KIND NATIVE_APP_UPDATE_ACTION_ORIGINS; do
+          for name in APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD APPLE_DEVELOPMENT_TEAM APPLE_SIGNING_IDENTITY APPLE_PROVISIONING_PROFILE_BASE64 TESTFLIGHT_INTERNAL_GROUP_ID STATION_MOBILE_DEFAULT_ENDPOINT VITE_NATIVE_APP_UPDATE_CHANNEL VITE_NATIVE_APP_VERSION; do
             test -n "${!name}" || { echo "Missing required protected channel value: $name" >&2; exit 1; }
           done
           [[ "$TESTFLIGHT_INTERNAL_GROUP_ID" =~ ^[A-Za-z0-9-]+$ ]]
-          node scripts/native-update-feed.mjs validate-config
-      - run: npm run dependencies:ci && npm run build:native-client
+      - run: STATION_BUILD_BRANCH="$AUTHORITY_REF" npm run build:native-client
       - name: Generate the exact channel identity overlay
         run: |
           mkdir -p provider-receipts
@@ -122,17 +173,24 @@ jobs:
           # identity-bearing project files for this channel, while preserving
           # every reviewed non-identity resource checked into gen/apple.
           preserved="$RUNNER_TEMP/station-ios-preserved"
-          mkdir -p "$preserved"
-          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources; do
+          mkdir -p "$preserved/station_iOS"
+          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources station_iOS/Info.plist; do
             test -e "gen/apple/$item"
             ditto "gen/apple/$item" "$preserved/$item"
           done
           rm -rf gen/apple
           npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.ios.channel.json"
-          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources; do
+          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources station_iOS/Info.plist; do
             ditto "$preserved/$item" "gen/apple/$item"
           done
-          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources
+          # Leave this spec exactly as Tauri rendered it: the signing template
+          # is derived from it below, and Tauri re-renders that template on the
+          # second init BEFORE the preserved files exist again, so a privacy
+          # manifest resource registered here would make xcodegen fail on a
+          # missing path (Nightly 33904147780). It is registered once, after
+          # the final regeneration.
+          test ! -e gen/apple/project.yml || ! grep -Fq 'path: PrivacyInfo.xcprivacy' gen/apple/project.yml
+          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources gen/apple/station_iOS/Info.plist
       - name: Verify App Store Connect app authority before signing
         id: app_store
         run: |
@@ -141,6 +199,16 @@ jobs:
           expected_name=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).appStoreName);' '${{ inputs.channel }}')
           node scripts/app-store-connect-receipt.mjs app-preflight --bundle-id "$bundle_id" --expected-name "$expected_name" --output provider-receipts/app-store-connect-app-preflight.json --github-output "$GITHUB_OUTPUT"
           echo "bundle_id=$bundle_id" >> "$GITHUB_OUTPUT"
+      - name: Stage immutable iOS client provenance resource
+        run: STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs
+      - name: Resolve optional custom iOS update feed
+        run: |
+          mkdir -p provider-receipts
+          # TestFlight/App Store owns delivered iOS updates. A custom feed is
+          # optional informational metadata, but if any of its values exist the
+          # whole origin/action contract must validate against the exact App
+          # Store Connect app resolved for this channel before signing.
+          node scripts/native-update-feed.mjs write-authority-receipt provider-receipts/testflight-update-authority.json --platform ios --ios-app-id '${{ steps.app_store.outputs.app_id }}'
       - name: Import protected signing material bound to this channel
         run: |
           certificate="$RUNNER_TEMP/station-ios.p12"
@@ -149,15 +217,80 @@ jobs:
           printf '%s' "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
           printf '%s' "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile"
           node scripts/ios-testflight-readiness.mjs --channel '${{ inputs.channel }}' --station "$profile" --team "$APPLE_DEVELOPMENT_TEAM" --group-id "$TESTFLIGHT_INTERNAL_GROUP_ID" > provider-receipts/testflight-channel-readiness.json
-          node scripts/check-ios-store-profile.mjs --station "$profile" --label APPLE_PROVISIONING_PROFILE_BASE64 --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id '${{ steps.app_store.outputs.bundle_id }}'
+          profile_metadata="$RUNNER_TEMP/station-ios-profile.json"
+          node scripts/check-ios-store-profile.mjs --station "$profile" --label APPLE_PROVISIONING_PROFILE_BASE64 --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id '${{ steps.app_store.outputs.bundle_id }}' > "$profile_metadata"
           node scripts/ios-store-signing-config.mjs --station "$profile" --identity "$APPLE_SIGNING_IDENTITY" --team "$APPLE_DEVELOPMENT_TEAM" --bundle-id '${{ steps.app_store.outputs.bundle_id }}' --template src-desktop/gen/apple/project.yml --template-output "$RUNNER_TEMP/station-ios-project.yml" --overlay-output "$RUNNER_TEMP/station-ios-signing.json"
+          grep -Fq 'PROVISIONING_PROFILE:' "$RUNNER_TEMP/station-ios-project.yml"
+          grep -Fq 'PROVISIONING_PROFILE_SPECIFIER:' "$RUNNER_TEMP/station-ios-project.yml"
           security create-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
           security unlock-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
+          # The first clean iOS build can spend several minutes compiling
+          # before xcodebuild reaches codesign. Keep this headless keychain
+          # unlocked beyond the 90-minute job fence so codesign cannot block
+          # forever on an unavailable GUI password prompt.
+          security set-keychain-settings -lut 21600 "$keychain"
           security import "$certificate" -k "$keychain" -P "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
           security list-keychains -d user -s "$keychain"
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/station.mobileprovision"
+          profile_uuid=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).uuid' "$profile_metadata")
+          [[ "$profile_uuid" =~ ^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$ ]]
+          cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
+      - name: Prove headless codesign access before the expensive build
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          canary="$RUNNER_TEMP/station-ios-codesign-canary"
+          cp /usr/bin/true "$canary"
+          /usr/bin/codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp=none "$canary"
+          /usr/bin/codesign --verify --strict "$canary"
+          rm -f "$canary"
+      - name: Regenerate the Xcode project with the manual signing template
+        working-directory: src-desktop
+        run: |
+          # Tauri renders `bundle.iOS.template` only while `tauri ios init`
+          # writes project.yml; `tauri ios build` reuses whatever project
+          # gen/apple already holds. The first init produced the channel
+          # identity the signing template was derived from, so run it again
+          # with the signing overlay and prove the generated spec carries the
+          # manual provisioning that xcodebuild demands before it will sign.
+          preserved="$RUNNER_TEMP/station-ios-preserved"
+          rm -rf gen/apple
+          npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json"
+          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources station_iOS/Info.plist; do
+            ditto "$preserved/$item" "gen/apple/$item"
+          done
+          # The preserved manifest exists again now, so register it as a
+          # resource and regenerate the Xcode project from the amended spec:
+          # `tauri ios init` already ran xcodegen against the spec WITHOUT the
+          # resource, and `tauri ios build` reuses the generated project.
+          node ../scripts/ensure-ios-privacy-manifest-resource.mjs gen/apple/project.yml
+          grep -Fq 'path: PrivacyInfo.xcprivacy' gen/apple/project.yml
+          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources gen/apple/station_iOS/Info.plist
+          grep -Fq 'CODE_SIGN_STYLE: Manual' gen/apple/project.yml
+          grep -Fq 'PROVISIONING_PROFILE_SPECIFIER:' gen/apple/project.yml
+          # `rm -rf gen/apple` also removed the staged provenance resource
+          # (gen/apple/assets/station-build.json, gitignored). The packaged
+          # copy is what "Verify IPA identity" compares byte for byte, so
+          # stage it again from the same authority before building.
+          (cd .. && STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs)
+          test -s gen/apple/assets/station-build.json
+          # Every source directory the spec names exists now, so regenerate
+          # the Xcode project from the amended spec and prove the manifest
+          # reached it; `tauri ios build` reuses this project as is.
+          xcodegen generate --spec gen/apple/project.yml --project gen/apple
+          grep -Fq 'PrivacyInfo.xcprivacy' gen/apple/station.xcodeproj/project.pbxproj
+          # xcodegen rewrites `info.path` (station_iOS/Info.plist) from the
+          # spec's `info.properties`, and the Tauri-rendered spec carries no
+          # usage descriptions, so the preserved Info.plist must be restored
+          # AFTER regeneration (Nightly 33910685946 shipped an IPA without
+          # NSCameraUsageDescription). The project references the file by
+          # path, so restoring its bytes is enough.
+          ditto "$preserved/station_iOS/Info.plist" gen/apple/station_iOS/Info.plist
+          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources gen/apple/station_iOS/Info.plist
+          for key in NSCameraUsageDescription NSMicrophoneUsageDescription NSLocalNetworkUsageDescription; do
+            grep -Fq "<key>$key</key>" gen/apple/station_iOS/Info.plist
+          done
       - name: Build signed and channel-audited iOS package
         working-directory: src-desktop
         run: |
@@ -165,7 +298,8 @@ jobs:
           export IOS_MOBILE_PROVISION
           node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { mobileCargoConfig } from "../scripts/ios-store-signing-config.mjs"; writeFileSync(process.argv[1], mobileCargoConfig(process.env.STATION_MOBILE_DEFAULT_ENDPOINT), { mode: 0o600 });' "$RUNNER_TEMP/station-ios-mobile-env.toml"
           rm -rf gen/apple/build
-          npx tauri ios build --export-method app-store-connect --ci --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json" -- --config "$RUNNER_TEMP/station-ios-mobile-env.toml"
+          security unlock-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$RUNNER_TEMP/station-ios.keychain-db"
+          STATION_BUILD_BRANCH="$AUTHORITY_REF" STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --export-method app-store-connect --ci --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json" -- --config "$RUNNER_TEMP/station-ios-mobile-env.toml"
       - name: Verify IPA identity, profile and package contents
         id: package
         run: |
@@ -178,22 +312,19 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = '${{ steps.app_store.outputs.bundle_id }}'
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")" = '${{ inputs.marketing_version }}'
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")" = '${{ inputs.bundle_version }}'
+          packaged_manifest=$(find "$app" -type f -name station-build.json -print)
+          test "$(printf '%s\n' "$packaged_manifest" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          cmp "src-desktop/station-client-build.json" "$packaged_manifest"
           test -s "$app/Assets.car"
           generated_icon="src-desktop/gen/apple/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png"
           test -s "$generated_icon"
           node --input-type=module -e 'import { readFileSync, writeFileSync } from "node:fs"; import { createHash } from "node:crypto"; const receipt=JSON.parse(readFileSync("provider-receipts/channel-icon-receipt.json","utf8")); receipt.generatedAsset="AppIcon-512@2x.png"; receipt.generatedAssetSha256=createHash("sha256").update(readFileSync(process.argv[1])).digest("hex"); writeFileSync("provider-receipts/channel-icon-receipt.json", JSON.stringify(receipt,null,2)+"\n", { mode: 0o600 });' "$generated_icon"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' "$app/Info.plist" | grep -Fx "$(node -p 'JSON.parse(require("node:fs").readFileSync(process.env.RUNNER_TEMP + "/tauri.ios.channel.json", "utf8")).plugins["deep-link"].mobile[0].scheme[0]')"
           entitlements="$RUNNER_TEMP/station-ios-entitlements.plist"
+          entitlements_json="$RUNNER_TEMP/station-ios-entitlements.json"
           codesign -d --entitlements :- "$app" 2>/dev/null > "$entitlements"
-          expected_application_identifier="${APPLE_DEVELOPMENT_TEAM}.${{ steps.app_store.outputs.bundle_id }}"
-          test "$(plutil -extract application-identifier raw -o - "$entitlements")" = "$expected_application_identifier"
-          test "$(plutil -extract com.apple.developer.team-identifier raw -o - "$entitlements")" = "$APPLE_DEVELOPMENT_TEAM"
-          keychain_groups=$(plutil -extract keychain-access-groups json -o - "$entitlements")
-          KEYCHAIN_GROUPS="$keychain_groups" EXPECTED_APPLICATION_IDENTIFIER="$expected_application_identifier" node --input-type=module -e 'const groups=JSON.parse(process.env.KEYCHAIN_GROUPS); if (!Array.isArray(groups) || groups.length !== 1 || groups[0] !== process.env.EXPECTED_APPLICATION_IDENTIFIER) throw new Error("keychain access groups are not exact channel identity");'
-          if plutil -extract com.apple.security.application-groups raw -o - "$entitlements" >/dev/null 2>&1; then
-            echo 'Unexpected shared application group entitlement' >&2
-            exit 1
-          fi
+          plutil -convert json -o "$entitlements_json" "$entitlements"
+          node scripts/ios-exported-entitlements.mjs "$entitlements_json" "$APPLE_DEVELOPMENT_TEAM" '${{ steps.app_store.outputs.bundle_id }}' > provider-receipts/exported-ios-entitlements.json
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Info.plist")" = "$(node -p 'JSON.parse(require("node:fs").readFileSync(process.env.RUNNER_TEMP + "/tauri.ios.channel.json", "utf8")).productName')"
           node scripts/check-ios-store-profile.mjs --station "$app/embedded.mobileprovision" --label 'exported IPA embedded.mobileprovision' --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id '${{ steps.app_store.outputs.bundle_id }}'
           codesign --verify --deep --strict --verbose=2 "$app"
@@ -201,6 +332,120 @@ jobs:
           mkdir -p release-assets
           cp "$ipa" "release-assets/station-${{ inputs.release_label }}-ios-device.ipa"
           echo "ipa=release-assets/station-${{ inputs.release_label }}-ios-device.ipa" >> "$GITHUB_OUTPUT"
+      - name: Retain the audited IPA and receipts as the staged run artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: station-${{ inputs.channel }}-ios-staged-${{ inputs.bundle_version }}
+          path: |
+            release-assets
+            provider-receipts
+            src-desktop/station-client-build.json
+            staged-identity/source-identity.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain the built IPA when package verification fails
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: station-${{ inputs.channel }}-ios-verification-failure-${{ inputs.bundle_version }}
+          path: src-desktop/gen/apple/build/arm64/*.ipa
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Remove the ephemeral signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/station-ios.keychain-db" 2>/dev/null || true
+
+  upload:
+    name: Upload to TestFlight
+    # Runs after `deliver` in build-and-upload mode, or alone in upload mode
+    # against the staged artifact an earlier call in this run retained. Never
+    # rebuilds or re-signs: the bytes uploaded are the bytes that were audited.
+    needs: deliver
+    if: ${{ always() && !cancelled() && inputs.delivery != 'build' && (needs.deliver.result == 'success' || (inputs.delivery == 'upload' && needs.deliver.result == 'skipped')) }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    environment: ${{ inputs.channel == 'stable' && 'native-release' || format('ios-{0}', inputs.channel) }}
+    env:
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+      APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+      APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+      APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+      APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_IOS_SIGNING_IDENTITY }}
+      APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+      TESTFLIGHT_INTERNAL_GROUP_ID: ${{ vars.TESTFLIGHT_INTERNAL_GROUP_ID }}
+      STATION_MOBILE_DEFAULT_ENDPOINT: ${{ inputs.mobile_endpoint }}
+      STATION_BUILD_VERSION: ${{ inputs.marketing_version }}
+      STATION_BUILD_CHANNEL: ${{ inputs.channel }}
+      STATION_RELEASE_LABEL: ${{ inputs.release_label }}
+      VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ inputs.update_feed_url }}
+      VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: ${{ inputs.update_provider_origin }}
+      VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ inputs.channel }}
+      VITE_NATIVE_APP_VERSION: ${{ inputs.marketing_version }}
+      NATIVE_APP_UPDATE_ACTION_URL: ${{ inputs.update_action_url }}
+      NATIVE_APP_UPDATE_ACTION_KIND: ${{ inputs.update_action_kind }}
+      NATIVE_APP_UPDATE_ACTION_ORIGINS: ${{ inputs.update_action_origins }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Reconfirm exact frozen source and authority
+        run: |
+          [[ "$STATION_RELEASE_LABEL" =~ ^[A-Za-z0-9._-]+$ ]]
+          test "$(git rev-parse HEAD)" = '${{ inputs.source_sha }}'
+          source_ref='${{ inputs.source_ref }}'
+          [[ "$source_ref" =~ ^refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[1-9][0-9]*)?|nightly-version-code/[0-9]+|ios-testflight/(stable|beta|nightly)/v[0-9]+\.[0-9]+\.[0-9]+/[0-9]+)$ ]]
+          git fetch --no-tags origin "$source_ref:$source_ref"
+          node scripts/verify-ios-testflight-authority.mjs --source-ref "$source_ref" --source-sha '${{ inputs.source_sha }}'
+          echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with: { install: false }
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
+      - run: npm run dependencies:ci
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: station-${{ inputs.channel }}-ios-staged-${{ inputs.bundle_version }}
+          path: staged
+      - name: Bind the staged IPA and receipts to this exact source
+        id: staged
+        run: |
+          set -euo pipefail
+          ipa=$(find staged/release-assets -type f -name '*.ipa' -print)
+          test "$(printf '%s\n' "$ipa" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          test "$ipa" = 'staged/release-assets/station-${{ inputs.release_label }}-ios-device.ipa'
+          test -s staged/src-desktop/station-client-build.json
+          test -s staged/provider-receipts/channel-icon-receipt.json
+          node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.kind!=="testflight-source-identity"||value.sourceSha!==process.argv[2]||value.channel!==process.argv[3]||value.bundleVersion!==process.argv[4]) process.exit(1)' staged/staged-identity/source-identity.json '${{ inputs.source_sha }}' '${{ inputs.channel }}' '${{ inputs.bundle_version }}'
+          mkdir -p release-assets provider-receipts staged-identity
+          cp "$ipa" release-assets/
+          cp staged/provider-receipts/*.json provider-receipts/
+          cp staged/staged-identity/source-identity.json staged-identity/source-identity.json
+          echo "ipa=release-assets/station-${{ inputs.release_label }}-ios-device.ipa" >> "$GITHUB_OUTPUT"
+      - name: Regenerate the exact channel identity overlay
+        run: node scripts/ios-testflight-channel.mjs --channel '${{ inputs.channel }}' --marketing-version '${{ inputs.marketing_version }}' --bundle-version '${{ inputs.bundle_version }}' --output "$RUNNER_TEMP/tauri.ios.channel.json"
+      - name: Verify App Store Connect app authority before upload
+        id: app_store
+        run: |
+          bundle_id=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.env.RUNNER_TEMP + "/tauri.ios.channel.json", "utf8")).identifier')
+          expected_name=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).appStoreName);' '${{ inputs.channel }}')
+          # A second, upload-time preflight; the build-time one stays in the
+          # staged receipts under its own name.
+          node scripts/app-store-connect-receipt.mjs app-preflight --bundle-id "$bundle_id" --expected-name "$expected_name" --output provider-receipts/app-store-connect-app-preflight-upload.json --github-output "$GITHUB_OUTPUT"
+          echo "bundle_id=$bundle_id" >> "$GITHUB_OUTPUT"
+          # The staged bytes were audited in full when they were built; re-read
+          # only the identity that decides which App Store Connect app they go to.
+          unzip -q -o '${{ steps.staged.outputs.ipa }}' 'Payload/*.app/Info.plist' -d "$RUNNER_TEMP/staged-ipa"
+          info=$(find "$RUNNER_TEMP/staged-ipa/Payload" -maxdepth 2 -type f -name Info.plist -print)
+          test "$(printf '%s\n' "$info" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$info")" = "$bundle_id"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$info")" = '${{ inputs.bundle_version }}'
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$info")" = '${{ inputs.marketing_version }}'
       - name: Reconcile an existing App Store Connect build before upload
         id: reconcile
         run: >-
@@ -215,12 +460,17 @@ jobs:
         if: steps.reconcile.outputs.upload == 'true'
         uses: apple-actions/upload-testflight-build@5e75ff58276689011512ba87a381d93dc67dbcf8 # v5.3.0
         with:
-          app-path: ${{ steps.package.outputs.ipa }}
+          app-path: ${{ steps.staged.outputs.ipa }}
           app-type: ios
           issuer-id: ${{ env.APPLE_API_ISSUER_ID }}
           api-key-id: ${{ env.APPLE_API_KEY_ID }}
           api-private-key: ${{ env.APPLE_API_PRIVATE_KEY }}
-          wait-for-processing: 'true'
+          # The action mints one App Store Connect token at start and its
+          # own processing wait outlived it (401 after ~12 minutes, Nightly
+          # 33929822729, #1499). The step below is the single processing
+          # wait: it mints a fresh token per request under a 30-minute
+          # deadline.
+          wait-for-processing: 'false'
       - name: Reconcile exactly one VALID provider build
         run: >-
           node scripts/app-store-connect-receipt.mjs wait-for-valid-build
@@ -232,14 +482,19 @@ jobs:
           WORKFLOW_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ '${{ steps.reconcile.outputs.upload }}' = true ]; then delivery_mode=uploaded; else delivery_mode=reconciled; fi
-          node scripts/app-store-connect-receipt.mjs build-receipt --app-id '${{ steps.app_store.outputs.app_id }}' --bundle-id '${{ steps.app_store.outputs.bundle_id }}' --bundle-version '${{ inputs.bundle_version }}' --source-sha '${{ inputs.source_sha }}' --ipa '${{ steps.package.outputs.ipa }}' --workflow-run-url "$WORKFLOW_RUN_URL" --delivery-mode "$delivery_mode" --output provider-receipts/testflight-build-receipt.json
+          node scripts/app-store-connect-receipt.mjs build-receipt --app-id '${{ steps.app_store.outputs.app_id }}' --bundle-id '${{ steps.app_store.outputs.bundle_id }}' --bundle-version '${{ inputs.bundle_version }}' --source-sha '${{ inputs.source_sha }}' --artifact-manifest staged/src-desktop/station-client-build.json --ipa '${{ steps.staged.outputs.ipa }}' --workflow-run-url "$WORKFLOW_RUN_URL" --delivery-mode "$delivery_mode" --output provider-receipts/testflight-build-receipt.json
           build_id=$(node -p 'JSON.parse(require("node:fs").readFileSync("provider-receipts/testflight-build-receipt.json", "utf8")).buildId')
           source_date=$(node -e 'process.stdout.write(new Date(process.argv[1]).toISOString())' "$(git show -s --format=%cI HEAD)")
-          workflow_date=$(node -e 'process.stdout.write(new Date().toISOString())')
+          artifact_built_at=$(node -p 'JSON.parse(require("node:fs").readFileSync("staged/src-desktop/station-client-build.json", "utf8")).builtAt')
           short_sha=$(git rev-parse --short=12 HEAD)
-          whats_new="Built ${workflow_date:0:10} UTC · ${short_sha} · source ${source_date:0:10} UTC"
-          node scripts/app-store-connect-receipt.mjs upsert-what-to-test --build-id "$build_id" --whats-new "$whats_new" --locale en-US --output provider-receipts/testflight-what-to-test.json
-          node scripts/app-store-connect-receipt.mjs attach-internal-group --app-id '${{ steps.app_store.outputs.app_id }}' --build-id "$build_id" --group-id "$TESTFLIGHT_INTERNAL_GROUP_ID" --group-name '${{ inputs.channel == 'stable' && 'Station Stable Internal' || inputs.channel == 'beta' && 'Station Beta Internal' || 'Station Nightly Internal' }}' --output provider-receipts/testflight-internal-group-assignment.json
+          if [ "$delivery_mode" = uploaded ]; then
+            whats_new="Built ${artifact_built_at:0:10} UTC · ${short_sha} · source ${source_date:0:10} UTC"
+            node scripts/app-store-connect-receipt.mjs upsert-what-to-test --build-id "$build_id" --whats-new "$whats_new" --locale en-US --output provider-receipts/testflight-what-to-test.json
+          else
+            node --input-type=module -e 'import { writeFileSync } from "node:fs"; writeFileSync(process.argv[1], JSON.stringify({schemaVersion:1,kind:"testflight-what-to-test",status:"skipped",reason:"provider-artifact-provenance-unverified"},null,2)+"\n",{mode:0o600});' provider-receipts/testflight-what-to-test.json
+          fi
+          internal_group=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).internalGroup);' '${{ inputs.channel }}')
+          node scripts/app-store-connect-receipt.mjs attach-internal-group --app-id '${{ steps.app_store.outputs.app_id }}' --build-id "$build_id" --group-id "$TESTFLIGHT_INTERNAL_GROUP_ID" --group-name "$internal_group" --output provider-receipts/testflight-internal-group-assignment.json
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -249,9 +504,6 @@ jobs:
           path: |
             release-assets
             provider-receipts
-            ${{ runner.temp }}/source-identity.json
+            staged-identity/source-identity.json
           if-no-files-found: warn
           retention-days: 30
-      - name: Remove the ephemeral signing keychain
-        if: always()
-        run: security delete-keychain "$RUNNER_TEMP/station-ios.keychain-db" 2>/dev/null || true

@@ -219,6 +219,25 @@
   gap: 1rem;
 }
 
+/* #1130: `overlayClassName="acp-add-dialog__overlay"` (ACPAddConnectionModal)
+   had no matching rule here, so the overlay fell back to
+   `.responsive-surface-overlay` alone (index.css), which sets no `position` —
+   the panel below rendered in normal flow instead of centered over a fixed
+   backdrop, overflowing the viewport bottom on a phone. Follows the sibling
+   dialog pattern (NewProjectModal.css, FolderBrowserModal.css): fixed,
+   inset:0, flex-centered, own scrim. */
+.acp-add-dialog__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--layer-dialog);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(7, 10, 16, 0.68);
+  backdrop-filter: blur(6px);
+}
+
 .acp-add-dialog {
   width: min(100% - 2rem, 34rem);
   max-height: min(

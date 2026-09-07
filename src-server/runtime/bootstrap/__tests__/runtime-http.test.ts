@@ -1,3 +1,4 @@
+import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts/environment-security';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -71,6 +72,56 @@ describe('resolveRuntimeCorsOrigin', () => {
         new Request('http://station.test/api/tasks/task/room'),
       ),
     ).toBeUndefined();
+  });
+
+  test('station#169: the preflight allowlist admits Last-Event-ID so cross-origin SSE reconnects survive', async () => {
+    const logger: Logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      trace: vi.fn(),
+      fatal: vi.fn(),
+      child: vi.fn().mockReturnThis(),
+      setLevel: vi.fn(),
+      getLevel: vi.fn(() => 'info' as const),
+    };
+    const app = new Hono();
+    // The SECURITY path is the one with the static allowlist; the no-security
+    // fallback uses hono/cors, which reflects whatever the request asks for
+    // and can never block a header. This regression is only expressible here.
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit: vi.fn() } as unknown as EventBus,
+      security: {
+        allowedOrigins: ['http://localhost:5173'],
+        verifyCredential: () => true,
+        resolveGrantedScope: () => DEFAULT_GRANT_PAIRING_SCOPE,
+      },
+    });
+
+    const response = await app.request(
+      'http://station.test/api/orchestration/events',
+      {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'http://localhost:5173',
+          'Access-Control-Request-Method': 'GET',
+          'Access-Control-Request-Headers': 'last-event-id',
+        },
+      },
+      { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never,
+    );
+
+    expect(response.status).toBe(204);
+    const allowed = (response.headers.get('Access-Control-Allow-Headers') ?? '')
+      .split(',')
+      .map((header) => header.trim().toLowerCase());
+    // Browsers match preflight headers case-insensitively; membership in the
+    // normalized list is the property the SSE reconnect depends on.
+    expect(allowed).toContain('last-event-id');
+    expect(allowed).toContain('authorization');
   });
 
   test('station#1848: the access log never reports a stream-open time as a request duration', async () => {

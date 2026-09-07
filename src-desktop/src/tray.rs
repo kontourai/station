@@ -7,9 +7,11 @@ use crate::service_state::{
 };
 use crate::{BundledServerStatus, DesktopOwnerSnapshot, ServerOwnership};
 use serde::Deserialize;
+use std::fs::{read_to_string, symlink_metadata};
 use std::fmt::Display;
 use std::io::Read;
 use std::net::IpAddr;
+use std::path::Path;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -175,6 +177,7 @@ pub(crate) fn shutdown(app: &AppHandle) {
 pub fn init(app: &AppHandle) -> tauri::Result<()> {
     let product_name = tray_product_name(app);
     let identity_text = tray_identity(app, &product_name);
+    let build_text = local_client_build_label(app).unwrap_or_else(|| "Build: unavailable".into());
     let icon_bytes = tray_icon_bytes(packaged_channel(app));
     let identity = MenuItem::with_id(
         app,
@@ -187,6 +190,13 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         app,
         "tray-backend",
         "Backend: unavailable",
+        false,
+        None::<&str>,
+    )?;
+    let build = MenuItem::with_id(
+        app,
+        "tray-build",
+        build_text,
         false,
         None::<&str>,
     )?;
@@ -242,6 +252,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     )?;
     let menu = MenuBuilder::new(app)
         .item(&identity)
+        .item(&build)
         .item(&status)
         .item(&backend)
         .separator()
@@ -812,6 +823,64 @@ fn tray_identity(app: &AppHandle, product_name: &str) -> String {
     identity_label(product_name, &app.package_info().version.to_string())
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalClientBuildManifest {
+    built_at: String,
+}
+
+/// The tray belongs to the installed desktop app, not an attached service.
+/// Read only its packaged resource; service HTTP/mtime/environment metadata
+/// would conflate backend deployment and local artifact provenance.
+fn local_client_build_label(app: &AppHandle) -> Option<String> {
+    let resource_dir = app.path().resource_dir().ok()?;
+    let manifest = read_local_client_build_manifest(&resource_dir.join("dist-server/station-build.json"))?;
+    compact_utc_build_label(&manifest.built_at)
+}
+
+fn read_local_client_build_manifest(path: &Path) -> Option<LocalClientBuildManifest> {
+    let metadata = symlink_metadata(path).ok()?;
+    if !metadata.file_type().is_file() || metadata.len() > 16 * 1024 {
+        return None;
+    }
+    let raw = read_to_string(path).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+fn compact_utc_build_label(value: &str) -> Option<String> {
+    // The resource writer normalizes ISO UTC; keep tray parsing deliberately
+    // narrow so malformed input disappears rather than looking plausible.
+    let bytes = value.as_bytes();
+    if value.len() != 24
+        || bytes.get(4) != Some(&b'-')
+        || bytes.get(7) != Some(&b'-')
+        || bytes.get(10) != Some(&b'T')
+        || bytes.get(13) != Some(&b':')
+        || bytes.get(16) != Some(&b':')
+        || bytes.get(19) != Some(&b'.')
+        || !value.ends_with('Z')
+        || !bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| matches!(index, 4 | 7 | 10 | 13 | 16 | 19 | 23) || byte.is_ascii_digit())
+        || !valid_calendar_utc(value)
+    {
+        return None;
+    }
+    Some(format!("Built {} UTC", &value[..19].replace('T', " ")))
+}
+
+fn valid_calendar_utc(value: &str) -> bool {
+    let parse = |start: usize, end: usize| value.get(start..end)?.parse::<u32>().ok();
+    let (Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second)) = (
+        parse(0, 4), parse(5, 7), parse(8, 10), parse(11, 13), parse(14, 16), parse(17, 19),
+    ) else { return false; };
+    if !(1..=12).contains(&month) || day == 0 || hour > 23 || minute > 59 || second > 59 { return false; }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let max_day = match month { 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31, 4 | 6 | 9 | 11 => 30, 2 if leap => 29, 2 => 28, _ => return false };
+    day <= max_day
+}
+
 fn identity_label(product_name: &str, version: &str) -> String {
     format!("{} v{version}", product_name_label(product_name))
 }
@@ -1108,16 +1177,49 @@ fn open_station_ui(app: &AppHandle) {
 
 fn open_station_api_docs(app: &AppHandle) {
     let context = tray_context(app);
-    let Some(url) = context.snapshot.api_docs_url.as_deref() else {
+    let Some(launch_url) = context.snapshot.api_docs_url.clone() else {
         log::warn!(
             "Station tray could not open API docs for {:?}: no validated local API origin is available",
             context.snapshot.kind
         );
         return;
     };
-    if let Err(error) = app.opener().open_url(url, None::<&str>) {
-        log::error!("Station tray could not open API docs: {error}");
-    }
+    let Some(api_origin) = context.snapshot.api_origin.clone() else {
+        log::warn!("Station tray could not open API docs: no validated local API origin");
+        return;
+    };
+    // The service manifest names the home of the Station actually serving
+    // these docs; a desktop-owned sidecar serves this process's own home.
+    let base_dir = context
+        .service
+        .as_ref()
+        .map(|service| service.base_dir.clone())
+        .unwrap_or_else(|| station_home(app));
+
+    // Minting is a blocking loopback request. The menu event handler runs on
+    // the UI thread, where a stalled request would freeze the whole tray.
+    let app = app.clone();
+    thread::spawn(move || {
+        let url = match mint_api_docs_capability(&api_origin, &base_dir) {
+            Ok(capability) => match api_docs_launch_url_with_capability(&launch_url, &capability) {
+                Ok(url) => url,
+                Err(error) => {
+                    log::error!("Station tray could not open API docs: {error}");
+                    launch_url
+                }
+            },
+            Err(error) => {
+                // Open the launcher regardless: it states plainly that sign-in
+                // did not complete, which is more use than a menu item that
+                // appears to do nothing at all.
+                log::error!("Station tray could not mint an API docs capability: {error}");
+                launch_url
+            }
+        };
+        if let Err(error) = app.opener().open_url(&url, None::<&str>) {
+            log::error!("Station tray could not open API docs: {error}");
+        }
+    });
 }
 
 fn open_manifest_ui<E>(
@@ -1179,6 +1281,34 @@ fn station_api_origin(manifest: &ServiceManifest) -> Result<String, String> {
     Ok(url.origin().ascii_serialization())
 }
 
+/// Station's own launcher page for the framework-served API docs. Mirrors
+/// `PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH` in
+/// `packages/contracts/src/environment-security.ts`; the server owns the
+/// contract and a mismatch surfaces as a 404 from the launcher, not a silent
+/// downgrade to an unauthenticated docs page.
+const API_DOCS_LAUNCH_PATH: &str = "/.well-known/station/v1/pairing/api-docs";
+
+/// Mirrors `PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH`.
+const API_DOCS_CAPABILITY_MINT_PATH: &str =
+    "/.well-known/station/v1/pairing/mint-ui-bootstrap";
+
+/// Mirrors the `api-docs` member of `UI_BOOTSTRAP_PURPOSES` in
+/// `src-server/runtime/routes/runtime-routes.ts`. An unknown purpose is
+/// refused with 400 rather than silently sharing a slot, so a drift here
+/// surfaces as a failed mint instead of the invalidation bug it fixes.
+const API_DOCS_CAPABILITY_PURPOSE: &str = "api-docs";
+
+/// A base64url encoding of 32 bytes is 43 characters. The margin allows the
+/// server to widen the value without a lockstep desktop release; it does not
+/// admit a value large enough to matter.
+const MAX_API_DOCS_CAPABILITY_LEN: usize = 128;
+
+/// Enough for the mint's small JSON object. A body larger than this is
+/// REFUSED, not truncated: truncating leaves `{"token":"…"} ` followed by
+/// padding parsing cleanly, so a capped read alone would accept an oversized
+/// response while looking like it had rejected one.
+const MAX_API_DOCS_MINT_RESPONSE_BYTES: usize = 8 * 1024;
+
 fn station_api_docs_url(api_origin: &str) -> Result<String, String> {
     let origin = crate::exact_origin(api_origin)?;
     if api_origin != origin {
@@ -1196,7 +1326,105 @@ fn station_api_docs_url(api_origin: &str) -> Result<String, String> {
     if !is_local {
         return Err("API docs require a local Station origin".into());
     }
-    Ok(format!("{origin}/ui"))
+    Ok(format!("{origin}{API_DOCS_LAUNCH_PATH}"))
+}
+
+/// The system browser holds no Station credential and cannot set an
+/// `Authorization` header on a top-level navigation, so opening the docs
+/// directly answers 401. The tray opens Station's own launcher page instead,
+/// handing it a single-use capability in the URL FRAGMENT: a fragment is never
+/// transmitted to the server, so the capability stays out of request logs and
+/// out of the query string, where Station refuses credentials outright.
+fn api_docs_launch_url_with_capability(launch_url: &str, capability: &str) -> Result<String, String> {
+    // The capability is a 32-byte base64url value. Bounding the length as well
+    // as the alphabet keeps a wedged or hostile listener from handing the tray
+    // an arbitrarily long string to carry into a URL.
+    if capability.is_empty()
+        || capability.len() > MAX_API_DOCS_CAPABILITY_LEN
+        || !capability
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    {
+        return Err("Station returned a malformed API docs capability".into());
+    }
+    Ok(format!("{launch_url}#station-ui-bootstrap={capability}"))
+}
+
+/// Exchanges the owner-only per-boot local-grant secret for the current
+/// single-use UI bootstrap capability. Possession of that file is the proof;
+/// loopback alone is a transport position and never authority, which is why
+/// the launcher page cannot mint this for itself.
+/// Reads at most `max` bytes and REFUSES a body that would exceed it.
+///
+/// Reading `max` bytes and stopping is not the same thing. A truncated body
+/// can still be valid JSON -- `{"token":"…"}` followed by padding parses
+/// cleanly once the padding is cut off -- so a plain capped read accepts an
+/// oversized response while appearing to have bounded it. Reading one byte
+/// past the limit is what makes "too large" observable at all.
+fn read_bounded(reader: impl Read, max: usize) -> Result<String, String> {
+    let mut raw = String::new();
+    let read = reader
+        .take(max as u64 + 1)
+        .read_to_string(&mut raw)
+        .map_err(|_| "invalid API docs capability response".to_string())?;
+    if read > max {
+        return Err("Station returned an oversized API docs capability response".into());
+    }
+    Ok(raw)
+}
+
+fn mint_api_docs_capability(api_origin: &str, base_dir: &Path) -> Result<String, String> {
+    let secret_path = base_dir.join("runtime").join("local-grant.secret");
+    let secret = crate::service_state::read_owner_only_file(&secret_path, "local grant secret")
+        .map_err(|error| format!("read Station local grant secret: {error}"))?
+        .trim()
+        .to_string();
+    if secret.is_empty() {
+        return Err("Station local grant secret is empty".into());
+    }
+    let endpoint = url::Url::parse(api_origin)
+        .map_err(|_| "invalid Station API origin".to_string())?
+        .join(API_DOCS_CAPABILITY_MINT_PATH)
+        .map_err(|_| "invalid Station API origin".to_string())?;
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .max_redirects(0)
+        .timeout_global(Some(Duration::from_secs(10)))
+        .http_status_as_error(false)
+        .build()
+        .into();
+    let mut response = agent
+        .post(endpoint.as_str())
+        .header("Content-Type", "application/json")
+        .send(
+            serde_json::to_string(&serde_json::json!({
+                "secret": secret,
+                // Its own capability slot. Sharing the launcher's meant every
+                // click of this menu item invalidated a pending `station
+                // start` link, which then failed for a reason nothing on
+                // screen explained (#1259).
+                "purpose": API_DOCS_CAPABILITY_PURPOSE,
+            }))
+            .map_err(|_| "invalid API docs capability request".to_string())?,
+        )
+        .map_err(|_| "could not reach Station to mint an API docs capability".to_string())?;
+    let status = response.status().as_u16();
+    // Bounded read: this speaks to whatever holds the port, which during a
+    // service restart is not necessarily Station. An unbounded read of an
+    // attacker-controlled or wedged listener is a memory-exhaustion path.
+    let raw = read_bounded(
+        response.body_mut().as_reader(),
+        MAX_API_DOCS_MINT_RESPONSE_BYTES,
+    )?;
+    if !(200..300).contains(&status) {
+        return Err(format!("Station refused the API docs capability (HTTP {status})"));
+    }
+    let parsed: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|_| "invalid API docs capability response".to_string())?;
+    parsed
+        .get("token")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| "Station returned no API docs capability".to_string())
 }
 
 /// Reveal the native tray menu from a renderer-owned affordance. Tauri's
@@ -1590,6 +1818,16 @@ mod tests {
         );
         assert_eq!(identity_label("   ", "2.0.0"), "Station v2.0.0");
         assert_eq!(quit_label("Station Nightly"), "Quit Station Nightly");
+    }
+
+    #[test]
+    fn local_build_row_accepts_only_a_real_canonical_utc_date() {
+        assert_eq!(
+            compact_utc_build_label("2026-08-30T12:34:56.000Z"),
+            Some("Built 2026-08-30 12:34:56 UTC".into())
+        );
+        assert_eq!(compact_utc_build_label("2026-02-31T12:34:56.000Z"), None);
+        assert_eq!(compact_utc_build_label("2026-08-30T12:34:56Z"), None);
     }
 
     #[test]
@@ -2353,12 +2591,89 @@ mod tests {
             station_ui_url(&manifest("localhost")).unwrap(),
             "http://localhost:3000"
         );
+        // Station's own launcher, not the framework's docs page: the browser
+        // has no credential and /ui answers 401 without one.
         assert_eq!(
             station_api_docs_url("http://127.0.0.1:3141").unwrap(),
-            "http://127.0.0.1:3141/ui"
+            "http://127.0.0.1:3141/.well-known/station/v1/pairing/api-docs"
         );
         assert!(station_api_docs_url("https://example.com").is_err());
         assert!(station_api_docs_url("http://127.0.0.1:3141/other").is_err());
+    }
+
+    #[test]
+    fn carries_the_docs_capability_in_the_fragment_and_never_the_query() {
+        let launch = station_api_docs_url("http://127.0.0.1:3141").unwrap();
+        let url = api_docs_launch_url_with_capability(&launch, "abc-DEF_123").unwrap();
+        assert_eq!(
+            url,
+            "http://127.0.0.1:3141/.well-known/station/v1/pairing/api-docs#station-ui-bootstrap=abc-DEF_123"
+        );
+        // A fragment is never sent to the server. A query string would be, and
+        // Station refuses query-parameter credentials outright -- which also
+        // records a rate-limiter failure against the user's own browser.
+        assert!(!url.contains('?'));
+        let (before_fragment, _) = url.split_once('#').unwrap();
+        assert!(!before_fragment.contains("abc-DEF_123"));
+    }
+
+    #[test]
+    fn refuses_a_capability_that_could_alter_the_url() {
+        let launch = station_api_docs_url("http://127.0.0.1:3141").unwrap();
+        for hostile in [
+            "",
+            "tok en",
+            "tok#en",
+            "tok?en",
+            "tok&next=https://evil.test",
+            "../../evil",
+        ] {
+            assert!(
+                api_docs_launch_url_with_capability(&launch, hostile).is_err(),
+                "expected {hostile:?} to be refused"
+            );
+        }
+        // A wedged or hostile listener holding the port must not be able to
+        // hand the tray an unbounded string to carry into a URL. The real
+        // value is 43 characters.
+        let oversized = "a".repeat(MAX_API_DOCS_CAPABILITY_LEN + 1);
+        assert!(api_docs_launch_url_with_capability(&launch, &oversized).is_err());
+        assert!(
+            api_docs_launch_url_with_capability(&launch, &"a".repeat(43)).is_ok(),
+            "a real 43-character capability must still be accepted"
+        );
+    }
+
+    #[test]
+    fn refuses_an_oversized_mint_response_instead_of_truncating_it() {
+        // The case a capped read alone would have accepted: a valid token
+        // followed by enough padding to exceed the limit. Truncation leaves
+        // `{"token":"…"}` plus whitespace, which parses cleanly -- so the
+        // response would have been used while the code looked like it had
+        // bounded it.
+        let token = "a".repeat(43);
+        let body = format!("{{\"token\":\"{token}\"}}");
+        let padded = format!(
+            "{body}{}",
+            " ".repeat(MAX_API_DOCS_MINT_RESPONSE_BYTES + 1)
+        );
+        assert!(
+            read_bounded(padded.as_bytes(), MAX_API_DOCS_MINT_RESPONSE_BYTES).is_err(),
+            "an oversized body must be refused, not silently cut down to valid JSON"
+        );
+
+        // The ordinary response still round-trips, and exactly at the limit is
+        // still admissible -- the bound must not be off by one against a real
+        // reply.
+        assert_eq!(
+            read_bounded(body.as_bytes(), MAX_API_DOCS_MINT_RESPONSE_BYTES).unwrap(),
+            body
+        );
+        let exact = "b".repeat(MAX_API_DOCS_MINT_RESPONSE_BYTES);
+        assert_eq!(
+            read_bounded(exact.as_bytes(), MAX_API_DOCS_MINT_RESPONSE_BYTES).unwrap(),
+            exact
+        );
     }
 
     #[test]

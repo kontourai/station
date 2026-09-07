@@ -797,6 +797,7 @@ describe('the Station Agent cannot be rebound through the API', () => {
     expect(response.status).toBe(409);
     const body = await json(response);
     expect(body.success).toBe(false);
+    expect(body.code).toBe('STATION_ENGINE_IS_APP_SETTING');
     expect(body.error).toContain(STATION_SETTING);
     expect(body.error).toContain('Settings');
     // The refused write never reached persistence at all.
@@ -819,7 +820,9 @@ describe('the Station Agent cannot be rebound through the API', () => {
     });
 
     expect(response.status).toBe(409);
-    expect((await json(response)).error).toContain(STATION_SETTING);
+    const body = await json(response);
+    expect(body.code).toBe('STATION_ENGINE_IS_APP_SETTING');
+    expect(body.error).toContain(STATION_SETTING);
     expect(configLoader.createAgent).not.toHaveBeenCalled();
   });
 

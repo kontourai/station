@@ -58,7 +58,12 @@ export const ENUMERATING_OPENAI_COMPAT_HOSTS: readonly string[] = [
  * `https://user@api.openai.com/v1` would otherwise compare equal while
  * naming a credentialled endpoint the list says nothing about.
  */
-function recognisedOrigin(baseUrl: string): string | null {
+/**
+ * The origin a base URL names, or null when Station cannot vouch for it.
+ * Exported so route identity (model-inventory.ts) and catalogue semantics
+ * agree on what counts as the same endpoint.
+ */
+export function recognisedOpenAICompatOrigin(baseUrl: string): string | null {
   const trimmed = baseUrl.trim();
   if (!trimmed) return null;
   let url: URL;
@@ -82,7 +87,7 @@ function recognisedOrigin(baseUrl: string): string | null {
 export function openAICompatCatalogSemantics(
   baseUrl: string | undefined,
 ): OpenAICompatCatalogSemantics {
-  const origin = recognisedOrigin(baseUrl ?? '');
+  const origin = recognisedOpenAICompatOrigin(baseUrl ?? '');
   if (!origin) return 'no-catalog';
   return ENUMERATING_OPENAI_COMPAT_HOSTS.some(
     (host) => origin === `https://${host}`,

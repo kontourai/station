@@ -67,9 +67,10 @@ model always (review found what verification could not, on every branch).
 
 ### A red proves nothing until you read it — and neither does a green
 
-An uncaught injection is one failure mode. A *caught* one has five, and a sixth
-turns the same mechanism into a false green. Every one of them satisfies a
-sentinel. All six were observed live:
+An uncaught injection is one failure mode. A *caught* one has five, and two
+more turn the same mechanism into a false green — one where the subject never
+ran, one where it was never in the corpus. Every one of them satisfies a
+sentinel. All seven were observed live:
 
 1. **The patch never applied.** The transform error surfaces as a failure and
    reads as a catch. Confirm the injection is in the file (`grep`) before
@@ -106,8 +107,19 @@ sentinel. All six were observed live:
    at all. When the same gate later ran in a proper worktree, it did fail — but
    the first red was worth nothing, and believing it would have attributed
    someone else's break to the wrong cause.
+7. **The green was about a corpus that did not contain the subject.** (6)'s
+   mirror, and the same `git ls-files` from the other side: a gate scoped that
+   way cannot see an untracked file, so on any change that ADDS one, a
+   pre-`git add` green is evidence about a corpus the new file was not in.
+   `scripts/mobile-css-ratchet.mjs` was reported green on a new stylesheet and
+   was red the moment it was staged — same bytes, PASS untracked and FAIL
+   tracked. What makes this one dangerous is the contrast with its neighbours:
+   `verification:policy:gate` announces its own blindness (`include non-tracked
+   test file`) while the ratchet is simply silent, so silence read as success.
+   **Run `git ls-files`-scoped gates after staging**, and treat any gate that
+   discovers its own inputs as unrun until its subject is in the index.
 
-The rule that covers all six: **read the output, not the colour** — including
+The rule that covers all seven: **read the output, not the colour** — including
 when the colour is green.
 
 ### A count is not a reading
@@ -283,9 +295,13 @@ and the `failingStep` field are scoped to the step whose npm-run boundary is
 last — but npm writes those boundaries to **stdout only**, while biome and tsc
 write diagnostics to **stderr**. So the two streams are handled separately:
 stdout is genuinely attributable to the failing step, and a candidate found
-there always wins. Stderr carries no step markers at all, so it is ranked
+there always wins. Stderr usually carries no step markers, so it is ranked
 rather than attributed — searched from the end, because the chain
-short-circuits and the failing step's stderr is the tail.
+short-circuits and the failing step's stderr is the tail. The exception is a
+completion lane's parent capture, which folds every phase's output behind a
+`[completion:<phase-id>]` marker: that shape IS attributable, and because the
+phase sequence stops at the first non-passing phase, the failing phase is
+always the last region.
 
 When the excerpt came from stderr the receipt says so, in `causeStream`. Its
 **absence is the stronger claim**: the excerpt was scoped to the step that
@@ -364,6 +380,28 @@ Per `local-merge-readiness.md`, extended by measured practice:
   before any check; Node 24 via an explicit PATH (the ambient node may be
   22.x and engine-strict will refuse); **never `git stash` anywhere** (the
   stash stack is shared across all worktrees of this repo).
+- **Nothing runs for the first time on `main`: a main-only lane's inputs get
+  a dispatch proof before merge.** Some workflows never run on pull requests
+  by design (container smoke: `if: github.event_name != 'pull_request'`), so
+  a green PR proves nothing about them and `main` is where their failures are
+  discovered. Measured: the 390px pairing test had **never once passed in the
+  container harness** — its premise was only ever supplied by the e2e runner —
+  and it surfaced as a two-day `main` red the moment an unrelated docker fix
+  unmasked it (#917), starving a sibling required lane's capacity the whole
+  time (#925). The rule: a change touching the test files, harness scripts,
+  or workflow of a main-only lane runs that lane once via `workflow_dispatch`
+  on the branch, and the PR cites the run. The lane must also upload its
+  failure artifacts (`if: failure()`) — #917's investigation had zero
+  artifacts to read, which is why the misdiagnosis ("hosted-runner
+  environment") survived long enough to be baked into a workflow comment.
+  Caveat, measured the same day: self-hosted runner **groups** carry
+  ref-pinned workflow allowlists (`workflow.yml@refs/heads/main`), so a
+  branch-ref dispatch of a fleet-bound lane is structurally unassignable — it
+  queues forever against healthy idle runners with no error anywhere. The
+  proof run for #917 needed a temporary allowlist entry for the branch ref
+  (added via the runner-groups API, removed after the run). Budget that step,
+  and remove the entry immediately — a standing branch-ref entry is a
+  standing invitation to run unreviewed workflow code on the fleet.
 - **A squash merge leaves no ancestry, so an absorbed branch looks unmerged.**
   A branch sat "unmerged" for hours after its content squash-landed under a
   different PR. Before re-applying anything, merge `origin/main` in and
@@ -373,8 +411,64 @@ Per `local-merge-readiness.md`, extended by measured practice:
   `cd <worktree> && git merge` whose `cd` failed ran the merge in the primary
   checkout. It was harmless by luck. Use `git -C <path>`, or verify the branch
   before any write.
+- **`autoMergeRequest: null` does not mean "not armed".** It is the union of
+  *never armed* and *already queued* — arming appears to be consumed when a PR
+  enters the merge queue. Measured in one evening: #992 and #1059 both read
+  null while `isInMergeQueue` was true, and #1103 read non-null while it was
+  false. So the field alone can never tell you which state you are in. Read
+  three things together, via GraphQL because REST does not expose the first:
+
+  ```
+  gh api graphql -f query='query{repository(owner:"kontourai",name:"station"){
+    pullRequests(states:OPEN,first:60){nodes{number isInMergeQueue mergeStateStatus
+    autoMergeRequest{enabledAt}}}}}'
+  ```
+
+  `armed=N` + `isInMergeQueue=true` is **queued and moving** — leave it alone.
+  `armed=N` + `isInMergeQueue=false` + `CLEAN` is **ready and stuck** — nothing
+  will ever merge it. The failure is asymmetric, which is why it is worth
+  writing down: re-arming a queued PR is a loud no-op, while leaving a stuck
+  one costs a PR that sits ready and unnoticed. Three sessions each misread it
+  the same way on the same day, two of them one field short of a redundant
+  re-arm. (Not established: whether a PR can be armed and queued at once — do
+  not assume the states are exclusive.)
 - **Never hand a directory to a formatter.** `biome check --write docs`
   reformatted 32 checked-in evidence files in one command.
+- **Resolving a measured ceiling: attribution, not direction.** Files like
+  `scripts/ui-bundle-budget.json` and `scripts/mobile-css-baseline.json` carry a
+  number that several lanes edit, and a merge conflict there cannot be resolved
+  by taking a side — neither side describes the merged tree. The
+  `ui-bundle-budget.json` merge driver writes a *provisional* value (the
+  higher of each field; a driver runs before the merged tree exists, so it
+  cannot measure it — station#1107). Rebuild, measure, and then decide by
+  **what you can attribute to your own diff**:
+
+  - **Your measurement exceeds main's ceiling** → raise to your measurement.
+    Forced; your change costs those bytes.
+  - **Your measurement is lower and you cannot say why** → keep **main's**.
+    That gap is slack someone else already recorded (the build is
+    deterministic — three independent re-measurements of one merge agreed to
+    the byte — but the gate only fails on *exceeds*, so an over-recorded
+    ceiling enters main unchallenged), and banking it as a ceiling leaves every
+    in-flight lane failing against a number main had already sanctioned, for no
+    gain.
+  - **Your measurement is lower and you can point at the cause** → tighten to
+    your measurement, and say in the commit what produced the reduction
+    (an import moved out of the eager chunk; a deleted effect). A real
+    reduction that is not banked is headroom the next lane inherits and spends
+    silently.
+
+  The gate fails only on EXCEEDS, so a ceiling is a permission to grow rather
+  than a claim about the tree. That is why an unattributed lowering is a cost
+  with no benefit and an unattributed raise is a silent loosening — the same
+  error in opposite directions. "Always take the higher" is safe but turns the
+  ratchet into a one-way valve; "always take my measurement" squeezes every
+  other lane with your drift. Both were tried on `fix/923-chrome` across five
+  passes before this rule settled it.
+
+  Verify by building, not by arithmetic: a ceiling adopted without a build is a
+  number, not a measurement.
+
 - **A repo-wide count-ratchet fails on whoever gates next, not on whoever
   caused it.** The signal is real and worth keeping, but it misattributes by
   design, and the path of least resistance under deadline is to raise the
@@ -385,9 +479,28 @@ Per `local-merge-readiness.md`, extended by measured practice:
   `git checkout <sha> -- <dir>` does not delete files newer than that commit,
   so it reads the same count everywhere.
 
-### 5.1 Hosted CI is unavailable through 2026-09-01 (owner decision)
+### 5.1 The hosted-CI outage has ENDED — this section's authorizations are retired
 
-GitHub Actions is in an account-level billing outage. Jobs terminate in
+**Status as of 2026-08-31 22:00Z: hosted CI is executing normally.** Observed
+directly rather than assumed: a 12m59s `Windows PR portable floor` and a 9m58s
+`CodeQL` run on #1058, `merge_group` builds completing per entry, and thirteen
+pull requests merged through the queue in one evening.
+
+So the two standing authorizations below are **withdrawn**:
+
+- **Do NOT merge on local `ci:fast` alone.** Required checks run and are the
+  arbiter again. Local evidence supplements them; it no longer replaces them.
+- **`gh pr checks` reporting nothing now means something is wrong**, not that
+  the outage is swallowing it. Investigate rather than proceeding.
+
+The rest of this section is retained as the historical record of the outage and
+of what it cost, because the failure mode it documents — absence of signal
+rendering identically to success — recurs whenever a gate is skipped, path-
+filtered, or unselected, and that has not gone away. See §5.2.
+
+**The original entry, for the record:**
+
+GitHub Actions was in an account-level billing outage. Jobs terminate in
 seconds having executed **zero steps**, with the annotation "The job was not
 started because recent account payments have failed or your spending limit
 needs to be increased." The owner has decided not to clear it before

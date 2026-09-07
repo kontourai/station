@@ -167,16 +167,12 @@ export function AgentEditorStartingPoints({
       </p>
       <div className="template-grid">
         <button type="button" className="template-card" onClick={onStartModel}>
-          <strong>Chat with a model</strong>
-          <small>
-            Station’s own engine runs it on a Model connection you choose.
-          </small>
+          <strong>Run it on Station</strong>
+          <small>Station’s own engine runs it on a model you choose.</small>
         </button>
         <button type="button" className="template-card" onClick={onStartCli}>
-          <strong>Wrap an installed agent CLI</strong>
-          <small>
-            Claude Code, Codex or another CLI on this machine runs itself.
-          </small>
+          <strong>Run it on another engine</strong>
+          <small>Claude Code, Codex or another engine on this machine.</small>
         </button>
         <button
           type="button"

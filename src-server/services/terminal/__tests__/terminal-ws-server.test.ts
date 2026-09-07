@@ -1,6 +1,8 @@
 import { once } from 'node:events';
+import { terminalPtyUnavailableReason } from '@kontourai/station-shared/terminal-capability';
 import { describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
+import { PtyUnavailableError } from '../../../domain/pty-adapter.js';
 import { TerminalWebSocketServer } from '../terminal-ws-server.js';
 
 const TEST_CREDENTIAL = 'terminal-test-credential-not-for-production';
@@ -466,6 +468,42 @@ describe('terminal websocket remote authentication', () => {
     );
     expect(message).not.toContain('provider.example');
     expect(message).not.toContain('token=secret');
+    expect(message).not.toContain('/Users/operator');
+  });
+
+  it('reports the specific degraded-terminal reason when the PTY backend is unavailable (#1244)', async () => {
+    const service = {
+      subscribe: vi.fn(() => vi.fn()),
+      open: vi.fn(async () => {
+        // The adapter's error carries a dynamic loader cause; only the
+        // product-owned constant text may cross the socket.
+        throw new PtyUnavailableError(
+          'node-pty failed to load. Rebuild it. (cause: Failed to load native module from /Users/operator/checkout)',
+        );
+      }),
+      close: vi.fn(),
+    };
+    const terminal = new TerminalWebSocketServer(service as any);
+    const { port, wss } = await listeningPort(terminal);
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+    await once(ws, 'open');
+    const response = once(ws, 'message');
+    ws.send(JSON.stringify({ type: 'open', cwd: '/tmp' }));
+    const [raw] = await response;
+
+    ws.close();
+    await once(ws, 'close');
+    await closeServer(terminal, wss);
+    const message = raw.toString();
+    expect(JSON.parse(message)).toEqual(
+      expect.objectContaining({
+        type: 'error',
+        code: 'terminal-unavailable',
+        message: terminalPtyUnavailableReason(),
+        correlationId: expect.any(String),
+      }),
+    );
+    // Outward doctrine still holds: the dynamic loader cause stays server-side.
     expect(message).not.toContain('/Users/operator');
   });
 

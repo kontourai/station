@@ -10,13 +10,13 @@ default:
 # Install the lockfile-pinned Node dependency tree.
 [unix]
 setup:
-    npm ci
+    npm run dependencies:ci
 
 # Install the lockfile-pinned Node dependency tree.
 [windows]
 [script("cmd.exe", "/D", "/E:ON", "/V:OFF", "/C")]
 setup:
-    @call npm ci
+    @call npm run dependencies:ci
     @exit /b %ERRORLEVEL%
 
 # Report Station readiness through the repository CLI.

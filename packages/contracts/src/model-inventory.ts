@@ -1,3 +1,4 @@
+import { recognisedOpenAICompatOrigin } from './openai-compat-catalog-semantics.js';
 export interface ModelInventoryComponentIdentity {
   id: string;
   version: string | null;
@@ -37,6 +38,8 @@ export interface LaunchableModelRecord {
   model: ModelInventoryModelIdentity;
   /** Exact provider-native model id used at invocation time. */
   providerModel: string;
+  /** Exact-match identity from the reviewed cross-connection map, when known. */
+  canonicalModelIdentity?: CanonicalModelIdentityReference;
   /** Explicit selectors reported for the same provider-native model id. */
   aliases: string[];
   displayName: string;
@@ -48,6 +51,119 @@ export interface LaunchableModelRecord {
   /** null is unknown; an empty array is known-empty. */
   toolSurface: string[] | null;
   supportsVision: boolean | null;
+}
+
+export interface CanonicalModelIdentityReference {
+  canonicalId: string;
+  /** Human-readable review anchor; this is not a live discovery timestamp. */
+  verifiedAgainst: string;
+}
+
+/**
+ * Which kind of route a provider-native id is native TO. A model id is only
+ * meaningful together with the route that issued it: `sonnet` is Claude Sonnet
+ * 4.5 on the Claude Code engine and nothing in particular anywhere else, so an
+ * OpenAI-compatible endpoint that happens to expose a model called `sonnet`
+ * must not inherit that identity. The reviewed fact is (family, id), never id
+ * alone -- review round on #1208.
+ */
+export type ModelRouteFamily =
+  | 'anthropic'
+  | 'bedrock'
+  | 'claude'
+  | 'openrouter';
+
+export interface CuratedModelRoute {
+  family: ModelRouteFamily;
+  /** Compared as an opaque, exact string within its family. */
+  providerModel: string;
+}
+
+export interface CuratedModelIdentity {
+  canonicalId: string;
+  displayName: string;
+  verifiedAgainst: string;
+  routes: readonly CuratedModelRoute[];
+}
+
+/**
+ * Reviewed data only. Do not derive entries from names, prefixes, or model
+ * metadata. An omitted route is intentionally unrecognised.
+ */
+export const CURATED_MODEL_IDENTITIES: readonly CuratedModelIdentity[] = [
+  {
+    canonicalId: 'anthropic:claude-sonnet-4-5',
+    displayName: 'Claude Sonnet 4.5',
+    verifiedAgainst: 'Anthropic model documentation, reviewed 2026-08-31',
+    routes: [
+      { family: 'claude', providerModel: 'sonnet' },
+      { family: 'bedrock', providerModel: 'anthropic.claude-sonnet-4-5-v1:0' },
+      { family: 'openrouter', providerModel: 'anthropic/claude-sonnet-4.5' },
+      { family: 'anthropic', providerModel: 'claude-sonnet-4-5' },
+    ],
+  },
+];
+
+/**
+ * The route family a connection issues model ids for, or undefined when
+ * Station cannot say. Derived from the connection's own type and, for an
+ * OpenAI-compatible endpoint, the exact origin it points at -- never from a
+ * model's name. A connection this cannot classify contributes no identity,
+ * which degrades to an ungrouped row rather than to a guess.
+ */
+export function modelRouteFamilyFor(connection: {
+  type: string;
+  config?: Record<string, unknown> | null;
+}): ModelRouteFamily | undefined {
+  switch (connection.type) {
+    case 'anthropic':
+    case 'bedrock':
+    case 'claude':
+      return connection.type;
+    case 'openai-compat': {
+      const baseUrl = connection.config?.baseUrl;
+      if (typeof baseUrl !== 'string') return undefined;
+      return recognisedOpenAICompatOrigin(baseUrl) === 'https://openrouter.ai'
+        ? 'openrouter'
+        : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+export function curatedModelIdentityFor(route: {
+  family: ModelRouteFamily | undefined;
+  providerModel: string;
+}): CanonicalModelIdentityReference | undefined {
+  if (!route.family) return undefined;
+  const identity = CURATED_MODEL_IDENTITIES.find((candidate) =>
+    candidate.routes.some(
+      (known) =>
+        known.family === route.family &&
+        known.providerModel === route.providerModel,
+    ),
+  );
+  return identity
+    ? {
+        canonicalId: identity.canonicalId,
+        verifiedAgainst: identity.verifiedAgainst,
+      }
+    : undefined;
+}
+
+/**
+ * The reviewed entry behind a canonical id, for surfaces that group routes and
+ * need a name for the group. The name is reviewed data, never derived from a
+ * route's own label -- two routes for one model often disagree about what to
+ * call it, and picking one route's name silently privileges that provider.
+ */
+export function curatedModelIdentityByCanonicalId(
+  canonicalId: string,
+): CuratedModelIdentity | undefined {
+  return CURATED_MODEL_IDENTITIES.find(
+    (candidate) => candidate.canonicalId === canonicalId,
+  );
 }
 
 export type ModelInventoryDiagnosticCode =
@@ -128,4 +244,74 @@ export function describeConnectionInventoryFailures(
   return failures.length === 1
     ? `A ${kind} connection could not be read — ${detail}`
     : `${failures.length} ${kind} connections could not be read — ${detail}`;
+}
+
+/**
+ * One prompt-token threshold in a route's schedule, with the rates that apply
+ * at or above it. Rates are `null` on the same terms as the base figures: the
+ * source stated none, which is not a price of zero.
+ */
+export interface RoutePricingTier {
+  abovePromptTokens: number;
+  promptUsdPerMillionTokens: number | null;
+  completionUsdPerMillionTokens: number | null;
+}
+
+/**
+ * A price quoted for THIS route by the service that routes it (#949, #1127).
+ *
+ * Never borrowed from a sibling route, never averaged, never matched by name:
+ * a direct Anthropic route and an OpenRouter route for the same model are two
+ * routes with two prices, and only the OpenRouter one has a source Station
+ * can cite. `source` and `attributionUrl` are part of the value because the
+ * figure is only honest with its provenance attached -- OpenRouter's own
+ * documentation says its facts describe OpenRouter routing and may differ
+ * from direct-provider rates. Absent means unpriced, which surfaces must
+ * render as nothing rather than as zero.
+ */
+export interface RoutePricingReference {
+  source: 'openrouter';
+  attributionUrl: string;
+  /**
+   * USD per 1,000,000 prompt tokens at the source's BASE rate, or null when
+   * the source stated none. Normalised to fifteen significant digits, which
+   * removes the artefacts of scaling a decimal to per-million while keeping
+   * far more precision than the source quotes -- no figure is truncated, and
+   * no non-zero price can round to zero. See `promptTokenTiers`: this is the
+   * whole price only when that list is empty.
+   */
+  promptUsdPerMillionTokens: number | null;
+  /**
+   * USD per 1,000,000 completion tokens at the source's BASE rate, or null
+   * when the source stated none. Same normalisation and same tiering caveat
+   * as `promptUsdPerMillionTokens`.
+   */
+  completionUsdPerMillionTokens: number | null;
+  /**
+   * Rate changes the source quotes above a prompt-token threshold, lowest
+   * threshold first. Empty when the source quotes one prompt-token rate for
+   * this route at every size.
+   *
+   * A tiered schedule published as a single figure is this type's own defect
+   * class one level up: not a sibling route's price, but one tier of a
+   * schedule presented as the whole schedule. The route Station prices today
+   * doubles its prompt rate above 200,000 tokens, so a surface that renders
+   * the base figure unqualified is wrong for a routine long-context turn.
+   * Surfaces must qualify the base figures whenever this is non-empty.
+   *
+   * Each tier carries its own rates rather than a direction, because a
+   * threshold is not always an increase: a volume DISCOUNT has the same
+   * shape, and a field asserting "higher" would be a label derived from
+   * nothing but today's data. Render the numbers, not an adjective.
+   *
+   * This describes prompt-token thresholds ONLY. A source may vary a route's
+   * price on other dimensions -- OpenRouter also publishes time-of-day
+   * schedules -- and empty here does not deny those. It says there is no
+   * prompt-token tier, which is all that is derived.
+   */
+  promptTokenTiers: readonly RoutePricingTier[];
+  /** When the source was read; the reference is only as current as this. */
+  observedAt: string;
+  /** After this instant the figure must not be shown; null when unbounded. */
+  validUntil: string | null;
 }

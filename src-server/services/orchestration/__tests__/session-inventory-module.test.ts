@@ -457,6 +457,63 @@ describe('SessionInventoryModule', () => {
     ]);
     expect(JSON.stringify(result.projection)).not.toContain('never returned');
   });
+  // station#1558 (fix round, M4): `ThreadToolResultRow.terminalStatus` is a
+  // published, exactly-validated vocabulary of outcomes Station observed. An
+  // unresolved completion is not one of them, and the old else-branch would
+  // have published it as `cancelled` — a stop nobody asked for.
+  test('publishes no tool-result row for an unresolved completion rather than calling it cancelled', async () => {
+    const module = createSessionInventoryModule({
+      sessionOutputs: {
+        list: vi.fn().mockResolvedValue({
+          status: 'found',
+          page: { version: 'session-outputs/v1', items: [], partial: false },
+        }),
+      } as never,
+      canReadSession: () => true,
+      readWholeSessionEvents: () => ({
+        events: [
+          {
+            id: 'tool-done',
+            payload: {
+              method: 'tool.completed',
+              turnId: 'turn-a',
+              toolCallId: 'call-done',
+              toolName: 'shell',
+              status: 'success',
+            },
+          },
+          {
+            id: 'tool-open',
+            payload: {
+              method: 'tool.completed',
+              turnId: 'turn-a',
+              toolCallId: 'call-open',
+              toolName: 'shell',
+              status: 'unresolved',
+            },
+          },
+        ] as never,
+        highWater: 2,
+      }),
+    });
+    const result = await module.read({
+      scope: { kind: 'whole-session', sessionId: 'session-a' },
+      authority,
+      current: () => true,
+    });
+    expect(result.status).toBe('found');
+    if (result.status !== 'found') throw new Error('expected projection');
+    const execution = result.projection.groups.find(
+      (group) => group.id === 'execution',
+    );
+    // The observed one is published; the unresolved one is absent entirely,
+    // and above all is not published as `cancelled`.
+    expect(execution?.items).toMatchObject([
+      { eventId: 'tool-done', terminalStatus: 'succeeded' },
+    ]);
+    expect(JSON.stringify(execution)).not.toContain('call-open');
+    expect(JSON.stringify(execution)).not.toContain('cancelled');
+  });
   test('pages folded groups from an authenticated stable high-water without duplicates', async () => {
     const issued = new Map<string, any>();
     let serial = 0;

@@ -13,9 +13,16 @@ import {
 } from './release-cohort.mjs';
 
 const REPOSITORY = 'kontourai/station';
+/** The publishing phase: runs this verifier and signs the final receipt. */
 const NIGHTLY_WORKFLOW = `${REPOSITORY}/.github/workflows/nightly-native-cohort.yml`;
+/**
+ * The staging phase (#1453): builds and attests every staged artifact byte
+ * before the full-regression receipt exists, so staged-bytes provenance is
+ * signed by this workflow identity, never by the publishing phase.
+ */
+const NIGHTLY_STAGE_WORKFLOW = `${REPOSITORY}/.github/workflows/nightly-native-stage.yml`;
 const NIGHTLY_SOURCE_REF = 'refs/heads/main';
-const NIGHTLY_CERT_IDENTITY = `https://github.com/${NIGHTLY_WORKFLOW}@${NIGHTLY_SOURCE_REF}`;
+const NIGHTLY_CERT_IDENTITY = `https://github.com/${NIGHTLY_STAGE_WORKFLOW}@${NIGHTLY_SOURCE_REF}`;
 const OIDC_ISSUER = 'https://token.actions.githubusercontent.com';
 const SHA256 = /^[a-f0-9]{64}$/;
 const PLAY_ADAPTER = resolve(
@@ -62,6 +69,26 @@ function jsonOutput(result, label) {
     fail(`${label} returned malformed JSON`);
   }
 }
+/**
+ * The workflow half of a verified certificate SAN
+ * (`https://github.com/<owner>/<repo>/<workflow path>@<ref>`). The SAN was
+ * already matched against the expected identity, so this can only ever name
+ * the staging workflow; it is read from the certificate rather than restated
+ * so the receipt carries what was verified, and it fails closed if the SAN
+ * ever stops having the shape the strip expects.
+ */
+export function signerWorkflowOf(subjectAlternativeName) {
+  const prefix = 'https://github.com/';
+  const suffix = `@${NIGHTLY_SOURCE_REF}`;
+  if (
+    typeof subjectAlternativeName !== 'string' ||
+    !subjectAlternativeName.startsWith(prefix) ||
+    !subjectAlternativeName.endsWith(suffix)
+  )
+    fail('attestation certificate identity is not a main-ref workflow');
+  return subjectAlternativeName.slice(prefix.length, -suffix.length);
+}
+
 export function ghAttestationArgs(path, sourceSha) {
   return [
     'attestation',
@@ -144,7 +171,11 @@ export function parseVerifiedAttestation(
   const entry = matching[0];
   return {
     repository: REPOSITORY,
-    signerWorkflow: NIGHTLY_WORKFLOW,
+    // Read from the verified certificate rather than restated from the
+    // constant the match above was made against.
+    signerWorkflow: signerWorkflowOf(
+      entry.verificationResult.signature.certificate.subjectAlternativeName,
+    ),
     sourceRef: NIGHTLY_SOURCE_REF,
     sourceSha,
     oidcIssuer: OIDC_ISSUER,
@@ -246,23 +277,38 @@ export function assertNightlyVersionRelationship(identities) {
 
 export function parseAndroidManifestIdentity(manifest) {
   if (typeof manifest !== 'string')
-    fail('apkanalyzer manifest output is invalid');
+    fail('bundletool manifest output is invalid');
   const packageName = /\bpackage="([^"]+)"/.exec(manifest)?.[1];
   const versionCode = /\bandroid:versionCode="([0-9]+)"/.exec(manifest)?.[1];
   const versionName = /\bandroid:versionName="([^"]+)"/.exec(manifest)?.[1];
   if (!packageName || !versionCode || !versionName)
-    fail('apkanalyzer manifest lacks package/version identity');
+    fail('bundletool manifest lacks package/version identity');
   return { packageName, versionCode: Number(versionCode), versionName };
 }
-function verifyAndroidAabIdentity(path, identity, apkanalyzer) {
+export function verifyAndroidAabIdentity(
+  path,
+  identity,
+  bundletool,
+  run = defaultSpawnSync,
+) {
   const outputText = output(
-    defaultSpawnSync(apkanalyzer.apkanalyzerPath, ['manifest', 'print', path], {
-      encoding: 'utf8',
-      shell: false,
-      windowsHide: true,
-      timeout: 60_000,
-    }),
-    'apkanalyzer Android identity verification',
+    run(
+      'java',
+      [
+        '-jar',
+        bundletool.bundletoolPath,
+        'dump',
+        'manifest',
+        `--bundle=${path}`,
+      ],
+      {
+        encoding: 'utf8',
+        shell: false,
+        windowsHide: true,
+        timeout: 60_000,
+      },
+    ),
+    'bundletool Android identity verification',
   );
   const observed = parseAndroidManifestIdentity(outputText);
   if (canonicalJson(observed) !== canonicalJson(identity))
@@ -291,13 +337,19 @@ export function parseMacosInfoPlist(json) {
     CFBundleVersion: value.CFBundleVersion,
   };
 }
-function verifyMacosArchive(path, identity) {
-  if (process.platform !== 'darwin')
+export function verifyMacosArchive(
+  path,
+  identity,
+  { run = defaultSpawnSync, platform = process.platform } = {},
+) {
+  if (platform !== 'darwin')
     fail(
       'macOS archive verification requires a protected macOS verifier runner',
     );
   const listing = output(
-    defaultSpawnSync('tar', ['-tzf', path], {
+    run('tar', ['-tzf', path], {
+      // The shipped bundle lists ~7 MiB of paths and ~10 MiB of metadata.
+      maxBuffer: 32 * 1024 * 1024,
       encoding: 'utf8',
       shell: false,
       windowsHide: true,
@@ -308,7 +360,8 @@ function verifyMacosArchive(path, identity) {
     .split('\n')
     .filter(Boolean);
   const verbose = output(
-    defaultSpawnSync('tar', ['-tvzf', path], {
+    run('tar', ['-tvzf', path], {
+      maxBuffer: 32 * 1024 * 1024,
       encoding: 'utf8',
       shell: false,
       windowsHide: true,
@@ -336,7 +389,7 @@ function verifyMacosArchive(path, identity) {
   if (plists.length !== 1)
     fail('macOS updater archive must contain exactly one app Info.plist');
   const plist = output(
-    defaultSpawnSync('tar', ['-xOzf', path, '--', plists[0]], {
+    run('tar', ['-xOzf', path, '--', plists[0]], {
       encoding: 'buffer',
       shell: false,
       windowsHide: true,
@@ -347,17 +400,13 @@ function verifyMacosArchive(path, identity) {
   if (!plist.trim()) fail('macOS updater archive Info.plist is empty');
   const parsed = parseMacosInfoPlist(
     output(
-      defaultSpawnSync(
-        '/usr/bin/plutil',
-        ['-convert', 'json', '-o', '-', '-'],
-        {
-          encoding: 'utf8',
-          input: plist,
-          shell: false,
-          windowsHide: true,
-          timeout: 30_000,
-        },
-      ),
+      run('/usr/bin/plutil', ['-convert', 'json', '-o', '-', '-'], {
+        encoding: 'utf8',
+        input: plist,
+        shell: false,
+        windowsHide: true,
+        timeout: 30_000,
+      }),
       'plutil Info.plist conversion',
     ),
   );
@@ -589,20 +638,18 @@ function ghVersion(runner) {
 function protectedVerifierToolVersions() {
   if (process.platform !== 'darwin')
     fail('protected release-cohort verification requires macOS');
-  const apkanalyzerPath = process.env.STATION_APKANALYZER_PATH;
-  const expectedApkanalyzerVersion = process.env.STATION_APKANALYZER_VERSION;
-  if (!apkanalyzerPath || !expectedApkanalyzerVersion)
-    fail(
-      'STATION_APKANALYZER_PATH and STATION_APKANALYZER_VERSION are required',
-    );
-  const apkanalyzer = output(
-    defaultSpawnSync(apkanalyzerPath, ['--version'], {
+  const bundletoolPath = process.env.STATION_BUNDLETOOL_PATH;
+  const expectedBundletoolVersion = process.env.STATION_BUNDLETOOL_VERSION;
+  if (!bundletoolPath || !expectedBundletoolVersion)
+    fail('STATION_BUNDLETOOL_PATH and STATION_BUNDLETOOL_VERSION are required');
+  const bundletool = output(
+    defaultSpawnSync('java', ['-jar', bundletoolPath, 'version'], {
       encoding: 'utf8',
       shell: false,
       windowsHide: true,
       timeout: 30_000,
     }),
-    'apkanalyzer prerequisite',
+    'bundletool prerequisite',
   )
     .trim()
     .split('\n')[0];
@@ -615,11 +662,11 @@ function protectedVerifierToolVersions() {
     }),
     'macOS verifier prerequisite',
   ).trim();
-  if (apkanalyzer !== expectedApkanalyzerVersion || !macos)
+  if (bundletool !== expectedBundletoolVersion || !macos)
     fail(
       'protected verifier prerequisite version does not match its protected identity',
     );
-  return { apkanalyzer, apkanalyzerPath, macos };
+  return { bundletool, bundletoolPath, macos };
 }
 function verifyCandidateObservations(candidateInput, artifactInput) {
   const runner = defaultSpawnSync;

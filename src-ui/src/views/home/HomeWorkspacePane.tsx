@@ -3,7 +3,6 @@ import { createContext, type ReactNode, useContext } from 'react';
 import type { NavigationView } from '../../types';
 import type { BuiltinWorkspacePaneProps } from '../../workspace-panes/builtinWorkspacePaneRegistry';
 import { WorkspacePaneBindingUnavailable } from '../../workspace-panes/WorkspacePaneBindingUnavailable';
-import { WorkspacePaneDockAction } from '../../workspace-panes/WorkspacePaneDockAction';
 import { HomeSurface, type HomeViewModel } from './HomeSurface';
 import type { HomeViewNavigation } from './useHomeViewModel';
 
@@ -66,10 +65,7 @@ export function HomeWorkspacePaneBindingProvider({
  * error with no honest user copy. It renders nothing rather than narrating
  * a state no supported host produces.
  */
-export function HomeWorkspacePane({
-  descriptor,
-  instance,
-}: BuiltinWorkspacePaneProps) {
+export function HomeWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   const binding = useContext(HomeWorkspacePaneContext);
   if (!isCanonicalWorkspaceHomePaneInstance(instance))
     return (
@@ -83,9 +79,6 @@ export function HomeWorkspacePane({
       model={binding.model}
       continuation={binding.continuation}
       onNavigate={binding.onNavigate}
-      topAction={
-        <WorkspacePaneDockAction descriptor={descriptor} instance={instance} />
-      }
     />
   );
 }

@@ -22,6 +22,32 @@ interface HomeActionSectionProps {
   showPrimary?: boolean;
 }
 
+/**
+ * #1582 E5: Home's "Open last project" card named the project by its SLUG
+ * while the sidebar, on the same screen, named the same project by its name.
+ *
+ * A `NavigationView` carries only a slug — it is a route, not a project record
+ * — so the name has to come from the record the catalog already holds, keyed
+ * by that slug. This is the same lookup `HomeSurface`'s `projectOpener` makes,
+ * and `useProjectsQuery` is untyped in the SDK, so the two fields this reads
+ * are named here rather than inferred as `any`.
+ *
+ * The slug remains the answer when no record matches. That is not a cosmetic
+ * fallback: the section renders a skeleton until `projectsQuery` settles
+ * (`actionsLoading`), so an unmatched slug here means the project is gone from
+ * the catalog, and the slug is then the only handle anything has on it.
+ */
+export function continuationProjectLabel(
+  continuation: HomeViewNavigation,
+  projects: { slug: string; name?: string }[] | undefined,
+): string {
+  const slug =
+    continuation.type === 'layout'
+      ? continuation.projectSlug
+      : continuation.slug;
+  return (projects ?? []).find((entry) => entry.slug === slug)?.name || slug;
+}
+
 interface HomeActionCardProps {
   className?: string;
   label: string;
@@ -108,11 +134,7 @@ export function HomeActionSection({
         <HomeActionCard
           className="home-view__action--quiet"
           label="Open last project"
-          title={
-            continuation.type === 'layout'
-              ? continuation.projectSlug
-              : continuation.slug
-          }
+          title={continuationProjectLabel(continuation, model.projects)}
           detail="Resume your previous workspace"
           onClick={() => onNavigate(continuation)}
         />

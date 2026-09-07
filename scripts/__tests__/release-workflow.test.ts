@@ -18,6 +18,7 @@ import {
   createNativeReleaseConfig,
   NATIVE_UPDATER_ARTIFACT_MODE,
 } from '../lib/native-release-config.mjs';
+import { ANCHORE_SBOM_ACTION } from '../release-container-sbom-source.mjs';
 import { cyclonedxComponents } from '../release-sbom-fragments.mjs';
 import {
   FIXTURE_TEST_TIMEOUT_MS,
@@ -45,12 +46,17 @@ const android = readFileSync(
   resolve(root, '.github/workflows/build-android.yml'),
   'utf8',
 );
+// Staged Tauri builds live in the staging phase of the native cohort (#1453).
 const nativeCohort = readFileSync(
-  resolve(root, '.github/workflows/nightly-native-cohort.yml'),
+  resolve(root, '.github/workflows/nightly-native-stage.yml'),
   'utf8',
 );
 const testFlightDelivery = readFileSync(
   resolve(root, '.github/workflows/testflight-delivery.yml'),
+  'utf8',
+);
+const mobileReleaseGuide = readFileSync(
+  resolve(root, 'docs/guides/mobile-release.md'),
   'utf8',
 );
 
@@ -98,7 +104,10 @@ describe('mobile release hardening contract', () => {
     ).toHaveLength(1);
     expect(release.match(/configured=false/g)).toHaveLength(1);
     expect(testFlightDelivery).toContain(
-      'native-update-feed.mjs validate-config',
+      'native-update-feed.mjs write-authority-receipt',
+    );
+    expect(testFlightDelivery).toContain(
+      'TestFlight/App Store owns delivered iOS updates',
     );
     expect(testFlightDelivery).toContain(
       'Missing required protected channel value',
@@ -114,6 +123,250 @@ describe('mobile release hardening contract', () => {
     expect(publish).toContain('NATIVE_APP_UPDATE_PUBLISH_TOKEN');
     expect(mobileFeedTransaction).toContain('native-update-feed.mjs deploy');
     expect(publish).toContain('scripts/publish-mobile-feed-transaction.sh');
+    const publishStep = namedStep(
+      workflowJob(publish, 'publish'),
+      'Publish release and compensate to draft until feed verifies',
+    );
+    expect(publishStep.run).toContain('feed_args=()');
+    expect(publishStep.run).not.toContain(
+      'Missing native update provider credential',
+    );
+    expect(mobileFeedTransaction.indexOf('validate-config')).toBeLessThan(
+      mobileFeedTransaction.indexOf('gh release edit'),
+    );
+    expect(mobileFeedTransaction).toContain('if [[ "$custom_feed" != true ]]');
+    expect(mobileReleaseGuide).toContain(
+      'station-<channel>-ios-testflight-<bundle-version>',
+    );
+  });
+});
+
+describe('frozen stable client-build provenance', () => {
+  it('makes every desktop and Android producer reuse and byte-verify the one preflight manifest', () => {
+    const preflight = workflowJob(release, 'preflight');
+    const create = namedStep(
+      preflight,
+      'Create one immutable native client provenance artifact',
+    );
+    expect(create.run).toContain('release-client-build-provenance.mjs create');
+    expect(create.run).toContain('--source-ref "refs/tags/$RELEASE_TAG"');
+
+    for (const jobName of ['desktop-windows', 'desktop-linux', 'android']) {
+      const job = workflowJob(release, jobName);
+      const downloaded = job.steps?.filter(
+        (step) =>
+          step.uses?.startsWith('actions/download-artifact@') &&
+          step.with?.name ===
+            'station-release-client-build-provenance-$' + '{{ github.run_id }}',
+      );
+      expect(
+        downloaded,
+        `${jobName} must fetch the preflight artifact`,
+      ).toHaveLength(1);
+      expect(downloaded?.[0]?.with?.path).toBe(
+        'release-client-build-provenance',
+      );
+
+      const staged = namedStep(
+        job,
+        'Stage the preflight-bound native client provenance bytes',
+      );
+      expect(staged.run).toContain('release-client-build-provenance.mjs stage');
+      expect(staged.run).toContain('--source-sha "$RELEASE_SHA"');
+      expect(stepIndex(job, staged.name as string)).toBeLessThan(
+        stepIndex(
+          job,
+          jobName === 'android'
+            ? 'Build signed universal APK and AAB'
+            : 'Fail closed and create tag-bound updater configuration',
+        ),
+      );
+    }
+
+    const windows = workflowJob(release, 'desktop-windows');
+    const windowsBuild = windows.steps?.find((step) =>
+      step.uses?.startsWith('tauri-apps/tauri-action@'),
+    );
+    expect(windowsBuild?.env).toMatchObject({
+      STATION_CLIENT_BUILD_REUSE: '1',
+    });
+    expect(
+      namedStep(
+        windows,
+        'Verify Windows Authenticode signature and versioned build output',
+      ).run,
+    ).toContain(
+      'MSI build provenance does not byte-equal the preflight manifest',
+    );
+
+    const linux = workflowJob(release, 'desktop-linux');
+    const linuxBuilds = linux.steps?.filter((step) =>
+      step.uses?.startsWith('tauri-apps/tauri-action@'),
+    );
+    expect(linuxBuilds).toHaveLength(2);
+    for (const build of linuxBuilds ?? []) {
+      expect(build.env).toMatchObject({ STATION_CLIENT_BUILD_REUSE: '1' });
+    }
+    const linuxVerify = namedStep(
+      linux,
+      'Verify every Linux package carries the exact preflight provenance bytes',
+    );
+    expect(linuxVerify.run).toContain('dpkg-deb --fsys-tarfile');
+    expect(linuxVerify.run).toContain('rpm2cpio');
+    expect(linuxVerify.run).toContain('--appimage-extract');
+    expect(
+      linuxVerify.run.match(/release-client-build-provenance\.mjs verify/g),
+    ).toHaveLength(3);
+    const linuxDependencies = linux.steps?.find(
+      (step) =>
+        typeof step.run === 'string' &&
+        step.run.includes('sudo apt-get install -y'),
+    );
+    expect(linuxDependencies?.run).toContain('rpm2cpio cpio');
+
+    const androidJob = workflowJob(release, 'android');
+    const nativeBuild = namedStep(
+      androidJob,
+      'Build signed universal APK and AAB',
+    );
+    expect(nativeBuild.env).toMatchObject({ STATION_CLIENT_BUILD_REUSE: '1' });
+    const androidVerify = namedStep(
+      androidJob,
+      'Verify Play-bound Android archives carry the exact preflight provenance bytes',
+    );
+    expect(
+      androidVerify.run.match(
+        /--expected src-desktop\/station-client-build\.json/g,
+      ),
+    ).toHaveLength(2);
+    expect(stepIndex(androidJob, androidVerify.name as string)).toBeLessThan(
+      stepIndex(androidJob, 'Upload to Play internal testing track'),
+    );
+  });
+
+  it('binds TestFlight provenance to the ref authority checked before signing', () => {
+    const delivery = workflowJob(testFlightDelivery, 'deliver');
+    const source = namedStep(delivery, 'Reconfirm exact frozen source');
+    const stage = namedStep(
+      delivery,
+      'Stage immutable iOS client provenance resource',
+    );
+    expect(source.run).toContain(
+      'echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"',
+    );
+    expect(stage.run).toBe(
+      'STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs',
+    );
+  });
+
+  it('regenerates the Xcode project with the signing template after import and restages provenance before the signed build', () => {
+    const delivery = workflowJob(testFlightDelivery, 'deliver');
+    expectStepOrder(delivery, [
+      'Initialize the channel-specific Xcode project',
+      'Stage immutable iOS client provenance resource',
+      'Import protected signing material bound to this channel',
+      'Regenerate the Xcode project with the manual signing template',
+      'Build signed and channel-audited iOS package',
+    ]);
+    const initialize = namedStep(
+      delivery,
+      'Initialize the channel-specific Xcode project',
+    );
+    expect(initialize.run).toContain('station_iOS/Info.plist');
+    expect(initialize.run).toContain('gen/apple/station_iOS/Info.plist');
+    // The signing template is derived from this spec, and Tauri re-renders
+    // that template on the second init before the preserved manifest exists
+    // again, so the resource must NOT be registered here (Nightly
+    // 33904147780: xcodegen failed on the missing path).
+    expect(initialize.run).not.toContain(
+      'ensure-ios-privacy-manifest-resource.mjs',
+    );
+    const regenerate = namedStep(
+      delivery,
+      'Regenerate the Xcode project with the manual signing template',
+    );
+    const run = regenerate.run as string;
+    expect(regenerate['working-directory']).toBe('src-desktop');
+    expect(run).toContain(
+      'npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json"',
+    );
+    expect(run).toContain(
+      "grep -Fq 'CODE_SIGN_STYLE: Manual' gen/apple/project.yml",
+    );
+    expect(run).toContain(
+      "grep -Fq 'PROVISIONING_PROFILE_SPECIFIER:' gen/apple/project.yml",
+    );
+    expect(run).toContain('station_iOS/Info.plist');
+    expect(run).toContain('gen/apple/station_iOS/Info.plist');
+    const ensure =
+      'node ../scripts/ensure-ios-privacy-manifest-resource.mjs gen/apple/project.yml';
+    const regen =
+      'xcodegen generate --spec gen/apple/project.yml --project gen/apple';
+    // The regeneration deletes gen/apple, so the gitignored provenance
+    // resource must be staged again afterwards or IPA verification fails.
+    const restage =
+      '(cd .. && STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs)';
+    expect(run.indexOf('rm -rf gen/apple')).toBeGreaterThanOrEqual(0);
+    expect(run.indexOf(restage)).toBeGreaterThan(
+      run.indexOf('rm -rf gen/apple'),
+    );
+    expect(run).toContain('test -s gen/apple/assets/station-build.json');
+    // The manifest is registered only after the preserved file is restored,
+    // and the Xcode project is regenerated from the amended spec only after
+    // every directory the spec names exists (init ran xcodegen without the
+    // resource, and `tauri ios build` reuses the generated project).
+    const secondInit = run.indexOf('npx tauri ios init');
+    const restore = run.indexOf('ditto "$preserved/$item" "gen/apple/$item"');
+    expect(restore).toBeGreaterThan(secondInit);
+    expect(run.indexOf(ensure)).toBeGreaterThan(restore);
+    expect(run.indexOf(regen)).toBeGreaterThan(run.indexOf(restage));
+    expect(run.indexOf(regen)).toBeGreaterThan(run.indexOf(ensure));
+    expect(run).toContain(
+      "grep -Fq 'PrivacyInfo.xcprivacy' gen/apple/station.xcodeproj/project.pbxproj",
+    );
+    // xcodegen rewrites Info.plist from the spec, and the Tauri-rendered spec
+    // has no usage descriptions: the preserved plist is restored after the
+    // regeneration and the keys the package audit demands are asserted there.
+    const restoreInfoPlist =
+      'ditto "$preserved/station_iOS/Info.plist" gen/apple/station_iOS/Info.plist';
+    expect(run.indexOf(restoreInfoPlist)).toBeGreaterThan(run.indexOf(regen));
+    for (const key of [
+      'NSCameraUsageDescription',
+      'NSMicrophoneUsageDescription',
+      'NSLocalNetworkUsageDescription',
+    ]) {
+      expect(run).toContain(key);
+    }
+    expect(
+      run.indexOf(
+        'grep -Fq "<key>$key</key>" gen/apple/station_iOS/Info.plist',
+      ),
+    ).toBeGreaterThan(run.indexOf(restoreInfoPlist));
+    expect(
+      run.indexOf(
+        "grep -Fq 'PrivacyInfo.xcprivacy' gen/apple/station.xcodeproj",
+      ),
+    ).toBeGreaterThan(run.indexOf(regen));
+  });
+
+  it('records the stable desktop timestamp as a verified common manifest, not an architecture-specific proxy', () => {
+    const publishJob = workflowJob(publish, 'publish');
+    const common = namedStep(
+      publishJob,
+      'Derive the common frozen desktop provenance only after all package gates',
+    );
+    expect(common.run).toContain(
+      'cmp "$RUNNER_TEMP/station-client-build-aarch64.json" "$RUNNER_TEMP/station-client-build-x86_64.json"',
+    );
+    expect(common.run).toContain('station-desktop-common-client-build.json');
+    const record = namedStep(
+      publishJob,
+      'Record the stable release in the deploy ledger',
+    );
+    expect(record.run).toContain(
+      '--artifact-manifest "$RUNNER_TEMP/station-desktop-common-client-build.json"',
+    );
+    expect(record.run).not.toContain('station-client-build-aarch64.json');
   });
 });
 
@@ -174,6 +427,7 @@ type WorkflowStep = {
   name?: string;
   run?: string;
   if?: string;
+  'working-directory'?: string;
   with?: Record<string, unknown>;
   'continue-on-error'?: boolean | string;
   env?: Record<string, unknown>;
@@ -499,21 +753,14 @@ describe('native release workflow topology', () => {
     }
   });
 
-  it('runs the pinned lockfile-only production npm producer after a clean install', () => {
+  it('runs the pnpm production SBOM producer against the authoritative lock', () => {
     const directory = mkdtempSync(resolve(tmpdir(), 'station-npm-sbom-probe-'));
     try {
       const output = resolve(directory, 'npm.cdx.json');
       execFileSync(
-        resolve(root, 'node_modules/.bin/cyclonedx-npm'),
-        [
-          '--package-lock-only',
-          '--omit',
-          'dev',
-          '--ignore-npm-errors',
-          '--output-file',
-          output,
-        ],
-        { cwd: root, stdio: 'pipe', timeout: 30_000 },
+        process.execPath,
+        ['scripts/generate-pnpm-sbom.mjs', '--output-file', output],
+        { cwd: root, stdio: 'pipe', timeout: 30_000, windowsHide: true },
       );
       const inventory = JSON.parse(readFileSync(output, 'utf8'));
       expect(inventory.specVersion).toBe('1.6');
@@ -538,8 +785,7 @@ describe('native release workflow topology', () => {
       const sharedPurl = `pkg:npm/%40kontourai/station-shared@${sharedVersion}`;
       expect(inventory.components).toContainEqual(
         expect.objectContaining({
-          group: '@kontourai',
-          name: 'station-shared',
+          name: '@kontourai/station-shared',
           purl: sharedPurl,
         }),
       );
@@ -574,7 +820,9 @@ describe('native release workflow topology', () => {
           'scripts/lib/android-build-manifest.mjs',
           'scripts/lib/desktop-build-manifest.mjs',
           'package.json',
-          'package-lock.json',
+          'pnpm-lock.yaml',
+          'pnpm-workspace.yaml',
+          'patches/**',
         ],
       },
     });
@@ -604,14 +852,14 @@ describe('native release workflow topology', () => {
         'Scan immutable linux/amd64 image digest with pinned Syft',
       ),
     ).toMatchObject({
-      uses: 'anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610',
+      uses: ANCHORE_SBOM_ACTION,
       with: {
         format: 'cyclonedx-json',
         image:
           'ghcr.io/$' +
           '{{ github.repository }}@$' +
           '{{ steps.platforms.outputs.amd64 }}',
-        'syft-version': '1.51.0',
+        'syft-version': 'v1.51.0',
         'upload-artifact': false,
         'upload-release-assets': false,
       },
@@ -622,7 +870,7 @@ describe('native release workflow topology', () => {
         'Scan immutable linux/arm64 image digest with pinned Syft',
       ),
     ).toMatchObject({
-      uses: 'anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610',
+      uses: ANCHORE_SBOM_ACTION,
       with: {
         image:
           'ghcr.io/$' +
@@ -644,6 +892,8 @@ describe('native release workflow topology', () => {
           'upload-release-assets',
         ],
       );
+    expect(release).toContain('syft-version: v1.51.0');
+    expect(release).not.toContain('syft-version: 1.51.0');
     expectStepOrder(container, [
       'Create immutable container release descriptor',
       'Resolve exact immutable platform digests from the manifest list',
@@ -782,6 +1032,10 @@ describe('native release workflow topology', () => {
     expect(seal.run).toContain(
       `--deadline-epoch "\${{ steps.macos_release_deadline.outputs.epoch }}"`,
     );
+    // Preview and stable keep the serial staple-then-package order, so an
+    // application copied out of the disk image carries its own local ticket.
+    // Only the Nightly cohort opts into the overlapped notarization waits.
+    expect(seal.run).not.toContain('--overlap-notarization');
     expect(seal.env).toMatchObject({
       APPLE_API_KEY_ID: `\${{ secrets.APPLE_API_KEY_ID }}`,
       APPLE_API_ISSUER_ID: `\${{ secrets.APPLE_API_ISSUER_ID }}`,
@@ -790,6 +1044,20 @@ describe('native release workflow topology', () => {
     expect(
       namedStep(macos, 'Build an unsigned macOS staging candidate').run,
     ).toContain('--no-sign');
+    expect(
+      namedStep(macos, 'Build an unsigned macOS staging candidate').env,
+    ).toMatchObject({ STATION_CLIENT_BUILD_REUSE: '1' });
+    const stagedProvenance = namedStep(
+      macos,
+      'Stage the preflight-bound native client provenance bytes',
+    );
+    expect(stagedProvenance.run).toContain(
+      'release-client-build-provenance.mjs stage',
+    );
+    expect(seal.run).toContain('release-client-build-provenance.mjs verify');
+    expect(seal.run).toContain(
+      '--expected src-desktop/station-client-build.json',
+    );
     const embeddedSealing = macosArtifacts.indexOf(
       'await sealEmbeddedMacosMachOBounded(app, identity, {',
     );
@@ -799,7 +1067,7 @@ describe('native release workflow topology', () => {
     );
     expect(embeddedSealing).toBeLessThan(
       macosArtifacts.indexOf(
-        'await submit(command, zip, key, keyId, issuer, logger);',
+        'appNotarization = submit(command, zip, key, keyId, issuer, logger);',
       ),
     );
     expect(macosArtifacts).toContain("receipt.status !== 'Accepted'");
@@ -914,6 +1182,12 @@ describe('native release workflow topology', () => {
     expect(release).not.toContain('--export-method release-testing');
     expect(testFlightDelivery).toContain(
       'node scripts/check-ios-store-profile.mjs --station "$profile" --label APPLE_PROVISIONING_PROFILE_BASE64',
+    );
+    expect(testFlightDelivery).toContain(
+      'MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision',
+    );
+    expect(testFlightDelivery).not.toContain(
+      'MobileDevice/Provisioning Profiles/station.mobileprovision',
     );
     expect(testFlightDelivery).toContain(
       'node scripts/check-ios-store-profile.mjs --station "$app/embedded.mobileprovision" --label \'exported IPA embedded.mobileprovision\'',

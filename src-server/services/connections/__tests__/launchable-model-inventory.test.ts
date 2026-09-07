@@ -19,6 +19,173 @@ function input(
 }
 
 describe('buildLaunchableModelInventory', () => {
+  // #1208 delta: the inspector decides engine identity (and refuses it for
+  // plugins). The inventory carries that decision; a second derivation here
+  // disagreed with it for resolved aliases and could not see provenance.
+  test('carries the runtime catalog identity for engines and never re-derives one', () => {
+    const agent = (id: string, models: Array<Record<string, unknown>>) =>
+      ({
+        id,
+        kind: 'agent' as const,
+        type: 'claude',
+        name: id,
+        enabled: true,
+        capabilities: ['agent-runtime' as const],
+        config: { engineId: 'claude' },
+        status: 'ready' as const,
+        prerequisites: [],
+        setup: { state: 'ready', detected: true, configured: true },
+        runtimeCatalog: {
+          source: 'live' as const,
+          fetchedAt: OBSERVED_AT,
+          reason: null,
+          models,
+          builtInModels: [],
+        },
+      }) as never;
+    const decorated = {
+      canonicalId: 'anthropic:claude-sonnet-4-5',
+      verifiedAgainst: 'reviewed',
+    };
+    const inventory = buildLaunchableModelInventory(
+      input({
+        agentConnections: [
+          agent('claude-decorated', [
+            {
+              id: 'sonnet',
+              name: 'Sonnet',
+              originalId: 'sonnet',
+              canonicalModelIdentity: decorated,
+            },
+          ]),
+          // Same engine, same id, but the inspector declined (e.g. a plugin
+          // asserting this engine id). The inventory must not fill it in.
+          agent('claude-bare', [
+            { id: 'sonnet', name: 'Sonnet', originalId: 'sonnet' },
+          ]),
+        ],
+      }),
+    );
+    const byConnection = (connectionId: string) =>
+      inventory.models.find((model) => model.connectionId === connectionId);
+    expect(byConnection('claude-decorated')?.canonicalModelIdentity).toEqual(
+      decorated,
+    );
+    expect(byConnection('claude-bare')?.canonicalModelIdentity).toBeUndefined();
+  });
+
+  // #1208 review: identity is a fact about (route family, id), never id alone.
+  // The same string from a family the reviewed data never named must carry
+  // nothing, or an unrelated model renders as Claude Sonnet 4.5.
+  test('qualifies identity by the route family the connection issues ids for', () => {
+    const modelConnection = (
+      id: string,
+      type: string,
+      config: Record<string, unknown>,
+      providerModel: string,
+    ) => ({
+      connection: {
+        id,
+        kind: 'model' as const,
+        type,
+        name: id,
+        enabled: true,
+        capabilities: ['llm' as const],
+        config,
+        status: 'ready' as const,
+        prerequisites: [],
+      },
+      execution: null,
+      catalog: {
+        source: 'live' as const,
+        observedAt: OBSERVED_AT,
+        models: [{ id: providerModel, name: providerModel }],
+      },
+    });
+    const inventory = buildLaunchableModelInventory(
+      input({
+        modelConnections: [
+          modelConnection(
+            'bedrock-1',
+            'bedrock',
+            {},
+            'anthropic.claude-sonnet-4-5-v1:0',
+          ),
+          modelConnection(
+            'openrouter-1',
+            'openai-compat',
+            { baseUrl: 'https://openrouter.ai/api/v1' },
+            'anthropic/claude-sonnet-4.5',
+          ),
+          modelConnection(
+            'other-compat',
+            'openai-compat',
+            { baseUrl: 'https://api.openai.com/v1' },
+            'sonnet',
+          ),
+          modelConnection('ollama-1', 'ollama', {}, 'claude-sonnet-4-5'),
+          // A DEFINED family that the reviewed data never paired with this id:
+          // direct Anthropic does not issue the Claude Code alias.
+          modelConnection('anthropic-alias', 'anthropic', {}, 'sonnet'),
+        ],
+      }),
+    );
+    const byConnection = (connectionId: string) =>
+      inventory.models.find((model) => model.connectionId === connectionId);
+    expect(byConnection('bedrock-1')?.canonicalModelIdentity?.canonicalId).toBe(
+      'anthropic:claude-sonnet-4-5',
+    );
+    expect(
+      byConnection('openrouter-1')?.canonicalModelIdentity?.canonicalId,
+    ).toBe('anthropic:claude-sonnet-4-5');
+    expect(
+      byConnection('other-compat')?.canonicalModelIdentity,
+    ).toBeUndefined();
+    expect(byConnection('ollama-1')?.canonicalModelIdentity).toBeUndefined();
+    expect(
+      byConnection('anthropic-alias')?.canonicalModelIdentity,
+    ).toBeUndefined();
+  });
+
+  test('marks curated routes and leaves an unknown provider-native id ungrouped', () => {
+    const inventory = buildLaunchableModelInventory(
+      input({
+        modelConnections: [
+          ...['claude-sonnet-4-5', 'claude-sonnet-4-5-v2'].map((id) => ({
+            connection: {
+              id: `anthropic-${id}`,
+              kind: 'model' as const,
+              type: 'anthropic',
+              name: id,
+              enabled: true,
+              capabilities: ['llm' as const],
+              config: {},
+              status: 'ready' as const,
+              prerequisites: [],
+            },
+            execution: null,
+            catalog: {
+              source: 'live' as const,
+              observedAt: OBSERVED_AT,
+              models: [{ id, name: id }],
+            },
+          })),
+        ],
+      }),
+    );
+    const known = inventory.models.find(
+      (model) => model.providerModel === 'claude-sonnet-4-5',
+    );
+    const unknown = inventory.models.find(
+      (model) => model.providerModel === 'claude-sonnet-4-5-v2',
+    );
+    expect(known?.canonicalModelIdentity?.canonicalId).toBe(
+      'anthropic:claude-sonnet-4-5',
+    );
+    expect(unknown?.canonicalModelIdentity).toBeUndefined();
+    expect(unknown?.providerModel).toBe('claude-sonnet-4-5-v2');
+  });
+
   test('projects live Ollama models with adapter-declared locality and metadata', () => {
     const inventory = buildLaunchableModelInventory(
       input({
@@ -30,7 +197,7 @@ describe('buildLaunchableModelInventory', () => {
               type: 'ollama',
               name: 'Local Ollama',
               enabled: true,
-              capabilities: ['llm'],
+              capabilities: ['llm' as const],
               config: {},
               status: 'ready',
               prerequisites: [],
@@ -103,7 +270,7 @@ describe('buildLaunchableModelInventory', () => {
               type: 'openai-compat',
               name: 'Bounded',
               enabled: true,
-              capabilities: ['llm'],
+              capabilities: ['llm' as const],
               config: {},
               status: 'ready',
               prerequisites: [],
@@ -146,7 +313,7 @@ describe('buildLaunchableModelInventory', () => {
               type: 'openai-compat',
               name: 'Bounded records',
               enabled: true,
-              capabilities: ['llm'],
+              capabilities: ['llm' as const],
               config: {},
               status: 'ready',
               prerequisites: [],
@@ -170,7 +337,7 @@ describe('buildLaunchableModelInventory', () => {
               type: 'openai-compat',
               name: 'Bounded bytes',
               enabled: true,
-              capabilities: ['llm'],
+              capabilities: ['llm' as const],
               config: {},
               status: 'ready',
               prerequisites: [],
@@ -284,7 +451,7 @@ describe('buildLaunchableModelInventory', () => {
               type: 'openai-compat',
               name: 'Remote API',
               enabled: true,
-              capabilities: ['llm'],
+              capabilities: ['llm' as const],
               config: { apiKey: 'must-not-escape' },
               status: 'ready',
               prerequisites: [],
@@ -413,7 +580,7 @@ describe('buildLaunchableModelInventory', () => {
               type: 'openai-compat',
               name: 'Configured remote',
               enabled: true,
-              capabilities: ['llm'],
+              capabilities: ['llm' as const],
               config: { defaultModel: 'provider/model-v1' },
               status: 'ready',
               prerequisites: [],
@@ -447,7 +614,7 @@ describe('buildLaunchableModelInventory', () => {
         type: 'openai-compat',
         name: 'Remote models',
         enabled: true,
-        capabilities: ['llm'],
+        capabilities: ['llm' as const],
         config: {},
         status: 'ready',
         prerequisites: [],
@@ -507,7 +674,7 @@ describe('buildLaunchableModelInventory', () => {
               type: 'ollama',
               name: 'Disabled',
               enabled: false,
-              capabilities: ['llm'],
+              capabilities: ['llm' as const],
               config: {},
               status: 'disabled',
               prerequisites: [],

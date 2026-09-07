@@ -80,6 +80,20 @@ export interface LongSessionEventWindowOptions {
    */
   availableTurns: () => LongSessionEvent[][];
   onRequest?: (url: string) => void;
+  /**
+   * Registers this handler under `**\/api/orchestration/conversations/<id>/event-window**`
+   * instead of the session-scoped route and adds the fields
+   * `OrchestrationConversationEventWindow` requires
+   * (`conversationId`/`currentSessionId`/`handoffs`/`contextBoundaries`).
+   * `useActiveChatTranscript` reads a chat's history through the
+   * conversation-scoped window exclusively (see its own doc comment); a
+   * consumer whose fixture is never dispatched through
+   * `/api/orchestration/chat` — this one, seeded straight through its own
+   * event-window — needs its transcript served there, not at the
+   * session-scoped shape this option omits by default for mobile-chat-
+   * composer's existing session-scoped route.
+   */
+  conversationId?: string;
 }
 
 /**
@@ -92,6 +106,7 @@ export function createLongSessionEventWindowHandler({
   provider = 'bedrock',
   availableTurns,
   onRequest,
+  conversationId,
 }: LongSessionEventWindowOptions) {
   return (route: Route) => {
     const url = route.request().url();
@@ -115,6 +130,14 @@ export function createLongSessionEventWindowHandler({
       success: true,
       data: {
         protocolVersion: 1,
+        ...(conversationId
+          ? {
+              conversationId,
+              currentSessionId: threadId,
+              handoffs: [],
+              contextBoundaries: [],
+            }
+          : {}),
         session: { threadId, provider, status: 'idle' },
         events: pageTurns.flat().map((event, index) => ({
           sequence: sequenceByEventId.get(event.eventId) ?? 20_000 + index,

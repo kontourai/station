@@ -345,7 +345,7 @@ async function bannerStylesheetRules(
   return page.evaluate(() => {
     // Recurse into `@media` blocks too — several of the dock-coexistence
     // rules that target `.banner-host` itself (e.g.
-    // `.app__main--dock-bottom > .banner-host`) are nested inside one.
+    // `.app__main:has(> [data-region="bottom"]) > .banner-host`) are nested inside one.
     function flatten(rules: CSSRuleList): CSSStyleRule[] {
       const out: CSSStyleRule[] = [];
       for (const rule of Array.from(rules)) {

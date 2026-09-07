@@ -104,7 +104,7 @@
     {
       "path": "src-ui/src/index.css",
       "selector": ".chat-input textarea:focus",
-      "reason": "Legacy suppression covered by the global keyboard-focus floor."
+      "reason": "The containing chat-input__capsule draws the visible 2px focus ring while its textarea is focused; composer browser tests verify that replacement indicator."
     },
     {
       "path": "src-ui/src/index.css",

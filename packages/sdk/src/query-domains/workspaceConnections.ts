@@ -1,7 +1,10 @@
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type { FleetContributionManifest } from '@kontourai/station-contracts/fleet-contribution';
 import type { ConnectionInventoryFailure } from '@kontourai/station-contracts/model-inventory';
-import { describeConnectionInventoryFailures } from '@kontourai/station-contracts/model-inventory';
+import {
+  type CanonicalModelIdentityReference,
+  describeConnectionInventoryFailures,
+} from '@kontourai/station-contracts/model-inventory';
 import type {
   AgentConnectionView,
   ConnectionConfig,
@@ -242,6 +245,12 @@ export function useModelPickerCatalogQuery(
                   ...(typeof model.resolvedModel === 'string'
                     ? { resolvedModel: model.resolvedModel }
                     : {}),
+                  // Identity is decided server-side from the route's own
+                  // family (#1208 review); the client only carries a
+                  // well-formed reference through, never derives one.
+                  ...(isCanonicalModelIdentity(model.canonicalModelIdentity)
+                    ? { canonicalModelIdentity: model.canonicalModelIdentity }
+                    : {}),
                   ...(model.capabilities
                     ? {
                         capabilities: {
@@ -319,9 +328,6 @@ export function useModelPickerCatalogQuery(
       const safeConfig = (connection: ConnectionConfig) => ({
         ...(typeof connection.config.engineId === 'string'
           ? { engineId: connection.config.engineId }
-          : {}),
-        ...(typeof connection.config.executionClass === 'string'
-          ? { executionClass: connection.config.executionClass }
           : {}),
         ...(typeof connection.config.defaultModel === 'string'
           ? { defaultModel: connection.config.defaultModel }
@@ -414,11 +420,11 @@ export function useModelPickerCatalogQuery(
   );
 }
 
-export function useAgentConnectionsQuery(
+export function useEngineConnectionsQuery(
   config?: QueryConfig<AgentConnectionView[]>,
 ) {
   return useApiQuery(
-    ['connections', 'runtimes'],
+    ['connections', 'engines'],
     async () => {
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
@@ -433,11 +439,13 @@ export function useAgentConnectionsQuery(
   );
 }
 
+/** Engines exposed by the Connections / Engines surface. */
+
 export function useAgentConnectionCatalogQuery(
   config?: QueryConfig<AgentConnectionView[]>,
 ) {
   return useApiQuery(
-    ['connections', 'runtimes', 'catalog'],
+    ['connections', 'engines', 'catalog'],
     async () => {
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
@@ -1161,3 +1169,16 @@ export function useClearAppHomeProfileMutation(
 
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';
+
+function isCanonicalModelIdentity(
+  value: unknown,
+): value is CanonicalModelIdentityReference {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    typeof (value as CanonicalModelIdentityReference).canonicalId ===
+      'string' &&
+    typeof (value as CanonicalModelIdentityReference).verifiedAgainst ===
+      'string'
+  );
+}

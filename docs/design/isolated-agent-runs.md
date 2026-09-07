@@ -6,7 +6,7 @@ Status: design note
 
 Normal chat sessions should keep using the current project checkout and runtime connection. Long-running autonomous work is different: Ralph, team execution, scheduled code work, and future project-task runs may need isolation so agent edits, temp homes, ports, and cleanup do not disturb the user's primary workspace.
 
-This note captures a survey-inspired isolation pattern (internal competitive notes) without making git worktrees mandatory.
+This note captures a survey-inspired isolation pattern without making git worktrees mandatory.
 
 ## Default Rule
 

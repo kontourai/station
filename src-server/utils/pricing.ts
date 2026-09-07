@@ -5,20 +5,51 @@ import type {
 } from '../providers/llm/bedrock-models.js';
 
 /**
- * Find pricing info for a model. Returns the matching ModelPricing entry or undefined.
+ * Join an invocation model id to an AWS Price List row.
+ *
+ * The two sides are different kinds of string and neither is authoritative for
+ * the other: `modelId` is a Bedrock invocation id
+ * (`anthropic.claude-3-5-sonnet-20240620-v1:0`), while `ModelPricing.modelId`
+ * carries the Price List's `attributes.model` product attribute, a
+ * human-readable name ("Claude 3.5 Sonnet"). Exact equality between them is
+ * essentially never true, so the slug containment below is the join that
+ * actually works — it is load-bearing, not a loose fallback, and removing it
+ * would leave every Bedrock turn unpriced rather than priced more strictly.
+ *
+ * Containment is broad enough to match ids it was never meant to describe,
+ * which is exactly why {@link findModelPricing} refuses to reach this function
+ * for anything but a Bedrock route.
+ */
+export function bedrockPricingFor(
+  entries: readonly ModelPricing[] | undefined,
+  modelId: string,
+): ModelPricing | undefined {
+  return entries?.find(
+    (entry) =>
+      entry.modelId === modelId ||
+      modelId.includes(entry.modelId.toLowerCase().replace(/\s+/g, '-')),
+  );
+}
+
+/**
+ * Bedrock's price list prices Bedrock's routes.
+ *
+ * The catalog is constructed unconditionally at runtime init, so without
+ * `providerType` every provider's turn consulted Amazon's prices and could be
+ * shown a figure Amazon quoted for a route Station never billed through
+ * Bedrock. An unknown or non-Bedrock route is unpriced, which callers already
+ * represent honestly as an absent cost rather than a zero.
  */
 export async function findModelPricing(
   catalog: BedrockModelCatalog | undefined,
   modelId: string,
   region: string,
+  providerType: string | undefined,
 ): Promise<ModelPricing | undefined> {
   if (!catalog) return undefined;
+  if (providerType !== 'bedrock') return undefined;
   const pricing = await catalog.getModelPricing(region);
-  return pricing?.find(
-    (p) =>
-      p.modelId === modelId ||
-      modelId.includes(p.modelId.toLowerCase().replace(/\s+/g, '-')),
-  );
+  return bedrockPricingFor(pricing, modelId);
 }
 
 /**

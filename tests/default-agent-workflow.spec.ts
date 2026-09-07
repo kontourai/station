@@ -516,7 +516,7 @@ test.describe('Default agent workflow', () => {
     await openDefaultAgentSession(page);
 
     const textarea = page.locator('textarea[placeholder*="Type a message"]');
-    const sendButton = page.getByRole('button', { name: 'Send' });
+    const sendButton = page.getByRole('button', { name: 'Send', exact: true });
 
     for (const [command, matcher] of [
       [
@@ -756,7 +756,7 @@ test.describe('Default agent workflow', () => {
 
     const textarea = page.locator('textarea[placeholder*="Type a message"]');
     await textarea.fill('trigger failure');
-    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     // archive#191 R1: the SDK client now parses the server's JSON error body
     // instead of discarding it behind a bare 'HTTP ${status}' string, so the

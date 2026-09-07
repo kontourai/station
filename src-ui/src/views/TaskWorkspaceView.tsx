@@ -18,6 +18,7 @@ import {
   useTaskGraphQuery,
 } from '@kontourai/station-sdk';
 import { useProjectTaskRoomDiscoveryQuery } from '@kontourai/station-sdk/project-task-rooms';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   lazy,
   Suspense,
@@ -398,7 +399,7 @@ function TaskWorkspaceContent({
           return persisted;
         }
         if (persisted) window.sessionStorage.removeItem(key);
-        const operationId = crypto.randomUUID();
+        const operationId = randomCorrelationId();
         outputOperationIds.current.set(intent, operationId);
         window.sessionStorage.setItem(key, operationId);
         return operationId;

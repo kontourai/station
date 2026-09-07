@@ -5,6 +5,8 @@
  * exclusion fail closed: this adapter neither repairs nor evicts evidence.
  */
 
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+
 export const ATTACHED_SESSION_CONTINUATION_STORAGE_KEY =
   'station-attached-session-continuations-v1';
 
@@ -246,7 +248,7 @@ export function browserAttachedSessionContinuationStore(): AttachedSessionContin
 export function createAttachedSessionContinuationStore({
   storage,
   lock,
-  createUuid = () => crypto.randomUUID(),
+  createUuid = () => randomCorrelationId(),
   lockWaitTimeoutMs = DEFAULT_LOCK_WAIT_TIMEOUT_MS,
 }: AttachedSessionContinuationStoreOptions): AttachedSessionContinuationStore {
   function read(sessionId: string): AttachedSessionContinuationRead {

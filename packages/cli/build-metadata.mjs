@@ -19,6 +19,7 @@ function runGit(args, cwd, env) {
 export function deriveCliBundleMetadata({
   packageDir,
   packageVersion,
+  builtAt = new Date().toISOString(),
   env = process.env,
   git = runGit,
 } = {}) {
@@ -33,12 +34,30 @@ export function deriveCliBundleMetadata({
   return {
     version: packageVersion,
     sourceSha,
+    // CLI artifact time is captured once at bundle creation. It names this
+    // executable, never a nearby host/backend or npm registry upload event.
+    builtAt: validUtcTimestamp(builtAt)
+      ? new Date(builtAt).toISOString()
+      : undefined,
     // This is a CLI artifact input, never the backend's STATION_CHANNEL.
     channel:
       requestedChannel && BUILD_CHANNEL.test(requestedChannel)
         ? requestedChannel
         : 'development',
   };
+}
+
+function validUtcTimestamp(value) {
+  if (
+    typeof value !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)
+  ) {
+    return false;
+  }
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return false;
+  const canonical = value.includes('.') ? value : value.replace(/Z$/, '.000Z');
+  return new Date(parsed).toISOString() === canonical;
 }
 
 export function deriveCheckoutSourceSha({ packageDir, env, git }) {

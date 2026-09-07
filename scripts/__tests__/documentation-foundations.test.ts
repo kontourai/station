@@ -1,7 +1,32 @@
 import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const read = (file: string) => readFileSync(file, 'utf8');
+
+function manifestFields(contract: string): string[] {
+  const source = ts.createSourceFile(
+    'plugin.ts',
+    contract,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const manifest = source.statements.find(
+    (statement): statement is ts.InterfaceDeclaration =>
+      ts.isInterfaceDeclaration(statement) &&
+      statement.name.text === 'PluginManifest',
+  );
+  if (!manifest) throw new Error('PluginManifest interface is missing');
+  return manifest.members.map((member) => {
+    if (
+      !ts.isPropertySignature(member) ||
+      !member.name ||
+      !ts.isIdentifier(member.name)
+    )
+      throw new Error('Unsupported PluginManifest member');
+    return member.name.text;
+  });
+}
 
 describe('documentation foundations', () => {
   it('binds getting-started channel facts, Starters, and review route to their current source owners', () => {
@@ -16,7 +41,7 @@ describe('documentation foundations', () => {
     const starterRegistry = read(
       'src-server/services/starter-work/starter-registry.ts',
     );
-    const surfaces = read('src-ui/src/app-shell/surface-registry.ts');
+    const surfaces = read('src-ui/src/app-shell/destination-registry.ts');
 
     expect(channels.channels.stable).toMatchObject({
       instanceDirectory: 'stable',
@@ -73,6 +98,39 @@ describe('documentation foundations', () => {
     expect(guide).not.toContain('| ID | Observable invariant |');
     expect(reference).toContain('<!-- station:product-laws:start -->');
     expect(reference).not.toContain('scripts/');
+  });
+
+  it('keeps the plugin manifest field reference complete against the contract', () => {
+    const contract = read('packages/contracts/src/plugin.ts');
+    const contractFields = manifestFields(contract);
+
+    const guide = read('docs/guides/plugins.md');
+    const fieldTable = guide.match(
+      /### Field Reference([\s\S]*?)#### Reserved plugin names/,
+    )?.[1];
+    expect(fieldTable).toBeTruthy();
+    const documentedFields = new Set(
+      [...(fieldTable ?? '').matchAll(/^\| `([^`]+)` \|/gm)].map(
+        (match) => match[1].split('.')[0],
+      ),
+    );
+
+    expect([...documentedFields].sort()).toEqual(contractFields.sort());
+  });
+
+  it('extracts only direct manifest fields across nested types and adjacent interfaces', () => {
+    const contract = `
+      export interface PluginManifest {
+        name: string;
+        configuration?: { nested: string };
+      }
+      export interface PluginManifestRejection { code: string; name: string; }
+      export interface PluginOverrideConfig { status: string; }
+    `;
+    expect(manifestFields(contract)).toEqual(['name', 'configuration']);
+    expect(() => manifestFields('export interface Other {}')).toThrow(
+      'missing',
+    );
   });
 
   it('defers shared UI explorer, manifest, tokens, themes, and accessibility to Kontour UI', () => {
@@ -177,7 +235,7 @@ describe('documentation foundations', () => {
     expect(tray).toContain('never guesses from `service/default.json`');
   });
 
-  it('documents the published client package with channel-tagged npx and a local fallback', () => {
+  it('documents the published client package with registry-verified npx and a local fallback', () => {
     const packageDocument = JSON.parse(read('packages/cli/package.json')) as {
       name: string;
       private?: boolean;
@@ -194,7 +252,13 @@ describe('documentation foundations', () => {
     expect(packageDocument.private).not.toBe(true);
     expect(packageDocument.publishConfig?.access).toBe('public');
     expect(packageReadme).toContain('npx @kontourai/station-cli@latest');
-    expect(packageReadme).toContain('npx @kontourai/station-cli@nightly');
+    expect(packageReadme).toContain(
+      'npm view @kontourai/station-cli version dist-tags',
+    );
+    expect(packageReadme).toContain(
+      'Use a channel tag only after `npm view` reports it',
+    );
+    expect(packageReadme).not.toContain('npx @kontourai/station-cli@nightly');
     expect(packageReadme).toContain('./station <command> [args]');
     expect(packageReadme).toContain(
       "selected channel's runtime-resolver loopback origin",

@@ -133,7 +133,13 @@ function readIssues(inputPath) {
   if (inputPath) return JSON.parse(readFileSync(inputPath, 'utf8'));
   const repository = process.env.GITHUB_REPOSITORY;
   if (!repository) {
-    throw new Error('GITHUB_REPOSITORY is required without --input.');
+    throw new Error(
+      'GITHUB_REPOSITORY is required without --input. Run this against the ' +
+        'live backlog with:\n\n' +
+        '  GITHUB_REPOSITORY=kontourai/station node ' +
+        'scripts/backlog-priority-policy.mjs\n\n' +
+        'or pass --input <file> to evaluate a saved issue list.',
+    );
   }
   return JSON.parse(
     execFileSync(

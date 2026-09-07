@@ -13,25 +13,23 @@ surface, over HTTP. It does not run a Station itself — see
 
 ## Availability
 
-The `npx`/`npm install -g` forms below work once `@kontourai/station-cli` is
-live on the npm registry (station#4536; check with `npm view
-@kontourai/station-cli`) — until then they 404, and `./station` from a
-Station checkout, further down this section, is the way to run the CLI.
+`@kontourai/station-cli` is published on npm. Check the live version and
+available dist-tags before scripting an install:
 
-Run the CLI with `npx`, pinned to the channel dist-tag matching the Station
-you are operating — `nightly` for a Station Nightly host, `latest` for a
-stable one:
+```bash
+npm view @kontourai/station-cli version dist-tags
+```
+
+Run the published stable client with `npx`:
 
 ```bash
 npx @kontourai/station-cli@latest --help
-npx @kontourai/station-cli@nightly --help
 ```
 
-`npx` resolves and caches that exact published version per invocation, so the
-channel tag is the whole story: no separate install/upgrade step, and no
-ambiguity about which build is running. For latency-sensitive or scripted use,
-an explicit global install pins one version instead of resolving on every
-call: `npm install -g @kontourai/station-cli@<tag>`.
+`npx` resolves and caches the published version per invocation. For
+latency-sensitive or scripted use, an explicit global install pins one version
+instead: `npm install -g @kontourai/station-cli@<version-or-published-tag>`.
+Use a channel tag only after `npm view` reports it.
 
 **Inside a Station checkout**, `./station` runs that tree's own build directly
 — this is the local-invocation path when the registry isn't the point (working

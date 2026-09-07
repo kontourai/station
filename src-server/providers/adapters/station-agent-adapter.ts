@@ -18,6 +18,7 @@ import {
 } from '@kontourai/station-contracts/turn-provenance-context';
 import {
   currentAuthorizedTurnCorrelation,
+  currentNativeMemoryHistory,
   INTERNAL_TURN_CORRELATION_HEADER,
   issueAuthorizedTurnCorrelationHandoff,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
@@ -47,6 +48,7 @@ import type {
 } from '../adapter-shape.js';
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
+import { UNRESOLVED_TOOL_OUTPUT } from './unresolved-tool-output.js';
 
 const PROVIDER = 'station-agent' as const;
 
@@ -114,6 +116,40 @@ interface StationAgentSessionRecord {
   pendingRequests: Map<string, { toolName?: string; turnId?: string }>;
   approvedTools: Set<string>;
   resolvedBeforeOpen: Map<string, ApprovalStatus>;
+  /**
+   * station#1569 (item 4): `toolCallId → { toolName, turnId }` for calls
+   * whose `tool.started` has been published and whose `tool-result` chunk has
+   * not arrived. The adapter had no tool-call state at all before this — the
+   * SSE relay is stateless — so a call whose stream was abandoned (a stop, a
+   * dropped connection) left a row running forever with no terminal from any
+   * path.
+   *
+   * Maintained by `consumeChatStream` from the relay's own `toolOpened` /
+   * `toolSettled` reports (the same shape `approvalOpened` already uses), so
+   * `mapStationAgentStreamEvent` stays a pure per-chunk translator. Settled
+   * only when the SESSION ends (`stopSession`), never at a turn boundary.
+   *
+   * station#1586 (item 2): id-less calls are in here too, under the id the
+   * relay minted for them. They were excluded while an id-less start and its
+   * id-less result minted DIFFERENT ids — an entry its own result could not
+   * delete would have been settled as a false "no result was reported" — and
+   * the relay's pairing (`pendingIdlessToolCalls`) BOUNDS that hazard.
+   *
+   * Bounds, never removes (fix round, L5/E). Pairing reads only order and
+   * the reported tool name, so: two same-named id-less calls running
+   * concurrently can still settle each other's entries; and the asymmetric
+   * shape — an identified call whose result arrives id-less — is refused
+   * only when that result REPORTS a name to contradict with. The one
+   * in-tree producer of id-less chunks is Strands
+   * (`strands-stream-events.ts`), and its shape is exactly the one the name
+   * check cannot see: it always mints a call id
+   * (`start.toolUseId || 'tool-<ts>'`) and its `tool-result` deliberately
+   * carries neither the id (when `toolUseId` is absent) nor a `toolName`
+   * (archive#3082). For that producer the check is inert and pairing is
+   * order-only — which is safe today only because it never emits an id-less
+   * CALL, so nothing is queued for such a result to claim.
+   */
+  openToolCalls: Map<string, { toolName: string; turnId: string }>;
 }
 
 export interface StationAgentAdapterOptions {
@@ -399,6 +435,60 @@ function safeToolName(event: Record<string, unknown>): string {
   );
 }
 
+/**
+ * The tool name the chunk actually REPORTED, or `undefined` — unlike
+ * `safeToolName`, which substitutes a display fallback. station#1586 (item 2,
+ * fix round L5) pairs id-less chunks on this: a fallback shared by every
+ * unnamed chunk would match everything and make the name check inert.
+ */
+function reportedToolName(event: Record<string, unknown>): string | undefined {
+  return stringField(event.toolName) ?? stringField(event.tool);
+}
+
+/**
+ * station#1586 (item 2): an id-less `tool-call` awaiting an id-less
+ * `tool-result`, under the id this relay minted for it.
+ */
+export interface PendingIdlessToolCall {
+  toolCallId: string;
+  /** Absent when the chunk reported no name at all. */
+  toolName?: string;
+}
+
+/**
+ * Which pending id-less call does an id-less result claim? The oldest one
+ * whose reported name does not CONTRADICT the result's (fix round L5).
+ *
+ * Order alone cross-pairs as soon as an engine mixes shapes within a turn:
+ * an identified `tool-call` whose own result arrives id-less would take the
+ * id minted for a DIFFERENT, still-open id-less call — putting one call's
+ * output on another's row and leaving the identified call to settle as a
+ * false "no result was reported". Comparing the names both chunks reported
+ * refuses that pairing; the result then publishes unpaired, exactly as it did
+ * before any pairing existed.
+ *
+ * A missing name on either side is not a contradiction — the same rule the
+ * turn checks use — so the ordinary case (an engine that omits ids, and may
+ * omit names too) still pairs in order. That is also the limit of the check
+ * (fix round, E): a result reporting NO name contradicts nothing and claims
+ * the oldest entry on order alone, which is precisely the Strands shape
+ * (id-less AND nameless results). This narrows the hazard; it does not close
+ * it, and nothing in the chunks would.
+ */
+function claimPendingIdlessToolCall(
+  pending: PendingIdlessToolCall[],
+  resultToolName: string | undefined,
+): PendingIdlessToolCall | undefined {
+  const index = pending.findIndex(
+    (candidate) =>
+      candidate.toolName === undefined ||
+      resultToolName === undefined ||
+      candidate.toolName === resultToolName,
+  );
+  if (index === -1) return undefined;
+  return pending.splice(index, 1)[0];
+}
+
 /** Translate Station's existing chat SSE chunks into the canonical task stream. */
 export function mapStationAgentStreamEvent(options: {
   event: Record<string, unknown>;
@@ -406,11 +496,47 @@ export function mapStationAgentStreamEvent(options: {
   turnId: string;
   publish(event: CanonicalRuntimeEvent): void;
   now?: () => Date;
+  /**
+   * station#1586 (item 2): caller-owned queue of the id-less `tool-call`
+   * chunks this relay has minted an id for and whose id-less `tool-result`
+   * has not arrived. Owned by the caller for the same reason `openToolCalls`
+   * is — this function stays a per-chunk translator with no session record —
+   * and required rather than optional so no caller can accidentally get a
+   * `toolOpened` report for a call whose result can never be paired back to
+   * it, which is exactly the false-`unresolved` hazard station#1569 (M2)
+   * avoided by not tracking id-less calls at all.
+   *
+   * Claimed oldest-first, skipping any entry whose reported tool name
+   * contradicts the result's (`claimPendingIdlessToolCall`). Order is nearly
+   * all the information these chunks carry: an engine that runs tools
+   * CONCURRENTLY under the same name and omits ids can still have two
+   * results arrive out of order and land on each other's rows — a bounded
+   * residual, with the engine's own arguments and output on each row either
+   * way, and nothing in the chunks that would distinguish them.
+   */
+  pendingIdlessToolCalls: PendingIdlessToolCall[];
 }): {
   outputDelta?: string;
   finishReason?: ReturnType<typeof finishReason>;
   failed?: true;
   approvalOpened?: { requestId: string; toolName?: string };
+  /**
+   * station#1569 (item 4): this chunk opened a tool call, or closed one.
+   * Reported rather than recorded, because this relay is a pure translator
+   * with no access to the session record — `consumeChatStream` owns the
+   * tracking the session-end settle reads (same split as `approvalOpened`).
+   */
+  toolOpened?: { toolCallId: string; toolName: string };
+  toolSettled?: { toolCallId: string };
+  /**
+   * station#1586 (item 2): this `tool-result` chunk carried no `toolCallId`
+   * and no id-less call was waiting to pair with it, so its `tool.completed`
+   * was published under a freshly minted id that no `tool.started` ever
+   * used. The row is start-less by necessity — the engine reported an
+   * outcome for a call it never identified — and this reports that rather
+   * than leaving the shape indistinguishable from a settled pair.
+   */
+  unpairedToolResult?: true;
   /**
    * archive#2649: `/chat`'s own dispatch-time context receipt, parsed
    * strictly (a malformed record is dropped whole, leaving the honest
@@ -449,7 +575,24 @@ export function mapStationAgentStreamEvent(options: {
     return {};
   }
   if (event.type === 'tool-call') {
-    const toolCallId = stringField(event.toolCallId) ?? crypto.randomUUID();
+    const reportedCallId = stringField(event.toolCallId);
+    // station#1586 (item 2): an id-less chunk still gets a minted id, but the
+    // mint now happens ONCE per call and is remembered, so the matching
+    // id-less `tool-result` publishes under the SAME id instead of a second
+    // one. Before this, the pair produced two rows — a start that never
+    // finished beside a result that never started — and station#1569 (M2)
+    // had to exclude id-less calls from tracking entirely, because an entry
+    // its own result could not delete would have been settled as a false
+    // "no result was reported". Paired, the call is ordinary: tracked at the
+    // start, deleted by its result, and settled honestly if neither arrives.
+    const toolCallId = reportedCallId ?? crypto.randomUUID();
+    if (!reportedCallId) {
+      const openedName = reportedToolName(event);
+      options.pendingIdlessToolCalls.push({
+        toolCallId,
+        ...(openedName ? { toolName: openedName } : {}),
+      });
+    }
     publish({
       ...base,
       itemId: toolCallId,
@@ -458,10 +601,28 @@ export function mapStationAgentStreamEvent(options: {
       toolName: safeToolName(event),
       arguments: event.input,
     });
-    return {};
+    return {
+      toolOpened: {
+        toolCallId,
+        toolName: safeToolName(event),
+      },
+    };
   }
   if (event.type === 'tool-result') {
-    const toolCallId = stringField(event.toolCallId) ?? crypto.randomUUID();
+    const reportedCallId = stringField(event.toolCallId);
+    // station#1586 (item 2): an id-less result claims the oldest id-less call
+    // whose reported name does not contradict its own, so the pair publishes
+    // as ONE row. With no such call to claim there is nothing to pair — the
+    // result still publishes under a fresh id (unchanged behavior:
+    // withholding an outcome the engine did report would be worse than a
+    // start-less row) and says so in `unpairedToolResult`.
+    const pairedCallId = reportedCallId
+      ? undefined
+      : claimPendingIdlessToolCall(
+          options.pendingIdlessToolCalls,
+          reportedToolName(event),
+        )?.toolCallId;
+    const toolCallId = reportedCallId ?? pairedCallId ?? crypto.randomUUID();
     const error = stringField(event.error);
     // archive#3113/#3117: `event.error` reaching this relay is ALREADY the
     // safe text — both engine adapters (voltagent-adapter.ts's
@@ -496,7 +657,14 @@ export function mapStationAgentStreamEvent(options: {
                 : event.output,
           }),
     });
-    return {};
+    // Symmetric with the open report above: settle the id the start was
+    // tracked under — the engine's own, or the one this relay minted for it.
+    // A result that paired with nothing settles nothing, because nothing was
+    // ever opened under the id it just published.
+    if (reportedCallId !== undefined || pairedCallId !== undefined) {
+      return { toolSettled: { toolCallId } };
+    }
+    return { unpairedToolResult: true };
   }
   if (event.type === 'tool-approval-request') {
     const requestId = stringField(event.approvalId);
@@ -548,7 +716,7 @@ export function mapStationAgentStreamEvent(options: {
 export class StationAgentAdapter implements ProviderAdapterShape {
   readonly provider = PROVIDER;
   readonly metadata = {
-    displayName: 'Station agents',
+    displayName: 'Station',
     description:
       'Station-owned agents with their configured model, skills, tools, and memory.',
     // archive#1885: `image-input` is declared because the relay below
@@ -624,6 +792,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       provider: this.provider,
       threadId: input.threadId,
       status: 'ready',
+      ...(input.persistSession !== undefined
+        ? { persistSession: input.persistSession }
+        : {}),
       ...(input.modelId ? { model: input.modelId } : {}),
       ...(input.cwd ? { cwd: input.cwd } : {}),
       ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
@@ -641,6 +812,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       pendingRequests: new Map(),
       approvedTools: new Set(),
       resolvedBeforeOpen: new Map(),
+      openToolCalls: new Map(),
     });
     this.publish({
       eventId: crypto.randomUUID(),
@@ -787,6 +959,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
                     issueAuthorizedTurnCorrelationHandoff(
                       turnCorrelation,
                       nativeOutputRelay,
+                      currentNativeMemoryHistory(),
                     ),
                 }
               : {}),
@@ -969,6 +1142,14 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     this.cancelPendingApprovals(record);
     record.activeController?.abort('session stopped');
     this.sessions.delete(threadId);
+    // station#1569 (item 4): the abort above tears down the SSE stream
+    // without publishing anything for the calls it was mid-way through —
+    // `consumeChatStream`'s aborted branch returns silently by design. So
+    // every call still open here can never report, and this is the last
+    // moment anyone can say so. Before `session.exited`, which closes a
+    // still-running card client-side (`background-tasks-store.ts`), taking
+    // the honest terminal with it.
+    this.settleUnresolvedToolCalls(record);
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -978,6 +1159,38 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       sessionId: threadId,
       reason: 'stopped',
     });
+  }
+
+  /**
+   * Publishes `tool.completed` status `'unresolved'` for every call still
+   * open on this record, each on the turn that ISSUED it — the terminal the
+   * Claude adapter publishes for the same moment
+   * (`settleUnresolvedClaudeToolCalls`).
+   *
+   * Session end only. A turn ending is not enough: nothing here proves the
+   * engine will never report, and a call outliving its turn is a shape other
+   * adapters legitimately produce.
+   */
+  private settleUnresolvedToolCalls(record: StationAgentSessionRecord): void {
+    if (record.openToolCalls.size === 0) return;
+    const createdAt = this.now().toISOString();
+    const entries = [...record.openToolCalls];
+    record.openToolCalls.clear();
+    for (const [toolCallId, { toolName, turnId }] of entries) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.session.threadId,
+        createdAt,
+        turnId,
+        itemId: toolCallId,
+        method: 'tool.completed',
+        toolCallId,
+        toolName,
+        status: 'unresolved',
+        output: UNRESOLVED_TOOL_OUTPUT,
+      });
+    }
   }
 
   async listSessions(): Promise<ProviderSession[]> {
@@ -1024,6 +1237,14 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     // archive#2649: /chat emits at most one context-injection frame per
     // turn; a later frame (should the route ever re-emit) supersedes.
     let contextInjection: TurnProvenanceContextInjection | undefined;
+    // station#1586 (item 2): ids this relay minted for id-less `tool-call`
+    // chunks, oldest first, so the id-less `tool-result` that follows settles
+    // the row the start opened instead of publishing a second one. Scoped to
+    // this stream — an id-less result can only belong to a call from the turn
+    // it is streaming in, and a leftover entry is simply a call that never
+    // reported, which `openToolCalls` already carries to the session-end
+    // settle under the same id.
+    const pendingIdlessToolCalls: PendingIdlessToolCall[] = [];
     try {
       while (true) {
         const { done, value } = await readWithStallWatchdog(
@@ -1051,10 +1272,26 @@ export class StationAgentAdapter implements ProviderAdapterShape {
             turnId,
             publish: (next) => this.publish(next),
             now: this.options.now,
+            pendingIdlessToolCalls,
           });
           if (mapped.approvalOpened) {
             this.trackApproval(record, turnId, mapped.approvalOpened);
           }
+          // station#1569 (item 4): what the session-end settle reads. Kept
+          // here rather than inside the relay so that function stays pure.
+          if (mapped.toolOpened) {
+            record.openToolCalls.set(mapped.toolOpened.toolCallId, {
+              toolName: mapped.toolOpened.toolName,
+              turnId,
+            });
+          }
+          if (mapped.toolSettled) {
+            record.openToolCalls.delete(mapped.toolSettled.toolCallId);
+          }
+          // `mapped.unpairedToolResult` is deliberately not tracked here:
+          // nothing was ever opened under the id that result published, so
+          // there is no entry to add or delete. It is reported by the relay
+          // so the shape stays distinguishable to its callers and tests.
           outputText += mapped.outputDelta ?? '';
           resolvedFinishReason = mapped.finishReason ?? resolvedFinishReason;
           failed ||= mapped.failed === true;

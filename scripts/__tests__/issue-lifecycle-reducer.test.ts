@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest';
+import { BACKLOG_POLICY } from '../backlog-priority-policy.mjs';
 import {
+  BUG_LABEL,
+  BUG_PRIORITY,
   isSubstantiveReply,
   NEEDS_MAINTAINER,
   NEEDS_REPORTER,
@@ -10,6 +13,55 @@ import {
 const unrelated = ['P1', 'agent:claimed', 'stage:preview', 'security'];
 
 describe('issue lifecycle reducer', () => {
+  test('a bug filed without any classification derives P1 at open, alongside the handoff label', () => {
+    for (const kind of ['issue-opened', 'issue-reopened']) {
+      expect(
+        reduceIssueLifecycle({
+          kind,
+          issue: { labels: [BUG_LABEL, 'agent:claimed'] },
+        }),
+      ).toEqual({ add: [NEEDS_MAINTAINER, BUG_PRIORITY], remove: [] });
+    }
+  });
+
+  test('an already-classified bug derives nothing extra — for every classification label', () => {
+    for (const classification of BACKLOG_POLICY.classificationLabels) {
+      const { add } = reduceIssueLifecycle({
+        kind: 'issue-opened',
+        issue: { labels: [BUG_LABEL, classification] },
+      });
+      expect(add).toEqual([NEEDS_MAINTAINER]);
+    }
+  });
+
+  test('a non-bug issue derives no priority at open', () => {
+    expect(
+      reduceIssueLifecycle({
+        kind: 'issue-opened',
+        issue: { labels: ['enhancement'] },
+      }),
+    ).toEqual({ add: [NEEDS_MAINTAINER], remove: [] });
+  });
+
+  test('labeling bug later derives P1 on an unclassified issue and nothing on a classified one', () => {
+    expect(
+      reduceIssueLifecycle({
+        kind: 'maintainer-requested-reporter',
+        label: BUG_LABEL,
+        actorPermission: 'read',
+        issue: { labels: [BUG_LABEL, NEEDS_MAINTAINER] },
+      }),
+    ).toEqual({ add: [BUG_PRIORITY], remove: [] });
+    expect(
+      reduceIssueLifecycle({
+        kind: 'maintainer-requested-reporter',
+        label: BUG_LABEL,
+        actorPermission: 'admin',
+        issue: { labels: [BUG_LABEL, 'P2', NEEDS_MAINTAINER] },
+      }),
+    ).toEqual({ add: [], remove: [] });
+  });
+
   test('opens and reopens at the maintainer handoff without replacing unrelated labels', () => {
     for (const kind of ['issue-opened', 'issue-reopened']) {
       expect(

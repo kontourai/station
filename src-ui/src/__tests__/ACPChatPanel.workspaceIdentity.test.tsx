@@ -16,7 +16,7 @@ vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({ activeConnection: null }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
-  useAgentConnectionsQuery: () => ({ data: [] }),
+  useEngineConnectionsQuery: () => ({ data: [] }),
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),

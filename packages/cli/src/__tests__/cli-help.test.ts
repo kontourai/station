@@ -120,7 +120,8 @@ describe('--version', () => {
   test('reports source development provenance on a second line', async () => {
     const { versionText } = await import('../commands/version.js');
 
-    expect(versionText().trim().split('\n')).toHaveLength(2);
+    expect(versionText()).toContain('immutable build timestamp unavailable');
+    expect(versionText().trim().split('\n')).toHaveLength(3);
   });
 });
 

@@ -70,10 +70,11 @@ export function PromptModal({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onCancel}
       ariaLabelledBy="prompt-modal-title"
       overlayClassName="modal-overlay"
-      panelClassName="modal-dialog modal-dialog--default"
+      panelClassName="modal-dialog"
       initialFocusRef={inputRef}
       initialFocusPolicy="always"
     >

@@ -4,20 +4,15 @@
  * by fetching a remote JSON manifest.
  */
 
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-} from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
+import { scanInstalledPluginInventory } from '../../services/plugins/installed-plugin-inventory.js';
 import { readPluginManifestFileSync } from '../../services/plugins/plugin-manifest-loader.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
 import { execGitSync } from '../../utils/git-exec.js';
+import type { Logger } from '../../utils/logger.js';
 import type { InstallResult, RegistryItem } from '../provider-contracts.js';
 import type {
   IAgentRegistryProvider,
@@ -32,14 +27,28 @@ import {
 
 export { RegistryInstallAliasFormatError } from './registry-install-aliases.js';
 
+/**
+ * A manifest catalog entry. `type` is the catalog's KIND field: the manifest
+ * lists every entry under `plugins`, and the kind is what decides which
+ * browse surface an entry belongs to. Absent means plugin, because that is
+ * what every entry written before the field was read actually is.
+ *
+ * The kind partitions the BROWSE lists only. Install and uninstall still
+ * resolve an id the same way for either kind (`registry.ts` asks the plugin
+ * registry first and falls through to the agent provider), so an entry cannot
+ * become uninstallable by declaring a kind.
+ */
 interface ManifestPlugin {
   id: string;
   displayName: string;
   description: string;
   version: string;
   source: string;
-  type: string;
+  type?: string;
 }
+
+/** `ManifestPlugin.type` for an entry that is an agent DEFINITION, not code. */
+const AGENT_MANIFEST_KIND = 'agent';
 
 interface ManifestTool {
   id: string;
@@ -115,6 +124,7 @@ export class JsonManifestRegistryProvider
      * timeout nothing has ever tripped is an unproven timeout.
      */
     private readonly manifestFetchTimeoutMs: number = MANIFEST_FETCH_TIMEOUT_MS,
+    private readonly logger?: Pick<Logger, 'warn'>,
   ) {}
 
   get registryKey(): string {
@@ -199,30 +209,16 @@ export class JsonManifestRegistryProvider
     if (!existsSync(pluginsDir)) return [];
 
     const items: RegistryItem[] = [];
-    const entries = readdirSync(pluginsDir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const manifestPath = join(pluginsDir, entry.name, 'plugin.json');
-      if (!existsSync(manifestPath)) continue;
-
-      try {
-        const manifest = readPluginManifestFileSync(manifestPath);
-        items.push({
-          id: manifest.name || entry.name,
-          displayName: manifest.displayName,
-          description: manifest.description,
-          version: manifest.version,
-          installed: true,
-        });
-      } catch (e) {
-        console.debug(
-          'Failed to read installed plugin manifest:',
-          entry.name,
-          e,
-        );
-        // Skip invalid manifests
-      }
+    for (const entry of scanInstalledPluginInventory(pluginsDir, this.logger)) {
+      if (entry.state === 'rejected') continue;
+      const manifest = entry.manifest;
+      items.push({
+        id: manifest.name || entry.directoryName,
+        displayName: manifest.displayName,
+        description: manifest.description,
+        version: manifest.version,
+        installed: true,
+      });
     }
 
     return items;
@@ -262,11 +258,39 @@ export class JsonManifestRegistryProvider
     return tempDir;
   }
 
-  // IAgentRegistryProvider implementation
+  /**
+   * Entries of one catalog kind. The browse surfaces partition the manifest
+   * between them so a tab lists only what it names: the agent surface used to
+   * serve `manifest.plugins` whole, so a catalog of layout plugins listed
+   * under "Agents" beneath a "Selected agent" heading, with an install action
+   * that installed a plugin (#1536 D2).
+   */
+  private manifestEntriesOfKind(
+    manifest: Manifest,
+    kind: 'agent' | 'plugin',
+  ): ManifestPlugin[] {
+    return manifest.plugins.filter((entry) =>
+      kind === AGENT_MANIFEST_KIND
+        ? entry.type === AGENT_MANIFEST_KIND
+        : entry.type !== AGENT_MANIFEST_KIND,
+    );
+  }
+
+  // IPluginRegistryProvider implementation
 
   async listAvailable(): Promise<RegistryItem[]> {
+    return this.listAvailableOfKind('plugin');
+  }
+
+  async listInstalled(): Promise<RegistryItem[]> {
+    return this.listInstalledOfKind('plugin');
+  }
+
+  private async listAvailableOfKind(
+    kind: 'agent' | 'plugin',
+  ): Promise<RegistryItem[]> {
     const manifest = await this.fetchManifest();
-    return manifest.plugins.map((plugin) => ({
+    return this.manifestEntriesOfKind(manifest, kind).map((plugin) => ({
       id: plugin.id,
       displayName: plugin.displayName,
       description: plugin.description,
@@ -276,14 +300,16 @@ export class JsonManifestRegistryProvider
     }));
   }
 
-  async listInstalled(): Promise<RegistryItem[]> {
+  private async listInstalledOfKind(
+    kind: 'agent' | 'plugin',
+  ): Promise<RegistryItem[]> {
     const manifest = await this.fetchManifest();
     const installedPlugins = new Map(
       this.readInstalledPlugins().map((item) => [String(item.id), item]),
     );
     const aliases = this.readRegistryInstallAliases();
 
-    return manifest.plugins.flatMap((plugin) => {
+    return this.manifestEntriesOfKind(manifest, kind).flatMap((plugin) => {
       const alias = aliases[plugin.id];
       if (!alias || alias.registryKey !== this.getRegistryKey()) {
         return [];
@@ -308,7 +334,7 @@ export class JsonManifestRegistryProvider
   async install(
     id: string,
     options: { expectedInstalledPluginName?: string } = {},
-  ): Promise<InstallResult> {
+  ): Promise<InstallResult & { rollback?: () => Promise<void> }> {
     try {
       assertSafeRegistrySegment(id, 'Registry plugin id');
       const manifest = await this.fetchManifest();
@@ -385,15 +411,39 @@ export class JsonManifestRegistryProvider
         mkdirSync(pluginsDir, { recursive: true });
         cpSync(stagedSourceDir, targetDir, { recursive: true });
         rmSync(stagedSourceDir, { recursive: true, force: true });
-        aliases[id] = {
+        const installedAlias = {
           pluginName,
           registryKey: this.getRegistryKey(),
         };
+        aliases[id] = installedAlias;
         this.writeRegistryInstallAliases(aliases);
 
         return {
           success: true,
           message: `Plugin '${pluginName}' installed successfully`,
+          // The registry write is only the first half of a dependency
+          // install. Validation and lifecycle activation happen in the
+          // caller, so hand that caller an exact compensation capability.
+          // It restores the prior record only while the alias still equals
+          // what THIS call wrote; a later owner or supply-chain pin wins.
+          rollback: async () => {
+            const currentAliases = this.readRegistryInstallAliases();
+            const current = currentAliases[id];
+            if (
+              !current ||
+              current.pluginName !== installedAlias.pluginName ||
+              current.registryKey !== installedAlias.registryKey ||
+              current.supplyChain !== undefined
+            ) {
+              return;
+            }
+            if (existingAlias) {
+              currentAliases[id] = structuredClone(existingAlias);
+            } else {
+              delete currentAliases[id];
+            }
+            this.writeRegistryInstallAliases(currentAliases);
+          },
         };
       } catch (error) {
         rmSync(stagedSourceDir, { recursive: true, force: true });
@@ -451,6 +501,21 @@ export class JsonManifestRegistryProvider
     }
   }
 
+  /**
+   * Agent-definition view over the manifest, registered as the agent registry
+   * provider (`register-manifest-registry.ts`). Only entries the catalog
+   * declares as agents are browsable here; install and uninstall stay the
+   * class's, so an id resolves identically whichever surface offered it.
+   */
+  agentRegistry(): IAgentRegistryProvider {
+    return {
+      listAvailable: () => this.listAvailableOfKind(AGENT_MANIFEST_KIND),
+      listInstalled: () => this.listInstalledOfKind(AGENT_MANIFEST_KIND),
+      install: (id: string) => this.install(id),
+      uninstall: (id: string) => this.uninstall(id),
+    };
+  }
+
   async resolveSource(id: string): Promise<string | null> {
     const manifest = await this.fetchManifest();
     const plugin = manifest.plugins.find((entry) => entry.id === id);
@@ -500,8 +565,11 @@ export class JsonManifestRegistryProvider
       }
       const def = JSON.parse(raw) as ToolDef;
       return { ...def, id: def.id || tool.id };
-    } catch (e) {
-      console.debug('Failed to read manifest tool definition:', id, e);
+    } catch (error) {
+      this.logger?.warn('Registry integration manifest rejected', {
+        integrationId: id,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return null;
     }
   }

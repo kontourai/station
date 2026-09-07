@@ -1,10 +1,15 @@
 import type {
+  CanonicalModelIdentityReference,
   LaunchableModelInventory,
   LaunchableModelRecord,
   ModelInventoryComponentIdentity,
   ModelInventoryDiagnostic,
   ModelInventoryFreshness,
   ModelInventoryLocality,
+} from '@kontourai/station-contracts/model-inventory';
+import {
+  curatedModelIdentityFor,
+  modelRouteFamilyFor,
 } from '@kontourai/station-contracts/model-inventory';
 import type {
   AgentConnectionView,
@@ -71,8 +76,14 @@ function unanimous<T>(values: Array<T | undefined>): T | null {
   return rest.every((value) => Object.is(value, first)) ? first : null;
 }
 
-function groupModels(models: ModelProjection[]): Array<{
+function groupModels(
+  models: ModelProjection[],
+  identityFor: (
+    providerModel: string,
+  ) => CanonicalModelIdentityReference | undefined,
+): Array<{
   providerModel: string;
+  canonicalModelIdentity?: CanonicalModelIdentityReference;
   aliases: string[];
   displayName: string;
   effectiveContextTokens: number | null;
@@ -94,8 +105,10 @@ function groupModels(models: ModelProjection[]): Array<{
 
   return [...groups.entries()].map(([providerModel, group]) => {
     const supportsTools = unanimous(group.map((model) => model.supportsTools));
+    const canonicalModelIdentity = identityFor(providerModel);
     return {
       providerModel,
+      ...(canonicalModelIdentity ? { canonicalModelIdentity } : {}),
       aliases: [...new Set(group.map((model) => model.selector))].sort(
         compareText,
       ),
@@ -163,6 +176,9 @@ function record(options: {
       quantization: null,
     },
     providerModel: options.model.providerModel,
+    ...(options.model.canonicalModelIdentity
+      ? { canonicalModelIdentity: options.model.canonicalModelIdentity }
+      : {}),
     aliases: options.model.aliases,
     displayName: options.model.displayName,
     locality: options.locality,
@@ -232,6 +248,12 @@ function modelRecords(
       supportsTools: item.supportsTools,
       supportsVision: item.supportsVision,
     })),
+    // Model connections: derived here from the connection's own family.
+    (providerModel) =>
+      curatedModelIdentityFor({
+        family: modelRouteFamilyFor(source.connection),
+        providerModel,
+      }),
   ).map((model) =>
     record({
       connectionId: source.connection.id,
@@ -332,6 +354,12 @@ function agentRecords(
       providerModel: item.originalId,
       displayName: item.name,
     })),
+    // Engine connections: the inspector already decided identity when it
+    // built the runtime catalog (and refused it for plugin adapters). Read
+    // that decision; a second derivation here disagreed with it.
+    (providerModel) =>
+      catalog.models.find((item) => item.originalId === providerModel)
+        ?.canonicalModelIdentity,
   ).map((model) =>
     record({
       connectionId: connection.id,

@@ -5,12 +5,13 @@ import {
   orchestrationQueries,
   telemetry,
   useAcknowledgeConversationMutation,
-  useAgentConnectionsQuery,
   useConversationInventoryQuery,
+  useEngineConnectionsQuery,
   useGenerateSessionSummaryMutation,
   useInvalidateQuery,
   useOrchestrationSessionsQuery,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   applyReturnFocus,
   captureReturnFocus,
@@ -48,6 +49,7 @@ import {
 } from '../../contexts/open-chats-store';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useShowSurface } from '../../contexts/useShowSurface';
 import { ensureOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { useRehydrateSessions } from '../../hooks/useActiveChatSessions';
 import { useActiveProject } from '../../hooks/useActiveProject';
@@ -60,10 +62,18 @@ import { useChatDockKeyboardShortcuts } from '../../hooks/useChatDockKeyboardSho
 import { useChatDockState } from '../../hooks/useChatDockState';
 import { useChatInput } from '../../hooks/useChatInput';
 import { useDerivedSessions } from '../../hooks/useDerivedSessions';
-import { useDockShellChrome } from '../../hooks/useDockShellChrome';
+import {
+  type DockShellChrome,
+  useDockShellChrome,
+} from '../../hooks/useDockShellChrome';
 import { useExitTransition } from '../../hooks/useExitTransition';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
-import type { ChatSession, FileAttachment, NavigationView } from '../../types';
+import {
+  OPEN_PROJECT_CHATS_EVENT,
+  type OpenProjectChatsDetail,
+  UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
+} from '../../lib/projectChatEvents';
+import type { ChatSession, DockMode, FileAttachment } from '../../types';
 import {
   type EffectiveModelSource,
   isSessionExecutionActive,
@@ -72,9 +82,6 @@ import {
   buildHomeTaskItems,
   chatTaskSessionId,
 } from '../../views/home/home-view-model';
-import type { HomeViewNavigation } from '../../views/home/useHomeViewModel';
-import type { AmbientDockShellApi } from '../../workspace-panes/AmbientChatDockPaneHost';
-import type { WorkspacePaneDockAction } from '../../workspace-panes/WorkspacePaneDockContext';
 import { agentRunnability } from '../agent-runnability';
 import {
   selectChatReadyAgents,
@@ -93,6 +100,7 @@ import { useChatAuthRecovery } from './ChatAuthRecoveryContext';
 import { ChatDockActiveIdentity } from './ChatDockActiveIdentity';
 import { ChatDockContentArea } from './ChatDockContentArea';
 import { ChatDockHeader } from './ChatDockHeader';
+import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
 import { ChatDockMobileHeader } from './ChatDockMobileHeader';
 import { ChatDockProjectContext } from './ChatDockProjectContext';
 import {
@@ -109,6 +117,7 @@ import {
   projectDisplayName,
   resolveDirectNewChatProjectSlug,
   resolveDockBadgeProjectName,
+  resolveDockProjectContextDirectory,
   resolveNewChatModalDefaultProjectSlug,
   resolveSessionProjectMismatchLabel,
   routeToOpenChatsCollection,
@@ -137,6 +146,7 @@ import {
 } from './projectChatRequest';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
 import { useChatDockViewModel } from './useChatDockViewModel';
+import { useDockCopyActions } from './useDockCopyActions';
 
 /**
  * Re-open an offline queued turn from what its owning session persistently
@@ -283,32 +293,26 @@ const loadConversationOpenRevalidator = () =>
  * evaluated — entry time — so the chunk arrives alongside the entry rather
  * than after it, and the boundary resolves without a visible gap.
  *
- * The promise is remembered so React's `lazy` does not re-request it, and
- * dropped on rejection so `LazyBoundary`'s Retry re-runs the import instead of
- * replaying a cached failure.
+ * Every call returns a NEW promise; the module registry makes the repeat
+ * `import()` free. Memoizing it froze the tab on the dock's second mount
+ * (kontourai/station#1301: React's `lazy` livelocks on a promise it has
+ * already settled), and App.tsx's `showAmbientChatDock` remounts the dock on
+ * ordinary navigation.
  */
-let ambientChatDockPaneHostModule: Promise<{
-  default: typeof import('../../workspace-panes/AmbientChatDockPaneHost').AmbientChatDockPaneHost;
-}> | null = null;
+const loadAmbientChatDockPaneHost = () =>
+  import('../../workspace-panes/AmbientChatDockPaneHost').then((module) => ({
+    default: module.AmbientChatDockPaneHost,
+  }));
 
-const loadAmbientChatDockPaneHost = () => {
-  ambientChatDockPaneHostModule ??= import(
-    '../../workspace-panes/AmbientChatDockPaneHost'
-  )
-    .then((module) => ({ default: module.AmbientChatDockPaneHost }))
-    .catch((error: unknown) => {
-      ambientChatDockPaneHostModule = null;
-      throw error;
-    });
-  return ambientChatDockPaneHostModule;
-};
-
-void loadAmbientChatDockPaneHost();
+void loadAmbientChatDockPaneHost().catch(() => {
+  // The boundary reports a failed import where it renders; the warm-up has
+  // no surface of its own.
+});
 
 function renderAmbientChatPane(
   _instance: WorkspacePaneInstance,
   onRequestAuth: (() => Promise<boolean> | undefined) | undefined,
-  shellChrome: AmbientDockShellApi,
+  shellChrome: DockShellChrome,
 ) {
   return (
     <ChatWorkspacePane
@@ -332,24 +336,19 @@ interface ChatWorkspacePaneSharedProps {
 /**
  * Discriminated on `placement` (station#4460 review M3): a docked pane MUST
  * carry the ambient `DockShell`'s chrome (geometry, snap, placement,
- * `dock.toggle`/`dock.maximize`, `dockPane` for the occupant picker) — the
- * shell is the single, persistent owner of that state, so a docked Chat
- * consumes it rather than keeping its own copy. A full-screen placement
- * never mounts inside `DockShell` and so never receives one; it owns an
- * independent local instance instead (see `ChatWorkspacePane` below). Typing
- * it this way lets the compiler prove `shellChrome` is defined wherever
- * `placement === 'dock'`, instead of a non-null assertion at every read.
+ * `dock.toggle`/`dock.maximize`, the project binding) — the shell is the
+ * single, persistent owner of that state, so a docked Chat consumes it
+ * rather than keeping its own copy. A full-screen placement never mounts
+ * inside `DockShell` and so never receives one; it owns an independent local
+ * instance instead (see `ChatWorkspacePane` below). Typing it this way lets
+ * the compiler prove `shellChrome` is defined wherever `placement === 'dock'`,
+ * instead of a non-null assertion at every read.
  */
 type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
   (
-    | { placement: 'dock'; shellChrome: AmbientDockShellApi }
+    | { placement: 'dock'; shellChrome: DockShellChrome }
     | { placement: 'fullscreen'; shellChrome?: never }
   );
-
-type ProjectChatsEventDetail = {
-  projectSlug?: string;
-  projectName?: string;
-};
 
 export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { placement, projectSlug, layoutSlug, onRequestAuth } = props;
@@ -364,43 +363,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // half of that: this LOCAL instance must only register `dock.toggle` /
   // `dock.maximize` for the full-screen case — a docked Chat's local
   // instance registering too would fight `DockShell`'s real registration for
-  // the same ids after an occupant switch (station#4460 review H1).
+  // the same ids (station#4460 review H1).
   const localShellChrome = useDockShellChrome({
     publishesDockSlotClearance: false,
     registersDockShortcuts: isFullscreenPlacement,
   });
   // Narrowed on `props.placement` directly (not a destructured alias) so
   // TypeScript proves `props.shellChrome` is defined in the docked branch —
-  // no non-null assertion (station#4460 review M3). `occupantPicker` is a
-  // pre-rendered node the ambient host already built (review round M4) —
-  // Chat renders it as-is, the same way Home/Activity do, instead of
-  // importing `DockOccupantPicker` into this eager module itself.
-  // station#524 (review round 2, H2) + station#520 (review round 3, B1):
-  // `dockPane` AND `dockPaneAsOnlyContent` alongside `occupantPicker`, same
-  // reasoning — the ⋯ overflow sheet's occupant-switch fallback is
-  // reachable at EVERY dock state (not only when the header's own picker
-  // hides), so it needs the same route-aware choice `DockOccupantPicker`
-  // makes, which needs both RAW actions, not the pre-rendered picker node.
-  const {
-    chrome,
-    occupantPicker,
-    occupantSwitchDockPane,
-    occupantSwitchDockPaneAsOnlyContent,
-  } =
-    props.placement === 'fullscreen'
-      ? {
-          chrome: localShellChrome,
-          occupantPicker: undefined,
-          occupantSwitchDockPane: null,
-          occupantSwitchDockPaneAsOnlyContent: null,
-        }
-      : {
-          chrome: props.shellChrome,
-          occupantPicker: props.shellChrome.occupantPicker,
-          occupantSwitchDockPane: props.shellChrome.dockPane,
-          occupantSwitchDockPaneAsOnlyContent:
-            props.shellChrome.dockPaneAsOnlyContent,
-        };
+  // no non-null assertion (station#4460 review M3).
+  const chrome =
+    props.placement === 'fullscreen' ? localShellChrome : props.shellChrome;
   const recoverAuth = useChatAuthRecovery();
   const requestAuth = onRequestAuth ?? recoverAuth;
   // The composer's grouped "+" actions menu is the only persistently
@@ -421,12 +393,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeChat,
     pathname,
     navigate,
+    updateParams,
     setActiveChat,
     setDockState,
-    setDockMode,
     setProject,
     setLayout,
   } = useNavigation();
+  const showSurface = useShowSurface();
   // Placement, viewport and placement-commit are shell CHROME (station#4460)
   // — read from `chrome` (the shared ambient instance when docked, this
   // placement's own instance when full-screen) rather than a second local
@@ -678,7 +651,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     showChatSettings,
     setShowChatSettings,
     showNewChatModal,
-    setShowNewChatModal,
+    setShowNewChatModal: setShowNewChatModalState,
     showSessionPicker,
     setShowSessionPicker,
     activeSessionId,
@@ -693,6 +666,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeSessionCount,
     onAutoCollapse: handleAutoCollapse,
   });
+  const [newChatRequestEpoch, setNewChatRequestEpoch] = useState(0);
+  const setShowNewChatModal = useCallback(
+    (open: boolean) => {
+      if (open) setNewChatRequestEpoch((epoch) => epoch + 1);
+      setShowNewChatModalState(open);
+    },
+    [setShowNewChatModalState],
+  );
+
   // A non-tab recovery is still committed UI state (not a toast). It is used
   // only when Station cannot safely hydrate an existing transcript into a
   // tab; once a tab exists its `conversationOpenState` is the canonical copy.
@@ -716,7 +698,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // surface (an inbox row, the project badge, a delegation toast) can
   // navigate to a route that is ALREADY the current pathname with just a
   // different query param (e.g. two inbox rows that both fall back to
-  // `/activity?session=<id>` for a session Station can't rehydrate, each
+  // the Activity region for a session Station can't rehydrate, each
   // naming a different session). The effect above only fires on a pathname
   // CHANGE, so that case would never collapse the dock even though the
   // content underneath it just changed. Call this explicitly at each such
@@ -793,6 +775,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     orchestrationSessions,
     orchestrationSessionsStatus,
   });
+  // The occurrence store's key for THIS dock's inventory. Owned here because
+  // #1536 F split the inventory's control (a row of the header's More menu)
+  // from its host (`ChatDockSessionInventoryHost`, lazily mounted), and both
+  // halves have to name the same host. Stable for the dock's lifetime: the
+  // registration is re-written whenever the session identity changes, and a
+  // remounting id would drop an open panel on every such change.
+  const sessionInventoryHostId = useRef(
+    `session-inventory:${randomCorrelationId()}`,
+  ).current;
   const inventoryChatStoreId = activeSession?.id;
   const conversationCanMutate = activeSession
     ? canMutateConversation(activeSession)
@@ -884,9 +875,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // station#4525 review HIGH-2/MED-1: the badge names the BOUND project
   // (`resolveDockBadgeProjectName`, shared by the desktop and mobile
   // triggers so the two can never disagree) — but the session's own
-  // directory/git/coding-layout facts are NOT gated on it (see the JSX
-  // below: they read straight off `sessionDisplayCwd`/`gitStatus`/
-  // `sessionCodingLayout`, exactly as pre-station#4525, unconditionally).
+  // git/coding-layout facts are NOT gated on it (see the JSX below: they read
+  // straight off `gitStatus`/`sessionCodingLayout`, exactly as
+  // pre-station#4525, unconditionally).
+  //
+  // #1536 G6 NARROWED that for the DIRECTORY alone: it now goes through
+  // `resolveDockProjectContextDirectory`, which still prefers the session's own
+  // `sessionDisplayCwd` unconditionally and still refuses to caption a FOREIGN
+  // session with the badge's path — the ruling's actual subject. What it adds is
+  // a fallback for the case the ruling never faced: no session at all (a
+  // collapsed dock with nothing open), where the row printed "Home folder"
+  // beside a project whose directory is set.
   // `sessionSourceProjectSlug`/`sessionSourceProjectName` are threaded
   // through to both derivations rather than reading `activeSession` inline
   // twice, so the badge name and the mismatch label can never read two
@@ -909,6 +908,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     dockProjectSlug,
     sessionProjectSlug: sessionSourceProjectSlug,
     sessionProjectName,
+  });
+  const dockProjectContextDirectory = resolveDockProjectContextDirectory({
+    scopedProjectSlug,
+    sessionDisplayCwd,
+    sessionProjectSlug: sessionSourceProjectSlug,
+    dockProjectSlug,
+    dockProjectWorkingDirectory: dockProjectSlug
+      ? (projects.find((project) => project.slug === dockProjectSlug)
+          ?.workingDirectory ?? null)
+      : null,
   });
   const attachmentCapabilities = useMemo(
     () => ({
@@ -966,14 +975,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // station#3309: the model the dock header names — the same answer the
   // composer's model pill gives, arrived at the same way. `effectiveChatModelId`
-  // picks WHICH id; then, exactly as `ChatInputArea` does, an alias that the
-  // engine has resolved renders as the concrete model it resolved TO (#1012)
-  // and everything else falls through to the shared `modelDisplayLabel`.
+  // picks WHICH id; `chatModelLabel` then asks the one shared identity rule
+  // (`modelIdentityLabel`, #1536 B5), so an alias the engine has resolved
+  // renders as the concrete model it resolved TO (#1012) and an unresolved
+  // engine default reads "Default" rather than the catalog's option copy.
   //
-  // Caught live rather than reasoned about: without the `resolvedModelLabel`
-  // arm the header read "Default (recommended)" beside a composer pill naming
-  // the actual model — one fact, two stories, which is the whole reason both
-  // of these helpers exist. No id reported means no chip, not a placeholder.
+  // Caught live rather than reasoned about: before that rule was shared, the
+  // header read "Default (recommended)" beside a composer pill naming the
+  // actual model — one fact, two stories. No id reported means no chip, not a
+  // placeholder.
   const activeChatModelId = effectiveChatModelId({
     composerModel: chatInput.currentModel,
     sessionModel: activeSession?.model,
@@ -1038,16 +1048,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [isInboxOpen, setDeviceSetting],
   );
   const openInboxHistory = useCallback(() => setIsHistoryOpen(true), []);
-  // #1298: falling back to /activity is a dock-owned navigation seam —
+  // #1298: revealing Activity is a dock-owned navigation seam —
   // collapse a maximized dock first so the destination is actually visible.
   // Same stabilization reason as the block comment above: this used to be
   // an inline closure at the `ChatDockInboxPanel` call site.
   const onOpenInboxSession = useCallback(
     (threadId: string) => {
       collapseDockForNavigation();
-      navigate('/activity', { session: threadId });
+      showSurface('activity', { session: threadId });
     },
-    [collapseDockForNavigation, navigate],
+    [collapseDockForNavigation, showSurface],
   );
   const openChatSettings = useCallback(
     () => setShowChatSettings(true),
@@ -1099,6 +1109,46 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [collapseDockForNavigation, setLayout],
   );
+  const copyActions = useDockCopyActions({
+    conversationId: activeSession?.conversationId,
+    workingDirectory: sessionDisplayCwd,
+  });
+  /**
+   * #1536 F: rows whose subject is the active CONVERSATION rather than the
+   * dock's chrome, so the header takes them as data instead of deriving them.
+   *
+   * "Open code layout" is here because the project-context row lost the
+   * start-truncated path it used to hang that link off — the path was eating
+   * the conversation title, and deleting the link with it would have removed
+   * the dock's only route to a session's coding layout when the shell is not
+   * already on a project page.
+   *
+   * It carries BOTH halves of the gate the retired link had, and they were
+   * different things: the project is the SESSION's own (`activeSession`), which
+   * is the fact the link was always about — station#4525 review HIGH-2 is
+   * explicit that session facts never gate on the badge's bound project — while
+   * `scopedProjectSlug` suppresses the row entirely, because a project
+   * CHAT-SCOPE filter (or a full-screen placement's immutable project) has
+   * never shown session-specific facts and navigating out of it is not this
+   * row's business. Dropping either one silently changes what the row opens.
+   */
+  const dockMoreActions: DockMoreAction[] = [
+    ...copyActions,
+    ...(!scopedProjectSlug && sessionCodingLayout && activeSession?.projectSlug
+      ? [
+          {
+            key: 'open-code-layout',
+            label: 'Open code layout',
+            onSelect: () => {
+              handleOpenLayout(
+                activeSession.projectSlug as string,
+                sessionCodingLayout.slug,
+              );
+            },
+          },
+        ]
+      : []),
+  ];
   // station#4524: the project switcher's row action switches the dock's own
   // project context directly — no navigation, no chat creation. Previously
   // ("Continue in <project>") it silently opened the New Chat modal, which
@@ -1394,7 +1444,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
   // #3309: the retired tab strip's "New" behavior, now behind the header's
   // New button — exactly one chat-ready agent opens directly, else the modal.
-  const { data: agentConnections = [] } = useAgentConnectionsQuery() as {
+  const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data?: ConnectionConfig[];
   };
   // #3310: fires from the chat-settings menu; the transcript's summary card
@@ -1592,7 +1642,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     // from outside the ChatDock subtree. The request used to carry only
     // `sessionId` and silently drop when that id wasn't a live in-memory
     // tab — the same rehydrate-vs-navigate accident the inbox had. Fall
-    // through to `openConversation` (rehydrate) and finally `/activity`
+    // through to `openConversation` (rehydrate) and finally Activity
     // (a session Station cannot rehydrate) instead of no-oping.
     const focusChat = (detail: ChatFocusTarget) => {
       const {
@@ -1659,7 +1709,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           if (opened === false) {
             // Same catalog rule as the inbox click path (#3724 review): an
             // unanswered catalog is not a deleted agent — say to wait
-            // instead of bouncing to /activity.
+            // instead of bouncing to Activity.
             if (!agentsLoaded) {
               showInboxOpenFailure(
                 'Still loading your agents — try this item again in a moment.',
@@ -1668,7 +1718,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             }
             if (threadId) {
               collapseDockForNavigation();
-              navigate('/activity', { session: threadId });
+              showSurface('activity', { session: threadId });
             }
           }
         });
@@ -1676,7 +1726,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       }
       if (threadId) {
         collapseDockForNavigation();
-        navigate('/activity', { session: threadId });
+        showSurface('activity', { session: threadId });
       }
     };
     const unregisterOpenChatsNavigation = openChatsStore.registerNavigation({
@@ -1709,7 +1759,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         }
         // An edge placement has no panel for `inboxOpen` to reveal, so put the
         // dock somewhere the destination actually mounts first.
-        if (route.switchToBottomMode) setDockMode('bottom');
+        if (route.switchToBottomMode) commitDockPlacement('bottom');
         setDeviceSetting('inboxOpen', true);
         if (route.snapHalf) applyDockSnap('half');
       },
@@ -1733,10 +1783,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     isFullscreenPlacement,
     isMobile,
     effectiveDockSlotPlacement,
-    setDockMode,
+    commitDockPlacement,
     setDeviceSetting,
     showInboxOpenFailure,
     agentsLoaded,
+    showSurface,
   ]);
 
   // Sync activeChat (conversationId) from URL to local state
@@ -1751,12 +1802,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessions,
     openConversation: openColdConversationInScopedPane,
     setActiveSessionId,
-    navigate,
+    updateParams,
+    showSurface,
   });
 
   useEffect(() => {
     const openProjectChats = (event: Event) => {
-      const detail = (event as CustomEvent<ProjectChatsEventDetail>).detail;
+      const detail = (event as CustomEvent<OpenProjectChatsDetail>).detail;
       if (!detail?.projectSlug) return;
       if (routeToScopedChatProject(detail.projectSlug)) return;
 
@@ -1787,7 +1839,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       });
       if (outcome === 'focused') {
         telemetry.track('ui.chat.entry', {
-          source: 'project-sidebar',
+          // #1536 M6/D4: the DISPATCHER names itself. This used to hardcode
+          // `project-sidebar`, a pill deleted in archive#1629 — a listener
+          // cannot know who called it, and outlived the only caller that made
+          // the name true.
+          source: detail.source ?? UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
           outcome: 'focused',
           projectScoped: 1,
         });
@@ -1802,17 +1858,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       });
       setShowNewChatModal(true);
       telemetry.track('ui.chat.entry', {
-        source: 'project-sidebar',
+        source: detail.source ?? UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
         outcome: 'new-chat',
         projectScoped: 1,
       });
     };
-    window.addEventListener('station:open-project-chats', openProjectChats);
+    window.addEventListener(OPEN_PROJECT_CHATS_EVENT, openProjectChats);
     return () => {
-      window.removeEventListener(
-        'station:open-project-chats',
-        openProjectChats,
-      );
+      window.removeEventListener(OPEN_PROJECT_CHATS_EVENT, openProjectChats);
     };
   }, [
     applyDockSnap,
@@ -2036,12 +2089,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // #3309: New chat is the bar's pinned far-right icon now, with
               // the same single-ready-agent shortcut the desktop New has.
               onNewChat={openNewChatDirect}
-              // station#524: the same pre-rendered occupant switcher the
-              // desktop-style header passes below (already `undefined` for
-              // the full-screen Chat placement, which has no ambient
-              // occupant to switch away from — see the `occupantPicker`
-              // derivation above).
-              occupantPicker={occupantPicker}
               overflow={{
                 onOpenConversation: () => setShowSessionPicker(true),
                 onToggleHistory: toggleHistory,
@@ -2072,14 +2119,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 onRestoreDock: () => applyDockSnap('half'),
                 isDockMaximized: isPaneMaximized,
                 dockControls: !isFullscreenPlacement,
-                onSwitchOccupant:
-                  occupantSwitchDockPane && occupantSwitchDockPaneAsOnlyContent
-                    ? {
-                        onChoose: occupantSwitchDockPane,
-                        onChooseAsOnlyContent:
-                          occupantSwitchDockPaneAsOnlyContent,
-                      }
-                    : null,
               }}
             />
           ) : (
@@ -2115,19 +2154,20 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     // pre-station#4525, other than the pre-existing
                     // `scopedProjectSlug` guard (a project chat-scope filter
                     // has never shown session-specific facts).
-                    workingDirectory={
-                      scopedProjectSlug ? null : sessionDisplayCwd
-                    }
-                    codingLayoutSlug={
-                      scopedProjectSlug
-                        ? null
-                        : (sessionCodingLayout?.slug ?? null)
-                    }
+                    // #1536 G6: one derivation for the directory, so the
+                    // badge and the path can never name different projects.
+                    // With the dock collapsed and nothing open there is no
+                    // session to report on, and this row used to print "Home
+                    // folder" beside a project whose directory IS set. The
+                    // toolbar branch deleted the visible path SEGMENT, but the
+                    // prop survives as `directoryTitle`'s subject — so the
+                    // derivation still has a reader, and a wrong one would now
+                    // be a wrong tooltip rather than a wrong line of text.
+                    workingDirectory={dockProjectContextDirectory}
                     gitStatus={scopedProjectSlug ? undefined : gitStatus}
                     sessionProjectMismatchLabel={sessionProjectMismatchLabel}
                     projects={projects}
                     onSelectProject={handleSelectProject}
-                    onOpenLayout={handleOpenLayout}
                     onSwitchProject={handleSwitchProject}
                     onClearProjectScope={
                       scopedProjectSlug && !hasImmutableProjectScope
@@ -2150,11 +2190,19 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               availableDockSlotPlacements={availableDockSlotPlacements}
               effectiveDockSlotPlacement={effectiveDockSlotPlacement}
               onDockPlacementChange={commitDockPlacement}
-              // station#4460: Chat is one entry in the SAME occupant
-              // switcher Home/Activity carry — not a special case with no
-              // way to leave. Absent for a full-screen placement, which has
-              // no ambient dock to switch away from.
-              occupantPicker={occupantPicker}
+              regionVisible={isDockOpen}
+              shellMaximized={isDockMaximized}
+              // #1386: Chat's own header said "Hide dock region" while every
+              // other shell said "Hide <title>", because this was the one
+              // `ChatDockHeader` that passed no title. From the chrome, not
+              // from the registry: Chat's renderer is not allowed to read the
+              // region model (`region-surface-boundary.test.ts`), and the
+              // chrome already derives the shell's shortcut id the same way.
+              surfaceTitle={chrome.surfaceTitle}
+              canMaximize={chrome.canMaximize}
+              showMaximizeShortcut={chrome.ownsMaximizeShortcut}
+              surfaceShortcutId={chrome.surfaceShortcutId}
+              moreActions={dockMoreActions}
               // #3309: the tab strip's controls fold into the header — one
               // chrome bar, every reclaimed pixel is transcript space. Only
               // while the pane is open; the collapsed bar stays minimal.
@@ -2181,6 +2229,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       sessionInventory:
                         !conversationOpenRecovery && inventoryExecutionId
                           ? {
+                              hostId: sessionInventoryHostId,
                               chatStoreId: inventoryChatStoreId!,
                               executionId: inventoryExecutionId,
                               projectId: inventoryProjectId,
@@ -2227,8 +2276,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     station#1797: the panel itself mounts only while
                     expanded — collapsed means collapsed, with no rail
                     duplicating the header's own expand/collapse toggle
-                    (`chat-dock__inbox-toggle`, the single control for this
-                    now). */}
+                    (the "Collapse/Expand chat list" row of the header's More
+                    menu since #1536 F, the single control for this now). */}
                 {inboxPanelMounts({
                   isMobile,
                   dockMode: effectiveDockSlotPlacement,
@@ -2480,7 +2529,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               },
               onOpenSession: (threadId) => {
                 if (isFullscreenPlacement) {
-                  navigate('/activity', { session: threadId });
+                  showSurface('activity', { session: threadId });
                   return;
                 }
                 // Sessions must remain usable on a phone, so the dock closes.
@@ -2502,7 +2551,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 // this round trip through `lastDockMaximized` (navigation-store)
                 // instead, which `focusSession` already reads on the way back in.
                 setDockState(false, isDockMaximized);
-                navigate('/activity', { session: threadId });
+                showSurface('activity', { session: threadId });
               },
             }}
             pending={null}
@@ -2520,7 +2569,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             onOpenTranscript: (threadId) => {
               setIsBackgroundTasksOpen(false);
               setDockState(false, isDockMaximized);
-              navigate('/activity', { session: threadId });
+              showSurface('activity', { session: threadId });
             },
             onClose: () => setIsBackgroundTasksOpen(false),
           }}
@@ -2579,7 +2628,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     // — collapse a maximized dock first, same as the other
                     // dock-owned navigation seams.
                     collapseDockForNavigation();
-                    navigate('/activity', { session: task.sessionId });
+                    showSurface('activity', { session: task.sessionId });
                   },
                 },
               ]);
@@ -2649,6 +2698,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               invalidate(orchestrationQueries.sessions().queryKey);
               invalidate(conversationQueries.inventory().queryKey);
               setHandoffSource(null);
+              requestAnimationFrame(() =>
+                handoffReturnFocusRef.current?.focus(),
+              );
               showToast(
                 `Continuing with ${target?.name ?? `deleted Agent “${targetId}”`}`,
                 'success',
@@ -2729,19 +2781,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           newChatProjectOverride,
           sessions,
           showNewChatModal,
+          newChatRequestEpoch,
           showChatSettings,
           showSessionPicker,
           chatFontSize,
           defaultFontSize,
           showReasoning,
           showToolDetails,
-          dockMode: effectiveDockSlotPlacement,
-          // The stored preference, not the effective one: on a phone they
-          // differ, and the panel needs both to say what is in effect AND what
-          // is being kept for a wider screen (station#3928).
-          storedDockSlotPlacement: dockMode,
-          availableDockSlotPlacements,
-          pathname,
           autoHideEnabled,
           onSelectNewChat: (
             agent,
@@ -2932,7 +2978,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           onShowReasoningChange: setShowReasoning,
           onShowToolDetailsChange: setShowToolDetails,
           onAutoHideChange: setAutoHideEnabled,
-          onDockModeChange: (mode) => commitDockPlacement(mode),
         }}
         pending={null}
       />
@@ -2956,33 +3001,29 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
 }
 
-/** The ambient application placement of the shared Chat workspace pane. */
+/**
+ * The ambient application placement of the shared Chat workspace pane: Chat
+ * mounted in its own dock (`AmbientChatDockPaneHost` → `DockShell` →
+ * chromeless `WorkspacePaneHost`). Chat is the only pane that host renders
+ * (#928 C2b deleted the legacy docked-Home path and its occupant switching).
+ */
 export function ChatDock({
+  regionId,
   onRequestAuth,
-  homeContinuation = null,
-  onNavigate,
-  onDockActionChange,
 }: {
   onRequestAuth?: () => Promise<boolean> | undefined;
-  homeContinuation?: HomeViewNavigation | null;
-  onNavigate: (view: NavigationView) => void;
-  onDockActionChange?: (action: WorkspacePaneDockAction | null) => void;
+  regionId?: DockMode;
 }) {
-  // Mounted directly, not behind a LazyBoundary. The chromeless presentation
-  // renders a frame and the occupant — there is no tab or split controller to
-  // defer — and a `pending={null}` boundary would make the dock, a persistent
-  // shell affordance, blink out on a slow chunk and vanish entirely on a
-  // failed one. An absent dock is indistinguishable from one Station never
-  // had, which is the whole reason this codebase does not hide affordances.
+  // `pending={null}`: the dock is a persistent shell affordance, and the
+  // chunk is pre-warmed at module load above, so the boundary resolves
+  // without a visible gap rather than blinking a placeholder in and out.
   return (
     <LazyBoundary
       load={loadAmbientChatDockPaneHost}
       componentProps={{
         onRequestAuth,
         renderChatPane: renderAmbientChatPane,
-        homeContinuation,
-        onNavigate,
-        onDockActionChange,
+        regionId,
       }}
       pending={null}
     />

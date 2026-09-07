@@ -10,6 +10,7 @@ import {
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { grantPermissions } from '../../../services/plugins/plugin-permissions.js';
 import { loadPluginProviders } from '../plugin-loader.js';
 
 describe('loadPluginProviders', () => {
@@ -52,6 +53,9 @@ describe('loadPluginProviders', () => {
         streamEvents: async function* () {}
       };`,
     );
+    await grantPermissions(projectHome, 'runtime-plugin', [
+      'providers.register',
+    ]);
     const before =
       providerAdapterLaunchabilitySource.getLaunchabilityRevision();
 
@@ -113,6 +117,9 @@ describe('loadPluginProviders', () => {
           stopAll: async () => undefined, streamEvents: async function* () {}
         };`,
       );
+      await grantPermissions(projectHome, 'legacy-runtime-plugin', [
+        'providers.register',
+      ]);
       await loadPluginProviders(
         pluginsDir,
         'legacy-runtime-plugin',
@@ -245,6 +252,9 @@ describe('loadPluginProviders', () => {
     const logger = { error: vi.fn() } as any;
     const before =
       providerAdapterLaunchabilitySource.getLaunchabilityRevision();
+    await grantPermissions(projectHome, 'runtime-plugin', [
+      'providers.register',
+    ]);
     await loadPluginProviders(
       pluginsDir,
       'runtime-plugin',

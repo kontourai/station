@@ -53,8 +53,12 @@ export function isReservedPluginIdentity(pluginName: string): boolean {
  * `installPluginFromSource`, `installPluginDependency`, and
  * `JsonManifestRegistryProvider.install`, which creates the directory itself
  * rather than delegating — and never from a path that reads or removes one: a plugin already installed
- * under such a name must stay listable, inspectable and — above all —
- * UNINSTALLABLE. Refusing it at a read boundary would strand it.
+ * under such a name must stay listable, inspectable and, where the routes
+ * still permit it, uninstallable. Refusing it at a read boundary would strand
+ * it. One name is the exception by construction: `DELETE /home-role` resolves
+ * to the home-role surface (#477), so a hand-placed tree named `home-role`
+ * can only be removed on the filesystem — the price of the literal route
+ * actually winning, which this file's opening paragraph promises.
  */
 export function assertPluginIdentityAvailable(pluginName: string): void {
   if (isReservedPluginIdentity(pluginName)) {

@@ -26,6 +26,7 @@ import {
   openChatsStore,
   resetOpenChatIdentitiesCacheForTests,
 } from '../contexts/open-chats-store';
+import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
 
 // --- SDK + navigation mocks ------------------------------------------------
 
@@ -41,6 +42,14 @@ let selectedProjectLayoutMock: string | null = null;
 let messageSearchMock: any = { matches: [], instances: [] };
 const registeredCommand = vi.fn();
 let registeredShortcutAvailability: { disabled?: boolean; when?: unknown } = {};
+let registeredShortcutIdentity = {
+  id: 'app.registered',
+  key: 'j',
+  modifiers: ['cmd'] as ('cmd' | 'ctrl' | 'shift' | 'alt')[],
+  description: 'Run registered command',
+};
+let additionalRegisteredShortcutIdentities: (typeof registeredShortcutIdentity)[] =
+  [];
 let shortcutWhenEnabled = true;
 
 // Counts index rebuilds. `rankCommands` runs inside the palette's `useMemo`
@@ -89,6 +98,7 @@ vi.mock('@kontourai/station-sdk/workspace-pane', () => ({
 }));
 
 const navigateMock = vi.fn();
+const showSurfaceMock = vi.fn();
 const setProjectMock = vi.fn();
 const setDockStateMock = vi.fn();
 
@@ -101,6 +111,10 @@ vi.mock('../contexts/NavigationContext', () => ({
     selectedProjectLayout: selectedProjectLayoutMock,
   }),
 }));
+vi.mock('../contexts/RegionModelContext', () => ({}));
+vi.mock('../contexts/useShowSurface', () => ({
+  useShowSurface: () => showSurfaceMock,
+}));
 
 vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isMobile: false }),
@@ -111,13 +125,15 @@ vi.mock('../contexts/KeyboardShortcutsContext', () => ({
   useShortcutRegistry: () => ({
     getAllShortcuts: () => [
       {
-        id: 'app.registered',
-        key: 'j',
-        modifiers: ['cmd'],
-        description: 'Run registered command',
+        ...registeredShortcutIdentity,
         handler: registeredCommand,
         ...registeredShortcutAvailability,
       },
+      ...additionalRegisteredShortcutIdentities.map((identity) => ({
+        ...identity,
+        handler: registeredCommand,
+        ...registeredShortcutAvailability,
+      })),
       // The real registry always carries these nine, whatever the session
       // count is — that is exactly SHELL-19's defect, so the harness has to
       // reproduce it or the assertion below proves nothing.
@@ -160,6 +176,7 @@ afterEach(() => {
   indexRebuilds.count = 0;
   resetOpenChatIdentitiesCacheForTests();
   navigateMock.mockReset();
+  showSurfaceMock.mockReset();
   setProjectMock.mockReset();
   setDockStateMock.mockReset();
   registeredCommand.mockReset();
@@ -171,6 +188,13 @@ afterEach(() => {
   selectedProjectLayoutMock = null;
   messageSearchMock = { matches: [], instances: [] };
   registeredShortcutAvailability = {};
+  registeredShortcutIdentity = {
+    id: 'app.registered',
+    key: 'j',
+    modifiers: ['cmd'],
+    description: 'Run registered command',
+  };
+  additionalRegisteredShortcutIdentities = [];
   shortcutWhenEnabled = true;
   commandFrecencyStorage.reset();
 });
@@ -684,6 +708,37 @@ describe('CommandPalette', () => {
     ).toBeTruthy();
   });
 
+  test('projects both registered region toggles into the command palette', async () => {
+    const chat = REGION_SURFACE_REGISTRY.get('chat');
+    const activity = REGION_SURFACE_REGISTRY.get('activity');
+    expect(chat).toBeTruthy();
+    expect(activity).toBeTruthy();
+    registeredShortcutIdentity = {
+      id: chat!.shortcut!.id,
+      key: chat!.shortcut!.key,
+      modifiers: [...chat!.shortcut!.modifiers],
+      description: `Toggle ${chat!.title} region`,
+    };
+    additionalRegisteredShortcutIdentities = [
+      {
+        id: activity!.shortcut!.id,
+        key: activity!.shortcut!.key,
+        modifiers: [...activity!.shortcut!.modifiers],
+        description: `Toggle ${activity!.title} region`,
+      },
+    ];
+
+    await renderCommandPalette();
+    open();
+
+    fireEvent.click(screen.getByRole('option', { name: /Toggle Chat region/ }));
+    open();
+    fireEvent.click(
+      screen.getByRole('option', { name: /Toggle Activity region/ }),
+    );
+    expect(registeredCommand).toHaveBeenCalledTimes(2);
+  });
+
   // #766 item 4: the Report-a-problem entry point is a palette action that
   // dispatches the host's open event; the dialog itself is lazily hosted by
   // DeferredAppOverlays.
@@ -717,6 +772,25 @@ describe('CommandPalette', () => {
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' });
     expect(navigateMock).toHaveBeenCalledWith('/schedule');
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  test('Activity navigation reveals its registered region surface', async () => {
+    await renderCommandPalette();
+    open();
+    fireEvent.change(screen.getByRole('combobox'), {
+      target: { value: 'activity' },
+    });
+    // #928: `/activity` is not the only wrong destination any more — the
+    // registry's `route` field now holds the surface's deep link, so a
+    // palette entry that fell through to `navigate(surface.route)` would
+    // reach a real URL and look like it worked. Count the calls across the
+    // click instead of naming one absent path. (Mocks are not auto-cleared
+    // in this suite, so the baseline is read rather than assumed to be 0.)
+    const navigationsBefore = navigateMock.mock.calls.length;
+    fireEvent.click(screen.getByRole('option', { name: /^Activity/ }));
+
+    expect(showSurfaceMock).toHaveBeenCalledWith('activity');
+    expect(navigateMock.mock.calls.length).toBe(navigationsBefore);
   });
 
   test('IME Enter does not run the highlighted command, then plain Enter does', async () => {

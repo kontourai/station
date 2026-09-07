@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readInstanceRegistry } from '@kontourai/station-shared/instance-registry';
@@ -12,6 +13,11 @@ import {
   SUPPORTED_NODE_MAJOR,
 } from '@kontourai/station-shared/node-runtime';
 import { redactDeep } from '@kontourai/station-shared/redaction';
+import {
+  describeTerminalPtyLoadFailure,
+  type TerminalCapability,
+  terminalPtyUnavailableReason,
+} from '@kontourai/station-shared/terminal-capability';
 import {
   formatKontourDependencyState,
   inspectExactKontourDependencyPins,
@@ -65,6 +71,8 @@ export interface DoctorDeps {
   inspectSupervisorWedges: (
     projectHome: string,
   ) => Promise<ReadonlyArray<string>>;
+  /** The checkout's terminal PTY backend — see `probeTerminalPtyModule`. */
+  probeTerminalPty: (repoRoot: string) => TerminalCapability;
 }
 
 export interface DoctorJsonDocument {
@@ -121,6 +129,30 @@ async function detectOllama(): Promise<boolean> {
     return response.ok;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Whether the checkout's node-pty native module actually loads (#1244).
+ * node-pty is Station's only install-time compile on Linux, and a host
+ * without a C++ toolchain installs with the terminal surface degraded — a
+ * product state this doctor line must report loudly, with the remediation,
+ * instead of leaving a dead terminal pane as the first symptom. Resolution
+ * is anchored at the checkout (`repoRoot`), the same root the dependency
+ * checks above inspect, so the answer is about the Station being diagnosed
+ * rather than about the doctor's own package.
+ */
+export function probeTerminalPtyModule(repoRoot: string): TerminalCapability {
+  try {
+    createRequire(join(repoRoot, 'package.json'))('node-pty');
+    return { state: 'available' };
+  } catch (error) {
+    return {
+      state: 'unavailable',
+      reason: terminalPtyUnavailableReason(
+        describeTerminalPtyLoadFailure(error),
+      ),
+    };
   }
 }
 
@@ -210,6 +242,7 @@ function buildFixCommands(input: {
   gitVersion: string | null;
   tsxVersion: string | null;
   dependencyMismatchCount: number;
+  terminalPtyAvailable: boolean;
 }): DoctorFixCommand[] {
   const fixes: DoctorFixCommand[] = [];
 
@@ -246,6 +279,14 @@ function buildFixCommands(input: {
       label: 'Synchronize project dependencies',
       command: 'npm install',
       reason: `${input.dependencyMismatchCount} exact-pinned @kontourai package(s) do not match the installed versions.`,
+    });
+  }
+  if (!input.terminalPtyAvailable) {
+    fixes.push({
+      label: 'Rebuild the terminal PTY backend',
+      command: 'npm run dependencies:install',
+      reason:
+        'node-pty failed to load, so interactive terminal panes are disabled. The rebuild needs a C++ toolchain (g++, make, python3); agent execution is unaffected either way.',
     });
   }
 
@@ -301,6 +342,7 @@ export async function collectDoctorReport(
     repoRoot: CWD,
     inspectKontourDependencies: inspectExactKontourDependencyPins,
     inspectSupervisorWedges,
+    probeTerminalPty: probeTerminalPtyModule,
     ...deps,
   };
 
@@ -328,6 +370,7 @@ export async function collectDoctorReport(
   const supervisorWedges = await runtimeDeps.inspectSupervisorWedges(
     runtimeDeps.projectHome,
   );
+  const terminalCapability = runtimeDeps.probeTerminalPty(runtimeDeps.repoRoot);
 
   const appConfig = runtimeDeps.readJson<Record<string, unknown>>(
     appConfigPath,
@@ -391,6 +434,17 @@ export async function collectDoctorReport(
       detail:
         rustVersion?.split(' ')[1] ??
         'Not installed (desktop builds unavailable)',
+    },
+    {
+      // #1244: a Station without a working node-pty runs with terminal
+      // panes disabled — a supported, deliberately LOUD degraded state, so
+      // this is a warn (install stays usable), never a silent omission.
+      label: 'Terminal PTY (node-pty)',
+      status: terminalCapability.state === 'available' ? 'pass' : 'warn',
+      detail:
+        terminalCapability.state === 'available'
+          ? 'Native module loads; interactive terminal panes are available.'
+          : terminalCapability.reason,
     },
     {
       label: 'App config',
@@ -486,6 +540,7 @@ export async function collectDoctorReport(
     gitVersion,
     tsxVersion,
     dependencyMismatchCount: dependencyState.mismatches.length,
+    terminalPtyAvailable: terminalCapability.state === 'available',
   });
   const recommendation =
     enabledLlmProviders.length > 0

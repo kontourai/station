@@ -19,7 +19,7 @@ const sourceSha = 'a'.repeat(40);
 const attestation = (records: any[]) => ({
   authority: 'github-artifact-attestation',
   repository: 'kontourai/station',
-  workflowRef: `.github/workflows/nightly-native-cohort.yml@${sourceSha}`,
+  workflowRef: `.github/workflows/nightly-native-stage.yml@${sourceSha}`,
   runId: '112061',
   subjectDigest: `sha256:${createHash('sha256').update(canonicalJson(records)).digest('hex')}`,
   verificationReference: 'github:attestation:immutable:1',
@@ -195,7 +195,11 @@ describe('release cohort content-bound state machine', () => {
       (v: any) => (v.repository = 'other/repo'),
       (v: any) => (v.runId = '99'),
       (v: any) =>
-        (v.workflowRef = `.github/workflows/nightly-native-cohort.yml@${'b'.repeat(40)}`),
+        (v.workflowRef = `.github/workflows/nightly-native-stage.yml@${'b'.repeat(40)}`),
+      // The right source at the wrong (publishing) workflow: staged bytes are
+      // attested by the staging phase only.
+      (v: any) =>
+        (v.workflowRef = `.github/workflows/nightly-native-cohort.yml@${sourceSha}`),
       (v: any) => (v.subjectDigest = `sha256:${'0'.repeat(64)}`),
       (v: any) => (v.verificationReference = ''),
     ]) {
@@ -418,6 +422,75 @@ test('CLI runs the plan-to-finalize path and rejects invalid invocation', () => 
   );
   expect(invalid.status).toBe(1);
   expect(invalid.stderr).toContain('usage:');
+});
+
+test('artifact input records downloaded paths in the admission reader shape', () => {
+  const root = mkdtempSync(join(tmpdir(), 'station-cohort-artifacts-'));
+  roots.push(root);
+  const destination = join(root, 'artifacts.json');
+  const android = join(root, 'station.aab');
+  const macos = join(root, 'station.dmg');
+  writeFileSync(android, 'android');
+  writeFileSync(macos, 'macos');
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      join(process.cwd(), 'scripts/release-cohort-workflow.mjs'),
+      'artifact-input',
+      destination,
+      `android=station.aab=${android}`,
+      `macos=station.dmg=${macos}`,
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+
+  expect(result.status, result.stderr).toBe(0);
+  expect(JSON.parse(readFileSync(destination, 'utf8'))).toEqual({
+    android: { 'station.aab': { path: android } },
+    macos: { 'station.dmg': { path: macos } },
+  });
+
+  const plan = createCohortPlan(input());
+  const record = (name: string, path: string) => ({
+    name,
+    sha256: createHash('sha256').update(readFileSync(path)).digest('hex'),
+    size: readFileSync(path).length,
+  });
+  const androidReceipt = createStageReceipt(plan, {
+    platform: 'android',
+    artifacts: [{ name: 'station.aab', bytes: readFileSync(android) }],
+    artifactAttestationClaim: attestation([record('station.aab', android)]),
+  });
+  const macosReceipt = createStageReceipt(plan, {
+    platform: 'macos',
+    artifacts: [{ name: 'station.dmg', bytes: readFileSync(macos) }],
+    artifactAttestationClaim: attestation([record('station.dmg', macos)]),
+  });
+  const planPath = join(root, 'plan.json');
+  const androidReceiptPath = join(root, 'android-receipt.json');
+  const macosReceiptPath = join(root, 'macos-receipt.json');
+  writeFileSync(planPath, JSON.stringify(plan));
+  writeFileSync(androidReceiptPath, JSON.stringify(androidReceipt));
+  writeFileSync(macosReceiptPath, JSON.stringify(macosReceipt));
+
+  const admission = spawnSync(
+    process.execPath,
+    [
+      join(process.cwd(), 'scripts/release-cohort.mjs'),
+      'admit',
+      planPath,
+      destination,
+      androidReceiptPath,
+      macosReceiptPath,
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(admission.status, admission.stderr).toBe(0);
+  expect(JSON.parse(admission.stdout)).toMatchObject({
+    kind: 'station.release-cohort-admission/v1',
+    state: 'staged',
+  });
 });
 
 test('recovery receipt is content-bound and makes confirmed provider finality distinct from partial durability', () => {

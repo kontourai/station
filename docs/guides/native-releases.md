@@ -43,7 +43,7 @@ digests and binds them to the exact stable or preview tag.
 `@cyclonedx/cyclonedx-npm` is pinned to `6.0.1`; `src-desktop/Cargo.toml`
 records the matching `cargo-cyclonedx` tool pin `0.5.9`. The container producer
 also pins `anchore/sbom-action` at
-`e22c389904149dbc22b58101806040fa8d37a610` and Syft `1.51.0`: after push it
+`3ad7283483fc7af8ff2b4ea19663c2d5ca935e26` and Syft `1.51.0`: after push it
 scans `ghcr.io/kontourai/station@sha256:...` (never a mutable tag) as
 CycloneDX JSON. Its nonempty package inventory is bound to the recorded image
 digest, source SHA, and two-platform descriptor, transferred as a runner
@@ -100,14 +100,31 @@ SemVer as well as the shared `day * 100 + build` numeric code.
 
 ## Native Nightly cohort
 
-`nightly.yml` keeps the source gate and canonical full-regression receipt, then
-calls `nightly-native-cohort.yml` only on `refs/heads/main` when the gated SHA
-is the workflow event SHA. The reusable workflow stages a signed Android AAB
-and the four notarized macOS updater assets without publishing, admits their
-downloaded bytes against provenance-bearing stage receipts, promotes Android
-first, then the existing rolling macOS prerelease, and performs a protected
-provider/attestation verification before either rolling Android marker or
-deploy-ledger entry advances. Immediately after admission, an annotated,
+`nightly.yml` keeps the source gate and canonical full-regression receipt and
+runs the native work as two reusable phases, both only on `refs/heads/main`
+when the gated SHA is the workflow event SHA.
+
+Phase one, `nightly-native-stage.yml`, needs only the source gate and runs in
+parallel with the full-regression receipt (#1453): it reserves the cohort
+identity, then stages a signed Android AAB (arm64-v8a only, #1456), the four
+notarized macOS updater assets, and the signed, audited iOS package (#1454)
+as run artifacts with content-bound stage receipts. It publishes nothing: no
+Play upload, no release asset, no tag move, no TestFlight upload, no ledger
+write. A failed night therefore costs one reserved version code and nothing
+else. Every staged artifact is attested under this workflow's identity, which
+is what the protected verifier checks staged bytes against. Rust dependency
+compilation is cached per platform (`Swatinem/rust-cache`, restored on every
+ref, saved only from `main`, #1455).
+
+Phase two, `nightly-native-cohort.yml`, needs the source gate, the exact-SHA
+full-regression receipt, and phase one, and receives the reserved identity as
+inputs. It admits the staged bytes against their stage receipts, promotes
+Android first, then the existing rolling macOS prerelease, uploads the
+already-audited iOS package to TestFlight from the same run's staged bytes
+(`testflight-delivery.yml` in `delivery: upload` mode, which never rebuilds),
+and performs a protected provider/attestation verification before either
+rolling Android marker or deploy-ledger entry advances.
+Immediately after admission, an annotated,
 content-bound `refs/tags/nightly-promotion-fence` is created from the exact
 plan and admission; it remains through both provider promotions and is removed
 only as the final successful durable-completion step after final attestation,
@@ -123,10 +140,31 @@ reconciles the provider/final-attestation/app-token/ledger/tag facts and
 explicitly removes the lock; automation never clears it. Recovery records the
 promotion-fence ref/outcome but never deletes the fence, so a failed recovery
 lock write still leaves the original pre-effect fence blocking the next plan.
+macOS staging passes `--overlap-notarization`, so the two `notarytool submit
+--wait` waits run concurrently: the Nightly disk image encloses a signed but
+not-yet-stapled application, whose own ticket Gatekeeper resolves online, while
+the disk image and the updater archive's application both carry stapled
+tickets. Preview and stable releases keep the serial staple-then-package order,
+so an application copied out of one of their disk images validates offline.
 The independently published CLI remains outside this cohort. The Nightly Android and macOS matrix cells have
 `requiredForPromotion: true` and an atomic cohort availability policy; this is
 only an available configured subset, and fleet/CLI completion remains
 `NOT_VERIFIED`.
+
+## Nightly fleet staging
+
+`nightly-fleet-staging.yml` is an independent reusable, portable-only evidence
+lane. It is not a native-promotion dependency. Its Actions artifacts are
+staging receipts, not a GitHub release, updater feed, Play upload, TestFlight
+build, container registry image, or Linux package-repository publication.
+
+The final `nightly-fleet-staged-inventory-*` artifact content-binds every
+portable variant to the source SHA, workflow run, static-plan digest, build
+check/SBOM evidence, artifact bytes, and GitHub attestation verification. It
+does not stage container, Windows, Linux, or iOS variants: those remain gated
+and `NOT_VERIFIED`. No staged portable artifact proves availability, an
+install, or an update; those outcomes remain `NOT_PUBLISHED`, `NOT_INSTALLED`,
+and `NOT_UPDATED` in the admitted inventory.
 
 Normal operation is the scheduled Nightly build, which builds the current
 workflow event SHA once and no-ops when the rolling `nightly` tag already names

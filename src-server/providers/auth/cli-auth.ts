@@ -270,7 +270,16 @@ export async function findCliBinaryAsync(
   return findCliBinary(command);
 }
 
-async function runCliCommand(
+/**
+ * The shared, bounded read-only CLI probe: augmented spawn env, a
+ * {@link CLI_PROBE_TIMEOUT_MS} ceiling, `windowsHide`. Exported (#1551) so an
+ * adapter that needs the SAME observation the readiness probe already makes —
+ * Claude's `claude --version`, which now decides whether Station launches the
+ * installed CLI or the one bundled with the Agent SDK — can memoize one call
+ * and hand it back to `buildCliRuntimePrerequisites` through `runCommand`,
+ * rather than spawning the launcher a second time.
+ */
+export async function runCliCommand(
   command: string,
   args: string[],
   signal?: AbortSignal,

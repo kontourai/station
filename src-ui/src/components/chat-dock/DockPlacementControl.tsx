@@ -25,13 +25,13 @@ export function DockPlacementChoices({
           type="button"
           role="menuitemradio"
           aria-checked={effectivePlacement === placement}
-          className={`dock-placement-menu__item${
-            effectivePlacement === placement
-              ? ' dock-placement-menu__item--active'
-              : ''
-          }`}
+          // No `--active` modifier: `.menu-row[aria-checked="true"]` styles the
+          // pressed segment from the state already declared beside it, so the
+          // paint cannot disagree with the ARIA.
+          className="menu-row"
           onClick={() => onSelect(placement)}
         >
+          <span className="menu-row__glyph" aria-hidden="true" />
           {LABELS[placement]}
         </button>
       ))}
@@ -152,7 +152,7 @@ export function DockPlacementControl({
       {menuOpen ? (
         <div
           ref={menuRef}
-          className="dock-placement-menu"
+          className="menu-surface dock-placement-menu"
           role="menu"
           aria-label="Dock placement"
         >

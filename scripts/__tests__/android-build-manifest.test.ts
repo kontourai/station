@@ -14,9 +14,14 @@ import {
   ANDROID_PROJECT_DIR,
   writeAndroidBuildManifest,
 } from '../lib/android-build-manifest.mjs';
-import { BUILD_MANIFEST_FILENAME } from '../lib/desktop-build-manifest.mjs';
 import {
+  BUILD_MANIFEST_FILENAME,
+  writeNativeClientBuildManifest,
+} from '../lib/desktop-build-manifest.mjs';
+import {
+  AAB_BUILD_MANIFEST_ENTRY,
   APK_BUILD_MANIFEST_ENTRY,
+  extractAndroidBuildManifest,
   parseAndroidBuildProvenance,
 } from '../read-android-build-provenance.mjs';
 
@@ -134,14 +139,54 @@ describe('android build manifest', () => {
     });
   });
 
+  test('keeps frozen source, Android asset, and later native reuse byte-identical', () => {
+    const root = withReleaseManifest(makeRoot());
+    const sourcePath = writeNativeClientBuildManifest(root, {
+      builtAt: '2026-08-20T18:00:00.000Z',
+      env: {},
+      refresh: true,
+    });
+    const sourceBytes = readFileSync(sourcePath as string, 'utf8');
+    const manifestPath = writeAndroidBuildManifest(root, {
+      builtAt: '2026-08-20T19:00:00.000Z',
+      env: {},
+    });
+
+    // A different clock at the Android writer must not make the asset a
+    // sibling manifest. It is an exact copy of the source-owned record.
+    expect(readFileSync(manifestPath as string, 'utf8')).toBe(sourceBytes);
+
+    // Tauri calls build:native-client after the asset has been staged. Its
+    // explicit reuse lease must preserve the source and packaged bytes even
+    // if that nested command reaches this writer at a later wall-clock time.
+    const reusedPath = writeNativeClientBuildManifest(root, {
+      builtAt: '2026-08-20T20:00:00.000Z',
+      env: {},
+      refresh: false,
+    });
+    expect(readFileSync(reusedPath as string, 'utf8')).toBe(sourceBytes);
+    expect(readFileSync(manifestPath as string, 'utf8')).toBe(sourceBytes);
+  });
+
   test('the packaged entry path is derived from the staged filename, not restated', () => {
     // If either side is edited alone the stamp becomes unfindable while both
     // halves still pass their own tests.
     expect(APK_BUILD_MANIFEST_ENTRY).toBe(`assets/${BUILD_MANIFEST_FILENAME}`);
+    expect(AAB_BUILD_MANIFEST_ENTRY).toBe(`base/${APK_BUILD_MANIFEST_ENTRY}`);
     // And the writer must still be aiming at the source set Gradle packages
     // into `assets/` — checked against the pinned path, not against itself.
     expect(ANDROID_ASSETS_DIR).toBe(ANDROID_ASSET_SOURCE_SET);
     expect(ANDROID_PROJECT_DIR).toBe(ANDROID_GENERATED_PROJECT);
+  });
+
+  test('refuses a Play archive without an extractable manifest', () => {
+    const root = makeRoot();
+    const expected = join(root, 'expected.json');
+    const archive = join(root, 'nightly.aab');
+    writeFileSync(expected, '{"sha":"x"}\n');
+    expect(() =>
+      extractAndroidBuildManifest(archive, { expectedPath: expected }),
+    ).toThrow(/Android archive carries no build provenance/);
   });
 
   test('no checkout and no release manifest degrades instead of failing the build', () => {

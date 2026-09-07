@@ -56,7 +56,7 @@ describe('AttentionHistoryItem — approval kind', () => {
   test('renders an "Open session" link when the item resolves a session target', () => {
     render(
       <AttentionHistoryItem
-        item={baseApproval({ openHref: '/activity?session=thread-1' })}
+        item={baseApproval({ openHref: '/?surface=activity&session=thread-1' })}
         isPending={false}
         isDismissPending={false}
         onAction={vi.fn()}
@@ -66,7 +66,9 @@ describe('AttentionHistoryItem — approval kind', () => {
     );
 
     const link = screen.getByRole('link', { name: 'Open session' });
-    expect(link.getAttribute('href')).toBe('/activity?session=thread-1');
+    expect(link.getAttribute('href')).toBe(
+      '/?surface=activity&session=thread-1',
+    );
   });
 
   test('renders no "Open session" link when the item has no resolvable target', () => {
@@ -96,7 +98,7 @@ function baseFailure(
     title: 'Fix the login redirect',
     createdAt: now,
     updatedAt: now,
-    openHref: '/activity?session=thread-boom',
+    openHref: '/?surface=activity&session=thread-boom',
     source: { threadId: 'thread-boom' },
     ...overrides,
   };
@@ -215,7 +217,9 @@ describe('AttentionHistoryItem — session-failed kind', () => {
     expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
     expect(navigate).not.toHaveBeenCalled();
     await vi.waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith('/activity?session=thread-boom'),
+      expect(navigate).toHaveBeenCalledWith(
+        '/?surface=activity&session=thread-boom',
+      ),
     );
   });
 
@@ -223,7 +227,9 @@ describe('AttentionHistoryItem — session-failed kind', () => {
     // Only `session-failed` is acknowledgeable server-side; an ack recorded
     // against any other kind is discarded, so firing one would be a write
     // that claims the row was seen and changes nothing.
-    renderRow(baseApproval({ openHref: '/activity?session=thread-1' }));
+    renderRow(
+      baseApproval({ openHref: '/?surface=activity&session=thread-1' }),
+    );
 
     screen.getByRole('link', { name: 'Open session' }).click();
 
@@ -237,7 +243,7 @@ describe('AttentionHistoryItem — dismiss affordance', () => {
     const onDismiss = vi.fn();
     render(
       <AttentionHistoryItem
-        item={baseApproval({ openHref: '/activity?session=thread-1' })}
+        item={baseApproval({ openHref: '/?surface=activity&session=thread-1' })}
         isPending={false}
         isDismissPending={false}
         onAction={vi.fn()}

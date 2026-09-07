@@ -11,24 +11,23 @@ describe('station#1827 — classifyClaudeResultOutcome', () => {
     ).toBe('ok');
   });
 
-  test('classifies is_error: true as terminal, regardless of subtype', () => {
-    // SDKResultSuccess: subtype 'success' but is_error: true is exactly the
-    // dead --resume shape ("No conversation found with session ID: ...").
+  test('classifies an error flag without binding evidence as a failed turn', () => {
+    // The success-shaped SDK result can also carry a refusal or other failure.
     expect(
       classifyClaudeResultOutcome({ type: 'result', is_error: true }),
-    ).toBe('terminal');
+    ).toBe('failed');
   });
 
-  test('never prose-matches — is_error alone decides the outcome', () => {
+  test('does not infer a dead binding from an error flag alone', () => {
     // A message whose text looks benign but is flagged is_error is still
-    // terminal; a message whose text looks alarming but is not flagged
+    // failed; a message whose text looks alarming but is not flagged
     // is_error is still ok. The classifier reads only the structured flag.
     expect(
       classifyClaudeResultOutcome({
         type: 'result',
         is_error: true,
       } as any),
-    ).toBe('terminal');
+    ).toBe('failed');
   });
 });
 
@@ -57,4 +56,47 @@ describe('station#1827 — claudeResultFailureText', () => {
       'The engine ended this turn with an error.',
     );
   });
+});
+
+test('only an exact missing-session diagnostic for the attempted cursor disproves that binding', () => {
+  const cursor = 'native-session-known';
+  const result = {
+    type: 'result' as const,
+    is_error: true,
+    result: `No conversation found with session ID: ${cursor}`,
+  };
+  expect(classifyClaudeResultOutcome(result, cursor)).toBe('binding-dead');
+  expect(
+    classifyClaudeResultOutcome(
+      { ...result, result: undefined, errors: [result.result] },
+      cursor,
+    ),
+  ).toBe('binding-dead');
+  expect(classifyClaudeResultOutcome(result)).toBe('failed');
+  expect(classifyClaudeResultOutcome(result, 'different-cursor')).toBe(
+    'failed',
+  );
+  expect(
+    classifyClaudeResultOutcome(
+      { ...result, result: `Quoted diagnostic: ${result.result}` },
+      cursor,
+    ),
+  ).toBe('failed');
+  expect(
+    classifyClaudeResultOutcome({ ...result, is_error: false }, cursor),
+  ).toBe('ok');
+});
+
+test('a real provider-safeguard error does not imply a lost native binding', () => {
+  expect(
+    classifyClaudeResultOutcome(
+      {
+        type: 'result',
+        is_error: true,
+        result:
+          "API Error: Opus 5 (1M context)'s safeguards flagged this message. Details: [reasoning_extraction]",
+      },
+      'existing-session',
+    ),
+  ).toBe('failed');
 });

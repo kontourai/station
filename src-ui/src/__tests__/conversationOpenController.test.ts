@@ -4,7 +4,10 @@ import {
   commitConversationOpen,
   conversationOpenPatch,
 } from '../components/chat-dock/conversationOpenController';
-import { conversationCanMutate } from '../contexts/conversation-open-policy';
+import {
+  conversationCanMutate,
+  conversationOpenPhase,
+} from '../contexts/conversation-open-policy';
 
 const conversation = {
   id: 'conversation-749',
@@ -50,6 +53,41 @@ describe('#749 conversation open controller', () => {
     expect(
       conversationCanMutate({ conversationOpenState: resolved(true) }),
     ).toBe(true);
+  });
+
+  // #1582 E3/B6. The gate above says what may be WRITTEN; the phase says what
+  // is KNOWN, and the two answers differ exactly where the defect was: pending
+  // and failed both block writes, and only one of them is a failure.
+  test('the phase separates a don-t-know-yet from a verdict', () => {
+    expect(conversationOpenPhase({})).toBe('writable');
+    expect(conversationOpenPhase({ conversationOpenPending: true })).toBe(
+      'resolving',
+    );
+    expect(conversationOpenPhase({ conversationOpenFailed: true })).toBe(
+      'read-only',
+    );
+    expect(
+      conversationOpenPhase({ conversationOpenState: resolved(false) }),
+    ).toBe('read-only');
+    expect(
+      conversationOpenPhase({ conversationOpenState: resolved(true) }),
+    ).toBe('writable');
+    // A resolution left over from a prior read is not an answer about the read
+    // now in flight: pending wins over BOTH a stale success and a stale
+    // failure, so a re-open of a previously-broken conversation does not paint
+    // the old verdict while the new read runs.
+    expect(
+      conversationOpenPhase({
+        conversationOpenPending: true,
+        conversationOpenState: resolved(true),
+      }),
+    ).toBe('resolving');
+    expect(
+      conversationOpenPhase({
+        conversationOpenPending: true,
+        conversationOpenFailed: true,
+      }),
+    ).toBe('resolving');
   });
 
   test('resolved binding commits the exact current child and established lifecycle', () => {

@@ -233,6 +233,7 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
           agentSpec.model ||
           deps.appConfig.defaultModel;
         let region = deps.appConfig.region;
+        let providerType: string | undefined;
         if (deps.listProviderConnections) {
           try {
             const identity = resolveManagedModelIdentity(deps.spec, {
@@ -241,6 +242,7 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
             });
             modelId = identity.modelId;
             region = identity.region ?? region;
+            providerType = identity.providerType;
           } catch {
             // Usage persistence remains available for legacy provider state.
           }
@@ -249,6 +251,7 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
           modelId,
           usage,
           deps.modelCatalog,
+          providerType,
           deps.appConfig,
           deps.logger,
           region,
@@ -293,6 +296,7 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
           adapter,
           invocation,
           modelId,
+          providerType,
           usage,
           cost,
           deps,
@@ -312,6 +316,7 @@ async function enrichLastMessage(
   adapter: FileMemoryAdapter,
   invocation: InvocationContext,
   modelId: string,
+  providerType: string | undefined,
   usage: TokenUsage,
   cost: number | null,
   deps: AgentHooksDeps,
@@ -334,6 +339,7 @@ async function enrichLastMessage(
         configRegion: deps.appConfig.region,
         env: process.env,
       }).region,
+      providerType,
     );
 
     await adapter.removeLastMessage(

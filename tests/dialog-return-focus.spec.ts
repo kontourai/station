@@ -21,6 +21,7 @@
  * `about:blank`, where `history.pushState` throws, and the dialog-history
  * entry is orthogonal to focus restoration.
  */
+import http from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, type Page, test } from '@playwright/test';
@@ -341,6 +342,17 @@ createRoot(document.getElementById('root')).render(<Scenario />);
 
 let harnessScript = '';
 
+/**
+ * A throwaway localhost origin for the `connect-modal` scenario only (the
+ * same pattern `csp-shell.spec.ts` uses for its own server): real localhost
+ * is a secure context (unlike a bare `about:blank` page — see `mount`
+ * below) and carries no CSP, unlike the real app shell. The other scenarios
+ * stay on `about:blank`, which their `historyMode="none"` choice depends on
+ * (see the file docstring).
+ */
+let blankOriginServer: http.Server;
+let blankOrigin = '';
+
 test.beforeAll(async () => {
   const result = await build({
     stdin: {
@@ -361,9 +373,41 @@ test.beforeAll(async () => {
   // below vacuous.
   expect(harnessScript).toContain('responsive-surface-panel');
   expect(harnessScript).toContain('station-connect-modal-panel');
+
+  blankOriginServer = http.createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end('<!doctype html><html><body></body></html>');
+  });
+  await new Promise<void>((resolveListen) =>
+    blankOriginServer.listen(0, '127.0.0.1', resolveListen),
+  );
+  const address = blankOriginServer.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  blankOrigin = `http://127.0.0.1:${port}`;
+});
+
+test.afterAll(async () => {
+  await new Promise<void>((resolveClose) =>
+    blankOriginServer.close(() => resolveClose()),
+  );
 });
 
 async function mount(page: Page, scenario: Scenario) {
+  if (scenario === 'connect-modal') {
+    // The real `ConnectionsProvider` this scenario mounts calls
+    // `crypto.randomUUID()` unguarded on its first render. That needs a
+    // secure context, and a fresh page's `about:blank` (what every other
+    // scenario mounts on, below) is not one in Chromium — no opener means
+    // `window.isSecureContext` is false there, so the call throws and the
+    // modal it renders never appears. The real app is always served from
+    // `localhost` or `https`, both secure, so land on a throwaway localhost
+    // origin first (`blankOrigin`, set up in `beforeAll`) rather than the
+    // actual app shell: that shell's CSP deliberately never exposes its
+    // nonce to page code (see the comment on `uiRequestHandler` in
+    // `packages/cli/src/commands/lifecycle.ts`), so there is no nonce this
+    // harness could legitimately reuse to inject its own script.
+    await page.goto(blankOrigin);
+  }
   await page.setContent('<div id="root"></div>');
   await page.evaluate((name) => {
     (window as unknown as { __scenario: string }).__scenario = name;

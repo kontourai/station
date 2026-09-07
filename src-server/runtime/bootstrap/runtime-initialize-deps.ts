@@ -89,6 +89,7 @@ export interface RuntimeInitializationContext {
   resolveBuiltinEngineBinding?: (
     appConfig: AppConfig,
   ) => Promise<BuiltinAgentEngineBinding | null>;
+  onACPConnectionsReady?: () => void | Promise<void>;
   orchestrationEventStore: EventStore;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -101,6 +102,7 @@ export interface RuntimeInitializationContext {
   agentTools: Map<string, unknown>;
   agentSpecs: Map<string, AgentSpec>;
   mcpConfigs: Map<string, unknown>;
+  mcpCustody: import('@kontourai/station-shared/mcp').MCPLocalConnectionCustody;
   mcpConnectionStatus: Map<string, { connected: boolean; error?: string }>;
   integrationMetadata: RuntimeIntegrationMetadata;
   toolNameMapping: ToolNameMapping;
@@ -170,6 +172,7 @@ export function createRuntimeInitializationDeps(
     voiceService: context.voiceService,
     acpBridge: context.acpBridge,
     resolveBuiltinEngineBinding: context.resolveBuiltinEngineBinding,
+    onACPConnectionsReady: context.onACPConnectionsReady,
     orchestrationEventStore: context.orchestrationEventStore,
     credentialProfileRecoveryAdapter: context.credentialProfileRecoveryAdapter,
     usageAggregator: context.usageAggregator,
@@ -181,6 +184,7 @@ export function createRuntimeInitializationDeps(
     agentTools: context.agentTools,
     agentSpecs: context.agentSpecs,
     mcpConfigs: context.mcpConfigs,
+    mcpCustody: context.mcpCustody,
     mcpConnectionStatus: context.mcpConnectionStatus,
     integrationMetadata: context.integrationMetadata,
     toolNameMapping: context.toolNameMapping,

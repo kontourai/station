@@ -13,6 +13,9 @@ describe('orchestration transfer pre-push scope', () => {
       'src-server/providers/adapters/station-agent-adapter.ts',
       'src-server/routes/orchestration/orchestration.ts',
       'packages/sdk/src/client/http.ts',
+      'pnpm-lock.yaml',
+      'pnpm-workspace.yaml',
+      'patches/dependency.patch',
     ])
       expect(isOrchestrationTransferInput(path)).toBe(true);
   });

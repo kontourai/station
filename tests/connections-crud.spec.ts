@@ -1207,6 +1207,23 @@ test.describe('Connections CRUD', () => {
 
       await kiro.click();
       await expect(page).toHaveURL(/\/connections\/engines\/new\/kiro$/);
+      // #1130: `.route-transition` (app-shell/route-transition.css) runs a
+      // translateY entrance on every route change, and per spec a
+      // non-`none` `transform` on an ANCESTOR makes it the containing block
+      // for a `position: fixed` descendant — so mid-animation, this dialog's
+      // overlay is "fixed" relative to `.route-transition`'s box, not the
+      // viewport, and the geometry assertion below reads nonsense (measured:
+      // panel bottom 1042px against an 839px-tall overlay) until the
+      // animation reaches its resting `transform: none` frame. Waiting for
+      // the route's own entrance animations to finish — not an arbitrary
+      // timeout — is what actually resolves the race; `--motion-base` is
+      // 0.2s and this repo bans `waitForTimeout` in product specs
+      // (tests/e2e-manifest.mjs) for exactly this reason.
+      await page.waitForFunction(() =>
+        Array.from(document.querySelectorAll('.route-transition')).every((el) =>
+          el.getAnimations().every((a) => a.playState === 'finished'),
+        ),
+      );
       const dialog = page.getByRole('dialog', { name: 'Add engine' });
       const geometry = await dialog.evaluate((element) => ({
         overflows: element.scrollWidth > element.clientWidth,
@@ -1460,6 +1477,35 @@ test.describe('Connections CRUD', () => {
     await page.getByRole('button', { name: 'Delete' }).last().click();
 
     await expect(page.locator('#int-name')).not.toBeVisible();
+  });
+
+  // #1180: `connections-tools` is one of the routes where `SplitPaneLayout`'s
+  // mobile detail sheet marks `PageFrame`'s route frame `inert`
+  // (PageFrame.tsx:155) while it is open. `DeleteIntegrationModal` opens from
+  // "Delete" INSIDE `IntegrationEditorPanel` — the exact detail content
+  // `SplitPaneLayout` portals into `PageFrame`'s mobile-detail slot once an
+  // integration is selected on a phone — so it used to render as a plain
+  // sibling of `SplitPaneLayout`, inside the `inert` its own trigger was
+  // exempt from: visible, but `.focus()` a no-op and both buttons
+  // unclickable. A visibility assertion cannot tell the two states apart —
+  // this proves focus and a real click instead (#1131's coverage shape).
+  test('the delete confirm stays reachable inside a phone mobile detail sheet', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installVisualViewportFixture(page);
+    await page.goto('/connections/tools');
+
+    await page.getByRole('button', { name: /Filesystem Tools/ }).click();
+    await page.waitForSelector('#int-name', { timeout: 15_000 });
+    await page.getByRole('button', { name: 'Delete' }).click();
+
+    const confirm = page.getByRole('dialog', { name: 'Delete Tool Server' });
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toBeFocused();
+    await confirm.getByRole('button', { name: 'Cancel' }).click();
+    await expect(confirm).toBeHidden();
+    await expect(page.locator('#int-name')).toBeVisible();
   });
 
   test('knowledge view guards a dirty data-directory edit before navigating away', async ({

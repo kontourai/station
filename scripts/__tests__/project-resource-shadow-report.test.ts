@@ -87,7 +87,7 @@ function seedEveryPopulation(): void {
  * rather than inferred from a returned number.
  *
  * Each call spawns `npx tsx` and costs seconds. This file is listed in
- * `PROCESS_HEAVY_VITEST_FILES`, and that group runs two workers under a
+ * `PROCESS_HEAVY_VITEST_FILES`, and that group runs one worker under a
  * five-minute execution deadline shared with `verification-stress.test.ts`,
  * whose assertions are themselves timing-sensitive. So keep the number of
  * these deliberately small: use `buildReport`/`renderReport` in-process for
@@ -234,7 +234,7 @@ describe('the real exit status', () => {
     // not what someone scrolling a terminal reads.
     //
     // Merged deliberately — this file is in PROCESS_HEAVY_VITEST_FILES, whose
-    // group runs two workers under a five-minute deadline, and it had grown
+    // group runs one worker under a five-minute deadline, and it had grown
     // to six `npx tsx` spawns. Two of them ran the IDENTICAL command on the
     // IDENTICAL fixture. See the note on `runReporter`.
     expect(stdout).toContain('GATE: fail');

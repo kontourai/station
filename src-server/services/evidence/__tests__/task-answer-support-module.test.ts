@@ -26,7 +26,13 @@ import {
 
 const directories: string[] = [];
 const storedBundleId = 'sb1.WyJ3b3Jrc3BhY2UiLCIiLCIiLCJhLmpzb24iXQ';
+// The imported Surface example was observed on August 25 and remains valid for
+// seven days. Freeze only Date so this policy assertion keeps testing that
+// intended temporal relationship instead of the wall clock running the suite.
+const SURFACE_POLICY_OBSERVATION_TIME = '2026-08-26T00:00:03.000Z';
+
 afterEach(() => {
+  vi.useRealTimers();
   for (const directory of directories.splice(0))
     rmSync(directory, { recursive: true, force: true });
 });
@@ -252,6 +258,8 @@ describe('TaskAnswerSupportStore', () => {
 
 describe('CanonicalProjectTrustReportReader', () => {
   test('only treats a real policy-satisfied answer bundle as an assessment when its claim has the exact answer profile', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(SURFACE_POLICY_OBSERVATION_TIME);
     const root = mkdtempSync(join(tmpdir(), 'station-answer-reader-'));
     directories.push(root);
     const bundleDir = join(root, '.station', 'trust-bundles');
@@ -381,14 +389,18 @@ describe('CanonicalProjectTrustReportReader', () => {
     const bundleDir = join(root, '.station', 'trust-bundles');
     mkdirSync(bundleDir, { recursive: true });
     const source = join(bundleDir, 'basis.json');
+    const replacement = join(bundleDir, 'basis.replacement.json');
     writeFileSync(source, JSON.stringify(bundle()));
+    writeFileSync(replacement, JSON.stringify(bundle('changed')));
     const reader = new CanonicalProjectTrustReportReader(
       () => ({ workspacePath: root }),
       PERSONAL_PROJECT_TRUST_CAPABILITY,
       {
         noFollow: null,
-        afterOpen: () =>
-          writeFileSync(source, JSON.stringify(bundle('changed'))),
+        // The open descriptor keeps the original inode while the pathname now
+        // names a different generation. An in-place same-size rewrite can
+        // legitimately coalesce every metadata field on fast filesystems.
+        afterOpen: () => renameSync(replacement, source),
       },
     );
     const [choice] = await reader.listBundles('project-a');

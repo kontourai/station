@@ -9,9 +9,7 @@ import type { ProviderAdapterShape } from './adapter-shape.js';
 /** The one derivation point for a capability-matrix engine identity. */
 export function engineIdForAdapter(adapter: ProviderAdapterShape): EngineId {
   if (adapter.metadata.engineId) return adapter.metadata.engineId;
-  return adapter.metadata.executionClass === 'managed'
-    ? engineId('station')
-    : engineId(adapter.provider);
+  return engineId(adapter.provider);
 }
 
 /** The one derivation point for an Adapter's public registry identity. */

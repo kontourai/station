@@ -13,7 +13,7 @@
  * agents squatting the id.
  */
 
-import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   adoptNativeEngineConnection,
   loadOrCreateAgentRegistry,
@@ -209,8 +209,7 @@ export async function adoptDetectedNativeEngines(
           await materializeEngineAgent(
             deps.configLoader,
             candidate.id,
-            ENGINE_CAPABILITY_MATRICES[candidate.id]?.displayName ??
-              candidate.id,
+            engineDisplayLabel(candidate.id) ?? candidate.id,
           );
         }
         if (outcome === 'connection-collision') {

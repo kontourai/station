@@ -925,6 +925,15 @@ export interface UpsertProfileInput {
   endpoint: string;
   credentialRef?: StationProfileCredentialRef;
   environmentId?: string;
+  /**
+   * Server-keyed credential-supersession identity (archive#1818) — minted
+   * once by whichever surface first self-provisions this Station (desktop or
+   * CLI local self-authorization) and persisted verbatim on every write
+   * after that; see the contract doc on `StationProfile.clientInstanceId`.
+   * When omitted, an existing profile's value is preserved under the same
+   * condition its credential binding is.
+   */
+  clientInstanceId?: string;
   localService?: StationProfileLocalService;
   setupSource?: StationProfileSetupSource;
   configurationState?: StationProfileConfigurationState;
@@ -985,6 +994,14 @@ function applyProfileUpsert(
       ? { environmentId: input.environmentId }
       : retainCredentialBinding && existing?.environmentId
         ? { environmentId: existing.environmentId }
+        : {}),
+    // Same lifecycle as the credential binding: this id exists so a repeat
+    // self-provision supersedes the grant the binding no longer references,
+    // which is meaningless across an unverified endpoint replacement.
+    ...(retainCredentialBinding && input.clientInstanceId
+      ? { clientInstanceId: input.clientInstanceId }
+      : retainCredentialBinding && existing?.clientInstanceId
+        ? { clientInstanceId: existing.clientInstanceId }
         : {}),
     ...(retainServiceBinding && input.localService
       ? { localService: input.localService }
@@ -1208,6 +1225,8 @@ export function registerPairedProfile(
     /** A pairing caller may re-point a named Station only after explicit consent. */
     allowEndpointReplacement?: boolean;
     setupSource?: StationProfileSetupSource;
+    /** Local self-provision's supersession identity; see `UpsertProfileInput`. */
+    clientInstanceId?: string;
     now?: number;
   },
   home: string = resolveStationHome(),
@@ -1265,6 +1284,9 @@ export function registerPairedProfile(
       endpoint: normalizedEndpoint,
       credentialRef: input.credentialRef,
       environmentId: input.environmentId,
+      ...(input.clientInstanceId
+        ? { clientInstanceId: input.clientInstanceId }
+        : {}),
       setupSource: input.setupSource ?? 'paired',
       configurationState: 'configured',
       verifiedBinding: true,

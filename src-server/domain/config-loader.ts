@@ -52,14 +52,16 @@ import {
 import {
   APP_CONFIG_MAX_BYTES,
   AppConfigConflictError,
-  appConfigFileSignature,
   loadAppConfigFile,
+  loadAppConfigFileWithMutationAuthority,
   mergeAppConfigUpdate,
   saveAppConfigFile,
+  saveAppConfigFileWithMutationAuthority,
+  withAppConfigMutationAuthority,
 } from './config-loader-app.js';
 import {
   deleteIntegrationConfig,
-  deleteSkillConfig,
+  deleteSkillPackageAt,
   integrationConfigExists,
   listIntegrationMetadata,
   listSkillConfigs,
@@ -69,7 +71,7 @@ import {
   type SkillConfigRecord,
   saveACPConfigFile,
   saveIntegrationConfig,
-  saveSkillConfig,
+  saveSkillConfigIn,
   skillConfigExists,
   updateIntegrationConfig,
 } from './config-loader-storage.js';
@@ -81,7 +83,6 @@ import {
 import { validator } from './validator.js';
 
 const logger = createLogger({ name: 'config-loader' });
-const APP_CONFIG_MUTATION_MAX_ATTEMPTS = 8;
 const INTEGRATION_POLICY_MAX_BYTES = 2 * 1024 * 1024;
 export type IntegrationPolicySnapshot = Readonly<{
   id: string;
@@ -358,54 +359,52 @@ export class ConfigLoader {
     mutate: (current: Readonly<AppConfig>) => Partial<AppConfig>,
   ): Promise<AppConfig> {
     if (this.enforceHomeSchema) await this.ensureHomeSchema();
-    return this.serializeAppMutation(async () => {
-      this.beginInternalAppMutation();
-      try {
-        for (
-          let attempt = 0;
-          attempt < APP_CONFIG_MUTATION_MAX_ATTEMPTS;
-          attempt += 1
-        ) {
-          try {
-            await loadAppConfigFile(this.projectHomeDir);
-            const path = join(this.projectHomeDir, 'config', 'app.json');
-            const sourceSnapshot = this.stableAppConfigFileSnapshot(path);
-            const existing = await loadAppConfigFile(this.projectHomeDir);
-            if (
-              sourceSnapshot.signature !==
-                (await appConfigFileSignature(this.projectHomeDir)) ||
-              sourceSnapshot.fingerprint !== this.appConfigFingerprint(existing)
-            ) {
-              throw new AppConfigConflictError();
-            }
-            const updates = mutate(structuredClone(existing));
-            // An explicit null/undefined in `updates` clears non-nullable
-            // fields instead of assigning a value AJV would reject.
-            const updated = mergeAppConfigUpdate(existing, updates);
-            if (
-              this.appConfigFingerprint(updated) === sourceSnapshot.fingerprint
-            ) {
-              return existing;
-            }
-            await saveAppConfigFile(this.projectHomeDir, updated, {
-              expectedSourceSignature: sourceSnapshot.signature,
-            });
-            this.recordInternalAppCommit(updated);
-            return updated;
-          } catch (error) {
-            if (
-              !(error instanceof AppConfigConflictError) ||
-              attempt === APP_CONFIG_MUTATION_MAX_ATTEMPTS - 1
-            ) {
-              throw error;
-            }
+    return this.serializeAppMutation(() =>
+      withAppConfigMutationAuthority(this.projectHomeDir, async (authority) => {
+        const path = join(this.projectHomeDir, 'config', 'app.json');
+        this.beginInternalAppMutation();
+        try {
+          // Every cooperating Station writer owns this exact file authority
+          // before it reads. A peer therefore waits and derives from the latest
+          // bytes; an uncoordinated edit detected inside this window is a real
+          // conflict, not a retryable stale read that may overwrite that edit.
+          await loadAppConfigFileWithMutationAuthority(
+            this.projectHomeDir,
+            authority,
+          );
+          const sourceSnapshot = this.stableAppConfigFileSnapshot(path);
+          const existing = await loadAppConfigFileWithMutationAuthority(
+            this.projectHomeDir,
+            authority,
+          );
+          if (
+            sourceSnapshot.signature !== this.appConfigFileSignature(path) ||
+            sourceSnapshot.fingerprint !== this.appConfigFingerprint(existing)
+          ) {
+            throw new AppConfigConflictError();
           }
+          const updates = mutate(structuredClone(existing));
+          // An explicit null/undefined in `updates` clears non-nullable
+          // fields instead of assigning a value AJV would reject.
+          const updated = mergeAppConfigUpdate(existing, updates);
+          if (
+            this.appConfigFingerprint(updated) === sourceSnapshot.fingerprint
+          ) {
+            return existing;
+          }
+          await saveAppConfigFileWithMutationAuthority(
+            this.projectHomeDir,
+            authority,
+            updated,
+            { expectedSourceSignature: sourceSnapshot.signature },
+          );
+          this.recordInternalAppCommit(updated);
+          return updated;
+        } finally {
+          this.endInternalAppMutation();
         }
-        throw new AppConfigConflictError();
-      } finally {
-        this.endInternalAppMutation();
-      }
-    });
+      }),
+    );
   }
 
   getLaunchabilityRevision(): number {
@@ -1418,15 +1417,18 @@ export class ConfigLoader {
   /**
    * Save a skill config
    */
-  async saveSkill(name: string, config: SkillConfig): Promise<void> {
-    await saveSkillConfig(this.projectHomeDir, name, config);
+  /**
+   * Write a package's record into the package's own directory, for a caller
+   * that has already resolved it (`SkillService`, which resolves it from where
+   * discovery found the package rather than from a name and a slug — #1619).
+   */
+  async saveSkillIn(directory: string, config: SkillConfig): Promise<void> {
+    await saveSkillConfigIn(this.projectHomeDir, directory, config);
   }
 
-  /**
-   * Delete a skill directory
-   */
-  async deleteSkill(name: string): Promise<void> {
-    await deleteSkillConfig(this.projectHomeDir, name);
+  /** Remove a package by its own directory. See `saveSkillIn`. */
+  async deleteSkillAt(name: string, directory: string): Promise<void> {
+    await deleteSkillPackageAt(this.projectHomeDir, name, directory);
   }
 
   /**

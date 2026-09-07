@@ -6,8 +6,8 @@
       "reason": "The shared checkbox control's own 44px touch floor. Nothing above it owns this control's box."
     },
     "src-ui/src/components/DetailHeader.css": {
-      "count": 2,
-      "reason": "The canonical detail header: stacks title/actions at 640px, and publishes the mobile action footer plus the --detail-body-bottom-clearance token every detail body offsets from."
+      "count": 3,
+      "reason": "station#923: DetailHeader is the shared detail-pane header used by 11 surfaces, and it now owns the 769-1180px tablet band that previously did not exist (layout jumped from mobile at 768px straight to desktop, squeezing the agent name to one character). Its responsive rules are deliberately RECORDED here rather than exempted via PRIMITIVE_ALLOWLIST: exemption would make future growth in this file invisible, while recording keeps it counted and capped. Promote it to a primitive only if a later change shows it needs rules this ceiling cannot hold."
     },
     "src-ui/src/components/InfoTip.css": {
       "count": 1,
@@ -50,8 +50,8 @@
       "reason": "The queued-steer controls carry their own compact touch geometry, tighter than the shared floor."
     },
     "src-ui/src/components/chat/chat.css": {
-      "count": 5,
-      "reason": "Four blocks. The composer's two-row mobile stack and the composer popover sheet are this surface's own. The app-toolbar rules here are a KNOWN duplication with index.css (station#3766 records two same-specificity rules contradicting each other); the toolbar wants one mobile home. Two 480px toolbar blocks could not be folded \u2014 `__conn-name`/`__conn-note` `display` is decided again between them. station#926: the composer's agent picker drops its name to the avatar initial below 420px, where the row cannot afford both pickers' values \u2014 a genuine viewport decision the shared primitives cannot make, since it depends on this row's own control count."
+      "count": 7,
+      "reason": "Seven blocks. The composer's two-row mobile stack and the composer popover sheet are this surface's own. The app-toolbar rules here are a KNOWN duplication with index.css (station#3766 records two same-specificity rules contradicting each other); the toolbar wants one mobile home. The two 480px blocks (only the first holds toolbar rules) are now foldable and are not yet folded. What blocked it is gone: the `__conn-name`/`__conn-note` `display` decided twice (station#1132 deleted it \u2014 the 768px block declares the same thing later, so it never applied), and then the two declarations the base rules sat between and defeated (station#1630 deleted both \u2014 an `.app-toolbar__icon-btn` padding/font-size pair, and an `.app-toolbar__workspace-btn { display: none }` for a class no element carries). Nothing revives when the earlier block moves later, so folding them is available as its own change. station#926: the composer's agent picker drops its name to the avatar initial below 420px, where the row cannot afford both pickers' values \u2014 a genuine viewport decision the shared primitives cannot make, since it depends on this row's own control count. station#1132 is the seventh and the same shape one row up: the toolbar's connection chip drops its state label at or below 382px, because this cluster is `flex-shrink: 0` and its widest form measures 404px \u2014 the chip at its 85px label ceiling beside a notification badge at the two-character width the `9+` cap bounds it to \u2014 which puts `Open settings`'s own centre outside a 382px screen (`elementFromPoint` returns null; measured live at 360px, and enforced there by `tests/toolbar-reachability.spec.ts`). No primitive can make that call either \u2014 the width it turns on is this row's control count and this chip's label. `@media (hover: hover)` is a CAPABILITY query, not responsive layout; its hover-only footer collapse is recorded here rather than moved to a primitive that has no hover concept."
     },
     "src-ui/src/components/coding-layout/BranchToolbar.css": {
       "count": 1,
@@ -154,8 +154,8 @@
       "reason": "The voice pill lifts above the safe-area inset and its mute control takes a 44px box."
     },
     "src-ui/src/index.css": {
-      "count": 12,
-      "reason": "The app-shell stylesheet, and the largest remaining concentration (12 blocks). It is deliberately NOT a primitive entry: it mixes genuine shell primitives (the responsive dialog surface, the toolbar, the chat dock, the global touch-target net) with page-ish rules (the command/delegation launchers, the new-chat modal), and exempting the file would let any page hide a responsive rule by moving it here. Two blocks are reduced-motion END STATES the motion primitive cannot express; one is a `prefers-color-scheme` fork that should be reading theme tokens; the rest are the shell's own mobile and desktop-only geometry. Three same-condition folds were REFUSED because a `chat-input`/`chat-dock` property is decided again in between."
+      "count": 10,
+      "reason": "The app-shell stylesheet, and the largest remaining concentration (10 blocks, down from 12 — #1636 folded the maximized-bar mobile-agent-avatar and mobile-project-name breakpoints into the unconditional `.chat-dock__mobile-project`/`.chat-dock__mobile-identity` flex layout, removing two `@media` blocks outright; corrected here because the ratchet never reports an over-recorded file, same as #1160). It is deliberately NOT a primitive entry: it mixes genuine shell primitives (the responsive dialog surface, the toolbar, the chat dock, the global touch-target net) with page-ish rules (the command/delegation launchers, the new-chat modal), and exempting the file would let any page hide a responsive rule by moving it here. Two blocks are reduced-motion END STATES the motion primitive cannot express; one is a `prefers-color-scheme` fork that should be reading theme tokens; the rest are the shell's own mobile and desktop-only geometry. Three same-condition folds were REFUSED because a `chat-input`/`chat-dock` property is decided again in between."
     },
     "src-ui/src/pages/NotificationsPage.css": {
       "count": 1,
@@ -166,8 +166,8 @@
       "reason": "The profile hero and stats grid stack and centre at 700px."
     },
     "src-ui/src/views/HomeView.css": {
-      "count": 2,
-      "reason": "Single-column action cards, a taller card floor, and stacked task rows; plus hides the desktop-only top-actions row below 1024px, #890 mobile polish."
+      "count": 1,
+      "reason": "Single-column action cards, a taller card floor and stacked task rows on the page's own bottom gutter. The second block this entry recorded \u2014 the 1024px hide of the desktop-only top-actions row \u2014 went away with #992's shell-chrome move; corrected here because the ratchet never reports an over-recorded file (#1160)."
     },
     "src-ui/src/views/IntegrationsView.css": {
       "count": 1,
@@ -187,7 +187,11 @@
     },
     "src-ui/src/views/ProjectPage.css": {
       "count": 3,
-      "reason": "Three blocks at three breakpoints: task grids single-column at 760px, the live-work row's touch floor at 768px, and the page's own gutters, card grid, git-commit rows and chat CTA stack."
+      "reason": "Three blocks at two breakpoints: task grids single-column at 760px, then two that both open at 768px \u2014 the live-work row's touch floor, and the touch floors, card grid, git-commit rows and namespace config bar of the page's own content. The narrow gutters this reason used to name moved to project-page-frame.css with the frame itself (#1636); this file no longer declares them."
+    },
+    "src-ui/src/views/project-page-frame.css": {
+      "count": 1,
+      "reason": "One narrow-gutter override on the shared project-surface frame: `.project-page__inner` drops from 2.5rem/2rem to 1.5rem/1rem so content does not overflow a phone. It moved out of ProjectPage.css with the frame (#1636) because two lazily loaded routes render that frame \u2014 the project page and the workspace pane route \u2014 and both import this file, so the gutter is declared once and both surfaces narrow together."
     },
     "src-ui/src/views/ProjectSettingsView.css": {
       "count": 2,
@@ -264,10 +268,6 @@
     "src-ui/src/workspace-panes/SessionInventory.css": {
       "count": 1,
       "reason": "The inventory group index switches from a constrained desktop column to a readable one-column phone layout; shared dialog and page primitives do not own this pane-specific dependency navigation."
-    },
-    "src-ui/src/components/chat/TurnActionsMenu.css": {
-      "count": 1,
-      "reason": "station#926: `@media (hover: hover)` is a CAPABILITY query, not responsive layout \u2014 the answer card's action row hides until hover on pointer devices and is always present on touch, with :focus-within giving keyboard the identical reveal. The ratchet's @media pattern cannot distinguish capability from viewport, so this is recorded rather than moved to a primitive that has no hover concept."
     }
   }
 }

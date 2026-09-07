@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import {
+  MAX_COLLABORATIVE_EDIT_BATCH_BYTES,
+  MAX_COLLABORATIVE_EDIT_OPERATION_BYTES,
+} from '../../../src-shared/collaborative-edit-limits.js';
+import {
   type InsertTextOperation,
   SHARED_WORKING_STATE_SCHEMA_VERSION,
   SharedWorkingState,
@@ -198,7 +202,7 @@ describe('SharedWorkingStateEditingCapability', () => {
 
   test('chunks the declared maximum text fixture by serialized operation bytes', () => {
     const before = 'x'.repeat(MAX_SHARED_EDIT_TEXT_CODE_UNITS);
-    const { state, capability } = fixture(before);
+    const { capability } = fixture(before);
     const planned = capability.plan({
       currentText: before,
       desiredText: '',
@@ -207,8 +211,23 @@ describe('SharedWorkingStateEditingCapability', () => {
     });
     if (planned.outcome !== 'planned') throw new Error('expected plan');
     expect(planned.batch.operations.length).toBeGreaterThan(1);
-    applyBatch(state, planned.batch.operations);
-    expect(state.text()).toBe('');
+    const operationBytes = planned.batch.operations.map(
+      (operation) =>
+        new TextEncoder().encode(JSON.stringify(operation)).byteLength,
+    );
+    expect(
+      operationBytes.every(
+        (bytes) => bytes <= MAX_COLLABORATIVE_EDIT_OPERATION_BYTES,
+      ),
+    ).toBe(true);
+    expect(
+      operationBytes.reduce((total, bytes) => total + bytes, 0),
+    ).toBeLessThanOrEqual(MAX_COLLABORATIVE_EDIT_BATCH_BYTES);
+    // plan's optimistic projection comes only from replaying these same
+    // operations through SharedWorkingState. Reapplying them to the fixture
+    // would duplicate the maximum-size production work without proving a new
+    // chunking boundary.
+    expect(planned.batch.optimistic.text).toBe('');
   });
 
   test('is Unicode-scalar safe for emoji and refuses malformed or split-surrogate edits', () => {

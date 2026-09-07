@@ -2,16 +2,19 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
+import { FULL_REGRESSION_TIMEOUT_MS } from '../verification-lanes.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 
 type WorkflowStep = {
   name?: string;
+  id?: string;
   run?: string;
   uses?: string;
   env?: Record<string, string>;
   with?: Record<string, unknown>;
   if?: string;
+  'timeout-minutes'?: number;
   'continue-on-error'?: boolean;
 };
 
@@ -59,10 +62,11 @@ describe('promotion full-regression workflow', () => {
 
     const gate = reusable.jobs?.['full-regression'] ?? {};
     expect(gate.uses).toBeUndefined();
-    expect(gate['timeout-minutes']).toBe(150);
-    expect(source('full-regression.yml')).not.toContain('timeout-minutes: 120');
+    expect(gate['timeout-minutes']).toBe(340);
+    expect(source('full-regression.yml')).not.toContain('timeout-minutes: 150');
     const validate = namedStep(gate, 'Validate immutable source identity');
     expect(validate.run).toContain('^[0-9a-f]{40}$');
+    expect(validate['timeout-minutes']).toBe(2);
     const checkout = gate.steps?.find((step) =>
       step.uses?.startsWith('actions/checkout@'),
     );
@@ -71,6 +75,14 @@ describe('promotion full-regression workflow', () => {
       'fetch-depth': 0,
       'persist-credentials': false,
     });
+    expect(checkout?.['timeout-minutes']).toBe(10);
+    const receipts = namedStep(gate, 'Retain exact-SHA completion receipts');
+    expect(receipts['timeout-minutes']).toBe(10);
+    const proveCheckout = namedStep(
+      gate,
+      'Prove checkout matches the requested source',
+    );
+    expect(proveCheckout['timeout-minutes']).toBe(2);
     expect(
       namedStep(gate, 'Prove checkout matches the requested source').run,
     ).toContain('git rev-parse HEAD');
@@ -83,18 +95,104 @@ describe('promotion full-regression workflow', () => {
     const dependenciesIndex = gateSteps.findIndex(
       (step) => step.run === 'npm run dependencies:ci',
     );
+    const zsh = namedStep(
+      gate,
+      'Provision and preflight zsh for process-heavy installer fixtures',
+    );
+    const zshIndex = gateSteps.indexOf(zsh);
     const completionIndex = gateSteps.findIndex(
       (step) => step.name === 'Run canonical completion gate',
     );
     expect(actionlintIndex).toBeGreaterThan(-1);
     expect(dependenciesIndex).toBeGreaterThan(actionlintIndex);
+    expect(zshIndex).toBeGreaterThan(dependenciesIndex);
+    expect(gateSteps[dependenciesIndex]['timeout-minutes']).toBe(15);
+    expect(zsh['timeout-minutes']).toBe(5);
+    expect(zsh.run).toContain('if [[ ! -x /bin/zsh ]]; then');
+    expect(zsh.run).toContain('apt-get install --yes zsh');
+    expect(zsh.run).toContain('test -x /bin/zsh');
+    expect(zsh.run).toContain('/bin/zsh --version');
     expect(completionIndex).toBeGreaterThan(dependenciesIndex);
     expect(
       namedStep(gate, 'Install Chromium for full-corpus browser assertions')
         .run,
     ).toContain('npx playwright install chromium');
-    expect(namedStep(gate, 'Run canonical completion gate').run).toBe(
-      'npm run full:regression',
+    // #1459 changed this step's shape deliberately: it now pipes the gate
+    // through `tee` so the verdict report below can read the captured stdout.
+    // The whole script is pinned EXACTLY, not by parts: a set of `toContain`
+    // assertions passes for `... | tee ... || true`, for a trailing `exit 0`,
+    // for `set +e`, and for `npm run full:regression:raw` — every one of which
+    // silently detaches the job's failure signal from the gate's own exit
+    // status, which is the property this step exists to hold. `set -o pipefail`
+    // is load-bearing for the same reason: it is NOT the default for a GitHub
+    // `run` block (`bash -e {0}`), and without it the pipeline reports `tee`'s
+    // status and a red gate passes the job.
+    const completionStep = namedStep(gate, 'Run canonical completion gate');
+    const completionRun = completionStep.run;
+    expect(completionRun?.trim()).toBe(
+      'set -o pipefail\nnpm run full:regression | tee "$RUNNER_TEMP/full-regression.stdout.log"',
+    );
+    expect(completionStep).not.toHaveProperty('continue-on-error');
+    // The report step reads this step's own outcome; without the id there is
+    // nothing for `steps.gate.outcome` to resolve to and a gate that died
+    // before printing a verdict is reported as a parsing problem.
+    expect(completionStep.id).toBe('gate');
+    const verdictReport = namedStep(gate, 'Report the completion gate verdict');
+    expect(verdictReport.if).toBe('always()');
+    expect(verdictReport['timeout-minutes']).toBe(2);
+    // Exact, for the same reason the gate step is exact: a trailing
+    // `|| true`, a swapped script, or a dropped argument must be visible.
+    expect(verdictReport.run?.trim()).toBe(
+      [
+        'node scripts/verification-gate-summary.mjs \\',
+        '  --stdout-file "$RUNNER_TEMP/full-regression.stdout.log" \\',
+        `  --gate-outcome "${githubExpression('steps.gate.outcome')}"`,
+      ].join('\n'),
+    );
+    // Both steps must name the SAME capture file, or the report renders an
+    // empty summary for a run whose verdict was captured elsewhere.
+    expect(verdictReport.run).toContain(
+      '--stdout-file "$RUNNER_TEMP/full-regression.stdout.log"',
+    );
+    expect(gateSteps.indexOf(verdictReport)).toBeGreaterThan(completionIndex);
+    // The job's own deadline is the last-resort backstop once every phase
+    // has its own; this proves it actually covers the bounded worst case
+    // rather than merely stating a number, so drift here fails loudly
+    // instead of silently narrowing a completed gate's real margin.
+    const chromium = namedStep(
+      gate,
+      'Install Chromium for full-corpus browser assertions',
+    );
+    const setupNode = gate.steps?.find((step) =>
+      step.uses?.startsWith('actions/setup-node@'),
+    );
+    expect(setupNode?.['timeout-minutes']).toBe(5);
+    expect(actionlint['timeout-minutes']).toBe(5);
+    // Every step in this list must declare `timeout-minutes`: no `?? 0`
+    // fallback, so an added or edited pre-gate/publication step without one
+    // silently drops out of the bound instead of failing this assertion.
+    const boundedSteps = [
+      validate,
+      checkout,
+      setupNode,
+      actionlint,
+      gateSteps[dependenciesIndex],
+      zsh,
+      chromium,
+      proveCheckout,
+      verdictReport,
+      receipts,
+    ];
+    for (const step of boundedSteps) {
+      expect(typeof step?.['timeout-minutes']).toBe('number');
+    }
+    const boundedSetupMinutes = boundedSteps.reduce(
+      (total, step) => total + (step?.['timeout-minutes'] as number),
+      0,
+    );
+    const phaseMinutes = FULL_REGRESSION_TIMEOUT_MS / 60_000;
+    expect(gate['timeout-minutes']).toBeGreaterThanOrEqual(
+      boundedSetupMinutes + phaseMinutes,
     );
     const manifest = JSON.parse(
       readFileSync(resolve(root, 'package.json'), 'utf8'),
@@ -179,13 +277,26 @@ describe('promotion full-regression workflow', () => {
         (step) => step.name === 'Bind every Nightly leg to one main revision',
       ),
     ).toBe(true);
+    // Staging publishes nothing, so it may run beside the gate (#1453); the
+    // publishing cohort must not start until the receipt AND staging succeeded.
+    const staging = nightly.jobs?.['native-stage'] ?? {};
+    expect(staging.needs).toEqual(['test-gate']);
+    expect(staging.if).not.toContain('full-regression');
+    expect(staging.uses).toBe('./.github/workflows/nightly-native-stage.yml');
     for (const id of ['native-cohort', 'nightly-cli']) {
       const producer = nightly.jobs?.[id] ?? {};
-      expect(producer.needs).toEqual(['test-gate', 'full-regression']);
       expect(producer.if).toContain(
         "needs['full-regression'].result == 'success'",
       );
       if (id === 'native-cohort') {
+        expect(producer.needs).toEqual([
+          'test-gate',
+          'full-regression',
+          'native-stage',
+        ]);
+        expect(producer.if).toContain(
+          "needs['native-stage'].result == 'success'",
+        );
         expect(producer.uses).toBe(
           './.github/workflows/nightly-native-cohort.yml',
         );
@@ -194,6 +305,7 @@ describe('promotion full-regression workflow', () => {
         );
         expect(producer.secrets).toBe('inherit');
       } else {
+        expect(producer.needs).toEqual(['test-gate', 'full-regression']);
         const checkout = producer.steps?.find((step) =>
           step.uses?.startsWith('actions/checkout@'),
         );

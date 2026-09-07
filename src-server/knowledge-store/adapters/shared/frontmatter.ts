@@ -10,14 +10,17 @@
 // installed — the v4 types still declare a default export and would let a
 // broken `import yaml from 'js-yaml'` typecheck cleanly while failing at
 // runtime.
-import { dump, load } from 'js-yaml';
+import { dump, type LoadOptions, load } from 'js-yaml';
 
 export interface ParsedMarkdown {
   meta: Record<string, unknown>;
   body: string;
 }
 
-export function parseMarkdown(text: string): ParsedMarkdown {
+export function parseMarkdown(
+  text: string,
+  options?: Pick<LoadOptions, 'maxDepth' | 'maxAliases' | 'maxTotalMergeKeys'>,
+): ParsedMarkdown {
   if (!text.startsWith('---\n')) {
     return { meta: {}, body: text };
   }
@@ -27,7 +30,7 @@ export function parseMarkdown(text: string): ParsedMarkdown {
   }
   const rawYaml = text.slice(4, end);
   const body = text.slice(end + 5).replace(/^\n+/, '');
-  const meta = (load(rawYaml) as Record<string, unknown> | null) ?? {};
+  const meta = (load(rawYaml, options) as Record<string, unknown> | null) ?? {};
   return { meta, body };
 }
 

@@ -33,16 +33,14 @@
 > (project scoping designed but dead), #1409 (shareable provenance), #741
 > (personal fleet).
 
-## 0. Naming and one repo-policy note
+## 0. Naming and sources
 
-This repo does not name competitors (`AGENTS.md:21`; precedent
-`docs/design/settings-architecture.md:3-5`). The open-source forge whose
-multi-repo project entity #1425 cites as prior art is called **"the reference
-forge"** throughout this doc. The one fact this doc borrows from it — that its
-*only* custom event kind is a multi-repo project grouping, signed by one
-principal and spanning repos owned by different people — lives in #1425's body
-and in the private ops workspace analysis (ops#131). Nothing here depends on
-reading them.
+The open-source forge whose multi-repo project entity #1425 cites as prior art
+is called **"the reference forge"** throughout this doc. The one fact this doc
+borrows from it — that its *only* custom event kind is a multi-repo project
+grouping, signed by one principal and spanning repos owned by different people
+— is recorded in #1425. The separate attributed research record is not required
+to understand or implement this design.
 
 "Resource" in this doc means a thing a Project references — today: a git repo,
 a knowledge root, an agent, an MCP integration, a layout. It does **not** mean

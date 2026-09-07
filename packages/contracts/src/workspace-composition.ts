@@ -1,8 +1,10 @@
 import {
   parseWorkspacePaneDescriptor,
   parseWorkspacePaneInstance,
+  WORKSPACE_PANE_REGIONS,
   type WorkspacePaneDescriptor,
   type WorkspacePaneInstance,
+  type WorkspacePaneRegion,
 } from './workspace-pane.js';
 import {
   parseWorkspacePaneHostDocument,
@@ -32,6 +34,17 @@ const ROLES: readonly WorkspaceCompositionPaneRole[] = [
   'inspector',
 ];
 
+/**
+ * A pane inside a pane host is never docked, so this is the region vocabulary
+ * minus the shell-region word rather than a second list that could drift.
+ */
+export type WorkspacePaneHostRegion = Exclude<WorkspacePaneRegion, 'docked'>;
+
+const PANE_HOST_REGIONS: readonly WorkspacePaneHostRegion[] =
+  WORKSPACE_PANE_REGIONS.filter(
+    (region): region is WorkspacePaneHostRegion => region !== 'docked',
+  );
+
 export interface WorkspaceCompositionCapabilityRequirement {
   id: string;
   context: 'project' | 'task' | 'session' | 'workspace';
@@ -44,7 +57,7 @@ export interface WorkspaceCompositionPaneSpec {
   requiredCapabilities: string[];
   optionalCapabilities: string[];
   placement: {
-    region: 'primary' | 'secondary' | 'standalone';
+    region: WorkspacePaneHostRegion;
     order: number;
     splitOrientation: 'horizontal' | 'vertical';
   };
@@ -169,9 +182,7 @@ function parsePane(value: unknown): WorkspaceCompositionPaneSpec | null {
     !optionalCapabilities ||
     requiredCapabilities.some((id) => optionalCapabilities.includes(id)) ||
     !plainRecord(placement) ||
-    (placement.region !== 'primary' &&
-      placement.region !== 'secondary' &&
-      placement.region !== 'standalone') ||
+    !PANE_HOST_REGIONS.includes(placement.region as WorkspacePaneHostRegion) ||
     !Number.isSafeInteger(placement.order) ||
     (placement.order as number) < 0 ||
     (placement.order as number) > MAX_WORKSPACE_COMPOSITION_PANES ||
@@ -186,7 +197,7 @@ function parsePane(value: unknown): WorkspaceCompositionPaneSpec | null {
     requiredCapabilities,
     optionalCapabilities,
     placement: {
-      region: placement.region,
+      region: placement.region as WorkspacePaneHostRegion,
       order: placement.order as number,
       splitOrientation: placement.splitOrientation,
     },

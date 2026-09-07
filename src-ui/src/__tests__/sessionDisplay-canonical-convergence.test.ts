@@ -1,12 +1,9 @@
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { describe, expect, test } from 'vitest';
 import type { OrchestrationEvent } from '../hooks/orchestration/types';
 import { mutableSessionTitle } from '../hooks/useMutableSessionDetailState';
-import {
-  engineLabelForProvider,
-  sessionProjectLabel,
-  sessionTitle,
-} from '../utils/sessionDisplay';
+import { sessionProjectLabel, sessionTitle } from '../utils/sessionDisplay';
 import { buildOrchestrationItems } from '../views/home/home-view-model';
 
 /**
@@ -325,7 +322,7 @@ describe('A4/C5: one provider table', () => {
   for (const [provider, expected] of cases) {
     test(`${provider} is named "${expected}" on a Home row, as everywhere else`, () => {
       const subject = session({ provider });
-      expect(engineLabelForProvider(provider)).toBe(expected);
+      expect(engineDisplayLabel(provider)).toBe(expected);
       expect(homeRow(subject).agentLabel).toBe(expected);
       // A4 compounds A2: the title's engine fallback reads the same table.
       expect(homeRow(subject).title).toBe(`${expected} session`);
@@ -336,10 +333,10 @@ describe('A4/C5: one provider table', () => {
     // NOT in the audit, and the worst of the set: the private table
     // Title-Cased any unrecognised provider into a plausible-looking product
     // name ("unknown-plugin" -> "Unknown Plugin") for an adapter that may not
-    // be called that at all. `engineLabelForProvider` returns null precisely
+    // be called that at all. `engineDisplayLabel` returns null precisely
     // so callers fall back to the identifier they actually observed, which is
     // what `sessionIconAgent` already did beside this very row.
-    expect(engineLabelForProvider('unknown-plugin')).toBeNull();
+    expect(engineDisplayLabel('unknown-plugin')).toBeNull();
     expect(homeRow(session({ provider: 'unknown-plugin' })).agentLabel).toBe(
       'unknown-plugin',
     );

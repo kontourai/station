@@ -1,4 +1,5 @@
 import { useContext } from 'react';
+import { getPluginHeaders } from '../api-core';
 import { SDKContext } from '../providers';
 import { useProjectQuery, useProjectsQuery } from '../queries';
 import type { AgentSummary } from '../types';
@@ -6,7 +7,11 @@ import type { AgentSummary } from '../types';
 export function useSDK() {
   const sdk = useContext(SDKContext);
   if (!sdk) throw new Error('SDK context not available');
-  return { apiBase: sdk.apiBase };
+  return {
+    apiBase: sdk.apiBase,
+    pluginName: sdk.pluginApiIdentity?.pluginName ?? '',
+    getPluginHeaders: sdk.pluginApiIdentity?.getHeaders ?? getPluginHeaders,
+  };
 }
 
 export function useAgents() {

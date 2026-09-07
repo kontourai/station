@@ -169,6 +169,24 @@ describe('checkHostCompatibility', () => {
     );
   });
 
+  it('uses the supplied native-shell transport for the public handshake', async () => {
+    const transport = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ compatibility: serverBlock() }));
+    await expect(
+      checkHostCompatibility(
+        'https://station.example.test',
+        undefined,
+        policy(3, 3),
+        transport,
+      ),
+    ).resolves.toMatchObject({ verdict: 'compatible', blocking: false });
+    expect(transport).toHaveBeenCalledWith(
+      new URL('/.well-known/station/v1', 'https://station.example.test'),
+      expect.objectContaining({ headers: { Accept: 'application/json' } }),
+    );
+  });
+
   it('blocks a host that answers without a compatibility declaration', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       Response.json({

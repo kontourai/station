@@ -1,11 +1,14 @@
 import { existsSync, rmSync } from 'node:fs';
-import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
+import {
+  rejectedInstalledPluginRecord,
+  scanInstalledPluginInventory,
+} from '../../services/plugins/installed-plugin-inventory.js';
 import { scanPluginPromptFileSafety } from '../../services/plugins/plugin-command-skill-source.js';
 import {
   findPluginContentLockCycleError,
@@ -46,6 +49,7 @@ import {
   detectWorkspacePaneCatalogConflicts,
   fetchPluginSource,
   getPluginGitInfo,
+  PluginPreviewUnsupportedDependencyError,
   resolvePluginDependencies,
 } from './plugin-source.js';
 
@@ -84,20 +88,22 @@ export function registerPluginInstallRoutes(
   } = deps;
 
   app.get('/', async (c) => {
-    if (!existsSync(pluginsDir)) return c.json({ plugins: [] });
-
-    const entries = await readdir(pluginsDir, { withFileTypes: true });
     const plugins = [];
 
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const manifestPath = join(pluginsDir, entry.name, 'plugin.json');
-      if (!existsSync(manifestPath)) continue;
-
+    for (const entry of scanInstalledPluginInventory(pluginsDir, logger)) {
+      if (entry.state === 'rejected') {
+        plugins.push(rejectedInstalledPluginRecord(entry));
+        continue;
+      }
       try {
-        const manifest = await readPluginManifestFile(manifestPath);
-        const bundlePath = join(pluginsDir, entry.name, 'dist', 'bundle.js');
-        const pluginDir = join(pluginsDir, entry.name);
+        const manifest = entry.manifest;
+        const bundlePath = join(
+          pluginsDir,
+          entry.directoryName,
+          'dist',
+          'bundle.js',
+        );
+        const pluginDir = join(pluginsDir, entry.directoryName);
         const git = await getPluginGitInfo(pluginDir, logger);
         const declared = requiredPermissionsForManifest(manifest);
         // archive#4288: EFFECTIVE grants, plus the derived binding state and
@@ -157,7 +163,7 @@ export function registerPluginInstallRoutes(
           );
         }
         logger.error('Failed to read plugin manifest', {
-          plugin: entry.name,
+          plugin: entry.directoryName,
           error: errorMessage(error),
         });
       }
@@ -333,6 +339,8 @@ export function registerPluginInstallRoutes(
             },
           }),
           logger,
+          undefined,
+          source,
         );
         const git = await getPluginGitInfo(tempDir, logger);
         // archive#4288: the preview already staged and validated everything a
@@ -370,6 +378,18 @@ export function registerPluginInstallRoutes(
         rmSync(tempDir, { recursive: true, force: true });
       }
     } catch (error: unknown) {
+      if (error instanceof PluginPreviewUnsupportedDependencyError) {
+        return c.json(
+          {
+            valid: false,
+            error: errorMessage(error),
+            code: 'unsupported-plugin-dependency',
+            components: [],
+            conflicts: [],
+          },
+          400,
+        );
+      }
       if (isContextSafetyError(error)) {
         return c.json(
           {
@@ -420,6 +440,9 @@ export function registerPluginInstallRoutes(
         permissions: consent.permissions,
         contentDigest: consent.contentDigest,
         dependencies: consent.dependencies ?? [],
+        ...(consent.dependencyApprovals
+          ? { dependencyApprovals: consent.dependencyApprovals }
+          : {}),
       };
       const mutation = await captureConfigurationMutation(
         applyConfigurationMutation,
@@ -475,9 +498,9 @@ export function registerPluginInstallRoutes(
       }
       if (isPluginConsentRefusedError(error)) {
         // 400 and not 500: the request and the plugin disagree about what was
-        // approved, and — the part worth saying out loud — the install had not
-        // mutated anything when it refused, so there is nothing to undo and
-        // nothing to report as partially done.
+        // approved. Earlier dependency effects may already have been rolled
+        // back. A 400 does not claim the request performed no earlier writes.
+        // Failed rollback remains an aggregate and must not be reported as 400.
         logger.warn(
           'Plugin install refused: consent did not cover the source',
           {

@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import {
   ConsentCommitRefusedError,
+  type ConsentEffectProjection,
   type ConsentTargetSnapshot,
   ConsentTransactionStore,
   LOCAL_CONSENT_TENANT,
@@ -15,7 +16,7 @@ function target(fingerprint = 'fp-1'): ConsentTargetSnapshot {
 function makeInit(
   overrides: Partial<{
     revalidateTarget: () => Promise<ConsentTargetSnapshot | null>;
-    commitApproval: () => Promise<void>;
+    commitApproval: () => Promise<ConsentEffectProjection> | Promise<void>;
     guardDecision: <T>(fn: () => Promise<T>) => Promise<T>;
     requesterId: string;
     rateKey: string;
@@ -196,6 +197,44 @@ describe('ConsentTransactionStore', () => {
       'approved',
     ]);
   });
+
+  test.each(['completed', 'winding-down', 'incomplete'] as const)(
+    'retains the approved domain effect projection for %s status reads',
+    async (status) => {
+      const store = new ConsentTransactionStore();
+      const effect: ConsentEffectProjection = {
+        status,
+        operationId: `operation-${status}`,
+        generation: 7,
+        ...(status === 'completed'
+          ? { effects: ['provider-activation'] }
+          : status === 'incomplete'
+            ? { failures: ['provider-retirement'] }
+            : {}),
+      };
+      const { init } = makeInit({
+        commitApproval: vi.fn(async () => effect),
+      });
+      const created = store.create(init);
+      if (!created.ok) throw new Error('setup failed');
+      const rendered = store.renderReview(TENANT, created.transaction.id);
+      if (!rendered.ok) throw new Error('render failed');
+
+      await expect(
+        store.decide(
+          TENANT,
+          created.transaction.id,
+          'approved',
+          rendered.nonce,
+          'operator-credential',
+        ),
+      ).resolves.toEqual({ ok: true, status: 'approved' });
+      expect(store.get(TENANT, created.transaction.id)).toMatchObject({
+        status: 'approved',
+        effect,
+      });
+    },
+  );
 
   test('denial never calls the commit callback', async () => {
     const store = new ConsentTransactionStore();

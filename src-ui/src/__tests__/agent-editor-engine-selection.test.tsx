@@ -67,19 +67,22 @@ function markupFor(
 // CURRENT contract, not the retired select). archive#3662's invariant survives the
 // refactor in a different shape and is still pinned below: the Station
 // choice never renders a managed-runtime connection AS "Station".
-describe('the engine picker: radio pair, with Station spelled as its own choice (#3662 via #3721)', () => {
-  test('a custom Agent renders the two engine-kind radios', () => {
+describe('the engine picker: peer engine rows, with Station spelled as its own choice (#946)', () => {
+  test('a custom Agent renders Station and external engines as peer rows', () => {
     const form = formFromAgent({
       slug: 'writer',
       name: 'Writer',
     } as never);
     expect(form.execution.agentConnectionId).toBe('');
     const markup = markupFor(form);
-    expect(markup).toContain('Use a model connection');
-    expect(markup).toContain('Use an installed agent CLI');
-    // The model-connection choice describes Station's own engine, never a
+    expect(markup).toContain('Station');
+    expect(markup).toContain('Codex');
+    expect(markup).toContain('Runs on a model you pick below.');
+    expect(markup).not.toContain('Use a model connection');
+    expect(markup).not.toContain('Use an installed agent CLI');
+    // The Station choice describes Station's own engine, never a
     // managed-runtime id presented as "Station".
-    expect(markup).toContain('Station’s own engine runs the agent');
+    expect(markup).toContain('Runs on a model you pick below.');
     expect(markup).not.toContain('value="bedrock-runtime"');
   });
 
@@ -95,13 +98,13 @@ describe('the engine picker: radio pair, with Station spelled as its own choice 
     // input and the Codex label text must sit inside one label element.
     const rows = markup.split('<label');
     const checkedRows = rows.filter(
-      (row) => row.includes('name="ae-cli-engine"') && row.includes('checked'),
+      (row) => row.includes('name="ae-engine"') && row.includes('checked'),
     );
     expect(checkedRows).toHaveLength(1);
     expect(checkedRows[0]).toContain('Codex');
   });
 
-  test('choosing the model radio binds the selectable Station-engine connection, and the CLI radio clears it (#3721 contract)', () => {
+  test('choosing a peer row binds that engine and updates the creation-only branch state', () => {
     // archive#3728: the earlier rewrite never invoked a handler, so
     // nothing pinned what the choices WRITE. archive#3721's engine-first contract:
     // the model radio binds `stationConnectionId` (the managed-runtime
@@ -132,23 +135,29 @@ describe('the engine picker: radio pair, with Station spelled as its own choice 
         } as never),
       );
 
-    // A checked radio's click fires no change event, so each direction is
-    // driven from the OTHER kind.
+    const kinds: string[] = [];
     const modelWrites: string[] = [];
     const first = renderWithKind('cli', modelWrites);
-    fireEvent.click(
-      screen.getByRole('radio', { name: /Use a model connection/ }),
-    );
+    fireEvent.click(screen.getByRole('radio', { name: /Station/ }));
     expect(modelWrites).toEqual(['bedrock-runtime']);
     first.unmount();
 
     const cliWrites: string[] = [];
-    renderWithKind('model', cliWrites);
-    fireEvent.click(
-      screen.getByRole('radio', { name: /Use an installed agent CLI/ }),
+    render(
+      createElement(AgentEditorEngineSelection, {
+        form,
+        setForm: (updater: (current: typeof form) => typeof form) =>
+          cliWrites.push(updater(form).execution.agentConnectionId),
+        locked: false,
+        agentConnections: [MANAGED_CONNECTION, CODEX_CONNECTION],
+        engineKind: 'model',
+        onEngineKindChange: (kind: string) => kinds.push(kind),
+        stationConnectionId: 'bedrock-runtime',
+      } as never),
     );
-    // The CLI choice must NOT auto-bind a CLI — an explicit step by design.
-    expect(cliWrites).toEqual(['']);
+    fireEvent.click(screen.getByRole('radio', { name: /Codex/ }));
+    expect(cliWrites).toEqual(['codex']);
+    expect(kinds).toEqual(['cli']);
   });
 });
 
@@ -206,19 +215,15 @@ describe('the CLI list carries the retired engine picker’s outstanding propert
     // "not installed") or being silently selectable.
     renderSelection(formFromAgent({ slug: 'coder', name: 'Coder' } as never));
 
-    const list = screen.getByRole('radiogroup', {
-      name: 'Installed agent CLI',
-    });
-    // Station is not a peer entry in this list — it is the sibling
-    // engine-kind radio — so the list is exactly the external engines.
+    const list = screen.getByRole('radiogroup', { name: 'Engine choice' });
     expect(
       within(list)
         .getAllByRole('radio')
         .map(
           (radio) =>
-            radio.closest('label')?.querySelector('strong')?.textContent,
+            radio.closest('label')?.querySelector('.engine-chip')?.textContent,
         ),
-    ).toEqual(['Codex', 'Claude Runtime']);
+    ).toEqual(['Station', 'Codex', 'Claude Code']);
 
     const codex = within(list).getByRole('radio', { name: /Codex/ });
     expect((codex as HTMLInputElement).disabled).toBe(false);
@@ -273,9 +278,7 @@ describe('the CLI list carries the retired engine picker’s outstanding propert
       } as never),
     );
 
-    const list = screen.getByRole('radiogroup', {
-      name: 'Installed agent CLI',
-    });
+    const list = screen.getByRole('radiogroup', { name: 'Engine choice' });
     expect(
       within(list)
         .getAllByRole('radio')
@@ -284,7 +287,7 @@ describe('the CLI list carries the retired engine picker’s outstanding propert
     expect(
       (
         screen.getByRole('radio', {
-          name: /Use a model connection/,
+          name: /Station/,
         }) as HTMLInputElement
       ).checked,
     ).toBe(false);

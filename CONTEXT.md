@@ -129,19 +129,26 @@ _Avoid_: probably, should be fine
 ### Agents And Connections
 
 **Agent**:
-The actor a user selects to perform work. Every agent is either a Station agent or an External agent, based on what runs the loop.
+The actor a user selects to perform work. Its role, capabilities, and policy
+are distinct from the engine that runs it.
 _Avoid_: runtime as a user-facing category
 
 **Station agent**:
-An agent whose loop is run by Station's engine. Station owns its prompt, model connection, skills, integrations, tools, commands, guardrails, and platform capabilities.
+The reserved built-in Agent named Station. It owns Station Control and Station
+Docs by default; a separate Station setting selects the capable engine that
+executes it.
 _Avoid_: managed agent
 
 **External agent**:
-An agent whose loop is run by an external engine such as Claude Code, Codex, or Kiro. Station owns the surrounding workspace, orchestration, and the knobs the engine exposes; the engine owns its behavior and tools.
+An Agent executed by an external engine such as Claude Code, Codex, or Kiro.
+Station owns the surrounding workspace and orchestration; the engine owns its
+loop and native behavior.
 _Avoid_: connected agent, ACP agent as a separate type, Agent app
 
 **Station's engine**:
-The agent execution machinery Station uses for Station agents. It is distinct from external engines, and it is not called a runtime in user-facing language.
+Station's native agent execution machinery over a Model connection. It can run
+the built-in Station agent or another Agent, and is distinct from external
+engines.
 _Avoid_: runtime engine
 
 **Connection**:

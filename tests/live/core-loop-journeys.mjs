@@ -760,9 +760,14 @@ async function journeyProjectDeepLinkReload(note, shared) {
     const assertConversationVisible = async (phase) => {
       const settleFailure = await settlePageReason(page, SETTLE_TIMEOUT_MS);
       assert(!settleFailure, `${phase}: did not settle: ${settleFailure}`);
-      const path = new URL(page.url()).pathname;
+      // station#928 retired the `/activity` route, so a decay into the
+      // Activity inspector now shows up as the surface deep link rather than
+      // as a pathname. Both spellings are checked: the pathname assertion
+      // alone would pass through the very decay it exists to catch.
+      const decayed = new URL(page.url());
       assert(
-        !path.startsWith('/activity'),
+        !decayed.pathname.startsWith('/activity') &&
+          decayed.searchParams.get('surface') !== 'activity',
         `${phase}: decayed into the Activity inspector (${page.url()}) — #765 A5`,
       );
       assert(
@@ -825,7 +830,12 @@ async function journeyPairingLoop(note, shared) {
   const apiBase = `http://127.0.0.1:${SERVER_PORT}`;
   const requesterRoot = mkdtempSync(join(tmpdir(), 'core-loop-station-b-'));
   const requesterHome = join(requesterRoot, 'instances', 'requester');
-  mkdirSync(requesterHome, { recursive: true });
+  // Do NOT pre-create the home. The requester's first act is to save a
+  // Station, and profile-store genesis admits only an empty root (or one
+  // holding just `config`/`installs`): a pre-created `instances/` entry reads
+  // as an initialized root with its profiles.json missing, and the CLI refuses
+  // with "saved Station metadata is missing from an initialized or in-progress
+  // shared root". The CLI scaffolds the home itself, owner-only, after genesis.
   note(`second temp-home Station at ${requesterHome}`);
 
   // A freshly paired observer for this journey's host-side reads: the
@@ -1066,7 +1076,7 @@ console.log(
 console.log('starting main instance (builds on first run)...');
 const hostRoot = mkdtempSync(join(tmpdir(), 'core-loop-host-'));
 const hostHome = join(hostRoot, 'instances', 'host');
-mkdirSync(hostHome, { recursive: true });
+mkdirSync(hostHome, { recursive: true, mode: 0o700 });
 const main = await startTempHomeInstance({
   root: ROOT,
   instance: INSTANCE,

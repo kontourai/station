@@ -595,6 +595,13 @@ describe('CLI core commands over HTTP', () => {
           input: body,
         });
         const chatInputText = body.message;
+        const childContinuation = chatInputText.startsWith('trigger child');
+        const acceptedChatSessionId = childContinuation
+          ? `${chatThreadId}:child`
+          : chatThreadId;
+        const acceptedChatTurnId = childContinuation
+          ? 'child-turn-2'
+          : 'turn-1';
         const target = (
           continueChatMatch
             ? { agent: continuedAgent, environment: body.environment }
@@ -638,7 +645,56 @@ describe('CLI core commands over HTTP', () => {
           return;
         }
         if (pendingChatEventsResponse) {
-          if (chatInputText === 'trigger stream error') {
+          if (childContinuation) {
+            const stream = pendingChatEventsResponse;
+            const emit = (event: Record<string, unknown>) =>
+              stream.write(`data: ${JSON.stringify(event)}\n\n`);
+            // A predecessor's terminal and another turn on the accepted
+            // child must never settle this invocation or enter its output.
+            emit({
+              method: 'turn.completed',
+              threadId: chatThreadId,
+              turnId: 'predecessor-turn',
+            });
+            emit({
+              method: 'content.text-delta',
+              threadId: acceptedChatSessionId,
+              turnId: 'old-turn',
+              delta: 'WRONG',
+            });
+            emit({
+              method: 'turn.completed',
+              threadId: acceptedChatSessionId,
+              turnId: 'old-turn',
+            });
+            if (chatInputText === 'trigger child overflow') {
+              for (let index = 0; index < 513; index++)
+                emit({
+                  method: 'content.text-delta',
+                  threadId: `other-${index}`,
+                  turnId: 'other',
+                  delta: 'unrelated',
+                });
+            } else {
+              emit({
+                method: 'content.text-delta',
+                threadId: acceptedChatSessionId,
+                turnId: acceptedChatTurnId,
+                delta: 'CHILD_CONTEXT_OK',
+              });
+              if (chatInputText === 'trigger child eof') stream.end();
+              else
+                emit({
+                  method: 'turn.completed',
+                  threadId: acceptedChatSessionId,
+                  turnId: acceptedChatTurnId,
+                  finishReason: 'stop',
+                });
+            }
+            // Keep HTTP acceptance pending while the separate SSE connection
+            // delivers its early frames. The real endpoint can do this too.
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          } else if (chatInputText === 'trigger stream error') {
             pendingChatEventsResponse.write(
               `data: ${JSON.stringify({
                 provider: 'station',
@@ -686,6 +742,7 @@ describe('CLI core commands over HTTP', () => {
                   createdAt: new Date().toISOString(),
                   method: 'content.text-delta',
                   itemId: 'content-1',
+                  turnId: acceptedChatTurnId,
                   delta,
                 })}\n\n`,
               );
@@ -706,12 +763,12 @@ describe('CLI core commands over HTTP', () => {
           success: true,
           data: {
             conversationId: chatThreadId,
-            sessionId: chatThreadId,
+            sessionId: acceptedChatSessionId,
             // A successful foreground receipt must carry the exact terminal
             // correlation. The stream fixture above uses the same provider
             // turn, so this models an accepted dispatch rather than the
             // explicit missing-identity/indeterminate path.
-            providerTurnId: 'turn-1',
+            providerTurnId: acceptedChatTurnId,
             target: { kind: 'agent', id: target.agent },
             resolution: {
               schemaVersion: 'station.execution-resolution/v1',
@@ -1309,6 +1366,52 @@ describe('CLI core commands over HTTP', () => {
       },
     });
   });
+
+  test('observes the accepted child and exact turn while retaining the durable conversation', async () => {
+    const { runCli } = await import('../cli.js');
+    await runCli([
+      'chat',
+      'codex',
+      'trigger child continuation',
+      '--session=runtime-thread',
+      '--json',
+      `--api-base=${apiBase}`,
+    ]);
+    const output = JSON.parse(String(_consoleLog.mock.calls.at(-1)?.[0]));
+    expect(output).toMatchObject({
+      conversationId: 'runtime-thread',
+      sessionId: 'runtime-thread:child',
+      providerTurnId: 'child-turn-2',
+      text: 'CHILD_CONTEXT_OK',
+      finishReason: 'stop',
+    });
+    expect(orchestrationCommands).toHaveLength(1);
+    await chatEventsClosed;
+  });
+
+  test.each(['eof', 'overflow'])(
+    'reports unavailable child observation after %s without resending the accepted turn',
+    async (failure) => {
+      const { runCli } = await import('../cli.js');
+      await expect(
+        runCli([
+          'chat',
+          'codex',
+          `trigger child ${failure}`,
+          '--session=runtime-thread',
+          '--json',
+          `--api-base=${apiBase}`,
+        ]),
+      ).rejects.toThrow(
+        failure === 'eof'
+          ? 'Chat observation ended before accepted turn'
+          : 'early-event buffer',
+      );
+      expect(orchestrationCommands).toHaveLength(1);
+      expect(orchestrationCommands[0]?.type).toBe('continueTarget');
+      await chatEventsClosed;
+    },
+  );
 
   test('supports session operations through an Agent', async () => {
     const { runCli } = await import('../cli.js');

@@ -88,7 +88,8 @@ function stageInput([destination, planPath, platform, ...entries]) {
     artifactAttestationClaim: {
       authority: 'github-artifact-attestation',
       repository: 'kontourai/station',
-      workflowRef: `.github/workflows/nightly-native-cohort.yml@${plan.sourceSha}`,
+      // Staged artifacts are attested by the staging phase (#1453).
+      workflowRef: `.github/workflows/nightly-native-stage.yml@${plan.sourceSha}`,
       runId: plan.workflowRunId,
       subjectDigest: `sha256:${sha256(Buffer.from(canonicalJson(records)))}`,
       verificationReference: `github:attestation:${platform}:${plan.workflowRunId}`,
@@ -107,9 +108,12 @@ function artifactInput([destination, ...entries]) {
       platformArtifacts = {};
       artifacts[platform] = platformArtifacts;
     }
-    platformArtifacts[name] = resolve(path);
+    platformArtifacts[name] = { path: resolve(path) };
   }
-  write(destination, { artifacts });
+  // release-cohort.mjs consumes the downloaded platform map directly. Keep
+  // this file in that exact reader shape so the workflow cannot accidentally
+  // add a transport-only wrapper that the admission schema does not know.
+  write(destination, artifacts);
 }
 
 function promotionFenceValue(value, expected = undefined) {

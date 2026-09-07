@@ -5,9 +5,10 @@ import {
   conversationQueries,
   interruptOrchestrationTurn,
   isProvablyNotSent,
-  useAgentConnectionsQuery,
+  useEngineConnectionsQuery,
   useInvalidateQuery,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import {
@@ -138,7 +139,7 @@ export function useSendMessage(
   // Only consulted at the mid-turn send gate below to decide steering vs.
   // enqueue (archive#613). No built-in adapter declares 'steering' today, so this
   // list never actually flips the branch in production.
-  const { data: agentConnections = [] } = useAgentConnectionsQuery() as {
+  const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data: ConnectionConfig[];
   };
   const invalidate = useInvalidateQuery();
@@ -232,7 +233,7 @@ export function useSendMessage(
       // fresh one for every other call (first send, queued-message drain,
       // "Continue" after tool-calls/length) since those are genuinely new
       // turns, not a resend of this one.
-      const resolvedTurnId = turnId ?? crypto.randomUUID();
+      const resolvedTurnId = turnId ?? randomCorrelationId();
 
       const abortController = new AbortController();
 

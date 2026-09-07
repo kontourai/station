@@ -4,10 +4,16 @@ on:
   workflow_run:
     # Self-exclusion is by omission: watching this workflow would recurse.
     workflows:
+      - Nightly
       - Container smoke
       - Windows Verification
       - Secret Scan
       - Backlog disposition policy
+      - Scheduled dependency advisory floor
+      # Chained: Android Tests is itself a workflow_run of the Android build
+      # (two levels, within GitHub's limit of three). Its green runs have no
+      # skipped jobs, so the close guard below can clear its tracker (#1315).
+      - Android Tests
     types: [completed]
 
 permissions:
@@ -23,7 +29,7 @@ jobs:
     timeout-minutes: 2
     steps:
       - name: Open or update the workflow tracking issue
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         # Event values stay data: env indirection prevents injection into JavaScript source.
         env:
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
@@ -90,7 +96,7 @@ jobs:
     timeout-minutes: 2
     steps:
       - name: Close the workflow tracking issue after a green run
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         # Event values stay data: env indirection prevents injection into JavaScript source.
         env:
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
@@ -118,7 +124,18 @@ jobs:
             // both jobs).
             const hasSuccessfulJob = jobs.some((job) => job.conclusion === 'success');
             const hasSkippedJob = jobs.some((job) => job.conclusion === 'skipped');
-            if (!hasSuccessfulJob || hasSkippedJob) return;
+            if (workflowName === 'Nightly') {
+              // Recovery and the unused half of the reusable iOS workflow
+              // are intentionally skipped even in a completed Nightly.
+              // Require the terminal delivery jobs instead of treating those
+              // expected skips as missing delivery evidence.
+              const requiredJobs = [
+                '3 · Publish native cohort / Record ledger and markers',
+                '3 · Publish CLI to npm nightly',
+                '3 · Stage portable fleet evidence / Admit portable bytes',
+              ];
+              if (!requiredJobs.every((name) => jobs.some((job) => job.name === name && job.conclusion === 'success'))) return;
+            } else if (!hasSuccessfulJob || hasSkippedJob) return;
             const issues = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,
               repo: context.repo.repo,

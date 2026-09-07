@@ -18,12 +18,16 @@ import {
   getProviderAdapter,
   getProviderAdapters,
   listProviders,
+  pluginProviderSourceGeneration,
   providerAdapterLaunchabilitySource,
   registerBrandingProvider,
   registerProvider,
   registerProviderAdapter,
   replacePluginProviders,
   replacePluginProvidersForSource,
+  replacePluginProvidersForSourceGeneration,
+  retirePluginProvidersForSourceGeneration,
+  withPluginProviderSourceGeneration,
 } from '../registries/registry.js';
 import { resolvePluginProviders } from '../resolver.js';
 
@@ -60,16 +64,21 @@ describe('Provider System', () => {
       mkdirSync(pluginDir, { recursive: true });
       writeFileSync(join(pluginDir, 'plugin.json'), '{ not json at all');
 
-      const warnings: string[] = [];
+      const warnings: Array<{ message: string; context?: unknown }> = [];
       const result = resolvePluginProviders(pluginsDir, {}, () => true, {
-        warn: (message: string) => warnings.push(message),
+        warn: (message: string, context?: unknown) =>
+          warnings.push({ message, context }),
       });
 
       expect(result.resolved).toEqual([]);
       expect(warnings).toHaveLength(1);
-      // Names the path, so the operator can find the plugin it is about.
-      expect(warnings[0]).toContain('broken-plugin');
-      expect(warnings[0]).toContain('nothing it contributes is loaded');
+      expect(warnings[0]).toEqual({
+        message: 'Installed plugin manifest rejected',
+        context: expect.objectContaining({
+          pluginDirectory: 'broken-plugin',
+          code: 'malformed-json',
+        }),
+      });
     });
 
     it('resolves single plugin with one provider correctly', () => {
@@ -642,6 +651,143 @@ describe('Provider System', () => {
       expect(getProvider('auth')).toBe(sourceB);
     });
 
+    it('refuses a stale generation retirement without removing replacement providers', async () => {
+      const first = { id: 'first' };
+      const replacement = { id: 'replacement' };
+      await replacePluginProvidersForSource('plugin-a', [
+        { type: 'auth', provider: first, source: 'plugin-a' },
+      ]);
+      const firstGeneration = pluginProviderSourceGeneration('plugin-a');
+      await replacePluginProvidersForSource('plugin-a', [
+        { type: 'auth', provider: replacement, source: 'plugin-a' },
+      ]);
+
+      await expect(
+        retirePluginProvidersForSourceGeneration('plugin-a', firstGeneration),
+      ).resolves.toBe('superseded');
+      expect(getProvider('auth')).toBe(replacement);
+
+      await expect(
+        retirePluginProvidersForSourceGeneration(
+          'plugin-a',
+          pluginProviderSourceGeneration('plugin-a'),
+        ),
+      ).resolves.toBe('retired');
+      expect(getProvider('auth')).not.toBe(replacement);
+    });
+
+    it('disposes staged activation instead of publishing after its lifecycle generation turns stale', async () => {
+      const current = { id: 'current' };
+      await replacePluginProvidersForSource('plugin-a', [
+        { type: 'auth', provider: current, source: 'plugin-a' },
+      ]);
+      const expectedGeneration = pluginProviderSourceGeneration('plugin-a');
+      const displaced = new BedrockAdapter();
+      const prepared = new BedrockAdapter();
+      let releaseStagingCleanup!: () => void;
+      const stagingCleanup = new Promise<void>((resolve) => {
+        releaseStagingCleanup = resolve;
+      });
+      const stopDisplaced = vi
+        .spyOn(displaced, 'stopAll')
+        .mockImplementation(() => stagingCleanup);
+      const stopPrepared = vi.spyOn(prepared, 'stopAll').mockResolvedValue();
+      let lifecycleCurrent = true;
+
+      const activation = replacePluginProvidersForSourceGeneration(
+        'plugin-a',
+        expectedGeneration,
+        [
+          { type: 'providerAdapter', provider: displaced, source: 'plugin-a' },
+          { type: 'providerAdapter', provider: prepared, source: 'plugin-a' },
+        ],
+        () => lifecycleCurrent,
+      );
+      await vi.waitFor(() => expect(stopDisplaced).toHaveBeenCalledOnce());
+      lifecycleCurrent = false;
+      releaseStagingCleanup();
+
+      await expect(activation).resolves.toBe('superseded');
+      expect(stopPrepared).toHaveBeenCalledOnce();
+      expect(getProvider('auth')).toBe(current);
+      expect(getProviderAdapter('bedrock')).toBeUndefined();
+      expect(pluginProviderSourceGeneration('plugin-a')).toBe(
+        expectedGeneration,
+      );
+    });
+
+    it('does not reuse a provider generation after a clear and reload', async () => {
+      const first = { id: 'first' };
+      const replacement = { id: 'replacement' };
+      await replacePluginProvidersForSource('plugin-a', [
+        { type: 'auth', provider: first, source: 'plugin-a' },
+      ]);
+      const staleGeneration = pluginProviderSourceGeneration('plugin-a');
+      clearAll();
+      await replacePluginProvidersForSource('plugin-a', [
+        { type: 'auth', provider: replacement, source: 'plugin-a' },
+      ]);
+
+      expect(pluginProviderSourceGeneration('plugin-a')).toBeGreaterThan(
+        staleGeneration,
+      );
+      await expect(
+        retirePluginProvidersForSourceGeneration('plugin-a', staleGeneration),
+      ).resolves.toBe('superseded');
+      expect(getProvider('auth')).toBe(replacement);
+    });
+
+    it('holds the exact provider generation through qualified side effects so replacement cannot interleave', async () => {
+      const first = { id: 'first' };
+      const replacement = { id: 'replacement' };
+      await replacePluginProvidersForSource('plugin-a', [
+        { type: 'auth', provider: first, source: 'plugin-a' },
+      ]);
+      const expectedGeneration = pluginProviderSourceGeneration('plugin-a');
+      let releaseRemoval!: () => void;
+      const removalGate = new Promise<void>((resolve) => {
+        releaseRemoval = resolve;
+      });
+      const order: string[] = [];
+      const removal = withPluginProviderSourceGeneration(
+        'plugin-a',
+        expectedGeneration,
+        async () => {
+          order.push('remove-start');
+          await removalGate;
+          order.push('remove-end');
+        },
+      );
+      await vi.waitFor(() => expect(order).toEqual(['remove-start']));
+      const update = replacePluginProvidersForSource('plugin-a', [
+        { type: 'auth', provider: replacement, source: 'plugin-a' },
+      ]).then(() => order.push('replacement-published'));
+      await Promise.resolve();
+      expect(order).toEqual(['remove-start']);
+
+      releaseRemoval();
+      await expect(removal).resolves.toMatchObject({ kind: 'applied' });
+      await update;
+      expect(order).toEqual([
+        'remove-start',
+        'remove-end',
+        'replacement-published',
+      ]);
+      expect(getProvider('auth')).toBe(replacement);
+
+      let staleRemovalRan = false;
+      await expect(
+        withPluginProviderSourceGeneration(
+          'plugin-a',
+          expectedGeneration,
+          async () => {
+            staleRemovalRan = true;
+          },
+        ),
+      ).resolves.toEqual({ kind: 'superseded' });
+      expect(staleRemovalRan).toBe(false);
+    });
+
     it('restores an older plugin adapter when a newer same-provider source is removed', async () => {
       const sourceA = new BedrockAdapter();
       const sourceB = new BedrockAdapter();
@@ -676,8 +822,9 @@ describe('Provider System', () => {
       expect(getProviderAdapter('bedrock')).toBe(sourceA);
     });
 
-    it('bounds staged cleanup, invokes every adapter, and retries retained ownership', async () => {
+    it('bounds staged cleanup and retries retained ownership only for its source', async () => {
       vi.useFakeTimers();
+      let releaseStalled!: () => void;
       try {
         const synchronousFailure = new BedrockAdapter();
         const stalled = new BedrockAdapter();
@@ -688,7 +835,12 @@ describe('Provider System', () => {
           });
         const stopStalled = vi
           .spyOn(stalled, 'stopAll')
-          .mockImplementationOnce(() => new Promise<void>(() => undefined))
+          .mockImplementationOnce(
+            () =>
+              new Promise<void>((resolve) => {
+                releaseStalled = resolve;
+              }),
+          )
           .mockResolvedValueOnce(undefined);
 
         const cleanup = disposePreparedPluginProviders([
@@ -709,13 +861,137 @@ describe('Provider System', () => {
         expect(stopStalled).toHaveBeenCalledOnce();
 
         stopFailure.mockResolvedValue(undefined);
-        await disposeRetainedPreparedPluginProviders();
+        await disposeRetainedPreparedPluginProviders('plugin-a');
         expect(stopFailure).toHaveBeenCalledTimes(2);
-        expect(stopStalled).toHaveBeenCalledTimes(2);
+        expect(stopStalled).toHaveBeenCalledOnce();
+
+        const retry = disposeRetainedPreparedPluginProviders('plugin-b');
+        const retryFailure = expect(retry).rejects.toThrow(
+          'Prepared plugin provider cleanup failed',
+        );
+        await vi.advanceTimersByTimeAsync(2_001);
+        await retryFailure;
+        expect(stopStalled).toHaveBeenCalledOnce();
+
+        const joined = disposeRetainedPreparedPluginProviders('plugin-b');
+        releaseStalled();
+        await joined;
+        await disposeRetainedPreparedPluginProviders('plugin-b');
+        expect(stopStalled).toHaveBeenCalledOnce();
       } finally {
+        releaseStalled?.();
         vi.useRealTimers();
       }
     });
+
+    it('retries a timed-out cleanup only after its original attempt rejects', async () => {
+      vi.useFakeTimers();
+      let rejectOriginal!: (error: Error) => void;
+      const adapter = new BedrockAdapter();
+      const stopAll = vi
+        .spyOn(adapter, 'stopAll')
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((_resolve, reject) => {
+              rejectOriginal = reject;
+            }),
+        )
+        .mockResolvedValue(undefined);
+      try {
+        const cleanup = disposePreparedPluginProviders([
+          {
+            type: 'providerAdapter',
+            source: 'late-rejection',
+            provider: adapter,
+          },
+        ]);
+        const timedOut = expect(cleanup).rejects.toThrow(
+          'Prepared plugin provider cleanup failed',
+        );
+        await vi.advanceTimersByTimeAsync(2_001);
+        await timedOut;
+        rejectOriginal(new Error('original cleanup failed after timeout'));
+        await vi.advanceTimersByTimeAsync(0);
+
+        await Promise.all([
+          disposeRetainedPreparedPluginProviders('late-rejection'),
+          disposeRetainedPreparedPluginProviders('late-rejection'),
+        ]);
+        expect(stopAll).toHaveBeenCalledTimes(2);
+        await disposeRetainedPreparedPluginProviders('late-rejection');
+        expect(stopAll).toHaveBeenCalledTimes(2);
+      } finally {
+        rejectOriginal?.(new Error('test cleanup'));
+        vi.useRealTimers();
+      }
+    });
+
+    it.each(['timeout', 'rejection'] as const)(
+      'retains every source of an all-refused shared adapter after %s',
+      async (failure) => {
+        vi.useFakeTimers();
+        const adapter = new BedrockAdapter();
+        let release!: () => void;
+        const stalled = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const stopAll = vi
+          .spyOn(adapter, 'stopAll')
+          .mockImplementation(() =>
+            failure === 'timeout'
+              ? stalled
+              : Promise.reject(new Error('cleanup refused')),
+          );
+        const outcome = (operation: Promise<void>) =>
+          operation.then(
+            () => 'completed',
+            () => 'failed',
+          );
+        try {
+          const initial = outcome(
+            disposePreparedPluginProviders([
+              {
+                type: 'providerAdapter',
+                source: 'shared-owner-a',
+                provider: adapter,
+              },
+              {
+                type: 'providerAdapter',
+                source: 'shared-owner-b',
+                provider: adapter,
+              },
+            ]),
+          );
+          await vi.advanceTimersByTimeAsync(2_001);
+          expect(await initial).toBe('failed');
+          expect(stopAll).toHaveBeenCalledOnce();
+          const a = outcome(
+            disposeRetainedPreparedPluginProviders('shared-owner-a'),
+          );
+          const b = outcome(
+            disposeRetainedPreparedPluginProviders('shared-owner-b'),
+          );
+          await vi.advanceTimersByTimeAsync(2_001);
+          expect(await a).toBe('failed');
+          expect(await b).toBe('failed');
+          expect(stopAll).toHaveBeenCalledTimes(failure === 'timeout' ? 1 : 2);
+          stopAll.mockResolvedValue(undefined);
+          release();
+          await Promise.all([
+            disposeRetainedPreparedPluginProviders('shared-owner-a'),
+            disposeRetainedPreparedPluginProviders('shared-owner-b'),
+          ]);
+          const calls = stopAll.mock.calls.length;
+          await disposeRetainedPreparedPluginProviders('shared-owner-b');
+          expect(stopAll).toHaveBeenCalledTimes(calls);
+        } finally {
+          stopAll.mockResolvedValue(undefined);
+          release();
+          await disposeRetainedPreparedPluginProviders();
+          vi.useRealTimers();
+        }
+      },
+    );
 
     it('publishes adapter registration revisions for inventory invalidation', () => {
       const revisions: number[] = [];

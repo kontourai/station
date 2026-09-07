@@ -40,7 +40,7 @@ All fields:
 {
   "name": "my-plugin",
   "version": "1.0.0",
-  "sdkVersion": "^0.4.0",
+  "sdkVersion": "^0.7.0",
   "displayName": "My Plugin",
   "description": "What this plugin does",
   "entrypoint": "src/index.tsx",
@@ -90,16 +90,23 @@ All fields:
 | `description` | string | no | Short description |
 | `entrypoint` | string | no | Path to UI entry point (layout plugins only) |
 | `serverModule` | string | no | Path to a server-side module that registers request-scoped plugin routes and lifecycle hooks |
+| `build` | string | no | Reserved; currently rejected so builds cannot execute manifest-supplied commands |
 | `capabilities` | string[] | no | Declared capabilities, e.g. `["chat", "navigation"]` |
 | `permissions` | string[] | no | Permissions the plugin needs (see Permissions) |
+| `links` | unknown | no | Opaque link metadata returned by plugin preview; it grants no capability |
 | `agents` | array | no | Agent configs to install |
 | `layout` | object | no | Single layout config to install |
 | `layouts` | array | no | Multiple layout configs to install |
+| `workspacePanes` | WorkspacePaneDescriptor[] | no | Portable Pane declarations; cannot be combined with legacy `layout` or `layouts` |
+| `workspacePaneHost` | WorkspacePaneHostContributionV1 | no | Inert package-level action and Agent-selection declarations; the server owns admission and authorization |
 | `providers` | array | no | Server-side provider modules to load |
 | `operationalEventSubscriptions` | array | no | Versioned durable event observations handled by `serverModule`; Station derives identity, grants, and delivery ownership |
+| `integrations.required` | string[] | no | Integration IDs required by the plugin |
 | `tools.required` | string[] | no | MCP tool IDs that must be installed |
 | `dependencies` | array | no | Other plugins this plugin depends on |
-| `knowledge` | object | no | Knowledge namespace configuration |
+| `knowledge.namespaces` | KnowledgeNamespaceConfig[] | no | Knowledge namespace declarations |
+| `prompts.source` | string | no | Directory of read-only command-skill Markdown files |
+| `skills` | string[] | no | Skill package IDs contributed by the plugin |
 | `settings` | PluginSettingField[] | no | Configurable settings (see Settings) |
 
 #### Reserved plugin names
@@ -244,6 +251,12 @@ preserved so a reinstall restores the same project choice; until then, opening
 one renders Station's explicit unavailable-component recovery state rather than
 silently substituting another layout. Reinstall the same registry item, refresh
 the project, and open the preserved layout again.
+
+If installed files remain but `plugin.json` is missing or rejected, Plugins
+keeps the folder visible with a **Rejected** badge, the validation reason, and
+specific repair guidance. Fix or restore the manifest, then choose **Reload
+plugins**. Station does not invent a version or expose normal settings, update,
+permission, or removal controls until the manifest validates again.
 
 ## layout.json
 
@@ -787,9 +800,32 @@ Plugins can declare dependencies on other plugins. The server resolves and insta
 ```
 
 - If `source` is provided and the dependency isn't installed, it's cloned and installed automatically
+- Relative dependency sources resolve from the declaring local plugin directory
+  but must remain inside its physical sibling package root; traversal and
+  symlinked ancestors are refused
 - If no `source`, the server tries the configured registry
 - Dependencies are resolved recursively (cycle detection included)
-- `./station plugin preview <source>` shows dependency resolution status before install
+- `station plugin preview <source>` shows dependency resolution status, exact content digest, and dependency-specific permissions before install
+- Every supplied dependency approval binds its staged source bytes, permissions, and dependency ids, even for declarative-only packages. Newly installed dependencies with browser entrypoints, prebuilt browser bundles, permissions, providers, or settings require that preview-bound approval; naming the dependency id alone is insufficient. Declarative-only dependencies remain supported without an individual approval for older clients. Unsupported lifecycle contributions remain refused.
+- Already-installed dependencies are adopted without granting deletion ownership or replacing their active provider/settings lifecycle. If an installed entrypoint is rebuilt, its current installed bytes must match the preview approval, checked under the content lock held through that rebuild. Read-only adoption does not claim to install the previewed source over an existing tree.
+- Provider/settings-only dependencies use the canonical plugin lifecycle. Station records which dependency trees the parent created in host-owned, digest-bound install authority beside the existing per-plugin grant state; neither the mutable parent manifest nor files in the plugin tree can mint deletion authority. Station rolls dependency grants/providers/bytes back in reverse dependency order with a failed parent install, and removes owned dependencies plus their registry aliases with the parent unless another installed plugin references them directly or transitively, or their lock-protected content changed. A dependency whose exact creation digest is unavailable is preserved rather than deleted by name. A dependency that already existed is never adopted for deletion, and a failed parent uninstall restores every dependency it already removed.
+- Removing a creator, or replacing it with a smaller graph, hands an unchanged
+  managed dependency's existing cleanup claim to a verified surviving root
+  consumer. This is custody transfer, not new grant or execution authority.
+  The recipient copy is durable before the creator's claim disappears; an
+  interrupted handoff may leave duplicate claims, but the last consumer still
+  performs one dependency cleanup. Metadata-only rollback compares the written
+  ownership revision and preserves newer grants. Unmanaged adopted plugins stay
+  unmanaged. An unverifiable successor, exhausted capacity, legacy unbound
+  recipient grants, or unsupported nested custody causes safe refusal instead
+  of orphaning authority or promoting permissions. Recipient verification and
+  the handoff use the canonical publication/content locks.
+- Trusted dependency permissions such as `providers.register` remain pending for the separate host-owned approval surface; dependency installation does not downgrade that authority.
+  Other dependency permissions (for example `network.fetch`) currently lack
+  canonical dependency lifecycle support and are rejected by preview before
+  offering approval; approving them does not expand the supported permission set.
+  The Plugins and Registry install flows route each installed dependency through
+  that existing host approval before claiming its providers are active.
 
 ## Installation Flow
 
@@ -797,19 +833,19 @@ Plugins can declare dependencies on other plugins. The server resolves and insta
 
 ```bash
 # Install from git URL
-./station plugin install git@github.com:org/my-plugin.git
+station plugin install git@github.com:org/my-plugin.git
 
 # Install from git URL at a specific branch
-./station plugin install git@github.com:org/my-plugin.git#my-branch
+station plugin install git@github.com:org/my-plugin.git#my-branch
 
 # Install from local path
-./station plugin install /path/to/my-plugin
+station plugin install /path/to/my-plugin
 
 # Preview before installing (validate + show components/conflicts)
-./station plugin preview git@github.com:org/my-plugin.git
+station plugin preview git@github.com:org/my-plugin.git
 
 # Skip specific components during install
-./station plugin install git@github.com:org/my-plugin.git --skip=agent:my-plugin:assistant,layout:my-layout
+station plugin install git@github.com:org/my-plugin.git --skip=agent:my-plugin:assistant,layout:my-layout
 ```
 
 ### API
@@ -843,7 +879,13 @@ curl -X POST "$API_BASE/api/plugins/install" \
         "consent": {
           "permissions": ["navigation.dock", "network.fetch"],
           "contentDigest": "sha256:…",
-          "dependencies": ["shared-lib"]
+          "dependencies": ["shared-lib"],
+          "dependencyApprovals": [{
+            "id": "shared-lib",
+            "permissions": ["providers.register"],
+            "contentDigest": "sha256:…",
+            "dependencies": []
+          }]
         }
       }'
 
@@ -889,13 +931,44 @@ GET /api/plugins/check-updates
 
 Install, update, reload, and removal publish one runtime configuration generation. Replacement removes agent directories no longer declared by the plugin, and update rejects a changed manifest name. Station waits for displaced provider adapters to stop before reporting activation complete; an accepted file mutation that still needs runtime reconciliation returns HTTP `202` with a `configurationActivation` receipt.
 
+### Registry supply-chain policy tracer
+
+Station now has a server-side policy and record seam for registry package
+signatures, exact source/version/content pins, and byte-identical
+last-known-good snapshots. It is deliberately not active in the Registry UI or
+installer yet: no configured registry currently supplies a package claim, and
+Station has no configured trusted signing-key source or explicit pin-update
+action. Enforcing a required-signature policy without those trust anchors would
+make every current Registry item uninstallable while claiming stronger safety.
+
+The seam binds the canonical Agent Plugins 1.0.0 manifest schema target,
+`https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`, not legacy
+Station-only manifest contribution fields. That target identifies the published
+schema the registry claim says its root `plugin.json` uses; this tracer does not
+yet validate the manifest against that schema. Trust anchors
+come from local policy and never from the registry document being verified.
+The signature binds registry identity, registry source, package identity,
+version, source, and complete source-tree digest. A source/version change is
+refused under exact pinning unless a separately authorized pin update is
+present; an accepted provenance change explicitly requires the existing
+installer to invalidate/rebind grants before loading replacement code.
+
+`RegistryLastKnownGoodStore` writes no live plugin tree. It archives one prior
+tree under the Station home, verifies the copy's complete tree digest, and can
+produce a second verified staging tree. Runtime rollback must feed that staging
+tree back through `installPluginFromSource` so the existing content lock,
+agents, integrations, grants, providers, configuration generation, and rollback
+receipts remain the only installation transaction. Until that integration is
+landed, signed installation, explicit pin updates, and user-triggered rollback
+are **NOT_AVAILABLE**.
+
 ## Build System
 
 Layout plugins (with `entrypoint`) are built automatically by the server using esbuild. No custom build script needed.
 
 ### package.json
 
-This is what `./station plugin create` scaffolds:
+This is what `station plugin create` scaffolds:
 
 ```json
 {
@@ -907,8 +980,8 @@ This is what `./station plugin create` scaffolds:
     "dev": "tsx build.ts --dev"
   },
   "peerDependencies": {
-    "@kontourai/station-sdk": "^0.4.0",
-    "@kontourai/station-shared": "^0.4.0",
+    "@kontourai/station-sdk": "^0.7.0",
+    "@kontourai/station-shared": "^0.7.0",
     "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
@@ -918,10 +991,9 @@ This is what `./station plugin create` scaffolds:
 }
 ```
 
-The scripts do not call `./station` — the Station CLI is not published, so a
-plugin developed outside a Station checkout has no `station` on `PATH`. They run
-the scaffolded `build.ts` instead, which calls the same `buildPlugin()` the
-Station CLI and the server both call:
+The scripts do not require the Station CLI. They run the scaffolded `build.ts`
+instead, which calls the same `buildPlugin()` the Station CLI and the server
+both call:
 
 ```ts
 import { buildPlugin } from '@kontourai/station-shared/build';
@@ -999,21 +1071,27 @@ Build produces `dist/bundle.js` (and optionally `dist/bundle.css`). Do not commi
 
 ## Development Workflow
 
-This workflow uses the `./station` CLI, which is only available from a Station
-checkout — `@kontourai/station-cli` is not published. For the checkout-free
-path, build with `npm run build` (see [package.json](#packagejson) above) and
-install over HTTP; the walkthrough is in the published
+This workflow uses the published `@kontourai/station-cli`. Install the stable
+client with `npm install -g @kontourai/station-cli@latest`, or use the
+repo-root `./station` launcher while developing Station itself. The manual
+build path is in the published
 [`@kontourai/station-sdk` README](https://www.npmjs.com/package/@kontourai/station-sdk)
 and in [Build Your First Plugin](./build-your-first-plugin.md).
+This reference describes current `main`; a released CLI may scaffold the
+package ranges current when that CLI version shipped, so inspect the generated
+`package.json` before choosing a newer published SDK line.
 
 ### 1. Scaffold
 
 ```bash
-./station plugin create my-plugin --template=full
+station plugin create my-plugin --template=full
 cd my-plugin
 ```
 
-This creates the full plugin structure with a working entry point, layout config, and agent. `plugin create`/`build`/`dev`/`install` resolve paths against the directory you invoked `station` from, not the Station repo root, so `my-plugin/` is scaffolded in — and the rest of this workflow operates on — your actual working directory. The `./station` commands below assume `station` is reachable from `my-plugin/`, e.g. via `station link` (adds it to `PATH`) or by using the Station checkout's full path (`/path/to/station/station ...`).
+This creates the full plugin structure with a working entry point, layout
+config, and agent. `plugin create`/`build`/`dev`/`install` resolve paths against
+the directory where you invoke `station`, so `my-plugin/` is scaffolded in —
+and the rest of this workflow operates on — your actual working directory.
 
 Available templates:
 
@@ -1024,10 +1102,10 @@ Available templates:
 ### 2. Dev Server
 
 ```bash
-./station plugin dev              # starts on port 4200
-./station plugin dev 3000         # custom port
-./station plugin dev --no-mcp     # disable MCP tool connections
-./station plugin dev --tools-dir=./tools  # custom tools directory
+station plugin dev              # starts on port 4200
+station plugin dev 3000         # custom port
+station plugin dev --no-mcp     # disable MCP tool connections
+station plugin dev --tools-dir=./tools  # custom tools directory
 ```
 
 The dev server:
@@ -1056,17 +1134,17 @@ npm run dev     # tsx build.ts --dev  — dist/bundle-dev.js, inline sourcemaps
 ```
 
 Both run `buildPlugin()` from `@kontourai/station-shared`. These are one-shot
-builds — they do not watch or serve; use `./station plugin dev` above for the
+builds — they do not watch or serve; use `station plugin dev` above for the
 watching preview server.
 
-From a Station checkout, `./station plugin build` is the equivalent wrapper
+`station plugin build` is the equivalent wrapper
 around the same call.
 
 ### 4. Install Locally for Testing
 
 ```bash
-./station plugin install ./my-plugin   # run from the parent directory
-./station plugin install .             # or run from inside the plugin directory
+station plugin install ./my-plugin   # run from the parent directory
+station plugin install .             # or run from inside the plugin directory
 ```
 
 Installs the given directory as a plugin into the running Station instance. Local paths are resolved from the directory where Station was invoked, so both an explicit relative path and bare `.` are supported.
@@ -1074,13 +1152,13 @@ Installs the given directory as a plugin into the running Station instance. Loca
 ### 5. Plugin Management
 
 ```bash
-./station plugin list             # list installed plugins
-./station plugin info my-plugin   # show plugin details
-./station plugin update my-plugin # git pull + rebuild
-./station plugin remove my-plugin # uninstall
-./station plugin preview <source> # validate before installing
-./station registry [url]   # browse or set registry URL
-./station registry install <id>
+station plugin list             # list installed plugins
+station plugin info my-plugin   # show plugin details
+station plugin update my-plugin # git pull + rebuild
+station plugin remove my-plugin # uninstall
+station plugin preview <source> # validate before installing
+station registry [url]          # browse or set registry URL
+station registry install <id>
 ```
 
 ## Request-Scoped Server Modules

@@ -74,6 +74,61 @@
   --layer-popover: 1000;
   --layer-notice: 9000;
   --layer-dock: 9200;
+  /* A popover/menu that belongs to a dock control. It ESCAPES the dock (its
+     surface portals to the body, so the dock can no longer clamp it) and must
+     therefore outrank it — but it is not a dialog, and
+     `NotificationContainer.css` states the rule this position is derived
+     from: notifications "remain reachable above the chat dock while dialogs
+     and system blockers still supersede both surfaces". A scrim-less popover
+     is neither of those, so it sits above the dock and below every layer the
+     shell keeps persistently over the dock: the floating action, navigation,
+     notifications, the palette and dialogs.
+
+     WHAT THIS REVERSES, stated because it is a deliberate contract and not an
+     oversight. The OUTCOME and the MECHANISM are separate claims here, and
+     each has its own evidence, because a verified outcome does not verify the
+     explanation attached to it.
+
+     OUTCOME, measured on a phone viewport: with a popover open, a #920
+     critical card's own control is unreachable, where on `origin/main` it was
+     reachable. Pinned by the popover-with-a-critical-card shape in
+     `BannerHost.dialog-stacking.test.tsx`.
+
+     MECHANISM: `BannerHost.css` raises a blocking pairing/credential card's
+     own item and cap to `calc(var(--layer-dock) + 1)` — 9201 — expressly so
+     that ONLY a critical card crosses the dock layer, and 9250 is above it.
+     What distinguishes that from the competing explanation (the control being
+     unreachable because it was never raised at all, in which case anything
+     would cover it and this value would be irrelevant) is a fault injection:
+     lowering this token to 9150 makes those same controls REACHABLE. A
+     control that was not raised could not become reachable by moving the
+     popover down, so the raised layer is real and this value is what it is
+     being compared against. The first draft of that pin measured the
+     unraised `--info` cap and passed the injection, which is how the
+     distinction was found.
+
+     ACCEPTED, with the reasoning rather than an assertion. This occlusion is
+     user-initiated and dismissible, which is categorically different from the
+     click theft #1638 reports: there the user aims at a visible control and
+     something else receives the click, with no way to tell; here the user
+     opened the surface that covers it and closing it restores the card. That
+     is one extra interaction, not a lockout, and it is the right trade for
+     the ordinary popover case.
+
+     THE CONSTRAINT is what makes this a fork rather than a free choice, and it
+     is arithmetic rather than a measurement: the raised value is literally
+     `--layer-dock + 1`, and z-index is an integer, so 9200 and 9201 are
+     consecutive and NO value exists between them for a popover to occupy.
+     (The host itself is not uniformly at that layer — it is `--layer-notice`
+     for ordinary notices over a maximized dock, and `auto` under #920 with
+     only the critical item and cap raised. It is the raised critical control
+     that this token is ordered against.) Putting popovers under the banner means
+     moving the BANNER, which is a shell layer-order decision wider than the
+     surface seam. Filed as #1685, not decided here. The pin covers this
+     directly — see the popover-with-a-critical-card shape in
+     `BannerHost.dialog-stacking.test.tsx`, which asserts the accepted
+     behaviour, so a later change to it is a visible decision. */
+  --layer-surface-popover: 9250;
   --layer-floating-action: 9300;
   --layer-navigation: 9350;
   --layer-notification: 9400;

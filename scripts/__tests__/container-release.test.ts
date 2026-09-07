@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { createServer, type RequestListener } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { dirname, relative, resolve, sep } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { validatePackagedReleaseManifest } from '../../packages/cli/src/commands/lifecycle.js';
+import { checkContainerHealth } from '../container-healthcheck.mjs';
 import {
   createContainerReleaseDescriptor,
   createContainerReleaseMetadata,
@@ -11,6 +14,140 @@ import {
 const root = resolve(import.meta.dirname, '../..');
 const sha = 'a'.repeat(40);
 const createdAt = '2026-07-23T05:50:00.000Z';
+
+async function withHealthServer(
+  handler: RequestListener,
+  assertion: (baseUrl: string) => Promise<void>,
+): Promise<void> {
+  const server = createServer(handler);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', resolve);
+    });
+    await assertion(
+      `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    );
+  } finally {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+      server.closeAllConnections();
+    });
+  }
+}
+
+describe('container live health', () => {
+  test('requires matching immutable identity and a ready backend over real HTTP', async () => {
+    const requests: string[] = [];
+    await withHealthServer(
+      (request, response) => {
+        requests.push(request.url ?? '');
+        response.setHeader('Content-Type', 'application/json');
+        response.end(
+          JSON.stringify(
+            request.url === '/__station/identity'
+              ? { sha }
+              : { ready: true, status: 'ready' },
+          ),
+        );
+      },
+      async (baseUrl) => {
+        await expect(
+          checkContainerHealth({ baseUrl, expectedSha: sha }),
+        ).resolves.toBeUndefined();
+        expect(requests.sort()).toEqual([
+          '/__station/identity',
+          '/api/system/readiness',
+        ]);
+      },
+    );
+  });
+
+  test.each([
+    {
+      label: 'unavailable backend',
+      identitySha: sha,
+      readinessStatus: 503,
+      readiness: { ready: true, status: 'ready' },
+      error: 'not ready',
+    },
+    {
+      label: 'unready backend payload',
+      identitySha: sha,
+      readinessStatus: 200,
+      readiness: { ready: false, status: 'starting' },
+      error: 'backend is not ready',
+    },
+    {
+      label: 'wrong image',
+      identitySha: 'b'.repeat(40),
+      readinessStatus: 200,
+      readiness: { ready: true, status: 'ready' },
+      error: 'identity mismatch',
+    },
+  ])(
+    'rejects $label even when the public identity endpoint answers',
+    async (scenario) => {
+      await withHealthServer(
+        (request, response) => {
+          const identity = request.url === '/__station/identity';
+          response.statusCode = identity ? 200 : scenario.readinessStatus;
+          response.end(
+            JSON.stringify(
+              identity ? { sha: scenario.identitySha } : scenario.readiness,
+            ),
+          );
+        },
+        async (baseUrl) => {
+          await expect(
+            checkContainerHealth({ baseUrl, expectedSha: sha }),
+          ).rejects.toThrow(scenario.error);
+        },
+      );
+    },
+  );
+
+  test('rejects malformed backend JSON and missing image identity', async () => {
+    await withHealthServer(
+      (request, response) => {
+        response.end(
+          request.url === '/__station/identity'
+            ? JSON.stringify({ sha })
+            : 'not-json',
+        );
+      },
+      async (baseUrl) => {
+        await expect(
+          checkContainerHealth({ baseUrl, expectedSha: sha }),
+        ).rejects.toThrow();
+        await expect(
+          checkContainerHealth({ baseUrl, expectedSha: '' }),
+        ).rejects.toThrow('SHA is missing or invalid');
+      },
+    );
+  });
+
+  test('times out a stalled backend instead of waiting for its eventual healthy response', async () => {
+    await withHealthServer(
+      (request, response) => {
+        if (request.url === '/__station/identity') {
+          response.end(JSON.stringify({ sha }));
+          return;
+        }
+        const timer = setTimeout(
+          () => response.end(JSON.stringify({ ready: true, status: 'ready' })),
+          500,
+        );
+        response.once('close', () => clearTimeout(timer));
+      },
+      async (baseUrl) => {
+        await expect(
+          checkContainerHealth({ baseUrl, expectedSha: sha, timeoutMs: 50 }),
+        ).rejects.toThrow();
+      },
+    );
+  });
+});
 
 function dockerStage(dockerfile: string, name: string): string {
   const lines = dockerfile.split('\n');
@@ -26,22 +163,36 @@ function dockerStage(dockerfile: string, name: string): string {
   return lines.slice(begin, end).join('\n');
 }
 
+// Models Docker's MatchesOrParentMatches: each pattern is evaluated in order
+// against the path AND every parent directory of it, and the last match wins.
+// The parent check is what lets the leading `*` exclude a nested file such as
+// packaging/node-pty-prebuilds/manifest.json through its top-level directory.
+// The previous helper matched the path alone, so any slashed path no pattern
+// named came back "included" by default — and reported the #1264 break (a
+// COPY of a directory the allowlist never admits) as green.
 function dockerContextIncludes(ignore: string, path: string): boolean {
+  const candidates = [path];
+  for (let i = path.lastIndexOf('/'); i > 0; i = path.lastIndexOf('/', i - 1)) {
+    candidates.push(path.slice(0, i));
+  }
   let included = true;
   for (const raw of ignore.split('\n')) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
     const negated = line.startsWith('!');
-    const pattern = negated ? line.slice(1) : line;
+    // Docker cleans each pattern, so a trailing slash names the directory.
+    const pattern = (negated ? line.slice(1) : line).replace(/\/+$/, '');
     const escaped = pattern
-      .replaceAll('**', '\u0000')
+      .replaceAll('**/', '@@ANYDIRS@@')
+      .replaceAll('**', '@@ANY@@')
       .replace(/[.+^${}()|\\]/g, '\\$&')
       .replaceAll('*', '[^/]*')
-      .replaceAll('\u0000', '.*');
-    const regex = new RegExp(
-      `^${escaped}${pattern.endsWith('/') ? '.*' : ''}$`,
-    );
-    if (regex.test(path)) included = negated;
+      .replaceAll('@@ANYDIRS@@', '(.*/)?')
+      .replaceAll('@@ANY@@', '.*');
+    const regex = new RegExp(`^${escaped}$`);
+    if (candidates.some((candidate) => regex.test(candidate))) {
+      included = negated;
+    }
   }
   return included;
 }
@@ -135,7 +286,8 @@ function isBroadCopySource(src: string): boolean {
 const ALLOWED_RUNTIME_COPY_SOURCES = new Set([
   '/app/node_modules',
   '/app/package.json',
-  '/app/package-lock.json',
+  '/app/pnpm-lock.yaml',
+  '/app/pnpm-workspace.yaml',
   '/app/station',
   '/app/.station-release.json',
   '/app/packages',
@@ -297,7 +449,10 @@ describe('container source contract', () => {
     expect(dockerfile).toContain('tini');
     expect(dockerfile).toContain('service", "run"');
     expect(dockerfile).toContain('.station-release.json');
-    expect(dockerfile).toContain('__station/identity');
+    expect(dockerfile).toContain(
+      'CMD ["node", "/app/scripts/container-healthcheck.mjs"]',
+    );
+    expect(runtimeStage).toContain('tini git openssh-client ca-certificates');
     expect(dockerfile).toContain('STATION_IMAGE_SHA');
     expect(dockerfile).toContain('STATION_HOME=/data/station');
     expect(dockerfile).toContain(
@@ -316,14 +471,18 @@ describe('container source contract', () => {
       expect(dockerfile).toContain(
         `COPY ${workspace}/package.json ${workspace}/`,
       );
-    for (const lock of [
-      'packages/sdk/package-lock.json',
-      'packages/shared/package-lock.json',
-      'schemas/dependency-lifecycle-allowlist.schema.json',
-    ])
-      expect(dockerfile).toContain(`COPY ${lock}`);
+    expect(dockerfile).toContain(
+      'COPY schemas/dependency-lifecycle-allowlist.schema.json',
+    );
+    // Ordering contract only: the two script COPYs must be the last thing
+    // before `RUN npm run dependencies:ci`, so the install stage is not
+    // invalidated by unrelated source changes. Deliberately NOT pinning the
+    // scripts/lib/ file list here — completeness of that list is derived from
+    // the real import graph by the COPY-completeness test below, and pinning
+    // it twice means a legitimate addition edits a literal in two places and
+    // still proves nothing about whether the list is sufficient (#1469).
     expect(dockerfile).toMatch(
-      /COPY scripts\/node-runtime-contract\.mjs scripts\/dependency-lifecycle\.mjs scripts\/\s+COPY scripts\/lib\/dependency-lifecycle-policy\.mjs scripts\/lib\/workspace-dependency-satisfaction\.mjs scripts\/lib\/\s+RUN npm run dependencies:ci/,
+      /COPY scripts\/node-runtime-contract\.mjs scripts\/dependency-lifecycle\.mjs scripts\/\s+COPY scripts\/lib\/[^\n]*scripts\/lib\/\s+RUN npm run dependencies:ci/,
     );
     expect(runtimeStage).not.toContain('g++ make python3');
     // Runtime dependencies must come from the manifest-only install stage.
@@ -355,11 +514,20 @@ describe('container source contract', () => {
     expect(compose).toContain('/data/station');
     expect(compose).toContain(':/workspace');
     expect(compose).not.toContain('env_file:');
+    expect(compose).toContain(
+      '["CMD", "node", "/app/scripts/container-healthcheck.mjs"]',
+    );
+    expect(compose).toContain('stop_grace_period: 30s');
+    expect(compose).toContain('driver: local');
+    expect(compose).toContain('max-size: "10m"');
+    expect(compose).toContain('max-file: "3"');
     expect(ignore).toMatch(/^\*$/m);
     expect(ignore).not.toContain('!.git');
     expect(ignore).not.toContain('!.env');
     expect(ignore).not.toContain('!.station');
     expect(ignore).not.toContain('!.ssh');
+    expect(ignore).toContain('**/node_modules/**');
+    expect(ignore).toContain('**/dist/**');
     expect(ignore).toContain('**/__tests__/**');
     expect(ignore).toContain('**/fixtures/**');
     expect(ignore).toContain('**/*.pem');
@@ -386,6 +554,9 @@ describe('container source contract', () => {
     );
     expect(publishRelease).toContain('environment: native-release-publish');
     expect(smokeWorkflow).toContain('scripts/container-smoke.sh');
+    expect(smoke).toContain(
+      'node "$ROOT/scripts/check-container-build-context.mjs"',
+    );
     expect(smoke).toContain('trap cleanup EXIT HUP INT TERM');
     expect(smoke).toContain('docker compose');
     expect(smoke).not.toContain('COMPOSE_PROJECT_NAME=${');
@@ -417,9 +588,12 @@ describe('container source contract', () => {
     );
     expect(smoke).toContain('authenticated Station API did not become ready');
     expect(smoke).toContain(
-      'authenticated Station API did not recover after restart',
+      'authenticated Station API did not recover after recreation',
     );
-    expect(smoke).toContain('chmod 0755 "$WORKSPACE"');
+    expect(smoke).toContain('STATION_WORKSPACE_DIR=station-workspace');
+    expect(smoke).toContain('up -d --force-recreate station');
+    expect(smoke).toContain('container was not recreated');
+    expect(smoke).toContain('verifyNodePtyHandshake');
     expect(smoke).toContain(
       'STATION_ALLOWED_ORIGINS="http://127.0.0.1:$' + '{STATION_UI_PORT}"',
     );
@@ -505,10 +679,37 @@ describe('container source contract', () => {
       '.npmrc',
       'config/dependency-lifecycle-allowlist.json',
       'patches/example.patch',
+      'packaging/node-pty-prebuilds/manifest.json',
       'scripts/dependency-lifecycle.mjs',
       'scripts/lib/dependency-lifecycle-policy.mjs',
     ])
       expect(dockerContextIncludes(ignore, path)).toBe(true);
+    // A hand-written list only covers the paths someone remembered to add.
+    // #1264 added `COPY packaging/node-pty-prebuilds` without admitting the
+    // directory here, and the container smoke on main was the first thing to
+    // notice. So the contract is derived from the Dockerfile: every COPY
+    // source the context-reading stages name must be admitted by the
+    // allowlist. (The runtime stage copies only from the build stage, and
+    // its sources are pinned separately above.)
+    for (const stageName of ['dependencies', 'build']) {
+      const stage = dockerStage(dockerfile, stageName);
+      expect(stage, `Dockerfile must define stage "${stageName}"`).toBeTruthy();
+      expect(
+        stage,
+        `stage "${stageName}" is expected to COPY from the build context only`,
+      ).not.toMatch(/^\s*COPY\b[^\n]*--from=/m);
+      for (const source of parseCopySources(stage)) {
+        expect(
+          dockerContextIncludes(ignore, source),
+          `.dockerignore must admit "${source}", which stage "${stageName}" COPYs`,
+        ).toBe(true);
+      }
+    }
+    // Only the prebuild channel comes in from packaging/ — its siblings
+    // (installer and tap material) stay out of the image.
+    expect(dockerContextIncludes(ignore, 'packaging/homebrew/station.rb')).toBe(
+      false,
+    );
     // Post-flip policy: tracked config/ and scripts/ ship wholesale (the
     // repo is public; per-file curation cost five consecutive build breaks).
     // The discriminating exclusions are the test and dogfood trees.
@@ -516,6 +717,84 @@ describe('container source contract', () => {
     expect(
       dockerContextIncludes(ignore, 'scripts/__tests__/unrelated.test.ts'),
     ).toBe(false);
+  });
+
+  test('COPYs every local module the dependencies stage imports at build time', () => {
+    // #1469 added `scripts/lib/dependency-install-retirement.mjs` and imported
+    // it from `scripts/dependency-lifecycle.mjs`, which the dependencies stage
+    // copies file by file. The image built and then `RUN npm run
+    // dependencies:ci` died with ERR_MODULE_NOT_FOUND on a path that exists in
+    // the repo and not in the image; container smoke on main was the first
+    // thing to notice, exactly as the #1264 comment above records from the
+    // other direction.
+    //
+    // The test above proves .dockerignore ADMITS what the Dockerfile copies.
+    // Nothing proved the Dockerfile copies what the copied code REQUIRES, and
+    // that is the half that broke. Derive it from the real import graph rather
+    // than a second hand-written list, which would go stale the same way.
+    const stage = dockerStage(dockerfile, 'dependencies');
+    expect(stage, 'Dockerfile must define stage "dependencies"').toBeTruthy();
+    const copied = new Set(parseCopySources(stage));
+
+    // Derived from the COPY list, not named here. The stage copies more than
+    // one entry script (`node-runtime-contract.mjs` alongside
+    // `dependency-lifecycle.mjs`), and a hardcoded entry covers whichever one
+    // its author had in mind — leaving a local import added to the other
+    // invisible to exactly the check written to see it. Deriving is also what
+    // this test's own comment argues for, one level up.
+    const entries = [...copied].filter((source) =>
+      /^scripts\/[^/]+\.mjs$/.test(source),
+    );
+    expect(
+      entries.length,
+      'no top-level scripts/*.mjs entries found in the dependencies stage COPY list',
+    ).toBeGreaterThan(1);
+
+    const seen = new Set<string>();
+    const required = new Set<string>();
+    const queue: string[] = [...entries];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (current === undefined || seen.has(current)) continue;
+      seen.add(current);
+      const source = readFileSync(resolve(root, current), 'utf8');
+      // Relative specifiers only. Bare specifiers resolve from node_modules,
+      // which the managed pnpm bootstrap installs inside the image.
+      for (const match of source.matchAll(
+        /from\s+'(\.[^']+\.mjs)'|import\s+'(\.[^']+\.mjs)'/g,
+      )) {
+        const specifier = match[1] ?? match[2];
+        // POSIX separators: `relative()` yields `scripts\\lib\\x.mjs` on
+        // Windows, while COPY sources are Dockerfile literals and always
+        // forward-slashed, so an unnormalised lookup can never match there.
+        // The Windows portable floor caught this on the first push.
+        const repoRelative = relative(
+          root,
+          resolve(dirname(resolve(root, current)), specifier),
+        )
+          .split(sep)
+          .join('/');
+        required.add(repoRelative);
+        queue.push(repoRelative);
+      }
+    }
+
+    // A "check every X" assertion passes vacuously when X is empty, so pin
+    // that the walk actually found the graph before reading its verdict.
+    expect(
+      required.size,
+      `no local imports discovered from ${entries.join(' / ')}; the walk found nothing`,
+    ).toBeGreaterThan(0);
+
+    for (const module of required) {
+      expect(
+        copied.has(module),
+        `Dockerfile stage "dependencies" must COPY "${module}", which ` +
+          `${entries.join(' / ')} imports (transitively) — otherwise the image ` +
+          'builds and ' +
+          '`npm run dependencies:ci` fails with ERR_MODULE_NOT_FOUND (#1469).',
+      ).toBe(true);
+    }
   });
 });
 

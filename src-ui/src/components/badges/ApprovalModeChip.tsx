@@ -14,6 +14,7 @@ import {
   approvalModeLabel,
   resolveEffectiveApprovalMode,
 } from '../../utils/approvalMode';
+import { ArrowDownGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import '../chat/chat.css';
 
@@ -108,7 +109,7 @@ export function ApprovalModeChip({
     // so there is no target inviting a click that does nothing.
     return (
       <span
-        className="chat-input__approval-chip chat-input__approval-chip--readonly"
+        className="choice-trigger chat-input__approval-chip chat-input__approval-chip--readonly"
         role="note"
         aria-label={`Engine approval mode: ${APPROVAL_MODE_UNMANAGED_EXPLANATION}. ${policyDisclosure}`}
         title={`Engine approval mode: ${APPROVAL_MODE_UNMANAGED_EXPLANATION}. ${policyDisclosure}`}
@@ -162,7 +163,7 @@ export function ApprovalModeChip({
       <button
         ref={triggerRef}
         type="button"
-        className={`chat-input__approval-chip ${
+        className={`choice-trigger chat-input__approval-chip ${
           isPendingApply
             ? 'chat-input__approval-chip--pending'
             : isOverride
@@ -191,9 +192,7 @@ export function ApprovalModeChip({
         <span className="chat-input__approval-chip-label" aria-hidden="true">
           {chipText}
         </span>
-        <span className="chat-input__approval-chip-caret" aria-hidden="true">
-          ⌄
-        </span>
+        <ArrowDownGlyph className="choice-caret" />
       </button>
       {isSheetOpen && (
         <LazyBoundary

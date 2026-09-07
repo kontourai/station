@@ -164,6 +164,39 @@ describe('DistributionProfileService', () => {
     ]);
   });
 
+  test('keeps period-bearing Agent Plugins visible in Pane discovery', () => {
+    const projectHome = home();
+    writePanePlugin(projectHome, 'acme.tools');
+    expect(
+      new DistributionProfileService(
+        projectHome,
+      ).listPluginWorkspacePaneContributions(),
+    ).toEqual([
+      expect.objectContaining({
+        id: expect.stringMatching(/^plugin:acme\.tools:pane-[a-f0-9]{12}$/),
+        pluginName: 'acme.tools',
+      }),
+    ]);
+  });
+
+  test('keeps period-bearing Agent Plugins in legacy layout projection until layout retirement', () => {
+    const projectHome = home();
+    writePlugin(projectHome, 'acme.tools', 'tools');
+    const service = new DistributionProfileService(projectHome);
+    expect(service.listLayouts()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'plugin:acme.tools:tools',
+          plugin: 'acme.tools',
+        }),
+      ]),
+    );
+    expect(service.resolveForApply('plugin:acme.tools:tools')).toMatchObject({
+      pluginName: 'acme.tools',
+      definition: { slug: 'tools' },
+    });
+  });
+
   test('a manually relocated plugin with divergent directory and descriptor claims is recorded for fail-closed consistency checking', () => {
     // A manifest whose `name` diverges from its installed directory passes
     // the loader (panes must name the MANIFEST name), but the issuance
@@ -363,6 +396,35 @@ describe('DistributionProfileService', () => {
       service.resolveForApply('plugin:current-layout:current').definition
         .globalSkills,
     ).toEqual([{ id: 'g1', label: 'Stand up', prompt: 'x' }]);
+  });
+
+  // #1446. Every example plugin layout omits `type`; defaulting it to 'chat'
+  // made the app treat each installed example as the full-viewport Chat
+  // placement and unmount its ambient regions. The definition carries the
+  // author's own word when present and 'custom' — the manual create route's
+  // default — when absent.
+  test('a plugin layout without a type resolves as custom, and a declared type is kept', () => {
+    const projectHome = home();
+    writePlugin(projectHome, 'typeless-layout', 'typeless');
+    const typedDir = writePlugin(projectHome, 'typed-layout', 'typed');
+    writeFileSync(
+      join(typedDir, 'layout.json'),
+      JSON.stringify({
+        name: 'typed-layout',
+        slug: 'typed',
+        type: 'session-board',
+        tabs: [],
+      }),
+    );
+    const service = new DistributionProfileService(projectHome);
+
+    expect(
+      service.resolveForApply('plugin:typeless-layout:typeless').definition
+        .type,
+    ).toBe('custom');
+    expect(
+      service.resolveForApply('plugin:typed-layout:typed').definition.type,
+    ).toBe('session-board');
   });
 
   test('reads a disabled installed plugin descriptor without authorizing application', () => {

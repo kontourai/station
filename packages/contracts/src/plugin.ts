@@ -4,13 +4,15 @@ import type {
   OperationalEventScope,
 } from './operational-event.js';
 import type { WorkspacePaneDescriptor } from './workspace-pane.js';
+import type { WorkspacePaneHostContributionV1 } from './workspace-pane-host-contribution.js';
 
 /**
  * Canonical persisted plugin identity. Plugin directories and registry aliases
  * use this exact path-safe lowercase identifier rather than accepting a second
  * broader spelling at their storage boundary.
  */
-export const CANONICAL_PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
+export const CANONICAL_PLUGIN_ID_PATTERN =
+  /^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$/;
 
 export function isCanonicalPluginId(value: unknown): value is string {
   return typeof value === 'string' && CANONICAL_PLUGIN_ID_PATTERN.test(value);
@@ -18,6 +20,42 @@ export function isCanonicalPluginId(value: unknown): value is string {
 
 /** Plugin permission consent tier. */
 export type PermissionTier = 'passive' | 'active' | 'trusted';
+
+export interface PluginPermissionPrompt {
+  permission: string;
+  tier: PermissionTier;
+}
+
+/** Current installed permission truth. Missing dependency status is unknown, not approved. */
+export interface PluginInstallPermissionStatus {
+  autoGranted: string[];
+  consentGranted?: string[];
+  pendingConsent: PluginPermissionPrompt[];
+  withdrawn?: string[];
+  /** Optional for compatibility with servers predating dependency status. */
+  dependencies?: Array<{
+    id: string;
+    pendingConsent: PluginPermissionPrompt[];
+  }>;
+}
+
+/** Direct and registry plugin-install outcome; older servers may omit status fields. */
+export interface PluginInstallResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+  plugin?: {
+    name: string;
+    displayName?: string;
+    version: string;
+    hasBundle: boolean;
+    agents: Array<{ slug: string }>;
+  };
+  layout?: { slug: string };
+  tools?: Array<{ id: string; status: string }>;
+  dependencies?: Array<{ id: string; status: string; error?: string }>;
+  permissions?: PluginInstallPermissionStatus;
+}
 
 /**
  * The tier of each built-in plugin permission.
@@ -194,6 +232,8 @@ export interface PluginManifest {
   layouts?: Array<{ slug: string; source: string }>;
   /** Versioned, inert Pane declarations parsed before any renderer can load. */
   workspacePanes?: WorkspacePaneDescriptor[];
+  /** Inert package-level actions/Agent selection; admission is server-owned. */
+  workspacePaneHost?: WorkspacePaneHostContributionV1;
   /** Versioned declarations whose execution remains host-authorized. */
   operationalEventSubscriptions?: PluginOperationalEventSubscriptionEntry[];
   providers?: PluginProviderEntry[];
@@ -204,6 +244,36 @@ export interface PluginManifest {
   prompts?: { source: string };
   skills?: string[];
   settings?: PluginSettingField[];
+}
+
+export type PluginManifestRejectionCode =
+  | 'manifest-missing'
+  | 'manifest-unreadable'
+  | 'malformed-json'
+  | 'unsafe-manifest-content'
+  | 'invalid-plugin-name'
+  | 'reserved-plugin-name'
+  | 'missing-version'
+  | 'invalid-workspace-panes'
+  | 'invalid-manifest';
+
+export interface PluginManifestRejection {
+  code: PluginManifestRejectionCode;
+  /** Bounded, path-free reason safe for the authenticated Plugins surface. */
+  reason: string;
+  recovery: {
+    kind: 'repair-manifest' | 'restore-manifest' | 'reinstall-plugin';
+    instruction: string;
+  };
+}
+
+/** A directory is visible even when no trustworthy plugin identity can be read. */
+export interface RejectedInstalledPluginRecord {
+  status: 'rejected';
+  /** Directory entry, not a validated plugin identity. */
+  name: string;
+  displayName: string;
+  rejection: PluginManifestRejection;
 }
 
 export interface PluginOverrideConfig {

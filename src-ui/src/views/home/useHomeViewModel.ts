@@ -10,12 +10,16 @@ import {
 import { useMemo, useReducer } from 'react';
 import { useAgents, useAgentsLoaded } from '../../contexts/AgentsContext';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { openChatsStore, useOpenChats } from '../../contexts/open-chats-store';
+import {
+  openChatsStore,
+  useOpenWorkChats,
+} from '../../contexts/open-chats-store';
+import { useShowSurface } from '../../contexts/useShowSurface';
 import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import type { NavigationView } from '../../types';
 import { runtimeCatalogVisibleModels } from '../../utils/execution';
-import { modelDisplayLabel } from '../../utils/modelCapabilities';
+import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import { buildHomeWorkItems, type HomeWorkItem } from './home-view-model';
 import {
   focusChatEventDetailForAction,
@@ -84,9 +88,11 @@ function useHomeWorkData(): HomeWorkData {
       ...(pickerCatalog?.modelConnections ?? []),
     ].flatMap((connection) => runtimeCatalogVisibleModels(connection));
     return (modelId: string | null | undefined) =>
-      modelDisplayLabel(modelId, catalog);
+      modelIdentityLabel(modelId, catalog);
   }, [pickerCatalog?.agentConnections, pickerCatalog?.modelConnections]);
-  const openChatItems = useOpenChats(
+  // #1582 B9: Home names WORK, so a chat nothing has been put into is not one
+  // of its items. The inboxes keep `useOpenChats` — see `useOpenWorkChats`.
+  const openChatItems = useOpenWorkChats(
     agents,
     sessions.data ?? [],
     resolveModelLabel,
@@ -175,6 +181,12 @@ function useHomeWorkData(): HomeWorkData {
 
 function createContinueWork(
   onNavigate: (view: NavigationView) => void,
+  // #928: Activity is a region surface, not a route, so "open this session"
+  // reveals the surface with the session as its intent rather than navigating
+  // to a placement that no longer exists. `showSurface` is the one seam that
+  // does both halves — it commands the region model, and falls back to the
+  // canonical deep link when no region host is mounted.
+  showActivitySession: (sessionId: string) => void,
   acknowledge: (conversationId: string, updatedAt: string) => void,
 ) {
   return (task: HomeWorkItem) => {
@@ -188,12 +200,12 @@ function createContinueWork(
     if (task.kind === 'remote-session') return;
     const action = resolveWorkItemOpenAction(task);
     if (action.kind === 'navigate') {
-      onNavigate({ type: 'activity', sessionId: action.threadId });
+      showActivitySession(action.threadId);
       return;
     }
     const detail = focusChatEventDetailForAction(action);
     if (!detail) {
-      onNavigate({ type: 'activity', sessionId: task.id });
+      showActivitySession(task.id);
       return;
     }
     openChatsStore.focus(detail);
@@ -203,6 +215,7 @@ function createContinueWork(
 export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
   const data = useHomeWorkData();
   const acknowledge = useAcknowledgeConversationMutation();
+  const showSurface = useShowSurface();
   return {
     ...data,
     /**
@@ -218,8 +231,11 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
     primaryWorkItem: data.workItems.find(
       (task) => task.kind !== 'remote-session',
     ),
-    continueWork: createContinueWork(onNavigate, (conversationId, updatedAt) =>
-      acknowledge.mutate({ conversationId, updatedAt }),
+    continueWork: createContinueWork(
+      onNavigate,
+      (sessionId) => showSurface('activity', { session: sessionId }),
+      (conversationId, updatedAt) =>
+        acknowledge.mutate({ conversationId, updatedAt }),
     ),
   };
 }

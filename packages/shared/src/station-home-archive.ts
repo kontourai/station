@@ -34,6 +34,11 @@ import {
   type StationHomeLifecycleHooks,
 } from './station-home-lifecycle.js';
 import {
+  type DetachedRecoveryRecord,
+  prepareDetachedRecoveryCandidate,
+  type StationHomeRecoveryCandidatePlan,
+} from './station-home-recovery-candidate.js';
+import {
   canonicalStationHome,
   ensureStationHomeSchemaSync,
   readStationHomeSchemaVersion,
@@ -43,6 +48,90 @@ import {
 
 export const STATION_HOME_BACKUP_SCHEMA = 'station.home-backup/v1' as const;
 export const STATION_HOME_BACKUP_MANIFEST = 'station-home-backup.json';
+export const STATION_HOME_RECOVERY_RECORD = 'station-home-recovery.json';
+
+/** Recovery provenance is disclosure, never execution ownership. */
+export interface StationHomeRecoveryRecord {
+  schemaVersion: 'station.home-recovery/v1';
+  kind: 'recovered-from-copy';
+  recoveryId: string;
+  recoveredAt: string;
+  snapshotCreatedAt: string;
+  backupManifestSha256: string;
+  authorityTransferred: false;
+}
+
+export function readStationHomeRecovery(
+  homeDir: string,
+):
+  | { kind: 'recovered'; recovery: StationHomeRecoveryRecord }
+  | { kind: 'not-restored' | 'unavailable' } {
+  let fd: number | undefined;
+  try {
+    const path = join(homeDir, STATION_HOME_RECOVERY_RECORD);
+    const before = lstatSync(path);
+    if (!before.isFile() || before.isSymbolicLink())
+      return { kind: 'unavailable' };
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const stat = fstatSync(fd);
+    if (
+      !stat.isFile() ||
+      stat.dev !== before.dev ||
+      stat.ino !== before.ino ||
+      stat.size < 1 ||
+      stat.size > 4096
+    )
+      return { kind: 'unavailable' };
+    const bytes = Buffer.alloc(4097);
+    const count = readSync(fd, bytes, 0, bytes.length, 0);
+    if (count !== stat.size) return { kind: 'unavailable' };
+    const value = JSON.parse(bytes.subarray(0, count).toString('utf8'));
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      Array.isArray(value) ||
+      Object.keys(value).sort().join(',') !==
+        [
+          'schemaVersion',
+          'kind',
+          'recoveryId',
+          'recoveredAt',
+          'snapshotCreatedAt',
+          'backupManifestSha256',
+          'authorityTransferred',
+        ]
+          .sort()
+          .join(',') ||
+      value.schemaVersion !== 'station.home-recovery/v1' ||
+      value.kind !== 'recovered-from-copy' ||
+      value.authorityTransferred !== false ||
+      typeof value.recoveryId !== 'string' ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+        value.recoveryId,
+      ) ||
+      typeof value.backupManifestSha256 !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(value.backupManifestSha256) ||
+      ![value.recoveredAt, value.snapshotCreatedAt].every(
+        (v) =>
+          typeof v === 'string' &&
+          /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(v) &&
+          new Date(v).toISOString() === v,
+      )
+    )
+      return { kind: 'unavailable' };
+    return { kind: 'recovered', recovery: value };
+  } catch (error) {
+    return {
+      kind:
+        fd === undefined && (error as NodeJS.ErrnoException).code === 'ENOENT'
+          ? 'not-restored'
+          : 'unavailable',
+    };
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
 export const DEFAULT_STATION_HOME_BACKUP_MAX_FILES = 100_000;
 export const DEFAULT_STATION_HOME_BACKUP_MAX_BYTES = 20 * 1024 * 1024 * 1024;
 export const DEFAULT_STATION_HOME_BACKUP_MAX_FILE_BYTES =
@@ -121,6 +210,7 @@ export interface StationHomeBackupResult {
 }
 
 export interface StationHomeRestoreResult {
+  recovery: StationHomeRecoveryRecord;
   homeDir: string;
   previousHome?: string;
   manifest: StationHomeBackupManifest;
@@ -132,6 +222,105 @@ export class StationHomeArchiveError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(`STATION_HOME_ARCHIVE_UNAVAILABLE: ${message}`, options);
     this.name = 'StationHomeArchiveError';
+  }
+}
+
+/**
+ * Fixture-first, inert staging under the archive owner. This is not a backup,
+ * migration, restore, forensic capture, or proof against hostile path swaps.
+ * It accepts detached bytes, never a source home, and emits no active stores.
+ */
+export function stageStationHomeRecoveryCandidate(options: {
+  declaredSourceSchemaVersion: 1;
+  records: readonly DetachedRecoveryRecord[];
+  outputDir: string;
+  /** Private fault seam, not an import/publish authorization callback. */
+  beforeStageCommit?: () => void;
+  /** Private post-rename fault seam; the old staging name is no longer owned. */
+  afterStageCommit?: () => void;
+}): StationHomeRecoveryCandidatePlan {
+  let staging: string | undefined;
+  try {
+    const prepared = prepareDetachedRecoveryCandidate(
+      options.records,
+      options.declaredSourceSchemaVersion,
+    );
+    const outputDir = resolve(options.outputDir);
+    const parent = dirname(outputDir);
+    if (existsSync(outputDir)) fail('detached recovery output already exists');
+    const parentInfo = lstatSync(parent);
+    if (!parentInfo.isDirectory() || parentInfo.isSymbolicLink())
+      fail('detached recovery output parent is unsafe');
+    staging = join(parent, `.station-recovery-candidate-${randomUUID()}.tmp`);
+    mkdirSync(staging, { mode: 0o700 });
+    const evidence = join(staging, 'inert-evidence');
+    mkdirSync(evidence, { mode: 0o700 });
+    for (const payload of prepared.payloads) {
+      const target = join(evidence, `${payload.reference}.payload`);
+      writeFileSync(target, payload.bytes, { flag: 'wx', mode: 0o600 });
+      syncFile(target);
+    }
+    const manifest = join(staging, 'recovery-candidate.json');
+    const planBytes = Buffer.from(
+      `${JSON.stringify(prepared.plan, null, 2)}\n`,
+    );
+    writeFileSync(manifest, planBytes, { flag: 'wx', mode: 0o600 });
+    syncFile(manifest);
+    syncDirectoryTree(staging);
+    options.beforeStageCommit?.();
+    // A candidate is an exact inert tree, never a partial ordinary home.
+    // These observed checks are not an atomic hostile-filesystem boundary.
+    const entries = readdirSync(staging).sort();
+    const evidenceInfo = lstatSync(evidence);
+    if (
+      entries.length !== 2 ||
+      entries[0] !== 'inert-evidence' ||
+      entries[1] !== 'recovery-candidate.json' ||
+      !evidenceInfo.isDirectory() ||
+      evidenceInfo.isSymbolicLink()
+    )
+      fail('detached recovery staging changed');
+    if (readdirSync(evidence).length !== prepared.payloads.length)
+      fail('detached recovery evidence changed');
+    for (const item of [
+      { target: manifest, bytes: planBytes },
+      ...prepared.payloads.map((payload) => ({
+        target: join(evidence, `${payload.reference}.payload`),
+        bytes: payload.bytes,
+      })),
+    ]) {
+      const info = lstatSync(item.target);
+      if (
+        !info.isFile() ||
+        info.isSymbolicLink() ||
+        info.nlink !== 1 ||
+        info.size !== item.bytes.length ||
+        (process.platform !== 'win32' && (info.mode & 0o777) !== 0o600) ||
+        hashFile(item.target) !==
+          createHash('sha256').update(item.bytes).digest('hex')
+      )
+        fail('detached recovery evidence changed');
+    }
+    if (existsSync(outputDir))
+      fail('detached recovery output changed during staging');
+    renameSync(staging, outputDir);
+    staging = undefined;
+    options.afterStageCommit?.();
+    fsyncDirectorySync(parent);
+    return prepared.plan;
+  } catch {
+    // Public errors contain no parser excerpts, input bytes, or nested cause.
+    return fail(
+      'detached recovery staging is unavailable; inert output may remain',
+    );
+  } finally {
+    if (staging) {
+      try {
+        rmSync(staging, { recursive: true, force: true });
+      } catch {
+        /* Failed staging stays inert, never a bootable home. */
+      }
+    }
   }
 }
 
@@ -610,6 +799,17 @@ export function restoreStationHomeBackup(
       error,
     );
   }
+  const recovery: StationHomeRecoveryRecord = {
+    schemaVersion: 'station.home-recovery/v1',
+    kind: 'recovered-from-copy',
+    recoveryId: randomUUID(),
+    recoveredAt: new Date().toISOString(),
+    snapshotCreatedAt: manifest.createdAt,
+    backupManifestSha256: createHash('sha256')
+      .update(JSON.stringify(manifest))
+      .digest('hex'),
+    authorityTransferred: false,
+  };
   let movedPrevious = false;
   try {
     assertInactive('restore', options.assertInactive);
@@ -639,6 +839,17 @@ export function restoreStationHomeBackup(
       })
     )
       fail('staged restore does not match the validated backup');
+    // Publish disclosure with the restored home, after verifying copied bytes.
+    // Repeated restores replace only this reserved metadata file; no nested
+    // history or credentials are exposed in the record.
+    const recoveryPath = join(staging, STATION_HOME_RECOVERY_RECORD);
+    const recoveryTemp = `${recoveryPath}.${randomUUID()}.tmp`;
+    writeFileSync(recoveryTemp, `${JSON.stringify(recovery)}\n`, {
+      flag: 'wx',
+      mode: 0o600,
+    });
+    syncFile(recoveryTemp);
+    renameSync(recoveryTemp, recoveryPath);
     syncDirectoryTree(staging);
     options.beforePublish?.();
     assertInactive('restore', options.assertInactive);
@@ -673,6 +884,7 @@ export function restoreStationHomeBackup(
       throw error;
     }
     return {
+      recovery,
       homeDir,
       ...(movedPrevious ? { previousHome: previous } : {}),
       manifest,

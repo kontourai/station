@@ -33,6 +33,19 @@ describe('ManualAddPanel prefer-HTTPS hint', () => {
     );
   });
 
+  it('exposes both manual-add fields to assistive technology', () => {
+    renderPanel('');
+
+    expect(
+      screen.getByRole('textbox', { name: 'Name (optional)' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('textbox', {
+        name: 'Station address',
+      }),
+    ).toBeTruthy();
+  });
+
   it('shows the hint when the entry is http:// to a raw IP', () => {
     renderPanel('http://192.168.1.5:3141');
     expect(screen.getByText(HINT)).toBeTruthy();

@@ -20,6 +20,7 @@ const DEFAULT_DOCK_HEIGHT = DEVICE_SETTINGS_REGISTRY.find(
 )?.defaultValue as number;
 
 interface ChatDockResizeHandleProps {
+  ariaLabel?: string;
   mode: 'desktop-free' | 'mobile-snap';
   /** Current snap state (for keyboard cycling + ARIA). */
   snap: DockSnap;
@@ -60,6 +61,7 @@ interface ChatDockResizeHandleProps {
  * from the bottom of the viewport: `innerHeight - clientY`.
  */
 export function ChatDockResizeHandle({
+  ariaLabel = 'Resize chat dock',
   mode,
   snap,
   currentHeight,
@@ -125,7 +127,7 @@ export function ChatDockResizeHandle({
     <hr
       className="chat-dock__resize-handle"
       aria-orientation="horizontal"
-      aria-label="Resize chat dock"
+      aria-label={ariaLabel}
       aria-valuetext={mode === 'desktop-free' ? `${currentHeight}px` : snap}
       aria-valuemin={mode === 'desktop-free' ? DOCK_MIN_HEIGHT : 0}
       aria-valuemax={mode === 'desktop-free' ? desktopMaxHeight : 2}

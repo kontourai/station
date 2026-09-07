@@ -3,6 +3,8 @@ import type {
   EngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
+import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
+import type { TerminalCapability } from '@kontourai/station-shared/terminal-capability';
 import type { DeploymentCapabilities } from '../../capabilities/deployment-capabilities.js';
 import type { ManagedChatBinding } from '../../runtime/plugins/runtime-provider-resolution.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
@@ -10,6 +12,7 @@ import type { RuntimeResourcePostureProbe } from '../../services/infra/resource-
 import type { BootHistoryRecord } from './boot-history.js';
 
 export interface SystemStatusDeps {
+  getHomeRecovery?: () => HomeRecoveryDisclosure;
   getBootHistory?: () => Promise<{
     records: BootHistoryRecord[];
     currentUptimeSeconds: number;
@@ -78,6 +81,10 @@ export interface SystemStatusDeps {
       enabled: boolean;
     }>
   >;
+  /** Detected local-command Engine registry entries not yet connected. */
+  listDetectedACPRegistryEntries?: () => Promise<
+    Array<{ id: string; name: string }>
+  >;
   eventBus?: {
     emit: (event: ServerEventName, data?: Record<string, unknown>) => void;
   };
@@ -106,6 +113,13 @@ export interface SystemStatusDeps {
    * 503 on the read route instead of a fabricated healthy reading.
    */
   resourcePosture?: RuntimeResourcePostureProbe;
+  /**
+   * The terminal surface's live PTY capability (#1244), wired to
+   * `TerminalService.probeCapability()`. Optional so older route hosts keep
+   * their existing capability record; when absent, status makes NO terminal
+   * claim rather than fabricating readiness.
+   */
+  probeTerminalCapability?: () => Promise<TerminalCapability>;
 }
 
 /**
@@ -163,6 +177,12 @@ export type ConfiguredProvider = {
 export type CapabilityState = {
   ready: boolean;
   source: string | null;
+  /**
+   * Present only when `ready` is false and the producer observed a specific,
+   * actionable cause — e.g. the terminal capability's node-pty load failure
+   * (#1244). Absence means "not ready" with no recorded reason, never "ready".
+   */
+  reason?: string;
 };
 
 export type SystemRecommendation = {

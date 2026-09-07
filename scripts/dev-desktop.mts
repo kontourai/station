@@ -11,6 +11,10 @@ import {
   resolveWorktreePath,
 } from '../packages/cli/src/commands/dev-ports.js';
 import { devPairingDeepLinkScheme } from '../packages/connect/src/core/pairingDeepLinkChannels.generated.js';
+import {
+  resolveStationRoot,
+  spawnedStationRoot,
+} from '../packages/shared/src/runtime-path-resolver.js';
 
 export interface DesktopDevContract {
   readonly productName: string;
@@ -65,7 +69,9 @@ export async function resolveDesktopDevContract({
     cwd,
     worktreePath,
     devInstance: env.STATION_DEV_INSTANCE,
-    stationRoot: env.STATION_ROOT,
+    // Derived, not read raw -- see dev-command.ts: a self-rooted external
+    // STATION_HOME leaves STATION_ROOT unset by design.
+    stationRoot: resolveStationRoot(env),
   });
   return {
     productName: `Station Dev (${instance})`,
@@ -82,14 +88,27 @@ export function desktopDevEnvironment(
   contract: DesktopDevContract,
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
-  return {
+  const spawned: NodeJS.ProcessEnv = {
     ...env,
-    STATION_ROOT: env.STATION_ROOT,
     STATION_HOME: contract.home,
     STATION_DESKTOP_PORT: String(contract.serverPort),
     STATION_SERVER_PORT: String(contract.serverPort),
     STATION_UI_PORT: String(contract.uiPort),
   };
+  // Set or REMOVED, never merged: spreading an object that omits the key
+  // leaves whatever `...env` contributed, so an inherited `undefined` would
+  // reach `spawn` as a non-string environment value.
+  //
+  // Correct by construction rather than by an invariant about callers. A
+  // paired call cannot collide, since `contract.home` is
+  // `<root>/instances/dev/<id>` -- but nothing stops a caller passing an env
+  // whose STATION_HOME already IS that home, and naming the root then makes
+  // the child's admission guard refuse it. `spawnedStationRoot` answers
+  // exactly that question, so a future caller cannot reintroduce it.
+  const root = spawnedStationRoot(contract.home, env);
+  if (root) spawned.STATION_ROOT = root;
+  else delete spawned.STATION_ROOT;
+  return spawned;
 }
 export function desktopDevTauriConfig(contract: DesktopDevContract) {
   return {

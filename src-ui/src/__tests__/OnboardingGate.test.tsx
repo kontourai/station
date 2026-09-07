@@ -255,7 +255,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   // archive#1194: EnginePicker (rendered when the engine-picker variant
   // applies) reads these — empty/no-op defaults keep every other test in
   // this file (none of which exercise the picker's own behavior) unaffected.
-  useAgentConnectionsQuery: () => ({ data: [] }),
+  useEngineConnectionsQuery: () => ({ data: [] }),
   useConfigQuery: () => ({ data: configData }),
   useUpdateConfigMutation: () => ({
     mutate: () => {},

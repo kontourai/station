@@ -51,18 +51,20 @@ export function MarkdownLoadingProjection({ source }: { source: string }) {
   // This is intentionally bounded. The loading projection runs on message text
   // before the Markdown chunk arrives; an unclosed run of `[` used to make the
   // global matcher rescan almost the entire message from each character.
-  const matches = [...source.matchAll(/\[([^\]]{1,512})\]\(([^)]{1,512})\)/gu)];
+  const matches = [
+    ...source.matchAll(/\[([^[\]]{1,512})\]\(([^)]{1,512})\)/gu),
+  ];
   if (matches.length === 0) return source;
 
   const parts: React.ReactNode[] = [];
   let offset = 0;
-  for (const [index, match] of matches.entries()) {
+  for (const match of matches) {
     const start = match.index ?? offset;
     parts.push(source.slice(offset, start));
     const href = safeWebHref(match[2] ?? '');
     parts.push(
       href ? (
-        <a href={href} key={`${start}-${index}`}>
+        <a href={href} key={start}>
           {match[1]}
         </a>
       ) : (

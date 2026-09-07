@@ -1,10 +1,11 @@
+import { isStandingAttentionKind } from '@kontourai/station-contracts/attention';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
   ApprovalAttentionItem,
   AttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
 import { notificationCategoryLabel } from './notificationLabels';
-import { engineLabelForProvider } from './sessionDisplay';
 import { NO_FAILURE_DETAIL_RECORDED } from './sessionFailure';
 
 /**
@@ -31,6 +32,26 @@ export function attentionKindLabel(kind: AttentionItem['kind']): string {
  */
 export function isApprovalLivePending(item: ApprovalAttentionItem): boolean {
   return item.actions.length > 0;
+}
+
+/**
+ * Whether this item can be ACKNOWLEDGED away (#1536 D8, review M1).
+ *
+ * A standing notice cannot: it is still true after the dismissal, and the
+ * server refuses the acknowledgement for that reason. Delta review DM3 moved
+ * the membership into the contract (`isStandingAttentionKind`), so this
+ * predicate and the server's refusal and ordering band are three readings of
+ * ONE declaration rather than three lists that agree today. Imported from the
+ * CONTRACT rather than through the SDK barrel: the barrel is mocked wholesale
+ * by a dozen suites, so routing a pure predicate through it makes every one of
+ * them declare an export it does not care about. Both the per-row
+ * dismiss and "Dismiss all" read this — without it, dismiss-all posted an
+ * acknowledgement the server now refuses, and before the refusal it cleared the
+ * only row saying why chat could not start until the next poll happened to move
+ * the row's timestamp.
+ */
+export function isAcknowledgeableAttentionItem(item: AttentionItem): boolean {
+  return !isStandingAttentionKind(item.kind);
 }
 
 /**
@@ -139,7 +160,7 @@ export function sessionFailureCause(item: SessionFailedAttentionItem): string {
  * archive#3203: the identity line that makes three failed sessions tellable
  * apart — the engine that ran it and the agent it was assigned to, both read
  * straight off the projection. `engine` arrives as the raw provider id and is
- * labelled HERE, through the same `engineLabelForProvider` every other engine
+ * labelled HERE, through the same `engineDisplayLabel` every other engine
  * chip uses, falling back to the observed id for a provider this build does
  * not know (that helper's `null` contract).
  *
@@ -151,7 +172,7 @@ export function sessionFailedIdentity(
   item: SessionFailedAttentionItem,
 ): string | null {
   const parts = [
-    item.engine ? (engineLabelForProvider(item.engine) ?? item.engine) : null,
+    item.engine ? (engineDisplayLabel(item.engine) ?? item.engine) : null,
     item.agent ?? null,
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(' · ') : null;

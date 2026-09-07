@@ -48,7 +48,7 @@ export function buildVersion(
 ): string {
   const effective = override?.trim() || packageVersion || '0.0.0';
   if (
-    !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:preview|nightly)\.[1-9]\d*)?$/.test(
+    !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:preview|nightly)\.[1-9]\d*(?:\.[1-9]\d*)?)?$/.test(
       effective,
     )
   ) {
@@ -325,6 +325,7 @@ export default defineConfig(({ command }) => {
       },
     },
     build: {
+      sourcemap: process.env.STATION_JOURNEY_PROFILE_DIR ? 'hidden' : false,
       outDir: `../${process.env.STATION_BUILD_UI_DIR || 'dist-ui'}`,
       emptyOutDir: true,
       rollupOptions: {

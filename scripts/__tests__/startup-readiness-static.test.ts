@@ -5,6 +5,42 @@ import { describe, expect, it } from 'vitest';
 const root = resolve(import.meta.dirname, '..', '..');
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
 
+/**
+ * Keep the startup-routing checks scoped to the Rust function/event body they
+ * describe. Source-width regexes made a harmless tray expansion and a reopen
+ * recovery wrapper look like a lost readiness route.
+ */
+function rustBlock(source: string, anchor: string) {
+  const start = source.indexOf(anchor);
+  if (start < 0) throw new Error(`missing Rust block anchor: ${anchor}`);
+
+  const openingBrace = source.indexOf('{', start + anchor.length);
+  if (openingBrace < 0) throw new Error(`missing Rust block body: ${anchor}`);
+
+  let depth = 0;
+  for (let index = openingBrace; index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1;
+    if (source[index] === '}') depth -= 1;
+    if (depth === 0) return source.slice(start, index + 1);
+  }
+  throw new Error(`unterminated Rust block: ${anchor}`);
+}
+
+function replaceInRustBlock(
+  source: string,
+  anchor: string,
+  needle: string,
+  replacement: string,
+) {
+  const start = source.indexOf(anchor);
+  const block = rustBlock(source, anchor);
+  const offset = block.indexOf(needle);
+  if (offset < 0) throw new Error(`missing Rust route in ${anchor}: ${needle}`);
+  return `${source.slice(0, start + offset)}${replacement}${source.slice(
+    start + offset + needle.length,
+  )}`;
+}
+
 describe('desktop startup readiness static boundary', () => {
   it('keeps release main windows hidden in every desktop channel config', () => {
     for (const path of [
@@ -152,18 +188,21 @@ describe('desktop startup readiness static boundary', () => {
     expect(lib).not.toMatch(
       /deep_link\(\)\.on_open_url[\s\S]{0,900}with_native_startup_cover/,
     );
-    expect(tray).toMatch(
-      /fn focus_station_window[\s\S]{0,260}crate::request_main_window_activation\(app\)/,
-    );
+    const trayFocus = rustBlock(tray, 'fn focus_station_window');
+    expect(trayFocus).toContain('crate::ensure_main_window(app)?');
+    expect(trayFocus).toContain('crate::request_main_window_activation(app)');
     expect(lib).toMatch(
       /single_instance::init[\s\S]{0,1800}request_main_window_activation\(app\)/,
     );
     expect(lib).toMatch(
       /deep_link\(\)\.on_open_url[\s\S]{0,700}request_or_defer_main_window_activation/,
     );
-    expect(lib).toMatch(
-      /RunEvent::Reopen[\s\S]{0,180}request_main_window_activation/,
+    const reopen = rustBlock(
+      lib,
+      'if let tauri::RunEvent::Reopen { .. } = event',
     );
+    expect(reopen).toContain('match ensure_main_window(app)');
+    expect(reopen).toContain('request_main_window_activation(app);');
     expect(lib).not.toContain('tauri_plugin_window_state');
   });
 
@@ -258,12 +297,14 @@ describe('desktop startup readiness static boundary', () => {
     expect(noAppleRoute).not.toMatch(
       /deep_link\(\)\.on_open_url[\s\S]{0,700}request_or_defer_main_window_activation/,
     );
-    const noReopenRoute = lib.replace(
-      'request_main_window_activation(app);\n            }\n            #[cfg(not(mobile))]\n            if let tauri::RunEvent::Exit',
-      '/* route removed */\n            }\n            #[cfg(not(mobile))]\n            if let tauri::RunEvent::Exit',
+    const noReopenRoute = replaceInRustBlock(
+      lib,
+      'if let tauri::RunEvent::Reopen { .. } = event',
+      'request_main_window_activation(app);',
+      '/* route removed */',
     );
-    expect(noReopenRoute).not.toMatch(
-      /RunEvent::Reopen[\s\S]{0,180}request_main_window_activation/,
-    );
+    expect(
+      rustBlock(noReopenRoute, 'if let tauri::RunEvent::Reopen { .. } = event'),
+    ).not.toContain('request_main_window_activation(app);');
   });
 });

@@ -21,7 +21,7 @@ import type { AgentData } from '../contexts/AgentsContext';
  * It does NOT re-derive readiness from the client's engine-connection
  * inventory, and that restraint was learned live. An earlier version added
  * "…or the bound connection is not `status: 'ready'` in
- * `useAgentConnectionsQuery`", which looks like defence in depth and is
+ * `useEngineConnectionsQuery`", which looks like defence in depth and is
  * actually a second opinion that is wrong twice: the query resolves to `[]`
  * while in flight AND when it fails (during a 401 every row of the Agents
  * list read "Not set up: Engine connection 'claude' is not currently ready."

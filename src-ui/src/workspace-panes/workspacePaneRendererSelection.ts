@@ -5,17 +5,10 @@ import {
   type WorkspacePaneRendererCandidate,
   type WorkspacePaneRendererSelection,
 } from '@kontourai/station-contracts';
-import type { LayoutCatalogContribution } from '@kontourai/station-contracts/layout';
 import type { LayoutComponent } from '@kontourai/station-sdk';
 import { pluginRegistry } from '../core/PluginRegistry';
 import { builtinWorkspacePaneRendererPresence } from './builtinWorkspacePaneCanonical';
-
-function sameContribution(
-  left: LayoutCatalogContribution,
-  right: LayoutCatalogContribution,
-): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
+import { sameLayoutContribution } from './layoutContributionIdentity';
 
 export interface ClientWorkspacePaneRendererSupport {
   mcpAppsEnabled: boolean;
@@ -122,7 +115,7 @@ export function selectClientWorkspacePaneRenderer(
         case 'standard-data':
           return (
             support.instance?.boundContext?.contribution !== undefined &&
-            sameContribution(
+            sameLayoutContribution(
               support.instance.boundContext.contribution,
               candidate.renderer.view.contribution,
             )

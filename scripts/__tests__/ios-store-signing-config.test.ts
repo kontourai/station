@@ -20,6 +20,7 @@ type DistributionProfile = ReturnType<
 function distributionProfile(): DistributionProfile {
   return {
     distribution: 'app-store-connect',
+    name: 'Station App Store',
     uuid: 'profile-uuid',
     team: 'ABCDE12345',
     expiration: '2027-01-01T00:00:00.000Z',
@@ -30,31 +31,57 @@ function distributionProfile(): DistributionProfile {
 
 describe('iOS App Store signing config', () => {
   test('derives manual Xcode signing inputs from validated public profile metadata', () => {
-    expect(
-      storeSigningTemplate({
-        template:
-          'settingGroups:\n  app:\n    base:\n      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station\n',
-        profile: { team: 'ABCDE12345', uuid: 'profile-uuid' },
-        identity: 'Apple Distribution: Example (ABCDE12345)',
-      }),
-    ).toContain('CODE_SIGN_STYLE: Manual');
+    const template = storeSigningTemplate({
+      template:
+        'settingGroups:\n  app:\n    base:\n      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station\n',
+      profile: {
+        name: 'Station App Store',
+        team: 'ABCDE12345',
+        uuid: 'profile-uuid',
+      },
+      identity: 'Apple Distribution: Example (ABCDE12345)',
+    });
+    expect(template).toContain('CODE_SIGN_STYLE: Manual');
+    expect(template).toContain('PROVISIONING_PROFILE: "profile-uuid"');
+    expect(template).toContain(
+      'PROVISIONING_PROFILE_SPECIFIER: "Station App Store"',
+    );
   });
 
   test('rejects multiline identity injection', () => {
     expect(() =>
       storeSigningTemplate({
         template: '      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station\n',
-        profile: { team: 'ABCDE12345', uuid: 'profile-uuid' },
+        profile: {
+          name: 'Station App Store',
+          team: 'ABCDE12345',
+          uuid: 'profile-uuid',
+        },
         identity: 'Apple Distribution\nOTHER = injected',
       }),
     ).toThrow(/single-line/);
     expect(() =>
       storeSigningTemplate({
         template: '      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station\n',
-        profile: { team: 'ABCDE12345', uuid: 'profile-uuid' },
+        profile: {
+          name: 'Station App Store',
+          team: 'ABCDE12345',
+          uuid: 'profile-uuid',
+        },
         identity: 'Apple Development: Example (ABCDE12345)',
       }),
     ).toThrow(/does not bind/);
+    expect(() =>
+      storeSigningTemplate({
+        template: '      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station\n',
+        profile: {
+          name: 'Station App Store\nINJECTED',
+          team: 'ABCDE12345',
+          uuid: 'profile-uuid',
+        },
+        identity: 'Apple Distribution: Example (ABCDE12345)',
+      }),
+    ).toThrow(/name and UUID/);
   });
   test('rejects missing or duplicate CLI options before writes', () => {
     expect(() => parseOptions(['--profile', 'profile'])).toThrow(/Missing/);

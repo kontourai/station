@@ -1,3 +1,11 @@
+import { createHomeTransferRoomRoutes } from '../../routes/environments/home-transfer-room-routes.js';
+import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+
+export {
+  type BoundedBodyResult,
+  readBoundedRequestBody,
+} from '../../security/bounded-request-body.js';
+
 import {
   createHash,
   randomBytes,
@@ -31,6 +39,7 @@ import {
   DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
   type PairingScope,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
+  PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
@@ -68,6 +77,7 @@ import {
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapter-registry.js';
+import { isLocalKnowledgeSourceRequestCurrent } from '../../knowledge-store/knowledge-source-observation-policy.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import { monitoringSessionIdentity } from '../../monitoring/monitoring-session-identity.js';
@@ -107,6 +117,7 @@ import { createConnectionRoutes } from '../../routes/connections/connections.js'
 import { createModelsRoutes } from '../../routes/connections/models.js';
 import { createProviderRoutes } from '../../routes/connections/providers.js';
 import { createConsentNativeRoutes } from '../../routes/consent/consent-native-routes.js';
+import { createHomeAuthorityRoutes } from '../../routes/environments/home-authority-routes.js';
 import { createPeerCredentialRoutes } from '../../routes/environments/peer-credential-routes.js';
 import {
   createDiffCommentRoutes,
@@ -128,6 +139,7 @@ import {
 } from '../../routes/knowledge/knowledge.js';
 import { createKnowledgeIndexRoutes } from '../../routes/knowledge/knowledge-index-routes.js';
 import { createKnowledgeRecordRoutes } from '../../routes/knowledge/knowledge-record-routes.js';
+import { createKnowledgeSourceRoutes } from '../../routes/knowledge/knowledge-source-routes.js';
 import { createKnowledgeStoreRoutes } from '../../routes/knowledge/knowledge-store-routes.js';
 import { createNeo4jGraphRoutes } from '../../routes/knowledge/neo4j-graph-routes.js';
 import {
@@ -172,6 +184,7 @@ import {
 } from '../../routes/projects/projects.js';
 import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
+import { createSearchRoutes } from '../../routes/search.js';
 import { createSecretBindingRoutes } from '../../routes/secret-bindings.js';
 import { createSetupImportRoutes } from '../../routes/setup-imports.js';
 import {
@@ -203,7 +216,6 @@ import {
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
-  requiredExternalSurfaceCapability,
   requiredPairingScope,
 } from '../../security/pairing-route-scopes.js';
 import {
@@ -213,6 +225,7 @@ import {
   classifyRuntimePeer,
   getRuntimeAuthenticatedRequestPrincipal,
   isLoopbackAuthority,
+  isRuntimeRequestPrincipalCurrent,
   RUNTIME_CREDENTIAL_AUTHORITY_VAR,
   type RuntimeAuthenticatedRequestPrincipal,
   type RuntimeCallerRequest,
@@ -300,6 +313,7 @@ import type { WebPushService } from '../../services/notifications/web-push-servi
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import type { ActionOperationService } from '../../services/operations/action-operation-service.js';
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
+import { recoverCompletedTaskDispatches } from '../../services/orchestration/completed-task-dispatch-recovery.js';
 import { FileConversationAcknowledgementStore } from '../../services/orchestration/conversation-acknowledgement-store.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
@@ -414,7 +428,6 @@ import { INTERNAL_CONTROL_CALLER_BINDING_HEADER } from '../../tools/station-cont
 import {
   INTERNAL_API_TOKEN_HEADER,
   INTERNAL_PROXY_CALLER_HEADER,
-  isTrustedInternalApiToken,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -423,6 +436,10 @@ import {
 } from '../../utils/outward-error.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
+  createPersonalHomeAuthorityDatabase,
+  HOME_AUTHORITY_DATABASE_ENV,
+} from '../bootstrap/personal-home-authority-database.js';
+import {
   configureRuntimeHttp,
   LOOPBACK_DEVICE_SESSION_COOKIE,
   parseDeviceSessionCookie,
@@ -430,6 +447,7 @@ import {
 } from '../bootstrap/runtime-http.js';
 import {
   createHostedTenantMiddleware,
+  createPersonalRuntimeRequestGuard,
   currentTenantExecutionContext,
   getTenantRequestContext,
   isHostedTenantExecutionRequired,
@@ -437,13 +455,17 @@ import {
   tenantExecutionContextForRequest,
 } from '../bootstrap/runtime-tenant-context.js';
 import {
+  createStationEngineAvailabilityReader,
   resolveBedrockConnectionAuth,
-  resolveManagedAvailabilityReason,
 } from '../plugins/runtime-provider-resolution.js';
 import type {
   AgentConfigurationMutationRunner,
   RuntimeContext,
 } from '../types.js';
+import {
+  API_DOCS_LAUNCH_HEADERS,
+  renderApiDocsLaunchPage,
+} from './api-docs-launch.js';
 import { createOrchestrationBoardAuthorization } from './board-route-authorization.js';
 import {
   configureRuntimeSupportServices,
@@ -464,6 +486,7 @@ export function pullRequestThreadForProject<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  runtimeSearch?: import('../../services/search/runtime-search.js').RuntimeSearch;
   app: HonoApp;
   logger: Logger;
   eventBus: EventBus;
@@ -519,7 +542,7 @@ export interface ConfigureRuntimeRoutesContext {
   orchestrationEventStore?: EventStore;
   pluginOperationalEventSubscriptions: Pick<
     import('../plugins/plugin-operational-event-subscriptions.js').PluginOperationalEventSubscriptionService,
-    'quiesce'
+    'quiesce' | 'reconcile'
   >;
   // station#1225: shared per-user live-`/events`-subscriber presence — read
   // by `createOrchestrationRoutes` (connect/disconnect bookkeeping) and by
@@ -749,48 +772,10 @@ export function createPersonalTaskAnswerSupportModule(
  * scope can be narrowed without rotating the credential, so validity alone
  * is not sufficient at a later publication boundary.
  */
-export interface CurrentRuntimeRequestPrincipalSecurity {
-  authorizeCredential(
-    credential: string,
-    request: { method: string; path: string },
-  ): boolean;
-  resolveGrantedScope(credential: string): string | undefined;
-}
-
-export function isRuntimeRequestPrincipalCurrent(
-  request: Request,
-  security: CurrentRuntimeRequestPrincipalSecurity,
-): boolean {
-  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-  if (!principal) return false;
-  if (principal.kind === 'internal')
-    return isTrustedInternalApiToken(
-      request.headers.get(INTERNAL_API_TOKEN_HEADER) ?? undefined,
-    );
-  const path = new URL(request.url).pathname;
-  if (
-    !security.authorizeCredential(principal.credential, {
-      method: request.method,
-      path,
-    })
-  ) {
-    return false;
-  }
-  // Match ingress exactly: an unmapped capability or a no-longer-granted
-  // pairing scope both fail closed at the delayed publication boundary.
-  const capability = requiredExternalSurfaceCapability(
-    'http',
-    request.method,
-    path,
-  );
-  if (capability?.capability !== 'pairing-scope' || !capability.scope)
-    return false;
-  const grantedScope = security.resolveGrantedScope(principal.credential);
-  return (
-    grantedScope !== undefined &&
-    pairingScopeIncludes(grantedScope, capability.scope)
-  );
-}
+export {
+  type CurrentRuntimeRequestPrincipalSecurity,
+  isRuntimeRequestPrincipalCurrent,
+} from '../../security/runtime-request-security.js';
 
 export function configureRuntimeRoutes(
   context: ConfigureRuntimeRoutesContext,
@@ -1156,6 +1141,17 @@ export function configureRuntimeRoutes(
     eventBus: context.eventBus,
     security: runtimeSecurity,
   });
+  context.app.route(
+    '/api/home-authority',
+    createHomeAuthorityRoutes(
+      context.environmentSecurityService,
+      createPersonalHomeAuthorityDatabase(
+        context.configLoader.getProjectHomeDir(),
+        process.env[HOME_AUTHORITY_DATABASE_ENV],
+      ),
+      { peers: peerCredentialStore },
+    ),
+  );
   // Shared resolver keeps project and Registry catalog projections identical.
   const layoutCatalog = new DistributionProfileService(
     context.configLoader.getProjectHomeDir(),
@@ -1553,6 +1549,8 @@ export function configureRuntimeRoutes(
         },
         quiesceEventSubscriptions: (plugin) =>
           context.pluginOperationalEventSubscriptions.quiesce(plugin),
+        reconcileEventSubscriptions: () =>
+          context.pluginOperationalEventSubscriptions.reconcile(),
       },
     ),
   );
@@ -1599,6 +1597,8 @@ export function configureRuntimeRoutes(
   context.app.use('/agents/*', bindConversationReadAuthority);
   context.app.use('/api/conversations', bindConversationReadAuthority);
   context.app.use('/api/conversations/*', bindConversationReadAuthority);
+  context.app.use('/api/search', bindConversationReadAuthority);
+  context.app.use('/api/search/*', bindConversationReadAuthority);
   context.app.route(
     '/agents',
     createAgentRoutes(
@@ -1606,17 +1606,10 @@ export function configureRuntimeRoutes(
       context.skillService,
       context.applyAgentConfigurationMutation,
       context.getVoltAgent,
-      (spec) =>
-        resolveManagedAvailabilityReason(spec, {
-          appConfig: context.appConfig,
-          listProviderConnections: () =>
-            context.providerService.listProviderConnections(),
-          // Review H1: the same receipts the Connections hub reads, so an
-          // agent bound to a faulted connection is not reported runnable
-          // beside a card saying its check failed.
-          gatedConnectionIds:
-            context.connectionService.checkGatedModelConnectionIds(),
-        }),
+      // #1536 D8 review H2: one reader for every surface that asks, reading
+      // LIVE config. These three sites each built the call separately and had
+      // already drifted onto the boot snapshot.
+      createStationEngineAvailabilityReader(context),
       // Station#975 (unification slice 5) D-3: save-response validation
       // findings need the same runtime-connection lookup the enriched-agents
       // route below already performs — same shape, same fail-open contract
@@ -1826,6 +1819,13 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService,
     );
   };
+  context.app.route(
+    '/api/search',
+    createSearchRoutes(context.runtimeSearch, {
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
+      isRequestPrincipalCurrent,
+    }),
+  );
   const sessionInventoryAppRead = createSessionInventoryAppReadModule({
     read: async ({ scope, authority, request: _request, current }) => {
       const outcome = await sessionInventory.read({
@@ -2072,13 +2072,7 @@ export function configureRuntimeRoutes(
       };
     try {
       const spec = await context.agentService.getAgent(agentId);
-      const managed = resolveManagedAvailabilityReason(spec, {
-        appConfig: context.getLiveAppConfig(),
-        listProviderConnections: () =>
-          context.providerService.listProviderConnections(),
-        gatedConnectionIds:
-          context.connectionService.checkGatedModelConnectionIds(),
-      });
+      const managed = createStationEngineAvailabilityReader(context)(spec);
       if (managed) return { state: 'unavailable' as const, reason: managed };
       if (!spec.execution?.agentConnectionId)
         return { state: 'ready' as const, agentId };
@@ -2302,10 +2296,18 @@ export function configureRuntimeRoutes(
     const roomTaskIds = context.taskGraphService
       .listTasks()
       .map((task) => task.id);
-    projectTaskRoomLifecycleReady = Promise.all([
-      roomRuntime.reconcileAgentLifecycles(roomTaskIds),
-      roomRuntime.reconcileRevisionPublications(roomTaskIds),
-    ]).then(() => undefined);
+    projectTaskRoomLifecycleReady = recoverCompletedTaskDispatches({
+      eventStore: context.orchestrationEventStore,
+      taskGraph: context.taskGraphService,
+      room: roomRuntime,
+    })
+      .then(() =>
+        Promise.all([
+          roomRuntime.reconcileAgentLifecycles(roomTaskIds),
+          roomRuntime.reconcileRevisionPublications(roomTaskIds),
+        ]),
+      )
+      .then(() => undefined);
     // station#4075 stage 3 slice 1: resolve the calling principal once, here,
     // where the real Hono `c` (env + headers) is available, and cache it on
     // `c.req.raw` for `requestAuthority.resolve` above — see the
@@ -2351,8 +2353,16 @@ export function configureRuntimeRoutes(
     };
     context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
+    context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
     context.app.route('/api/tasks', createProjectTaskRoomRoutes(roomRuntime));
   }
+  context.app.route(
+    '/api/home-authority/rooms',
+    createHomeTransferRoomRoutes({
+      security: context.environmentSecurityService,
+      roomRuntime: projectTaskRoomRuntime,
+    }),
+  );
   context.app.route(
     '/api/live-activity',
     createLiveActivityRoutes({
@@ -2668,16 +2678,8 @@ export function configureRuntimeRoutes(
         ),
       getAgentConfigurationRevision: context.getAgentConfigurationRevision,
       logger: context.logger,
-      resolveAvailability: (spec) =>
-        resolveManagedAvailabilityReason(spec, {
-          appConfig: context.appConfig,
-          listProviderConnections: () =>
-            context.providerService.listProviderConnections(),
-          // Review H1: see the sibling call above — Home's recommendation and
-          // the Agents list read this reason.
-          gatedConnectionIds:
-            context.connectionService.checkGatedModelConnectionIds(),
-        }),
+      // Home's recommendation and the Agents list read this reason.
+      resolveAvailability: createStationEngineAvailabilityReader(context),
       // §3.3 orphan visibility (station#1004, unification slice 7): known
       // project slugs, used to mark a persisted agent's `project` as an
       // orphan finding when it names a project that no longer exists.
@@ -2702,6 +2704,13 @@ export function configureRuntimeRoutes(
       // instead of falsely reporting a persisted, ready external-engine
       // agent "not currently launchable".
       connectionService: context.connectionService,
+      // #1536 D8 delta review DM1: the live inputs the shared availability
+      // reader needs. Without them `/chat` answered its 409 from the boot
+      // snapshot, so fixing the default model connection at runtime cleared
+      // the picker and the inbox while chat went on refusing until restart.
+      getLiveAppConfig: () => context.getLiveAppConfig(),
+      checkGatedModelConnectionIds: () =>
+        context.connectionService.checkGatedModelConnectionIds(),
       listAgents: () => context.agentService.listAgents(),
       getDefaultAgentIds: async () =>
         new Set(
@@ -2894,12 +2903,16 @@ export function configureRuntimeRoutes(
   // rather than a second file read.
   context.app.route(
     '/api/environments/peers',
-    createPeerCredentialRoutes(peerCredentialStore, (environmentId) =>
-      context.sshEnvironmentService
-        .list()
-        .some(
-          (environment) => environment.profile.environmentId === environmentId,
-        ),
+    createPeerCredentialRoutes(
+      peerCredentialStore,
+      (environmentId) =>
+        context.sshEnvironmentService
+          .list()
+          .some(
+            (environment) =>
+              environment.profile.environmentId === environmentId,
+          ),
+      isRequestPrincipalCurrent,
     ),
   );
   // station#1423: the operator's own answer-share management family. The base
@@ -3311,6 +3324,17 @@ export function configureRuntimeRoutes(
       store: context.knowledgeStoreProvider,
     }),
   );
+  const personalSourceRequest = createPersonalRuntimeRequestGuard();
+  context.app.route(
+    '/api/knowledge',
+    createKnowledgeSourceRoutes(context.knowledgeStoreProvider, (request) =>
+      isLocalKnowledgeSourceRequestCurrent(
+        request,
+        context.environmentSecurityService,
+        personalSourceRequest,
+      ),
+    ),
+  );
   // K5 Neo4j graph-view routes (`s203-knowledge-meeting-notes` Wave 1 Task 1) — same
   // `/api/knowledge` base, sub-paths of the file-based graph route
   // (`/roots/:rootId/graph/neo4j*`), so no collision with the route mounted just
@@ -3386,12 +3410,10 @@ export function configureRuntimeRoutes(
           data: await deriveAgentCatalog(
             context.agentService,
             enrichedAgents,
-            (spec) =>
-              resolveManagedAvailabilityReason(spec, {
-                appConfig: context.appConfig,
-                listProviderConnections: () =>
-                  context.providerService.listProviderConnections(),
-              }),
+            // This site also omitted `gatedConnectionIds` entirely, so
+            // `/api/boot`'s catalog reported an agent bound to a faulted
+            // connection as runnable.
+            createStationEngineAvailabilityReader(context),
           ),
         };
       },
@@ -4409,6 +4431,28 @@ function timingSafeSecretEqual(candidate: string, expected: string): boolean {
   return timingSafeEqual(candidateDigest, expectedDigest);
 }
 
+/**
+ * What a launcher capability is FOR. Each purpose owns its own slot, so a mint
+ * for one cannot invalidate an unspent capability for another (#1259).
+ *
+ * Closed on purpose: an open vocabulary would let a caller allocate unbounded
+ * slots, and would make "which capabilities are live" unanswerable.
+ */
+const UI_BOOTSTRAP_PURPOSES = ['launcher', 'api-docs'] as const;
+type UiBootstrapPurpose = (typeof UI_BOOTSTRAP_PURPOSES)[number];
+
+function uiBootstrapPurposeFrom(
+  value: unknown,
+): UiBootstrapPurpose | undefined {
+  // Absent means the original purpose, so every existing caller -- the CLI's
+  // printed start link and the SPA -- keeps working unchanged.
+  if (value === undefined) return 'launcher';
+  return typeof value === 'string' &&
+    (UI_BOOTSTRAP_PURPOSES as readonly string[]).includes(value)
+    ? (value as UiBootstrapPurpose)
+    : undefined;
+}
+
 export function configureDevicePairingPublicRoutes(
   app: HonoApp,
   pairing: DevicePairingService,
@@ -4454,7 +4498,18 @@ export function configureDevicePairingPublicRoutes(
   const localGrantSecret = options.localGrant
     ? writeLocalGrantSecretFile(options.localGrant.secretPath)
     : undefined;
-  let uiBootstrapToken = options.uiBootstrapToken;
+  // One slot PER PURPOSE (#1259). "Refreshing replaces the previous unspent
+  // capability" is the intended rule and stays intact -- but it only makes
+  // sense between mints for the SAME purpose. With a single shared slot,
+  // #1118's tray minting for the API docs silently invalidated a pending
+  // `station start` link, and the user saw a login URL that had stopped
+  // working for no reason on screen.
+  //
+  // The vocabulary is closed so a caller cannot mint unbounded slots by
+  // inventing purposes.
+  const uiBootstrapTokens = new Map<UiBootstrapPurpose, string>();
+  if (options.uiBootstrapToken)
+    uiBootstrapTokens.set('launcher', options.uiBootstrapToken);
   const startupIdentity = options.startupIdentity?.();
   // This id is server-owned and stable for this launcher's lifetime. A
   // browser cannot choose a replacement domain merely by replaying a link,
@@ -4637,6 +4692,20 @@ export function configureDevicePairingPublicRoutes(
       );
     }
   });
+  // Station's own launcher for the framework-served API docs (#934). Serves
+  // static HTML and no credential; the single-use capability arrives in the
+  // fragment, which never reaches this server. Direct loopback only: the sole
+  // caller is the local tray opening the local browser, so there is no reason
+  // to expose it to a peer that can reach the listener.
+  app.get(PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH, (c) => {
+    if (new URL(c.req.url).search) {
+      return c.json({ error: 'invalid_request' }, 400);
+    }
+    if (!isDirectLoopbackCaller(c)) {
+      return c.json({ error: 'local_grant_forbidden' }, 403);
+    }
+    return c.body(renderApiDocsLaunchPage(), 200, API_DOCS_LAUNCH_HEADERS);
+  });
   app.post(PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH, async (c) => {
     if (new URL(c.req.url).search) {
       return c.json({ error: 'invalid_request' }, 400);
@@ -4673,10 +4742,13 @@ export function configureDevicePairingPublicRoutes(
     }
     // There is one server-held capability. Refreshing it deliberately makes a
     // previously copied but unspent launcher fragment unusable.
-    uiBootstrapToken = randomBytes(32).toString('base64url');
+    const purpose = uiBootstrapPurposeFrom(body.purpose);
+    if (!purpose) return c.json({ error: 'invalid_request' }, 400);
+    const minted = randomBytes(32).toString('base64url');
+    uiBootstrapTokens.set(purpose, minted);
     return c.json(
       {
-        token: uiBootstrapToken,
+        token: minted,
         path: PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
       },
       200,
@@ -4696,25 +4768,37 @@ export function configureDevicePairingPublicRoutes(
       return c.json({ error: 'ui_bootstrap_forbidden' }, 403);
     }
 
+    // Every populated slot is compared, with no early exit on a match, so which
+    // purpose a presented capability belongs to is not observable from timing.
+    // (Empty slots are skipped, so slot OCCUPANCY is — that was already true of
+    // the single slot, and occupancy carries nothing about the token bytes.)
+    let matchedPurpose: UiBootstrapPurpose | undefined;
+    for (const candidate of UI_BOOTSTRAP_PURPOSES) {
+      const stored = uiBootstrapTokens.get(candidate);
+      if (stored && timingSafeSecretEqual(body.token, stored))
+        matchedPurpose = candidate;
+    }
+
     // A preserved HttpOnly session is already the strongest evidence this
-    // browser can present. Returning it before comparing/consuming the
-    // launcher capability makes repeated start links idempotent instead of
-    // accumulating identityless credentials or exhausting a spent token.
+    // browser can present, so return it rather than minting a second
+    // identityless credential — repeated start links stay idempotent. But a
+    // capability that was PRESENTED is spent regardless (#1283): it has been
+    // in a browser, and the holder loses nothing they still needed. Leaving it
+    // live was the common outcome of the tray's docs launch (#1259), since the
+    // default browser usually already holds a session.
     const existingCredential = parseDeviceSessionCookie(c.req.header('cookie'));
     const existingDevice = existingCredential
       ? pairing.identifyDevice(existingCredential)
       : null;
     if (existingDevice) {
+      if (matchedPurpose) uiBootstrapTokens.delete(matchedPurpose);
       return c.json({
         environmentId: pairing.environmentId(),
         device: existingDevice,
         delivery: DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
       });
     }
-    if (
-      !uiBootstrapToken ||
-      !timingSafeSecretEqual(body.token, uiBootstrapToken)
-    ) {
+    if (!matchedPurpose) {
       return c.json({ error: 'ui_bootstrap_forbidden' }, 403);
     }
 
@@ -4760,7 +4844,9 @@ export function configureDevicePairingPublicRoutes(
       // Keep a valid capability retryable when the exchange refuses (for
       // example, while the bounded identityless quota is full). This runs
       // only after durable issuance/replacement succeeds.
-      uiBootstrapToken = undefined;
+      // Only the capability that was actually spent. Clearing the map would
+      // reintroduce #1259 at the redemption boundary instead of the mint one.
+      uiBootstrapTokens.delete(matchedPurpose);
       options.audit?.({
         event: 'station.pairing.approved',
         approver: 'ui-bootstrap',
@@ -5554,11 +5640,6 @@ export function configureDevicePairingHostRoutes(
   });
 }
 
-export type BoundedBodyResult =
-  | { status: 'ok'; body: string }
-  | { status: 'too-large' }
-  | { status: 'invalid' };
-
 /** Exact hosted-ingress exception for the bearer-stage-grant-only upload leaf. */
 export function isAttachmentStageGrantUploadRequest(request: Request): boolean {
   const { pathname } = new URL(request.url);
@@ -5568,57 +5649,6 @@ export function isAttachmentStageGrantUploadRequest(request: Request): boolean {
       pathname,
     )
   );
-}
-
-/** Reads an unauthenticated request body without ever buffering past maxBytes. */
-export async function readBoundedRequestBody(
-  request: Request,
-  maxBytes: number,
-): Promise<BoundedBodyResult> {
-  const declared = request.headers.get('content-length');
-  if (declared !== null) {
-    if (!/^\d+$/.test(declared) || Number(declared) > maxBytes) {
-      return { status: 'too-large' };
-    }
-  }
-  const stream = request.body;
-  if (!stream) return { status: 'invalid' };
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const result = await reader.read();
-      if (result.done) break;
-      total += result.value.byteLength;
-      if (total > maxBytes) {
-        await reader
-          .cancel('proof request body exceeded byte limit')
-          .catch(() => {});
-        return { status: 'too-large' };
-      }
-      chunks.push(result.value);
-    }
-  } catch {
-    await reader.cancel().catch(() => {});
-    return { status: 'invalid' };
-  } finally {
-    reader.releaseLock();
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return {
-      status: 'ok',
-      body: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
-    };
-  } catch {
-    return { status: 'invalid' };
-  }
 }
 
 function resolveConfiguredRuntimeOrigins(

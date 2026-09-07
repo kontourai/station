@@ -4,8 +4,8 @@ import { useCommandProjectTaskRoomLiveMutation } from '@kontourai/station-sdk/pr
 import { type ReactNode, useMemo } from 'react';
 import { AgentIcon } from '../../components/icons/AgentIcon';
 import { useAgents } from '../../contexts/AgentsContext';
-import { useNavigation } from '../../contexts/NavigationContext';
 import { openChatsStore } from '../../contexts/open-chats-store';
+import { useShowSurface } from '../../contexts/useShowSurface';
 import { relativeTimeAgo } from '../../utils/relativeTime';
 import { sessionStatusWord } from '../../utils/session-state';
 import {
@@ -93,7 +93,7 @@ const LANE_CALL_TO_ACTION: Record<string, string> = {
 export function ProjectLiveWorkSection({ slug }: { slug: string }) {
   const { data: sessions = [] } = useOrchestrationSessionsQuery();
   const agents = useAgents();
-  const { navigate } = useNavigation();
+  const showSurface = useShowSurface();
   // Read once per render, the same shape `SessionsView` uses: `now` only
   // separates Recently finished from Earlier — neither of which this section
   // renders — so it is not a memo input.
@@ -126,7 +126,7 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
   /**
    * Opening is the resolution for a waiting row: it reopens the session
    * through the shared open policy — rehydrating into the chat overlay when
-   * Station can, falling through to `/activity` when it cannot (a deleted
+   * Station can, revealing Activity when it cannot (a deleted
    * agent, a read-only attached transcript). Both branches are archive#1297's
    * one rule, reused rather than re-decided here.
    */
@@ -141,7 +141,7 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
       }),
     );
     if (detail) openChatsStore.focus(detail);
-    else navigate('/activity');
+    else showSurface('activity', { session: session.threadId });
   }
 
   function renderLane(lane: SessionLane) {
@@ -189,7 +189,7 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
             <button
               type="button"
               className="project-page__add-btn"
-              onClick={() => navigate('/activity')}
+              onClick={() => showSurface('activity')}
             >
               All activity
             </button>

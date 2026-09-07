@@ -52,6 +52,17 @@ export function storeSigningTemplate({
   identity,
   bundleId = 'io.kontourai.station',
 }) {
+  if (
+    typeof profile?.name !== 'string' ||
+    !profile.name.trim() ||
+    /[\r\n]/.test(profile.name) ||
+    typeof profile?.uuid !== 'string' ||
+    !profile.uuid.trim() ||
+    /[\r\n]/.test(profile.uuid)
+  )
+    throw new Error(
+      'Provisioning-profile name and UUID must be non-empty single-line text.',
+    );
   if (!identity || /[\r\n]/.test(identity))
     throw new Error(
       'Apple signing identity must be non-empty single-line text.',
@@ -74,7 +85,7 @@ export function storeSigningTemplate({
     );
   return template.replace(
     marker,
-    `${marker}      CODE_SIGN_STYLE: Manual\n      CODE_SIGN_IDENTITY: ${JSON.stringify(identity)}\n      DEVELOPMENT_TEAM: ${profile.team}\n      PROVISIONING_PROFILE_SPECIFIER: ${JSON.stringify(profile.uuid)}\n`,
+    `${marker}      CODE_SIGN_STYLE: Manual\n      CODE_SIGN_IDENTITY: ${JSON.stringify(identity)}\n      DEVELOPMENT_TEAM: ${profile.team}\n      PROVISIONING_PROFILE: ${JSON.stringify(profile.uuid)}\n      PROVISIONING_PROFILE_SPECIFIER: ${JSON.stringify(profile.name)}\n`,
   );
 }
 

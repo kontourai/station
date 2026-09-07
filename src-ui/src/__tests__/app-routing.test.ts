@@ -1,3 +1,4 @@
+import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { describe, expect, test } from 'vitest';
 import {
   getLegacyPathRedirect,
@@ -8,10 +9,16 @@ import {
 import type { NavigationView } from '../types';
 
 const LEGACY_PATH_CASES = [
-  ['/sessions', '/activity'],
-  ['/sessions/', '/activity'],
-  ['/sessions/?session=x&extra=y', '/activity?session=x&extra=y'],
-  ['/sessions?session=x&anything=y', '/activity?session=x&anything=y'],
+  // #928: Activity's standalone placement is gone, so both retired spellings
+  // land on the surface's canonical deep link. `extra`/`anything` are dropped
+  // rather than pasted onto `/`: the canonical link carries `session` and
+  // `focus` and nothing else, and the retired route never read the rest.
+  ['/sessions', '/?surface=activity'],
+  ['/sessions/', '/?surface=activity'],
+  ['/sessions/?session=x&extra=y', '/?surface=activity&session=x'],
+  ['/sessions?session=x&anything=y', '/?surface=activity&session=x'],
+  ['/activity', '/?surface=activity'],
+  ['/activity/', '/?surface=activity'],
   ['/developer/config', '/settings?view=station-config'],
   // archive#3313: Feature Previews retired into a Settings section.
   ['/feature-previews', '/settings?view=feature-previews'],
@@ -68,11 +75,11 @@ const CANONICAL_VIEWS = [
   { type: 'agent-edit', slug: 'planner' },
   { type: 'guidance', tab: 'skills', selectedId: 'code review' },
   { type: 'connections' },
-  { type: 'connections-providers' },
-  { type: 'connections-provider-edit', id: 'provider' },
-  { type: 'connections-acp-new', providerId: 'custom' },
+  { type: 'connections-models' },
+  { type: 'connections-model-edit', id: 'provider' },
+  { type: 'connections-engine-new', providerId: 'custom' },
   { type: 'connections-engines' },
-  { type: 'connections-runtime-edit', id: 'engine' },
+  { type: 'connections-engine-edit', id: 'engine' },
   { type: 'connections-tools' },
   { type: 'connections-tool-edit', id: 'tool' },
   { type: 'connections-knowledge' },
@@ -80,8 +87,6 @@ const CANONICAL_VIEWS = [
   { type: 'plugins' },
   { type: 'registry', tab: 'plugins' },
   { type: 'review-queue' },
-  { type: 'activity', sessionId: 'session/one' },
-  { type: 'activity', sessionId: 'session/one', focus: 'evidence' },
   { type: 'developer', tab: 'telemetry' },
   { type: 'schedule' },
   { type: 'settings' },
@@ -218,8 +223,8 @@ describe('app-shell routing', () => {
   test('getParentView returns semantic Station parents instead of browser history', () => {
     expect(getParentView({ type: 'home' })).toBeNull();
     expect(
-      getParentView({ type: 'connections-provider-edit', id: 'ollama' }),
-    ).toEqual({ type: 'connections-providers' });
+      getParentView({ type: 'connections-model-edit', id: 'ollama' }),
+    ).toEqual({ type: 'connections-models' });
     expect(
       getParentView({
         type: 'layout',
@@ -227,18 +232,61 @@ describe('app-shell routing', () => {
         layoutSlug: 'coding',
       }),
     ).toEqual({ type: 'project', slug: 'station' });
-    expect(getParentView({ type: 'activity', sessionId: 'run-1' })).toEqual({
-      type: 'activity',
-    });
     expect(getParentView({ type: 'registry', tab: 'plugins' })).toEqual({
       type: 'registry',
     });
     expect(getParentView({ type: 'settings' })).toEqual({ type: 'home' });
   });
+  // #1582 H3: the fallback used to hand every unlisted view `{type:'home'}`,
+  // which armed `app.escapeUp` on pages that are not below anything — Escape
+  // on Schedule navigated to Home. A parent is declared, not assumed, so the
+  // whole top-level class reports none. Enumerated rather than spot-checked:
+  // fixing only the view the audit named would leave the same bug in its
+  // siblings.
+  test.each([
+    ['agents'],
+    ['connections'],
+    ['guidance'],
+    ['plugins'],
+    ['review-queue'],
+    ['developer'],
+    ['schedule'],
+    ['notifications'],
+    ['profile'],
+    ['registry'],
+  ])('getParentView reports no parent for the top-level view %s', (type) => {
+    expect(
+      getParentView({ type } as unknown as Parameters<typeof getParentView>[0]),
+    ).toBeNull();
+  });
+  // #1582 H3 review (L3): three views moved off the old blanket-Home fallback
+  // onto a declared parent, and a tabless Registry onto none. They were part of
+  // the same change and unpinned; the connections pair now matches the siblings
+  // it belongs with rather than jumping to Home from two levels down.
+  test('getParentView declares the parents the Home fallback used to supply', () => {
+    expect(getParentView({ type: 'connections-computers' })).toEqual({
+      type: 'connections',
+    });
+    expect(
+      getParentView({ type: 'connections-engine-new', providerId: 'ollama' }),
+    ).toEqual({ type: 'connections-engines' });
+    // Its sibling, for contrast: an edit view already resolved this way.
+    expect(getParentView({ type: 'connections-engine-edit', id: 'a' })).toEqual(
+      {
+        type: 'connections-engines',
+      },
+    );
+    // Registry with no tab is a top-level destination, so it has no level up;
+    // a tab is one level inside it.
+    expect(getParentView({ type: 'registry' })).toBeNull();
+    expect(getParentView({ type: 'registry', tab: 'plugins' })).toEqual({
+      type: 'registry',
+    });
+  });
   test('resolveViewFromPath maps agent, connection, and project routes', () => {
     expect(resolveViewFromPath('/agents/new')).toEqual({ type: 'agent-new' });
     expect(resolveViewFromPath('/connections/models/demo')).toEqual({
-      type: 'connections-provider-edit',
+      type: 'connections-model-edit',
       id: 'demo',
     });
     expect(resolveViewFromPath('/connections/engines')).toEqual({
@@ -559,29 +607,6 @@ describe('app-shell routing', () => {
 
   test('getPathForView serializes navigable views', () => {
     expect(getPathForView({ type: 'home' })).toBe('/');
-    expect(resolveViewFromPath('/activity?session=thread%2Falpha')).toEqual({
-      type: 'activity',
-      sessionId: 'thread/alpha',
-    });
-    expect(
-      getPathForView({ type: 'activity', sessionId: 'thread/alpha' }),
-    ).toBe('/activity?session=thread%2Falpha');
-    // archive#4052: the one-shot evidence focus intent rides the
-    // session deep link. It only means anything alongside a session, and any
-    // other `focus` value is ignored rather than carried.
-    expect(
-      resolveViewFromPath('/activity?session=thread%2Falpha&focus=evidence'),
-    ).toEqual({
-      type: 'activity',
-      sessionId: 'thread/alpha',
-      focus: 'evidence',
-    });
-    expect(
-      resolveViewFromPath('/activity?session=thread%2Falpha&focus=bogus'),
-    ).toEqual({ type: 'activity', sessionId: 'thread/alpha' });
-    expect(resolveViewFromPath('/activity?focus=evidence')).toEqual({
-      type: 'activity',
-    });
     expect(getPathForView({ type: 'agents' })).toBe('/agents');
     expect(
       getPathForView({
@@ -642,17 +667,17 @@ describe('app-shell routing', () => {
   });
 
   test('getPathForView emits the canonical route for Models and Agent apps', () => {
-    expect(getPathForView({ type: 'connections-providers' })).toBe(
+    expect(getPathForView({ type: 'connections-models' })).toBe(
       '/connections/models',
     );
-    expect(
-      getPathForView({ type: 'connections-provider-edit', id: 'demo' }),
-    ).toBe('/connections/models/demo');
+    expect(getPathForView({ type: 'connections-model-edit', id: 'demo' })).toBe(
+      '/connections/models/demo',
+    );
     expect(getPathForView({ type: 'connections-engines' })).toBe(
       '/connections/engines',
     );
     expect(
-      getPathForView({ type: 'connections-runtime-edit', id: 'demo' }),
+      getPathForView({ type: 'connections-engine-edit', id: 'demo' }),
     ).toBe('/connections/engines/demo');
   });
 
@@ -664,5 +689,120 @@ describe('app-shell routing', () => {
     expect(getPathForView({ type: 'registry', tab: 'integrations' })).toBe(
       '/registry/integrations',
     );
+  });
+});
+
+/**
+ * #928: Activity survives only as a region surface, so `/activity` mounts
+ * nothing. What it must never do is 404 or drop the session it was carrying:
+ * notification `metadata.link` rows, already-delivered OS notifications,
+ * bookmarks, restored tabs and Discord messages already sent all still spell
+ * the old path, and `docs/design/pane-or-shell.md` makes "a deep link never
+ * breaks" a standing invariant of pane-ization.
+ *
+ * Every expectation here is a LITERAL URL, because a literal is what those
+ * stored links have to be answered with. Deleting the redirect (or restoring
+ * `'/sessions': '/activity'` in `exactRedirects`, which would forward one hop
+ * into the dead route) reds every case below.
+ */
+describe('retired Activity route (#928)', () => {
+  test.each([
+    ['/activity', '/?surface=activity'],
+    ['/activity/', '/?surface=activity'],
+    ['/sessions', '/?surface=activity'],
+    ['/sessions/', '/?surface=activity'],
+    ['/activity?session=thread-1', '/?surface=activity&session=thread-1'],
+    ['/sessions?session=thread-1', '/?surface=activity&session=thread-1'],
+    [
+      '/activity?session=thread-1&focus=evidence',
+      '/?surface=activity&session=thread-1&focus=evidence',
+    ],
+    [
+      '/sessions?session=thread-1&focus=evidence',
+      '/?surface=activity&session=thread-1&focus=evidence',
+    ],
+    // Ids that need encoding: the stored links are minted by
+    // `activityDeepLink` from raw thread ids, so a redirect that pasted the
+    // id through unescaped would produce a different session — or a second
+    // query parameter.
+    [
+      '/activity?session=thread%2Falpha',
+      '/?surface=activity&session=thread%2Falpha',
+    ],
+    ['/activity?session=a%20b', '/?surface=activity&session=a%20b'],
+    ['/activity?session=x%26y%3Dz', '/?surface=activity&session=x%26y%3Dz'],
+    [
+      '/sessions?session=thread%2Falpha&focus=evidence',
+      '/?surface=activity&session=thread%2Falpha&focus=evidence',
+    ],
+    // `focus` without a session names nothing, on both sides of the redirect.
+    ['/activity?focus=evidence', '/?surface=activity'],
+    // Any other value of `focus` is ignored rather than carried, exactly as
+    // the retired route's own parser ignored it.
+    [
+      '/activity?session=thread-1&focus=bogus',
+      '/?surface=activity&session=thread-1',
+    ],
+  ])('redirects %s to %s', (legacy, canonical) => {
+    expect(getLegacyPathRedirect(legacy)).toBe(canonical);
+  });
+
+  test('mints the target through the one builder every producer uses', () => {
+    // The server stamps notification links, the web-push click target and
+    // Discord's completion line with `activityDeepLink`. If this redirect
+    // composed its own string, the two would drift and only one of them
+    // would be caught by `surface-deep-link.test.ts`.
+    expect(getLegacyPathRedirect('/activity')).toBe(activityDeepLink());
+    expect(getLegacyPathRedirect('/sessions?session=thread%2Falpha')).toBe(
+      activityDeepLink({ sessionId: 'thread/alpha' }),
+    );
+    expect(
+      getLegacyPathRedirect('/activity?session=thread%2Falpha&focus=evidence'),
+    ).toBe(activityDeepLink({ sessionId: 'thread/alpha', focus: 'evidence' }));
+  });
+
+  test('the redirect target resolves to a real view', () => {
+    // A redirect that lands on a 404 is the failure this slice exists to
+    // avoid, one hop later. The deep link is a `/` URL whose surface params
+    // the shell adopts (`RegionModelContext`), so the route it resolves to is
+    // Home.
+    for (const legacy of [
+      '/activity',
+      '/activity?session=thread-1',
+      '/activity?session=thread-1&focus=evidence',
+      '/sessions?session=thread-1',
+    ]) {
+      const redirect = getLegacyPathRedirect(legacy);
+      expect(redirect).not.toBeNull();
+      expect(resolveViewFromPath(redirect!)).toEqual({ type: 'home' });
+    }
+  });
+
+  test('the redirect is a fixed point — the target is never itself retired', () => {
+    // `navigationStore.parseUrl` and `App`'s `resolveCurrentLocation` each
+    // apply this table ONCE and `replaceState` the result, so a target that
+    // is itself a retired spelling would leave a URL the next reader has to
+    // rewrite again. `/` carries the surface in its query, which is exactly
+    // why it must not be matched here.
+    for (const legacy of ['/activity', '/sessions?session=thread-1']) {
+      const redirect = getLegacyPathRedirect(legacy);
+      expect(redirect).not.toBeNull();
+      expect(getLegacyPathRedirect(redirect!)).toBeNull();
+    }
+  });
+
+  test('the standalone placement is gone from the resolver, not merely unlinked', () => {
+    // Reached only when a caller skips `getLegacyPathRedirect`, which every
+    // real navigation runs first — the same stance as `/connections/acp`.
+    // Pinned so the placement cannot come back without this redirect being
+    // reconsidered alongside it.
+    expect(resolveViewFromPath('/activity')).toEqual({
+      type: 'not-found',
+      path: '/activity',
+    });
+    expect(resolveViewFromPath('/activity?session=thread-1')).toEqual({
+      type: 'not-found',
+      path: '/activity',
+    });
   });
 });

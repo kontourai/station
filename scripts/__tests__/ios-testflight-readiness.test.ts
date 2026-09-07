@@ -28,6 +28,7 @@ function inspect(
     throw new Error('bundle mismatch');
   return {
     distribution: 'app-store-connect',
+    name: 'Station App Store',
     uuid: 'profile-uuid',
     team: expected.expectedTeam,
     expiration: '2027-01-01T00:00:00.000Z',

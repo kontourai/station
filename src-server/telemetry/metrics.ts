@@ -6,6 +6,10 @@
 import { metrics, trace } from '@opentelemetry/api';
 
 const meter = metrics.getMeter('station');
+export const unifiedSearchReads = meter.createCounter('station.search.reads', {
+  description:
+    'Bounded search and exact-open reads by operation and outcome; no query or resource identity',
+});
 
 export const tracer = trace.getTracer('station');
 

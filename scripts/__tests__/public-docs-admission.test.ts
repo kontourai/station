@@ -14,8 +14,12 @@ import {
   loadPublicDocs,
   renderDocsIndexSections,
   renderInline,
+  renderMarkdown,
 } from '../build-github-pages.mjs';
-import { publicDocsHygieneFindings } from '../public-docs-hygiene.mjs';
+import {
+  marketingHygieneFindings,
+  publicDocsHygieneFindings,
+} from '../public-docs-hygiene.mjs';
 
 async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), 'station-public-docs-'));
@@ -168,5 +172,161 @@ describe('public documentation admission', () => {
           'The values 100.64 and 100.127 are ordinary numeric prose; 100.63.255.255, 100.128.0.0, fe7f::1, fec0::1, and 203.0.113.7 are public controls.',
       ),
     ).toEqual([]);
+  });
+
+  it('keeps external product names out of marketing without blocking technical docs', () => {
+    expect(
+      marketingHygieneFindings(
+        ['README.md'],
+        () => 'Station works with Claude Code, Codex, and other engines.',
+      ),
+    ).toEqual([
+      'README.md:1 marketing-external-brand: Claude Code',
+      'README.md:1 marketing-external-brand: Codex',
+    ]);
+    expect(
+      publicDocsHygieneFindings(
+        [{ source: 'guides/connections.md' }],
+        () => 'Configure a supported Codex engine connection.',
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe('public documentation markdown rendering', () => {
+  it('keeps a source-wrapped paragraph and list item as one block each', () => {
+    const html = renderMarkdown(
+      [
+        'Station uses a small set of concepts. Transport names stay out of',
+        'the way unless setup requires them.',
+        '',
+        "- A **Station agent** is executed by Station's engine. Station owns its",
+        '  prompt, skills, tools, commands, and Model choice.',
+        '- An **External agent** is executed by another supported engine.',
+        '',
+        'Trailing prose.',
+      ].join('\n'),
+    );
+    expect(html).toContain(
+      '<p>Station uses a small set of concepts. Transport names stay out of the way unless setup requires them.</p>',
+    );
+    expect(html).toContain(
+      "<li>A <strong>Station agent</strong> is executed by Station's engine. Station owns its prompt, skills, tools, commands, and Model choice.\n</li>",
+    );
+    expect(html.match(/<li>/g)).toHaveLength(2);
+    expect(html.match(/<p>/g)).toHaveLength(2);
+    expect(html).not.toContain('<p>the way unless setup requires them.</p>');
+    expect(html).not.toContain('<p>prompt, skills');
+  });
+
+  it('closes an open list item at a heading, fence, table, or blockquote', () => {
+    const html = renderMarkdown(
+      [
+        '- item one',
+        '## Next',
+        '- item two',
+        '```',
+        'code',
+        '```',
+        '- item three',
+        '| a |',
+        '| --- |',
+        '| b |',
+        '- item four',
+        '> quoted',
+      ].join('\n'),
+    );
+    expect(html.match(/<li>/g)).toHaveLength(4);
+    expect(html.match(/<ul>/g)).toHaveLength(4);
+    expect(html.match(/<\/ul>/g)).toHaveLength(4);
+    expect(html).toContain('<h2>Next</h2>');
+    expect(html).toContain('<blockquote>quoted</blockquote>');
+  });
+
+  it('nests indented list items inside their parent item', () => {
+    const html = renderMarkdown(
+      [
+        '- parent',
+        '  - child one',
+        '    continues the child',
+        '  - child two',
+        '- sibling',
+      ].join('\n'),
+    );
+    expect(html).toBe(
+      [
+        '<ul>',
+        '<li>parent',
+        '<ul>',
+        '<li>child one continues the child',
+        '</li>',
+        '<li>child two',
+        '</li>',
+        '</ul>',
+        '</li>',
+        '<li>sibling',
+        '</li>',
+        '</ul>',
+      ].join('\n'),
+    );
+  });
+
+  it('renders an indented fence after a list item as code and keeps later prose out of the list', () => {
+    const html = renderMarkdown(
+      ['- item', '  ```js', '  const x = 1;', '  ```', 'After'].join('\n'),
+    );
+    expect(html).toBe(
+      [
+        '<ul>',
+        '<li>item',
+        '</li>',
+        '</ul>',
+        '<pre><code>',
+        '  const x = 1;',
+        '</code></pre>',
+        '<p>After</p>',
+      ].join('\n'),
+    );
+  });
+
+  it('renders numbered steps as an ordered list and switches list kinds at a boundary', () => {
+    const html = renderMarkdown(
+      [
+        '1. Open **Connections**.',
+        '2. Choose a service',
+        '   until it reports Ready.',
+        '- a bullet after the steps',
+      ].join('\n'),
+    );
+    expect(html).toBe(
+      [
+        '<ol>',
+        '<li>Open <strong>Connections</strong>.',
+        '</li>',
+        '<li>Choose a service until it reports Ready.',
+        '</li>',
+        '</ol>',
+        '<ul>',
+        '<li>a bullet after the steps',
+        '</li>',
+        '</ul>',
+      ].join('\n'),
+    );
+  });
+
+  it('closes every open list level at the end of the document', () => {
+    const html = renderMarkdown(['- outer', '  - inner'].join('\n'));
+    expect(html).toBe(
+      [
+        '<ul>',
+        '<li>outer',
+        '<ul>',
+        '<li>inner',
+        '</li>',
+        '</ul>',
+        '</li>',
+        '</ul>',
+      ].join('\n'),
+    );
   });
 });

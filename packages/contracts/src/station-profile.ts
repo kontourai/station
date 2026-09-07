@@ -52,15 +52,17 @@ export interface StationProfile {
   createdAt: number;
   updatedAt: number;
   /**
-   * archive#1818 — set only by
-   * `station_local_self_provision` (`src-desktop/src/lib.rs`), minted once
-   * on a local Station's first self-provision and persisted verbatim on
-   * every write after that. This is the identifier the device-pairing
-   * server's supersession keys on (`clientInstanceId`,
+   * archive#1818 — set by the local self-provision surfaces only:
+   * `station_local_self_provision` (`src-desktop/src/lib.rs`) and, since
+   * #1098, the CLI's same-machine self-authorization
+   * (`packages/cli/src/commands/local-self-auth.ts`). Both share one
+   * semantic: minted once on a local Station's first self-provision, reused
+   * when already present, and persisted verbatim on every write after that.
+   * This is the identifier the device-pairing server's supersession keys on
+   * (`clientInstanceId`,
    * `src-server/services/ssh/device-pairing-service.ts`) to revoke the
    * grant a repeat self-provision replaces, rather than accumulating a new
-   * live credential every time. Never authored by the CLI (`station setup
-   * local` has no reason to mint one) and never rotated once set — see the
+   * live credential every time. Never rotated once set — see the
    * Rust-side doc comment on `resolve_local_self_provision_client_instance_id`
    * for why a value that must be matched byte-for-byte by the server is
    * persisted rather than derived.

@@ -50,9 +50,10 @@ function rootCargoLockVersion(lock: string): string {
 
 describe('product version authority', () => {
   it('keeps checked-in Tauri and Cargo versions equal to root package.json', () => {
-    expect(checkProductVersion(root)).toBe(
+    expect(checkProductVersion(root)).toBe('0.1.11');
+    expect(
       JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version,
-    );
+    ).toBe('0.1.11');
   });
 
   it.each(['minified', 'pretty'])(

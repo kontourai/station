@@ -1,5 +1,14 @@
 # ACP Chat Architecture — Design Document
 
+> **Historical proposal.** The problem statement and phase table below describe
+> the original design, not current implementation status. Current ACP execution
+> uses a process lifecycle per thread in
+> [the ACP adapter](../src-server/providers/adapters/acp-adapter.ts).
+> For today's chat entry point and event ownership, read
+> [ADR 0014](adr/0014-the-chat-convergence-landed-unconditionally-not-behind-the-flag.md)
+> and the [module map](architecture/module-map.md). Preserve this record for
+> rationale; do not use its phases as a backlog or implementation checklist.
+
 ## Problem
 
 Station has a single global ACP connection used for agent discovery and chat routing. This creates three issues:

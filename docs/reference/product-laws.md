@@ -1,7 +1,7 @@
 <!-- station:product-laws:start -->
 # Executable product laws
 
-This file is generated from the product-law manifest. The manifest is the authority; this Markdown is a readable projection. Each law has exact behavior and fault observations evaluated through structured test results. A PASS means both named observations passed, a FAIL means either failed, and NOT_VERIFIED means the runner could not produce a trustworthy structured observation. The manifest is bounded to 5 laws, 5 test files, and 150s total runtime. None of these results create a second completion lane.
+This file is generated from the product-law manifest. The manifest is the authority; this Markdown is a readable projection. Each law has exact behavior and fault observations evaluated through structured test results. A PASS means both named observations passed, a FAIL means either failed, and NOT_VERIFIED means the runner could not produce a trustworthy structured observation. The manifest is bounded to 6 laws, 6 test files, and 150s total runtime. None of these results create a second completion lane.
 
 | Law ID | Observable invariant | Owning Module | Affected Interface | Behavior observation | Fault observation | Remediation owner |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -10,6 +10,7 @@ This file is generated from the product-law manifest. The manifest is the author
 | `station.approvals.actionable-resolution` | Only a known approval action can resolve actionable orchestration attention; an unknown action is rejected rather than failing open, and a real resolution marks the request actioned. | `Approval inbox` | `ApprovalInboxService` | `marks orchestration notifications actioned when the request resolves` | `rejects unknown approval actions instead of failing open` | station#1284 |
 | `station.home-role.recovery-floor` | A granted Home renderer failure falls back to the built-in Home with the actual failure and a recovery action, never a blank root. | `Home role pane` | `HomeRolePane` | `a renderer that throws on mount lands on the built-in Home with the actual failure text` | `retry into a still-broken renderer lands back on the built-in, not a loop or a blank` | station#3122 |
 | `station.release-stage.inventory-truth` | Release staging accepts only the complete required variant inventory, checksums, updater sidecars, and immutable container descriptor for one source identity. | `Release artifact inventory` | `validateReleaseInventory` | `assembles every required variant, sidecar, and immutable container` | `fails when uploaded bytes differ from the assembled checksum` | station#818 |
+| `station.mobile-context.primary-actions` | Project and conversation switching remain directly reachable with readable context in the mobile dock header; opening a Project must not rebind the active conversation. | `Mobile chat dock header` | `ChatDockMobileHeader` | `keeps project and conversation switching directly reachable with readable context` | `opening a project preserves the active conversation binding` | station#1540 |
 
 The contributor workflow regenerates this projection after intentional manifest changes. The gate rejects hand-edited projection drift, duplicate IDs, empty owners or selectors, nonexistent tests, a missing fault observation, and selectors absent from the exact structured test observation.
 <!-- station:product-laws:end -->

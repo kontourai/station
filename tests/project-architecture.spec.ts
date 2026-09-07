@@ -11,6 +11,15 @@ import {
   CODING_STARTER_CATALOG,
   ORGANIZATION_LAYOUT_CATALOG,
 } from './fixtures/project-layout-catalog';
+import {
+  chatDockShell,
+  documentFitsViewportWidth,
+  expectBoxWithinViewport,
+  FIRST_RENDER_TIMEOUT_MS,
+  placeSurfaceThroughLayoutPicker,
+  showRegionThroughOverflowMenu,
+  surfaceDockShell,
+} from './helpers/region-placement';
 
 const STATUS_READY = JSON.stringify({
   ready: true,
@@ -345,11 +354,12 @@ test.describe('Project Sidebar', () => {
   test('project page shows layout affordances', async ({ page }) => {
     await alphaProjectButton(page).click();
     await expect(page.getByRole('heading', { name: 'Alpha' })).toBeVisible();
-    // `+ Add` became `+ Add layout` once `+ Add pane` joined it
-    // (`src-ui/src/views/ProjectPage.tsx:300-315`). `exact` keeps this off the
-    // layouts empty state's own `Add layout` action
-    // (`views/project-page/ProjectLayoutsSection.tsx:83-89`), which is a
-    // different affordance in a different place.
+    // `+ Add` became `+ Add layout` once `+ Add pane` joined it, and both live
+    // in the Open section header (`src-ui/src/views/ProjectPage.tsx`). `exact`
+    // stays because these are the only two add affordances the section has:
+    // #1536 E4 dropped the layouts empty state's duplicate `Add layout` button
+    // when embedded, so a loose matcher would now be ambiguous only if that
+    // duplicate came back.
     await expect(
       page.getByRole('button', { name: '+ Add layout', exact: true }),
     ).toBeVisible();
@@ -709,7 +719,15 @@ test.describe('Project Navigation', () => {
     expect(layoutPosts).toBe(0);
   });
 
-  test('submit discovers Git for a manually typed path before choosing the recommended layout', async ({
+  /**
+   * #1536 E4. This used to type a path with no trailing slash and assert that
+   * Coding was applied — while the modal still showed "Start without a layout"
+   * as the pressed option, because the recommendation was resolved at SUBMIT
+   * and never rendered. Repo discovery is now gated on the SHAPE of the typed
+   * path (idle-settled), so the recommendation appears first and Create applies
+   * exactly what the picker shows.
+   */
+  test('a manually typed path shows the Git recommendation, and Create applies what is shown', async ({
     page,
   }) => {
     let createdLayoutBody: unknown = null;
@@ -734,8 +752,81 @@ test.describe('Project Navigation', () => {
         }),
       }),
     );
+    // `seedRoutes`' POST /api/projects answers `slug: 'new-project'` whatever
+    // the body says, and the submission applies the starter to the slug the
+    // SERVER returned (`useNewProjectSubmit` uses `created.slug`: the create
+    // route is the authority on the slug). Routing this at the typed name would
+    // never match, and `createdLayoutBody` would stay null for a submission
+    // that applied the layout correctly.
     await page.route('**/api/projects/new-project/layouts/apply', (route) => {
       createdLayoutBody = route.request().postDataJSON();
+      return route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: { slug: 'coding' } }),
+      });
+    });
+
+    await page.goto('/projects/new');
+    await page.getByPlaceholder('My Project').fill('Typed Workspace');
+    // No trailing slash: the shape a user who pastes a path actually types.
+    await page
+      .getByPlaceholder('/path/to/project')
+      .fill('/tmp/typed-workspace');
+
+    // The recommendation is ON SCREEN before anything is created.
+    await expect(
+      page.getByText('Recommended for this Git directory'),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /Coding/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(
+      page.getByRole('button', { name: /Start without a layout/ }),
+    ).toHaveAttribute('aria-pressed', 'false');
+
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+
+    await expect
+      .poll(() => createdLayoutBody)
+      .toMatchObject({ layoutId: 'builtin:coding' });
+  });
+
+  /**
+   * The other half of the same contract, and the E4 report itself: declining
+   * the recommendation that is now visible must create no layout at all.
+   */
+  test('declining the recommendation for a typed path creates no layout', async ({
+    page,
+  }) => {
+    let layoutPosts = 0;
+    await page.route('**/api/projects/layouts/available', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: CODING_STARTER_CATALOG }),
+      }),
+    );
+    await page.route('**/api/coding/repos**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            workspace: '/tmp/typed-workspace',
+            workspaceIsRepo: true,
+            repos: [{ root: '/tmp/typed-workspace', name: 'typed-workspace' }],
+          },
+        }),
+      }),
+    );
+    // The slug the seeded create route returns — see the note in the test
+    // above. Pointed anywhere else, `layoutPosts` counts a route that can
+    // never be hit and the assertion below passes without proving anything.
+    await page.route('**/api/projects/new-project/layouts/apply', (route) => {
+      layoutPosts += 1;
       return route.fulfill({
         status: 201,
         contentType: 'application/json',
@@ -748,11 +839,23 @@ test.describe('Project Navigation', () => {
     await page
       .getByPlaceholder('/path/to/project')
       .fill('/tmp/typed-workspace');
-    await page.getByRole('button', { name: 'Create', exact: true }).click();
 
-    await expect
-      .poll(() => createdLayoutBody)
-      .toMatchObject({ layoutId: 'builtin:coding' });
+    const noLayout = page.getByRole('button', {
+      name: /Start without a layout/,
+    });
+    // Wait for the recommendation to arrive before declining it, so this
+    // cannot pass merely by racing the discovery it is meant to override.
+    await expect(page.getByRole('button', { name: /Coding/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await noLayout.click();
+    await expect(noLayout).toHaveAttribute('aria-pressed', 'true');
+
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    // Created, navigated, and no starter applied. The slug is the server's.
+    await expect(page).toHaveURL(/\/projects\/new-project$/);
+    expect(layoutPosts).toBe(0);
   });
 });
 
@@ -785,7 +888,7 @@ test.describe('ChatDock', () => {
     // archive#1064 removed the "Chat Dock" label; the dock is identified by its own
     // container now, which is what these tests actually care about.
     await expect(page.locator('.chat-dock')).toBeVisible({
-      timeout: 10_000,
+      timeout: FIRST_RENDER_TIMEOUT_MS,
     });
   });
 
@@ -805,7 +908,7 @@ test.describe('ChatDock', () => {
     // archive#3973. The dock renders THROUGH a chromeless WorkspacePaneHost
     // now, and the whole point of chromeless is that you cannot tell from the
     // DOM: the shell positions the dock with child combinators
-    // (`.app__main--dock-left > .chat-dock`, `:has(> .chat-dock)`), so one
+    // (`.app__main > [data-region="left"]`, `:has(> [data-region])`), so one
     // wrapper node is enough to un-place it — which is exactly what happened,
     // and the desktop dock measured x=0.
     await expect(
@@ -827,44 +930,67 @@ test.describe('ChatDock', () => {
     ).toMatch(/app__main/);
   });
 
-  // Removed in archive#3929 (the affordance had nowhere to appear and the
-  // spec timed out); back with archive#4090 / epic archive#4142 M2: `/` is
-  // the standalone placement of the Home pane occurrence, so
-  // `#station-main` now carries a real 'Dock this pane'.
-  test('docks Home through the ambient document and returns the same dock slot to Chat', async ({
+  /**
+   * #1541. This replaces "docks Home through the ambient document and returns
+   * the same dock slot to Chat", whose premise is gone: Home is not a dock
+   * occupant any more. #928 C2a made Home the `main` region's surface, which
+   * declares `main` and nothing else (`REGION_SURFACE_REGISTRY`), and C2b
+   * deleted the whole surface-owned docking path — `WorkspacePaneDockAction`,
+   * its "Dock this pane" button and the `Docked pane:` occupant picker are
+   * scanned out of the UI tree by `region-surface-boundary.test.ts`, so no
+   * page can grow one back.
+   *
+   * What the retired journey actually guarded survives, and is what this
+   * drives: a non-Chat surface takes the dock region Chat holds, the choice is
+   * device state that outlives a reload, and putting Chat back returns that
+   * same region to Chat. The route is the model's own `placeSurface` through
+   * the header's Layout picker, and every assertion reads the rendered dock —
+   * which surface occupies which region — rather than the model that decided
+   * it.
+   */
+  test('places Activity in the dock region Chat holds and returns that region to Chat', async ({
     page,
   }) => {
-    await page
-      .locator('#station-main')
-      .getByRole('button', { name: 'Dock this pane' })
-      .click();
-    await expect(page.locator('.dock-slot')).toBeVisible();
-    await expect
-      .poll(() =>
-        page.evaluate(() =>
-          window.localStorage.getItem(
-            'station:workspace-pane-host:v2:ambient:chat-dock',
-          ),
-        ),
-      )
-      .toContain('pane:builtin:home');
+    // One dock shell, Chat's, in the bottom region. `is-collapsed` is
+    // expected here (a fresh device shows the dock's header only) and is
+    // beside the point: the region is Chat's either way.
+    await expect(page.locator('.chat-dock')).toHaveCount(1);
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
+
+    await placeSurfaceThroughLayoutPicker(page, 'Activity', 'Bottom');
+
+    // The region changed hands, and Chat is not homeless: `placeSurface`
+    // relocates the displaced surface into the first free dock region, which
+    // is `right`. Both halves are asserted, because "Activity is at the
+    // bottom" would also be true of a model that simply dropped Chat.
+    await expect(surfaceDockShell(page, 'Activity')).toHaveClass(
+      /chat-dock--bottom/,
+    );
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--right/);
+
+    // The arrangement is device state (#928 D), so a reload must render the
+    // same two regions. Read through the DOM rather than through the
+    // `regionArrangement` device setting: the record is the mechanism, and a
+    // reload is the only thing that proves the mechanism ran.
     await page.reload();
-    await expect(page.locator('.dock-slot')).toBeVisible();
-    // M5: the fixed header "return to Chat" action is gone — the header's
-    // occupant picker replaces the occupant, Chat as one entry of the list.
-    await page
-      .locator('.dock-slot__header')
-      .getByRole('button', { name: 'Docked pane: Home' })
-      .click();
-    await page
-      .getByRole('menu', { name: 'Docked pane' })
-      .getByRole('menuitemradio', { name: 'Chat' })
-      .click();
-    await expect(page.locator('.chat-dock')).toBeVisible();
-    await expect(page.locator('.dock-slot')).toHaveCount(0);
+    await expect(surfaceDockShell(page, 'Activity')).toHaveClass(
+      /chat-dock--bottom/,
+    );
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--right/);
+
+    await placeSurfaceThroughLayoutPicker(page, 'Chat', 'Bottom');
+
+    await expect(
+      chatDockShell(page),
+      'returning Chat to the bottom region must give it that region back',
+    ).toHaveClass(/chat-dock--bottom/);
+    await expect(
+      surfaceDockShell(page, 'Activity'),
+      'the surface Chat displaced must take the region Chat vacated, not vanish',
+    ).toHaveClass(/chat-dock--right/);
     expect(
       await page.evaluate(
-        () => document.querySelector('.chat-dock')?.parentElement?.className,
+        () => document.querySelector('#chat-dock')?.parentElement?.className,
       ),
       'returning to Chat must keep it a direct shell child',
     ).toMatch(/app__main/);
@@ -881,7 +1007,9 @@ test.describe('Ambient chat dock host at 390x844', () => {
   test.beforeEach(async ({ page }) => {
     await seedRoutes(page);
     await page.goto('/');
-    await expect(page.locator('.chat-dock')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.chat-dock')).toBeVisible({
+      timeout: FIRST_RENDER_TIMEOUT_MS,
+    });
   });
 
   test('keeps the hosted dock reachable without horizontal scroll', async ({
@@ -906,31 +1034,64 @@ test.describe('Ambient chat dock host at 390x844', () => {
     ).toBeGreaterThanOrEqual(44);
   });
 
-  // The phone half of the same journey — removed in archive#3929, back with
-  // archive#4090 / epic archive#4142 M2 for the same reason as the desktop
-  // half above.
-  test('keeps a docked Home pane within the phone viewport', async ({
+  /**
+   * #1541, the phone half. Same replacement as the desktop journey above: the
+   * retired test docked Home through the Chat overflow sheet's "Switch to
+   * Home" row, and neither Home-as-a-dock-occupant nor that row exists since
+   * #928 C2a/C2b.
+   *
+   * The phone's own version of the guarded behaviour is sharper than the
+   * desktop's, because a coarse pointer folds every dock edge to the bottom
+   * and `RegionShells` mounts only the folded region: there is exactly ONE
+   * dock slot, so a placed surface does not sit beside Chat, it takes the
+   * slot. Hiding it returns that slot to Chat — `foldedDockRegion` falls back
+   * to Chat's region when no dock region is visible — and the pane must stay
+   * inside the phone viewport the whole way.
+   */
+  test('gives the one phone dock slot to a placed pane and returns it to Chat when hidden', async ({
     page,
   }) => {
-    await page
-      .locator('#station-main')
-      .getByRole('button', { name: 'Dock this pane' })
-      .click();
-    await expect(page.locator('.dock-slot')).toBeVisible();
+    await expect(page.locator('.chat-dock')).toHaveCount(1);
+    await expect(chatDockShell(page)).toHaveClass(/chat-dock--bottom/);
+
+    await showRegionThroughOverflowMenu(page, 'Show Activity in the dock');
+
+    // One slot still, and Activity holds it: Chat's shell is not rendered at
+    // all, which is the phone fold rather than a hidden Chat.
+    await expect(page.locator('.chat-dock')).toHaveCount(1);
+    await expect(surfaceDockShell(page, 'Activity')).toHaveClass(
+      /chat-dock--bottom/,
+    );
+    await expect(chatDockShell(page)).toHaveCount(0);
     expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= window.innerWidth,
-      ),
+      await documentFitsViewportWidth(page),
       'a docked non-chat pane must not push the phone document sideways',
     ).toBe(true);
-    // M5: the header affordance is the occupant picker now.
-    const action = page
-      .locator('.dock-slot__header')
-      .getByRole('button', { name: 'Docked pane: Home' });
-    const bounds = await action.boundingBox();
+    await expectBoxWithinViewport(
+      page,
+      surfaceDockShell(page, 'Activity'),
+      'the docked pane',
+    );
+
+    // Hidden through the docked pane's OWN header control, which is what a
+    // phone user reaches for and which writes the region's visibility
+    // (`useDockShellChrome`'s `applyDockSnap('collapsed')` →
+    // `setRegion({ visible: false })`). Still scoped to the pane, though the
+    // ⋯ menu's row no longer shares this name: since #1386 it says "Hide
+    // Activity from the dock".
+    await surfaceDockShell(page, 'Activity')
+      .getByRole('button', { name: 'Hide Activity', exact: true })
+      .click();
+
+    await expect(page.locator('.chat-dock')).toHaveCount(1);
+    await expect(
+      chatDockShell(page),
+      'hiding the placed pane must return the one phone dock slot to Chat',
+    ).toHaveClass(/chat-dock--bottom/);
+    await expect(surfaceDockShell(page, 'Activity')).toHaveCount(0);
     expect(
-      bounds?.height,
-      'the occupant picker trigger must be a 44px tap target',
-    ).toBeGreaterThanOrEqual(44);
+      await documentFitsViewportWidth(page),
+      'returning the slot to Chat must not push the phone document sideways',
+    ).toBe(true);
   });
 });

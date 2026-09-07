@@ -30,14 +30,13 @@
 > discipline, the "receipted, not signed" finding), #1410 (turn provenance
 > envelope), #741 (personal fleet), #1123 (peer pairing).
 
-## 0. Naming, sources, and one repo-policy note
+## 0. Naming and sources
 
-This repo does not name competitors (`AGENTS.md:21`; precedent
-`docs/design/settings-architecture.md:3-5`). The system #1392 studied is called
-**"the reference implementation"** throughout this doc. It is the same codebase
-[inference-fleet.md](inference-fleet.md) calls "the reference mesh"; its product
-name, repo, and file:line evidence live in #1392's and #1398's comments and in
-the private ops workspace analysis. Nothing here depends on reading them.
+The system #1392 studied is called **"the reference implementation"**
+throughout this doc. It is the same codebase
+[inference-fleet.md](inference-fleet.md) calls "the reference mesh." The
+separate attributed research record is not required to understand or implement
+this design.
 
 Two readings of that implementation are load-bearing, and both are code
 readings rather than marketing readings:
@@ -1218,7 +1217,7 @@ has.
   (§9.2) and is not on `origin/main`. If its membership/contribution model
   changes, §7 and §9.3 change with it.
 - **The reference-implementation readings (§0) are second-hand here.** They were
-  established in #1392's and #1398's threads and in the private ops workspace
+  established in #1392's and #1398's threads and in the separate research record
   analysis; this doc did not re-derive them, and §0's survivorship caveat applies
   to all of them.
 - **No decision has been taken on any OQ in §11.** Every recommendation is the

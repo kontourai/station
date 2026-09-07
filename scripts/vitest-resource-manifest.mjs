@@ -38,12 +38,17 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // The complete 1,200-thread seed/read/equivalence case owns its original
+  // 10-second product-law bound in a fresh file/process lifecycle.
+  'src-server/services/orchestration/__tests__/event-store-batched-projection.large.test.ts',
+  // EventStore owns a high-cardinality SQLite fixture whose large replay and
+  // backfill assertions are scheduler-sensitive under the two-worker pool.
+  'src-server/services/orchestration/__tests__/event-store.test.ts',
   // Owns detached real-process fixtures, scans live sibling instances, and
   // contains synchronous crash-recovery probes that Vitest cannot interrupt
   // while another process-heavy file is consuming the host.
   'packages/cli/src/__tests__/lifecycle.test.ts',
   'scripts/__tests__/test-reliability-machine.test.ts',
-  'scripts/__tests__/verification-coordinator.test.ts',
   'src-server/routes/orchestration/__tests__/orchestration.routes.test.ts',
   // station#3218: its correctness bound IS an event-loop responsiveness
   // measurement — it compares how much a `PRAGMA quick_check` blocks this
@@ -57,6 +62,26 @@ export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
   // Runs the real Play upload wrapper through SIGTERM escalation and asserts
   // exact owned-PID cleanup; overlap would weaken the ownership boundary.
   'scripts/__tests__/play-upload-retry.test.ts',
+  // Composes two real remote-home fixtures, each with EventStore history and
+  // working-state workers, plus separate operator-history workers. Source and
+  // target open calls are awaited sequentially, but those worker owners are
+  // initialized concurrently before the opens and must not share an outer
+  // Vitest pool with another bootstrap-heavy file.
+  'src-server/routes/environments/__tests__/remote-home-transfer-decision.test.ts',
+]);
+
+export const CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // station#1309/#1311: coordinates the exact SQLite index drop/create window
+  // with multiple real Node children and file barriers. It needs exclusive
+  // execution, but not the verification coordinator's remaining phase budget.
+  'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts',
+]);
+
+export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // station#1354: exercises host-global verification leases, checkpoint
+  // recovery, cleanup fencing, and deliberate timeout scenarios for roughly
+  // three minutes. Give that authority its own phase budget and receipt.
+  'scripts/__tests__/verification-coordinator.test.ts',
 ]);
 
 // Direct `node:child_process` importers discovered from the root corpus, with
@@ -88,12 +113,41 @@ export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Owns Chromium and esbuild children for the real exposed-binding artifact seam.
+  'scripts/__tests__/interactive-workspace-driver-artifact.test.ts',
+  // Real runtime identity probes and SQLite workers for source-absent recovery.
+  'src-server/services/orchestration/__tests__/home-reference-recovery.test.ts',
+  // Owns a real loopback listener and fsync-backed source records; no child process.
+  'src-server/routes/knowledge/__tests__/knowledge-source.routes.test.ts',
+  // Actual authenticated search routes include Task/transcript worker owners.
+  'src-server/runtime/routes/__tests__/runtime-routes-device-session-chat-principal.test.ts',
+  // Hono routes composed with the real Task and transcript worker owners.
+  'src-server/services/search/__tests__/runtime-search.test.ts',
+  'src-server/services/orchestration/__tests__/isolated-transcript-search.test.ts',
+  // Owns real CPU-blocking worker_threads and canonical TaskGraph file fixtures.
+  'src-server/services/search/__tests__/isolated-task-search.test.ts',
+  // Type-only child_process import; the macro's spawn boundary is simulated
+  // with streams, so this adds no real child launches or timing assertion.
+  'scripts/__tests__/run-connected-agent-tests.test.ts',
+  // Real peer EventStores share one disposable SQLite home and survive owner death.
+  'src-server/services/plugins/__tests__/package-mcp-admission.test.ts',
   // fsync-backed AgentRegistry fixtures compose the runtime bootstrap path;
   // they own durable state but can share the bounded two-worker pool.
   'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts',
   // Builds two tiny real repositories to prove CLI artifact provenance ignores
   // hostile inherited Git routing and sees a staged dirty index.
   'packages/cli/src/__tests__/build-metadata.test.ts',
+  // Builds throwaway Git repositories and runs the gate as a child process, so
+  // the real exit status is what the assertions read; process ownership is the
+  // behavior under test, not a helper.
+  'scripts/__tests__/literal-swap-gate.test.ts',
+  // station#1648: runs the Playwright install script as a child process behind
+  // a fake `npx` on PATH, because the exit status and the argv it really
+  // builds are the two things an in-process call cannot prove. Each child is
+  // one short-lived Node process that exits immediately; classified here
+  // because a child_process importer is never placed implicitly, not because
+  // it is resource-hungry. No wall-clock assertion.
+  'scripts/__tests__/install-playwright-browsers.test.ts',
   // Both fixtures repeatedly invoke real Git and create detached worktrees;
   // their process ownership is the behavior under test, not a test helper.
   'src-server/services/evidence/__tests__/git-review-workspace-source.test.ts',
@@ -164,10 +218,18 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Drives the changed-verification CLI through spawnSync against a real
   // fixture worktree to prove its dependency and selection behavior.
   'scripts/__tests__/changed-verification.test.ts',
+  // Builds a disposable diverged Git graph and runs real Git commands to
+  // distinguish candidate-only changes from base-only and direct-push ranges.
+  'scripts/__tests__/classify-ci-change.test.ts',
   // #3033: runs the pre-push UI-bundle guardrail as a real child process so
   // its exit STATUS is asserted, not just its pure decision functions — a
   // rejection path that has never executed is unproven.
   'scripts/__tests__/prepush-ui-bundle.test.ts',
+  // #1459: runs the completion-gate summary reporter as a real child process
+  // so its EXIT STATUS and its stdout annotations are what the assertions
+  // read. Both are the contract — the reporter must never fail a job it only
+  // reports on — and neither is observable from an imported function.
+  'scripts/__tests__/verification-gate-summary.test.ts',
   // #3208: same shape one gate over — runs each static gate it lists as a real
   // child process, so the list cannot name a script that no longer resolves.
   'scripts/__tests__/prepush-static-gates.test.ts',
@@ -181,12 +243,35 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // paths' EXIT STATUS and printed verdicts are proven, not just the pure
   // evaluation functions.
   'scripts/__tests__/codeql-sarif-policy.cli.test.ts',
+  // station#1312: same shape again — the issue-lifecycle module graph is
+  // loaded in fresh node children, one entry module per case, because only a
+  // cold import proves the graph has no evaluation-order cycle; in-process
+  // tests inherit whatever order Vitest already resolved.
+  'scripts/__tests__/issue-lifecycle-entry.test.ts',
   // station#3749: same shape again — the SDK refusal-message gate is driven as
   // a real child process against throwaway git repositories so its `FAIL:`
   // sentence and its EXIT STATUS are proven, not just its pure decision
   // functions. Bounded single-shot children per case.
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
+  // station#1137: same shape again — the crypto.randomUUID guard is driven as
+  // a real child process against throwaway git repositories so its `FAIL:`
+  // sentence and its EXIT STATUS are proven, not just its pure decision
+  // functions. Bounded single-shot children per case.
+  'scripts/__tests__/random-uuid-guard.test.ts',
+  // #1130: same shape again — the dialog-surface-class guard is driven as a
+  // real child process against throwaway git repositories so its `FAIL:`
+  // sentence and its EXIT STATUS are proven, not just its pure decision
+  // functions. Bounded single-shot children per case.
+  'scripts/__tests__/dialog-surface-class-guard.test.ts',
   'scripts/__tests__/dependency-advisory-policy.test.ts',
+  // Bounded Bash children test Linux bootstrap recovery with inert swap commands.
+  'scripts/__tests__/gcp-bootstrap.test.ts',
+  // Offline Git children validate encrypted workspace transport against real repositories.
+  'packages/shared/src/__tests__/workspace-package.test.ts',
+  'packages/cli/src/__tests__/cloud.test.ts',
+  'packages/cli/src/__tests__/cloud-project-import.test.ts',
+  // Bounded disposable npm-shaped children; no registry/network calls.
+  'scripts/__tests__/dependency-audit-diagnostics.test.ts',
   // station#1085: builds throwaway git checkouts and drives `git` through
   // `execFileSync` to prove the manifest derives real revision/branch values
   // — same shape as `content-integrity-gate.test.ts` below.
@@ -220,6 +305,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // through `execFileSync` on purpose — its oracle has to be what git actually
   // returns for a pathspec, not a fixture that would pin the bug instead.
   'scripts/__tests__/gate-scope.test.ts',
+  // station#928: the placement-vocabulary ratchet enumerates its scan scope
+  // through one single-shot `git ls-files` for the same reason as
+  // gate-scope.test.ts above — the scope must be what git tracks, not a
+  // fixture. Fix-forward: landed via #1478 without this classification; the
+  // verification-policy gate caught it on the pull request.
+  'src-ui/src/__tests__/placement-vocabulary.test.ts',
   // station#3549: drives a single `git grep -l` through `execFileSync` to
   // discover every file that calls `adapter.startSession(` — the same "real
   // git, not a fixture" shape as gate-scope.test.ts above. Fix-forward: this
@@ -239,9 +330,19 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#4389: runs the root shell launcher against isolated PATH stubs to
   // prove lifecycle delegation and launch sequencing at the process boundary.
   'scripts/__tests__/dependency-lifecycle.test.ts',
-  // Drives the merge driver's executable entry point with a hermetic build
-  // command so both measured success and fail-without-writing are real exits.
+  // Probes a pinned package-manager executable before selecting an install command.
+  'scripts/__tests__/pnpm-lifecycle.test.ts',
+  // Real child process proves the fixed installer guard excludes a second owner.
+  'scripts/__tests__/dependency-install-retirement.test.ts',
+  // Drives the merge driver's executable entry point as a child process so
+  // the provisional resolution and decline-without-writing are real exits.
   'scripts/__tests__/ui-bundle-budget.test.ts',
+  // #1153: spawns the starved-PR reporter without GITHUB_REPOSITORY to prove
+  // its refusal path exits non-zero and names the remedy.
+  'scripts/__tests__/starved-pr-report.test.ts',
+  // #1120: spawns the backlog gate without GITHUB_REPOSITORY to prove its
+  // refusal path exits non-zero and names the remedy.
+  'scripts/__tests__/backlog-priority-policy.test.ts',
   'scripts/__tests__/install-script.test.ts',
   'scripts/__tests__/installer-tool-output-parsing.test.ts',
   'scripts/__tests__/local-verification.test.ts',
@@ -272,6 +373,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // These tests start real children through the owned-process helper rather
   // than importing node:child_process directly.
   'scripts/__tests__/owned-process.test.ts',
+  // Executes the Node UTC conversion used by the reusable fleet workflow;
+  // retain the process boundary so a host-local offset cannot be mistaken for
+  // the canonical portable-release timestamp contract.
+  'scripts/__tests__/native-release-promotion.test.ts',
   'scripts/__tests__/package-portable-release.test.ts',
   // station#1686: runs the shadow-record reader as a real child process so
   // its REFUSAL path (`--gate` on a home that has never observed anything)
@@ -398,6 +503,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/providers/__tests__/station-control-mcp-passthrough.integration.test.ts',
   'src-server/providers/auth/__tests__/cli-auth-login-path.test.ts',
   'src-server/routes/plugins/__tests__/plugins.routes.test.ts',
+  // One private Node child with exposed GC proves strong lease custody. No
+  // shared state or latency assertion; collection is explicitly requested.
+  'src-server/services/plugins/__tests__/plugin-composition-custody-gc.test.ts',
   'src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts',
   // station#2928: retains the durable ConfigLoader/registry adoption seam;
   // production's default CLI detection reaches child_process transitively.
@@ -430,6 +538,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // knowledge-root journal/lock, proving prepared multi-file recovery and
   // cross-process serialization without sharing an in-memory test double.
   'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',
+  // The observer's FIFO proof swaps a real pipe exactly at native open and
+  // kills only its own child after proving the old flags remain blocked.
+  'src-server/knowledge-store/__tests__/knowledge-record-observation.process.test.ts',
   // SchedulerLedger starts a real Node owner, proves an independent SQLite
   // connection cannot claim its occurrence, then SIGKILLs it for exact
   // liveness reconciliation. Keep that process lifecycle out of ordinary.
@@ -443,10 +554,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture. The children are network-free and short-lived, but the actual
   // process boundary is the claim, so it belongs in the bounded spawn pool.
   'scripts/__tests__/version-packages-lock.test.ts',
-  // station#3616: invokes the real Claude and Codex CLIs against isolated
-  // config homes; their child lifecycles and host binary availability make
-  // this an explicit process-heavy integration test, never ordinary work.
-  'src-server/services/orchestration/__tests__/event-store.test.ts',
   // The room runtime intentionally hard-exits a child after durable history
   // commit and before recovery settlement, then reopens the same SQLite file.
   // That crash/reopen lifecycle must not overlap ordinary workers.
@@ -493,10 +600,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // claim cannot be reconciled, then SIGKILLs it before reclaiming exactly
   // once. This has the same detached-process lifecycle as event-store.test.
   'src-server/services/orchestration/__tests__/recovery-ledger.test.ts',
-  // station#2562: starts a real Node process that holds the cross-process
-  // credential-profile mutation fence, then SIGKILLs it before reclaiming.
-  // It owns the same child lifecycle as recovery-ledger.test.ts.
-  'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts',
   // station#1528: synchronizes four real EventStore processes at one append
   // boundary to prove global ordering and duplicate rejection across SQLite
   // connections. Keep child ownership out of the ordinary worker pool.
@@ -524,7 +627,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // waits are `until`-loops on process-table state with generous budgets, not
   // wall-clock bounds chosen on a quiet host.
   'src-server/services/ssh/__tests__/openssh-reachability.process.test.ts',
+  'src-server/services/orchestration/__tests__/planned-home-transfer-store.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts',
+  'src-server/services/ssh/__tests__/openssh-worker-probe.test.ts',
   'src-server/services/terminal/__tests__/terminal-subprocess-state.test.ts',
   'src-ui/src/contexts/__tests__/ApiBaseContext.test.tsx',
   'src-ui/src/contexts/__tests__/ApiBaseContext.no-duplicate-connection.test.tsx',
@@ -552,6 +657,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // disclosure toggle vs. the message text's own line rects) at a phone
   // viewport.
   'src-ui/src/components/notifications/__tests__/BannerHost.disclosure-overlap.test.tsx',
+  // station#1638: same shape again — launches a real Chromium via
+  // `@playwright/test` to hit-test the banner host against an open modal
+  // surface trapped inside the dock's stacking context.
+  'src-ui/src/components/notifications/__tests__/BannerHost.dialog-stacking.test.tsx',
   // station#4474: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved layout (sibling
   // toolbar control x-offsets across connection states).
@@ -568,6 +677,21 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Chromium via `@playwright/test` to hit-test connections-flow controls
   // with and without an active banner.
   'src-ui/src/__tests__/ConnectionsSectionFrame.banner-hittest.test.tsx',
+  // #1536 E2: same shape again — launches a real Chromium via
+  // `@playwright/test` to measure the dock header's cascade-resolved
+  // identity/project-context geometry (unclipped overflow and wrapped
+  // one-line labels) at a squeezed and a comfortable width.
+  'src-ui/src/__tests__/ChatDockHeader.identityGeometry.test.tsx',
+  // #1642 (review round): same shape again — launches a real Chromium via
+  // `@playwright/test` to prove the readiness adapters classify a real page
+  // into the outcome they report, with the stylesheet resolved so the
+  // presence-not-visibility guardrail is exercised rather than assumed.
+  'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
+  // #1536 B2: same shape again — launches a real Chromium via
+  // `@playwright/test` to prove the Task picker's dialog is not trapped by the
+  // animating message row it opens from (containing block and stacking
+  // context), which no jsdom assertion can observe.
+  'src-ui/src/__tests__/TaskPicker.messageStacking.test.tsx',
   // station#235: launches real Chromium against the actual compact Session
   // inventory markup and cascade-resolved CSS to measure its 390px heading
   // geometry and keyboard order. Browser launch ownership keeps it out of
@@ -588,6 +712,47 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Injects a fixed command adapter at the protected provider boundary and
   // asserts exact child-process argv/options without using a real credential.
   'scripts/__tests__/verify-release-cohort.test.ts',
+  // #1536 F: same shape again — launches a real Chromium via `@playwright/test`
+  // to measure real cascade-resolved flex geometry (which of the dock identity
+  // row's parts truncates first, and whether any two of them overlap).
+  'src-ui/src/__tests__/ChatDockActiveIdentity.overflow.test.tsx',
+  // #1666: same shape again — launches a real Chromium to measure the detail
+  // header's cascade-resolved flex geometry in a narrowed region, which is the
+  // only layer where a collapse-instead-of-wrap is observable at all.
+  'src-ui/src/__tests__/DetailHeaderRegionWidth.geometry.test.tsx',
+  // #1536 F (review round): same shape again — launches a real Chromium to
+  // hit-test the dock header's portalled More menu against the dock it now
+  // paints over. `verification:policy:gate` keys on a `child_process` import
+  // and cannot see either of these: `chromium.launch()` spawns through
+  // `playwright-core`, so the classification is the only thing that keeps a
+  // browser launch out of the ordinary four-worker lane.
+  'src-ui/src/__tests__/ChatDockHeaderMoreMenu.layering.test.tsx',
+  // #1582 E7: same shape again — launches a real Chromium to measure whether
+  // an Activity row's project chip gets a width a reader can identify a
+  // project from.
+  'src-ui/src/__tests__/SessionsView.projectPill.overflow.test.tsx',
+  // #1582 D10, classified late: this one launches Chromium too and was the
+  // only file in the class that never got an entry. Found by grepping
+  // `chromium.launch` across the tree rather than by any gate — the note above
+  // is right that nothing here can see a `playwright-core` spawn, so an
+  // omission is silent until the run is slow or flaky.
+  'src-ui/src/__tests__/SplitPaneLayout.railName.overflow.test.tsx',
+  // #1536 F (round 3): same shape again — launches a real Chromium to read the
+  // Layout menu's RESOLVED row/group borders. A text scan could not: the first
+  // fix tied on specificity with a rule 90 lines below it and lost on source
+  // order while the declaration read correct.
+  'src-ui/src/__tests__/menu-primitive.cascade.test.tsx',
+  // #1616: same shape again — launches a real Chromium to measure whether the
+  // workspace pane picker's overlay is taken out of flow using only the entry
+  // stylesheet every route loads. jsdom computes no layout and would report
+  // the pre-fix inline overlay and the fixed one identically.
+  'src-ui/src/workspace-panes/__tests__/ProjectWorkspacePaneCatalog.overlay.test.tsx',
+  // #1636: launches a real Chromium to measure whether the workspace pane
+  // route's page frame survives on a route that lacks the project-page chunk,
+  // composing only the entry stylesheet and the sheets the route's own module
+  // declares. jsdom computes no layout and would report the pre-fix
+  // edge-to-edge frame and the fixed one identically.
+  'src-ui/src/workspace-panes/__tests__/WorkspacePaneRouteView.frame.test.tsx',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =
@@ -597,6 +762,12 @@ export const VITEST_RESOURCE_MANIFEST = Object.freeze({
   ordinary: Object.freeze({ maxWorkers: ORDINARY_MAX_WORKERS }),
   processHeavy: Object.freeze({ files: PROCESS_HEAVY_VITEST_FILES }),
   processExclusive: Object.freeze({ files: PROCESS_EXCLUSIVE_VITEST_FILES }),
+  coordinatorExclusive: Object.freeze({
+    files: COORDINATOR_EXCLUSIVE_VITEST_FILES,
+  }),
+  credentialLedgerExclusive: Object.freeze({
+    files: CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES,
+  }),
   sharedOutput: Object.freeze({ files: SHARED_OUTPUT_VITEST_FILES }),
   dogfoodReconcile: Object.freeze({ prefix: DOGFOOD_RECONCILE_PREFIX }),
 });
@@ -733,6 +904,8 @@ function explicitFiles(manifest) {
   return [
     ...manifest.processHeavy.files,
     ...manifest.processExclusive.files,
+    ...manifest.coordinatorExclusive.files,
+    ...manifest.credentialLedgerExclusive.files,
     ...manifest.sharedOutput.files,
   ];
 }
@@ -747,6 +920,8 @@ export function ordinaryVitestExcludes(manifest = VITEST_RESOURCE_MANIFEST) {
   return Object.freeze([
     ...manifest.processHeavy.files,
     ...manifest.processExclusive.files,
+    ...manifest.coordinatorExclusive.files,
+    ...manifest.credentialLedgerExclusive.files,
     ...manifest.sharedOutput.files,
     `${manifest.dogfoodReconcile.prefix}*.test.ts`,
     `${manifest.dogfoodReconcile.prefix}/**`,
@@ -775,6 +950,81 @@ export function assertOrdinaryVitestSelection(
     );
   }
   return selected;
+}
+
+/** Apply the canonical resource ownership map to one exact, bounded subset. */
+export function partitionVitestResourceSubset(
+  files,
+  { root = process.cwd(), manifest = VITEST_RESOURCE_MANIFEST } = {},
+) {
+  if (!Array.isArray(files) || files.length === 0)
+    throw new Error('Vitest resource subset requires at least one test file');
+  const normalizedFiles = files.map(normalizedPath).sort();
+  if (normalizedFiles.some((file) => !isSafeRelativeFile(file)))
+    throw new Error('Vitest resource subset contains an unsafe path');
+  if (new Set(normalizedFiles).size !== normalizedFiles.length)
+    throw new Error('Vitest resource subset contains duplicate test paths');
+  const explicit = explicitFiles(manifest);
+  if (new Set(explicit).size !== explicit.length)
+    throw new Error('Vitest resource groups must be disjoint');
+  if (
+    explicit.some(
+      (file) => !isSafeRelativeFile(file) || isDogfoodReconcileFile(file),
+    )
+  )
+    throw new Error(
+      'Vitest resource manifest contains an invalid explicit path',
+    );
+
+  const groups = {
+    ordinary: [],
+    processHeavy: [],
+    processExclusive: [],
+    coordinatorExclusive: [],
+    credentialLedgerExclusive: [],
+    sharedOutput: [],
+    dogfoodReconcile: [],
+  };
+  for (const file of normalizedFiles) {
+    if (isDogfoodReconcileFile(file)) groups.dogfoodReconcile.push(file);
+    else if (manifest.sharedOutput.files.includes(file))
+      groups.sharedOutput.push(file);
+    else if (manifest.processExclusive.files.includes(file))
+      groups.processExclusive.push(file);
+    else if (manifest.coordinatorExclusive.files.includes(file))
+      groups.coordinatorExclusive.push(file);
+    else if (manifest.credentialLedgerExclusive.files.includes(file))
+      groups.credentialLedgerExclusive.push(file);
+    else if (manifest.processHeavy.files.includes(file))
+      groups.processHeavy.push(file);
+    else groups.ordinary.push(file);
+  }
+  for (const file of groups.ordinary) {
+    if (
+      existsSync(resolve(root, file)) &&
+      hasDirectChildProcessImport(
+        readFileSync(resolve(root, file), 'utf8'),
+        file,
+      )
+    )
+      throw new Error(
+        `direct node:child_process importer needs an explicit resource classification: ${file}`,
+      );
+  }
+  const classified = Object.values(groups).flat();
+  if (
+    classified.length !== normalizedFiles.length ||
+    new Set(classified).size !== normalizedFiles.length
+  )
+    throw new Error('Vitest resource groups do not exactly cover subset');
+  return Object.freeze(
+    Object.fromEntries(
+      Object.entries(groups).map(([name, selected]) => [
+        name,
+        Object.freeze(selected),
+      ]),
+    ),
+  );
 }
 
 /**
@@ -818,59 +1068,17 @@ export function buildVitestResourceGroups(
     }
   }
 
-  const groups = {
-    ordinary: [],
-    processHeavy: [],
-    processExclusive: [],
-    sharedOutput: [],
-    dogfoodReconcile: [],
-  };
-  for (const file of normalizedDiscovered) {
-    if (isDogfoodReconcileFile(file)) groups.dogfoodReconcile.push(file);
-    else if (manifest.sharedOutput.files.includes(file))
-      groups.sharedOutput.push(file);
-    else if (manifest.processExclusive.files.includes(file))
-      groups.processExclusive.push(file);
-    else if (manifest.processHeavy.files.includes(file))
-      groups.processHeavy.push(file);
-    else groups.ordinary.push(file);
-  }
+  const groups = partitionVitestResourceSubset(normalizedDiscovered, {
+    root,
+    manifest,
+  });
   if (groups.dogfoodReconcile.length === 0) {
     throw new Error(
       'Vitest resource manifest discovered no dogfood-reconcile files',
     );
   }
 
-  // New process-tree tests are deliberately noisy until a reviewer chooses a
-  // resource group.  Shared-output and dogfood placement are valid reviewed
-  // exceptions; ordinary placement is never implicit for these imports.
-  for (const file of normalizedDiscovered) {
-    const source = readFileSync(resolve(root, file), 'utf8');
-    if (
-      hasDirectChildProcessImport(source, file) &&
-      groups.ordinary.includes(file)
-    ) {
-      throw new Error(
-        `direct node:child_process importer needs an explicit resource classification: ${file}`,
-      );
-    }
-  }
-
-  const classified = Object.values(groups).flat();
-  if (
-    classified.length !== normalizedDiscovered.length ||
-    new Set(classified).size !== normalizedDiscovered.length
-  ) {
-    throw new Error('Vitest resource groups do not exactly cover discovery');
-  }
-  return Object.freeze(
-    Object.fromEntries(
-      Object.entries(groups).map(([name, files]) => [
-        name,
-        Object.freeze(files),
-      ]),
-    ),
-  );
+  return groups;
 }
 
 export function discoverVitestResourceGroups(options = {}) {

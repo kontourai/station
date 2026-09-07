@@ -20,7 +20,7 @@ import {
 } from '../views/agent-editor/agentsViewUtils';
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useAgentConnectionsQuery: () => ({ data: [] }),
+  useEngineConnectionsQuery: () => ({ data: [] }),
   useModelConnectionsQuery: () => ({ data: [] }),
   useProjectsQuery: () => ({ data: [] }),
   useCredentialRecoveryQuery: () => ({

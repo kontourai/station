@@ -16,6 +16,8 @@ const NOTIFICATION_LABELS: Readonly<Record<string, string>> = {
   // (#765 D5) — one map so the two surfaces cannot drift.
   'device-pairing': 'Device pairing',
   'pairing-request': 'Device pairing',
+  // #1536 D8: Station's own Agent cannot run yet.
+  'setup-incomplete': 'Setup incomplete',
 };
 
 export function notificationCategoryLabel(category: string): string {

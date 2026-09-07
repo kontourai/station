@@ -1,8 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-feed=${1:?feed path required}
-test -s "$feed"
+feed=${1:-}
+node scripts/native-update-feed.mjs validate-config
+custom_feed=false
+if [[ -n "${VITE_NATIVE_APP_UPDATE_FEED_URL:-}" ]]; then
+  test -n "$feed" || { echo "Configured native update feed requires a staged feed file" >&2; exit 1; }
+  test -s "$feed"
+  test -n "${NATIVE_APP_UPDATE_PUBLISH_TOKEN:-}" || { echo "Missing native update provider credential" >&2; exit 1; }
+  custom_feed=true
+elif [[ -n "$feed" ]]; then
+  echo "Refusing a staged feed file without configured native update feed authority" >&2
+  exit 1
+fi
 public=false
 complete=false
 ambiguous=false
@@ -50,6 +60,12 @@ else
   exit 75
 fi
 test "$publish_status" == 0
+
+if [[ "$custom_feed" != true ]]; then
+  complete=true
+  trap - EXIT INT TERM
+  exit 0
+fi
 
 if [[ "${STATION_TEST_SIGNAL:-}" == TERM ]]; then kill -TERM $$; fi
 if [[ "${STATION_TEST_SIGNAL:-}" == INT ]]; then kill -INT $$; fi

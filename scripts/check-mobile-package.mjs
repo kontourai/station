@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { assertIosStoreSdk } from './check-ios-store-sdk.mjs';
 
 const CHECKED_IOS_ALLOWLIST = JSON.parse(
   readFileSync(
@@ -18,6 +19,42 @@ const REVIEWED_IOS_ENTITLEMENTS = new Set([
   'beta-reports-active',
 ]);
 const SYSTEM_DEPENDENCY_PREFIXES = ['/System/Library/', '/usr/lib/'];
+const BUILD_MANIFEST_FILE = 'station-build.json';
+
+export function parseIosClientBuildProvenance(contents) {
+  let parsed;
+  try {
+    parsed = JSON.parse(contents);
+  } catch {
+    throw new Error('Packaged iOS app has invalid station-build.json');
+  }
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    Array.isArray(parsed) ||
+    typeof parsed.sha !== 'string' ||
+    !/^[0-9a-f]{40}$/i.test(parsed.sha) ||
+    typeof parsed.branch !== 'string' ||
+    parsed.branch.trim().length === 0 ||
+    typeof parsed.builtAt !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(
+      parsed.builtAt,
+    ) ||
+    !Number.isFinite(Date.parse(parsed.builtAt))
+  ) {
+    throw new Error('Packaged iOS app has invalid station-build.json');
+  }
+  const canonical = parsed.builtAt.includes('.')
+    ? parsed.builtAt
+    : parsed.builtAt.replace(/Z$/, '.000Z');
+  if (new Date(parsed.builtAt).toISOString() !== canonical)
+    throw new Error('Packaged iOS app has invalid station-build.json');
+  return {
+    sha: parsed.sha.toLowerCase(),
+    branch: parsed.branch,
+    builtAt: new Date(parsed.builtAt).toISOString(),
+  };
+}
 
 function plistKeys(plist) {
   return [...plist.matchAll(/<key>([^<]+)<\/key>/g)].map((match) => match[1]);
@@ -33,16 +70,54 @@ function linkedPaths(output) {
     .filter(Boolean);
 }
 
+/**
+ * Resolves the checked-in allowlist against one packaged app. Every path in
+ * the allowlist is relative to the application bundle, so the same review
+ * covers Stable, Beta, and Nightly, whose bundle directories differ only by
+ * product name; the main executable is named by the bundle's own
+ * CFBundleExecutable through the `{executable}` token rather than by a
+ * product name written into the allowlist.
+ */
+function resolveAllowlist(allowlist, executable) {
+  const resolve = (entries) =>
+    entries.map((entry) => {
+      if (!entry.includes('{executable}')) return entry;
+      if (typeof executable !== 'string' || !executable.length)
+        throw new Error(
+          'Packaged iOS Info.plist names no CFBundleExecutable to resolve the allowlist against',
+        );
+      return entry.replaceAll('{executable}', executable);
+    });
+  return {
+    ...allowlist,
+    signedBundlePaths: resolve(allowlist.signedBundlePaths),
+    machOPaths: resolve(allowlist.machOPaths),
+    privacyManifestPaths: resolve(allowlist.privacyManifestPaths),
+  };
+}
+
 export function auditIosInventory(
   {
     info,
+    executable,
     privacyManifests,
     signedBundles,
     dependencies,
     staticArchives = /** @type {string[]} */ ([]),
   },
-  allowlist = CHECKED_IOS_ALLOWLIST,
+  checkedInAllowlist = CHECKED_IOS_ALLOWLIST,
 ) {
+  const sdkNames = [
+    ...info.matchAll(
+      /<key>DTSDKName<\/key>\s*<string>iphoneos([^<]+)<\/string>/g,
+    ),
+  ];
+  if (sdkNames.length !== 1)
+    throw new Error(
+      'Packaged iOS app must identify exactly one device DTSDKName',
+    );
+  assertIosStoreSdk(sdkNames[0][1]);
+  const allowlist = resolveAllowlist(checkedInAllowlist, executable);
   if (staticArchives.length)
     throw new Error(
       `Packaged iOS app contains static build artifact(s): ${staticArchives.join(', ')}`,
@@ -60,7 +135,7 @@ export function auditIosInventory(
   for (const { path, contents } of privacyManifests) {
     if (!allowlist.privacyManifestPaths.includes(path)) {
       throw new Error(
-        `Privacy manifest ${path} is not in the root-relative allowlist`,
+        `Privacy manifest ${path} is not in the bundle-relative allowlist`,
       );
     }
     const unexpectedPrivacyKeys = plistKeys(contents).filter(
@@ -105,7 +180,7 @@ export function auditIosInventory(
   for (const { binary, output } of dependencies) {
     if (!allowlist.machOPaths.includes(binary)) {
       throw new Error(
-        `Mach-O ${binary} is not in the checked-in root-relative allowlist`,
+        `Mach-O ${binary} is not in the checked-in bundle-relative allowlist`,
       );
     }
     const unexpected = linkedPaths(output).filter((path) => {
@@ -133,13 +208,14 @@ export function auditIosInventory(
 export function auditIosPackage({ info, entitlements, dependencies }) {
   return auditIosInventory({
     info,
+    executable: 'Station',
     privacyManifests: [
       {
         path: 'PrivacyInfo.xcprivacy',
         contents: '<key>NSPrivacyTracking</key><false/>',
       },
     ],
-    signedBundles: [{ path: 'Station.app', entitlements }],
+    signedBundles: [{ path: '.', entitlements }],
     dependencies: [{ binary: 'Station', output: dependencies }],
   });
 }
@@ -152,6 +228,11 @@ function command(program, args) {
 }
 function lines(program, args) {
   return command(program, args).split('\n').filter(Boolean);
+}
+
+/** A path inside the application bundle, with the bundle itself as `.`. */
+function bundleRelative(app, path) {
+  return relative(app, path) || '.';
 }
 
 export function inspectIosPackageRoot(root) {
@@ -172,7 +253,7 @@ export function inspectIosPackageRoot(root) {
     '-type',
     'f',
   ]).map((path) => ({
-    path: relative(root, path),
+    path: bundleRelative(app, path),
     contents: command('plutil', ['-convert', 'xml1', '-o', '-', path]),
   }));
   const signedPaths = [
@@ -201,33 +282,56 @@ export function inspectIosPackageRoot(root) {
   ];
   const uniqueSignedPaths = [...new Set(signedPaths)];
   const signedBundles = uniqueSignedPaths.map((path) => ({
-    path: relative(root, path),
+    path: bundleRelative(app, path),
     entitlements: command('codesign', ['-d', '--entitlements', ':-', path]),
   }));
   const binaries = lines('find', [app, '-type', 'f']).filter((path) =>
     command('file', ['-b', path]).includes('Mach-O'),
   );
   const staticArchives = lines('find', [app, '-type', 'f', '-name', '*.a']).map(
-    (path) => relative(root, path),
+    (path) => bundleRelative(app, path),
+  );
+  const buildManifests = lines('find', [
+    app,
+    '-type',
+    'f',
+    '-name',
+    BUILD_MANIFEST_FILE,
+  ]);
+  if (buildManifests.length !== 1)
+    throw new Error(
+      `Packaged iOS app must contain exactly one ${BUILD_MANIFEST_FILE}`,
+    );
+  const clientBuild = parseIosClientBuildProvenance(
+    readFileSync(buildManifests[0], 'utf8'),
   );
   if (binaries.length === 0) throw new Error('IPA contains no Mach-O binaries');
   const dependencies = binaries.map((binary) => ({
-    binary: relative(root, binary),
+    binary: bundleRelative(app, binary),
     output: command('otool', ['-L', binary]),
   }));
-  return auditIosInventory({
-    info: command('plutil', [
-      '-convert',
-      'xml1',
-      '-o',
-      '-',
-      join(app, 'Info.plist'),
-    ]),
-    privacyManifests,
-    signedBundles,
-    dependencies,
-    staticArchives,
-  });
+  const executable = command('/usr/libexec/PlistBuddy', [
+    '-c',
+    'Print :CFBundleExecutable',
+    join(app, 'Info.plist'),
+  ]).trim();
+  return {
+    ...auditIosInventory({
+      info: command('plutil', [
+        '-convert',
+        'xml1',
+        '-o',
+        '-',
+        join(app, 'Info.plist'),
+      ]),
+      executable,
+      privacyManifests,
+      signedBundles,
+      dependencies,
+      staticArchives,
+    }),
+    clientBuild,
+  };
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {

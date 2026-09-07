@@ -67,7 +67,24 @@ export function resolveFocusedTestFiles(args, root = SCRIPT_ROOT) {
   });
 }
 
-export function buildFocusedVitestInvocation(args, root = SCRIPT_ROOT) {
+/**
+ * @param {readonly string[]} args
+ * @param {string} [root]
+ * @param {{ testTimeoutMs?: number }} [options]
+ */
+export function buildFocusedVitestInvocation(
+  args,
+  root = SCRIPT_ROOT,
+  { testTimeoutMs } = {},
+) {
+  if (
+    testTimeoutMs !== undefined &&
+    (!Number.isSafeInteger(testTimeoutMs) ||
+      testTimeoutMs < 1 ||
+      testTimeoutMs > 2_147_483_647)
+  ) {
+    throw new Error('testTimeoutMs must be a positive timer-range integer');
+  }
   const realRoot = realpathSync(root);
   const tests = resolveFocusedTestFiles(args, realRoot);
   const vitestPath = path.join(
@@ -93,6 +110,9 @@ export function buildFocusedVitestInvocation(args, root = SCRIPT_ROOT) {
       ...tests,
       '--maxWorkers=1',
       '--no-file-parallelism',
+      ...(testTimeoutMs === undefined
+        ? []
+        : [`--testTimeout=${testTimeoutMs}`]),
     ],
   };
 }
@@ -134,16 +154,23 @@ export function focusedVitestVerdict({ inspection, invocation, exitCode }) {
   return { exitCode, diagnostic: null };
 }
 
+/**
+ * @param {readonly string[]} args
+ * @param {{ root?: string, spawnProcess?: typeof spawn, assertDependencyProvenance?: typeof assertWorkspacePackageProvenance, testTimeoutMs?: number }} [options]
+ */
 export async function runFocusedTests(
   args,
   {
     root = SCRIPT_ROOT,
     spawnProcess = spawn,
     assertDependencyProvenance = assertWorkspacePackageProvenance,
+    testTimeoutMs,
   } = {},
 ) {
   assertDependencyProvenance({ cwd: root });
-  const invocation = buildFocusedVitestInvocation(args, root);
+  const invocation = buildFocusedVitestInvocation(args, root, {
+    testTimeoutMs,
+  });
   process.stdout.write(
     `[test:focused] root=${invocation.root}; files=${invocation.tests.length}\n`,
   );

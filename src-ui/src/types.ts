@@ -381,11 +381,11 @@ export type NavigationView =
       redirectFromAlias?: boolean;
     }
   | { type: 'connections' }
-  | { type: 'connections-providers' }
-  | { type: 'connections-provider-edit'; id: string }
+  | { type: 'connections-models' }
+  | { type: 'connections-model-edit'; id: string }
   | { type: 'connections-engines' }
-  | { type: 'connections-runtime-edit'; id: string }
-  | { type: 'connections-acp-new'; providerId: string }
+  | { type: 'connections-engine-edit'; id: string }
+  | { type: 'connections-engine-new'; providerId: string }
   | { type: 'connections-tools' }
   | { type: 'connections-tool-edit'; id: string }
   | { type: 'connections-knowledge' }
@@ -393,18 +393,6 @@ export type NavigationView =
   | { type: 'plugins' }
   | { type: 'registry'; tab?: RegistryCatalogTab }
   | { type: 'review-queue' }
-  | {
-      type: 'activity';
-      sessionId?: string;
-      /**
-       * One-shot route intent: land the reader on the selected session's
-       * evidence region (receipts/diagnostics). Only meaningful alongside
-       * `sessionId`; consumed and cleared by the Activity surface after it is
-       * honored, following the `openFilePreviewIntent` idiom
-       * (`navigation-store.ts`).
-       */
-      focus?: 'evidence';
-    }
   | { type: 'developer'; tab?: DeveloperTab }
   | { type: 'schedule' }
   | { type: 'settings' }
@@ -442,7 +430,7 @@ export type DeveloperTab =
 export type DockMode = 'left' | 'bottom' | 'right';
 
 /**
- * Parse a persisted dock-mode value (URL param, sessionStorage override).
+ * Parse a persisted dock-mode value (URL param or device setting).
  * The desktop overlay bottom mode was retired (archive#1043): `bottom` now means
  * the inline grid placement, and the transitional `bottom-inline` name
  * normalizes to it.

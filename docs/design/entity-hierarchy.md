@@ -27,9 +27,8 @@ diagrams below — the `AgentType`/`executionClass` snippet in "Add agent type t
 `AgentSpec`" further down is retained only as the historical pre-unification sketch it
 always was.
 **Date:** 2026-03-27 (revised 2026-04-05; unification note 2026-07-26; #894 status note 2026-07-26; #975 status note 2026-07-27; #1003 status note 2026-07-27)
-**Author:** Brian Anderson + Station
 **Depends on:** `.plans/01-connected-agents-overhaul.md`, `.plans/03-connections-runtime-ux.md`
-**Reference:** a surveyed provider/orchestration architecture (internal competitive notes)
+**Reference:** a surveyed provider/orchestration architecture
 
 ---
 

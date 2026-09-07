@@ -1,4 +1,4 @@
-import { connectionTypeLabel } from '../../utils/execution';
+import { modelProviderDisplayLabel } from '../../utils/modelProviderDisplay';
 import type { ProviderConnection } from './types';
 
 export function capabilitiesForType(
@@ -108,7 +108,7 @@ export function describeProvider(provider: ProviderConnection): {
         .filter((capability) => capability !== 'vectordb')
         .map((capability) => capability.toUpperCase())
         .join(' · ') +
-      (provider.type ? ` · ${connectionTypeLabel(provider.type)}` : ''),
+      (provider.type ? ` · ${modelProviderDisplayLabel(provider.type)}` : ''),
   };
 }
 

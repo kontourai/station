@@ -56,7 +56,7 @@ import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
 } from '@kontourai/station-shared/process-identity';
-import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
+import { spawnedStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import {
   type StoreIntegrityReport,
   type StoreIntegrityResult,
@@ -3799,16 +3799,17 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   const serverEnv: Record<string, string> = {
     ...(process.env as Record<string, string>),
     PORT: String(serverPort),
-    // Derive the root from the home this spawn actually chose. A bare
+    // Root the child at the home this spawn actually chose. A bare
     // `resolveStationRoot()` reads only ambient env, and `--home`, `--base`
     // and `--temp-home` never write to `process.env` — so it returned
     // `~/.station` while STATION_HOME below named an isolated directory,
-    // handing the child an explicit root it does not own. An explicit
-    // STATION_ROOT still wins inside resolveStationRoot.
-    STATION_ROOT: resolveStationRoot({
-      ...process.env,
-      STATION_HOME: projectHome,
-    }),
+    // handing the child an explicit root it does not own.
+    //
+    // `spawnedStationRoot` returns undefined for a self-rooted home, and the
+    // key is then dropped rather than spelled out: the child's admission guard
+    // reads an explicit `STATION_ROOT` equal to `STATION_HOME` as a home
+    // swallowing a foreign root and refuses to boot. The child derives the
+    // identical root from STATION_HOME alone.
     STATION_HOME: projectHome,
     // Resolved from the CLI flag/default decision, never inherited. Runtime
     // test seams may trust `--temp-home` only through this spawn-owned fact.
@@ -3827,6 +3828,12 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     // explicit --consent-port survives to the process that binds it.
     STATION_CONSENT_PORT: String(consentPort),
   };
+  // Set or removed, never left to the inherited value: an ambient
+  // `STATION_ROOT` that this spawn's home does not belong under would
+  // otherwise survive the spread.
+  const spawnRoot = spawnedStationRoot(projectHome, process.env);
+  if (spawnRoot) serverEnv.STATION_ROOT = spawnRoot;
+  else delete serverEnv.STATION_ROOT;
   // This marker is a capability for precisely the server spawn governed by
   // service-run. Never inherit it through a server-initiated lifecycle call.
   delete serverEnv.STATION_SUPERVISOR_PID;

@@ -48,11 +48,24 @@ function fullyBoundInstance(id: string) {
     stateKey: `state-${id}`,
     boundContext: {
       projectId: `project-${id}`,
+      layoutId: `layout-${id}`,
       taskId: `task-${id}`,
       sessionId: `session-${id}`,
+      turnId: `turn-${id}`,
+      answerReferenceId: `answer-${id}`,
       runId: `run-${id}`,
       workspaceId: `workspace-${id}`,
       sourceId: `source-${id}`,
+      contribution: {
+        id: `contribution-${id}`,
+        version: '1.0.0',
+        sourceIdentity: {
+          id: `source-${id}`,
+          kind: 'local',
+          source: 'file:///plugins/builder',
+        },
+        provenance: { origin: 'plugin', pluginId: 'builder' },
+      },
     },
   })!;
 }
@@ -135,6 +148,67 @@ function overDepthTree(instanceIds: readonly string[]): RawHostNode {
 }
 
 describe('Workspace Pane host document', () => {
+  test('admits and restores the exact structured plugin contribution', () => {
+    const pane = fullyBoundInstance('plugin');
+    const baseline = createWorkspacePaneHostBaselineDocument(
+      'host',
+      { kind: 'project', projectId: 'project', layoutId: 'layout' },
+      [pane],
+    );
+    expect(baseline?.instances).toEqual([pane]);
+    expect(parseWorkspacePaneHostDocument(baseline)?.instances).toEqual([pane]);
+    expect(
+      restoreWorkspacePaneHostDocument(JSON.parse(JSON.stringify(baseline)), [
+        pane,
+      ]).document?.instances,
+    ).toEqual([pane]);
+  });
+
+  test('rejects malformed, oversized, and accessor contribution records without invoking getters', () => {
+    const pane = fullyBoundInstance('plugin');
+    const contribution = pane.boundContext!.contribution!;
+    const getter = vi.fn(() => 'builder');
+    for (const bad of [
+      { ...contribution, provenance: { origin: 'plugin' } },
+      {
+        ...contribution,
+        provenance: {
+          origin: 'plugin',
+          pluginId: 'builder',
+          mcpServerId: 'other',
+        },
+      },
+      {
+        ...contribution,
+        sourceIdentity: {
+          ...contribution.sourceIdentity,
+          source: 'x'.repeat(1025),
+        },
+      },
+      {
+        ...contribution,
+        provenance: Object.defineProperty({ origin: 'plugin' }, 'pluginId', {
+          enumerable: true,
+          get: getter,
+        }),
+      },
+    ]) {
+      const invalid = {
+        ...pane,
+        boundContext: { ...pane.boundContext, contribution: bad },
+      };
+      expect(
+        parseWorkspacePaneHostDocument(documentWith(invalid as typeof pane)),
+      ).toBeNull();
+      expect(
+        createWorkspacePaneHostBaselineDocument('host', { kind: 'ambient' }, [
+          invalid as typeof pane,
+        ]),
+      ).toBeNull();
+    }
+    expect(getter).not.toHaveBeenCalled();
+  });
+
   test('derives only identities actually bound by each host scope', () => {
     expect(workspacePaneHostSuppliableContexts({ kind: 'ambient' })).toEqual(
       new Set(),
@@ -514,5 +588,101 @@ describe('Workspace Pane host document', () => {
         instanceIds: [valid.instanceId, second.instanceId],
       },
     });
+  });
+
+  test('hands back the catalog record itself, not a copy that reads the same', () => {
+    const pane = fullyBoundInstance('plugin');
+    const catalog = [pane];
+    const persisted = JSON.parse(JSON.stringify(documentWith(pane))) as unknown;
+
+    // The strict catalog-match path.
+    const restored = restoreWorkspacePaneHostDocument(persisted, catalog);
+    expect(restored.document?.instances).toEqual([pane]);
+    expect(restored.document?.instances[0]).toBe(pane);
+
+    // The repair path: an invalid sibling forces per-candidate recovery, and
+    // the surviving pane must still be the catalog's own record.
+    const repaired = restoreWorkspacePaneHostDocument(
+      {
+        ...(persisted as Record<string, unknown>),
+        instances: [{ version: '1.0', instanceId: 'broken' }, pane],
+      },
+      catalog,
+    );
+    expect(repaired.document?.instances[0]).toBe(pane);
+
+    // The recovery path: every persisted candidate is rejected, so the document
+    // is rebuilt from the catalog alone and must still carry its records.
+    const rebuilt = restoreWorkspacePaneHostDocument(
+      {
+        ...(persisted as Record<string, unknown>),
+        instances: [{ ...pane, stateKey: 'different-state' }],
+      },
+      catalog,
+    );
+    expect(rebuilt.failures.map((failure) => failure.code)).toContain(
+      'unknown-instance',
+    );
+    expect(rebuilt.document?.instances[0]).toBe(pane);
+
+    // The baseline document seeded straight from a catalog.
+    expect(
+      createWorkspacePaneHostBaselineDocument(
+        'host',
+        { kind: 'project', projectId: 'project', layoutId: 'layout' },
+        catalog,
+      )?.instances[0],
+    ).toBe(pane);
+  });
+
+  test('canonicalizes a supplied record that is not already its own canonical form', () => {
+    const pane = instance('one');
+    const widened = { ...pane, unexpected: 'not-a-contract-field' };
+    const restored = restoreWorkspacePaneHostDocument(documentWith(pane), [
+      widened,
+    ]);
+    const admitted = restored.document?.instances[0];
+    expect(admitted).toEqual(pane);
+    expect(admitted).not.toBe(widened);
+    expect(Object.keys(admitted!)).not.toContain('unexpected');
+  });
+
+  test('canonicalizes records carrying an own key that reads as equal but the parser never produces', () => {
+    const pane = instance('one');
+    const nonEnumerable = Object.defineProperty({ ...pane }, 'hidden', {
+      value: 'not-a-contract-field',
+      enumerable: false,
+    });
+    const undefinedValued = { ...pane, unexpected: undefined };
+    // Both are admitted by `hasSafeDataGraph` and both read as deeply equal to
+    // the canonical record — `Object.keys` and JSON hide the extra key
+    // entirely — so only own-key equality separates them from it.
+    for (const supplied of [nonEnumerable, undefinedValued]) {
+      const admitted = restoreWorkspacePaneHostDocument(documentWith(pane), [
+        supplied as typeof pane,
+      ]).document?.instances[0];
+      expect(admitted).toEqual(pane);
+      expect(admitted).not.toBe(supplied);
+      expect(Reflect.ownKeys(admitted!)).toEqual([
+        'version',
+        'descriptorId',
+        'instanceId',
+        'stateKey',
+      ]);
+    }
+  });
+
+  test('retains a null-prototype record, which is the shape every catalog record has', () => {
+    // `cloneData` builds catalog records with `Object.create(null)`, so a guard
+    // that demanded `Object.prototype` would copy every record this contract
+    // exists to hand back. A null prototype carries no extra own key and is the
+    // more inert of the two, so it is canonical here.
+    const pane = instance('one');
+    const nullPrototype = Object.assign(Object.create(null), pane);
+    expect(
+      restoreWorkspacePaneHostDocument(documentWith(pane), [
+        nullPrototype as typeof pane,
+      ]).document?.instances[0],
+    ).toBe(nullPrototype);
   });
 });

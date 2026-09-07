@@ -32,6 +32,19 @@ export interface WorkspacePaneAvailabilityCatalogEntry {
   availability: WorkspacePaneAvailability;
   /** A UI-local registry fact; it never changes the availability contract. */
   rendererGate?: 'remote-isolation';
+  /**
+   * UI-local: the client facts that decide this pane's RENDERER have not
+   * settled yet — the plugin registry is still loading its bundles, or app
+   * config has not been read. Never part of the availability contract: it says
+   * the answer is not in yet, not what the answer is.
+   *
+   * It exists because the resolver has no third value for "don't know yet". A
+   * renderer that is not registered YET is indistinguishable, to the resolver,
+   * from one that is gone — so on every cold load a plugin pane spent 3–10
+   * seconds telling the reader it was "Temporarily unavailable", which is an
+   * outage report for a page that was simply still loading.
+   */
+  rendererResolution?: 'pending';
 }
 
 export interface WorkspacePaneAvailabilityPresentation {
@@ -42,6 +55,11 @@ export interface WorkspacePaneAvailabilityPresentation {
   action?: WorkspacePaneAvailabilityAction;
   actionLabel?: string;
   reviewInRegistry?: boolean;
+  /**
+   * This presentation reports a fact still being determined, not a verdict.
+   * A host may render a skeleton; every host at least stops saying "unavailable".
+   */
+  pending?: boolean;
 }
 
 const STATE_LABELS: Record<WorkspacePaneAvailabilityState, string> = {
@@ -106,9 +124,12 @@ const ACTION_LABELS: Record<WorkspacePaneAvailabilityAction['code'], string> = {
  * Turns an authoritative, bounded availability result into shared copy. No
  * host diagnostics, paths, URLs, or renderer details enter this projection.
  */
+export const WORKSPACE_PANE_AVAILABILITY_PENDING_LABEL = 'Loading…';
+
 export function presentWorkspacePaneAvailability(
   availability: WorkspacePaneAvailability,
   rendererGate?: WorkspacePaneAvailabilityCatalogEntry['rendererGate'],
+  rendererResolution?: WorkspacePaneAvailabilityCatalogEntry['rendererResolution'],
 ): WorkspacePaneAvailabilityPresentation {
   const extensionsDisabled =
     rendererGate === 'remote-isolation' &&
@@ -122,6 +143,24 @@ export function presentWorkspacePaneAvailability(
       reasonLabel:
         'Remote extensions are off for this Station on this device — you can turn them on from the Registry, which explains the trade-off first.',
       reviewInRegistry: true,
+    };
+  }
+  // Only where the UNSETTLED fact is the one that produced the refusal. A pane
+  // refused for a permission or a missing Project is refused for a reason
+  // already known, and replacing that with "Loading…" would hide the very
+  // thing the reader can act on. Deliberately no action either: offering
+  // "Check again" for something still in flight invents work for the reader.
+  if (
+    rendererResolution === 'pending' &&
+    (availability.reason.code === 'renderer-missing' ||
+      availability.reason.code === 'renderer-unknown')
+  ) {
+    return {
+      state: availability.state,
+      stateLabel: WORKSPACE_PANE_AVAILABILITY_PENDING_LABEL,
+      reasonCode: availability.reason.code,
+      reasonLabel: 'Checking whether this pane can open here.',
+      pending: true,
     };
   }
   return {

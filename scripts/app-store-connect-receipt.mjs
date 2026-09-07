@@ -240,12 +240,16 @@ async function buildReceipt(argv, env) {
   const ipa = requiredOption(argv, '--ipa');
   const workflowRunUrl = requiredOption(argv, '--workflow-run-url');
   const output = requiredOption(argv, '--output');
+  const artifactManifestPath = requiredOption(argv, '--artifact-manifest');
   const deliveryMode = requiredOption(argv, '--delivery-mode');
   if (!['uploaded', 'reconciled'].includes(deliveryMode))
     throw new Error('--delivery-mode must be uploaded or reconciled');
   if (!SHA_PATTERN.test(sourceSha)) {
     throw new Error('--source-sha must be exactly 40 lowercase hex characters');
   }
+  const artifactManifest = readArtifactManifest(artifactManifestPath);
+  if (artifactManifest.sha !== sourceSha)
+    throw new Error('--artifact-manifest sha must equal --source-sha');
   const build = await queryBuild({ appId, bundleVersion }, env);
   if (build?.attributes?.processingState !== 'VALID') {
     throw new Error(
@@ -272,16 +276,84 @@ async function buildReceipt(argv, env) {
     // are not downloadable through this API, so never label a newly rebuilt
     // local IPA as its digest or source provenance.
     ...(deliveryMode === 'uploaded'
-      ? { ipaSha256, providerSourceSha: sourceSha }
+      ? {
+          ipaSha256,
+          providerSourceSha: sourceSha,
+          ...receiptArtifactProvenance(deliveryMode, artifactManifest.builtAt),
+        }
       : {
           candidateIpaSha256: ipaSha256,
           providerIpaSha256: null,
           providerSourceSha: 'NOT_VERIFIED',
+          ...receiptArtifactProvenance(deliveryMode, artifactManifest.builtAt),
         }),
     deliveryMode,
     workflowRunUrl,
     observedAt: new Date().toISOString(),
   });
+}
+
+/** Never attribute a rebuilt candidate's time to an existing provider build. */
+export function receiptArtifactProvenance(
+  deliveryMode,
+  candidateArtifactBuiltAt,
+) {
+  assertCanonicalArtifactBuiltAt(candidateArtifactBuiltAt);
+  if (deliveryMode === 'uploaded') {
+    return {
+      candidateArtifactBuiltAt,
+      providerArtifactBuiltAt: candidateArtifactBuiltAt,
+    };
+  }
+  if (deliveryMode === 'reconciled') {
+    return {
+      candidateArtifactBuiltAt,
+      providerArtifactBuiltAt: null,
+    };
+  }
+  throw new Error('delivery mode must be uploaded or reconciled');
+}
+
+export function readArtifactManifest(path) {
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    throw new Error('--artifact-manifest must be a readable JSON file');
+  }
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    Array.isArray(parsed) ||
+    typeof parsed.sha !== 'string' ||
+    !SHA_PATTERN.test(parsed.sha) ||
+    !validArtifactBuiltAt(parsed.builtAt)
+  )
+    throw new Error(
+      '--artifact-manifest must contain canonical sha and builtAt',
+    );
+  return { sha: parsed.sha, builtAt: parsed.builtAt };
+}
+
+function validArtifactBuiltAt(value) {
+  if (
+    typeof value !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)
+  )
+    return false;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return false;
+  const canonical = value.includes('.') ? value : value.replace(/Z$/, '.000Z');
+  return new Date(parsed).toISOString() === canonical;
+}
+
+/** Publicly testable validation for immutable artifact timestamps. */
+export function assertCanonicalArtifactBuiltAt(value) {
+  if (!validArtifactBuiltAt(value)) {
+    throw new Error(
+      '--artifact-built-at must be a canonical ISO 8601 UTC timestamp',
+    );
+  }
 }
 
 async function reconcileBuild(argv, env) {

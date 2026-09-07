@@ -15,7 +15,7 @@ const { navigate, setActiveChat, setDockState, updateChat } = vi.hoisted(
 );
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useAgentConnectionsQuery: () => ({ data: [] }),
+  useEngineConnectionsQuery: () => ({ data: [] }),
 }));
 vi.mock('../contexts/ModelsContext', () => ({ useModels: () => [] }));
 vi.mock('../contexts/AgentsContext', () => ({

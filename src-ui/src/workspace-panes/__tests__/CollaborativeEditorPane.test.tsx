@@ -367,7 +367,7 @@ describe('CollaborativeEditorPane', () => {
       screen
         .getByRole('link', { name: 'View agent session' })
         .getAttribute('href'),
-    ).toBe('/activity?session=session%2F9');
+    ).toBe('/?surface=activity&session=session%2F9');
     expect(
       screen.getByRole('link', { name: 'View agent run' }).getAttribute('href'),
     ).toBe('/projects/project-a/flow-console?run=run%2F2');
@@ -505,7 +505,7 @@ describe('CollaborativeEditorPane', () => {
     expect(screen.queryByText('View agent session')).toBeNull();
     expect(
       screen.getByRole('link', { name: 'Edit session' }).getAttribute('href'),
-    ).toBe('/activity?session=session%2F9');
+    ).toBe('/?surface=activity&session=session%2F9');
     expect(
       screen.getByRole('link', { name: 'Edit run' }).getAttribute('href'),
     ).toBe('/projects/project-a/flow-console?run=run%2F2');

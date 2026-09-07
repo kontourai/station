@@ -1,4 +1,5 @@
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   AgentConnectionView,
   ModelConnectionConfig,
@@ -27,6 +28,10 @@ export function agentConnectionFixture(
   overrides: Omit<Partial<AgentConnectionView>, 'id'> & { id: string },
 ): AgentConnectionView {
   const { id, ...rest } = overrides;
+  const matrix = resolveEngineCapabilityMatrix(id, {
+    type: rest.type ?? 'claude',
+    config: rest.config,
+  });
   return {
     id: engineConnectionId(id),
     kind: 'agent',
@@ -34,7 +39,6 @@ export function agentConnectionFixture(
     name: id,
     enabled: true,
     capabilities: ['agent-runtime'],
-    config: {},
     status: 'ready',
     prerequisites: [],
     // The field the whole class of drift was about. A connection the server
@@ -42,6 +46,8 @@ export function agentConnectionFixture(
     // enabled, usable connection reports.
     setup: { state: 'ready', detected: true, configured: true },
     ...rest,
+    // The UI reads this canonical field; executionClass/type alone do not bind an engine.
+    config: { ...rest.config, engineId: matrix.engineId },
   };
 }
 

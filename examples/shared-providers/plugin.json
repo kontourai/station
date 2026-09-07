@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "displayName": "Shared Providers",
   "description": "Shared infrastructure providers: auth, user identity, user directory, registries",
-  "build": "npx tsc",
   "settings": [
     {
       "key": "authDomain",

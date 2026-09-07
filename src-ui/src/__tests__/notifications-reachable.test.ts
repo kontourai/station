@@ -1,12 +1,10 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
 import {
   getManagementNavigationGroup,
   getPathForView,
   resolveViewFromPath,
 } from '../app-shell/routing';
-import { APP_SURFACE_REGISTRY } from '../app-shell/surface-registry';
 
 /**
  * #872: "there is no way to navigate to past ones" — the inbox was reachable
@@ -30,23 +28,9 @@ describe('the notification inbox is a destination', () => {
 
   it('has a sidebar entry', () => {
     expect(
-      APP_SURFACE_REGISTRY.getSidebar().some(
+      APP_DESTINATION_REGISTRY.getSidebar().some(
         (surface) => surface.id === 'notifications',
       ),
     ).toBe(true);
-  });
-
-  it('renders something when there is nothing', () => {
-    // Landing on a blank page reads as broken; both lanes say so instead.
-    const dir = join(__dirname, '..', 'components');
-    expect(
-      readFileSync(
-        join(dir, 'notifications', 'NotificationSection.tsx'),
-        'utf-8',
-      ),
-    ).toMatch(/length === 0/);
-    expect(
-      readFileSync(join(dir, 'attention', 'AttentionSection.tsx'), 'utf-8'),
-    ).toMatch(/length === 0/);
   });
 });

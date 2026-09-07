@@ -5,9 +5,15 @@ import {
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import {
+  curatedModelIdentityFor,
+  modelRouteFamilyFor,
+} from '@kontourai/station-contracts/model-inventory';
 import type {
   AgentConnectionView,
+  ModelOption,
   Prerequisite,
+  RuntimeCatalogStatus,
 } from '@kontourai/station-contracts/tool';
 import { engineIdForAdapter } from '../../providers/adapter-identity.js';
 import type {
@@ -351,14 +357,22 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         liveDiscoveryFailed = true;
       }
     }
-    const runtimeCatalog = buildRuntimeCatalogStatus({
-      adapter,
-      liveCatalog,
-      liveDiscoveryFailed,
-      allowBuiltInOnDiscoveryFailure:
-        request.allowBuiltInOnDiscoveryFailure !== false,
-      now: this.dependencies.now(),
-    });
+    const runtimeCatalog = withCanonicalModelIdentity(
+      buildRuntimeCatalogStatus({
+        adapter,
+        liveCatalog,
+        liveDiscoveryFailed,
+        allowBuiltInOnDiscoveryFailure:
+          request.allowBuiltInOnDiscoveryFailure !== false,
+        now: this.dependencies.now(),
+      }),
+      // A plugin may register any clean engineId, including a built-in's, and
+      // wins over the built-in with the same provider. Only a built-in
+      // adapter's engine id names a reviewed route family (#1208 delta).
+      getProviderAdapterRegistrationProvenance(adapter) === 'builtin'
+        ? engineIdValue
+        : undefined,
+    );
     recordRuntimeCatalogStatus({ adapter, catalog: runtimeCatalog });
     let commands: AdapterCommands = [];
     if (!hostDiscoveryDisabled && request.includeCommands !== false) {
@@ -472,4 +486,40 @@ export function createConnectionInspector(
   dependencies: ConnectionInspectorDependencies,
 ): ConnectionInspector {
   return new ConnectionInspectorImplementation(dependencies);
+}
+
+/**
+ * Decorate an engine's catalog with the reviewed identity for its route family.
+ * This is THE decision point for engine routes; the launchable inventory reads
+ * these decorations rather than deriving its own, so the two projections
+ * cannot disagree (#1208 delta review).
+ *
+ * Keyed on the NATIVE id the engine issued, which is what the reviewed table
+ * names -- for the Claude Code engine that is the alias `sonnet`, not whatever
+ * it resolved to at discovery. Preferring `resolvedModel` here was an
+ * inference on top of reviewed data, and it left the same row decorated on one
+ * projection and bare on the other.
+ */
+function withCanonicalModelIdentity(
+  catalog: RuntimeCatalogStatus | undefined,
+  engine: string | undefined,
+): RuntimeCatalogStatus | undefined {
+  if (!catalog || !engine) return catalog;
+  const family = modelRouteFamilyFor({ type: engine });
+  if (!family) return catalog;
+  const decorate = (models: ModelOption[]): ModelOption[] =>
+    models.map((model) => {
+      const canonicalModelIdentity = curatedModelIdentityFor({
+        family,
+        providerModel: model.originalId,
+      });
+      return canonicalModelIdentity
+        ? { ...model, canonicalModelIdentity }
+        : model;
+    });
+  return {
+    ...catalog,
+    models: decorate(catalog.models),
+    builtInModels: decorate(catalog.builtInModels),
+  };
 }

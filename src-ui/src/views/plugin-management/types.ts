@@ -1,13 +1,33 @@
-import type { PermissionTier } from '@kontourai/station-contracts/plugin';
+import type {
+  PermissionTier,
+  RejectedInstalledPluginRecord,
+} from '@kontourai/station-contracts/plugin';
 
-export interface Plugin {
+export interface ReadyPlugin {
   name: string;
   displayName: string;
   version: string;
   description?: string;
   hasBundle: boolean;
   hasSettings?: boolean;
-  layout?: { slug: string };
+  /**
+   * `name` is optional because `GET /api/plugins` sends `manifest.layout`,
+   * which carries only the slug and source — the layout's own display name
+   * lives in its layout.json. A server that later fills it in reaches the
+   * detail page with no client change (#1536 review M4).
+   */
+  layout?: {
+    slug: string;
+    name?: string;
+    displayName?: string;
+    title?: string;
+  };
+  /**
+   * Panes the manifest declares. `GET /api/plugins` has always sent these;
+   * the client dropped them, so an installed plugin's detail page could not
+   * say what it had added (#1536 G2).
+   */
+  workspacePanes?: Array<{ id: string; name: string }>;
   agents?: Array<{ slug: string }>;
   providers?: Array<{ type: string }>;
   providerDetails?: Array<{
@@ -35,6 +55,14 @@ export interface Plugin {
   };
 }
 
+export type Plugin = ReadyPlugin | RejectedInstalledPluginRecord;
+
+export function isRejectedPlugin(
+  plugin: Plugin,
+): plugin is RejectedInstalledPluginRecord {
+  return 'status' in plugin && plugin.status === 'rejected';
+}
+
 export interface PreviewComponent {
   type: string;
   id: string;
@@ -52,7 +80,7 @@ export interface GitInfo {
 export interface PreviewData {
   valid: boolean;
   error?: string;
-  manifest?: Plugin;
+  manifest?: ReadyPlugin;
   components: PreviewComponent[];
   conflicts: Array<{ type: string; id: string; existingSource?: string }>;
   /**
@@ -79,6 +107,12 @@ export interface PreviewData {
     status: string;
     components?: Array<{ type: string; id: string }>;
     git?: GitInfo;
+    consent?: {
+      contentDigest: string;
+      permissions: string[];
+      dependencies: string[];
+      pendingConsent: Array<{ permission: string; tier: PermissionTier }>;
+    };
   }>;
   git?: GitInfo;
 }
@@ -93,4 +127,36 @@ export interface PluginUpdateSummary {
 export interface PluginMessage {
   type: 'success' | 'error';
   text: string;
+  action?: {
+    label: string;
+    invoke(): void;
+  };
+}
+
+/** Installed permission truth, never inferred from a pre-install preview. */
+export function installedDependencyPermissions(result: unknown):
+  | Array<{
+      id: string;
+      pendingConsent: Array<{ permission: string; tier: PermissionTier }>;
+    }>
+  | undefined {
+  const rows = (result as { permissions?: { dependencies?: unknown } } | null)
+    ?.permissions?.dependencies;
+  if (!Array.isArray(rows)) return undefined;
+  if (
+    rows.some(
+      (row) =>
+        !row ||
+        typeof row.id !== 'string' ||
+        !Array.isArray(row.pendingConsent) ||
+        row.pendingConsent.some(
+          (entry: { permission?: unknown; tier?: unknown }) =>
+            !entry ||
+            typeof entry.permission !== 'string' ||
+            !['passive', 'active', 'trusted'].includes(entry.tier as string),
+        ),
+    )
+  )
+    return undefined;
+  return rows;
 }

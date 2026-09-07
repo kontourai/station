@@ -24,6 +24,7 @@ describe('App Store iOS provisioning-profile gate', () => {
       }),
     ).toMatchObject({
       distribution: 'app-store-connect',
+      name: 'Station App Store Distribution',
       team: 'ABCDE12345',
       applicationIdentifier: 'ABCDE12345.ai.kontour.station',
     });
@@ -175,7 +176,7 @@ describe('App Store iOS provisioning-profile gate', () => {
         'unrelated plist',
       ),
     ).toThrow(
-      'unrelated plist is not a provisioning profile: missing required key(s) UUID, TeamIdentifier, ExpirationDate, Entitlements, AppIDName; APPLE_PROVISIONING_PROFILE_BASE64 must contain an App Store distribution provisioning profile.',
+      'unrelated plist is not a provisioning profile: missing required key(s) Name, UUID, TeamIdentifier, ExpirationDate, Entitlements, AppIDName; APPLE_PROVISIONING_PROFILE_BASE64 must contain an App Store distribution provisioning profile.',
     );
   });
 

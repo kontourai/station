@@ -2,6 +2,7 @@ import {
   useOrchestrationSessionsQuery,
   useReorderProjectsMutation,
 } from '@kontourai/station-sdk';
+import { formatArtifactBuildTimestamp } from '@kontourai/station-shared/build-provenance';
 import {
   captureReturnFocus,
   restoreReturnFocus,
@@ -18,6 +19,8 @@ import {
 import { useNavigation } from '../../contexts/NavigationContext';
 import { openChatsStore, useOpenChats } from '../../contexts/open-chats-store';
 import { useProjects } from '../../contexts/ProjectsContext';
+import { useRegionModelOptional } from '../../contexts/RegionModelContext';
+import { useShowSurface } from '../../contexts/useShowSurface';
 import { useBranding } from '../../hooks/useBranding';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
@@ -60,6 +63,24 @@ export function ProjectSidebar() {
   const { projects, isLoading } = useProjects();
   const { selectedProject, selectedProjectLayout, navigate, pathname } =
     useNavigation();
+  // #928 C2a: Home is a region surface whose only placement is `main`, so
+  // "go Home" REVEALS it — `showSurface('home')` places it in `main` and the
+  // model navigates to `/` — rather than navigating to `/` and showing
+  // whatever surface currently occupies `main`. Same seam the palette and
+  // `ProjectSidebarNav` use for a `regionSurface` destination.
+  const showSurface = useShowSurface();
+  const goHome = () => {
+    showSurface('home');
+    if (isMobile) setMobileOpen(false);
+  };
+  const mainOccupant = useRegionModelOptional()?.regions.main.occupant;
+  // Active when `/` is showing Home, not merely when the route is `/`: with
+  // another surface in `main`, `/` is not Home.
+  const isHomeActive =
+    pathname === '/' &&
+    (mainOccupant === undefined ||
+      mainOccupant === null ||
+      mainOccupant === 'home');
   const branding = useBranding();
   const platformProfile = usePlatformProfile();
   // The sidebar is the primary installed-app chrome. Native package identity
@@ -72,8 +93,19 @@ export function ProjectSidebar() {
   // presentation authority. Native chrome derives its visible and accessible
   // identity from the same trusted channel report and build metadata.
   const appName = platformProfile.isTauri ? 'Station' : branding.appName;
+  const clientBuild = formatArtifactBuildTimestamp(
+    platformProfile.clientBuild?.builtAt,
+    { development: platformProfile.isDevBuild },
+  );
+  const clientBuildLabel =
+    clientBuild.state === 'available' ? `Built ${clientBuild.age}` : undefined;
   const homeLabel = platformProfile.isTauri
-    ? [appName, releaseChannelBadge, `v${buildInfo.version}`]
+    ? [
+        appName,
+        releaseChannelBadge,
+        `v${buildInfo.version}`,
+        clientBuild.description,
+      ]
         .filter(Boolean)
         .join(' ')
     : appName;
@@ -255,13 +287,12 @@ export function ProjectSidebar() {
           appName={appName}
           homeLabel={homeLabel}
           channelBadge={releaseChannelBadge}
+          buildLabel={clientBuildLabel}
+          buildDescription={clientBuild.description}
           collapsed={effectiveCollapsed}
           isMobile={isMobile}
           onCloseMobile={() => setMobileOpen(false)}
-          onGoHome={() => {
-            navigate('/');
-            if (isMobile) setMobileOpen(false);
-          }}
+          onGoHome={goHome}
           onToggleCollapse={toggleCollapse}
         />
 
@@ -293,11 +324,13 @@ export function ProjectSidebar() {
           <div className="sidebar__section-label">Work</div>
           <button
             type="button"
-            className={`sidebar__project-btn${pathname === '/' ? ' sidebar__project-btn--active' : ''}`}
-            onClick={() => {
-              navigate('/');
-              if (isMobile) setMobileOpen(false);
-            }}
+            className={`sidebar__project-btn${isHomeActive ? ' sidebar__project-btn--active' : ''}`}
+            // #1582 D4: exactly one sidebar row may claim to be the current
+            // location. `isHomeActive` already derives that from `main`'s
+            // occupant rather than the route alone, so it is the honest place
+            // to say it; the region-surface rows say `aria-pressed` instead.
+            aria-current={isHomeActive ? 'page' : undefined}
+            onClick={goHome}
           >
             <span aria-hidden="true">⌂</span>
             <span className="sidebar__project-name">Home</span>

@@ -1,3 +1,4 @@
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   cacheInclusivePromptTokens,
   cacheInclusiveTotalTokens,
@@ -10,7 +11,6 @@ import {
   formatMeasuredTokens,
   UNREPORTED_MEASUREMENT_TEXT,
 } from '@kontourai/station-shared/usage-measurement';
-import { engineLabelForProvider } from '../../utils/sessionDisplay';
 import { Button } from '../Button';
 import {
   ResponsiveDialogCloseButton,
@@ -95,7 +95,7 @@ export function ConversationStatsModal({
   const unreportedNote = stats
     ? describeUnreportedMeasurements(
         conversationStatsMeasurementView(stats),
-        engineLabelForProvider,
+        engineDisplayLabel,
       )
     : null;
 
@@ -125,6 +125,7 @@ export function ConversationStatsModal({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onToggle}
       ariaLabelledBy="conversation-statistics-title"
       overlayStyle={{
@@ -458,13 +459,13 @@ export function ConversationStatsModal({
                             Consumed
                           </div>
                           <div>
-                            In: {modelStat.inputTokens.toLocaleString()}
+                            In: {formatMeasuredTokens(modelStat.inputTokens)}
                           </div>
                           <div>
-                            Out: {modelStat.outputTokens.toLocaleString()}
+                            Out: {formatMeasuredTokens(modelStat.outputTokens)}
                           </div>
                           <div>
-                            Total: {modelStat.totalTokens.toLocaleString()}
+                            Total: {formatMeasuredTokens(modelStat.totalTokens)}
                           </div>
                         </div>
                         <div>
@@ -480,7 +481,8 @@ export function ConversationStatsModal({
                           <div>Turns: {modelStat.turns}</div>
                           <div>Tool Calls: {modelStat.toolCalls}</div>
                           <div style={{ marginTop: '4px' }}>
-                            Cost: ${(modelStat.estimatedCost ?? 0).toFixed(4)}
+                            Cost:{' '}
+                            {formatMeasuredCostUsd(modelStat.estimatedCost)}
                           </div>
                         </div>
                       </div>

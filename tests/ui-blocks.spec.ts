@@ -3,6 +3,7 @@ import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import {
   emitMockOrchestrationEvent,
   installMockOrchestrationSse,
+  openChatRegion,
   seedActiveChats,
   seedOrchestrationRoutes,
   waitForMockOrchestrationSse,
@@ -36,9 +37,7 @@ test.describe('Structured UI blocks', () => {
     );
 
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
-    await page
-      .getByRole('button', { name: 'Expand chat dock', exact: true })
-      .click();
+    await openChatRegion(page);
     await waitForMockOrchestrationSse(page);
 
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
@@ -173,9 +172,7 @@ test.describe('Structured UI blocks', () => {
     });
 
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
-    await page
-      .getByRole('button', { name: 'Expand chat dock', exact: true })
-      .click();
+    await openChatRegion(page);
     await waitForMockOrchestrationSse(page);
 
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
@@ -279,9 +276,7 @@ test.describe('Structured UI blocks', () => {
     await seedOrchestrationRoutes(page);
 
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
-    await page
-      .getByRole('button', { name: 'Expand chat dock', exact: true })
-      .click();
+    await openChatRegion(page);
     await waitForMockOrchestrationSse(page);
 
     await emitMockOrchestrationEvent(page, 'orchestration:event', {

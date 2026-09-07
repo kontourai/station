@@ -1,7 +1,7 @@
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { resolveBedrockRegion } from '../../providers/llm/bedrock-region.js';
-import { estimateCost } from '../../utils/pricing.js';
+import { bedrockPricingFor, estimateCost } from '../../utils/pricing.js';
 
 export interface UsageLike {
   promptTokens?: number;
@@ -138,6 +138,7 @@ export async function calculateUsageCost(
   modelId: string,
   usage: UsageLike,
   modelCatalog: BedrockModelCatalog | undefined,
+  providerType: string | undefined,
   appConfig: AppConfig,
   logger: { warn: (message: string, meta?: unknown) => void },
   // archive#1557 review round 2 (M6). This defaulted to `appConfig.region`
@@ -154,14 +155,18 @@ export async function calculateUsageCost(
     logger.warn('No model catalog available, cost unavailable', { modelId });
     return null;
   }
+  // Bedrock's price list prices Bedrock's routes; see findModelPricing.
+  if (providerType !== 'bedrock') {
+    logger.warn('Non-Bedrock route, cost unavailable', {
+      modelId,
+      providerType,
+    });
+    return null;
+  }
 
   try {
     const pricing = await modelCatalog.getModelPricing(region);
-    const match = pricing.find(
-      (entry) =>
-        entry.modelId === modelId ||
-        modelId.includes(entry.modelId.toLowerCase().replace(/\s+/g, '-')),
-    );
+    const match = bedrockPricingFor(pricing, modelId);
 
     if (match) {
       const estimated = estimateCost(match, {
@@ -245,6 +250,16 @@ export function buildConversationStatsUpdate({
   const stats = existingStats ?? createEmptyConversationStats();
   const currentModelStats =
     existingModelStats[modelId] ?? createEmptyConversationStats();
+  // A first recorded cost starts its aggregate. An existing unknown cost
+  // must remain unknown; a later priced turn cannot reconstruct it.
+  const priorCost =
+    existingStats === undefined || existingStats === null
+      ? 0
+      : stats.estimatedCost;
+  const priorModelCost =
+    existingModelStats[modelId] === undefined
+      ? 0
+      : currentModelStats.estimatedCost;
   const inputTokens = getUsageInputTokens(usage);
   const outputTokens = getUsageOutputTokens(usage);
   const systemPromptTokens = fixedTokens?.systemPromptTokens ?? 0;
@@ -278,9 +293,7 @@ export function buildConversationStatsUpdate({
     turns: stats.turns + 1,
     toolCalls: stats.toolCalls + toolCallCount,
     estimatedCost:
-      cost !== null && stats.estimatedCost !== null
-        ? stats.estimatedCost + cost
-        : null,
+      cost !== null && priorCost !== null ? priorCost + cost : null,
     tokenBreakdown: {
       systemPromptTokens,
       mcpServerTokens,
@@ -325,9 +338,7 @@ export function buildConversationStatsUpdate({
     turns: currentModelStats.turns + 1,
     toolCalls: currentModelStats.toolCalls + toolCallCount,
     estimatedCost:
-      cost !== null && currentModelStats.estimatedCost !== null
-        ? currentModelStats.estimatedCost + cost
-        : null,
+      cost !== null && priorModelCost !== null ? priorModelCost + cost : null,
     tokenBreakdown: updatedStats.tokenBreakdown,
   };
 

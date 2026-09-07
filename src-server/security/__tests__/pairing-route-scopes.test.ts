@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   PAIRING_SCOPES,
+  PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
   pairingScopeIncludes,
   pairingScopePresetString,
 } from '@kontourai/station-contracts';
@@ -84,6 +85,32 @@ function scanMountedRouteBases(): string[] {
 }
 
 describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () => {
+  test('reserves the entire home-authority family for explicit home-transfer grants', () => {
+    const transferScope = pairingScopePresetString('home-transfer');
+
+    for (const method of ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']) {
+      const path = '/api/home-authority/identity';
+      expect(matchPairingScopeRule(method, path)).toMatchObject({
+        method: '*',
+        prefix: '/api/home-authority',
+        scope: 'home:transfer',
+        origin: 'explicit',
+      });
+      expect(requiredPairingScope(method, path)).toBe('home:transfer');
+      expect(pairingScopeIncludes(transferScope, 'home:transfer')).toBe(true);
+      expect(
+        pairingScopeIncludes(DEFAULT_GRANT_PAIRING_SCOPE, 'home:transfer'),
+      ).toBe(false);
+    }
+
+    expect(requiredPairingScope('GET', '/api/home-authority')).toBe(
+      'home:transfer',
+    );
+    expect(requiredPairingScope('GET', '/api/home-authority-other')).toBe(
+      undefined,
+    );
+  });
+
   test('a standard paired chat tier admits every attachment staging control leaf', () => {
     const standard = pairingScopePresetString('standard');
     const chatScope = requiredPairingScope('POST', '/api/orchestration/chat');
@@ -1369,3 +1396,34 @@ describe.each([
     });
   },
 );
+
+describe('API docs stay credentialed while their launcher does not (#934)', () => {
+  // The tempting fix for the tray's 401 is to exempt the docs as `public`. The
+  // `public` bypass does not check loopback, so on a Station bound to all
+  // interfaces that hands the full route inventory and every schema to any
+  // peer that can reach the listener. The launcher page exists so the docs
+  // never have to become public; these assertions are what stops the shortcut
+  // from being taken later.
+  test.each(['/ui', '/doc'])('%s requires a credential', (path) => {
+    const rule = requiredExternalSurfaceCapability('http', 'GET', path);
+    expect(rule).toBeDefined();
+    expect(rule?.capability).not.toBe('public');
+  });
+
+  test('the launcher itself is public, and only for GET', () => {
+    expect(
+      requiredExternalSurfaceCapability(
+        'http',
+        'GET',
+        PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
+      )?.capability,
+    ).toBe('public');
+    // A public POST here would be a second, unproven write surface.
+    const post = requiredExternalSurfaceCapability(
+      'http',
+      'POST',
+      PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
+    );
+    expect(post?.capability).not.toBe('public');
+  });
+});

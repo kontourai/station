@@ -935,43 +935,46 @@ export function createProjectRoutes(
           success: true,
           // The route slug selects the Project record; its canonical id is the
           // exact project identity bound into Pane instances and state scopes.
-          data: readCurrentWorkspacePaneCatalog(
-            layoutCatalog,
-            project.id,
-            {
-              resolveInput: (candidate) =>
-                candidate.descriptor.id ===
-                  WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID ||
-                candidate.descriptor.id ===
-                  WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID ||
-                candidate.descriptor.id ===
-                  WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID
-                  ? { context: projectWorkspacePaneContext(project) }
-                  : {},
-              recordTelemetry: (event) =>
-                workspacePaneAvailabilityResolutions.add(
-                  1,
-                  workspacePaneAvailabilityMetricAttributes(event),
-                ),
-            },
-            deps.kitObservabilityRegistry?.list(),
-            {
-              // The Board exists where a Builder run does — the same fact the
-              // nav entry and the `/session-board` route guard read, from the
-              // same predicate. Advertising a 'Session Board' Pane on a
-              // project with no run and explaining it as a renderer that is
-              // "temporarily unavailable" was a third answer to that question,
-              // in a vocabulary the Board has nothing to do with.
-              ...(deps.hasBuilderRun
-                ? {
-                    offersLayout: (layout) =>
-                      layout.type !== BUILTIN_SESSION_BOARD_LAYOUT.type ||
-                      // Non-null is sound: guarded above.
-                      deps.hasBuilderRun!(slug),
-                  }
-                : {}),
-            },
-          ),
+          data: {
+            ...readCurrentWorkspacePaneCatalog(
+              layoutCatalog,
+              project.id,
+              {
+                resolveInput: (candidate) =>
+                  candidate.descriptor.id ===
+                    WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID ||
+                  candidate.descriptor.id ===
+                    WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID ||
+                  candidate.descriptor.id ===
+                    WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID
+                    ? { context: projectWorkspacePaneContext(project) }
+                    : {},
+                recordTelemetry: (event) =>
+                  workspacePaneAvailabilityResolutions.add(
+                    1,
+                    workspacePaneAvailabilityMetricAttributes(event),
+                  ),
+              },
+              deps.kitObservabilityRegistry?.list(),
+              {
+                // The Board exists where a Builder run does — the same fact the
+                // nav entry and the `/session-board` route guard read, from the
+                // same predicate. Advertising a 'Session Board' Pane on a
+                // project with no run and explaining it as a renderer that is
+                // "temporarily unavailable" was a third answer to that question,
+                // in a vocabulary the Board has nothing to do with.
+                ...(deps.hasBuilderRun
+                  ? {
+                      offersLayout: (layout) =>
+                        layout.type !== BUILTIN_SESSION_BOARD_LAYOUT.type ||
+                        // Non-null is sound: guarded above.
+                        deps.hasBuilderRun!(slug),
+                    }
+                  : {}),
+              },
+            ),
+            projectSlug: project.slug,
+          },
         });
         outcome = 'success';
         return response;

@@ -12,6 +12,8 @@ export interface AgentEnvelope<T> {
   success: boolean;
   data?: T;
   error?: string;
+  /** Stable machine-readable refusal cause, when the route provides one. */
+  code?: string;
   /**
    * Present when the runtime is mid-reconciliation and the catalog was
    * served from the last stable read (station#1574). `catalogAsOf` carries
@@ -19,6 +21,18 @@ export interface AgentEnvelope<T> {
    */
   catalogState?: 'reconciling';
   catalogAsOf?: string;
+}
+
+/** An Agent route refusal whose stable code is safe for callers to branch on. */
+export type AgentResponseError = Error & { readonly code?: string };
+
+function agentResponseError(
+  result: AgentEnvelope<unknown>,
+  fallback: string,
+): AgentResponseError {
+  return Object.assign(new Error(apiErrorMessage(result, fallback)), {
+    code: result.code,
+  });
 }
 
 /**
@@ -193,7 +207,7 @@ export async function createAgentDetailed(
     warnings?: string[];
   };
   if (!result.success) {
-    throw new Error(apiErrorMessage(result, 'Failed to create agent'));
+    throw agentResponseError(result, 'Failed to create agent');
   }
   return {
     data: result.data,
@@ -223,7 +237,7 @@ export async function materializeEngineAgent(
     warnings?: string[];
   };
   if (!result.success) {
-    throw new Error(apiErrorMessage(result, 'Failed to set up engine agent'));
+    throw agentResponseError(result, 'Failed to set up engine agent');
   }
   return {
     data: result.data,
@@ -256,7 +270,7 @@ export async function updateAgentRaw(
   );
   const result = (await response.json()) as AgentEnvelope<unknown>;
   if (!result.success) {
-    throw new Error(apiErrorMessage(result, 'Failed to update agent'));
+    throw agentResponseError(result, 'Failed to update agent');
   }
   return result.data;
 }
@@ -274,7 +288,7 @@ export async function deleteAgentRaw(
   );
   const result = (await response.json()) as AgentEnvelope<unknown>;
   if (!result.success) {
-    throw new Error(apiErrorMessage(result, 'Failed to delete agent'));
+    throw agentResponseError(result, 'Failed to delete agent');
   }
   return result.data;
 }

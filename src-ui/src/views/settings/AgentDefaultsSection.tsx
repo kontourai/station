@@ -1,6 +1,6 @@
 import type { SettingProvenanceEntry } from '@kontourai/station-contracts/settings-registry';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
-import { useAgentConnectionsQuery } from '@kontourai/station-sdk';
+import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
 import { CloseGlyph } from '../../components/icons/Glyph';
 import { ModelSelector } from '../../components/ModelSelector';
 import { ProvenanceBadge } from '../../components/ProvenanceBadge';
@@ -51,7 +51,7 @@ export function AgentDefaultsSection({
   guard: (callback: () => void) => void;
 }) {
   const { navigate } = useNavigation();
-  const { data: agentConnections = [] } = useAgentConnectionsQuery() as {
+  const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data?: AgentConnectionView[];
   };
   const preferredRuntime = preferredChatRuntime(agentConnections);

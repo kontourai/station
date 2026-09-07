@@ -7,7 +7,13 @@ type Tool<_T = any> = any;
 import { type SpawnOptions, spawn } from 'node:child_process';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { ToolDef, ToolMetadata } from '@kontourai/station-contracts/tool';
-import { connectMCP, type MCPConnection } from '@kontourai/station-shared/mcp';
+import {
+  type MCPConnection,
+  type MCPLocalClaim,
+  type MCPLocalCleanup,
+  MCPLocalConnectionCustody,
+  MCPLocalCustodyError,
+} from '@kontourai/station-shared/mcp';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import type { Transport } from '@modelcontextprotocol/client';
 import { zodToJsonSchema } from 'zod-to-json-schema';
@@ -21,6 +27,7 @@ import {
   MCPAppsToolAccessError,
   type MCPAppsUiMetadata,
 } from '../../runtime/mcp/mcp-apps-metadata.js';
+import { sameMCPConnectionDefinition } from '../../runtime/mcp/mcp-definition-currentness.js';
 import {
   toolServerLifecycle,
   toolServerOAuth,
@@ -98,9 +105,7 @@ export class MCPService {
     {
       provider: StationToolServerOAuthProvider;
       resourceIdentity: string;
-      transport: Transport & {
-        finishAuth(params: URLSearchParams): Promise<void>;
-      };
+      claim: MCPLocalClaim;
     }
   >();
   constructor(
@@ -123,6 +128,7 @@ export class MCPService {
     private readonly serverPort: number = DEFAULT_SERVER_PORT,
     private readonly integrationSecretResolver?: IntegrationSecretResolver,
     private readonly integrationSecretBindingGranter?: IntegrationSecretBindingGranter,
+    private readonly mcpCustody = new MCPLocalConnectionCustody(),
   ) {}
 
   private async establishChild<T>(
@@ -146,6 +152,38 @@ export class MCPService {
         return establish(child);
       },
     );
+  }
+
+  private async requireCurrentDefinition(
+    claim: MCPLocalClaim,
+    expected: ToolDef,
+  ): Promise<void> {
+    const current = await this.getIntegration(expected.id);
+    if (!claim.isCurrent() || !sameMCPConnectionDefinition(expected, current))
+      throw new MCPLocalCustodyError('stale');
+  }
+
+  inspectLocalConnections() {
+    return this.mcpCustody.inspect();
+  }
+
+  private async releaseAfterOperation(
+    claim: MCPLocalClaim,
+    operationFailed: boolean,
+  ): Promise<void> {
+    const cleanup = await this.mcpCustody.release(claim);
+    if (!operationFailed && cleanup.state !== 'settled')
+      throw new MCPLocalCustodyError(cleanup.state);
+  }
+
+  private async writeMigrationProjection(
+    id: string,
+    def: ToolDef,
+  ): Promise<void> {
+    await this.mcpCustody.mutate(id, () =>
+      this.configLoader.saveIntegration(id, def),
+    );
+    this.mcpConfigs.delete(id);
   }
 
   /**
@@ -182,7 +220,7 @@ export class MCPService {
             current.secretEnvRefs?.[name] === input.bindings[name]?.bindingId,
         )
       ) {
-        await this.configLoader.saveIntegration(input.integrationId, {
+        await this.writeMigrationProjection(input.integrationId, {
           ...current,
           storedEnvNames: [
             ...new Set([...(current.storedEnvNames ?? []), ...names]),
@@ -231,7 +269,7 @@ export class MCPService {
 
       // First durable switch: preserve legacy material while the freshly
       // established child proves the new binding is usable.
-      await this.configLoader.saveIntegration(input.integrationId, {
+      await this.writeMigrationProjection(input.integrationId, {
         ...current,
         secretEnvRefs: refs,
       });
@@ -244,7 +282,7 @@ export class MCPService {
       // Only a successful fresh child permits deleting legacy credentials.
       const afterProbe = await this.getIntegration(input.integrationId);
       try {
-        await this.configLoader.saveIntegration(input.integrationId, {
+        await this.writeMigrationProjection(input.integrationId, {
           ...afterProbe,
           secretEnvRefs: refs,
           removeSecretEnvKeys: names,
@@ -264,7 +302,7 @@ export class MCPService {
                 typeof entry[1] === 'string',
             ),
         );
-        await this.configLoader.saveIntegration(input.integrationId, {
+        await this.writeMigrationProjection(input.integrationId, {
           ...afterProbe,
           secretEnvRefs: refs,
           secretEnv: legacyValues,
@@ -323,11 +361,19 @@ export class MCPService {
           'Tool server endpoint changed',
         )
       : withPreservedBindings;
-    await this.configLoader.saveIntegration(def.id, persisted);
-    if (identityChanged) {
-      await removeToolServerOAuthCredentials(this.credentialStore(), def.id);
-      this.oauthFlows.delete(def.id);
-    }
+    const write = async () => {
+      await this.configLoader.saveIntegration(def.id, persisted);
+      if (identityChanged || def.enabled === false) {
+        await removeToolServerOAuthCredentials(this.credentialStore(), def.id);
+        this.oauthFlows.delete(def.id);
+      }
+    };
+    // Every explicit write to this integration is fenced, even if its first
+    // read looked unchanged: another local writer may have committed meanwhile.
+    // Other integration identities remain usable; probe health uses its own
+    // compare-and-update projection and does not retire the connection.
+    await this.mcpCustody.mutate(def.id, write);
+    this.mcpConfigs.delete(def.id);
   }
 
   async getIntegration(id: string): Promise<ToolDef> {
@@ -335,8 +381,11 @@ export class MCPService {
   }
 
   async deleteIntegration(id: string): Promise<void> {
-    await this.configLoader.deleteIntegration(id);
-    this.oauthFlows.delete(id);
+    await this.mcpCustody.mutate(id, async () => {
+      await this.configLoader.deleteIntegration(id);
+      this.oauthFlows.delete(id);
+      this.mcpConfigs.delete(id);
+    });
   }
 
   async setEnabled(id: string, enabled: boolean): Promise<ToolDef> {
@@ -350,10 +399,6 @@ export class MCPService {
         : { ...existing, enabled };
     markIntegrationEnabledExplicit(updated);
     await this.saveIntegration(updated);
-    if (!enabled) {
-      await removeToolServerOAuthCredentials(this.credentialStore(), id);
-      this.oauthFlows.delete(id);
-    }
     toolServerLifecycle.add(1, { action: enabled ? 'enable' : 'disable' });
     return updated;
   }
@@ -366,63 +411,86 @@ export class MCPService {
     mode: 'local-browser-opened' | 'remote-manual-open';
     completionInstructions: string;
   }> {
-    const def = await this.getIntegration(id);
-    if (def.transport !== 'sse' && def.transport !== 'streamable-http')
-      throw new Error(
-        'OAuth is available only for SSE and streamable HTTP tool servers',
-      );
-    const provider = this.createOAuthProvider(def);
-    let transport: Transport | undefined;
+    const claim = this.mcpCustody.acquire(id, 'oauth');
+    let retained = false;
     try {
-      const connection = await this.establishChild(def, (child) =>
-        connectMCP(child, {
-          authProvider: provider,
-          onTransport: (value) => {
-            transport = value;
-          },
-        }),
-      );
-      await connection.disconnect();
-      throw new StationOwnedToolServerError(
-        'Tool server is already authorized',
-      );
-    } catch (error) {
-      const publicError = captureToolServerOperationFailure(
-        error,
-        'authorize',
-        id,
-        this.logger,
-      );
-      const authorizationUrl = provider.takeAuthorizationUrl();
-      if (!authorizationUrl || !transport || !('finishAuth' in transport))
-        throw publicError;
+      const def = await this.getIntegration(id);
+      if (def.transport !== 'sse' && def.transport !== 'streamable-http')
+        throw new Error(
+          'OAuth is available only for SSE and streamable HTTP tool servers',
+        );
+      const provider = this.createOAuthProvider(def);
+      let transport: Transport | undefined;
       try {
-        requireHttpAuthorizationUrl(authorizationUrl);
-      } catch (unsafeUrlError) {
-        await provider.clearCredentials();
-        throw unsafeUrlError;
+        const connection = await this.establishChild(def, (child) =>
+          claim.connect(child, {
+            authProvider: provider,
+            onTransport: (value) => {
+              transport = value;
+            },
+          }),
+        );
+        void connection; // Retired in the outer finally, including partial failure.
+        throw new StationOwnedToolServerError(
+          'Tool server is already authorized',
+        );
+      } catch (error) {
+        const publicError = captureToolServerOperationFailure(
+          error,
+          'authorize',
+          id,
+          this.logger,
+        );
+        const authorizationUrl = provider.takeAuthorizationUrl();
+        await this.requireCurrentDefinition(claim, def);
+        if (!authorizationUrl || !transport || !('finishAuth' in transport))
+          throw publicError;
+        try {
+          requireHttpAuthorizationUrl(authorizationUrl);
+        } catch (unsafeUrlError) {
+          await claim.run(() => provider.clearCredentials());
+          throw unsafeUrlError;
+        }
+        const resourceIdentity = toolServerOAuthResourceIdentity(def);
+        if (!resourceIdentity)
+          throw new Error('OAuth tool server endpoint is missing or invalid');
+        claim.retainForOAuth();
+        const previous = this.oauthFlows.get(id);
+        if (previous) {
+          const cleanup = await this.mcpCustody.release(previous.claim);
+          if (cleanup.state !== 'settled')
+            throw new MCPLocalCustodyError(cleanup.state);
+        }
+        this.oauthFlows.set(id, {
+          provider,
+          resourceIdentity,
+          claim,
+        });
+        await this.saveAuthorizationHealth(
+          id,
+          resourceIdentity,
+          'awaiting-operator-consent',
+          undefined,
+          claim,
+        );
+        if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
+        retained = true;
+        toolServerOAuth.add(1, { outcome: 'authorize-started' });
+        if (mode === 'local') openSystemBrowser(authorizationUrl.toString());
+        return {
+          authorizationUrl: authorizationUrl.toString(),
+          mode:
+            mode === 'local' ? 'local-browser-opened' : 'remote-manual-open',
+          completionInstructions:
+            'Complete consent in the browser, copy the full redirected loopback URL from the address bar, and paste it into Station. Station completes OAuth only through the authenticated paste-back action.',
+        };
       }
-      const resourceIdentity = toolServerOAuthResourceIdentity(def);
-      if (!resourceIdentity)
-        throw new Error('OAuth tool server endpoint is missing or invalid');
-      this.oauthFlows.set(id, {
-        provider,
-        resourceIdentity,
-        transport: transport as never,
-      });
-      await this.saveAuthorizationHealth(
-        id,
-        resourceIdentity,
-        'awaiting-operator-consent',
-      );
-      toolServerOAuth.add(1, { outcome: 'authorize-started' });
-      if (mode === 'local') openSystemBrowser(authorizationUrl.toString());
-      return {
-        authorizationUrl: authorizationUrl.toString(),
-        mode: mode === 'local' ? 'local-browser-opened' : 'remote-manual-open',
-        completionInstructions:
-          'Complete consent in the browser, copy the full redirected loopback URL from the address bar, and paste it into Station. Station completes OAuth only through the authenticated paste-back action.',
-      };
+    } finally {
+      if (!retained) {
+        if (this.oauthFlows.get(id)?.claim === claim)
+          this.oauthFlows.delete(id);
+        await this.mcpCustody.release(claim);
+      }
     }
   }
 
@@ -431,68 +499,88 @@ export class MCPService {
     if (!flow) {
       throw new Error('No OAuth consent flow is awaiting completion');
     }
-    const expectedState = await flow.provider.expectedState();
-    if (!expectedState) {
-      throw new Error('OAuth flow state is missing or expired');
-    }
-    const validated = validateOAuthCallbackUrl(
-      callbackUrl,
-      expectedState,
-      String(flow.provider.redirectUrl),
-    );
-    if (!validated.ok) {
-      throw new Error(validated.reason);
-    }
-
-    // Validation above proves the state matches. Claim the exact map entry
-    // synchronously, before any await, so no second callback can capture this
-    // flow and race a health write against the winner.
-    if (this.oauthFlows.get(id) !== flow || !this.oauthFlows.delete(id)) {
-      throw new Error('No OAuth consent flow is awaiting completion');
-    }
-    await flow.provider.consumeState();
-
-    const beforeExchange = await this.getIntegration(id);
-    if (
-      toolServerOAuthResourceIdentity(beforeExchange) !== flow.resourceIdentity
-    ) {
-      throw new Error('OAuth tool server endpoint changed during consent');
-    }
-
-    let exchangeFailed = false;
-    let exchangeFailure: unknown;
+    let claimed = false;
+    let failed = false;
     try {
-      await flow.transport.finishAuth(validated.params);
+      return await flow.claim.run(async () => {
+        const expectedState = await flow.provider.expectedState();
+        if (!expectedState) {
+          throw new Error('OAuth flow state is missing or expired');
+        }
+        const validated = validateOAuthCallbackUrl(
+          callbackUrl,
+          expectedState,
+          String(flow.provider.redirectUrl),
+        );
+        if (!validated.ok) {
+          throw new Error(validated.reason);
+        }
+
+        // Validation above proves the state matches. Claim the exact map entry
+        // synchronously, before any await, so no second callback can capture this
+        // flow and race a health write against the winner.
+        if (this.oauthFlows.get(id) !== flow || !this.oauthFlows.delete(id)) {
+          throw new Error('No OAuth consent flow is awaiting completion');
+        }
+        claimed = true;
+        if (!flow.claim.isCurrent()) throw new MCPLocalCustodyError('stale');
+        await flow.provider.consumeState();
+        if (!flow.claim.isCurrent()) throw new MCPLocalCustodyError('stale');
+
+        const beforeExchange = await this.getIntegration(id);
+        if (
+          toolServerOAuthResourceIdentity(beforeExchange) !==
+          flow.resourceIdentity
+        ) {
+          throw new Error('OAuth tool server endpoint changed during consent');
+        }
+
+        let exchangeFailed = false;
+        let exchangeFailure: unknown;
+        try {
+          await flow.claim.finishAuth(validated.params);
+        } catch (error) {
+          exchangeFailed = true;
+          exchangeFailure = error;
+          captureToolServerOperationFailure(
+            error,
+            'oauth-exchange',
+            id,
+            this.logger,
+          );
+        }
+
+        if (exchangeFailed) {
+          const reason = formatToolServerFailure(
+            classifyOAuthFailure(exchangeFailure),
+          );
+          await this.saveAuthorizationHealth(
+            id,
+            flow.resourceIdentity,
+            'authorization-failed',
+            reason,
+            flow.claim,
+          );
+          throw new Error('OAuth authorization failed');
+        }
+
+        toolServerOAuth.add(1, { outcome: 'consent-completed' });
+        const health = await this.saveAuthorizationHealth(
+          id,
+          flow.resourceIdentity,
+          'authorized',
+          undefined,
+          flow.claim,
+        );
+        if (!flow.claim.isCurrent()) throw new MCPLocalCustodyError('stale');
+        return health;
+      });
     } catch (error) {
-      exchangeFailed = true;
-      exchangeFailure = error;
-      captureToolServerOperationFailure(
-        error,
-        'oauth-exchange',
-        id,
-        this.logger,
-      );
+      failed = true;
+      throw error;
+    } finally {
+      if (claimed) await this.releaseAfterOperation(flow.claim, failed);
     }
-
-    if (exchangeFailed) {
-      const reason = formatToolServerFailure(
-        classifyOAuthFailure(exchangeFailure),
-      );
-      await this.saveAuthorizationHealth(
-        id,
-        flow.resourceIdentity,
-        'authorization-failed',
-        reason,
-      );
-      throw new Error('OAuth authorization failed');
-    }
-
-    toolServerOAuth.add(1, { outcome: 'consent-completed' });
-    return this.saveAuthorizationHealth(
-      id,
-      flow.resourceIdentity,
-      'authorized',
-    );
   }
 
   private async saveAuthorizationHealth(
@@ -504,9 +592,11 @@ export class MCPService {
       | 'authorization-failed'
       | 'token-expired-refresh-failed',
     reason?: string,
+    claim?: MCPLocalClaim,
   ): Promise<ToolDef> {
     const authorization = reason ? { state, reason } : { state };
     return this.configLoader.updateIntegration(id, (current) => {
+      if (claim && !claim.isCurrent()) throw new MCPLocalCustodyError('stale');
       if (
         toolServerOAuthResourceIdentity(current) !== expectedResourceIdentity
       ) {
@@ -568,6 +658,7 @@ export class MCPService {
   async resetRuntimeState(): Promise<{
     rebuilt: boolean;
     scope: 'integration' | 'runtime';
+    localCleanup: MCPLocalCleanup;
   }> {
     const resetIntegrationState = () => {
       this.mcpConfigs.clear();
@@ -575,104 +666,146 @@ export class MCPService {
       this.integrationMetadata.clear();
       this.agentTools.clear();
       this.toolNameMapping.clear();
+      this.oauthFlows.clear();
     };
-    const connections = [...this.mcpConfigs.values()];
-    await Promise.allSettled(
-      connections.map((connection) => connection.disconnect()),
-    );
+    const localCleanup = await this.mcpCustody.reset(resetIntegrationState);
+    if (localCleanup.state !== 'settled')
+      return { rebuilt: false, scope: 'runtime', localCleanup };
     if (!this.resetAllRuntimeProjections) {
-      resetIntegrationState();
-      return { rebuilt: false, scope: 'integration' };
+      return { rebuilt: false, scope: 'integration', localCleanup };
     }
     try {
-      await this.resetAllRuntimeProjections(resetIntegrationState);
-      return { rebuilt: true, scope: 'integration' };
+      await this.resetAllRuntimeProjections(() => {});
+      return { rebuilt: true, scope: 'integration', localCleanup };
     } catch {
-      return { rebuilt: false, scope: 'runtime' };
+      return { rebuilt: false, scope: 'runtime', localCleanup };
     }
   }
 
   async probeIntegration(id: string): Promise<ToolDef> {
-    const existing = await this.getIntegration(id);
-    const oauthProvider =
-      existing.transport === 'sse' || existing.transport === 'streamable-http'
-        ? this.createOAuthProvider(existing)
-        : undefined;
-    let oauthTransport: Transport | undefined;
+    const claim = this.mcpCustody.acquire(id, 'probe');
+    let retained = false;
+    let failed = false;
     try {
-      const connection = await this.establishChild(existing, (child) =>
-        connectMCP(child, {
-          authProvider: oauthProvider,
-          onTransport: (value) => {
-            oauthTransport = value;
-          },
-        }),
-      );
-      const checkedAt = new Date().toISOString();
-      const probe = {
-        ok: true,
-        toolCount: connection.tools.length,
-        // CI-R15: keep the names this probe observed, bounded. The live tool
-        // catalogue only fills once a session opens a client, so without this
-        // the detail page can count tools it can never name.
-        toolNames: connection.tools
-          .slice(0, PROBE_TOOL_NAME_LIMIT)
-          .map((tool) => tool.name),
-        checkedAt,
-      };
-      await connection.disconnect();
-      const updated = { ...existing, probe };
-      // Probe state is an internal projection write. It must retain an
-      // operator-authored binding reference without reopening the public
-      // integration authoring boundary.
-      await this.configLoader.saveIntegration(id, updated);
-      toolServerProbes.add(1, { outcome: 'success' });
-      return updated;
-    } catch (error) {
-      captureToolServerOperationFailure(error, 'probe', id, this.logger);
-      const authorizationUrl = oauthProvider?.takeAuthorizationUrl();
-      if (
-        oauthProvider &&
-        authorizationUrl &&
-        oauthTransport &&
-        'finishAuth' in oauthTransport
-      ) {
-        requireHttpAuthorizationUrl(authorizationUrl);
-        this.oauthFlows.set(id, {
-          provider: oauthProvider,
-          resourceIdentity:
-            toolServerOAuthResourceIdentity(existing) ??
-            (() => {
-              throw new Error(
-                'OAuth tool server endpoint is missing or invalid',
-              );
-            })(),
-          transport: oauthTransport as never,
-        });
-        return this.saveAuthorizationHealth(
-          id,
-          toolServerOAuthResourceIdentity(existing) as string,
-          (await oauthProvider.tokens())?.refresh_token
-            ? 'token-expired-refresh-failed'
-            : 'awaiting-operator-consent',
-          (await oauthProvider.tokens())?.refresh_token
-            ? 'Stored refresh token was rejected; operator consent is required'
-            : undefined,
+      const existing = await this.getIntegration(id);
+      const oauthProvider =
+        existing.transport === 'sse' || existing.transport === 'streamable-http'
+          ? this.createOAuthProvider(existing)
+          : undefined;
+      let oauthTransport: Transport | undefined;
+      try {
+        const connection = await this.establishChild(existing, (child) =>
+          claim.connect(child, {
+            authProvider: oauthProvider,
+            onTransport: (value) => {
+              oauthTransport = value;
+            },
+          }),
         );
+        const checkedAt = new Date().toISOString();
+        const probe = {
+          ok: true,
+          toolCount: connection.tools.length,
+          // CI-R15: keep the names this probe observed, bounded. The live tool
+          // catalogue only fills once a session opens a client, so without this
+          // the detail page can count tools it can never name.
+          toolNames: connection.tools
+            .slice(0, PROBE_TOOL_NAME_LIMIT)
+            .map((tool) => tool.name),
+          checkedAt,
+        };
+        await this.requireCurrentDefinition(claim, existing);
+        const updated = { ...existing, probe };
+        // Probe state is an internal projection write. It must retain an
+        // operator-authored binding reference without reopening the public
+        // integration authoring boundary.
+        await this.configLoader.updateIntegration(id, (current) => {
+          if (
+            !claim.isCurrent() ||
+            !sameMCPConnectionDefinition(existing, current)
+          )
+            throw new MCPLocalCustodyError('stale');
+          return { ...current, probe };
+        });
+        toolServerProbes.add(1, { outcome: 'success' });
+        if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
+        return updated;
+      } catch (error) {
+        captureToolServerOperationFailure(error, 'probe', id, this.logger);
+        await this.requireCurrentDefinition(claim, existing);
+        const authorizationUrl = oauthProvider?.takeAuthorizationUrl();
+        if (
+          oauthProvider &&
+          authorizationUrl &&
+          oauthTransport &&
+          'finishAuth' in oauthTransport
+        ) {
+          requireHttpAuthorizationUrl(authorizationUrl);
+          claim.retainForOAuth();
+          const previous = this.oauthFlows.get(id);
+          if (previous) {
+            const cleanup = await this.mcpCustody.release(previous.claim);
+            if (cleanup.state !== 'settled')
+              throw new MCPLocalCustodyError(cleanup.state);
+          }
+          this.oauthFlows.set(id, {
+            provider: oauthProvider,
+            resourceIdentity:
+              toolServerOAuthResourceIdentity(existing) ??
+              (() => {
+                throw new Error(
+                  'OAuth tool server endpoint is missing or invalid',
+                );
+              })(),
+            claim,
+          });
+          const tokens = await claim.run(() => oauthProvider.tokens());
+          const health = await this.saveAuthorizationHealth(
+            id,
+            toolServerOAuthResourceIdentity(existing) as string,
+            tokens?.refresh_token
+              ? 'token-expired-refresh-failed'
+              : 'awaiting-operator-consent',
+            tokens?.refresh_token
+              ? 'Stored refresh token was rejected; operator consent is required'
+              : undefined,
+            claim,
+          );
+          if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
+          retained = true;
+          return health;
+        }
+        const checkedAt = new Date().toISOString();
+        const message = formatToolServerFailure(
+          classifyToolServerProbeFailure(error, existing.transport),
+        );
+        const probe = { ok: false, error: message, toolCount: 0, checkedAt };
+        const updated = { ...existing, probe };
+        await this.configLoader.updateIntegration(id, (current) => {
+          if (
+            !claim.isCurrent() ||
+            !sameMCPConnectionDefinition(existing, current)
+          )
+            throw new MCPLocalCustodyError('stale');
+          return { ...current, probe };
+        });
+        toolServerProbes.add(1, { outcome: 'failure' });
+        if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
+        this.logger.warn('Tool server probe failed', {
+          toolId: id,
+          error: message,
+        });
+        return updated;
       }
-      const checkedAt = new Date().toISOString();
-      const message = formatToolServerFailure(
-        classifyToolServerProbeFailure(error, existing.transport),
-      );
-      const probe = { ok: false, error: message, toolCount: 0, checkedAt };
-      const updated = { ...existing, probe };
-      await this.configLoader.saveIntegration(id, updated);
-      toolServerProbes.add(1, { outcome: 'failure' });
-      this.logger.warn('Tool server probe failed', {
-        toolId: id,
-        error: message,
-      });
-      return updated;
+    } catch (error) {
+      failed = true;
+      throw error;
+    } finally {
+      if (!retained) {
+        if (this.oauthFlows.get(id)?.claim === claim)
+          this.oauthFlows.delete(id);
+        await this.releaseAfterOperation(claim, failed);
+      }
     }
   }
 
@@ -744,15 +877,61 @@ export class MCPService {
     operation: 'connect' | 'resource-read' | 'tool-call',
     fn: (conn: MCPConnection) => Promise<T>,
   ): Promise<T> {
-    const def = await this.configLoader.loadIntegration(serverId);
-    if (def.enabled === false) {
-      throw new MCPServerDisabledError(`MCP server '${serverId}' is disabled`);
-    }
+    const claim = this.mcpCustody.acquire(serverId, 'app');
+    let failed = false;
+    try {
+      const def = await this.configLoader.loadIntegration(serverId);
+      if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
+      if (def.enabled === false) {
+        throw new MCPServerDisabledError(
+          `MCP server '${serverId}' is disabled`,
+        );
+      }
 
-    const active = this.mcpConfigs.get(serverId);
-    if (active) {
+      const active = this.mcpConfigs.get(serverId);
+      if (active) {
+        try {
+          if (active.isUsable?.() === false)
+            throw new MCPLocalCustodyError('stale');
+          const result = await fn(active);
+          if (!claim.isCurrent() || active.isUsable?.() === false)
+            throw new MCPLocalCustodyError('stale');
+          return result;
+        } catch (error) {
+          if (error instanceof MCPAppsToolAccessError) throw error;
+          throw captureToolServerOperationFailure(
+            error,
+            operation,
+            serverId,
+            this.logger,
+          );
+        }
+      }
+
+      let conn: MCPConnection;
       try {
-        return await fn(active);
+        conn = await this.establishChild(def, (child) =>
+          claim.connect(child, {
+            authProvider:
+              def.transport === 'sse' || def.transport === 'streamable-http'
+                ? this.createOAuthProvider(def)
+                : undefined,
+          }),
+        );
+        await this.requireCurrentDefinition(claim, def);
+      } catch (error) {
+        throw captureToolServerOperationFailure(
+          error,
+          'connect',
+          serverId,
+          this.logger,
+        );
+      }
+      try {
+        const result = await fn(conn);
+        if (!claim.isCurrent() || conn.isUsable?.() === false)
+          throw new MCPLocalCustodyError('stale');
+        return result;
       } catch (error) {
         if (error instanceof MCPAppsToolAccessError) throw error;
         throw captureToolServerOperationFailure(
@@ -762,40 +941,11 @@ export class MCPService {
           this.logger,
         );
       }
-    }
-
-    let conn: MCPConnection;
-    try {
-      conn = await this.establishChild(def, (child) =>
-        connectMCP(child, {
-          authProvider:
-            def.transport === 'sse' || def.transport === 'streamable-http'
-              ? this.createOAuthProvider(def)
-              : undefined,
-        }),
-      );
     } catch (error) {
-      throw captureToolServerOperationFailure(
-        error,
-        'connect',
-        serverId,
-        this.logger,
-      );
-    }
-    try {
-      try {
-        return await fn(conn);
-      } catch (error) {
-        if (error instanceof MCPAppsToolAccessError) throw error;
-        throw captureToolServerOperationFailure(
-          error,
-          operation,
-          serverId,
-          this.logger,
-        );
-      }
+      failed = true;
+      throw error;
     } finally {
-      await conn.close().catch(() => {});
+      await this.releaseAfterOperation(claim, failed);
     }
   }
 

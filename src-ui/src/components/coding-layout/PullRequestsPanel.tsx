@@ -55,6 +55,20 @@ export function PullRequestsPanel({
     );
   }
   if (!context.data?.available) {
+    // #1536 G5: a checkout with no remote is the ordinary local repository —
+    // nothing is broken and nothing the operator asked for is missing. It read
+    // as a warning-triangle "Pull requests unavailable" card, the same
+    // presentation as a forge that refused. The cause comes from the server
+    // (`PullRequestUnavailableCause`), never from matching on the sentence.
+    if (context.data?.cause === 'no-remote') {
+      return (
+        <Empty
+          variant="compact"
+          label="Pull requests need a remote"
+          description="This checkout has no remote configured, so there is nothing to list. Add one on a supported forge to see pull requests here."
+        />
+      );
+    }
     return (
       <ErrorState
         variant="compact"

@@ -4,9 +4,17 @@ import { readFileSync } from 'node:fs';
 // Keep this small and plain-JS so the verification scripts can use the exact
 // same probe when they are launched by node rather than tsx.
 export const PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS = 1_500;
-export const WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS = 10_000;
-export const WINDOWS_OWN_PROCESS_BIRTH_ATTEMPTS = 3;
+export const WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS = 10_000;
+/** @deprecated Use WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS. */
+export const WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS =
+  WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS;
+export const WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS = 20_000;
+export const WINDOWS_OWN_PROCESS_BIRTH_ATTEMPTS = 2;
 export const WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS = 250;
+export const WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS =
+  WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS +
+  WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS +
+  WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS;
 
 // The Windows Job guard derives this exact representation from GetProcessTimes.
 // Keep the process-identity authority equally strict and normalize the same
@@ -57,9 +65,10 @@ function windowsCreationDateCommand(pid) {
 function windowsCreationDateProbe(
   pid,
   timeoutMs = PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
+  command = 'powershell.exe',
 ) {
   return {
-    command: 'powershell.exe',
+    command,
     args: [
       '-NoProfile',
       '-NonInteractive',
@@ -81,8 +90,12 @@ function canonicalWindowsCreationDate(output) {
   return isWindowsRoundTripUtcIso(value) ? value : null;
 }
 
-function windowsCreationDateFingerprint(pid, exec, timeoutMs) {
-  const { command, args, options } = windowsCreationDateProbe(pid, timeoutMs);
+function windowsCreationDateFingerprint(pid, exec, timeoutMs, shell) {
+  const { command, args, options } = windowsCreationDateProbe(
+    pid,
+    timeoutMs,
+    shell,
+  );
   const output = exec(command, args, options);
   return canonicalWindowsCreationDate(output);
 }
@@ -154,7 +167,12 @@ export function lookupProcessBirthFingerprint(pid, dependencies = {}) {
   } = dependencies;
   try {
     if (platform === 'win32') {
-      return windowsCreationDateFingerprint(pid, exec, timeoutMs);
+      return windowsCreationDateFingerprint(
+        pid,
+        exec,
+        timeoutMs,
+        dependencies.windowsShell,
+      );
     }
     if (platform === 'linux') {
       const stat = readFile(`/proc/${pid}/stat`, 'utf8').trim();
@@ -354,13 +372,14 @@ export function probeExactProcessIdentity(pid, dependencies = {}) {
  * later claimant/reclaim comparison; no PID-only or timing fallback exists.
  */
 export function resolveOwnProcessIdentity(pid, dependencies = {}) {
-  const probeDependencies = {
-    ...dependencies,
-    timeoutMs: dependencies.timeoutMs ?? WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS,
-  };
   const platform = dependencies.platform ?? process.platform;
   const attempts =
     platform === 'win32' ? WINDOWS_OWN_PROCESS_BIRTH_ATTEMPTS : 1;
+  const deadlineMs =
+    dependencies.deadlineMs ?? WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS;
+  const retryDelayMs =
+    dependencies.retryDelayMs ?? WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS;
+  const now = dependencies.now ?? Date.now;
   const wait =
     dependencies.wait ??
     ((milliseconds) =>
@@ -370,16 +389,34 @@ export function resolveOwnProcessIdentity(pid, dependencies = {}) {
         0,
         milliseconds,
       ));
+  const startedAt = now();
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const probe = probeExactProcessIdentityOnce(pid, probeDependencies);
+    const remainingMs =
+      attempt === 0 ? deadlineMs : deadlineMs - (now() - startedAt);
+    if (remainingMs <= 0) break;
+    const scheduledTimeoutMs =
+      dependencies.timeoutMs ??
+      (attempt === 0
+        ? WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS
+        : WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS);
+    const probe = probeExactProcessIdentityOnce(pid, {
+      ...dependencies,
+      // A legacy PowerShell startup failure should not consume both attempts
+      // on the same host. PowerShell 7 reads the identical direct handle and
+      // emits the same normalized timestamp within the existing deadline.
+      windowsShell: attempt === 0 ? 'powershell.exe' : 'pwsh.exe',
+      timeoutMs: Math.min(scheduledTimeoutMs, remainingMs),
+    });
     if (probe.state !== 'unavailable' || attempt === attempts - 1) {
       return probe;
     }
     // This path observes only the coordinator's own still-running process.
     // Retrying the same direct process-handle authority survives a transient
     // PowerShell startup timeout without ever publishing PID-only ownership.
-    wait(WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS);
+    const remainingAfterProbeMs = deadlineMs - (now() - startedAt);
+    if (remainingAfterProbeMs <= 0) break;
+    wait(Math.min(retryDelayMs, remainingAfterProbeMs));
   }
 
   return { state: 'unavailable' };

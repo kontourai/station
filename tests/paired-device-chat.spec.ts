@@ -265,7 +265,7 @@ test.describe('Paired-device chat round trip', () => {
       const composer = peer.getByPlaceholder('Type a message...');
       await expect(composer).toBeVisible({ timeout: 20_000 });
       await composer.fill('Confirm the paired-device round trip.');
-      await peer.getByRole('button', { name: 'Send' }).click();
+      await peer.getByRole('button', { name: 'Send', exact: true }).click();
       // A bare 60s poll on `chatRequests.length`
       // reads a reintroduced archive#4529/#4518 regression as a generic dispatch
       // timeout with no indication of why. Race the dispatch against the

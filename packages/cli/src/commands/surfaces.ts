@@ -659,11 +659,21 @@ async function runScheduleCommand(args: string[]) {
     case 'preview': {
       const cron = requirePositional(parsed, 1, 'cron');
       const count = parsed.positionals[2];
+      // #1536 R8: a cron alone is evaluated as UTC, so an operator previewing a
+      // ZONED job's schedule could not express the one fact that decides its
+      // instants. Absent stays absent — the server treats an unzoned schedule
+      // as UTC and the preview must agree rather than substitute a default.
+      const timezone =
+        typeof parsed.flags.timezone === 'string' &&
+        parsed.flags.timezone.trim().length > 0
+          ? parsed.flags.timezone.trim()
+          : undefined;
       printFetched(
         await previewSchedule(
           apiBase,
           cron,
           count === undefined ? undefined : Number.parseInt(count, 10),
+          timezone ? { timezone } : undefined,
         ),
       );
       return;

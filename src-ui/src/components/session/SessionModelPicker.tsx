@@ -1,17 +1,12 @@
-import { authenticatedFetch } from '@kontourai/station-sdk';
-import {
-  type KeyboardEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { curatedModelIdentityByCanonicalId } from '@kontourai/station-contracts/model-inventory';
+import { type KeyboardEvent, useMemo, useRef, useState } from 'react';
 import {
   modelPreferenceKey,
   updateModelPickerPreferences,
   useModelPickerPreferences,
 } from '../../settings/modelPickerPreferences';
 import {
+  groupModelsByCanonicalIdentity,
   type ModelProviderOption,
   type SelectableModel,
 } from '../../utils/modelCapabilities';
@@ -42,32 +37,10 @@ interface SessionModelPickerProps {
   onClose: () => void;
 }
 
-type ModelPricing = {
-  inputTokenPrice: number | null;
-  outputTokenPrice: number | null;
-  currency: string;
-};
-
 export function formatContextWindow(tokens: number): string {
   return tokens >= 1_000_000
     ? `${tokens / 1_000_000}m`
     : `${Math.round(tokens / 1_000)}k`;
-}
-
-function formatTokenPrice(price: number, currency: string): string {
-  return `${currency === 'USD' ? '$' : `${currency} `}${(price * 1_000).toFixed(2)}/M`;
-}
-
-function isModelPricing(value: unknown): value is ModelPricing {
-  if (!value || typeof value !== 'object') return false;
-  const pricing = value as Record<string, unknown>;
-  const isPrice = (price: unknown) =>
-    price === null || (typeof price === 'number' && Number.isFinite(price));
-  return (
-    isPrice(pricing.inputTokenPrice) &&
-    isPrice(pricing.outputTokenPrice) &&
-    typeof pricing.currency === 'string'
-  );
 }
 
 export function SessionModelPicker({
@@ -90,8 +63,11 @@ export function SessionModelPicker({
     currentProviderId ?? 'all',
   );
   const [capabilityFilters, setCapabilityFilters] = useState<string[]>([]);
-  const [pricing, setPricing] = useState<ModelPricing | null>(null);
   const preferences = useModelPickerPreferences();
+  const favoriteKeys = useMemo(
+    () => new Set(preferences.favorites),
+    [preferences.favorites],
+  );
   const searchRef = useRef<HTMLInputElement>(null);
   const activeModel = currentModel || defaultModel;
   const selectedModel =
@@ -102,10 +78,6 @@ export function SessionModelPicker({
     ) ??
     models.find((model) => model.id === activeModel) ??
     models[0];
-  const pricingModel =
-    activeModel && selectedModel?.id === activeModel
-      ? selectedModel
-      : undefined;
   const capabilities = selectedModel?.capabilities;
   const filters = useMemo(
     () => [
@@ -142,11 +114,19 @@ export function SessionModelPicker({
   );
   const visibleModels = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const preferenceKey = (model: SelectableModel) =>
-      modelPreferenceKey(
-        model.providerId ?? currentProviderId ?? 'current',
-        model.id,
-      );
+    const preferenceKeys = new Map(
+      models.map((model) => [
+        model,
+        modelPreferenceKey(
+          model.providerId ?? currentProviderId ?? 'current',
+          model.id,
+        ),
+      ]),
+    );
+    const hiddenKeys = new Set(preferences.hidden);
+    const selectedFilters = capabilityFilters.map((id) =>
+      filters.find((filter) => filter.id === id),
+    );
     const orderIndex = new Map(
       preferences.order.map((key, index) => [key, index]),
     );
@@ -154,19 +134,17 @@ export function SessionModelPicker({
       preferences.recents.map((key, index) => [key, index]),
     );
     return models
-      .filter((model) => !preferences.hidden.includes(preferenceKey(model)))
+      .filter((model) => !hiddenKeys.has(preferenceKeys.get(model)!))
       .filter(
         (model) =>
           needle.length > 0 ||
           providerFilter === 'all' ||
           (providerFilter === 'favorites'
-            ? preferences.favorites.includes(preferenceKey(model))
+            ? favoriteKeys.has(preferenceKeys.get(model)!)
             : model.providerId === providerFilter),
       )
       .filter((model) =>
-        capabilityFilters.every((id) =>
-          filters.find((filter) => filter.id === id)?.matches(model),
-        ),
+        selectedFilters.every((filter) => filter?.matches(model)),
       )
       .filter(
         (model) =>
@@ -176,8 +154,8 @@ export function SessionModelPicker({
           model.providerName?.toLowerCase().includes(needle),
       )
       .sort((a, b) => {
-        const aKey = preferenceKey(a);
-        const bKey = preferenceKey(b);
+        const aKey = preferenceKeys.get(a)!;
+        const bKey = preferenceKeys.get(b)!;
         const aOrder = orderIndex.get(aKey);
         const bOrder = orderIndex.get(bKey);
         if (aOrder !== undefined || bOrder !== undefined) {
@@ -201,39 +179,13 @@ export function SessionModelPicker({
     capabilityFilters,
     filters,
     models,
-    preferences.favorites,
+    favoriteKeys,
     preferences.hidden,
     preferences.order,
     preferences.recents,
     providerFilter,
     query,
   ]);
-
-  useEffect(() => {
-    const model = pricingModel;
-    if (model?.providerType !== 'bedrock') {
-      setPricing(null);
-      return;
-    }
-    let cancelled = false;
-    setPricing(null);
-    void authenticatedFetch(
-      `${window.location.origin}/api/models/pricing/${encodeURIComponent(model.id)}`,
-    )
-      .then(async (response) => (response.ok ? response.json() : null))
-      .then((result) => {
-        if (!cancelled)
-          setPricing(
-            result?.success && isModelPricing(result.data) ? result.data : null,
-          );
-      })
-      .catch(() => {
-        if (!cancelled) setPricing(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [pricingModel]);
 
   const selectModel = (model: SelectableModel) => {
     const key = modelPreferenceKey(
@@ -260,6 +212,103 @@ export function SessionModelPicker({
     }));
   };
 
+  const modelSections = useMemo(
+    () =>
+      groupModelsByCanonicalIdentity(visibleModels, (canonicalId) => {
+        const reviewed = curatedModelIdentityByCanonicalId(canonicalId);
+        return reviewed
+          ? {
+              displayName: reviewed.displayName,
+              verifiedAgainst: reviewed.verifiedAgainst,
+            }
+          : undefined;
+      }),
+    [visibleModels],
+  );
+
+  const renderModelRow = (model: SelectableModel) => {
+    const key = modelPreferenceKey(
+      model.providerId ?? currentProviderId ?? 'current',
+      model.id,
+    );
+    const active =
+      model.id === activeModel &&
+      (!currentProviderId ||
+        !model.providerId ||
+        model.providerId === currentProviderId);
+    const favorite = favoriteKeys.has(key);
+    const favoriteTarget = model.providerName
+      ? `${model.name} (${model.providerName})`
+      : model.name;
+    return (
+      <div className="session-model-picker__model-row" key={key}>
+        <button
+          type="button"
+          role="option"
+          aria-selected={active}
+          disabled={model.available === false}
+          className={active ? 'session-model-picker__model--active' : ''}
+          onClick={() => selectModel(model)}
+          onKeyDown={(event) =>
+            moveOptionFocus(
+              event,
+              event.key === 'Home'
+                ? 'first'
+                : event.key === 'End'
+                  ? 'last'
+                  : event.key === 'ArrowUp'
+                    ? -1
+                    : 1,
+            )
+          }
+        >
+          <span>{model.name}</span>
+          <small>
+            {[model.providerName, model.id]
+              .filter(Boolean)
+              .filter((value, index, values) => values.indexOf(value) === index)
+              .join(' · ')}
+            {model.available === false
+              ? ` · ${model.unavailableReason ?? 'Unavailable'}`
+              : ''}
+          </small>
+          {(model.capabilities?.contextWindow ||
+            model.supportsVision === true ||
+            model.description) && (
+            <small className="session-model-picker__model-metadata">
+              {[
+                model.capabilities?.contextWindow
+                  ? formatContextWindow(model.capabilities.contextWindow)
+                  : undefined,
+                model.supportsVision === true ? 'Vision' : undefined,
+                model.description,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </small>
+          )}
+          {active && (
+            <span
+              className="session-model-picker__model-check"
+              aria-hidden="true"
+            >
+              <CheckGlyph />
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          className="session-model-picker__favorite"
+          aria-label={`${favorite ? 'Remove' : 'Add'} ${favoriteTarget} ${favorite ? 'from' : 'to'} favorites`}
+          aria-pressed={favorite}
+          disabled={model.available === false}
+          onClick={() => toggleFavorite(model)}
+        >
+          {favorite ? '★' : '☆'}
+        </button>
+      </div>
+    );
+  };
   const moveOptionFocus = (
     event: KeyboardEvent<HTMLButtonElement>,
     direction: -1 | 1 | 'first' | 'last',
@@ -374,112 +423,29 @@ export function SessionModelPicker({
                   ))}
                 </fieldset>
               )}
-              <div className="session-model-picker__models" role="listbox">
-                {visibleModels.map((model) => {
-                  const key = modelPreferenceKey(
-                    model.providerId ?? currentProviderId ?? 'current',
-                    model.id,
-                  );
-                  const active =
-                    model.id === activeModel &&
-                    (!currentProviderId ||
-                      !model.providerId ||
-                      model.providerId === currentProviderId);
-                  const favorite = preferences.favorites.includes(key);
-                  const favoriteTarget = model.providerName
-                    ? `${model.name} (${model.providerName})`
-                    : model.name;
-                  return (
-                    <div className="session-model-picker__model-row" key={key}>
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={active}
-                        disabled={model.available === false}
-                        className={
-                          active ? 'session-model-picker__model--active' : ''
-                        }
-                        onClick={() => selectModel(model)}
-                        onKeyDown={(event) =>
-                          moveOptionFocus(
-                            event,
-                            event.key === 'Home'
-                              ? 'first'
-                              : event.key === 'End'
-                                ? 'last'
-                                : event.key === 'ArrowUp'
-                                  ? -1
-                                  : 1,
-                          )
-                        }
-                      >
-                        <span>{model.name}</span>
-                        <small>
-                          {[model.providerName, model.id]
-                            .filter(Boolean)
-                            .join(' · ')}
-                          {model.available === false
-                            ? ` · ${model.unavailableReason ?? 'Unavailable'}`
-                            : ''}
-                        </small>
-                        {(model.capabilities?.contextWindow ||
-                          model.supportsVision === true ||
-                          model.description) && (
-                          <small className="session-model-picker__model-metadata">
-                            {[
-                              model.capabilities?.contextWindow
-                                ? formatContextWindow(
-                                    model.capabilities.contextWindow,
-                                  )
-                                : undefined,
-                              model.supportsVision === true
-                                ? 'Vision'
-                                : undefined,
-                              model.description,
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </small>
-                        )}
-                        {active &&
-                          pricing &&
-                          (pricing.inputTokenPrice !== null ||
-                            pricing.outputTokenPrice !== null) && (
-                            <small className="session-model-picker__model-pricing">
-                              {[
-                                pricing.inputTokenPrice !== null
-                                  ? `In ${formatTokenPrice(pricing.inputTokenPrice, pricing.currency)}`
-                                  : undefined,
-                                pricing.outputTokenPrice !== null
-                                  ? `Out ${formatTokenPrice(pricing.outputTokenPrice, pricing.currency)}`
-                                  : undefined,
-                              ]
-                                .filter(Boolean)
-                                .join(' · ')}
-                            </small>
-                          )}
-                        {active && (
-                          <span
-                            className="session-model-picker__model-check"
-                            aria-hidden="true"
-                          >
-                            <CheckGlyph />
-                          </span>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        className="session-model-picker__favorite"
-                        aria-label={`${favorite ? 'Remove' : 'Add'} ${favoriteTarget} ${favorite ? 'from' : 'to'} favorites`}
-                        aria-pressed={favorite}
-                        disabled={model.available === false}
-                        onClick={() => toggleFavorite(model)}
-                      >
-                        {favorite ? '★' : '☆'}
-                      </button>
-                    </div>
-                  );
-                })}
+              <div
+                className="session-model-picker__models"
+                role="listbox"
+                aria-label="Models"
+              >
+                {modelSections.map((section) =>
+                  section.kind === 'model' ? (
+                    // A fieldset IS role="group", which is what a listbox
+                    // accepts around its options; the legend names the model
+                    // whose routes these are.
+                    <fieldset
+                      key={`model:${section.canonicalId}`}
+                      className="session-model-picker__model-group"
+                    >
+                      <legend className="session-model-picker__model-group-name">
+                        {section.displayName}
+                      </legend>
+                      {section.routes.map(renderModelRow)}
+                    </fieldset>
+                  ) : (
+                    renderModelRow(section.model)
+                  ),
+                )}
                 {visibleModels.length === 0 && (
                   <Empty
                     className="session-model-picker__state"

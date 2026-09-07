@@ -26,12 +26,16 @@ describe('protected browser stream inventory', () => {
       'utf8',
     );
     expect(source).toContain(
-      'const serverEventClientSessionId = crypto.randomUUID()',
+      "import { randomCorrelationId } from '@kontourai/station-shared/random-id'",
+    );
+    expect(source).toContain(
+      'const serverEventClientSessionId = randomCorrelationId()',
     );
     expect(source).toContain(
       "'X-Station-Client-Session': serverEventClientSessionId",
     );
     expect(source).not.toContain('sessionStorage.');
+    expect(source).not.toContain('crypto.randomUUID()');
   });
 
   it('admits the exact liveness header through browser CORS only', () => {

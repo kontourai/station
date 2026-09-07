@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { authenticatedFetch } from '@kontourai/station-sdk';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ResponsiveDialogSurface } from '../components/ResponsiveDialogSurface';
@@ -65,7 +71,11 @@ function renderNestedPicker(onOuterClose = vi.fn()) {
   function Harness() {
     const [pickerOpen, setPickerOpen] = useState(true);
     return (
-      <ResponsiveDialogSurface ariaLabel="New Chat" onClose={onOuterClose}>
+      <ResponsiveDialogSurface
+        layer="dialog"
+        ariaLabel="New Chat"
+        onClose={onOuterClose}
+      >
         <button type="button">Outer dialog control</button>
         {pickerOpen && (
           <SessionModelPicker
@@ -226,7 +236,11 @@ describe('SessionModelPicker', () => {
     function Harness() {
       const [open, setOpen] = useState(true);
       return (
-        <ResponsiveDialogSurface ariaLabel="New Chat" onClose={onOuterClose}>
+        <ResponsiveDialogSurface
+          layer="dialog"
+          ariaLabel="New Chat"
+          onClose={onOuterClose}
+        >
           {open && (
             <SessionModelPicker
               models={[]}
@@ -258,7 +272,11 @@ describe('SessionModelPicker', () => {
     function Harness() {
       const [open, setOpen] = useState(false);
       return (
-        <ResponsiveDialogSurface ariaLabel="New Chat" onClose={vi.fn()}>
+        <ResponsiveDialogSurface
+          layer="dialog"
+          ariaLabel="New Chat"
+          onClose={vi.fn()}
+        >
           <button type="button" onClick={() => setOpen(true)}>
             Configure model
           </button>
@@ -398,60 +416,11 @@ describe('SessionModelPicker', () => {
     expect(screen.queryByRole('option', { name: /Abort only/ })).toBeNull();
   });
 
-  test('renders contract-priced input-only Bedrock pricing per million tokens', async () => {
-    const fetchMock = vi.mocked(authenticatedFetch);
-    fetchMock.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          success: true,
-          data: {
-            inputTokenPrice: 0.003,
-            outputTokenPrice: null,
-            currency: 'USD',
-          },
-        }),
-        { status: 200 },
-      ),
-    );
-    renderPicker({
-      models: [
-        { id: 'bedrock-model', name: 'Bedrock model', providerType: 'bedrock' },
-      ],
-      currentModel: 'bedrock-model',
-    });
-    await waitFor(() => expect(screen.getByText(/In \$3.00\/M/)).toBeTruthy());
-    expect(screen.queryByText(/Out \$/)).toBeNull();
-    expect(fetchMock).toHaveBeenCalledOnce();
-  });
-
-  test('does not render absent metadata or malformed pricing payloads', async () => {
-    const fetchMock = vi.mocked(authenticatedFetch);
-    fetchMock.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          success: true,
-          data: { inputTokenPrice: 0.003, currency: 'USD' },
-        }),
-        { status: 200 },
-      ),
-    );
-    renderPicker({
-      models: [
-        { id: 'bedrock-model', name: 'Bedrock model', providerType: 'bedrock' },
-      ],
-      currentModel: 'bedrock-model',
-    });
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-    expect(screen.queryByText(/\/M/)).toBeNull();
-    expect(screen.queryByText('200k')).toBeNull();
-    expect(screen.queryByText('Vision')).toBeNull();
-  });
-
-  test('does not render pricing when its successful response has no payload', async () => {
-    const fetchMock = vi.mocked(authenticatedFetch);
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ success: true }), { status: 200 }),
-    );
+  // The picker used to fetch Bedrock's pricing endpoint and render the result
+  // beside the selected model whatever its provider, so an OpenAI or Ollama
+  // route could display an Amazon price. Nothing sources a per-route price yet,
+  // so the picker must show none rather than borrow one.
+  test('renders no price and requests no pricing for a selected Bedrock model', async () => {
     renderPicker({
       models: [
         { id: 'bedrock-model', name: 'Bedrock model', providerType: 'bedrock' },
@@ -459,20 +428,14 @@ describe('SessionModelPicker', () => {
       currentModel: 'bedrock-model',
     });
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-    expect(screen.queryByText(/\/M/)).toBeNull();
-  });
-
-  test('does not fetch Bedrock pricing for a positional fallback without a selection', () => {
-    renderPicker({
-      models: [
-        { id: 'bedrock-model', name: 'Bedrock model', providerType: 'bedrock' },
-      ],
-      currentModel: undefined,
-      defaultModel: undefined,
-    });
-
+    await waitFor(() =>
+      expect(
+        screen.getByRole('option', { name: /Bedrock model/ }),
+      ).toBeTruthy(),
+    );
     expect(authenticatedFetch).not.toHaveBeenCalled();
+    expect(screen.queryByText(/\/M/)).toBeNull();
+    expect(screen.queryByText(/Cost:/)).toBeNull();
   });
 
   test('searches across providers and persists a device-local favorite', () => {
@@ -519,6 +482,104 @@ describe('SessionModelPicker', () => {
     expect(
       deviceSettingsStore.get('modelPickerPreferences').favorites,
     ).toContain('bedrock-prod\u001fclaude-sonnet');
+  });
+
+  // #1208 review: nothing exercised the render seam. Removing the grouping
+  // from the picker left every helper test green.
+  test('renders routes the reviewed identity unites as one named group', () => {
+    const sonnet = {
+      canonicalId: 'anthropic:claude-sonnet-4-5',
+      verifiedAgainst: 'reviewed 2026-08-31',
+    };
+    renderPicker({
+      currentModel: undefined,
+      models: [
+        { id: 'gpt-5.6', name: 'GPT-5.6' },
+        {
+          id: 'claude-sonnet-4-5',
+          name: 'Claude Sonnet 4.5',
+          providerName: 'Anthropic',
+          canonicalModelIdentity: sonnet,
+        },
+        {
+          id: 'sonnet',
+          name: 'sonnet',
+          providerName: 'Claude Code',
+          canonicalModelIdentity: sonnet,
+        },
+      ],
+    });
+    const group = screen.getByRole('group', { name: 'Claude Sonnet 4.5' });
+    expect(group.tagName).toBe('FIELDSET');
+    expect(
+      within(group)
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual([
+      expect.stringContaining('Claude Sonnet 4.5'),
+      expect.stringContaining('sonnet'),
+    ]);
+    expect(within(group).queryByRole('option', { name: /GPT-5.6/ })).toBeNull();
+    expect(screen.getByRole('listbox', { name: 'Models' })).toBeTruthy();
+  });
+
+  test('a lone identified route is a plain row, not a group of one', () => {
+    renderPicker({
+      currentModel: undefined,
+      models: [
+        {
+          id: 'sonnet',
+          name: 'sonnet',
+          canonicalModelIdentity: {
+            canonicalId: 'anthropic:claude-sonnet-4-5',
+            verifiedAgainst: 'reviewed 2026-08-31',
+          },
+        },
+      ],
+    });
+    expect(screen.queryByRole('group')).toBeNull();
+    expect(screen.getByRole('option', { name: /sonnet/ })).toBeTruthy();
+  });
+
+  test('arrow keys cross a group boundary in visual order', () => {
+    const sonnet = {
+      canonicalId: 'anthropic:claude-sonnet-4-5',
+      verifiedAgainst: 'reviewed 2026-08-31',
+    };
+    renderPicker({
+      currentModel: undefined,
+      models: [
+        { id: 'gpt-5.6', name: 'GPT-5.6' },
+        {
+          id: 'claude-sonnet-4-5',
+          name: 'Claude Sonnet 4.5',
+          canonicalModelIdentity: sonnet,
+        },
+        { id: 'sonnet', name: 'sonnet', canonicalModelIdentity: sonnet },
+        { id: 'gpt-5.5', name: 'GPT-5.5' },
+      ],
+    });
+    const options = screen.getAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual([
+      expect.stringContaining('GPT-5.6'),
+      expect.stringContaining('Claude Sonnet 4.5'),
+      expect.stringContaining('sonnet'),
+      expect.stringContaining('GPT-5.5'),
+    ]);
+    // The boundary must actually exist: the middle two sit inside the group,
+    // the outer two do not. Without this the test passes on a flat list.
+    expect(
+      options.map((option) => option.closest('fieldset') !== null),
+    ).toEqual([false, true, true, false]);
+    options[0]!.focus();
+    fireEvent.keyDown(options[0]!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(options[1]);
+    fireEvent.keyDown(options[1]!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(options[2]);
+    fireEvent.keyDown(options[2]!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(options[3]);
+    fireEvent.keyDown(options[3]!, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(options[2]);
   });
 
   test('moves between model options with arrow, Home, and End keys', () => {

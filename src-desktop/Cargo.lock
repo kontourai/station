@@ -4200,14 +4200,16 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "station"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "apple-native-keyring-store",
  "dirs",
  "dunce",
+ "jni 0.21.1",
  "keyring-core",
  "libc",
  "log",
+ "ndk-context",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",

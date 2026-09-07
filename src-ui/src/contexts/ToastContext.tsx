@@ -27,6 +27,8 @@ type ToastAction = {
   variant?: 'primary' | 'secondary' | 'danger';
 };
 
+type ToastTone = 'info' | 'success' | 'warning' | 'error';
+
 type Toast = {
   id: string;
   message: string;
@@ -42,8 +44,17 @@ type Toast = {
   // union regardless, because the rendering code already switches on it and
   // a real device-pairing notification producer is meant to opt into this
   // exact shape next, not invent a second one.
-  type?: 'info' | 'tool-approval' | 'tool-activity' | 'pairing-request';
+  type?: ToastTone | 'tool-approval' | 'tool-activity' | 'pairing-request';
   toolName?: string;
+  /**
+   * #1545: a bounded, single-line, redacted preview naming which command, or
+   * which file, the tool call will touch — derived by
+   * `@kontourai/station-shared/tool-request-preview`, never composed here. The
+   * tool name alone cannot tell an operator whether they are approving
+   * `git status` or `rm -rf /`. It is not the whole call: for a write it names
+   * the file and never the content (see that module's docblock).
+   */
+  toolPreview?: string;
   agentName?: string;
   conversationTitle?: string;
   actions?: ToastAction[];
@@ -96,16 +107,24 @@ class ToastStore {
     duration = 5000,
     actions?: ToastAction[],
     metadata?: Record<string, unknown>,
+    tone: ToastTone = 'info',
   ) {
     const clean = stripAnsi(message);
 
     // Collapse rapid duplicates (a provider error retried in a loop would
     // otherwise stack identical toasts until they cover the viewport). Refresh
     // the existing toast's auto-dismiss timer instead of adding another copy.
-    const existing = this.toasts.find(
-      (t) =>
-        t.type === 'info' && t.message === clean && t.sessionId === sessionId,
-    );
+    // Actions carry distinct caller-owned intent. Equal copy must not retain
+    // another Pane's callback or attach an old action to an actionless notice.
+    const existing =
+      !actions?.length &&
+      this.toasts.find(
+        (t) =>
+          !t.actions?.length &&
+          t.type === tone &&
+          t.message === clean &&
+          t.sessionId === sessionId,
+      );
     if (existing) {
       const prevTimeout = this.timeouts.get(existing.id);
       if (prevTimeout) clearTimeout(prevTimeout);
@@ -124,7 +143,7 @@ class ToastStore {
       message: clean,
       sessionId,
       duration,
-      type: 'info',
+      type: tone,
       actions,
       metadata,
     };
@@ -160,6 +179,8 @@ class ToastStore {
   showToolApproval(options: {
     sessionId: string;
     toolName: string;
+    /** See `Toast.toolPreview`. */
+    toolPreview?: string;
     server?: string;
     tool?: string;
     agentName: string;
@@ -183,6 +204,7 @@ class ToastStore {
       sessionId: options.sessionId,
       type: 'tool-approval',
       toolName: toolDisplay,
+      ...(options.toolPreview ? { toolPreview: options.toolPreview } : {}),
       agentName: options.agentName,
       conversationTitle: conversationInfo,
       actions: options.actions,
@@ -209,7 +231,7 @@ class ToastStore {
     agentName: string;
     conversationTitle?: string;
     detail?: string;
-    status: 'completed' | 'cancelled' | 'error';
+    status: 'completed' | 'cancelled' | 'error' | 'unresolved';
     onNavigate?: () => void;
     duration?: number;
   }) {
@@ -219,7 +241,13 @@ class ToastStore {
         ? 'failed'
         : options.status === 'cancelled'
           ? 'cancelled'
-          : 'finished';
+          : // station#1558: the session ended with this call still open, so
+            // there is no outcome to name. "reported no result for" says
+            // exactly what happened — it does not claim the tool failed, and
+            // it does not claim it finished.
+            options.status === 'unresolved'
+            ? 'reported no result for'
+            : 'finished';
 
     const toast: Toast = {
       id,
@@ -234,7 +262,7 @@ class ToastStore {
         options.duration ??
         (options.status === 'error'
           ? 9000
-          : options.status === 'cancelled'
+          : options.status === 'cancelled' || options.status === 'unresolved'
             ? 7000
             : 6000),
       metadata: options.detail ? { detail: options.detail } : undefined,
@@ -313,10 +341,13 @@ const ToastContext = createContext<{
     sessionId?: string,
     duration?: number,
     actions?: ToastAction[],
+    tone?: ToastTone,
   ) => string;
   showToolApproval: (options: {
     sessionId: string;
     toolName: string;
+    /** See `Toast.toolPreview`. */
+    toolPreview?: string;
     server?: string;
     tool?: string;
     agentName: string;
@@ -330,7 +361,7 @@ const ToastContext = createContext<{
     agentName: string;
     conversationTitle?: string;
     detail?: string;
-    status: 'completed' | 'cancelled' | 'error';
+    status: 'completed' | 'cancelled' | 'error' | 'unresolved';
     onNavigate?: () => void;
     duration?: number;
   }) => string;
@@ -347,8 +378,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       sessionId?: string,
       duration?: number,
       actions?: ToastAction[],
+      tone: ToastTone = 'info',
     ) => {
-      return toastStore.show(message, sessionId, duration, actions);
+      return toastStore.show(
+        message,
+        sessionId,
+        duration,
+        actions,
+        undefined,
+        tone,
+      );
     },
     [],
   );
@@ -376,7 +415,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       agentName: string;
       conversationTitle?: string;
       detail?: string;
-      status: 'completed' | 'cancelled' | 'error';
+      status: 'completed' | 'cancelled' | 'error' | 'unresolved';
       onNavigate?: () => void;
       duration?: number;
     }) => {

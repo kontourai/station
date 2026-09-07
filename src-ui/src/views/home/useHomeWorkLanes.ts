@@ -64,6 +64,7 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
   );
   const identityAliasRef = useRef(new Map<string, string>());
   const terminalSinceRef = useRef<Map<string, number> | null>(null);
+  const terminalSinceDirtyRef = useRef(true);
   if (terminalSinceRef.current === null) {
     // Lazy ref init (React-sanctioned: safe to read/assign `ref.current`
     // during render for a one-time initializer). Seeded from
@@ -92,10 +93,14 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
     return () => clearInterval(id);
   }, []);
 
-  // Persist terminal-since after every render so a reload can seed the
-  // ref above from real anchors instead of re-anchoring to "now".
+  // Persist changed anchors after commit; unchanged clock ticks need no storage I/O.
   useEffect(() => {
-    writeTerminalSince(Object.fromEntries(terminalSinceRef.current ?? []));
+    if (
+      terminalSinceDirtyRef.current &&
+      writeTerminalSince(Object.fromEntries(terminalSinceRef.current ?? []))
+    ) {
+      terminalSinceDirtyRef.current = false;
+    }
   });
 
   const snoozedUntil = useMemo(
@@ -117,6 +122,7 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
         // Persisted anchors can be pruned once they no longer affect the
         // settled classification, so never recreate an old terminal item at
         // "now" after that pruning (or on a fresh browser/store).
+        terminalSinceDirtyRef.current = true;
         terminalSinceRef.current.set(
           item.id,
           Math.min(item.updatedAt || now, now),
@@ -124,10 +130,14 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
       }
     } else if (terminalSinceRef.current.has(item.id)) {
       terminalSinceRef.current.delete(item.id);
+      terminalSinceDirtyRef.current = true;
     }
   }
   for (const id of [...terminalSinceRef.current.keys()]) {
-    if (!presentIds.has(id)) terminalSinceRef.current.delete(id);
+    if (!presentIds.has(id)) {
+      terminalSinceRef.current.delete(id);
+      terminalSinceDirtyRef.current = true;
+    }
   }
 
   const partition = partitionHomeWorkItems({

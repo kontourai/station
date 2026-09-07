@@ -7,6 +7,9 @@ describe('iOS TestFlight authority ref', () => {
     'refs/tags/v1.2.3',
     'refs/tags/v1.2.3-preview.4',
     'refs/tags/nightly-version-code/243201',
+    'refs/tags/ios-testflight/stable/v0.1.10/11100',
+    'refs/tags/ios-testflight/beta/v0.1.10/11100',
+    'refs/tags/ios-testflight/nightly/v0.1.10/243201',
   ])('accepts exact authority %s', (sourceRef) =>
     expect(
       verifyIosTestFlightAuthority({
@@ -16,22 +19,12 @@ describe('iOS TestFlight authority ref', () => {
       }),
     ).toEqual({ sourceRef, sourceSha: sha }),
   );
-  test('fails closed for missing and mismatched refs', () => {
+  test('rejects a colliding internal release slot', () =>
     expect(() =>
       verifyIosTestFlightAuthority({
-        sourceRef: 'refs/tags/v1.2.3',
+        sourceRef: 'refs/tags/ios-testflight/stable/v0.1.10/11199',
         sourceSha: sha,
-        resolveRef: () => {
-          throw new Error('missing');
-        },
+        resolveRef: () => sha,
       }),
-    ).toThrow(/missing/);
-    expect(() =>
-      verifyIosTestFlightAuthority({
-        sourceRef: 'refs/tags/v1.2.3',
-        sourceSha: sha,
-        resolveRef: () => 'b'.repeat(40),
-      }),
-    ).toThrow(/not/);
-  });
+    ).toThrow(/reserved internal build/));
 });

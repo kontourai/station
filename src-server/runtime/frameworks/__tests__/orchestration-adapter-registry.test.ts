@@ -68,4 +68,26 @@ describe('withPrivateOrchestrationAdapter', () => {
     registry.register(plugin);
     expect(register).toHaveBeenCalledWith(plugin);
   });
+
+  test('resolves multiple private adapters without publishing either one', () => {
+    const bedrock = adapter('bedrock');
+    const ollama = adapter('ollama');
+    const station = adapter('station-agent');
+    const publicRegistry: IProviderAdapterRegistry = {
+      register: vi.fn(),
+      get: (provider) => (provider === station.provider ? station : undefined),
+      list: () => [station],
+    };
+
+    const registry = withPrivateOrchestrationAdapter(publicRegistry, [
+      bedrock,
+      ollama,
+    ]);
+
+    expect(registry.get('bedrock')).toBe(bedrock);
+    expect(registry.get('ollama')).toBe(ollama);
+    expect(registry.get('station-agent')).toBe(station);
+    expect(registry.list()).toEqual([station, bedrock, ollama]);
+    expect(publicRegistry.list()).toEqual([station]);
+  });
 });

@@ -521,7 +521,7 @@ test.describe('Built-in runtime chat workflows', () => {
 
     const textarea = page.locator('textarea[placeholder*="Type a message"]');
     await textarea.fill('hello claude');
-    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     const threadId = await waitForExecutionThread(
       commandBodies,
@@ -588,7 +588,7 @@ test.describe('Built-in runtime chat workflows', () => {
     await page
       .locator('textarea[placeholder*="Type a message"]')
       .fill('remember this turn');
-    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     const threadId = await waitForExecutionThread(
       commandBodies,
@@ -730,7 +730,7 @@ test.describe('Built-in runtime chat workflows', () => {
 
     const textarea = page.locator('textarea[placeholder*="Type a message"]');
     await textarea.fill('hello codex');
-    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     const threadId = await waitForExecutionThread(commandBodies, 'hello codex');
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
@@ -776,7 +776,7 @@ test.describe('Built-in runtime chat workflows', () => {
 
     const textarea = page.locator('textarea[placeholder*="Type a message"]');
     await textarea.fill('use a tool');
-    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     const threadId = await waitForExecutionThread(commandBodies, 'use a tool');
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
@@ -846,7 +846,7 @@ test.describe('Built-in runtime chat workflows', () => {
 
     const textarea = page.locator('textarea[placeholder*="Type a message"]');
     await textarea.fill('delete a file');
-    await page.getByRole('button', { name: 'Send' }).click();
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
 
     const threadId = await waitForExecutionThread(
       commandBodies,

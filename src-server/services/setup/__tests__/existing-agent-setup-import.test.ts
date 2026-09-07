@@ -5,6 +5,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import {
@@ -23,7 +24,14 @@ import {
   SETUP_IMPORT_MAX_TARGET_NAME_LENGTH,
 } from '@kontourai/station-shared/setup-import-bounds';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { ExistingAgentSetupImportModule } from '../existing-agent-setup-import.js';
+import {
+  deleteSkillPackageAt,
+  saveSkillConfigIn,
+} from '../../../domain/config-loader-storage.js';
+import {
+  ExistingAgentSetupImportModule,
+  SetupImportError,
+} from '../existing-agent-setup-import.js';
 import { readGuardedUtf8 } from '../guarded-setup-import-filesystem.js';
 import { SetupImportReceiptStore } from '../setup-import-receipt-store.js';
 
@@ -87,6 +95,14 @@ async function fixture() {
       JSON.parse(
         readFileSync(join(project, 'skills', name, 'skill.json'), 'utf8'),
       ),
+    // The REAL directory-addressed pair (#1619), not an imitation of it: the
+    // containment they assert is the floor beneath every write, and a stub
+    // that only wrote a file would let this suite certify a write that escapes
+    // its root (review: test power).
+    saveSkillIn: async (directory: string, value: unknown) =>
+      saveSkillConfigIn(project, directory, value as never),
+    deleteSkillAt: async (name: string, directory: string) =>
+      deleteSkillPackageAt(project, name, directory),
     deleteSkill: async (name: string) =>
       rmSync(join(project, 'skills', name), { recursive: true, force: true }),
     listSkills: async () => [],
@@ -144,6 +160,14 @@ function serviceFor(
         throw error;
       }
       return JSON.parse(readFileSync(path, 'utf8'));
+    },
+    saveSkillIn: async (directory: string, value: unknown) => {
+      await saveSkillConfigIn(project, directory, value as never);
+      if (faults.saveAfterWrite) throw new Error('injected after skill.json');
+    },
+    deleteSkillAt: async (name: string, directory: string) => {
+      if (faults.deleteFails) throw new Error('injected compensation failure');
+      await deleteSkillPackageAt(project, name, directory);
     },
     deleteSkill: async (name: string) => {
       if (faults.deleteFails) throw new Error('injected compensation failure');
@@ -954,6 +978,32 @@ describe('ExistingAgentSetupImportModule', () => {
     ).rejects.toThrow('PREVIEW_EXPIRED');
   });
 
+  test('receipt transactions tolerate sibling lock files without accepting receipt replacement', async () => {
+    const { root } = await fixture();
+    const directory = join(root, 'receipts');
+    mkdirSync(directory);
+    const path = join(directory, 'setup-imports.json');
+    writeFileSync(path, JSON.stringify({ count: 0 }));
+    const store = new SetupImportReceiptStore(path, () => ({ count: 0 }), {
+      afterOpenForTest: () => {
+        writeFileSync(join(directory, 'contender-lock.tmp'), 'lock contender');
+        // Force a distinct timestamp even on coarse-resolution filesystems.
+        utimesSync(directory, new Date(0), new Date(10_000));
+      },
+    });
+    await expect(store.read()).resolves.toEqual({ count: 0 });
+    await expect(
+      store.mutate<{ count: number }>((value) => ({ count: value.count + 1 })),
+    ).resolves.toEqual({ count: 1 });
+    const hostile = new SetupImportReceiptStore(path, () => ({}), {
+      afterOpenForTest: () => {
+        renameSync(path, `${path}.original`);
+        writeFileSync(path, JSON.stringify({ count: 999 }));
+      },
+    });
+    await expect(hostile.read()).rejects.toThrow('changed after read');
+  });
+
   test('serializes concurrent preview, apply, and rollback receipt transitions', async () => {
     const { codex, project } = await fixture();
     writeFileSync(join(codex, 'prompts', 'review.md'), 'review prompt');
@@ -991,10 +1041,20 @@ describe('ExistingAgentSetupImportModule', () => {
     // concurrent preview path, then restore the stable fixture identity for
     // the real receipt/apply/rollback assertions below.
     processIdentity.birth = null;
-    await expect(
-      Promise.all(modules.map((module) => module.preview('codex-prompts'))),
-    ).rejects.toThrow('STORE_UNAVAILABLE');
-    processIdentity.birth = 'setup-import-test-process-birth';
+    const faultSettlements = await Promise.allSettled(
+      modules.map((module) => module.preview('codex-prompts')),
+    );
+    try {
+      expect(faultSettlements).toHaveLength(modules.length);
+      for (const settlement of faultSettlements) {
+        expect(settlement.status).toBe('rejected');
+        if (settlement.status !== 'rejected') continue;
+        expect(settlement.reason).toBeInstanceOf(SetupImportError);
+        expect(settlement.reason.code).toBe('STORE_UNAVAILABLE');
+      }
+    } finally {
+      processIdentity.birth = 'setup-import-test-process-birth';
+    }
 
     const previews = [];
     for (const module of modules)

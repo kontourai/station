@@ -1,12 +1,20 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { parseWorkspacePaneDescriptor } from '@kontourai/station-sdk/workspace-pane';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   CREDENTIAL_GATED,
   checkExample,
   documentedScripts,
   listExamples,
+  uncataloguedExamples,
 } from '../examples-conformance.mjs';
 
 let sandbox: string | undefined;
@@ -141,6 +149,40 @@ describe('checkExample', () => {
 });
 
 describe('the repo’s own examples', () => {
+  it('catalogs every example for developers', () => {
+    expect(uncataloguedExamples()).toEqual([]);
+  });
+
+  it('parses the Workspace Pane starter through the public SDK contract', () => {
+    const manifest = JSON.parse(
+      readFileSync('examples/workspace-pane-starter/plugin.json', 'utf8'),
+    );
+    const descriptor = parseWorkspacePaneDescriptor(
+      manifest.workspacePanes?.[0],
+    );
+
+    expect(descriptor).toMatchObject({
+      id: 'session-activity',
+      renderer: {
+        kind: 'mcp-tool-ui',
+        ref: 'station-sessions-mcp/sessions_panel',
+        approvalPolicy: 'read-only',
+      },
+      placement: {
+        preferredRegion: 'secondary',
+        supportedRegions: ['secondary', 'standalone'],
+      },
+      modes: [{ id: 'project', contextRequirement: { project: true } }],
+      provenance: {
+        origin: 'plugin',
+        pluginId: 'workspace-pane-starter',
+        mcpServerId: 'station-sessions-mcp',
+      },
+    });
+    expect(manifest.integrations.required).toEqual(['station-sessions-mcp']);
+    expect(manifest.tools.required).toEqual(['sessions_panel']);
+  });
+
   it('every example conforms', () => {
     for (const name of listExamples()) {
       expect(checkExample(join('examples', name), name), name).toEqual([]);

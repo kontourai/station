@@ -169,6 +169,17 @@ export type ThreadToolResultRow = RowBase<'thread-tool-result'> & {
   turnId: string;
   toolCallId: string;
   name: string;
+  /**
+   * station#1558 deliberately did NOT add a member for a `tool.completed`
+   * whose status is `unresolved` (the session ended with the call open, so
+   * no outcome was ever observed). This vocabulary is validated exactly, by
+   * version, so a new member would make every consumer built before it
+   * reject the whole ROW rather than degrade — and the three members here
+   * all assert an outcome, so folding an unresolved completion into
+   * `cancelled` would put a fabricated one in an inventory whose value is
+   * that it is believable. The projection omits the row instead
+   * (`session-inventory-module.ts`); the transcript still carries the event.
+   */
   terminalStatus: 'succeeded' | 'failed' | 'cancelled';
 };
 export type StationPlanSnapshotRow = RowBase<'station-plan-snapshot'> & {

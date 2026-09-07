@@ -373,6 +373,7 @@ CREATE INDEX IF NOT EXISTS idx_native_invocation_runs_active
 -- racing that boundary and retain possible-effect truth across restart.
 CREATE TABLE IF NOT EXISTS orchestration_turn_boundaries (
   boundary_id TEXT PRIMARY KEY,
+  purpose TEXT NOT NULL DEFAULT 'turn' CHECK(purpose IN ('turn','task-dispatch')),
   thread_id TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('lifecycle', 'prepared', 'invoking', 'accepted', 'indeterminate')),
   provider_turn_id TEXT,
@@ -939,9 +940,20 @@ export function ensureOrchestrationEventStoreColumns(
     .prepare('PRAGMA table_info(orchestration_command_receipts)')
     .all() as Array<{ name?: string }>;
   if (!receiptColumns.some((column) => column.name === 'client_origin')) {
-    db.exec(
-      'ALTER TABLE orchestration_command_receipts ADD COLUMN client_origin TEXT',
-    );
+    try {
+      db.exec(
+        'ALTER TABLE orchestration_command_receipts ADD COLUMN client_origin TEXT',
+      );
+    } catch (error) {
+      // Two constructors can observe the old schema together. The first adds
+      // the column; the second must tolerate only that exact additive race.
+      if (
+        !(error instanceof Error) ||
+        !error.message.includes('duplicate column name')
+      ) {
+        throw error;
+      }
+    }
   }
   // v3 deliberately reruns the complete projection build once so existing v2
   // stores receive the JavaScript (rather than SQLite trim) request-identity
@@ -1401,4 +1413,19 @@ export function runOrchestrationEventMigration(projectHomeDir: string): void {
   ensureOrchestrationEventStoreColumns(db);
   ensureOrchestrationAdoptionColumns(db);
   db.close();
+}
+
+/** Keep dispatch completion ownership distinct from provider terminal evidence. */
+export function ensureOrchestrationBoundaryPurpose(
+  db: SessionStateSchemaDatabase,
+): void {
+  runConcurrentSafeMigration(db, () => {
+    const columns = db
+      .prepare('PRAGMA table_info(orchestration_turn_boundaries)')
+      .all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'purpose'))
+      db.exec(
+        "ALTER TABLE orchestration_turn_boundaries ADD COLUMN purpose TEXT NOT NULL DEFAULT 'turn' CHECK(purpose IN ('turn','task-dispatch'))",
+      );
+  });
 }

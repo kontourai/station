@@ -2,12 +2,15 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { BaseSequencer } from 'vitest/node';
 import config from '../../vitest.config';
 import { PROCESS_HEAVY_MAX_WORKERS } from '../run-vitest-corpus.mjs';
 import {
   assertOrdinaryVitestSelection,
   buildVitestResourceGroups,
+  COORDINATOR_EXCLUSIVE_VITEST_FILES,
+  CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES,
   DOGFOOD_RECONCILE_PREFIX,
   discoverVitestFiles,
   discoverVitestResourceGroups,
@@ -21,6 +24,7 @@ import {
 
 const temporaryRoots: string[] = [];
 const REVIEWED_RESOURCE_HEAVY_VITEST_FILES = Object.freeze([
+  'scripts/__tests__/classify-ci-change.test.ts',
   'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts',
   'scripts/__tests__/verification-reporter.test.ts',
   'packages/cli/src/__tests__/service.test.ts',
@@ -37,15 +41,50 @@ function temporaryRoot() {
   return root;
 }
 
+async function ordinaryShardFiles(
+  files: readonly string[],
+  index: number,
+  count: number,
+) {
+  // Delegate the mapping to Vitest's installed BaseSequencer. `vitest list`
+  // deliberately reports all discovered files and does not apply --shard.
+  const sequencer = new BaseSequencer({
+    config: { root: process.cwd(), shard: { index, count } },
+  } as never);
+  const selected = await sequencer.shard(
+    files.map((moduleId) => ({ moduleId })) as never,
+  );
+  return selected.map((spec) => spec.moduleId).sort();
+}
+
 afterEach(() => {
   for (const root of temporaryRoots.splice(0))
     rmSync(root, { recursive: true, force: true });
 });
 
+// One repository discovery for the whole file. Every no-argument
+// `discoverVitestResourceGroups()` shells out to `vitest list --filesOnly`
+// and then re-proves the compact ordinary selection with a second `vitest
+// list`; twelve cases each paid both (6-13s apiece inside the two-worker
+// process-heavy pool), and the answer cannot differ between them because
+// none of these cases mutates the tree. Cases that discover a synthetic
+// root still call the functions directly with their own options.
+let repositoryDiscovery: {
+  readonly files: readonly string[];
+  readonly groups: ReturnType<typeof discoverVitestResourceGroups>;
+};
+
+beforeAll(() => {
+  repositoryDiscovery = Object.freeze({
+    files: discoverVitestFiles(),
+    groups: discoverVitestResourceGroups(),
+  });
+}, 70_000);
+
 describe('Vitest resource manifest', () => {
   it('partitions Vitest discovery exactly once with no omitted files', () => {
-    const discovered = discoverVitestFiles();
-    const groups = discoverVitestResourceGroups();
+    const discovered = repositoryDiscovery.files;
+    const groups = repositoryDiscovery.groups;
     const classified = Object.values(groups).flat();
 
     expect(classified).toHaveLength(discovered.length);
@@ -54,6 +93,32 @@ describe('Vitest resource manifest', () => {
     expect(groups.dogfoodReconcile.length).toBeGreaterThan(0);
     expect(groups.ordinary.length).toBeGreaterThan(0);
     expect(assertOrdinaryVitestSelection(groups)).toEqual(groups.ordinary);
+  }, 70_000);
+
+  it('proves eight ordinary slices cover the canonical corpus exactly once', async () => {
+    // Vitest sorts a SHA-1 path projection and slices that ordered set. This
+    // calls the installed selector itself—not a reimplementation—so changes
+    // in discovery count or Vitest shard semantics force an explicit mapping
+    // review instead of silently moving #1156's failing slice elsewhere.
+    const ordinary = repositoryDiscovery.groups.ordinary;
+    // Every assertion below is relative to `ordinary.length`, so an empty
+    // corpus would satisfy all of them; pin the floor independently.
+    expect(ordinary.length).toBeGreaterThan(0);
+    const eighths = await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        ordinaryShardFiles(ordinary, index + 1, 8),
+      ),
+    );
+    const allEighths = eighths.flat();
+
+    expect(allEighths).toHaveLength(ordinary.length);
+    expect(new Set(allEighths).size).toBe(ordinary.length);
+    expect([...new Set(allEighths)].sort()).toEqual([...ordinary].sort());
+
+    // Vitest guarantees deterministic coverage for one chosen shard count;
+    // it does not promise that two adjacent eighths equal a separately
+    // computed quarter when the corpus size changes. Eight-way coverage is
+    // the canonical contract and is proved above without a legacy partition.
   }, 70_000);
 
   // station#3465 disposition, made assertable in code (coordinator review):
@@ -79,20 +144,20 @@ describe('Vitest resource manifest', () => {
       .filter(Boolean);
     expect(trackedConnectTests.length).toBeGreaterThan(0);
 
-    const discovered = discoverVitestFiles();
+    const discovered = repositoryDiscovery.files;
     const connectFiles = discovered.filter((file) =>
       file.startsWith('packages/connect/'),
     );
     expect([...connectFiles].sort()).toEqual([...trackedConnectTests].sort());
 
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
     for (const file of connectFiles) {
       expect(groups.ordinary).toContain(file);
     }
   }, 70_000);
 
   it('keeps every current direct child-process importer out of ordinary', () => {
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
     for (const file of PROCESS_HEAVY_VITEST_FILES) {
       expect(groups.processHeavy).toContain(file);
     }
@@ -109,7 +174,7 @@ describe('Vitest resource manifest', () => {
 
   it('classifies the policy documentation reader exactly once as shared output', () => {
     const policyReader = 'scripts/__tests__/verification-policy-gate.test.ts';
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
     expect(
       SHARED_OUTPUT_VITEST_FILES.filter((file) => file === policyReader),
     ).toEqual([policyReader]);
@@ -122,7 +187,7 @@ describe('Vitest resource manifest', () => {
   }, 70_000);
 
   it('keeps reviewed indirect and host-resource seams in the two-worker group', () => {
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
 
     expect(PROCESS_HEAVY_MAX_WORKERS).toBe(2);
     expect(PROCESS_HEAVY_VITEST_FILES).toEqual(
@@ -139,7 +204,7 @@ describe('Vitest resource manifest', () => {
   it('classifies runtime bootstrap exactly once as process heavy', () => {
     const file =
       'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts';
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
     expect(groups.processHeavy.filter((entry) => entry === file)).toEqual([
       file,
     ]);
@@ -150,12 +215,52 @@ describe('Vitest resource manifest', () => {
 
   it('classifies Play-upload ownership exactly once as process exclusive', () => {
     const file = 'scripts/__tests__/play-upload-retry.test.ts';
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
     expect(groups.processExclusive.filter((entry) => entry === file)).toEqual([
       file,
     ]);
     expect(groups.ordinary).not.toContain(file);
     expect(groups.processHeavy).not.toContain(file);
+    expect(groups.sharedOutput).not.toContain(file);
+  }, 70_000);
+
+  it('classifies the multi-worker remote-home bootstrap exactly once as process exclusive', () => {
+    const file =
+      'src-server/routes/environments/__tests__/remote-home-transfer-decision.test.ts';
+    const groups = repositoryDiscovery.groups;
+    expect(groups.processExclusive.filter((entry) => entry === file)).toEqual([
+      file,
+    ]);
+    expect(groups.ordinary).not.toContain(file);
+    expect(groups.processHeavy).not.toContain(file);
+    expect(groups.sharedOutput).not.toContain(file);
+  }, 70_000);
+
+  it('classifies the credential DDL proof exactly once in its exclusive phase', () => {
+    const file =
+      'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts';
+    const groups = repositoryDiscovery.groups;
+    expect(CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES).toEqual([file]);
+    expect(
+      groups.credentialLedgerExclusive.filter((entry) => entry === file),
+    ).toEqual([file]);
+    expect(groups.ordinary).not.toContain(file);
+    expect(groups.processHeavy).not.toContain(file);
+    expect(groups.processExclusive).not.toContain(file);
+    expect(groups.sharedOutput).not.toContain(file);
+  }, 70_000);
+
+  it('classifies the verification coordinator exactly once in its exclusive phase', () => {
+    const file = 'scripts/__tests__/verification-coordinator.test.ts';
+    const groups = repositoryDiscovery.groups;
+    expect(COORDINATOR_EXCLUSIVE_VITEST_FILES).toEqual([file]);
+    expect(
+      groups.coordinatorExclusive.filter((entry) => entry === file),
+    ).toEqual([file]);
+    expect(groups.ordinary).not.toContain(file);
+    expect(groups.processHeavy).not.toContain(file);
+    expect(groups.processExclusive).not.toContain(file);
+    expect(groups.credentialLedgerExclusive).not.toContain(file);
     expect(groups.sharedOutput).not.toContain(file);
   }, 70_000);
 
@@ -175,7 +280,7 @@ describe('Vitest resource manifest', () => {
   });
 
   it('proves the compact ordinary selection matches exactly and stays below Windows argv limits', () => {
-    const groups = discoverVitestResourceGroups();
+    const groups = repositoryDiscovery.groups;
     const excludes = ordinaryVitestExcludes();
     expect(excludes).toContain(`${DOGFOOD_RECONCILE_PREFIX}*.test.ts`);
     expect(excludes).toContain(`${DOGFOOD_RECONCILE_PREFIX}/**`);
@@ -218,6 +323,8 @@ describe('Vitest resource manifest', () => {
         manifest: {
           processHeavy: { files: [heavy] },
           processExclusive: { files: [] },
+          coordinatorExclusive: { files: [] },
+          credentialLedgerExclusive: { files: [] },
           sharedOutput: { files: [] },
         },
       }),
@@ -240,6 +347,8 @@ describe('Vitest resource manifest', () => {
         manifest: {
           processHeavy: { files: [first] },
           processExclusive: { files: [] },
+          coordinatorExclusive: { files: [] },
+          credentialLedgerExclusive: { files: [] },
           sharedOutput: { files: [first] },
         },
       }),
@@ -250,6 +359,8 @@ describe('Vitest resource manifest', () => {
         manifest: {
           processHeavy: { files: ['missing.test.ts'] },
           processExclusive: { files: [] },
+          coordinatorExclusive: { files: [] },
+          credentialLedgerExclusive: { files: [] },
           sharedOutput: { files: [] },
         },
       }),

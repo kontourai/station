@@ -35,7 +35,10 @@
  */
 
 import type { DevicePresentation } from '@kontourai/station-contracts/system-status';
-import { useMaterializeEngineAgentMutation } from '@kontourai/station-sdk';
+import {
+  useConnectAndMaterializeEngineMutation,
+  useMaterializeEngineAgentMutation,
+} from '@kontourai/station-sdk';
 import { useEffect, useRef, useState } from 'react';
 import {
   useAgents,
@@ -53,15 +56,32 @@ import {
   buildFirstRunEnableBatch,
   buildFirstRunEngineOptions,
   type FirstRunEnableOutcome,
+  type FirstRunEngineListLede,
   type FirstRunEngineOption,
   failedFirstRunEngineIds,
   firstRunEnableFailureOutcome,
   firstRunEnableOutcomeMessage,
   firstRunEnableSuccessOutcome,
+  firstRunEngineListLede,
   firstRunEngineRowLabel,
   summarizeFirstRunEnableOutcomes,
   unplannableFirstRunEngineOutcomes,
 } from './first-run-engines';
+
+/**
+ * The lede each list shape may say, named once so the copy cannot drift.
+ * `'none'` is absent deliberately: the caller renders this lede only when the
+ * list is non-empty, and the empty case has its own state below — a lede for it
+ * would be a sentence about nothing (#1536 L8).
+ */
+const LIST_LEDE_COPY_IDS: Record<
+  Exclude<FirstRunEngineListLede, 'none'>,
+  'engine-scan' | 'engine-scan-all-set' | 'engine-scan-none-selectable'
+> = {
+  pick: 'engine-scan',
+  'all-set': 'engine-scan-all-set',
+  'none-selectable': 'engine-scan-none-selectable',
+};
 
 /**
  * The chapter's CONTENT, and whether it can be trusted yet.
@@ -150,6 +170,9 @@ export function EnginesStep({
 }: EnginesStepProps) {
   const busy = runningBatchSize !== null && runningBatchSize !== undefined;
   const listed = options.filter((option) => option.state !== 'undetected');
+  // `'none'` iff `listed` is empty, so this single fact gates the lede AND
+  // chooses its copy — no second length check to fall out of step with it.
+  const listedLede = firstRunEngineListLede(listed);
   const undetected = options.filter((option) => option.state === 'undetected');
   const selectedCount = options.filter(
     (option) => option.selectable && selected.includes(option.engineId),
@@ -252,9 +275,12 @@ export function EnginesStep({
               Shown above an empty or still-loading list it asserts "Station
               found these on this machine" about nothing — caught in the live
               screenshot of the loading state. */}
-          {!loading && listed.length > 0 ? (
+          {!loading && listedLede !== 'none' ? (
             <p className="first-run-chapter__lede">
-              {hostActionCopy('engine-scan', devicePresentation)}
+              {hostActionCopy(
+                LIST_LEDE_COPY_IDS[listedLede],
+                devicePresentation,
+              )}
             </p>
           ) : null}
 
@@ -405,6 +431,7 @@ export function FirstRunEnginesChapter({
   onGiveUp: () => void;
 }) {
   const materializeEngineAgent = useMaterializeEngineAgentMutation();
+  const connectAndMaterializeEngine = useConnectAndMaterializeEngineMutation();
   // The same status query `useFirstRunEngineOptions` already reads — one
   // request, one derivation, and the row notes and the chapter's own
   // sentences therefore cannot name two different machines.
@@ -492,8 +519,9 @@ export function FirstRunEnginesChapter({
         // Sequential on purpose: these are read-modify-write creates against
         // one agent store, and a partial failure must leave the remaining
         // selections still attempted rather than aborting the batch.
-        const { data, created, warnings } =
-          await materializeEngineAgent.mutateAsync(item.engineConnectionId);
+        const { data, created, warnings } = item.registryEntryId
+          ? await connectAndMaterializeEngine.mutateAsync(item.registryEntryId)
+          : await materializeEngineAgent.mutateAsync(item.engineConnectionId!);
         results.push(
           firstRunEnableSuccessOutcome(
             item,

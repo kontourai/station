@@ -1,3 +1,5 @@
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+
 const STORAGE_KEY = 'station:conversation-fork-attempts:v1';
 const MAX_ATTEMPTS = 64;
 
@@ -40,7 +42,7 @@ export function getOrCreateForkAttemptKey(
   sourceConversationId: string,
   turnId: string,
   storage: Pick<Storage, 'getItem' | 'setItem'> = localStorage,
-  generate: () => string = () => crypto.randomUUID(),
+  generate: () => string = () => randomCorrelationId(),
 ): string {
   const attempts = read(storage);
   const key = coordinate(sourceConversationId, turnId);

@@ -1,3 +1,4 @@
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import type { QueryClient } from '@tanstack/react-query';
 import type { ChatMessage } from '../contexts/active-chats-state';
 import type { FileAttachment } from '../types';
@@ -133,7 +134,7 @@ export function buildOutgoingUserMessage(
   // of relying on the whole `messages` array still being the same reference
   // it was at send time (see rejectedSendRollback in
   // useActiveChatSessionMessaging.ts).
-  const clientId = crypto.randomUUID();
+  const clientId = randomCorrelationId();
 
   const nextMessage: ChatMessage = {
     role: 'user',

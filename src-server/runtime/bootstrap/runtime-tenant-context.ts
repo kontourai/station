@@ -89,6 +89,18 @@ export function currentTenantExecutionContext():
   return executionContexts.getStore();
 }
 
+/** Capture the single-operator deployment boundary and still reject later hosted or request-scoped execution. */
+export function createPersonalRuntimeRequestGuard(): (
+  request: Request,
+) => boolean {
+  const personalAtConstruction = !isHostedTenantExecutionRequired();
+  return (request) =>
+    personalAtConstruction &&
+    !isHostedTenantExecutionRequired() &&
+    getTenantRequestContext(request) === undefined &&
+    currentTenantExecutionContext() === undefined;
+}
+
 export function withTenantExecutionContext<T>(
   context: TenantExecutionContext | undefined,
   operation: () => T,

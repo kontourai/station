@@ -480,7 +480,7 @@
     "src-ui/src/app-shell/routing.ts:DEVELOPER_TABS",
     "src-ui/src/app-shell/routing.ts:isDeveloperTab",
     "src-ui/src/app-shell/routing.ts:getPathForManagementNavigationGroup",
-    "src-ui/src/app-shell/surface-registry.ts:SURFACE_SECTION_ORDER",
+    "src-ui/src/app-shell/destination-registry.ts:DESTINATION_SECTION_ORDER",
     "src-ui/src/components/AgentReadinessCell.tsx:agentFixLabel",
     "src-ui/src/components/CoreUpdateLaunchCheck.tsx:desktopUpdateMessage",
     "src-ui/src/components/DeferredAppOverlays.tsx:default",

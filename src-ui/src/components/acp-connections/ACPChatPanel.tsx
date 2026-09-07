@@ -6,7 +6,7 @@ import {
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
-import { useAgentConnectionsQuery } from '@kontourai/station-sdk';
+import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { verifiedBuildLabel } from '../../build-info';
 import {
@@ -159,7 +159,7 @@ export function ACPChatPanel({
   const activeSession = useActiveChatState(sessionId);
   // Agent app connection default for the approval-mode chip (archive#727
   //) — mirrors useChatDockViewModel.ts's connectionApprovalModeDefault.
-  const { data: agentConnections = [] } = useAgentConnectionsQuery() as {
+  const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data?: AgentConnectionView[];
   };
   const runtimeConnection = agentConnections.find(

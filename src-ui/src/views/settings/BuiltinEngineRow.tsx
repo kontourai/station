@@ -43,7 +43,7 @@
  */
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
-import { useAgentConnectionsQuery } from '@kontourai/station-sdk';
+import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { PageRow } from '../../components/PageRow';
@@ -64,7 +64,7 @@ export function BuiltinEngineRow({
   value,
   onChange,
 }: RegistryRowComponentProps) {
-  const { data: connections = [] } = useAgentConnectionsQuery() as {
+  const { data: connections = [] } = useEngineConnectionsQuery() as {
     data?: AgentConnectionView[];
   };
   const { data: status } = useSystemStatus();

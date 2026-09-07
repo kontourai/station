@@ -127,7 +127,7 @@ export function buildAgentsViewEmptyContent(options: {
         </span>
       }
       label="No agents of your own yet"
-      description="Start from a model connection or an installed agent CLI."
+      description="Pick the engine that runs it — Station, or one you've connected."
       action={
         <button
           type="button"

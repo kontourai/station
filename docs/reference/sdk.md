@@ -10,7 +10,21 @@ The SDK wraps core app contexts and exposes them through stable React hooks, UI 
 
 ## Setup
 
-Plugins are automatically wrapped in `SDKProvider` by the runtime. No manual setup required. For layout plugins, use `LayoutProvider` instead — it also sets the layout context for agent resolution.
+Trusted plugin Workspace Panes are wrapped in the canonical `SDKProvider` graph
+by the host, on both direct routes and placed Pane hosts. No plugin-side mock
+provider is required. Project identity comes from the server-issued Pane
+occurrence, not ambient navigation or a parsed URL.
+
+The host binds plugin header attribution to each provider boundary. It never
+installs whichever plugin rendered last as global request identity. Header
+attribution is not an authorization grant. `useSDK()` exposes that bound
+identity; the pure `getPluginHeaders` utility is available on the existing
+`@kontourai/station-sdk/client` entry. Legacy imperative calls without a bound
+identity remain unqualified.
+
+`LayoutProvider` is a compatibility wrapper over the supplied SDK context. It
+does not infer Agent prefixes or select a default Agent. Layout-global actions
+and default-Agent migration remain separately tracked by #1372.
 
 ```tsx
 // Core app wraps your plugin automatically:
@@ -18,7 +32,7 @@ Plugins are automatically wrapped in `SDKProvider` by the runtime. No manual set
   <YourPlugin />
 </SDKProvider>
 
-// Workspace plugins use LayoutProvider:
+// Compatibility wrapper for an explicitly supplied legacy context:
 <LayoutProvider sdk={sdkContextValue} layout={layoutConfig}>
   <YourWorkspacePlugin />
 </LayoutProvider>
@@ -49,13 +63,9 @@ Returns a single agent by slug.
 const agent = useAgent('my-agent');
 ```
 
-#### `useResolveAgent(agentSlug: string): string`
-
-Resolves a short agent name to a fully-qualified slug using the current layout context. Returns the slug unchanged if it already contains `:`.
-
-```tsx
-const resolved = useResolveAgent('my-agent'); // → 'sa-agent:my-agent'
-```
+Agent operations take explicit canonical Agent IDs. A Layout or Pane slug does
+not supply an Agent prefix or a default execution binding; the former
+`useResolveAgent` description is not a supported current hook contract.
 
 ---
 
@@ -375,6 +385,54 @@ const result = await serverFetch('https://api.example.com/data');
 ---
 
 ## Query Hooks
+
+### Unified search (backend and SDK slice)
+
+`searchStation(apiBase, request, { requestScope, signal? })` queries `POST /api/search` with the
+closed `station.unified-search/v1` request from
+`@kontourai/station-contracts/unified-search`. The response retains each source's
+owner, availability, restriction and partial-result state; unavailable does not
+mean empty. `resolveSearchOpen(apiBase, locator, { requestScope, signal? })` performs a fresh
+read-only `POST /api/search/resolve-open`, returning `resolved`, `not-found`
+(also authorization denial), or `unavailable`. It does not navigate or execute
+work. Message locators require the exact `matchedEventId`; never substitute a
+legacy navigation anchor or follow a Session's current child. Both helpers are
+available from the React-free `/client` export and declare POST transport as
+read-only. Both require a host-captured scope matching `apiBase`, rejecting absent
+or mismatched scopes before transport. Older servers return `UnifiedSearchRequestError.kind: 'unsupported'`
+on 404/405, never fabricated empty results.
+
+Import `searchStation`, `resolveSearchOpen`, and `UnifiedSearchRequestError`
+from `@kontourai/station-sdk/client`. The root `@kontourai/station-sdk` entry
+exports `useUnifiedSearchQuery` and `unifiedSearchQueries`; its hook loads the
+existing client entry on demand, preserving captured request scope and abort
+signal across that asynchronous boundary.
+
+`readSearchMessage(apiBase, { sessionId, matchedEventId, continuation? },
+{ requestScope, signal? })`, from `@kontourai/station-sdk/client`, reads a page
+of the exact canonical event's prompt or completed output. Every page is
+reauthorized; text is never read from the search index. Pages contain at most
+4,096 Unicode code points, with an existing 128 KiB source allowance and the
+same isolated reader deadline. The opaque continuation binds Session/event,
+content and recorded metadata; changed content refuses continuation instead of
+splicing revisions. Missing Agent identity is optional, never a default Agent.
+The read-only inspector does not adopt, resume, fork, or send to a Session.
+
+The palette's explicit **Workspace search (this Station)** mode consumes local
+Task/message results and this exact inspector. Command/legacy remote search is
+preserved as a separate mode; only the selected mode dispatches search queries.
+This is a local tracer, not completion of the broader multi-source search issue.
+
+`useUnifiedSearchQuery(request, { requestScope, enabled? })` is the protected
+React wrapper. A host-captured `ApiRequestScope` is required: no scope means no
+request and no data. Query keys include exact API base and authority epoch;
+authority changes fence delayed responses through the existing credential
+resolver. Cached snippets are hidden until a fresh successful read, and while
+refetching or after failure; they never authorize opening. `unifiedSearchQueries`
+exposes the same scoped key for explicit invalidation. Only personal Tasks and authorized indexed messages are
+searched; hosted Task reads are restricted until a tenant-owned Task store is
+composed. Files, receipts, external projections and arbitrary plugin sources
+are not supported by this initial runtime composition.
 
 React Query wrappers. Use these instead of raw `useQuery` — they handle cache keys, stale times, and API base resolution automatically.
 
@@ -769,6 +827,16 @@ Fetches live ACP slash-command autocomplete options.
 
 React Query wrappers for plugin management. Use these instead of raw `useQuery`.
 
+Direct and registry install mutations return `PluginInstallResult` from
+`@kontourai/station-contracts/plugin`. The same type is returned by
+`requestPluginRegistryInstallAction` and `requestRegistryCatalogAction('plugins', ...)`;
+other catalog tabs retain their existing `InstallResult` contract.
+`result.permissions?.dependencies` is the current installed dependency permission
+status, not the preview requirement list. An absent status on an older server is
+unknown; it must not be replaced with an empty list or inferred from preview.
+Each present dependency row has an `id` and typed `pendingConsent` permission/tier
+entries. Trusted permissions still require separate host-owned approval.
+
 ### `usePluginsQuery(config?)`
 
 Fetches all installed plugins. Cache key: `['plugins']`.
@@ -819,6 +887,16 @@ mutate({
     permissions: preview.permissions.required,
     contentDigest: preview.contentDigest,
     dependencies: preview.dependencies.map((entry) => entry.id),
+    dependencyApprovals: preview.dependencies.flatMap((entry) =>
+      entry.consent
+        ? [{
+            id: entry.id,
+            permissions: entry.consent.permissions,
+            contentDigest: entry.consent.contentDigest,
+            dependencies: entry.consent.dependencies,
+          }]
+        : [],
+    ),
   },
 });
 ```
@@ -827,8 +905,9 @@ mutate({
 
 Previews a plugin before installing. Returns manifest, components, conflicts,
 resolved dependencies, the derived `permissions` (`required`, `autoGranted`,
-`pendingConsent`) and the `contentDigest` of the copy it staged — everything a
-consent decision needs, without installing anything.
+`pendingConsent`) and the `contentDigest` of the copy it staged. Lifecycle-bearing
+dependencies additionally carry their own `consent` object, binding their
+permissions and bytes before installation.
 
 ```tsx
 const { mutate } = usePluginPreviewMutation();
@@ -846,6 +925,16 @@ Removes an installed plugin. Invalidates plugins and layouts caches on success.
 ### `usePluginSettingsMutation()`
 
 Saves plugin settings and invalidates that plugin's settings cache on success.
+
+### `useRevokePluginPermissionMutation()`
+
+Durably withdraws plugin permissions and returns the effective `granted` set
+plus runtime `reconciliation` truth. `completed` means the affected runtime
+generation retired; `winding-down` names an owned continuation; `superseded`
+means a newer grant/install generation won; and `incomplete` names stages that
+need another idempotent revoke attempt. Station's Plugins surface uses that
+same mutation for its **Check cleanup** and **Retry cleanup** actions; retrying
+preserves the complete pending lifecycle-permission vector.
 
 ### `usePluginProviderToggleMutation()`
 
@@ -1018,7 +1107,8 @@ Injects the SDK context into a plugin tree. Used by the runtime — plugins don'
 
 ### `LayoutProvider`
 
-Wraps a layout plugin with SDK context and sets the layout for agent resolution.
+Compatibility wrapper over an explicitly supplied SDK context. It does not
+publish ambient plugin identity or infer Agent identity from a Layout slug.
 
 ```tsx
 <LayoutProvider sdk={sdkContextValue} layout={layoutConfig}>
@@ -1733,3 +1823,141 @@ superseded host binding from being attributed to the current native connection.
 It is intentionally separate from `requestAuthority`: a valid authenticated
 recovery may advance credential generation while its host binding remains live.
 Ordinary unscoped SDK calls do not gain a host binding requirement.
+
+### Inspect a learning source
+
+`observeLearningSource(apiBase, reference, options?)` is available from
+`@kontourai/station-sdk/client`; `useLearningSourceObservationQuery(reference,
+requestScope, enabled?)` is available from the SDK root. The `apiBase` is the Station origin, as with other client operations. The reference carries
+`rootId`, exact `recordId`, and `rootIdentity: knowledgeRootIncarnationKey(root)`.
+The existing root identity helper remains exported by the SDK. The client sends
+its URI-encoded value in the bounded `x-station-knowledge-root-identity` header;
+it is a metadata mismatch precondition, never an authorization grant or immutable
+incarnation. Identically restored registrations can share the same key.
+
+The GET endpoint is `/api/knowledge/roots/:rootId/records/:id/source-observation`.
+It requires a currently authorized, middleware-bound home-possession credential,
+current route scope, single-operator deployment without tenant-scoped execution,
+and the exact registered personal `kit-default-store` root.
+Ordinary operator or paired remote credentials do not confer this capability.
+The constructor policy and route recheck authority before publishing the result.
+Other roots and credentials receive an identity-free restricted outcome.
+
+`LearningSourceObservation` (`station-contracts/learning-review`) distinguishes
+`observed` with `kind: 'source-only'` from identity-free failure states. Source
+status is generic record status, not learning activation. Content digest/time are
+Station observations; owner revision, freshness, and transaction state remain
+unknown, and the observation is non-atomic. The source read does not construct an
+adapter, repair records, or mutate the store. Ordinary recall reads retain their
+existing behavior.
+
+`KnowledgeRecallBrowser` and `KnowledgeRecordDetail` accept optional
+`renderRecordActions({ rootId, recordId })`. The slot is host-rendered and appears
+only for the exact selected loaded record. It introduces no Station UI dependency
+into the SDK. Station's Memory view uses it to open the source inspector.
+
+#### Public source-inspection integration behavior
+
+This surface is usable by any host built against the public Station packages; it
+does not require Station app internals or a particular company's filesystem
+layout. Obtain the selected root/record from the public Knowledge APIs. Use the
+[local Station launcher](cli.md#the-station-launcher) to redeem its one-time
+bootstrap link for the browser's home-possession session, or the documented
+[local grant flow](cli.md#scripted--non-interactive-use) for a local client. Do not
+substitute an operator API credential, a claimed locality field, or a loopback URL.
+A saved operator bearer takes precedence over a browser cookie; select the genuine
+local device-session connection when presenting the launch session.
+
+Hosts using Connect can capture credential evidence with its public
+`useConnections()` surface and derive the request scope with
+`requestAuthorityScopeFromCredentialEvidence`. Bind the SDK credential resolver
+to that same current evidence. The source hook accepts that public `ApiRequestScope`;
+there is no dependency on Station's private `ApiBaseContext`. The optional
+`renderRecordActions` slot lets the host supply its own source presentation.
+
+`apiBase` is the origin without `/api`. The reference must contain a selected root
+ID and exact record ID (at most 200 characters each); aliases are unsupported.
+Use the public root-key serializer, also available from
+`@kontourai/station-shared/knowledge-root-identity`. It serializes compact JSON in
+this order: root ID, scope kind, project slug or null, adapter ID, store root,
+display name, creation timestamp. Send its URI-encoded UTF-8 representation in
+`x-station-knowledge-root-identity` (at most 8,192 characters after encoding). This
+metadata comparison does not detect an identically restored registration or
+provide a revision/CAS contract.
+
+Unauthenticated ingress returns HTTP 401; missing route scope returns HTTP 403;
+invalid route references return HTTP 400. An admitted route returns the standard
+`{ success: true, data }` envelope: `observed` supplies only source fields, while
+`restricted`, `unsupported`, `missing`, `busy`, `corrupt`, `unavailable`,
+`invalid-input`, and `over-budget` contain no source identity. The reader bounds
+the complete source file to 256 KiB and refuses rather than truncating it.
+`busy` can be retried after the store operation settles. A stale registration must
+be reselected from fresh root data; retrying the old key cannot adopt its
+replacement. The SDK rejects malformed/mismatched observations and withholds
+cached source data during revalidation and failed reads.
+
+Hosted deployment and tenant-scoped execution are explicitly refused even for
+otherwise valid local credentials. Project/tenant record authorization and owner
+learning lifecycle intents are separate future contracts. Hosts should present
+these limits directly, without treating a source read as candidate approval,
+promotion, or effect evidence.
+
+### Exact attention request inspection
+
+`useAttentionRequestInspection(reference, requestScope)` reauthorizes the exact
+Session/request/opened-event tuple on every mount. Its query key includes the
+host-captured authority; cached data is withheld until the fresh read finishes.
+The imperative `inspectAttentionRequest` is also exported from the React-free
+client entry. Neither API chooses a replacement request automatically.
+
+```ts
+import { inspectAttentionRequest, respondToRequest } from '@kontourai/station-sdk/client';
+
+const inspection = await inspectAttentionRequest(requestScope.apiBase, reference, {
+  requestScope, signal,
+});
+// Only after an explicit user decision on an open, answerable inspection:
+await respondToRequest(requestScope.apiBase, {
+  threadId: reference.threadId,
+  requestId: reference.requestId,
+  expectedRequestEventId: reference.requestEventId,
+  decision,
+}, { requestScope });
+```
+
+The host captures `requestScope`; do not reconstruct it from a URL or title.
+Response commands preserve their existing receipts. An event mismatch or lost
+request authority is a refusal to act, requiring fresh inspection rather than a
+blind mutation retry. Requests without canonical approval/permission evidence
+keep their ordinary Session or notification fallback.
+
+## Cloud target observation
+
+`verifyCloudMoveTarget(apiBase, options?)` from
+`@kontourai/station-sdk/client` powers `station cloud verify-target`. Use an
+explicit Station origin and its enrolled credential resolver, or pass
+`credential` with its matching `credentialOrigin`. UI callers should also pass
+the connection's `requestScope` so an authority change invalidates the read.
+
+The function returns a `CloudMoveTargetObservation` only when discovery is
+bracketed by matching instance, boot and build identities. The observation
+contains no secrets and always reports `executionAuthorityTransferred: false`
+and `executionResumeAvailable: false`. It is process reachability evidence,
+not persistent home identity, a compatibility certification or a transfer grant.
+
+The shared GET transport supports opt-in `requireCredential`, `redirect: 'error'`
+and `maxResponseBytes` options. The probe requires SDK-owned matching bearer
+attachment or a current authenticated native transport binding. It refuses
+redirects, limits each body to 4 KiB and uses a shared 15-second deadline. Existing callers retain their current defaults.
+
+## Home recovery disclosure
+
+`SystemStatus.homeRecovery` is an optional, host-scoped disclosure returned by
+system-status queries. `recovered-from-copy` includes `recoveryId`,
+`snapshotCreatedAt`, and `authorityTransferred: false`. `not-restored` means
+this home has no recovery record; `unavailable` means its record could not be
+verified. Older servers may omit the field. None of these values grants
+execution authority or proves a witnessed channel transfer. Do not reuse a
+cached recovery notice across API-base changes; refresh the selected Station
+before projecting it as current. The record exposes no filesystem path or
+backup manifest contents.

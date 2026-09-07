@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use tauri::Manager;
 
+#[cfg(target_os = "android")]
+mod android_dns;
 #[cfg(not(mobile))]
 mod bundled_server_state;
 mod channel_ports_generated;
@@ -78,6 +80,29 @@ struct NativeCapabilityReport {
     /// secret-free and never replaces a saved/default profile in the UI.
     #[serde(skip_serializing_if = "Option::is_none")]
     mobile_default_endpoint: Option<String>,
+    /// Immutable source-derived provenance of this installed client artifact.
+    /// It is intentionally independent from a connected backend's build.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    client_build: Option<NativeClientBuildProvenance>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeClientBuildProvenance {
+    full_sha: String,
+    branch: String,
+    built_at: String,
+}
+
+fn client_build_provenance() -> Option<NativeClientBuildProvenance> {
+    let full_sha = option_env!("STATION_CLIENT_BUILD_SHA")?;
+    let branch = option_env!("STATION_CLIENT_BUILD_BRANCH")?;
+    let built_at = option_env!("STATION_CLIENT_BUILT_AT")?;
+    Some(NativeClientBuildProvenance {
+        full_sha: full_sha.to_string(),
+        branch: branch.to_string(),
+        built_at: built_at.to_string(),
+    })
 }
 
 fn trusted_mobile_default_endpoint(raw: Option<&str>) -> Option<String> {
@@ -232,6 +257,7 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
         } else {
             None
         },
+        client_build: client_build_provenance(),
         capabilities,
     }
 }
@@ -2294,7 +2320,7 @@ fn cancel_native_http_request(
 }
 
 pub(crate) fn native_http_agent() -> ureq::Agent {
-    ureq::Agent::config_builder()
+    let config = ureq::Agent::config_builder()
         .max_redirects(0)
         // SSE bodies are intentionally open-ended. Bound connection and
         // response-header phases only; cancellation is checked between
@@ -2303,8 +2329,15 @@ pub(crate) fn native_http_agent() -> ureq::Agent {
         .timeout_recv_response(Some(Duration::from_secs(20)))
         .timeout_recv_body(Some(Duration::from_secs(1)))
         .http_status_as_error(false)
-        .build()
-        .into()
+        .build();
+    #[cfg(target_os = "android")]
+    return ureq::Agent::with_parts(
+        config,
+        ureq::unversioned::transport::DefaultConnector::default(),
+        android_dns::AndroidSystemResolver,
+    );
+    #[cfg(not(target_os = "android"))]
+    return config.into();
 }
 
 fn native_request_transport_detail(error: &ureq::Error) -> NativeHttpTransportDetail {
@@ -2351,6 +2384,78 @@ fn native_request_transport_detail(error: &ureq::Error) -> NativeHttpTransportDe
             detail: format!("Station request failed: {error}"),
         },
     }
+}
+
+const NATIVE_PUBLIC_HANDSHAKE_PATH: &str = "/.well-known/station/v1";
+const NATIVE_PUBLIC_HANDSHAKE_BODY_LIMIT: u64 = 1024 * 1024;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativePublicHandshakeResponse {
+    status: u16,
+    body: String,
+}
+
+fn validate_native_public_handshake_url(url: &str) -> Result<url::Url, NativeCommandError> {
+    let parsed = url::Url::parse(url)
+        .map_err(|_| NativeCommandError::new("invalid_request", "invalid Station handshake URL"))?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.path() != NATIVE_PUBLIC_HANDSHAKE_PATH
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return Err(NativeCommandError::new(
+            "invalid_request",
+            "native compatibility requests are limited to the public Station handshake",
+        ));
+    }
+    Ok(parsed)
+}
+
+fn station_native_public_handshake_blocking(
+    url: String,
+) -> Result<NativePublicHandshakeResponse, NativeCommandError> {
+    validate_native_public_handshake_url(&url)?;
+    let mut response = native_http_agent()
+        .get(&url)
+        .header("Accept", "application/json")
+        .call()
+        .map_err(|error| {
+            let detail = native_request_transport_detail(&error);
+            NativeCommandError::new(detail.code, detail.detail)
+        })?;
+    if response.body().content_length().is_some_and(|length| {
+        length > NATIVE_PUBLIC_HANDSHAKE_BODY_LIMIT
+    }) {
+        return Err(NativeCommandError::new(
+            "response_too_large",
+            "Station public handshake exceeded the native response limit",
+        ));
+    }
+    let status = response.status().as_u16();
+    let body = response
+        .body_mut()
+        .with_config()
+        .limit(NATIVE_PUBLIC_HANDSHAKE_BODY_LIMIT)
+        .read_to_string()
+        .map_err(|error| {
+            let detail = native_request_transport_detail(&error);
+            NativeCommandError::new(detail.code, detail.detail)
+        })?;
+    Ok(NativePublicHandshakeResponse { status, body })
+}
+
+#[tauri::command]
+async fn station_native_public_handshake(
+    url: String,
+) -> Result<NativePublicHandshakeResponse, NativeCommandError> {
+    tauri::async_runtime::spawn_blocking(move || station_native_public_handshake_blocking(url))
+        .await
+        .map_err(|error| {
+            NativeCommandError::from(format!("native Station handshake task failed: {error}"))
+        })?
 }
 
 fn native_response_transport_detail(error: &std::io::Error) -> NativeHttpTransportDetail {
@@ -6712,16 +6817,20 @@ struct SidecarLaunchContext {
 /// Builds, but does not spawn, a sidecar child command. Keeping this separate
 /// makes the inherited-environment removals and loopback contract testable.
 #[cfg(not(mobile))]
-fn build_sidecar_command(context: &SidecarLaunchContext, boot_id: &str) -> Command {
+fn build_sidecar_command(
+    context: &SidecarLaunchContext,
+    boot_id: &str,
+    explicit_station_root: Option<std::ffi::OsString>,
+) -> Command {
     let mut command = Command::new(find_node());
     command
         .arg(command_station_script_path(&context.resource_dir))
         .current_dir(&context.resource_dir)
-        .env("STATION_ROOT", &context.station_root)
         .env("STATION_HOME", &context.station_home)
         .env("STATION_HOST", "127.0.0.1")
         .env("STATION_STDOUT_HANDSHAKE", "1")
         .env("STATION_INSTANCE_ID", &context.instance_id)
+        .env_remove("STATION_ROOT")
         // A boot identifies one concrete Node process. Generate it at the
         // spawn boundary so every supervised restart rotates the value while
         // retaining the channel-scoped instance identity above.
@@ -6736,6 +6845,18 @@ fn build_sidecar_command(context: &SidecarLaunchContext, boot_id: &str) -> Comma
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // Set or removed above, never inherited, and OMITTED for a self-rooted
+    // home. Spelling out `STATION_ROOT == STATION_HOME` is what the runtime's
+    // admission guard reads as a home swallowing a root it does not own, so
+    // the sidecar refused to boot for every raw external `STATION_HOME`
+    // (#1108). The child derives the identical root from `STATION_HOME` alone.
+    if let Some(root) = service_state::spawned_station_root(
+        &context.station_root,
+        &context.station_home,
+        explicit_station_root,
+    ) {
+        command.env("STATION_ROOT", root);
+    }
     match &context.channel {
         Some(channel) => {
             command.env("STATION_DESKTOP_CHANNEL", channel);
@@ -8717,7 +8838,14 @@ fn apply_supervisor_input(
 #[cfg(not(mobile))]
 fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String), String> {
     let boot_id = fresh_sidecar_boot_id();
-    build_sidecar_command(&context.launch, &boot_id)
+    // The ambient read lives at the edge so the builder stays a pure function
+    // of its inputs -- otherwise its tests would pass or fail depending on the
+    // developer's own STATION_ROOT.
+    build_sidecar_command(
+        &context.launch,
+        &boot_id,
+        std::env::var_os("STATION_ROOT"),
+    )
         .spawn()
         .map(|child| (child, boot_id))
         .map_err(|error| format!("launch Station sidecar: {error}"))
@@ -9452,6 +9580,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         station_ensure_bundled_local_profile,
         station_local_self_provision,
         station_native_http_request,
+        station_native_public_handshake,
         station_native_http_cancel,
         station_native_consent_review,
         station_native_pairing_exchange,
@@ -9488,6 +9617,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         credential_vault_commit_pairing,
         station_profile_authorize_active,
         station_native_http_request,
+        station_native_public_handshake,
         station_native_http_cancel,
         station_native_consent_review,
         station_native_pairing_exchange,
@@ -9732,6 +9862,29 @@ If a stable instance is running, this launch will focus its window and exit.",
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_public_handshake_admits_only_the_exact_public_route() {
+        assert!(validate_native_public_handshake_url(
+            "https://station.example.test/.well-known/station/v1"
+        )
+        .is_ok());
+        assert!(validate_native_public_handshake_url(
+            "http://127.0.0.1:3141/.well-known/station/v1"
+        )
+        .is_ok());
+        for refused in [
+            "file:///etc/passwd",
+            "https://user:secret@station.example.test/.well-known/station/v1",
+            "https://station.example.test/.well-known/station/v1?credential=secret",
+            "https://station.example.test/api/system/identity",
+        ] {
+            assert!(
+                validate_native_public_handshake_url(refused).is_err(),
+                "unexpectedly admitted {refused}"
+            );
+        }
+    }
 
     #[test]
     #[cfg(not(mobile))]
@@ -11358,7 +11511,7 @@ mod tests {
     #[test]
     fn sidecar_launch_targets_command_station_with_loopback_handshake() {
         let context = sample_sidecar_context(None);
-        let command = build_sidecar_command(&context, "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a111");
+        let command = build_sidecar_command(&context, "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a111", None);
         assert_eq!(command.get_program(), "node");
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
@@ -11400,8 +11553,8 @@ mod tests {
         assert!(uuid::Uuid::parse_str(&second).is_ok());
 
         let context = sample_sidecar_context(None);
-        let first_env = command_env(&build_sidecar_command(&context, &first));
-        let second_env = command_env(&build_sidecar_command(&context, &second));
+        let first_env = command_env(&build_sidecar_command(&context, &first, None));
+        let second_env = command_env(&build_sidecar_command(&context, &second, None));
         assert!(first_env.contains(&(
             "STATION_INSTANCE_ID".to_string(),
             Some(context.instance_id.clone())
@@ -11448,10 +11601,61 @@ mod tests {
 
     #[cfg(not(mobile))]
     #[test]
+    fn a_self_rooted_sidecar_home_is_spawned_without_a_root_it_would_swallow() {
+        // #1108: the desktop derived the root FROM a raw external STATION_HOME
+        // -- which self-roots -- and then sent both, so the sidecar arrived at
+        // STATION_ROOT == STATION_HOME. The runtime reads an explicit root
+        // equal to the home as a home swallowing a root it does not own, and
+        // refused to boot. The child derives the identical root from
+        // STATION_HOME alone, so the value must simply be omitted.
+        let mut context = sample_sidecar_context(None);
+        context.station_root = PathBuf::from("/data/station");
+        context.station_home = PathBuf::from("/data/station");
+        let env = command_env(&build_sidecar_command(
+            &context,
+            "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a333",
+            None,
+        ));
+        assert!(
+            !env.iter()
+                .any(|(name, value)| name == "STATION_ROOT" && value.is_some()),
+            "a self-rooted home must be spawned with no STATION_ROOT, got {env:?}"
+        );
+        // The home itself is still passed, or the child has nothing to derive
+        // from and this assertion would pass for the wrong reason.
+        assert!(env.contains(&(
+            "STATION_HOME".to_string(),
+            Some("/data/station".to_string())
+        )));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn an_operator_set_root_still_reaches_the_sidecar_even_when_it_equals_the_home() {
+        // The original escape stays closed: only a root the desktop DERIVED
+        // from the home may be omitted. One the operator wrote down is passed
+        // through, and the runtime still rejects it.
+        let mut context = sample_sidecar_context(None);
+        context.station_root = PathBuf::from("/data/station");
+        context.station_home = PathBuf::from("/data/station");
+        let env = command_env(&build_sidecar_command(
+            &context,
+            "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a444",
+            Some(std::ffi::OsString::from("/data/station")),
+        ));
+        assert!(env.contains(&(
+            "STATION_ROOT".to_string(),
+            Some("/data/station".to_string())
+        )));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
     fn pinned_nightly_port_removes_auto_mode_from_child_environment() {
         let command = build_sidecar_command(
             &sample_sidecar_context(Some(38141)),
             "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a222",
+            None,
         );
         let env = command_env(&command);
         assert!(env.contains(&("PORT".to_string(), Some("38141".to_string()))));

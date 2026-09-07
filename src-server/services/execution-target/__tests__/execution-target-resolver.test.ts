@@ -450,29 +450,26 @@ describe('resolveExecutionTarget', () => {
     ['bedrock', new BedrockAdapter()],
     ['ollama', new OllamaAdapter('http://127.0.0.1:11434')],
   ] as const)(
-    'admits a %s model override through the production adapter declaration',
+    'refuses a %s model override without a model connection',
     async (provider, adapter) => {
-      const result = await resolveExecutionTarget(
-        {
-          environment: { kind: 'current' },
-          agent: agentId(provider),
-          model: { override: 'declared-model' },
-        },
-        dependencies({
-          getAgent: async () => ({
-            slug: provider,
-            execution: { agentConnectionId: engineConnectionId(provider) },
+      await expect(
+        resolveExecutionTarget(
+          {
+            environment: { kind: 'current' },
+            agent: agentId(provider),
+            model: { override: 'declared-model' },
+          },
+          dependencies({
+            getAgent: async () => ({
+              slug: provider,
+              execution: { agentConnectionId: engineConnectionId(provider) },
+            }),
+            getConnection: async () => connection(provider, provider),
+            getProviderAdapter: (registeredProvider) =>
+              registeredProvider === provider ? adapter : undefined,
           }),
-          getConnection: async () => connection(provider, provider),
-          getProviderAdapter: (registeredProvider) =>
-            registeredProvider === provider ? adapter : undefined,
-        }),
-      );
-
-      expect(result.modelLaunchPlan).toMatchObject({
-        kind: 'station-resolved',
-        modelId: 'declared-model',
-      });
+        ),
+      ).rejects.toThrow('model-required');
     },
   );
 

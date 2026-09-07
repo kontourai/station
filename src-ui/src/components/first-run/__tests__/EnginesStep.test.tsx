@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AgentData } from '../../../contexts/AgentsContext';
 
 const materializeEngineAgent = vi.fn();
+const connectAndMaterializeEngine = vi.fn();
 const agentsState: {
   agents: AgentData[];
   loaded: boolean;
@@ -49,6 +50,9 @@ vi.mock('@kontourai/station-sdk', () => ({
   useMaterializeEngineAgentMutation: () => ({
     mutateAsync: materializeEngineAgent,
   }),
+  useConnectAndMaterializeEngineMutation: () => ({
+    mutateAsync: connectAndMaterializeEngine,
+  }),
 }));
 vi.mock('../../../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => devicePresentation,
@@ -61,7 +65,10 @@ import {
   FirstRunEnginesChapter,
   useFirstRunEngineOptions,
 } from '../EnginesStep';
-import { buildFirstRunEngineOptions } from '../first-run-engines';
+import {
+  buildFirstRunEngineOptions,
+  firstRunEngineListLede,
+} from '../first-run-engines';
 
 function engine(
   overrides: Partial<ExternalEngineReadinessProjection> & { name: string },
@@ -157,6 +164,12 @@ beforeEach(() => {
     .mockReset()
     .mockImplementation(async (engineId: string) => ({
       data: { slug: engineId, name: engineId },
+      created: true,
+    }));
+  connectAndMaterializeEngine
+    .mockReset()
+    .mockImplementation(async (registryEntryId: string) => ({
+      data: { slug: registryEntryId, name: registryEntryId },
       created: true,
     }));
   agentsState.agents = [];
@@ -327,6 +340,48 @@ describe('on a paired device the chapter names the host it scanned', () => {
 });
 
 describe('confirming the checklist', () => {
+  test('connects and materializes a detected registry Engine through its registry entry', async () => {
+    const detectedKiro = engine({
+      name: 'Kiro CLI',
+      engineId: 'kiro' as never,
+      detected: true,
+      reason: 'not_connected',
+      registryEntryId: 'kiro',
+    });
+    const { onDone } = renderChapter([detectedKiro]);
+
+    expect(checkbox('kiro')?.checked).toBe(true);
+    expect(row('kiro').textContent).toContain('Connect and set up Kiro CLI');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Set up 1' }));
+    });
+    expect(connectAndMaterializeEngine).toHaveBeenCalledWith('kiro');
+    expect(materializeEngineAgent).not.toHaveBeenCalled();
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+  });
+
+  test('reports a detected registry Engine install failure without swallowing it', async () => {
+    const detectedKiro = engine({
+      name: 'Kiro CLI',
+      engineId: 'kiro' as never,
+      detected: true,
+      reason: 'not_connected',
+      registryEntryId: 'kiro',
+    });
+    connectAndMaterializeEngine.mockRejectedValueOnce(
+      new Error('Kiro CLI could not be connected'),
+    );
+    renderChapter([detectedKiro]);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Set up 1' }));
+    });
+    expect(
+      (await screen.findByTestId('first-run-engines-report')).textContent,
+    ).toContain(
+      'Kiro CLI: could not be set up. Kiro CLI could not be connected',
+    );
+  });
+
   test('creates exactly one Agent per newly ticked engine', async () => {
     const { onDone } = renderChapter([CODEX, CLAUDE]);
     await act(async () => {
@@ -911,5 +966,90 @@ describe('H1 — a batch that FAILED does not offer a plain "Continue"', () => {
     expect(screen.queryByTestId('first-run-engines-retry')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * #1536 A4: "Which agents do you use? Pick the ones you use…" stood above
+ * three rows all reading "Ready — Already set up as …", with no checkbox
+ * anywhere — a verb with no control under it, asking for an act that had
+ * already happened.
+ */
+describe('the list lede describes the list it stands over', () => {
+  const setUpAgent = (slug: string, connection: string) =>
+    ({
+      slug,
+      name: `${slug} Agent`,
+      execution: { agentConnectionId: connection },
+    }) as AgentData;
+
+  test('classifies the three list shapes it can carry', () => {
+    const pick = buildFirstRunEngineOptions({ engines: [CODEX], agents: [] });
+    const allSet = buildFirstRunEngineOptions({
+      engines: [CODEX, CLAUDE],
+      agents: [
+        setUpAgent('codex-agent', 'codex'),
+        setUpAgent('claude-agent', 'claude'),
+      ],
+    });
+    const noneSelectable = buildFirstRunEngineOptions({
+      engines: [KIRO, OPENCODE],
+      agents: [],
+    });
+
+    expect(firstRunEngineListLede(pick)).toBe('pick');
+    expect(firstRunEngineListLede(allSet)).toBe('all-set');
+    expect(firstRunEngineListLede(noneSelectable)).toBe('none-selectable');
+    // #1536 L8: `every()` on `[]` is true, so an empty list classified as
+    // 'all-set' — "Station found these and set each one up" about nothing.
+    expect(firstRunEngineListLede([])).toBe('none');
+  });
+
+  test('says nothing at all over an empty list', () => {
+    renderChapter([]);
+
+    expect(screen.queryByText(/Station found these/)).toBeNull();
+    // The empty case has its own state, which is not a lede.
+    expect(screen.getByTestId('first-run-engines-none')).toBeTruthy();
+  });
+
+  test('drops the pick verb when every engine is already set up, and still offers Continue', () => {
+    renderChapter(
+      [CODEX, CLAUDE],
+      [
+        setUpAgent('codex-agent', 'codex'),
+        setUpAgent('claude-agent', 'claude'),
+      ],
+    );
+
+    expect(screen.queryByText(/Pick the ones you use/)).toBeNull();
+    expect(
+      screen.getByText(
+        'Station found these on this machine and set each one up. Nothing to pick here — you can change them later.',
+      ),
+    ).toBeTruthy();
+    expect(checkbox('codex')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
+  });
+
+  test('does not claim everything is set up when the rows are merely un-tickable', () => {
+    // KIRO needs a sign-in and OPENCODE needs prerequisites: neither can be
+    // ticked, and neither is set up. "Station set each one up" would be false.
+    renderChapter([KIRO, OPENCODE]);
+
+    expect(screen.queryByText(/Pick the ones you use/)).toBeNull();
+    expect(screen.queryByText(/set each one up/)).toBeNull();
+    expect(
+      screen.getByText(
+        'Station found these on this machine. None can be set up from here right now — each row says why.',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('keeps the pick verb where a row can genuinely be ticked', () => {
+    renderChapter([CODEX, KIRO]);
+
+    expect(screen.getByText(/Pick the ones you use/)).toBeTruthy();
+    expect(checkbox('codex')).toBeTruthy();
   });
 });

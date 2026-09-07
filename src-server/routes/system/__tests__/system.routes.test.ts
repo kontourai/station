@@ -29,6 +29,7 @@ const { createConnectionRoutes } = await import(
 const {
   readBuildProvenance,
   reconcileExternalEngineReadiness,
+  resolveExternalEngineReadiness,
   STATUS_PREREQUISITES_CACHE_TTL_MS,
 } = await import('../system-status-routes.js');
 const { buildCliRuntimePrerequisites } = await import(
@@ -127,6 +128,84 @@ async function waitForStatusDiscovery(
 }
 
 describe('System Routes', () => {
+  test('projects a detected ACP registry Engine as not connected, never ready', async () => {
+    const readiness = await resolveExternalEngineReadiness(
+      [],
+      undefined,
+      () => true,
+      undefined,
+      [{ id: 'kiro', name: 'Kiro CLI' }],
+    );
+    expect(readiness).toEqual({
+      ready: false,
+      source: null,
+      engines: [
+        {
+          engineId: 'kiro',
+          name: 'Kiro CLI',
+          registryEntryId: 'kiro',
+          detected: true,
+          ready: false,
+          source: null,
+          reason: 'not_connected',
+        },
+      ],
+    });
+  });
+
+  test('GET /status projects a detected ACP registry Engine as not connected', async () => {
+    const app = createSystemRoutes(
+      {
+        ...createMockDeps(),
+        listDetectedACPRegistryEntries: async () => [
+          { id: 'kiro', name: 'Kiro CLI' },
+        ],
+      } as any,
+      mockLogger,
+    );
+    const body = await waitForStatusDiscovery(app);
+    expect(body.externalEngines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          engineId: 'kiro',
+          name: 'Kiro CLI',
+          reason: 'not_connected',
+          ready: false,
+        }),
+      ]),
+    );
+  });
+
+  test('does not duplicate a detected registry Engine already reported by an adapter', async () => {
+    // The adapter must be a real readiness candidate (a known chat-capable
+    // engine with the agent-runtime capability); an unknown provider name
+    // is filtered out before the collision can occur, and the test would
+    // pass with no dedupe at all.
+    const readiness = await resolveExternalEngineReadiness(
+      [
+        fakeExternalEngineAdapter({
+          provider: 'claude',
+          engineId: 'claude',
+          prerequisites: [{ id: 'claude-cli', status: 'installed' }],
+        }),
+      ],
+      undefined,
+      () => true,
+      undefined,
+      [
+        { id: 'claude', name: 'Claude (registry)' },
+        { id: 'kiro', name: 'Kiro CLI' },
+      ],
+    );
+    const claudeRows = readiness.engines.filter(
+      (entry) => entry.engineId === 'claude',
+    );
+    expect(claudeRows).toHaveLength(1);
+    expect(claudeRows[0]).toMatchObject({ engineConnectionId: 'claude' });
+    expect(
+      readiness.engines.filter((entry) => entry.engineId === 'kiro'),
+    ).toMatchObject([{ reason: 'not_connected' }]);
+  });
   test('GET /boot-history returns bounded records without fabricating a cause', async () => {
     const getBootHistory = vi.fn().mockResolvedValue({
       currentUptimeSeconds: 43,
@@ -171,6 +250,70 @@ describe('System Routes', () => {
       delete process.env.STATION_INSTANCE_ID;
       delete process.env.STATION_BOOT_ID;
     }
+  });
+
+  test('GET /status reports the degraded terminal capability with its specific reason (#1244)', async () => {
+    const reason =
+      'node-pty failed to load. Interactive terminal panes are unavailable; agent execution is unaffected.';
+    const app = createSystemRoutes(
+      {
+        ...createMockDeps(),
+        probeTerminalCapability: vi
+          .fn()
+          .mockResolvedValue({ state: 'unavailable', reason }),
+      } as any,
+      mockLogger,
+    );
+    const body = await json(await app.request('/status'));
+    expect(body.capabilities.terminal).toEqual({
+      ready: false,
+      source: null,
+      reason,
+    });
+  });
+
+  test('GET /status reports terminal ready when the PTY backend loads, and makes no terminal claim without a probe (#1244)', async () => {
+    const withProbe = createSystemRoutes(
+      {
+        ...createMockDeps(),
+        probeTerminalCapability: vi
+          .fn()
+          .mockResolvedValue({ state: 'available' }),
+      } as any,
+      mockLogger,
+    );
+    const ready = await json(await withProbe.request('/status'));
+    expect(ready.capabilities.terminal).toEqual({
+      ready: true,
+      source: 'node-pty',
+    });
+
+    // An older route host that wires no probe observed nothing; status must
+    // not fabricate either readiness or degradation.
+    const withoutProbe = createSystemRoutes(
+      createMockDeps() as any,
+      mockLogger,
+    );
+    const silent = await json(await withoutProbe.request('/status'));
+    expect(silent.capabilities).not.toHaveProperty('terminal');
+  });
+
+  test('GET /status converts a throwing terminal probe into a degraded reason, never fabricated readiness (#1244)', async () => {
+    const app = createSystemRoutes(
+      {
+        ...createMockDeps(),
+        probeTerminalCapability: vi
+          .fn()
+          .mockRejectedValue(new Error('probe exploded')),
+      } as any,
+      mockLogger,
+    );
+    const body = await json(await app.request('/status'));
+    expect(body.capabilities.terminal.ready).toBe(false);
+    expect(body.capabilities.terminal.reason).toContain('probe exploded');
+    expect(body.capabilities.terminal.reason).toContain(
+      'npm run dependencies:install',
+    );
   });
 
   test('GET /status can be forced chat-ready for deterministic E2E runs', async () => {
@@ -2209,4 +2352,25 @@ describe('System Routes', () => {
     expect(aliasResponse.status).toBe(canonicalResponse.status);
     expect(await json(aliasResponse)).toEqual(await json(canonicalResponse));
   });
+});
+
+test('system status includes host recovery disclosure and preserves unavailable evidence', async () => {
+  for (const homeRecovery of [
+    { kind: 'not-restored' },
+    { kind: 'unavailable' },
+    {
+      kind: 'recovered-from-copy',
+      recoveryId: 'recovery-test',
+      snapshotCreatedAt: '2026-09-05T00:00:00.000Z',
+      authorityTransferred: false,
+    },
+  ]) {
+    const app = createSystemRoutes(
+      { ...createMockDeps(), getHomeRecovery: () => homeRecovery } as any,
+      mockLogger,
+    );
+    const response = await app.request('/status');
+    expect(response.status).toBe(200);
+    expect((await json(response)).homeRecovery).toEqual(homeRecovery);
+  }
 });

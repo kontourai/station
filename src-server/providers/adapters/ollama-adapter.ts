@@ -101,7 +101,6 @@ export class OllamaAdapter implements ProviderAdapterShape {
         overrideAtStart: true,
         overrideAtResume: true,
         overridePerTurn: true,
-        modelConnectionId: 'ollama-runtime',
       },
     };
     this.llm =

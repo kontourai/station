@@ -10,7 +10,7 @@ const PURL =
 const HASH = /^[a-f0-9]{64}$/;
 const PLATFORMS = ['linux/amd64', 'linux/arm64'];
 export const ANCHORE_SBOM_ACTION =
-  'anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610';
+  'anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26';
 export const SYFT_VERSION = '1.51.0';
 
 function fail(message) {

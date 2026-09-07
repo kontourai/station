@@ -229,7 +229,7 @@ describe('shutdownRuntimeServices', () => {
       'monitoring',
       'config',
     ]);
-    expect(mcpConfigs.size).toBe(0);
+    expect([...mcpConfigs.keys()]).toEqual(['alpha']); // Failed cleanup retains its handle.
     expect(activeAgents.size).toBe(0);
   });
 

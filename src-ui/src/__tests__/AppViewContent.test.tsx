@@ -125,13 +125,6 @@ vi.mock('../views/ScheduleView', () => ({
 vi.mock('../views/ConsoleBoardView', () => ({
   ConsoleBoardView: () => <div>ConsoleBoard</div>,
 }));
-// the activity route mounts the standalone placement of the Activity
-// Workspace Pane, which owns mounting the sessions surface.
-vi.mock('../views/ActivityView', () => ({
-  ActivityView: ({ sessionId }: { sessionId?: string }) => (
-    <div data-testid="sessions-view">Sessions {sessionId}</div>
-  ),
-}));
 vi.mock('../views/SettingsView', () => ({
   SettingsView: () => <div data-testid="settings-view">Settings</div>,
 }));
@@ -165,7 +158,8 @@ const baseProps = {
   apiBase: 'http://localhost:3242',
   availableModels: [],
   onNavigate: vi.fn(),
-  onNavigateHome: vi.fn(),
+  onShowHome: vi.fn(),
+  onReturnToOutlet: vi.fn(),
   onSettingsSaved: vi.fn(),
 };
 
@@ -196,18 +190,6 @@ describe('AppViewContent — R3 un-stacking', () => {
     );
     await screen.findByTestId('home-view');
     expect(home.container.querySelector('.page-frame__header')).toBeNull();
-  });
-
-  test('passes an exact route session id to Sessions', async () => {
-    render(
-      <AppViewContent
-        {...baseProps}
-        currentView={{ type: 'activity', sessionId: 'thread-alpha' }}
-      />,
-    );
-    expect((await screen.findByTestId('sessions-view')).textContent).toContain(
-      'thread-alpha',
-    );
   });
 
   test('wraps every route in the shared entrance, split-pane routes included', async () => {
@@ -375,13 +357,13 @@ describe('AppViewContent — the page header while a route loads', () => {
     render(
       <AppViewContent
         {...baseProps}
-        currentView={{ type: 'connections-providers' }}
+        currentView={{ type: 'connections-models' }}
       />,
     );
 
     expect(screen.getByText('Loading route')).toBeTruthy();
     const heading = screen.getByRole('heading', { level: 1 });
-    // The sidebar's own word for this surface, from `surface-registry.ts`,
+    // The sidebar's own word for this surface, from `destination-registry.ts`,
     // not a second copy written into the frame table.
     expect(heading.textContent).toBe('Connections');
   });
@@ -390,7 +372,7 @@ describe('AppViewContent — the page header while a route loads', () => {
     const { rerender } = render(
       <AppViewContent
         {...baseProps}
-        currentView={{ type: 'connections-providers' }}
+        currentView={{ type: 'connections-models' }}
       />,
     );
     await screen.findByText('ProviderSettings');
@@ -413,12 +395,14 @@ describe('AppViewContent — the page header while a route loads', () => {
 
 describe('AppViewContent — not-found', () => {
   test('renders ErrorState with role="alert" and a Go home action for unmatched routes', () => {
-    const onNavigateHome = vi.fn();
+    const onShowHome = vi.fn();
+    const onReturnToOutlet = vi.fn();
 
     render(
       <AppViewContent
         {...baseProps}
-        onNavigateHome={onNavigateHome}
+        onShowHome={onShowHome}
+        onReturnToOutlet={onReturnToOutlet}
         currentView={{ type: 'not-found', path: '/nowhere' }}
       />,
     );
@@ -427,8 +411,11 @@ describe('AppViewContent — not-found', () => {
     expect(alert).toBeTruthy();
     expect(screen.getByText('Page not found')).toBeTruthy();
 
+    // #1523: "Go home" says Home, so it means the Home surface — not a return
+    // to `/` and whatever occupies `main`.
     fireEvent.click(screen.getByRole('button', { name: 'Go home' }));
-    expect(onNavigateHome).toHaveBeenCalledTimes(1);
+    expect(onShowHome).toHaveBeenCalledTimes(1);
+    expect(onReturnToOutlet).not.toHaveBeenCalled();
   });
 });
 
@@ -439,7 +426,7 @@ describe('AppViewContent — Connections surface continuity', () => {
     const { container, rerender } = render(
       <AppViewContent
         {...baseProps}
-        currentView={{ type: 'connections-providers' }}
+        currentView={{ type: 'connections-models' }}
       />,
     );
     await screen.findByText('ProviderSettings');
@@ -452,12 +439,12 @@ describe('AppViewContent — Connections surface continuity', () => {
       container
         .querySelector('[data-route-key]')
         ?.getAttribute('data-route-key'),
-    ).toBe('connections-providers');
+    ).toBe('connections-models');
 
     rerender(
       <AppViewContent
         {...baseProps}
-        currentView={{ type: 'connections-provider-edit', id: 'model-1' }}
+        currentView={{ type: 'connections-model-edit', id: 'model-1' }}
       />,
     );
     expect(container.querySelector('.route-transition')).toBe(surface);
@@ -472,12 +459,12 @@ describe('AppViewContent — Connections surface continuity', () => {
       container
         .querySelector('[data-route-key]')
         ?.getAttribute('data-route-key'),
-    ).toBe('connections-provider-edit:model-1');
+    ).toBe('connections-model-edit:model-1');
 
     rerender(
       <AppViewContent
         {...baseProps}
-        currentView={{ type: 'connections-providers' }}
+        currentView={{ type: 'connections-models' }}
       />,
     );
     expect(

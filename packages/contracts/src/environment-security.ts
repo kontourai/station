@@ -65,6 +65,23 @@ export const PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH =
   '/.well-known/station/v1/pairing/mint-ui-bootstrap' as const;
 
 /**
+ * A Station-owned launcher page for the framework-served API docs (#934).
+ *
+ * The tray's "Open API docs" opens the system browser, which has no credential
+ * and cannot set an `Authorization` header on a top-level navigation, so `/ui`
+ * and `/doc` answer 401. This page is the only thing on that path that Station
+ * controls: it redeems a single-use bootstrap capability carried in its own URL
+ * fragment for the ordinary HttpOnly device-session cookie, then navigates to
+ * the docs. Swagger UI's own HTML is served before any script of ours could
+ * run, which is why the redemption needs a page of its own.
+ *
+ * It carries no credential itself and its redirect target is fixed, never
+ * taken from the request.
+ */
+export const PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH =
+  '/.well-known/station/v1/pairing/api-docs' as const;
+
+/**
  * Scoped pairing (archive#1098): OAuth-style space-delimited scope strings on
  * pairing grants and the device sessions/credentials exchanged from them. A
  * leaked read-only credential can read and stream state but must 403 on
@@ -150,6 +167,20 @@ export const PAIRING_SCOPE_ACCESS_APPROVE = 'access:approve' as const;
  */
 export const PAIRING_SCOPE_CONSENT_DECIDE = 'consent:decide' as const;
 
+/**
+ * Participate in a planned transfer of this Station home's authority through
+ * the dedicated `/api/home-authority/**` family.
+ *
+ * This token authorizes only bounded participation in a planned home transfer.
+ * It does not authorize transfer execution, reading or operating ordinary
+ * orchestration routes, opening a terminal, invoking inference, or managing
+ * pairing/device access. It is deliberately absent from
+ * {@link DEFAULT_GRANT_PAIRING_SCOPE}; it must be granted explicitly. The dedicated
+ * `home-transfer` preset supplies exactly this permission. The current runtime
+ * exposes an enrollment observation only; no transfer mutations are available.
+ */
+export const PAIRING_SCOPE_HOME_TRANSFER = 'home:transfer' as const;
+
 export const PAIRING_SCOPES = [
   PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
@@ -158,6 +189,7 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_INFERENCE_INVOKE,
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_CONSENT_DECIDE,
+  PAIRING_SCOPE_HOME_TRANSFER,
 ] as const;
 
 export type PairingScope = (typeof PAIRING_SCOPES)[number];
@@ -240,6 +272,11 @@ export const DEFAULT_GRANT_PAIRING_SCOPE: string = [
  * as contributing is operator-opt-in on the serving side — which is why
  * `inference:invoke` is in no other preset and not in
  * {@link DEFAULT_GRANT_PAIRING_SCOPE}.
+ *
+ * `home-transfer` is likewise a single-purpose preset. It authorizes only
+ * participation in the `/api/home-authority/**` transfer protocol. It carries
+ * no orchestration, terminal, inference, consent, or pairing-management
+ * authority, and is not included in any broader existing preset.
  */
 export const PAIRING_SCOPE_PRESETS = {
   'read-only': [PAIRING_SCOPE_ORCHESTRATION_READ],
@@ -253,6 +290,7 @@ export const PAIRING_SCOPE_PRESETS = {
     PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   ],
   inference: [PAIRING_SCOPE_INFERENCE_INVOKE],
+  'home-transfer': [PAIRING_SCOPE_HOME_TRANSFER],
 } as const satisfies Record<string, readonly PairingScope[]>;
 
 export type PairingScopePreset = keyof typeof PAIRING_SCOPE_PRESETS;
@@ -316,6 +354,7 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   // The operator itself decides consent by credential identity, not via this
   // token (see the PAIRING_SCOPE_CONSENT_DECIDE doc block).
   [PAIRING_SCOPE_CONSENT_DECIDE]: ['operator-promotion'],
+  [PAIRING_SCOPE_HOME_TRANSFER]: ['preset'],
 };
 
 export const DEFAULT_PAIRING_SCOPE_PRESET: PairingScopePreset = 'standard';

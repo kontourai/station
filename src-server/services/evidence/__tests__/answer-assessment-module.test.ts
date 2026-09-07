@@ -12,7 +12,7 @@ import {
   type StationAnswerBinding,
 } from '@kontourai/station-contracts';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   AnswerAssessmentModule,
   AnswerAssessmentNotFoundError,
@@ -40,6 +40,14 @@ const authority = sessionReadAuthorityFromRequest(
   undefined,
   undefined,
 );
+// The imported Surface example was observed on August 25 and remains valid for
+// seven days. Freeze only Date so this policy assertion keeps testing that
+// intended temporal relationship instead of the wall clock running the suite.
+const SURFACE_POLICY_OBSERVATION_TIME = '2026-08-26T00:00:03.000Z';
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function bundle(profile = true) {
   const value = JSON.parse(
@@ -225,6 +233,8 @@ describe('AnswerAssessmentModule', () => {
   });
 
   test('only accepts a concrete exact-answer content profile, persists by immutable bytes, and tombstones removal', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(SURFACE_POLICY_OBSERVATION_TIME);
     const home = mkdtempSync(join(tmpdir(), 'station-assessment-'));
     try {
       const module = new AnswerAssessmentModule(home, {

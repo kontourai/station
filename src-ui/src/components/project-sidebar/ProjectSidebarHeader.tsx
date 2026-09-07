@@ -4,6 +4,9 @@ interface ProjectSidebarHeaderProps {
   homeLabel: string;
   /** Release-channel presentation is intentionally separate from the title. */
   channelBadge?: string;
+  /** Compact local artifact age; the title carries canonical UTC detail. */
+  buildLabel?: string;
+  buildDescription?: string;
   collapsed: boolean;
   isMobile: boolean;
   onCloseMobile: () => void;
@@ -15,6 +18,8 @@ export function ProjectSidebarHeader({
   appName,
   homeLabel,
   channelBadge,
+  buildLabel,
+  buildDescription,
   collapsed,
   isMobile,
   onCloseMobile,
@@ -38,12 +43,31 @@ export function ProjectSidebarHeader({
           aria-hidden="true"
           className="sidebar__logo"
         />
-        <span className="sidebar__brand-name">
+        <span
+          className="sidebar__brand-name"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            lineHeight: 1.1,
+          }}
+        >
           <span>{appName}</span>
           {channelBadge && (
+            <small
+              className="sidebar__channel-badge"
+              style={{ display: 'block', marginTop: 2 }}
+            >
+              {channelBadge}
+            </small>
+          )}
+          {buildLabel && (
             <>
               <br />
-              <small className="sidebar__channel-badge">{channelBadge}</small>
+              <small className="sidebar__build-age" title={buildDescription}>
+                <span aria-hidden="true">{buildLabel}</span>
+                <span className="sr-only">{buildDescription}</span>
+              </small>
             </>
           )}
         </span>

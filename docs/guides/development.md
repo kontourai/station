@@ -2,6 +2,17 @@
 
 This guide keeps contributor and operator detail out of the public README while preserving the commands and conventions needed to work on Station.
 
+## Source Prerequisites
+
+Working from source needs Node.js 24.x, npm 10 or newer, and git. On Linux,
+`npm run dependencies:install` additionally needs a C++ toolchain (`g++`,
+`make`, `python3`) to compile the `node-pty` terminal module — the only
+source-built native addon; macOS and Windows use upstream prebuilds. When
+`packaging/node-pty-prebuilds/manifest.json` pins attested Linux artifacts
+(#1245), the dependency lifecycle stages those instead and the Linux
+toolchain requirement disappears; `npm_config_build_from_source=true` opts
+back into compiling. Rust is optional and only needed for desktop builds.
+
 ## Optional `just` contributor Interface
 
 `just` forwards to Station's existing commands; it does not replace them. Use
@@ -32,6 +43,32 @@ diagnostic tool rather than the ordinary delivery loop. Hosted promotion owns
 the canonical completion receipt.
 
 ## Local Runtime
+
+For a fresh checkout, select Node.js 24.x (also recorded in `.nvmrc`), then
+install the locked dependencies and repository hooks from the repository root:
+
+```bash
+npm run dependencies:ci
+```
+
+Use the managed dependency command when refreshing an existing checkout too;
+it applies Station's dependency lifecycle policy.
+
+### Package-manager migration
+
+The org-wide pnpm direction and Station's migration work are tracked in
+[issue #516](https://github.com/kontourai/station/issues/516). A sibling
+repository's migration does not change this checkout's install contract.
+Check the root lockfile, package metadata, and `scripts/dependency-lifecycle.mjs`
+before choosing an installer. This revision uses `pnpm-lock.yaml` and the
+managed pnpm lifecycle above. `npm run` remains the script interface; it does
+not select npm dependency storage. The migration must update those inputs, native
+hooks and patches, verification identity, packaging, CI, and this guide together.
+
+The npm download cache does not share installed dependency trees between
+worktrees. If installation fails with `ENOSPC`, check free space and treat the
+partial install as unverified before diagnosing downstream build/test errors.
+Do not reclaim another active worktree's dependencies to repair your own.
 
 Prefer the `./station` CLI for starting and stopping the app. It coordinates server, UI, build artifacts, instance state, and data directories.
 
@@ -97,26 +134,50 @@ addition to `--force`; the shared root is not a runtime cleanup target.
 | `@kontourai/station-sdk` | `packages/sdk/` | Published (npm, Apache-2.0) | Plugin SDK hooks, components, query domains, and client helpers |
 | `@kontourai/station-shared` | `packages/shared/` | Published (npm, Apache-2.0) | Shared runtime helpers and compatibility re-exports |
 | `@kontourai/station-connect` | `packages/connect/` | Private (`private: true`) | Standalone bidirectional pairing library |
-| `@kontourai/station-cli` | `packages/cli/` | Private (`private: true`) | CLI implementation behind `./station` |
+| `@kontourai/station-cli` | `packages/cli/` | Published (npm, Apache-2.0) | Client CLI package; checkout-only host commands remain behind `./station` |
 
-The three published packages ship raw TypeScript source, so consumers need a
-bundler or a TS-aware loader; each README documents that constraint. The two
-private packages are marked `private: true` in their `package.json` and are
-never pushed to the registry — `./station` is only usable from a checkout.
+The contracts, SDK, and shared packages ship raw TypeScript source, so their
+consumers need a bundler or a TS-aware loader; each README documents that
+constraint. The CLI ships a bundled executable. Connect remains private and is
+marked `private: true` in its `package.json`. The repo-root `./station` launcher
+remains the checkout entry point for host and contributor commands.
 
 New cross-package types should live in the owning `@kontourai/station-contracts/*` module. Keep compatibility re-exports in `shared` only when needed for older callers.
 
 Root `npm run dependencies:ci` also provisions development examples that depend on Station
 workspace packages. Those examples are declared in the root `workspaces` list
-so npm links host-provided peers locally — which is required for the private
-packages, which cannot be resolved from the registry at all, and keeps the
+so npm links host-provided peers locally — which is required for private
+workspace packages that cannot be resolved from the registry, and keeps the
 published ones pinned to the in-repo source rather than the last release. Add a
 new example there when its tests are part of the root verification corpus and
 it owns dependencies that the root install must provide. Root-managed examples
-use the repository's `package-lock.json`; do not add a second lock inside the
+use the repository's `pnpm-lock.yaml`; do not add a second lock inside the
 example.
 
+### Dependency install deadline
+
+The dependency bootstrap gives the inert pnpm install step a finite
+deadline — twenty minutes on Windows, ten minutes elsewhere — so a wedged
+install fails instead of hanging forever. That default is not a claim about the
+slowest supported machine. A cold 1552-package install takes about eleven
+minutes on an ARM64 handset, which the fixed bound killed outright with
+`npm error signal SIGTERM` and an already-emptied `node_modules/`.
+
+Raise it on a host that is slow rather than stuck:
+
+```bash
+STATION_DEPENDENCY_INSTALL_TIMEOUT_MS=1800000 npm run dependencies:ci
+```
+
+The value is whole milliseconds and must be positive; a malformed value fails
+loudly rather than silently restoring the default. Lifecycle hooks keep their
+separate two-minute bound — the `node-pty` compile, the only one that builds
+native code, takes about 27 seconds on that same handset.
+
 ## Project Structure
+
+See [Repository layout](repository-layout.md) for directory ownership, naming,
+generated files, and where to put a new module or document.
 
 ```text
 src-server/       Node backend, Hono routes, services, runtime adapters
@@ -192,9 +253,8 @@ npm run build:sdk
 
 ## Commit Messages
 
-Commit subjects follow the Conventional Commits grammar because the
-forthcoming deploy ledger (station#4572) will generate its changelog from
-them — a free-form subject is a broken release artifact, not a style nit:
+Commit subjects follow the Conventional Commits grammar enforced by the
+repository hooks:
 
 ```text
 type(scope)?: subject
@@ -239,7 +299,7 @@ proof:
 
 ```bash
 npm run test:changed -- --base=origin/main --explain
-npx vitest run <selected-test-file>
+npm run test:focused -- <selected-test-file>
 npx tsc -p <affected-tsconfig> --noEmit
 npx biome check <affected-paths>
 ```
@@ -287,9 +347,17 @@ PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test tests/<spec>.spec.ts
 
 Every Playwright spec must be assigned to exactly one bucket in `tests/e2e-manifest.mjs`.
 
-Dependency updates must also pass the multi-lock advisory floor. See
+Dependency updates must also pass the workspace advisory floor. See
 [Dependency security](dependency-security.md) for the root, SDK, and shared lock
 workflow, production-reachability interpretation, and exception contract.
+
+Pushes that touch orchestration transfer inputs run the transfer gate from
+`.githooks/pre-push`. It reads its baseline from
+`STATION_TRANSFER_BASELINE_ROOT` and its capture liveness bound from
+`STATION_TRANSFER_CAPTURE_TIMEOUT_MS`; see
+[Pre-push orchestration transfer gate](testing.md#pre-push-orchestration-transfer-gate)
+for baseline preparation and the slow-hardware override. Do not `--no-verify`
+past it: no required CI check re-runs it.
 
 ## Observability
 

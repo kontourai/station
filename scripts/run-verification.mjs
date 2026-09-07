@@ -11,6 +11,7 @@ import {
 import { projectHostPressureForStatus } from './lib/verification-host-pressure.mjs';
 import { redactVerificationOutput } from './lib/verification-redaction.mjs';
 import {
+  failedTestFilesFromCapture,
   readVerifiedVerificationArtifact,
   sweepVerificationArtifactOrphans,
   VERIFICATION_ARTIFACT_RETENTION_POLICY,
@@ -158,28 +159,51 @@ function boundedTail(value, maxBytes = FAILED_STDOUT_TAIL_BYTE_CAP) {
   return tail;
 }
 
-function diagnosticStdoutTail(result) {
-  if (
-    !['failed', 'infrastructure_error'].includes(
-      result?.receipt?.terminal?.status,
-    )
-  )
-    return undefined;
-  const requestKey = result.receipt.request?.key;
-  const artifact = result.receipt.artifacts?.find((entry) => {
-    const match =
-      /^\.kontourai\/verification-output\/([0-9a-f]{64})\/stdout-[0-9a-f]{64}\.txt$/.exec(
-        entry?.path ?? '',
-      );
+function isNonPassingResult(result) {
+  return ['failed', 'infrastructure_error'].includes(
+    result?.receipt?.terminal?.status,
+  );
+}
+
+/**
+ * Per-render memo for `capturedStream`. Reading a stream artifact opens it,
+ * stats it twice and re-hashes up to 3 MiB to prove the digest; the tail and
+ * the failing-file scan both want the same bytes, so without this a single
+ * `renderBounded` paid that three times.
+ */
+const capturedStreams = new WeakMap();
+
+/**
+ * The verified, already-redacted capture of one of the run's own streams, or
+ * undefined when the receipt does not carry it.
+ */
+function capturedStream(result, kind) {
+  const memo = capturedStreams.get(result) ?? new Map();
+  capturedStreams.set(result, memo);
+  if (memo.has(kind)) return memo.get(kind);
+  const value = readCapturedStream(result, kind);
+  memo.set(kind, value);
+  return value;
+}
+
+function readCapturedStream(result, kind) {
+  const requestKey = result?.receipt?.request?.key;
+  const reference = new RegExp(
+    `^\\.kontourai/verification-output/([0-9a-f]{64})/${kind}-[0-9a-f]{64}\\.txt$`,
+  );
+  const artifact = result?.receipt?.artifacts?.find((entry) => {
+    const match = reference.exec(entry?.path ?? '');
     return match?.[1] === requestKey;
   });
   if (!artifact || typeof result.receipt.request?.worktree !== 'string')
     return undefined;
   try {
-    // The artifact has already passed the redaction boundary at :281: raw
+    // The artifact has already passed the redaction boundary:
+    // `persistVerificationOutput` (verification-reporter.mjs) redacts the
+    // complete bounded source before choosing the persisted prefix, so raw
     // child output lives only in digest-addressed redacted artifacts, never
-    // stdout. Reading this verified artifact is therefore safe to surface.
-    return boundedTail(
+    // here. Reading this verified artifact is therefore safe to surface.
+    return String(
       readVerifiedVerificationArtifact({
         root: result.receipt.request.worktree,
         artifact,
@@ -190,8 +214,120 @@ function diagnosticStdoutTail(result) {
   }
 }
 
+function diagnosticStdoutTail(result) {
+  if (!isNonPassingResult(result)) return undefined;
+  const captured = capturedStream(result, 'stdout');
+  return captured === undefined ? undefined : boundedTail(captured);
+}
+
+/** Enough to identify the failing surface; not a substitute for the artifact. */
+const FAILED_TEST_FILE_CAP = 8;
+
+/**
+ * The test FILES a failed run actually failed in (#1139).
+ *
+ * The redacted stdout tail carries `[test:changed] focused: …`, which reads as
+ * an account of what ran — and can omit the very file every failure is in,
+ * because a file is reached through another's import graph. `gh run view
+ * --log-failed` shows only that tail, so the first thing a reader learns about
+ * their red PR points at innocent files. The failure locations already exist,
+ * in the digest-addressed diagnostics attachment, but only if you know to
+ * download the run's artifacts and which one to open.
+ *
+ * `file` is repo-relative and already past the redaction boundary, the same as
+ * the stdout artifact this sits beside. Names are not surfaced: the file plus a
+ * count is what ends the investigation, and it stays small enough to survive
+ * the output cap.
+ */
+function attachmentFailedTestFiles(result) {
+  const requestKey = result.receipt.request?.key;
+  const artifact = result.receipt.artifacts?.find((entry) => {
+    const match =
+      /^\.kontourai\/verification-output\/([0-9a-f]{64})\/attachment-[0-9a-f]{64}\.txt$/.exec(
+        entry?.path ?? '',
+      );
+    return match?.[1] === requestKey;
+  });
+  if (!artifact || typeof result.receipt.request?.worktree !== 'string')
+    return undefined;
+  let diagnostic;
+  try {
+    diagnostic = JSON.parse(
+      readVerifiedVerificationArtifact({
+        root: result.receipt.request.worktree,
+        artifact,
+      }),
+    );
+  } catch {
+    return undefined;
+  }
+  const counts = new Map();
+  for (const execution of Array.isArray(diagnostic?.executions)
+    ? diagnostic.executions
+    : [])
+    for (const failure of Array.isArray(execution?.failedTests)
+      ? execution.failedTests
+      : []) {
+      // A malformed entry must not invent a location.
+      if (typeof failure?.file !== 'string' || failure.file.length === 0)
+        continue;
+      counts.set(failure.file, (counts.get(failure.file) ?? 0) + 1);
+    }
+  if (counts.size === 0) return undefined;
+  const ordered = [...counts.entries()].sort(
+    (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+  );
+  const listed = ordered
+    .slice(0, FAILED_TEST_FILE_CAP)
+    .map(([file, count]) => `${file} (${count})`);
+  const omitted = ordered.length - listed.length;
+  // The omission is stated rather than left to be inferred from a short list.
+  return omitted > 0
+    ? [...listed, `… ${omitted} more file(s) in the diagnostics attachment`]
+    : listed;
+}
+
+/**
+ * The same question answered from the run's OWN captured streams, for the runs
+ * that have no per-execution diagnostics attachment at all (station#1471).
+ *
+ * A completion-phase parent — the hosted full-regression gate — attaches phase
+ * receipts, not the `executions[].failedTests` document `#1139` reads, so on
+ * the one run shape that most needs a location the field was simply absent.
+ * The `FAIL <file> > <test>` lines the runner itself printed are already in the
+ * folded capture; vitest writes that banner to STDERR, which is why stdout
+ * alone was never enough.
+ *
+ * No `(count)` suffix here, unlike the attachment path: a persisted stream is a
+ * bounded prefix and the failing shard's block reaches the parent as a tail, so
+ * a count derived from it would be a number nothing guarantees.
+ */
+function capturedFailedTestFiles(result) {
+  const files = [
+    ...new Set([
+      ...failedTestFilesFromCapture(capturedStream(result, 'stdout') ?? ''),
+      ...failedTestFilesFromCapture(capturedStream(result, 'stderr') ?? ''),
+    ]),
+  ];
+  if (files.length === 0) return undefined;
+  const listed = files.slice(0, FAILED_TEST_FILE_CAP);
+  const omitted = files.length - listed.length;
+  return omitted > 0
+    ? [...listed, `… ${omitted} more file(s) in the redacted capture`]
+    : listed;
+}
+
+/**
+ * The failing test files, from the diagnostics attachment when the run has one
+ * and from its own capture when it does not. A passing run names none.
+ */
+function diagnosticFailedTestFiles(result) {
+  if (!isNonPassingResult(result)) return undefined;
+  return attachmentFailedTestFiles(result) ?? capturedFailedTestFiles(result);
+}
+
 function tailFallback(bounded, stdoutTail) {
-  const envelope = (tail) => ({
+  const buildEnvelope = (tail, { withExcerpt }) => ({
     disposition: bounded.disposition,
     request: bounded.request,
     summary: {
@@ -199,6 +335,30 @@ function tailFallback(bounded, stdoutTail) {
       counts: bounded.summary?.counts,
       cleanup: bounded.summary?.cleanup,
       passed: bounded.summary?.passed,
+      // Carried through truncation for the same reason as the file list below
+      // it, and ahead of it: this is the sentence that says WHAT broke, and
+      // dropping it is what made a red hosted nightly annotate itself "no
+      // causal excerpt; read the artifact" while the FAIL line sat in its own
+      // capture (station#1471). It is a single bounded line — the summary's
+      // own byte budget already capped it — so it costs the tail very little.
+      ...(withExcerpt && typeof bounded.summary?.firstCausalExcerpt === 'string'
+        ? {
+            firstCausalExcerpt: bounded.summary.firstCausalExcerpt,
+            // The caveat travels with the excerpt or not at all: carrying the
+            // excerpt while dropping the note that says it was picked off an
+            // unattributed stream would state a stronger claim than the run
+            // supports, exactly the trade the reporter refuses at its own cap.
+            ...(bounded.summary?.causeStream
+              ? { causeStream: bounded.summary.causeStream }
+              : {}),
+          }
+        : {}),
+      // Carried through truncation: a capped list of file names is small, and
+      // it is the field that says where to look. Dropping it here would
+      // reproduce #1139 for exactly the largest, least readable failures.
+      ...(bounded.summary?.failedCheckTestFiles
+        ? { failedCheckTestFiles: bounded.summary.failedCheckTestFiles }
+        : {}),
       ...(bounded.summary?.productLawObservationTimeoutMs !== undefined
         ? {
             productLawObservationTimeoutMs:
@@ -209,6 +369,14 @@ function tailFallback(bounded, stdoutTail) {
     },
     truncated: true,
   });
+  // The excerpt is only carried while the envelope can still hold the
+  // mandatory fields with an empty tail. A cap too small for both keeps the
+  // measured terminal truth rather than the prose about it.
+  const withExcerpt =
+    Buffer.byteLength(
+      JSON.stringify(buildEnvelope('', { withExcerpt: true }), null, 2),
+    ) <= CONTROL_OUTPUT_CAP;
+  const envelope = (tail) => buildEnvelope(tail, { withExcerpt });
   const tail = stdoutTail;
   let rendered = JSON.stringify(envelope(tail), null, 2);
   if (Buffer.byteLength(rendered) <= CONTROL_OUTPUT_CAP) return rendered;
@@ -238,6 +406,14 @@ export function renderBounded(result) {
     bounded.summary = {
       ...bounded.summary,
       productLawObservationTimeoutMs,
+    };
+  // Before the tail, and separately from it: the tail is what gets trimmed
+  // when the envelope is over cap, and this is the part a reader needs first.
+  const failedTestFiles = diagnosticFailedTestFiles(result);
+  if (failedTestFiles)
+    bounded.summary = {
+      ...bounded.summary,
+      failedCheckTestFiles: failedTestFiles,
     };
   if (stdoutTail)
     bounded.summary = {
@@ -385,6 +561,23 @@ export async function runVerificationCli(
     return result?.receipt?.terminal?.passed === false ? 1 : 0;
   } catch (caught) {
     error(redactVerificationSubmissionError(caught));
+    // `errorText` scrubs every absolute path to `[PATH]`, which is right for
+    // handoff records but destroys the only actionable content this particular
+    // failure carries: the tree to repair. Print it back for this disposition
+    // rather than loosening a scrub that also guards persisted records.
+    //
+    // On THIS CLI the root is always the caller's own git toplevel — there is
+    // no `--cwd`, and both coordinator and submission derive it from
+    // `process.cwd()`. The value here is narrower than un-scrubbing a foreign
+    // path: it says WHICH of several open `../station-worktrees/<lane>` trees
+    // the check read, which is not otherwise recoverable from a scrubbed line.
+    // The genuinely foreign root — the prepared transfer baseline — is
+    // reported by `orchestration-transfer-gate.mjs`, which prints
+    // `error.message` raw through its own handler and never reaches this catch.
+    if (caught?.disposition === 'environment-stale' && caught.repositoryRoot)
+      error(
+        `environment-stale root: ${caught.repositoryRoot} -- run \`npm run dependencies:ci\` there`,
+      );
     return 2;
   }
 }

@@ -74,7 +74,7 @@ export function getHelpPrompts(view?: NavigationView): HeaderHelpPrompt[] {
           'Help me set up a scheduled job. Ask me what I want to run and when.',
       });
       break;
-    case 'connections-providers':
+    case 'connections-models':
       contextual.push({
         label: 'Add a model connection',
         prompt: 'Help me set up a new model connection.',

@@ -3,7 +3,12 @@ import type {
   TerminalProcessSummary,
 } from '@kontourai/station-contracts/orchestration';
 import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
-import type { IPtyAdapter, IPtyProcess } from '../../domain/pty-adapter.js';
+import type { TerminalCapability } from '@kontourai/station-shared/terminal-capability';
+import {
+  type IPtyAdapter,
+  type IPtyProcess,
+  isPtyUnavailableError,
+} from '../../domain/pty-adapter.js';
 import type { ITerminalHistoryStore } from '../../domain/terminal-history-store.js';
 import type {
   TerminalEvent,
@@ -53,6 +58,15 @@ export class TerminalService {
         MS_PER_MINUTE, // Poll every 60s instead of 1s to reduce popup frequency
       );
     }
+  }
+
+  /**
+   * The terminal surface's live capability (#1244). Delegates to the PTY
+   * adapter; an adapter without a probe has no native backend to lose, so
+   * absence reports available rather than a degradation nothing observed.
+   */
+  async probeCapability(): Promise<TerminalCapability> {
+    return (await this.pty.probeCapability?.()) ?? { state: 'available' };
   }
 
   async open(input: TerminalOpenInput): Promise<TerminalSessionSnapshot> {
@@ -135,6 +149,12 @@ export class TerminalService {
         if (this.wasCancelledDuringOpen(sessionId, entry)) {
           throw this.openCancelledError(sessionId);
         }
+        // An unavailable PTY backend fails every candidate for the same
+        // reason. Rethrow the specific degraded-terminal error rather than
+        // exhausting the shell list into the generic "no viable shell
+        // found", which reads as a shell problem the user cannot act on
+        // (#1244).
+        if (isPtyUnavailableError(e)) throw e;
         console.debug('Failed to spawn shell candidate:', candidate.shell, e);
       }
     }

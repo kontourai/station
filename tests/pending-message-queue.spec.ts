@@ -217,14 +217,14 @@ test.describe('Pending message queue (#613)', () => {
     // which is the state every enqueue step below runs in. Its fieldset carries
     // the stable accessible name (`:430-432`).
     const textarea = page
-      .getByRole('group', { name: 'Message composer file drop area' })
+      .getByRole('group', { name: 'Message composer', exact: true })
       .getByRole('textbox');
     // Send exists only while the composer is idle: mid-turn
     // `ChatInputArea.tsx:597-625` swaps it for "Stop the current turn", and a
     // follow-up is committed with Enter (`:637-651`). So the opening turn goes
     // through the button and every enqueue below goes through the key — which
     // is also what a person does.
-    const sendButton = page.getByRole('button', { name: 'Send' });
+    const sendButton = page.getByRole('button', { name: 'Send', exact: true });
 
     // Start a turn — the mock server acks foreground execution immediately,
     // but never emits turn.completed until we tell it to, so the session

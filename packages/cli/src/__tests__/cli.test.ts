@@ -138,6 +138,11 @@ async function loadCliWithLifecycleMocks() {
     })),
     homeRestore: vi.fn(() => ({
       homeDir: '/home',
+      recovery: {
+        kind: 'recovered-from-copy',
+        snapshotCreatedAt: '2026-09-05T00:00:00.000Z',
+        authorityTransferred: false,
+      },
       manifest: { files: [], totalBytes: 0 },
     })),
     link: vi.fn(),
@@ -270,6 +275,24 @@ describe('runCli', () => {
     ).toBe(true);
   });
 
+  test('home restore discloses recovery from a copy and its snapshot time', async () => {
+    const { runCli } = await loadCliWithLifecycleMocks();
+    const output = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runCli([
+      'home',
+      'restore',
+      '--base=/station-home',
+      '--from=/backup-dir',
+      '--confirm',
+    ]);
+    const text = output.mock.calls.flat().join('\n');
+    expect(text).toContain(
+      'Recovered from a copy captured at 2026-09-05T00:00:00.000Z',
+    );
+    expect(text).toContain('Work after that snapshot may be missing');
+    expect(text).toContain('did not transfer execution authority');
+  });
+
   test('home verify reports a corrupt store and exits non-zero', async () => {
     // The finding has to reach the shell. A verification that prints
     // "corrupt" and exits 0 is invisible to every script that would act on
@@ -337,6 +360,26 @@ describe('runCli', () => {
 
     expect(lifecycle.doctorJson).toHaveBeenCalledOnce();
     expect(lifecycle.doctor).not.toHaveBeenCalled();
+  });
+
+  test('the direct `service install` dispatch signposts setup local; other actions do not', async () => {
+    const { runCli, service } = await loadCliWithLifecycleMocks();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runCli(['service', 'install', '--base=/tmp/station-service']);
+    const installLines = log.mock.calls.map(([line]) => String(line));
+    expect(
+      installLines.some((line) => line.includes('station setup local')),
+    ).toBe(true);
+
+    log.mockClear();
+    await runCli(['service', 'status', '--base=/tmp/station-service']);
+    const statusLines = log.mock.calls.map(([line]) => String(line));
+    expect(
+      statusLines.some((line) => line.includes('station setup local')),
+    ).toBe(false);
+    expect(service.runServiceCommand).toHaveBeenCalledTimes(2);
+    log.mockRestore();
   });
 
   test('dispatches service lifecycle flags through the shared parser', async () => {

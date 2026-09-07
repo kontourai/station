@@ -45,6 +45,19 @@ export interface SessionEventWindowReader {
   reload: () => Promise<void>;
   upgradeRequired: boolean;
   loading: boolean;
+  /**
+   * Has this reader produced a reading yet?
+   *
+   * `loading` cannot answer that: it is `false` both before the first request
+   * starts and after it finishes, so a caller reading `events.length === 0 &&
+   * !loading` cannot tell "this conversation is empty" from "nobody has looked
+   * yet" — and the chat dock rendered the empty "Start a conversation"
+   * placeholder over a conversation with turns in it for ~1.7s on every reload
+   * because of exactly that (#1582 E3/B6). `settled` becomes true when the
+   * first read attempt finishes, success or failure, and resets when the
+   * reader is pointed at a different thread.
+   */
+  settled: boolean;
   error?: Error;
 }
 
@@ -107,6 +120,7 @@ export function useSessionEventWindow(
   const [cursor, setCursor] = useState<string | undefined>();
   const [watermark, setWatermark] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [settled, setSettled] = useState(false);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [error, setError] = useState<Error>();
   const generation = useRef(0);
@@ -207,8 +221,13 @@ export function useSessionEventWindow(
       if (
         requestGeneration === generation.current &&
         requestSerial === requestSerialRef.current
-      )
+      ) {
         setLoading(false);
+        // A failed or upgrade-refused read is still a reading: the caller now
+        // knows something, and `error`/`upgradeRequired` say what. Only a read
+        // superseded by a newer one leaves the question open.
+        setSettled(true);
+      }
     }
   }, [apiBase, legacySessionId, threadId]);
 
@@ -279,6 +298,8 @@ export function useSessionEventWindow(
     setWatermark(0);
     setError(undefined);
     setUpgradeRequired(false);
+    // A new thread has not been read yet, whatever the previous one reported.
+    setSettled(false);
     if (threadId) void reload();
     return () => {
       requestControllerRef.current?.abort();
@@ -308,6 +329,7 @@ export function useSessionEventWindow(
     reload,
     upgradeRequired,
     loading,
+    settled,
     error,
   };
 }
