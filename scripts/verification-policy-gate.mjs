@@ -66,8 +66,6 @@ const ciFastDeadlineDocs = CI_FAST_DEADLINE_GUIDANCE.map((entry) => ({
 export const DIRECT_OPT_IN = Object.freeze({
   'test:load-reliability':
     'host-local pressure experiment; no completion receipt',
-  'test:timing-reliability':
-    'host-local timing experiment; no completion receipt',
   'test:prepush:repeat':
     'bounded reliability measurement; no completion receipt',
 });

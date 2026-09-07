@@ -85,9 +85,10 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 ]);
 
 // Direct `node:child_process` importers discovered from the root corpus, with
-// the reviewed shared-output and dogfood exceptions removed.  The final entry
-// is the responsive UI member of TIMING_RELIABILITY_TEST_FILES; it has no
-// child_process import, but must remain in the bounded timing-sensitive pool.
+// the reviewed shared-output and dogfood exceptions removed. One member is not
+// such an importer: `src-ui/src/contexts/__tests__/ApiBaseContext.test.tsx` is
+// timing-sensitive rather than process-heavy, and must stay in this bounded
+// pool for that reason alone.
 //
 // ## The constraint on anything you add here (station#1804)
 //
