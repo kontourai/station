@@ -1,12 +1,17 @@
 /**
  * Preserve Veritas's three evidence outcomes at Station's CI boundary.
  *
- * The generic Veritas runner intentionally has a boolean evidence-check
- * transport: any nonzero nested command is reported as a readiness failure.
- * Station proof-family lanes additionally use exit 2 for NOT_VERIFIED, so
- * this boundary reads the structured engine result before selecting the CI
- * exit. It uses the public Veritas engine API; it does not reinterpret shell
- * output or suppress a failed evidence command.
+ * The generic Veritas runner has a boolean evidence-check transport. Station
+ * proof-family lanes additionally use exit 2 for NOT_VERIFIED, so this
+ * boundary reads the structured engine result before selecting the CI exit.
+ * Since Veritas 1.6.0 the engine only promotes a failing *required* check to
+ * `evidenceCheckFailure`; an explicit `--evidence-check-command` that exits
+ * nonzero is recorded in `evidenceCheckResults` as a warning and readiness
+ * passes. Station's contract is that any nonzero nested command is a
+ * readiness failure, so the failure is derived from the public per-check
+ * results when the engine reports none. It uses the public Veritas engine
+ * API; it does not reinterpret shell output or suppress a failed evidence
+ * command.
  */
 
 import { resolve } from 'node:path';
@@ -38,6 +43,35 @@ export function classifyReadinessEvidence({ evidenceCheckFailure, record }) {
     };
   }
   return { status: 'PASS', exitCode: 0, reason: 'readiness-passed' };
+}
+
+/**
+ * The engine's own failure (a required check) wins. Otherwise the first
+ * evidence check that did not pass — Veritas 1.6.0 runs required checks
+ * first, so an explicit command's failure is what remains — becomes the
+ * failure this boundary classifies.
+ */
+export function resolveEvidenceCheckFailure({
+  evidenceCheckFailure,
+  evidenceCheckResults,
+}) {
+  if (evidenceCheckFailure) return evidenceCheckFailure;
+  const failed = (
+    Array.isArray(evidenceCheckResults) ? evidenceCheckResults : []
+  ).find((result) => result && result.passed !== true);
+  if (!failed) return null;
+  const status = Number.isInteger(failed.exitCode)
+    ? failed.exitCode
+    : (failed.signal ?? 'unknown status');
+  return {
+    phase: 'evidence-check',
+    reason: 'failed',
+    id: failed.id,
+    runner: failed.runner,
+    label: failed.label,
+    message: `Evidence Check command exited with ${status}`,
+    ...(Number.isInteger(failed.exitCode) ? { exitCode: failed.exitCode } : {}),
+  };
 }
 
 function parseWrapperArgs(argv) {
@@ -94,8 +128,12 @@ export async function runStationReadinessEvidence(
     },
     { rootDir },
   );
-  const outcome = classifyReadinessEvidence({
+  const evidenceCheckFailure = resolveEvidenceCheckFailure({
     evidenceCheckFailure: readinessRun.evidenceCheckFailure,
+    evidenceCheckResults: readinessRun.evidenceCheckResults,
+  });
+  const outcome = classifyReadinessEvidence({
+    evidenceCheckFailure,
     record: readinessRun.reportResult.record,
   });
   return {
@@ -103,9 +141,7 @@ export async function runStationReadinessEvidence(
     status: outcome.status,
     exitCode: outcome.exitCode,
     reason: outcome.reason,
-    evidenceCheckFailure: evidenceCheckFailureSummary(
-      readinessRun.evidenceCheckFailure,
-    ),
+    evidenceCheckFailure: evidenceCheckFailureSummary(evidenceCheckFailure),
     reportArtifactPath: readinessRun.reportResult.artifactPath,
     reportRunId: readinessRun.reportResult.record.run_id,
   };
