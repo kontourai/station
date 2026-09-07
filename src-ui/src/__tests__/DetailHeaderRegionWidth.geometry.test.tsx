@@ -32,6 +32,30 @@
  *
  * Asserting a class name or a CSS declaration would not have caught any of
  * them: every declaration involved was "present" throughout every defect.
+ *
+ * ---------------------------------------------------------------------------
+ * BEFORE ADDING AN ASSERTION HERE: DO NOT ASSERT A LINE COUNT.
+ *
+ * This harness can never load the product's own font. `page.setContent` gives
+ * the document no base URL, so every `@font-face` src 404s —
+ * `document.fonts.check('16px "DM Sans"')` is false and each face reports
+ * status `error` — and Chromium lays the text out in whatever the platform
+ * supplies instead. That face differs between a developer machine and CI.
+ *
+ * A WIDTH survives that: the subtitle's box is the identity's box, so it
+ * tracks the region rather than the glyphs. A LINE COUNT does not: it is a
+ * step function of glyph metrics, so the same text measured two lines locally
+ * and three on a Linux runner, reddening a lane while every property the test
+ * existed for was still true.
+ *
+ * This is not hypothetical and it is not handled by the note further down
+ * about the collapse guardrail's widths. Three line-count assertions were
+ * written into this file AFTER that note existed, by someone who had just
+ * written it. So: assert widths, box geometry, overflow, and whether the
+ * header wrapped. Where a line count really is the property, assert it in the
+ * DIRECTION that discriminates (`>= 2` for "this must wrap at all") and never
+ * as an exact value or a tight upper bound.
+ * ---------------------------------------------------------------------------
  */
 
 import { dirname, resolve } from 'node:path';
