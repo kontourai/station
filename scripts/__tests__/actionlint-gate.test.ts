@@ -8,6 +8,7 @@ import {
   persistentRunnerPolicyFindings,
   REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
   readWorkflowDocuments,
+  WINDOWS_PR_EVIDENCE_UPLOAD_ACTION,
 } from '../actionlint-gate.mjs';
 
 type ParsedWorkflowStep = {
@@ -238,6 +239,24 @@ describe('actionlint evaluation integrity', () => {
 });
 
 describe('persistent runner policy', () => {
+  function windowsPrWorkflowFixture(
+    mutate: (step: Record<string, unknown>) => void = () => {},
+  ) {
+    const workflow = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/windows-pr-verification.yml',
+    );
+    if (!workflow) throw new Error('Expected the Windows PR workflow.');
+    const document = structuredClone(workflow.document) as {
+      jobs: Record<string, { steps: Array<Record<string, unknown>> }>;
+    };
+    const upload = document.jobs['windows-pr-portable'].steps.find(
+      (step) => step.name === 'Upload Windows portable verification evidence',
+    );
+    if (!upload) throw new Error('Expected the Windows evidence upload step.');
+    mutate(upload);
+    return [{ file: workflow.file, document }];
+  }
+
   function primaryCiFixture(mutate: (job: Record<string, unknown>) => void) {
     return primaryCiJobFixture('fork-smoke', mutate);
   }
@@ -1387,6 +1406,75 @@ describe('persistent runner policy', () => {
     });
   });
 
+  test('admits only the exact Windows PR evidence upload contract', () => {
+    expect(persistentRunnerPolicyFindings(windowsPrWorkflowFixture())).toEqual(
+      [],
+    );
+    expect(WINDOWS_PR_EVIDENCE_UPLOAD_ACTION).toMatch(
+      /^actions\/upload-artifact@[0-9a-f]{40}$/,
+    );
+  });
+
+  test.each([
+    [
+      'wrong action',
+      (step: Record<string, unknown>) => {
+        step.uses =
+          'example/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';
+      },
+    ],
+    [
+      'wrong ref',
+      (step: Record<string, unknown>) => {
+        step.uses = 'actions/upload-artifact@v7';
+      },
+    ],
+    [
+      'arbitrary path',
+      (step: Record<string, unknown>) => {
+        (step.with as Record<string, unknown>).path = '.env';
+      },
+    ],
+    [
+      'conditional bypass',
+      (step: Record<string, unknown>) => {
+        step.if = 'success()';
+      },
+    ],
+    [
+      'attempt-colliding artifact name',
+      (step: Record<string, unknown>) => {
+        (step.with as Record<string, unknown>).name =
+          'windows-portable-verification-${' +
+          '{ github.run_id }}-${' +
+          '{ github.job }}';
+      },
+    ],
+  ])('rejects the Windows evidence upload with %s', (_name, mutate) => {
+    expect(
+      persistentRunnerPolicyFindings(windowsPrWorkflowFixture(mutate)),
+    ).toContainEqual({
+      file: '.github/workflows/windows-pr-verification.yml',
+      jobId: 'windows-pr-portable',
+      message:
+        'base-controlled PR workflows must not add unreviewed custom actions or reusable execution',
+    });
+  });
+
+  test('rejects the Windows evidence upload contract in another workflow', () => {
+    const [workflow] = windowsPrWorkflowFixture();
+    expect(
+      persistentRunnerPolicyFindings([
+        { ...workflow, file: '.github/workflows/desktop-rust.yml' },
+      ]),
+    ).toContainEqual({
+      file: '.github/workflows/desktop-rust.yml',
+      jobId: 'windows-pr-portable',
+      message:
+        'base-controlled PR workflows must not add unreviewed custom actions or reusable execution',
+    });
+  });
+
   test.each([
     { with: { install: true } },
     { with: undefined },
@@ -2455,14 +2543,14 @@ describe('the real workflow corpus', () => {
   });
 
   test('uses one host-manifest lifetime that covers every admitted timeout without heartbeat renewal', () => {
-    let directCapacityJobs = 0;
+    const directCapacityJobs: string[] = [];
     let recoveryJobs = 0;
     let reusableCapacityJobs = 0;
 
-    for (const { document } of workflows) {
+    for (const { file, document } of workflows) {
       const jobs =
         (document as { jobs?: Record<string, ParsedWorkflowJob> }).jobs ?? {};
-      for (const job of Object.values(jobs)) {
+      for (const [jobId, job] of Object.entries(jobs)) {
         const capacityStep = job.steps?.find(
           (step) =>
             typeof step?.uses === 'string' &&
@@ -2471,7 +2559,7 @@ describe('the real workflow corpus', () => {
             ),
         );
         if (capacityStep) {
-          directCapacityJobs += 1;
+          directCapacityJobs.push(`${file}:${jobId}`);
           expect(String(capacityStep.with?.['owner-lifetime-seconds'])).toBe(
             '7800',
           );
@@ -2504,7 +2592,18 @@ describe('the real workflow corpus', () => {
       }
     }
 
-    expect(directCapacityJobs).toBe(9);
+    expect(directCapacityJobs.sort()).toEqual(
+      [
+        '.github/workflows/ci-extended.yml:coverage',
+        '.github/workflows/ci-extended.yml:playwright-full',
+        '.github/workflows/container-smoke.yml:smoke',
+        '.github/workflows/interactive-workspace-performance.yml:reference-performance',
+        '.github/workflows/interactive-workspace-performance.yml:one-hour-collaboration-reference',
+        '.github/workflows/interactive-workspace-performance.yml:one-hour-work-board-reference',
+        '.github/workflows/windows-verification.yml:portable-floor',
+        '.github/workflows/windows-vitest-diagnostic.yml:diagnostic',
+      ].sort(),
+    );
     expect(recoveryJobs).toBe(2);
     expect(reusableCapacityJobs).toBe(0);
   });

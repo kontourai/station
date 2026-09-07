@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { load } from 'js-yaml';
 import { describe, expect, it, vi } from 'vitest';
 // The gate declares the reviewed capacity-action commit; this test reads it
 // rather than restating it. When those were two literals they drifted (#3443
@@ -1454,6 +1455,19 @@ describe('CI verification workflow contracts', () => {
 
   it('runs the bounded Windows floor on every PR head from base-controlled hosted policy', () => {
     const windows = workflow('windows-pr-verification.yml');
+    const document = load(windows) as {
+      jobs: Record<
+        string,
+        {
+          steps: Array<{
+            name?: string;
+            if?: string;
+            uses?: string;
+            with?: Record<string, unknown>;
+          }>;
+        }
+      >;
+    };
     expect(windows).toContain('pull_request_target:');
     expect(windows).toContain('merge_group:');
     expect(windows).not.toContain('  pull_request:\n');
@@ -1478,6 +1492,25 @@ describe('CI verification workflow contracts', () => {
       'cargo test --manifest-path src-desktop/Cargo.toml --no-run',
     );
     expect(windows).toContain('run: npm run typecheck');
+    const upload = document.jobs['windows-pr-portable'].steps.find(
+      (step) => step.name === 'Upload Windows portable verification evidence',
+    );
+    expect(upload).toMatchObject({
+      if: 'always()',
+      with: {
+        'include-hidden-files': true,
+        'if-no-files-found': 'warn',
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        name: expect.stringContaining('${{ github.run_attempt }}'),
+      },
+    });
+    expect(upload?.uses).toMatch(/^actions\/upload-artifact@[0-9a-f]{40}$/);
+    expect(String(upload?.with?.path)).toContain(
+      '.kontourai/verification-receipts/',
+    );
+    expect(String(upload?.with?.path)).toContain(
+      '.kontourai/verification-output/',
+    );
   });
 
   it('keeps full Windows Vitest diagnostics complete, manual, and honestly red', () => {

@@ -1103,6 +1103,37 @@ export function persistVerificationOutput({
   };
 }
 
+/** Persists one bounded redacted diagnostic through the receipt attachment path. */
+export function persistVerificationDiagnosticAttachment({
+  root,
+  requestKey,
+  contents,
+  artifacts = [],
+  maxBytes = 8 * 1024,
+} = {}) {
+  if (!root || !REQUEST_KEY.test(requestKey ?? ''))
+    throw new Error('root and lowercase sha256 requestKey are required');
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1)
+    throw new Error('diagnostic attachment maxBytes must be positive');
+  const redacted = redactVerificationOutput(String(contents ?? ''));
+  const redactedBytes = Buffer.byteLength(redacted);
+  if (redactedBytes > maxBytes)
+    throw new Error('diagnostic attachment exceeds byte cap');
+  let attachmentBytes = 0;
+  for (const artifact of artifacts) {
+    if (!artifact?.path?.includes('/attachment-')) continue;
+    attachmentBytes += readVerifiedVerificationArtifact({
+      root,
+      artifact,
+    }).length;
+  }
+  if (attachmentBytes + redactedBytes > MAX_ATTACHMENT_TOTAL_BYTES)
+    throw new Error('diagnostic attachment exceeds total attachment cap');
+  const path = artifactPath(requestKey, 'attachment', redacted);
+  writeReceiptSecurely(path, redacted, root);
+  return { path, sha256: digest(redacted) };
+}
+
 export function persistPlaywrightAttachments({
   root,
   requestKey,
