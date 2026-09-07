@@ -191,6 +191,40 @@ describe('Skill Routes', () => {
     expect(res.status).toBe(404);
   });
 
+  // The other branch, which had no test at all: an ownership refusal is a 409,
+  // and the route reads the service's STRUCTURED reason rather than matching
+  // its prose — deriving the status from the message meant any rewording
+  // silently reverted this to the 404 above (delta review).
+  test('DELETE /:name returns 409 when Station does not own the package', async () => {
+    const { app, skillService } = setup();
+    skillService.removeSkill.mockResolvedValue({
+      success: false,
+      reason: 'not-owned',
+      message:
+        "Cannot remove 'shipper': it is served from /plugins/acme/skills/shipper, which is not a skills root Station writes.",
+    });
+
+    const res = await app.request('/shipper', { method: 'DELETE' });
+    const body = await json(res);
+
+    expect(res.status).toBe(409);
+    expect(body.error).toContain('is not a skills root Station writes');
+  });
+
+  // …and a message that happens to read like a refusal is still a 404 without
+  // the reason, which is what makes the reason the thing being read.
+  test('DELETE /:name does not infer 409 from the message text', async () => {
+    const { app, skillService } = setup();
+    skillService.removeSkill.mockResolvedValue({
+      success: false,
+      message: "Cannot remove 'ghost': it is served from nowhere.",
+    });
+
+    expect((await app.request('/ghost', { method: 'DELETE' })).status).toBe(
+      404,
+    );
+  });
+
   test('GET /:name resolves a legacy identifier to the skill that records it', async () => {
     const { app, skillService } = setup();
     skillService.resolveSkillName.mockReturnValue('test-skill');

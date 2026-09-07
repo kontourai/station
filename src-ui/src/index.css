@@ -646,20 +646,6 @@ button:hover {
   border-bottom: 1px solid var(--border-primary);
 }
 
-/* macOS overlay title bar (archive#3316): in the single-column layout the
-   toolbar spans the window's full width, so its first control (the
-   hamburger) sat under the native traffic lights. --titlebar-inset-left is
-   stamped on the root by PlatformBootstrap (80px on the macOS desktop
-   shell, unset everywhere else); max() keeps the normal 14px gutter for
-   browsers and non-mac shells. The two-column desktop layout is covered by
-   the sidebar's own is-desktop-mac rules (ProjectSidebar.css), which inset
-   the corner the sidebar occupies instead. */
-.header-divider {
-  width: 1px;
-  height: 16px;
-  background: var(--border-primary);
-}
-
 /* ── Mobile shared utilities ──
    Reusable primitives for the global mobile responsive foundation. Desktop is
    unaffected: .tap-target's min size is below typical desktop control sizes and
@@ -908,11 +894,80 @@ button:hover {
 
 /* Shared modal/drawer geometry. Surfaces opt in without changing their desktop
    presentation; the mobile rule binds them to the visual viewport so the
-   software keyboard cannot push actions below the reachable screen. */
+   software keyboard cannot push actions below the reachable screen.
+ *
+ * #1638/#1662: the layer below is the `layer` prop every consumer of
+ * `ResponsiveDialogSurface` is REQUIRED to declare, keyed off the attribute
+ * the component stamps from it, so the number a surface gets is the kind its
+ * author named rather than whatever its feature stylesheet happened to say.
+ *
+ * The `!important` is load-bearing. Method, because the outcome alone does not
+ * establish the cause: for each overlay below, the computed z-index is read in
+ * Chromium twice — once as declared, once with `!important` stripped from
+ * these three declarations only — AND once on the feature class ALONE. That
+ * third reading is what discriminates. Without it, "unaffected by
+ * `!important`" is equally well explained by the feature rule never applying
+ * at that viewport, which is exactly the trap the last entry sits in.
+ *
+ * SIX overlays that carry this class set a z-index of their own below the dock
+ * (`--layer-dock` 9200; `--layer-notification` 9400). The `!important`
+ * arbitrates FIVE:
+ *
+ *   selector                          alone   +class   stripped
+ *   .tool-call-batch-sheet__overlay    1000    10000       1000
+ *   .delegation-launcher__overlay        35    10000         35
+ *   .command-launcher__overlay           30    10000         30
+ *   .active-work-frame__overlay          20    10000         20
+ *   .drill-down-overlay                1000    10000       1000
+ *
+ * The first four are later than this rule in the built entry stylesheet
+ * (measured: +24 to +55 KB past it) at equal specificity — single class
+ * against single class — so without `!important` source order hands them the
+ * feature value. `.drill-down-overlay` is not in the entry sheet at all; it
+ * rides a lazily loaded chunk, and the reading above composes that chunk
+ * AFTER the entry sheet, which is the order a dynamic import produces. That
+ * ordering is the condition for its row, so it is stated rather than implied.
+ *
+ * Every surface portals to the body now, so one reading its feature value
+ * would land behind the dock entirely rather than being clamped by it.
+ *
+ * The sixth, `.mobile-task-switcher__overlay`, is UNAFFECTED either way, and
+ * its cause is source order rather than `!important` — which took the third
+ * reading to establish. Its `z-index: 70` lives inside the shell mobile
+ * breakpoint (the one `useIsMobile` keeps in lockstep: max-width 768px, or a
+ * coarse pointer under 540px tall — spelled out rather than quoted verbatim,
+ * because the lockstep scanner reads this file as source text and cannot tell
+ * a quoted at-rule in prose from a real one). At a desktop viewport it does
+ * not apply at all, so any conclusion drawn there is about a rule that was
+ * never in the cascade. Measured at 390x844,
+ * where it IS live: alone it computes 70, so the rule applies; with this class
+ * it computes 10000 both as declared and with `!important` stripped. Its rule
+ * sits ~68 KB EARLIER than this one, so at equal specificity this rule already
+ * wins on order. Do not cite it as justification for these declarations.
+ *
+ * One overlay, `.plugins__confirm-overlay`, asks for `--layer-dialog + 1` to
+ * cover a sibling dialog. The `!important` already defeated that before the
+ * portal, so it is inert now exactly as it was then — a stacked confirm
+ * resolves against its sibling by DOM order, which is what it already did.
+ *
+ * The remaining overlays that carry this class have nothing to arbitrate, but
+ * not for the reason an earlier draft of this comment gave: it said they
+ * declare `--layer-dialog` themselves, and seven of them declare no z-index at
+ * all (`.request-inspection-overlay`, `.composer-popover-overlay`,
+ * `.background-tasks-sheet-overlay`, `.first-run-chapter__overlay`,
+ * `.agent-actions-overlay`, `.learning-source-overlay`,
+ * `.basis-pane-fallback-overlay`). They compute automatically and take
+ * whatever these rules give them, which is a different fact with the same
+ * consequence. The rest do declare `--layer-dialog`, so they agree with these
+ * rules by coincidence rather than by arbitration. */
 .responsive-surface-overlay {
   --responsive-visual-viewport-height: 100dvh;
   --responsive-visual-viewport-top: 0px;
   z-index: var(--layer-dialog) !important;
+}
+
+.responsive-surface-overlay[data-responsive-layer="popover"] {
+  z-index: var(--layer-surface-popover) !important;
 }
 
 .responsive-surface-overlay[data-responsive-layer="system"] {
@@ -1599,16 +1654,6 @@ button:hover {
 .chat-dock__resize-handle:hover::after,
 .chat-dock__resize-handle:focus-visible::after {
   background: var(--text-inverted);
-}
-
-.chat-dock__resize-handle--horizontal {
-  top: 0;
-  bottom: 0;
-  left: 0;
-  right: auto;
-  width: 6px;
-  height: auto;
-  cursor: ew-resize;
 }
 
 /* Rotated grip for the side-panel (width) handle. */
@@ -6543,6 +6588,14 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     flex-direction: column;
   }
 
+  /* macOS overlay title bar (archive#3316): in the single-column layout the
+     toolbar spans the window's full width, so its first control (the
+     hamburger) sat under the native traffic lights. --titlebar-inset-left is
+     stamped on the root by PlatformBootstrap (80px on the macOS desktop
+     shell, unset everywhere else); max() keeps the normal 14px gutter for
+     browsers and non-mac shells. The two-column desktop layout is covered by
+     the sidebar's own is-desktop-mac rules (ProjectSidebar.css), which inset
+     the corner the sidebar occupies instead. */
   .app-toolbar {
     padding-left: max(14px, var(--titlebar-inset-left, 0px));
   }

@@ -135,8 +135,19 @@ interface ChatDockHeaderProps {
   shellMaximized: boolean;
   /** Registered visibility shortcut for the shell's surface. */
   surfaceShortcutId?: string;
-  /** Registered title for a non-Chat shell's visibility action. */
-  surfaceTitle?: string;
+  /**
+   * The registered title of the surface this shell holds
+   * (`REGION_SURFACE_REGISTRY`), which names the visibility control: "Hide
+   * Chat", "Show Activity".
+   *
+   * REQUIRED, since #1386. It was optional with a `dock region` fallback, and
+   * the one shell that never passed it was Chat's own — so the surface every
+   * user meets first was the only one whose control said "Hide dock region"
+   * while Activity's said "Hide Activity". A fallback naming a thing no
+   * registry entry produces is a label nothing derives; the type is what stops
+   * the next shell inheriting it.
+   */
+  surfaceTitle: string;
   /** Whether this shell offers the maximize control (any dock occupant, #928 slice iii). */
   canMaximize?: boolean;
   /**
@@ -190,9 +201,7 @@ export function ChatDockHeader({
   const maximizeShortcut = showMaximizeShortcut
     ? registeredMaximizeShortcut
     : '';
-  const visibilityLabel = surfaceTitle
-    ? `${isDockOpen ? 'Hide' : 'Show'} ${surfaceTitle}`
-    : `${isDockOpen ? 'Hide' : 'Show'} dock region`;
+  const visibilityLabel = `${isDockOpen ? 'Hide' : 'Show'} ${surfaceTitle}`;
   const side =
     effectiveDockSlotPlacement === 'bottom' ? null : effectiveDockSlotPlacement;
   const activeSessions = (chatControls?.sessions ?? []).filter((s) =>

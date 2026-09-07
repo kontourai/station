@@ -30,6 +30,7 @@ export function ProjectKnowledgeScanModal({
 }: ProjectKnowledgeScanModalProps) {
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onClose}
       ariaLabelledBy="project-knowledge-scan-title"
       overlayClassName="project-page__modal-overlay"

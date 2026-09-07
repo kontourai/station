@@ -141,6 +141,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // the real exit status is what the assertions read; process ownership is the
   // behavior under test, not a helper.
   'scripts/__tests__/literal-swap-gate.test.ts',
+  // station#1648: runs the Playwright install script as a child process behind
+  // a fake `npx` on PATH, because the exit status and the argv it really
+  // builds are the two things an in-process call cannot prove. Each child is
+  // one short-lived Node process that exits immediately; classified here
+  // because a child_process importer is never placed implicitly, not because
+  // it is resource-hungry. No wall-clock assertion.
+  'scripts/__tests__/install-playwright-browsers.test.ts',
   // Both fixtures repeatedly invoke real Git and create detached worktrees;
   // their process ownership is the behavior under test, not a test helper.
   'src-server/services/evidence/__tests__/git-review-workspace-source.test.ts',
@@ -650,6 +657,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // disclosure toggle vs. the message text's own line rects) at a phone
   // viewport.
   'src-ui/src/components/notifications/__tests__/BannerHost.disclosure-overlap.test.tsx',
+  // station#1638: same shape again — launches a real Chromium via
+  // `@playwright/test` to hit-test the banner host against an open modal
+  // surface trapped inside the dock's stacking context.
+  'src-ui/src/components/notifications/__tests__/BannerHost.dialog-stacking.test.tsx',
   // station#4474: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved layout (sibling
   // toolbar control x-offsets across connection states).
@@ -705,6 +716,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // to measure real cascade-resolved flex geometry (which of the dock identity
   // row's parts truncates first, and whether any two of them overlap).
   'src-ui/src/__tests__/ChatDockActiveIdentity.overflow.test.tsx',
+  // #1666: same shape again — launches a real Chromium to measure the detail
+  // header's cascade-resolved flex geometry in a narrowed region, which is the
+  // only layer where a collapse-instead-of-wrap is observable at all.
+  'src-ui/src/__tests__/DetailHeaderRegionWidth.geometry.test.tsx',
   // #1536 F (review round): same shape again — launches a real Chromium to
   // hit-test the dock header's portalled More menu against the dock it now
   // paints over. `verification:policy:gate` keys on a `child_process` import
