@@ -126,7 +126,7 @@ interface AgentPluginValidators {
 const validatorCache = new Map<string, AgentPluginValidators>();
 
 /** Source modules and bundled dist-server assets both sit beside a shipped schemas tree. */
-export function resolveAgentPluginSchemaRoot(
+function resolveAgentPluginSchemaRoot(
   moduleUrl: string = import.meta.url,
 ): string {
   const moduleDir = dirname(fileURLToPath(moduleUrl));
@@ -185,7 +185,7 @@ function isInside(parent: string, child: string): boolean {
   );
 }
 
-export function resolveAgentPluginDataDirectory(
+function resolveAgentPluginDataDirectory(
   projectHomeDir: string,
   pluginName: string,
   { provision = false }: { provision?: boolean } = {},

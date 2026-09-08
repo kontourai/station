@@ -31,7 +31,7 @@ import type { SessionReadScope } from './orchestration-service.js';
 import { messageSearchExcerpt } from './transcript-search-queries.js';
 
 /** The documented freshness allowance relative to the requested window end. */
-export const USAGE_COVERAGE_STALE_AFTER_MS = 24 * 60 * 60 * 1_000;
+const USAGE_COVERAGE_STALE_AFTER_MS = 24 * 60 * 60 * 1_000;
 export const USAGE_COVERAGE_EVIDENCE_CAP = 1_000;
 const COVERAGE_CAP_REASON =
   'coverage evidence cap reached (1000 observations); additional provider evidence is missing';

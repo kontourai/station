@@ -8,10 +8,10 @@
 import { cpus } from 'node:os';
 import { sleep } from '../../utils/sleep.js';
 
-export const RUNTIME_RESOURCE_POSTURE_DEGRADED_BUSY_PERCENT = 85;
-export const RUNTIME_RESOURCE_POSTURE_CRITICAL_BUSY_PERCENT = 95;
-export const RUNTIME_RESOURCE_POSTURE_CACHE_MS = 2_000;
-export const RUNTIME_RESOURCE_POSTURE_SAMPLE_GAP_MS = 500;
+const RUNTIME_RESOURCE_POSTURE_DEGRADED_BUSY_PERCENT = 85;
+const RUNTIME_RESOURCE_POSTURE_CRITICAL_BUSY_PERCENT = 95;
+const RUNTIME_RESOURCE_POSTURE_CACHE_MS = 2_000;
+const RUNTIME_RESOURCE_POSTURE_SAMPLE_GAP_MS = 500;
 
 type CpuSnapshot = ReturnType<typeof cpus>;
 type CpuTimes = { idle: number; total: number; cpuCount: number };

@@ -188,7 +188,7 @@ function sanitizeRawUIBlockCandidate(raw: unknown): unknown {
  * `CanonicalRuntimeEvent.output` — the two writers must never define
  * "what counts as sanitized" differently.
  */
-export function sanitizeUIBlockCarrierOutput(output: unknown): unknown {
+function sanitizeUIBlockCarrierOutput(output: unknown): unknown {
   if (!output || typeof output !== 'object') return output;
   const root = output as { type?: unknown; value?: unknown };
   const wrapped =

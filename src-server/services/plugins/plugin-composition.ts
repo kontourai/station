@@ -15,7 +15,7 @@ const DEFAULT_MAX_RETAINED_SCOPES = 256;
 const MAX_RETAINED_SCOPES = 1_024;
 
 /** These authorities are fixed Station machinery, never composition slots. */
-export const FIXED_COMPOSITION_AUTHORITIES = Object.freeze([
+const FIXED_COMPOSITION_AUTHORITIES = Object.freeze([
   'station.identity',
   'station.authorization',
   'station.evidence-admission',

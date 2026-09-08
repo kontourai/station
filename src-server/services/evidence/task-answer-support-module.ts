@@ -50,7 +50,7 @@ const MAX_PER_TASK = 100;
 const OPAQUE_ID_MAX_BYTES = MAX_TASK_REFERENCE_TARGET_LENGTH;
 
 export class TaskAnswerSupportUnavailableError extends Error {}
-export class TaskAnswerSupportNotFoundError extends Error {}
+class TaskAnswerSupportNotFoundError extends Error {}
 export class TaskAnswerSupportConflictError extends Error {}
 
 type AuthorizedAnswerAnchor = {

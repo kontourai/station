@@ -261,7 +261,7 @@ export function isDirectoryPhysicallyWithin(
  */
 type DirectoryContainmentVerdict = 'within' | 'outside' | 'unanswerable';
 
-export function directoryContainmentVerdict(
+function directoryContainmentVerdict(
   root: string,
   candidate: string,
 ): DirectoryContainmentVerdict {

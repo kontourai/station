@@ -20,8 +20,8 @@ import {
 } from './session-work-item-candidate.js';
 
 export const SESSION_WORK_ITEM_READ_MAX_OBSERVATIONS = 100;
-export const SESSION_WORK_ITEM_READ_MAX_ITEMS = 50;
-export const SESSION_WORK_ITEM_READ_MAX_ASSOCIATIONS_PER_ITEM = 20;
+const SESSION_WORK_ITEM_READ_MAX_ITEMS = 50;
+const SESSION_WORK_ITEM_READ_MAX_ASSOCIATIONS_PER_ITEM = 20;
 export const SESSION_WORK_ITEM_READ_MAX_SERIALIZED_BYTES = 64 * 1024;
 
 const provenanceBrand = Symbol('work-item-result-projector-provenance');

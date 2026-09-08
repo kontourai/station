@@ -243,7 +243,7 @@ function readAgentPluginManifest(
   }
 }
 
-export function parsePluginManifest(
+function parsePluginManifest(
   raw: string,
   manifestPath: string,
 ): PluginManifest {

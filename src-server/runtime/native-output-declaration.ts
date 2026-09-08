@@ -27,8 +27,8 @@ import {
 } from './native-output-turn-grant.js';
 
 export const NATIVE_OUTPUT_DECLARATION_TOOL = 'declare_output';
-export const NATIVE_OUTPUT_DECLARATION_MAX_PENDING = 256;
-export const NATIVE_OUTPUT_DECLARATION_TTL_MS = 60_000;
+const NATIVE_OUTPUT_DECLARATION_MAX_PENDING = 256;
+const NATIVE_OUTPUT_DECLARATION_TTL_MS = 60_000;
 export const NATIVE_OUTPUT_DECLARATION_MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 type NativeOutputDeclarationInput = {

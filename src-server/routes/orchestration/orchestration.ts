@@ -519,7 +519,7 @@ export const conversationHandoffSchema = foregroundMessageObjectSchema.extend({
   idempotencyKey: z.string().min(1).max(200),
 });
 
-export const conversationContextBoundarySchema = z.object({
+const conversationContextBoundarySchema = z.object({
   policy: z.enum(['continue-from-history', 'empty-next-cold-start']),
   idempotencyKey: z.string().min(1).max(200),
   expectedCurrentSessionId: z.string().min(1).max(512),

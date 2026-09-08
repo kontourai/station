@@ -155,7 +155,7 @@ export function builtinStationAgentSpec(slug: string): AgentSpec | null {
  * User-authored additions are preserved; the role-defining built-ins are
  * prepended once. Ordinary agents are returned byte-identically.
  */
-export function withBuiltinStationAgentCapabilities(
+function withBuiltinStationAgentCapabilities(
   slug: string,
   authored: AgentSpec | null,
 ): AgentSpec | null {

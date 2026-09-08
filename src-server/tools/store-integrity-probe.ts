@@ -47,7 +47,7 @@ const USAGE = 'Usage: store-integrity-probe <databasePath> [<databasePath>...]';
  * proven separately against a real child, because a returned number is not an
  * exit status.
  */
-export function runStoreIntegrityProbe(
+function runStoreIntegrityProbe(
   argv: readonly string[],
   deps: StoreIntegrityProbeDeps = {},
 ): number {

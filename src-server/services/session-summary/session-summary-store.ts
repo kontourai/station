@@ -149,7 +149,7 @@ export function isStoredSessionSummary(
   );
 }
 
-export function isStoredSessionSummaryV1(
+function isStoredSessionSummaryV1(
   value: unknown,
 ): value is StoredSessionSummaryV1 {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;

@@ -16,9 +16,9 @@ import {
   type SessionWorkItemCandidate,
 } from './session-work-item-candidate.js';
 
-export const SESSION_WORK_ITEM_ADMISSION_TTL_MS = 60_000;
-export const SESSION_WORK_ITEM_ADMISSION_MAX_ENTRIES = 256;
-export const SESSION_WORK_ITEM_ADMISSION_MAX_PER_SESSION = 16;
+const SESSION_WORK_ITEM_ADMISSION_TTL_MS = 60_000;
+const SESSION_WORK_ITEM_ADMISSION_MAX_ENTRIES = 256;
+const SESSION_WORK_ITEM_ADMISSION_MAX_PER_SESSION = 16;
 
 const admissionClaimBrand = Symbol('session-work-item-admission-claim');
 /** Opaque process-local claim; it cannot be reconstructed from JSON. */
