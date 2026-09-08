@@ -341,6 +341,11 @@ describe('every unexecuted guardrail reaches a verdict on this repo', () => {
       });
       linkNodeModules(dir);
       const imported = importGuardrail(dir, script);
+      // A clean import is part of the claim: a module that dies before its
+      // top-level reads (a missing lib, a syntax error) also "reports nothing
+      // about ownInput", and would satisfy the assertion below vacuously.
+      expect(imported.status, imported.output).toBe(0);
+      expect(imported.output).toBe('');
       expect(
         imported.output,
         `${script}: ${brokenTree.ownInput} is reported at import time, so the probe cannot tell a working gate from one whose guard (${brokenTree.guard}) never fires`,
