@@ -53,17 +53,24 @@ function fixture(whenReady: () => Promise<void>) {
     readMessagePage: async () => ({ state: 'unavailable' as const }),
     openSession: async () => ({ state: 'not-found' as const }),
     open: async () => ({ state: 'not-found' as const }),
-    search: async () => ({
-      state: 'available' as const,
-      matches: [
-        {
-          conversationId: 'thread-warm',
-          messageId: 'event-warm:user',
-          role: 'user' as const,
-          excerpt: 'cobalt receipt',
-        },
-      ],
-    }),
+    // Models the real reader: a worker that is not up yet cannot answer.
+    // Without this the stub would resolve during the boot it is meant to be
+    // blocked by, and the test would pass whether or not readiness is
+    // awaited ahead of the budgets — verified by injection.
+    search: async () => {
+      await whenReady();
+      return {
+        state: 'available' as const,
+        matches: [
+          {
+            conversationId: 'thread-warm',
+            messageId: 'event-warm:user',
+            role: 'user' as const,
+            excerpt: 'cobalt receipt',
+          },
+        ],
+      };
+    },
   };
   const search = createRuntimeSearch({
     stationId: '22222222-2222-4222-8222-222222222222',
