@@ -17,6 +17,7 @@ import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useToast } from '../contexts/ToastContext';
 
+/** `SchedulerProviderInfo` is the provider info returned by GET /scheduler/providers. */
 export type {
   SchedulerEvent,
   SchedulerProviderInfo,
@@ -53,7 +54,6 @@ export interface SchedulerStatusResponse {
   >;
 }
 
-/** Provider info returned by GET /scheduler/providers */
 export function getSchedulerEventInvalidationKeys(
   event: SchedulerEvent['event'],
 ): Array<readonly unknown[]> {
