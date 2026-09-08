@@ -7,10 +7,6 @@ import {
   type PluginOperationalEventSubscriptionEntry,
 } from '@kontourai/station-contracts/plugin';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import {
-  type AcquiredPluginPublicServerModule,
-  acquirePluginPublicServerModule,
-} from '../../services/plugins/plugin-public-server.js';
 import type {
   OperationalEventSubscription,
   OperationalEventSubscriptionAuthorization,
@@ -27,6 +23,10 @@ import {
   PluginGrantsUnavailableError,
   readPluginGrantState,
 } from '../../services/plugins/plugin-permissions.js';
+import {
+  type AcquiredPluginPublicServerModule,
+  acquirePluginPublicServerModule,
+} from '../../services/plugins/plugin-public-server.js';
 import {
   capturePluginRuntimeArtifact,
   type PluginRuntimeArtifact,

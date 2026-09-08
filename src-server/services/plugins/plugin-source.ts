@@ -25,6 +25,10 @@ import {
   isCanonicalPluginId,
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
+import { errorMessage } from '../../routes/schemas/schemas.js';
+import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
+import { execGit } from '../../utils/git-exec.js';
+import type { Logger } from '../../utils/logger.js';
 import { DistributionProfileService } from './distribution-profile-service.js';
 import {
   computePluginContentDigest,
@@ -38,10 +42,6 @@ import {
   readPluginManifestFileSyncWithFormat,
 } from './plugin-manifest-loader.js';
 import { assertPluginIdentityAvailable } from './reserved-plugin-identities.js';
-import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
-import { execGit } from '../../utils/git-exec.js';
-import type { Logger } from '../../utils/logger.js';
-import { errorMessage } from '../../routes/schemas/schemas.js';
 
 interface PluginRegistryInstaller {
   /**

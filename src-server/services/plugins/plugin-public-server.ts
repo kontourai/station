@@ -10,14 +10,14 @@ import type {
 } from '@kontourai/station-contracts/plugin';
 import type { Context, Hono as HonoType } from 'hono';
 import { ConfigLoader } from '../../domain/config-loader.js';
+import type { Logger } from '../../utils/logger.js';
+import { assertExistingPathInside } from '../../utils/path-containment.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
+import { assertPluginNameSegment } from './plugin-install-transaction.js';
 import {
   capturePluginRuntimeArtifact,
   type PluginRuntimeArtifact,
 } from './plugin-runtime-artifact.js';
-import type { Logger } from '../../utils/logger.js';
-import { assertExistingPathInside } from '../../utils/path-containment.js';
-import { assertPluginNameSegment } from './plugin-install-transaction.js';
 
 export interface PluginServerRequestContext {
   correlationId: string;

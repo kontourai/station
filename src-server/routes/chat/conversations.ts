@@ -41,6 +41,10 @@ import * as ConversationManager from '../../runtime/conversation/conversation-ma
 import { resolveConversationTranscriptSource } from '../../runtime/conversation/conversation-transcript-source.js';
 import { sanitizeConversationMessagesUIBlockProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import type { RuntimeContext } from '../../runtime/types.js';
+import {
+  publicAgentIdFromRuntimeKey,
+  runtimeAgentKey,
+} from '../../services/agents/runtime-agent-identity.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import {
   type ActionOperationTrackingService,
@@ -68,10 +72,6 @@ import {
   conversationOps,
 } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
-import {
-  publicAgentIdFromRuntimeKey,
-  runtimeAgentKey,
-} from '../../services/agents/runtime-agent-identity.js';
 import {
   contextActionSchema,
   conversationUpdateSchema,

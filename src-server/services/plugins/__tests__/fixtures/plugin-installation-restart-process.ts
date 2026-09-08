@@ -5,16 +5,16 @@ import { Hono } from 'hono';
 import { JsonManifestRegistryProvider } from '../../../../providers/registries/json-manifest-registry.js';
 import { replacePluginProvidersForSource } from '../../../../providers/registries/registry.js';
 import { registerPluginInstallRoutes } from '../../../../routes/plugins/plugin-install-routes.js';
-import {
-  installPluginFromSource,
-  previewInstalledPluginRecovery,
-  recoverInstalledPlugin,
-} from '../../plugin-install-transaction.js';
 import { EventStore } from '../../../orchestration/event-store.js';
 import {
   derivePluginConsentBasis,
   type PluginInstallConsent,
 } from '../../plugin-install-consent.js';
+import {
+  installPluginFromSource,
+  previewInstalledPluginRecovery,
+  recoverInstalledPlugin,
+} from '../../plugin-install-transaction.js';
 import { createLocalPluginInstallationHost } from '../../plugin-installation-local.js';
 import { readPluginManifestFile } from '../../plugin-manifest-loader.js';
 import { readPluginGrantRevision } from '../../plugin-permissions.js';

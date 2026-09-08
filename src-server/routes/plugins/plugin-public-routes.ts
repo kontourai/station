@@ -9,6 +9,7 @@ import {
   type PluginGrantReconciliationService,
   pluginPermissionsNeedRuntimeReconciliation,
 } from '../../services/plugins/plugin-grant-reconciliation.js';
+import { assertPluginNameSegment } from '../../services/plugins/plugin-install-transaction.js';
 import {
   assertGrantablePermissions,
   getPermissionTier,
@@ -21,6 +22,14 @@ import {
   requiredPermissionsForManifest,
   revokeGrants,
 } from '../../services/plugins/plugin-permissions.js';
+import {
+  acquirePluginPublicServerModule,
+  buildPluginRequestContext,
+  createScopedPluginRequest,
+  type LoadedPluginServerModule,
+  type PluginServerModuleContext,
+  readPluginServerSettings,
+} from '../../services/plugins/plugin-public-server.js';
 import {
   capturePluginRuntimeArtifact,
   type PluginRuntimeArtifact,
@@ -40,15 +49,6 @@ import {
   validate,
 } from '../schemas/schemas.js';
 import { readPluginBundle } from './plugin-bundles.js';
-import { assertPluginNameSegment } from '../../services/plugins/plugin-install-transaction.js';
-import {
-  acquirePluginPublicServerModule,
-  buildPluginRequestContext,
-  createScopedPluginRequest,
-  type LoadedPluginServerModule,
-  type PluginServerModuleContext,
-  readPluginServerSettings,
-} from '../../services/plugins/plugin-public-server.js';
 
 interface PluginPublicRouteDeps {
   pluginsDir: string;

@@ -40,6 +40,7 @@ import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import { withPluginContentLock } from '../../services/plugins/plugin-content-integrity.js';
 import type { PluginGrantReconciliationService } from '../../services/plugins/plugin-grant-reconciliation.js';
+import { assertPluginNameSegment } from '../../services/plugins/plugin-install-transaction.js';
 import {
   assertGrantablePermissions,
   createPluginGrantMutationScope,
@@ -55,7 +56,6 @@ import {
   type PluginRuntimeArtifact,
 } from '../../services/plugins/plugin-runtime-artifact.js';
 import { consentTransactionOps } from '../../telemetry/metrics.js';
-import { assertPluginNameSegment } from '../../services/plugins/plugin-install-transaction.js';
 
 const CONSENT_TARGET_KIND = 'plugin-trusted-permissions';
 

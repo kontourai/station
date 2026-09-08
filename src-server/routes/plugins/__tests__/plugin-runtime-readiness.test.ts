@@ -23,16 +23,16 @@ import { computePluginContentDigest } from '../../../services/plugins/plugin-con
 import { createLocalPluginInstallationService } from '../../../services/plugins/plugin-installation-local.js';
 import { readPluginManifestFileSync } from '../../../services/plugins/plugin-manifest-loader.js';
 import { grantPermissions } from '../../../services/plugins/plugin-permissions.js';
-import { capturePluginRuntimeArtifact } from '../../../services/plugins/plugin-runtime-artifact.js';
-import { readCurrentWorkspacePaneCatalog } from '../../../services/projects/workspace-pane-catalog.js';
-import { readPluginBundle } from '../plugin-bundles.js';
-import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
-import { registerPluginPublicRoutes } from '../plugin-public-routes.js';
 import {
   acquirePluginPublicServerModule,
   readPluginPublicManifest,
 } from '../../../services/plugins/plugin-public-server.js';
+import { capturePluginRuntimeArtifact } from '../../../services/plugins/plugin-runtime-artifact.js';
 import * as pluginSource from '../../../services/plugins/plugin-source.js';
+import { readCurrentWorkspacePaneCatalog } from '../../../services/projects/workspace-pane-catalog.js';
+import { readPluginBundle } from '../plugin-bundles.js';
+import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
+import { registerPluginPublicRoutes } from '../plugin-public-routes.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {

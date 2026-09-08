@@ -87,6 +87,7 @@ import {
   computePluginContentDigest,
   withPluginContentLock,
 } from '../../services/plugins/plugin-content-integrity.js';
+import { assertPluginNameSegment } from '../../services/plugins/plugin-install-transaction.js';
 import {
   clearWorkspaceHomeRole,
   computeWorkspaceHomeRoleInstallDigest,
@@ -95,7 +96,6 @@ import {
   writeWorkspaceHomeRoleGrant,
 } from '../../services/plugins/workspace-home-role-service.js';
 import { consentTransactionOps } from '../../telemetry/metrics.js';
-import { assertPluginNameSegment } from '../../services/plugins/plugin-install-transaction.js';
 
 const CONSENT_TARGET_KIND = 'workspace-home-role';
 

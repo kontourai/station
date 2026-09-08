@@ -2,10 +2,10 @@ import { ACPStatus } from '@kontourai/station-contracts/acp';
 import type { HomeRecoveryDisclosure } from '@kontourai/station-contracts/system-status';
 import { readStationHomeRecovery } from '@kontourai/station-shared/station-home-archive';
 import { getNotificationProviders } from '../../providers/registries/registry.js';
-import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import { listDetectedUnconnectedACPRegistryEntries } from '../../routes/connections/acp.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { readBootHistory } from '../../routes/system/boot-history.js';
+import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import {
   ApprovalInboxNotificationProvider,
   wireApprovalInboxNotifications,

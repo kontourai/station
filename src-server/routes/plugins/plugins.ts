@@ -25,6 +25,7 @@ import {
   hasGrant,
   readPluginGrantState,
 } from '../../services/plugins/plugin-permissions.js';
+import { quiescePluginPublicServerModule } from '../../services/plugins/plugin-public-server.js';
 import { capturePluginRuntimeArtifact } from '../../services/plugins/plugin-runtime-artifact.js';
 import type { Logger } from '../../utils/logger.js';
 import { buildPlugin } from './plugin-bundles.js';
@@ -35,7 +36,6 @@ import { registerPluginInstallRoutes } from './plugin-install-routes.js';
 import { registerPluginLifecycleRoutes } from './plugin-lifecycle-routes.js';
 import { preparePluginProviders } from './plugin-loader.js';
 import { registerPluginPublicRoutes } from './plugin-public-routes.js';
-import { quiescePluginPublicServerModule } from '../../services/plugins/plugin-public-server.js';
 
 export function createPluginRoutes(
   projectHomeDir: string,

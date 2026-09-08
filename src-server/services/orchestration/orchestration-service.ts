@@ -102,7 +102,6 @@ import type {
 import { ProviderTurnEndedError } from '../../providers/adapter-shape.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
-import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import {
   createAuthorizedTurnCorrelation,
@@ -155,6 +154,7 @@ import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
 import { type AgentPolicyService } from '../agents/agent-policy-service.js';
+import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
 import type {
   ConnectionSmokeRunInput,
   ConnectionSmokeRunResult,

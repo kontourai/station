@@ -22,15 +22,15 @@ import {
   derivePluginConsentBasis,
   type PluginInstallConsent,
 } from '../../../services/plugins/plugin-install-consent.js';
-import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
-import { readPluginDependencyOwnership } from '../../../services/plugins/plugin-permissions.js';
-import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 import {
   installPluginFromSource,
   previewInstalledPluginRecovery,
   uninstallInstalledPlugin,
 } from '../../../services/plugins/plugin-install-transaction.js';
+import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
+import { readPluginDependencyOwnership } from '../../../services/plugins/plugin-permissions.js';
 import { fetchPluginSource } from '../../../services/plugins/plugin-source.js';
+import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 
 const cleanupDirs: string[] = [];
 const packageStores: EventStore[] = [];

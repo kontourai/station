@@ -5706,7 +5706,9 @@ for (const requiredHelper of [
 const pluginPublicRoutes = readRequiredSource(
   '../src-server/routes/plugins/plugin-public-routes.ts',
 );
-if (!pluginPublicRoutes.includes('../../services/plugins/plugin-public-server.js')) {
+if (
+  !pluginPublicRoutes.includes('../../services/plugins/plugin-public-server.js')
+) {
   errors.push(
     'plugin-public-routes.ts must delegate server module request/context helpers to plugin-public-server.ts.',
   );

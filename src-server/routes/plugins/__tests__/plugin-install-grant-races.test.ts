@@ -3,13 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { derivePluginConsentBasis } from '../../../services/plugins/plugin-install-consent.js';
+import { installPluginFromSource } from '../../../services/plugins/plugin-install-transaction.js';
 import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
 import {
   getPluginGrants,
   readPluginGrantRevision,
   revokeGrants,
 } from '../../../services/plugins/plugin-permissions.js';
-import { installPluginFromSource } from '../../../services/plugins/plugin-install-transaction.js';
 import { fetchPluginSource } from '../../../services/plugins/plugin-source.js';
 
 const roots: string[] = [];

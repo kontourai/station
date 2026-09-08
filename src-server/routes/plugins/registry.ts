@@ -37,6 +37,13 @@ import {
   isPluginConsentRefusedError,
   type PluginInstallConsent,
 } from '../../services/plugins/plugin-install-consent.js';
+import {
+  installPluginFromSource,
+  type PluginLifecycleEventBus,
+  readRegistryPluginAvailability,
+  resolvePluginRegistryInstall,
+  uninstallInstalledPlugin,
+} from '../../services/plugins/plugin-install-transaction.js';
 import { registryOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -53,13 +60,6 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
-import {
-  installPluginFromSource,
-  type PluginLifecycleEventBus,
-  readRegistryPluginAvailability,
-  resolvePluginRegistryInstall,
-  uninstallInstalledPlugin,
-} from '../../services/plugins/plugin-install-transaction.js';
 
 interface RegistryRouteDeps {
   installationHost?: PluginInstallationHost;

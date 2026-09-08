@@ -18,6 +18,9 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
+import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
+import { loadPluginProviders } from '../../../routes/plugins/plugin-loader.js';
+import { createRegistryRoutes } from '../../../routes/plugins/registry.js';
 import {
   corruptFile,
   skipIfCannotChmod,
@@ -25,6 +28,8 @@ import {
 } from '../../../services/infra/__tests__/helpers/store-faults.js';
 import { ContextSafetyError } from '../../../services/orchestration/context-safety.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import { readCurrentWorkspacePaneCatalog } from '../../../services/projects/workspace-pane-catalog.js';
+import type { Logger } from '../../../utils/logger.js';
 import { AgentPluginLoader } from '../agent-plugin-loader.js';
 import { DistributionProfileService } from '../distribution-profile-service.js';
 import {
@@ -40,18 +45,6 @@ import {
   isPluginConsentRefusedError,
   type PluginInstallConsent,
 } from '../plugin-install-consent.js';
-import { readPluginManifestFile } from '../plugin-manifest-loader.js';
-import {
-  copyPluginDependencyOwnership,
-  getPluginGrants,
-  grantPermissions,
-  PluginGrantsUnavailableError,
-  readPluginDependencyOwnership,
-  readPluginGrantState,
-} from '../plugin-permissions.js';
-import { readCurrentWorkspacePaneCatalog } from '../../../services/projects/workspace-pane-catalog.js';
-import type { Logger } from '../../../utils/logger.js';
-import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
 import {
   backupPluginDurableState,
   capturePersistedAgentOwnership,
@@ -64,12 +57,19 @@ import {
   synchronizePluginAgentDefinitions,
   uninstallInstalledPlugin,
 } from '../plugin-install-transaction.js';
-import { loadPluginProviders } from '../../../routes/plugins/plugin-loader.js';
+import { readPluginManifestFile } from '../plugin-manifest-loader.js';
+import {
+  copyPluginDependencyOwnership,
+  getPluginGrants,
+  grantPermissions,
+  PluginGrantsUnavailableError,
+  readPluginDependencyOwnership,
+  readPluginGrantState,
+} from '../plugin-permissions.js';
 import {
   fetchPluginSource,
   installPluginDependency,
 } from '../plugin-source.js';
-import { createRegistryRoutes } from '../../../routes/plugins/registry.js';
 
 function markPluginAgentOwner(agentDir: string, plugin: string): void {
   writeFileSync(

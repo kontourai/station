@@ -51,7 +51,6 @@ import {
 } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
-import { publicIdentityAgentSetView } from '../../services/agents/runtime-agent-identity.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import {
@@ -62,6 +61,7 @@ import {
 import { RuntimeAuthFailureLimiter } from '../../security/runtime-request-security.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
+import { publicIdentityAgentSetView } from '../../services/agents/runtime-agent-identity.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { ConsoleBridgeService } from '../../services/evidence/console-bridge-service.js';

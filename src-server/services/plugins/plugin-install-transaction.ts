@@ -53,7 +53,16 @@ import {
   readRegistryInstallAliases,
   writeRegistryInstallAliases,
 } from '../../providers/registries/registry-install-aliases.js';
+import { assertPluginBundleAssetsContained } from '../../routes/plugins/plugin-bundles.js';
+import { loadPluginProviders } from '../../routes/plugins/plugin-loader.js';
+import { errorMessage } from '../../routes/schemas/schemas.js';
 import { ContextSafetyError } from '../../services/orchestration/context-safety.js';
+import { pluginInstalls, pluginUninstalls } from '../../telemetry/metrics.js';
+import type { Logger } from '../../utils/logger.js';
+import {
+  assertExistingPathInside,
+  assertPathInside,
+} from '../../utils/path-containment.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import {
   closePluginActivationSession,
@@ -143,16 +152,6 @@ import {
   revokeAllGrants,
   snapshotPluginGrantEntry,
 } from './plugin-permissions.js';
-import { assertPluginIdentityAvailable } from './reserved-plugin-identities.js';
-import { pluginInstalls, pluginUninstalls } from '../../telemetry/metrics.js';
-import type { Logger } from '../../utils/logger.js';
-import {
-  assertExistingPathInside,
-  assertPathInside,
-} from '../../utils/path-containment.js';
-import { errorMessage } from '../../routes/schemas/schemas.js';
-import { assertPluginBundleAssetsContained } from '../../routes/plugins/plugin-bundles.js';
-import { loadPluginProviders } from '../../routes/plugins/plugin-loader.js';
 import {
   type PluginPublicServerQuiescence,
   quiescePluginPublicServerModule,
@@ -165,6 +164,7 @@ import {
   resolvePluginDependencies,
   resolvePluginDependencySource,
 } from './plugin-source.js';
+import { assertPluginIdentityAvailable } from './reserved-plugin-identities.js';
 
 const execFile = promisify(execFileCb);
 
