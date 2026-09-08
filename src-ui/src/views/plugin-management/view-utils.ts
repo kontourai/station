@@ -70,7 +70,7 @@ export function toggleSetValue(
  * word break (a dotted or slashed id) is returned unchanged rather than
  * mangled into a fabricated name, the same rule `prettifyModelId` follows.
  */
-export function humanizeContributionSlug(slug: string): string {
+function humanizeContributionSlug(slug: string): string {
   const id = slug.trim();
   if (!id || /[./:]/.test(id)) return id;
   return (

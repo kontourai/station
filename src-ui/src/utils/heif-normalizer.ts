@@ -7,13 +7,13 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 
 export const HEIF_MAX_SOURCE_BYTES = 25 * 1024 * 1024;
 export const HEIF_MAX_AGGREGATE_SOURCE_BYTES = 50 * 1024 * 1024;
-export const HEIF_MAX_METADATA_BYTES = 1024 * 1024;
+const HEIF_MAX_METADATA_BYTES = 1024 * 1024;
 export const HEIF_MAX_BOXES = 1024;
-export const HEIF_MAX_DEPTH = 8;
+const HEIF_MAX_DEPTH = 8;
 export const HEIF_MAX_EDGE = 8192;
 export const HEIF_MAX_PIXELS = 32 * 1024 * 1024;
-export const HEIF_MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
-export const HEIF_DECODE_TIMEOUT_MS = 12_000;
+const HEIF_MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
+const HEIF_DECODE_TIMEOUT_MS = 12_000;
 
 const HEIF_MIME = /^image\/hei(?:c|f)$/iu;
 const HEIF_EXTENSION = /\.(?:heic|heif)$/iu;

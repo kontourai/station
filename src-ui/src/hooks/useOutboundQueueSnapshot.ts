@@ -49,9 +49,7 @@ export function getOutboundQueueSnapshot(): OutboundQueueSnapshot {
   return cached;
 }
 
-export function subscribeOutboundQueueSnapshot(
-  listener: () => void,
-): () => void {
+function subscribeOutboundQueueSnapshot(listener: () => void): () => void {
   listeners.add(listener);
   if (listeners.size === 1) {
     void source().then((module) => module.attachOutboundQueueSource());

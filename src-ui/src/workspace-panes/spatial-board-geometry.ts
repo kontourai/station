@@ -8,7 +8,7 @@ import type {
  * magic viewport size. This keeps a restored board navigable at every zoom
  * level while still allowing a user to pan around its authored content.
  */
-export const SPATIAL_BOARD_MIN_PLANE = { width: 960, height: 640 };
+const SPATIAL_BOARD_MIN_PLANE = { width: 960, height: 640 };
 export const SPATIAL_BOARD_MIN_CARD = { width: 152, height: 240 };
 const PLANE_GUTTER = 160;
 

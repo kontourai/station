@@ -22,7 +22,7 @@ export interface ReportContext {
   consoleEntries: CapturedConsoleEntry[];
 }
 
-export const REPORT_ISSUE_REPO = 'kontourai/station';
+const REPORT_ISSUE_REPO = 'kontourai/station';
 
 /**
  * GitHub rejects new-issue URLs somewhere past ~8k characters. Stay clearly

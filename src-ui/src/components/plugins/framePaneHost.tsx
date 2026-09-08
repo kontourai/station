@@ -62,9 +62,9 @@ import { resolvePluginNavigationTarget } from './plugin-navigation-target';
  */
 
 /** Every inbound method this adapter answers for lives under this prefix. */
-export const PANE_HOST_METHOD_PREFIX = 'pane-host/';
+const PANE_HOST_METHOD_PREFIX = 'pane-host/';
 
-export const PANE_HOST_INBOUND = {
+const PANE_HOST_INBOUND = {
   notify: 'pane-host/notify',
   navigate: 'pane-host/navigate',
   presentUnavailable: 'pane-host/present-unavailable',
@@ -72,7 +72,7 @@ export const PANE_HOST_INBOUND = {
   facts: 'pane-host/facts',
 } as const;
 
-export const PANE_HOST_OUTBOUND = {
+const PANE_HOST_OUTBOUND = {
   confirmResult: 'pane-host/confirm-result',
   factsChanged: 'pane-host/facts-changed',
   refused: 'pane-host/refused',
@@ -84,7 +84,7 @@ export const PANE_HOST_OUTBOUND = {
  * them and installed plugins send them; they decode to `notify`/`navigate`
  * exactly as the namespaced forms do, through the same validation.
  */
-export const PANE_HOST_LEGACY_INBOUND = {
+const PANE_HOST_LEGACY_INBOUND = {
   toast: 'toast',
   navigate: 'navigate',
 } as const;

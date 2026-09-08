@@ -82,7 +82,7 @@ export function captureLocalUiBootstrapToken(): string | undefined {
  * — one `Error` for every throw on this path — is exactly what conflated a
  * refusal with a host that could not be reached.
  */
-export class LocalUiBootstrapRefusedError extends Error {}
+class LocalUiBootstrapRefusedError extends Error {}
 
 /**
  * NO ANSWER AT ALL: the launcher-token exchange never reached a responder. Says
@@ -112,7 +112,7 @@ export class LocalUiBootstrapRefusedError extends Error {}
  * buys is getting off a spinner onto a screen with something to press; the wait
  * itself is the host's to end, not the gate's.
  */
-export class LocalUiHostUnreachableError extends Error {}
+class LocalUiHostUnreachableError extends Error {}
 
 /** Exchange an explicit launcher capability exactly once before protected UI work begins. */
 export async function bootstrapLocalUiSession(

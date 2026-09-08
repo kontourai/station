@@ -1,4 +1,4 @@
-export const TOOL_RESULT_HEAD_CHARS = 3_000;
+const TOOL_RESULT_HEAD_CHARS = 3_000;
 export const TOOL_RESULT_TAIL_CHARS = 512;
 
 function endsOnHighSurrogate(value: string): boolean {
