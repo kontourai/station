@@ -4,10 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
 import { BASIS_MCP_APP_MANIFEST } from '../basis-mcp-app-manifest.mjs';
-import {
-  BASIS_MCP_APP_GENERATOR,
-  stationOwnedHooks,
-} from '../dependency-lifecycle.mjs';
+import { generateBuildInputs } from '../dependency-lifecycle.mjs';
 import {
   biomeFormatterInvocation,
   generateBasisMcpApps,
@@ -118,21 +115,23 @@ describe('Basis MCP app output routing', () => {
     expect(tracked.stdout.trim()).toBe('');
   });
 
-  test('dependency install generates the bundles when the generator is present', () => {
-    // Fresh checkouts get the bundles from `dependencies:ci`; a manifest-only
-    // tree (the container's dependencies stage) must not fail the install.
-    const generator = resolve(root, BASIS_MCP_APP_GENERATOR);
+  test('dependency install generates the bundles inside a checkout', () => {
+    // Fresh checkouts get the bundles from `dependencies:ci`; outside a
+    // checkout (the container's manifest-only dependencies stage) there is
+    // nothing to build and the install must not fail.
+    const dotGit = resolve(root, '.git');
     const run = vi.fn();
     const log = vi.fn();
-    stationOwnedHooks({ run, exists: (path) => path === generator, log });
+    generateBuildInputs({ run, exists: (path) => path === dotGit, log });
     expect(run).toHaveBeenCalledWith(process.execPath, [
-      BASIS_MCP_APP_GENERATOR,
+      'scripts/generate-basis-mcp-apps.mjs',
     ]);
+    expect(log).not.toHaveBeenCalled();
 
     const absent = vi.fn();
     const absentLog = vi.fn();
-    stationOwnedHooks({ run: absent, exists: () => false, log: absentLog });
-    expect(absent.mock.calls.flat(2)).not.toContain(BASIS_MCP_APP_GENERATOR);
+    generateBuildInputs({ run: absent, exists: () => false, log: absentLog });
+    expect(absent).not.toHaveBeenCalled();
     expect(absentLog).toHaveBeenCalledWith(
       expect.stringContaining('NOT_APPLICABLE Basis MCP app generation'),
     );

@@ -498,6 +498,8 @@ function pipeline(f: ReturnType<typeof fixture>, failed?: string) {
         calls.filter((call) => call === 'policy').length > 1)
     )
       expect(existsSync(f.guard)).toBe(true);
+    // Build-input generation runs only once the guard has released.
+    if (name === 'generate') expect(existsSync(f.guard)).toBe(false);
     if (name === failed) throw new Error(`${name} fault`);
   };
   const execution = {
@@ -532,6 +534,9 @@ function pipeline(f: ReturnType<typeof fixture>, failed?: string) {
       phase('verify');
       return { allowlist: {}, purls: [] };
     }),
+    generateBuildInputs: vi.fn(() => {
+      phase('generate');
+    }),
   };
   return { execution, pnpmCliPath, calls };
 }
@@ -555,6 +560,7 @@ test('the production installer binds its selected driver and guards the actual p
     'hooks',
     'owned',
     'verify',
+    'generate',
   ]);
   expect(p.execution.pnpmCommand).toHaveBeenCalledWith(
     [
@@ -620,6 +626,20 @@ test('developer installs preserve established pnpm trees while allowing an inten
     expect.any(Object),
   );
   expect(statSync(f.modules).ino).toBe(before.ino);
+});
+
+test('a failing build-input generator leaves a complete, unguarded install behind', () => {
+  // The generator runs after the guard releases: its failure is a source
+  // defect, and the next `dependencies:ci` must not refuse with "installer
+  // guard already exists" over a node_modules that is complete and verified.
+  const f = fixture();
+  seed(f.modules);
+  const p = pipeline(f, 'generate');
+  expect(() => installWithExecution({}, p.execution)).toThrow('generate fault');
+  expect(p.calls.at(-1)).toBe('generate');
+  expect(p.execution.verify).toHaveBeenCalledTimes(1);
+  expect(existsSync(f.guard)).toBe(false);
+  expect(existsSync(join(f.modules, 'fresh'))).toBe(true);
 });
 
 test.each(['hooks', 'owned', 'verify'])(

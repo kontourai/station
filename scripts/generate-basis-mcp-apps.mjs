@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, rename, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { build } from 'esbuild';
 import { BASIS_MCP_APP_MANIFEST } from './basis-mcp-app-manifest.mjs';
@@ -46,6 +46,13 @@ async function buildOnce(app) {
 }
 
 const STALE_CONTEXT_BYTES = 48;
+
+/** A reader never sees a half-written 480 KB module: temp file, then rename. */
+async function writeAtomically(path, text) {
+  const temporary = `${path}.tmp`;
+  await writeFile(temporary, text);
+  await rename(temporary, path);
+}
 
 function digest(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
@@ -104,7 +111,7 @@ export async function generateBasisMcpApps(options = {}) {
     check = false,
     buildApp = buildOnce,
     read = (path) => readFile(path, 'utf8'),
-    write = (path, text) => writeFile(path, text),
+    write = writeAtomically,
   } = options;
   for (const app of manifest) {
     const first = await buildApp(app);

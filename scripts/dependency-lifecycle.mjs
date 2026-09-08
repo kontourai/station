@@ -522,29 +522,38 @@ export function verify({ cwd = root } = {}) {
   return { allowlist, purls: expectedLifecyclePurls(allowlist) };
 }
 
-export const BASIS_MCP_APP_GENERATOR = 'scripts/generate-basis-mcp-apps.mjs';
+const BASIS_MCP_APP_GENERATOR = 'scripts/generate-basis-mcp-apps.mjs';
 
-/** Inject only execution; the phase order is the production order. */
-export function stationOwnedHooks({
+function stationOwnedHooks() {
+  command(process.execPath, ['scripts/node-runtime-contract.mjs']);
+  if (existsSync(resolve(root, '.git')))
+    command(process.execPath, ['scripts/install-git-hooks.mjs']);
+  else
+    console.log(
+      '[dependency-lifecycle] NOT_APPLICABLE git hooks outside a checkout',
+    );
+}
+
+/**
+ * The Basis MCP app bundles are git-ignored build output that typecheck,
+ * vitest, and every bundler resolve as ordinary modules, so a checkout has
+ * them from the moment its dependencies exist. Runs AFTER the install guard
+ * has released: a bundle that fails to build is a source defect, not an
+ * incomplete node_modules, and must not leave the guard armed so that the
+ * next `dependencies:ci` refuses a complete tree. Outside a checkout (the
+ * container's manifest-only dependencies stage) there is nothing to build;
+ * `station build` generates there. Inject only execution.
+ */
+export function generateBuildInputs({
   run = command,
   exists = existsSync,
   log = console.log,
 } = {}) {
-  run(process.execPath, ['scripts/node-runtime-contract.mjs']);
   if (exists(resolve(root, '.git')))
-    run(process.execPath, ['scripts/install-git-hooks.mjs']);
-  else
-    log('[dependency-lifecycle] NOT_APPLICABLE git hooks outside a checkout');
-  // The Basis MCP app bundles are git-ignored build output that typecheck,
-  // vitest, and every bundler resolve as ordinary modules, so a fresh checkout
-  // has them from the moment its dependencies exist. The container's
-  // dependencies stage copies only manifests (no generator, no entries) and
-  // generates in its build stage instead.
-  if (exists(resolve(root, BASIS_MCP_APP_GENERATOR)))
     run(process.execPath, [BASIS_MCP_APP_GENERATOR]);
   else
     log(
-      `[dependency-lifecycle] NOT_APPLICABLE Basis MCP app generation without ${BASIS_MCP_APP_GENERATOR}`,
+      '[dependency-lifecycle] NOT_APPLICABLE Basis MCP app generation outside a checkout',
     );
 }
 
@@ -593,6 +602,7 @@ export function install(
     runApprovedHooks,
     stationOwnedHooks,
     verify,
+    generateBuildInputs,
   },
 ) {
   const nodeDriver = prepareDependencyInstallDrivers({
@@ -625,7 +635,7 @@ export function install(
       : [...invocation.args],
   };
   const allowlist = execution.check({ cwd: execution.root, bootstrap: true });
-  return withDependencyInstallGuard({
+  const verified = withDependencyInstallGuard({
     root: execution.root,
     clean: false,
     retireLegacy: true,
@@ -642,6 +652,9 @@ export function install(
       return execution.verify({ cwd: execution.root });
     },
   });
+  // Outside the guard on purpose — see generateBuildInputs.
+  execution.generateBuildInputs();
+  return verified;
 }
 
 export function propose({ cwd = root } = {}) {
