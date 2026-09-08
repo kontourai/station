@@ -506,8 +506,46 @@ export function writeNightlyConfig({
   return config;
 }
 
+/** Rewrites only the version field; the file keeps its key order and trailing newline. */
+export function writeCliNightlyVersion(packageJsonPath, version) {
+  if (
+    typeof version !== 'string' ||
+    !/^\d+\.\d+\.\d+-nightly\.\d+\.\d+$/.test(version)
+  )
+    throw new Error(`Refusing to write a non-nightly CLI version: ${version}`);
+  const raw = readFileSync(packageJsonPath, 'utf8');
+  const manifest = JSON.parse(raw);
+  if (typeof manifest.version !== 'string')
+    throw new Error(`${packageJsonPath} has no version field to rewrite.`);
+  manifest.version = version;
+  const trailingNewline = raw.endsWith('\n') ? '\n' : '';
+  writeFileSync(
+    packageJsonPath,
+    `${JSON.stringify(manifest, null, 2)}${trailingNewline}`,
+  );
+  return version;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2);
+  const cliVersionIndex = args.indexOf('--cli-version');
+  if (cliVersionIndex !== -1) {
+    const packageJsonIndex = args.indexOf('--package-json');
+    if (
+      packageJsonIndex === -1 ||
+      !args[cliVersionIndex + 1] ||
+      !args[packageJsonIndex + 1]
+    ) {
+      console.error(
+        'Usage: nightly-build-identity.mjs --cli-version <version> --package-json <path>',
+      );
+      process.exit(2);
+    }
+    process.stdout.write(
+      `${writeCliNightlyVersion(args[packageJsonIndex + 1], args[cliVersionIndex + 1])}\n`,
+    );
+    process.exit(0);
+  }
   const packageJsonPath = option('package-json', args);
   const tauriConfigPath = option('tauri-config', args);
   const date = option('date', args);
