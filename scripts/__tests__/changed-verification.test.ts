@@ -26,6 +26,7 @@ import {
   validateChangedVerificationReceipt,
   validateSelectedTestFiles,
 } from '../run-changed-verification.mjs';
+import { SELECTOR_DEFERRED_EXIT_CODE } from '../run-ci-fast.mjs';
 import {
   E2E_CONTRACT_BOUNDARIES,
   TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
@@ -714,8 +715,18 @@ describe('changed verification selection', () => {
       rmSync(temporary, { recursive: true, force: true });
     }
   });
-  test('records empty related discovery as infrastructure failure without starting tests', async () => {
-    const run = vi.fn();
+  test('records empty related discovery as an empty selection, not an infrastructure failure', async () => {
+    // #1757: discovery that ran and matched nothing is a selection decision.
+    // The child that produced the empty answer is the discovery process
+    // itself, so `run` is called exactly once and no Vitest child follows.
+    const run = vi.fn(async () => ({
+      status: 0,
+      signal: null,
+      stdout: '[]',
+      stderr: '',
+      launch: { attempted: true, started: true },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+    }));
     const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run,
@@ -723,22 +734,64 @@ describe('changed verification selection', () => {
         mergeBase: 'base-sha',
         paths: [scenarios.sourceEdges.server],
       }),
-      discoverRelatedFiles: () => [],
       collectProvenance: provenance,
       writeReceipt: vi.fn(),
     });
-    expect(run).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(1);
     expect(result.executed).toEqual([]);
-    expect(result.preparation).toMatchObject({
-      phase: 'resource-plan',
-      childStarted: false,
-      infrastructureError: true,
-    });
+    expect(result.preparation).toBeUndefined();
     expect(result.receipt.counts).toMatchObject({
       executed: 0,
-      infrastructureErrors: 1,
+      infrastructureErrors: 0,
     });
-    expect(result.receipt.terminal.status).toBe('infrastructure_error');
+    expect(result.receipt.terminal.status).toBe('provisional');
+    expect(result.receipt.terminal.passed).toBe(false);
+    // Pinned to the constant run-ci-fast reads, and to its literal value:
+    // the whole point of this status is that ci:fast passes over it.
+    expect(SELECTOR_DEFERRED_EXIT_CODE).toBe(3);
+    expect(result.exitCode).toBe(SELECTOR_DEFERRED_EXIT_CODE);
+    expect(result.emptyRelatedSelection).toMatchObject({
+      relatedPaths: [scenarios.sourceEdges.server],
+      remedy:
+        'declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file',
+    });
+    const summary = renderChangedVerificationSummary(result);
+    expect(summary).toContain(
+      `[test:changed] no related suites for: ${scenarios.sourceEdges.server}`,
+    );
+    expect(summary).toContain(
+      '[test:changed] remedy: declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file',
+    );
+  });
+  test('keeps discovery output it could not have produced an infrastructure failure', async () => {
+    // The fail-closed half of #1757: an empty array is an answer, but output
+    // that is not an array of usable paths means discovery could not run.
+    for (const stdout of ['null', '{}', '["ok.test.ts", ""]', 'not-json']) {
+      const result = await runChangedVerification(['--base=origin/main'], {
+        root: process.cwd(),
+        run: async () => ({
+          status: 0,
+          signal: null,
+          stdout,
+          stderr: '',
+          launch: { attempted: true, started: true },
+          cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+        }),
+        changedPathsFn: () => ({
+          mergeBase: 'base-sha',
+          paths: [scenarios.sourceEdges.server],
+        }),
+        collectProvenance: provenance,
+        writeReceipt: vi.fn(),
+      });
+      expect(result.emptyRelatedSelection).toBeUndefined();
+      expect(result.preparation).toMatchObject({
+        phase: 'related-discovery',
+        infrastructureError: true,
+      });
+      expect(result.receipt.terminal.status).toBe('infrastructure_error');
+      expect(result.exitCode).toBe(1);
+    }
   });
   test('redacts and bounds retained preparation failures with explicit truncation', async () => {
     const writeReceipt = vi.fn();
@@ -779,10 +832,27 @@ describe('changed verification selection', () => {
   });
   test.each([
     [{ status: 0, stdout: 'not-json' }, 'malformed JSON'],
-    [{ status: 0, stdout: '[]' }, 'no valid test files'],
+    [{ status: 0, stdout: 'null' }, 'no valid test files'],
+    [{ status: 0, stdout: '[""]' }, 'no valid test files'],
     [{ status: 1, stderr: 'discovery failed' }, 'discovery failed'],
   ])('fails closed on malformed related discovery: %s', (result, message) => {
     expect(() => parseRelatedTestDiscovery(result)).toThrow(message);
+  });
+  test('reads an empty related discovery array as an empty selection', () => {
+    expect(parseRelatedTestDiscovery({ status: 0, stdout: '[]' })).toEqual([]);
+  });
+  test('plans nothing when related discovery matches no suite', async () => {
+    await expect(
+      planChangedVitestExecutions(
+        process.cwd(),
+        {
+          relatedPaths: ['scripts/dependency-advisory-exceptions.json'],
+          tests: [],
+          lanes: [],
+        },
+        { discoverRelated: () => [] },
+      ),
+    ).resolves.toEqual([]);
   });
   test('preserves a failed discovery launch as prelaunch provenance', async () => {
     let failure:

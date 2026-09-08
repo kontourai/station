@@ -111,10 +111,14 @@ export function parseRelatedTestDiscovery(result) {
   }
   if (
     !Array.isArray(parsed) ||
-    parsed.length === 0 ||
     parsed.some((path) => typeof path !== 'string' || path.length === 0)
   )
     throw new Error('Related Vitest discovery returned no valid test files');
+  // An empty array is discovery's answer, not its failure: no test in the
+  // corpus imports the changed paths. Only output discovery could not have
+  // produced -- a non-array, or an entry that is not a usable path -- means it
+  // could not run. Conflating the two made a data-only diff read as a broken
+  // runner (#1757).
   return parsed;
 }
 
@@ -711,15 +715,19 @@ export async function planChangedVitestExecutions(
   const relatedTests = selection.relatedPaths.length
     ? await discoverRelated(root, selection.relatedPaths)
     : [];
-  const selected = validateSelectedTestFiles(
-    root,
-    [
-      ...new Set([
-        ...relatedTests,
-        ...selection.tests.map((entry) => entry.path),
-      ]),
-    ].sort(),
-  );
+  const candidates = [
+    ...new Set([
+      ...relatedTests,
+      ...selection.tests.map((entry) => entry.path),
+    ]),
+  ].sort();
+  // Discovery ran and matched nothing. That is an empty plan, not a planning
+  // failure, so it must not reach validateSelectedTestFiles -- whose empty
+  // throw is the fail-closed guard for a selection that was supposed to hold
+  // files. Only a related-path selection can land here: an explicit test
+  // target always contributes its own path.
+  if (candidates.length === 0 && selection.relatedPaths.length > 0) return [];
+  const selected = validateSelectedTestFiles(root, candidates);
   const groups = partition(selected, { root });
   const kind = selection.relatedPaths.length
     ? selection.tests.length
@@ -865,6 +873,7 @@ async function runVitest(
   }
   return {
     executions,
+    emptySelection: plannedExecutions.length === 0,
     ...(preparation ? { preparation } : {}),
   };
 }
@@ -1021,6 +1030,8 @@ const CHANGED_OUTPUT_NAME_LIMIT = 6;
 const CHANGED_OUTPUT_LINE_LIMIT = 1_024;
 const CHANGED_SELECTION_ARTIFACT =
   '.kontourai/test-impact/changed-selection.json';
+const EMPTY_RELATED_SELECTION_REMEDY =
+  'declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file';
 
 function boundedNames(names) {
   const unique = [...new Set(names)].sort();
@@ -1055,9 +1066,18 @@ export function renderChangedVerificationSummary(result) {
   const truncated = focused.truncated || lanes.truncated;
   const mode = result.receipt?.terminal?.status ?? 'unknown';
   const laws = boundedNames(result.productLaws ?? []);
+  const emptyRelated = result.emptyRelatedSelection
+    ? boundedNames(result.emptyRelatedSelection.relatedPaths ?? [])
+    : undefined;
   return [
     `[test:changed] ${result.paths?.length ?? 0} changed path(s); ${focusedCount(result.selection)} focused target(s), ${result.selection.lanes.length} deferred lane(s) (${mode}).`,
     `[test:changed] focused: ${focused.rendered}`,
+    ...(emptyRelated
+      ? [
+          `[test:changed] no related suites for: ${emptyRelated.rendered}`,
+          `[test:changed] remedy: ${result.emptyRelatedSelection.remedy ?? EMPTY_RELATED_SELECTION_REMEDY}`,
+        ]
+      : []),
     `[test:changed] lanes: ${lanes.rendered}`,
     `[test:changed] product laws: ${laws.rendered}`,
     `[test:changed] detail: ${CHANGED_SELECTION_ARTIFACT}${truncated ? ' (terminal names truncated; full selection is in the artifact)' : ''}`,
@@ -1271,6 +1291,7 @@ export async function runChangedVerification(
                 )
               : [],
         };
+  let emptyRelatedSelection = false;
   if (
     !explain &&
     (executionSelection.tests.length || executionSelection.relatedPaths.length)
@@ -1311,13 +1332,31 @@ export async function runChangedVerification(
     result.executed = vitestOutcome.executions;
     if (vitestOutcome.preparation)
       result.preparation = vitestOutcome.preparation;
+    // Related discovery ran and named no suite. Record the fact durably in
+    // the selection artifact so a reader sees a selection decision rather
+    // than a silent zero-execution run.
+    emptyRelatedSelection =
+      vitestOutcome.emptySelection === true && !vitestOutcome.preparation;
+    if (emptyRelatedSelection)
+      result.emptyRelatedSelection = {
+        relatedPaths: [...executionSelection.relatedPaths].sort(),
+        remedy: EMPTY_RELATED_SELECTION_REMEDY,
+      };
     selection = escalateEmptyReports(selection, result.executed);
     result.selection = selection;
     result.nextCommands = nextCommands(selection);
   }
   const after = collectProvenance({ cwd: root });
   const counts = countsFor(result.executed, result.preparation);
-  const deferred = explain || selection.lanes.length > 0;
+  // An empty related selection is deferred, not complete and not broken: no
+  // suite was executed, so the receipt layer cannot call it a pass
+  // (isPassingCounts requires executed > 0), and nothing here justifies
+  // loosening that. `provisional` is the honest terminal status, and
+  // run-ci-fast already reads its exit 3 as a deferred selection and carries
+  // on -- so a data-only diff neither fails fast-checks nor escalates to the
+  // full corpus (#1757).
+  const deferred =
+    explain || selection.lanes.length > 0 || emptyRelatedSelection;
   const failed = counts.failed > 0;
   const childFailed = result.executed.some(
     (execution) => execution.exitCode !== 0 && !execution.infrastructureError,
