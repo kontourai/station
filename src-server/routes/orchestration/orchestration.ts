@@ -51,7 +51,6 @@ import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
 import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
-  SSE_KEEPALIVE_INTERVAL_MS,
 } from '../../constants.js';
 import {
   getTenantRequestContext,
@@ -106,7 +105,7 @@ import {
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
-import { streamSSE } from '../sse-response.js';
+import { sseKeepalive, streamSSE } from '../sse-response.js';
 
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a
@@ -2981,7 +2980,7 @@ export function createOrchestrationRoutes(
         : () => {};
       orchestrationStreamPresenceOps.add(1, { op: 'connect' });
 
-      // archive#1225 review (HIGH): `unsub`/`keepAlive` are declared here
+      // archive#1225 review (HIGH): `unsub`/`stopKeepAlive` are declared here
       // (not `const` at their original call sites) and the whole setup below
       // through the abort-wait runs inside the `try` below, so `finally` can
       // always release this connection's presence/subscription/timer no
@@ -2996,7 +2995,7 @@ export function createOrchestrationRoutes(
       // `true` and silently disable push-on-completion for that user for
       // the rest of the process lifetime.
       let unsub: (() => void) | undefined;
-      let keepAlive: ReturnType<typeof setInterval> | undefined;
+      let stopKeepAlive: (() => void) | undefined;
       try {
         // Ordering fence (R4): subscribe and buffer live events FIRST, before
         // any `await` below can yield to an event that was appended and
@@ -3191,9 +3190,7 @@ export function createOrchestrationRoutes(
           await stream.writeSSE(frame);
         }
 
-        keepAlive = setInterval(() => {
-          stream.writeSSE({ event: 'ping', data: '' }).catch(() => {});
-        }, SSE_KEEPALIVE_INTERVAL_MS);
+        stopKeepAlive = sseKeepalive(stream);
 
         try {
           await new Promise((_, reject) => {
@@ -3210,10 +3207,10 @@ export function createOrchestrationRoutes(
         // releases this connection's timer/subscription/presence exactly
         // once, instead of leaking them only on the happy path. `unsub`
         // being `undefined` (a throw before `deps.eventBus.subscribe` ran)
-        // or `keepAlive` being `undefined` (a throw before it was created)
-        // are both handled explicitly rather than relying on
+        // or `stopKeepAlive` being `undefined` (a throw before the keepalive
+        // was started) are both handled explicitly rather than relying on
         // `clearInterval(undefined)`/calling an unset function.
-        if (keepAlive !== undefined) clearInterval(keepAlive);
+        stopKeepAlive?.();
         unsub?.();
         releasePresence();
         orchestrationStreamPresenceOps.add(1, { op: 'disconnect' });
