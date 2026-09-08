@@ -1217,69 +1217,6 @@ button:hover {
   cursor: not-allowed;
 }
 
-.quick-actions {
-  display: flex;
-  flex: 1;
-  justify-content: flex-end;
-  gap: 24px;
-  align-items: center;
-}
-
-.quick-actions--placeholder {
-  justify-content: center;
-  font-size: var(--text-md);
-  color: var(--text-muted);
-}
-
-.quick-actions__group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 220px;
-}
-
-.quick-actions__label {
-  font-size: var(--text-base);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-}
-
-.quick-actions__buttons {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.quick-actions__button {
-  padding: 8px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--accent-primary);
-  background: transparent;
-  color: var(--accent-primary);
-  cursor: pointer;
-  font-size: var(--text-md);
-}
-
-.quick-actions__button:hover {
-  background: var(--accent-medium);
-}
-
-.quick-actions__button--secondary {
-  border-color: var(--border-light);
-  color: var(--text-secondary);
-}
-
-.quick-actions__button--secondary:hover {
-  border-color: var(--text-tertiary);
-  background: var(--bg-tertiary);
-}
-
-.quick-actions__helper {
-  font-size: var(--text-base);
-  color: var(--text-disabled);
-}
-
 .sidebar {
   width: 280px;
   background: var(--bg-secondary);
@@ -5634,17 +5571,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-muted);
 }
 
-/* App Toolbar Additions */
-.app-toolbar__title {
-  font-size: var(--text-2xl);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.app-toolbar__settings {
-  margin-left: auto;
-}
-
 @keyframes spin {
   from {
     transform: rotate(0deg);
@@ -7228,10 +7154,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .app-toolbar__breadcrumb-sep {
   color: var(--text-muted);
-}
-
-.app-toolbar__breadcrumb-current {
-  color: var(--text-secondary);
 }
 
 /* ── ChatDock Session Info Bar ──────────────────────────────────── */
