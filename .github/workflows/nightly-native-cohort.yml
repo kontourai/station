@@ -5,8 +5,10 @@ name: Nightly native cohort
 # `nightly-native-stage.yml` reserved while it built the staged artifacts in
 # the same run. This workflow is the only native publisher: it admits the
 # staged bytes, creates the promotion fence, promotes Android before macOS,
-# uploads the already-verified iOS package, and lets the protected verifier
-# grant finality.
+# and lets the protected verifier grant finality. iOS delivery runs beside
+# that chain from the same admission (#1774): its TestFlight outcome is
+# disclosed on both cohort ledger rows but never gates Android/macOS finality,
+# recording, or recovery.
 on:
   workflow_call:
     inputs:
@@ -284,8 +286,13 @@ jobs:
 
   deliver-ios:
     name: Publish iOS
-    needs: [promote-macos]
-    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.promote-macos.result == 'success' }}
+    # iOS uploads the already-audited IPA from this run's staged bytes, so it
+    # needs admission and the fence, not the Android/macOS outcomes. A
+    # provider-side TestFlight failure reddens this run and is disclosed in
+    # the ledger note, but it neither blocks the other platforms' finality
+    # nor writes the recovery lock (#1774).
+    needs: [admit-cohort, create-promotion-fence]
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.admit-cohort.result == 'success' && needs.create-promotion-fence.result == 'success' }}
     permissions:
       contents: read
       id-token: write
@@ -311,8 +318,8 @@ jobs:
 
   protected-finalize:
     name: Verify providers and finalize
-    needs: [promote-macos, deliver-ios]
-    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.promote-macos.result == 'success' && needs.deliver-ios.result == 'success' }}
+    needs: [promote-macos]
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.promote-macos.result == 'success' }}
     runs-on: macos-15
     environment: native-release
     permissions: { contents: read, id-token: write, attestations: write }
@@ -384,8 +391,11 @@ jobs:
 
   record-native-completion:
     name: Record ledger and markers
-    needs: [protected-finalize]
-    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.protected-finalize.result == 'success' }}
+    # `deliver-ios` is a dependency only so its outcome can be disclosed in
+    # the ledger rows; the status functions keep this job reachable when iOS
+    # failed, and finality is still granted by `protected-finalize` alone.
+    needs: [protected-finalize, deliver-ios]
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.protected-finalize.result == 'success' }}
     runs-on: ubuntu-22.04
     permissions: { contents: write, attestations: read }
     outputs:
@@ -435,14 +445,19 @@ jobs:
         name: Record durable completion only after the verified final receipt
         env:
           GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
+          # iOS has no ledger channel of its own; its TestFlight outcome is
+          # disclosed on both cohort rows so a night where only iOS failed
+          # is readable from the ledger (#1774).
+          IOS_DELIVERY_RESULT: ${{ needs.deliver-ios.result }}
         run: |
           set -euo pipefail
           test -n "$GITHUB_TOKEN"
+          test -n "$IOS_DELIVERY_RESULT"
           node scripts/release-cohort-workflow.mjs assert-final cohort/final-cohort-receipt.json "${{ inputs.source_sha }}"
           androidVersion=$(node -e 'console.log(require("./cohort/final-cohort-receipt.json").versionIdentities.android.versionName)')
           desktopVersion=$(node -e 'console.log(require("./cohort/final-cohort-receipt.json").versionIdentities.desktop.version)')
-          node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record finalized nightly-android $androidVersion" --summary-line "- finalized cohort Android $androidVersion" -- node scripts/deploy-ledger.mjs --channel nightly-android --version "$androidVersion" --sha "${{ inputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'native cohort final receipt complete' --github-repo "$GITHUB_REPOSITORY" --artifact-manifest cohort/cohort-android/station-client-build.json --artifact 'play-internal-aab:cohort-finalized'
-          node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record finalized nightly-desktop $desktopVersion" --summary-line "- finalized cohort macOS $desktopVersion" -- node scripts/deploy-ledger.mjs --channel nightly-desktop --version "$desktopVersion" --sha "${{ inputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'native cohort final receipt complete' --github-repo "$GITHUB_REPOSITORY" --artifact-manifest cohort/cohort-macos/station-client-build.json --artifact 'github-release:nightly-desktop (cohort-finalized)'
+          node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record finalized nightly-android $androidVersion" --summary-line "- finalized cohort Android $androidVersion" -- node scripts/deploy-ledger.mjs --channel nightly-android --version "$androidVersion" --sha "${{ inputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'native cohort final receipt complete' --github-repo "$GITHUB_REPOSITORY" --artifact-manifest cohort/cohort-android/station-client-build.json --artifact 'play-internal-aab:cohort-finalized' --note "ios: TestFlight delivery $IOS_DELIVERY_RESULT (run $GITHUB_RUN_ID)"
+          node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record finalized nightly-desktop $desktopVersion" --summary-line "- finalized cohort macOS $desktopVersion" -- node scripts/deploy-ledger.mjs --channel nightly-desktop --version "$desktopVersion" --sha "${{ inputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'native cohort final receipt complete' --github-repo "$GITHUB_REPOSITORY" --artifact-manifest cohort/cohort-macos/station-client-build.json --artifact 'github-release:nightly-desktop (cohort-finalized)' --note "ios: TestFlight delivery $IOS_DELIVERY_RESULT (run $GITHUB_RUN_ID)"
       - id: nightly_marker
         name: Advance final Android marker with exact REST readback
         env:
@@ -498,8 +513,12 @@ jobs:
 
   recover-native-cohort:
     name: Recovery lock (owner must reconcile)
+    # `deliver-ios` stays a dependency so the recovery receipt discloses its
+    # outcome, but an iOS-only failure never triggers the lock (#1774): the
+    # lock exists for the Android/macOS chain whose provider effects the
+    # owner must reconcile before the next plan.
     needs: [create-promotion-fence, promote-android, promote-macos, deliver-ios, protected-finalize, record-native-completion]
-    if: ${{ always() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.build == 'true' && (needs.promote-android.result != 'success' || needs.promote-macos.result != 'success' || needs.deliver-ios.result != 'success' || needs.protected-finalize.result != 'success' || needs.record-native-completion.result != 'success') }}
+    if: ${{ always() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.build == 'true' && (needs.promote-android.result != 'success' || needs.promote-macos.result != 'success' || needs.protected-finalize.result != 'success' || needs.record-native-completion.result != 'success') }}
     runs-on: ubuntu-22.04
     permissions: { contents: write }
     steps:

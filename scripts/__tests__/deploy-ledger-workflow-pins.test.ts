@@ -134,6 +134,16 @@ describe('the nightly workflow records what it ships', () => {
     );
     // The commit subject is what the changelog exclusion rule keys on.
     expect(step).toMatch(/docs\(ledger\):/);
+    // iOS is delivered outside the atomic chain (#1774) and has no ledger
+    // channel, so both cohort rows carry its job result as a note.
+    expect(step).toContain(
+      'IOS_DELIVERY_RESULT: $' + '{{ needs.deliver-ios.result }}',
+    );
+    expect(
+      step.match(
+        /--note "ios: TestFlight delivery \$IOS_DELIVERY_RESULT \(run \$GITHUB_RUN_ID\)"/g,
+      ),
+    ).toHaveLength(2);
     expect(
       nightly.indexOf(
         'name: Advance final Android marker with exact REST readback',
@@ -184,8 +194,9 @@ describe('the nightly workflow records what it ships', () => {
       'continue-on-error',
     );
     // Native recording is a final job after both provider receipts, so a
-    // recorder failure cannot suppress either provider effect.
-    expect(nightly).toContain('needs: [protected-finalize]');
+    // recorder failure cannot suppress either provider effect. It also waits
+    // on the independent iOS delivery only to disclose its result (#1774).
+    expect(nightly).toContain('needs: [protected-finalize, deliver-ios]');
     expect(nightly).toContain("needs.protected-finalize.result == 'success'");
   });
 });
