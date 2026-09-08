@@ -17,9 +17,18 @@ const refetchLayouts = vi.fn();
 let layoutsData: Array<{ slug: string; name: string; icon?: string }> = [];
 let layoutsError: unknown;
 
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ setLayout }),
-}));
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({ setLayout });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 
 vi.mock('@kontourai/station-sdk', () => ({
   useProjectLayoutsQuery: () => ({
