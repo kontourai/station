@@ -19,15 +19,7 @@ import {
   rename,
   writeFile,
 } from 'node:fs/promises';
-import {
-  basename,
-  dirname,
-  extname,
-  isAbsolute,
-  join,
-  relative,
-  sep,
-} from 'node:path';
+import { dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import type {
   GuidanceAsset,
   SkillCommand,
@@ -36,6 +28,7 @@ import type {
   SkillProvenance,
   SkillStats,
   SkillVariable,
+  SkillWriteRefusal,
 } from '@kontourai/station-contracts/catalog';
 import { skillToGuidanceAsset } from '@kontourai/station-contracts/guidance-assets';
 import {
@@ -57,6 +50,7 @@ import {
 } from 'agent-skills-ts-sdk';
 import type { ConfigLoader, SkillConfig } from '../../domain/config-loader.js';
 import { skillRecordClaimsName } from '../../domain/config-loader-storage.js';
+import type { SkillPackageDirectoryCondition } from '../../domain/skill-paths.js';
 import {
   canonicalSkillsDiscovered,
   skillActivationDuration,
@@ -84,6 +78,7 @@ import {
   readSkillVariables,
   resolveSkillDirectory,
   serializeSkillMarkdown,
+  skillPackageDirectoryReport,
   skillsRootDir,
 } from './skill-metadata.js';
 import {
@@ -239,6 +234,17 @@ export interface SkillListing {
    * can be moved aside; a directory cannot.
    */
   servedInPlace?: true;
+  /**
+   * May Station write this package — `isSkillWritable`'s answer, projected.
+   *
+   * Required, because a reader with no decision cannot offer to save: an
+   * absent field is the shape a client would have to guess at, and every guess
+   * available to it (`source`, `origin`, `servedInPlace`) answers a DIFFERENT
+   * question (#1655).
+   */
+  writable: boolean;
+  /** Why `writable` is false; absent when it is true. */
+  writeRefusal?: SkillWriteRefusal;
 }
 
 /**
@@ -280,7 +286,159 @@ export interface SkillDetail extends Omit<SkillConfig, 'source'> {
    * one field cannot say both without the name becoming a lie for one of them.
    */
   installRecordDiagnostic?: string;
+  /** `isSkillWritable`'s answer, projected — see `SkillListing.writable`. */
+  writable: boolean;
+  /** Why `writable` is false; absent when it is true. */
+  writeRefusal?: SkillWriteRefusal;
 }
+
+/**
+ * A detail read before writability is projected onto it.
+ *
+ * `getSkill` answers from four different places (a served-in-place source, a
+ * canonical package, the install record alone, and parsed frontmatter) and the
+ * projection must reach all four. Naming the undecorated shape lets ONE exit
+ * decorate, so a fifth answer cannot be added that forgets to.
+ */
+type SkillDetailBody = Omit<SkillDetail, 'writable' | 'writeRefusal'>;
+
+/**
+ * The writability rule's answer in BOTH shapes its callers need, from one call.
+ *
+ * `refusal` is the published projection: a reason code plus prose Station owns,
+ * with the author-controlled path in its own field. `messageFragment` is the
+ * lowercase clause the write path slots into its own sentence, kept verbatim so
+ * that path's messages do not change.
+ *
+ * They travel together rather than being derived from each other, because the
+ * alternative is a caller parsing the other's prose to recover a fact the rule
+ * already knew. Nothing projects `messageFragment` into a read model: the read
+ * models take `.refusal`, explicitly.
+ */
+interface PackageOwnershipRefusal {
+  refusal: SkillWriteRefusal;
+  messageFragment: string;
+}
+
+/**
+ * Which condition a refusal SPEAKS ABOUT when several hold at once.
+ *
+ * The floor reports every condition; this decides which one the reader is told
+ * about, and the ordering is a claim about REMEDIES rather than about severity.
+ * Read it as "which of these must be fixed first, and is fixing it something
+ * this reader can actually do":
+ *
+ * 1. `unsafe-name` — renaming the skill is always possible and always
+ *    necessary, and nothing else can succeed until it happens: the resolver
+ *    refuses on the name before it looks at anything else, so advising an
+ *    install here advises something guaranteed to fail (review M1). The
+ *    assertion has always had this order; an earlier draft of THIS mapping
+ *    inverted it.
+ * 2. `unreadable` — the path cannot be followed, so no claim about which root
+ *    holds the package is safe to make.
+ * 3. `outside-writable-root` — where it sits is the problem, which outranks
+ *    what it is called: "rename the directory" changes nothing for a package in
+ *    a root Station will never write.
+ * 4. `name-mismatch` — reached only once the package is somewhere Station
+ *    writes and its path is readable, which is exactly what its remedy assumes.
+ *
+ * NOT a fallthrough. An earlier draft ended in an unconditional `return` for
+ * the name mismatch, so a fifth condition added to the union would have been
+ * published as one — silently, with a remedy telling the reader to rename a
+ * directory, and no test able to see it. That is the defect this projection
+ * exists to prevent, in the mechanism that prevents it. The `satisfies` below
+ * makes the next addition a compile error instead.
+ *
+ * The residual it does NOT close: nothing forces a new condition to take a NEW
+ * reason code. Reusing `served-in-place` or `canonical-package` compiles and
+ * keeps the uniqueness test green, because that test ranges only over
+ * `SKILL_REFUSAL_STATEMENT` while those two codes are emitted inline in
+ * `packageOwnershipRefusal` further DOWN this file — so the collision happens
+ * somewhere the test cannot see. (Reuse WITHIN the record is caught: the codes
+ * there would no longer be distinct.)
+ *
+ * What makes that worse than an unknown code: `SkillsView` already defends
+ * against a code it does not recognise — `Object.hasOwn` misses, the remedy is
+ * dropped, and the reader gets the description alone. Reuse defeats exactly
+ * that guard, because the code IS recognised: `hasOwn` hits, and a remedy
+ * written for a different condition renders with the same confidence as a
+ * right one. The safety net is not merely absent here, it is the thing being
+ * stepped around. Review rounds 8-9.
+ */
+const SKILL_CONDITION_PRECEDENCE = [
+  'unsafe-name',
+  'unreadable',
+  'outside-writable-root',
+  'name-mismatch',
+] as const satisfies readonly SkillPackageDirectoryCondition[];
+
+/**
+ * Every condition must be RANKED, not merely have a statement.
+ *
+ * `satisfies` above only proves each entry is a real condition; it does not
+ * prove the list is complete, and an unranked condition would make
+ * `worstSkillPackageCondition` return `undefined` for a non-empty condition set
+ * — which this caller reads as "writable". So the hole the exhaustive `Record`s
+ * below close for the PROSE was open here for the DECISION, and it failed
+ * toward a grant. Found by adding a fifth condition and watching the statements
+ * fail to compile while the ranking silently accepted it.
+ */
+type UnrankedCondition = Exclude<
+  SkillPackageDirectoryCondition,
+  (typeof SKILL_CONDITION_PRECEDENCE)[number]
+>;
+const _everyConditionIsRanked: UnrankedCondition extends never
+  ? true
+  : ['unranked skill package condition', UnrankedCondition] = true;
+void _everyConditionIsRanked;
+
+export function worstSkillPackageCondition(
+  conditions: readonly SkillPackageDirectoryCondition[],
+): SkillPackageDirectoryCondition | undefined {
+  const held = new Set(conditions);
+  return SKILL_CONDITION_PRECEDENCE.find((candidate) => held.has(candidate));
+}
+
+/** What Station SAYS about each condition — prose it owns, no author text. */
+export const SKILL_REFUSAL_STATEMENT = {
+  'unsafe-name': {
+    reason: 'unresolvable-name',
+    detail:
+      'Its name cannot be used as a directory name, so Station cannot work out where it would write this package.',
+  },
+  unreadable: {
+    reason: 'containment-unreadable',
+    detail:
+      'Where a write to it would land could not be determined, so Station will not write it.',
+  },
+  'outside-writable-root': {
+    reason: 'outside-writable-root',
+    detail: 'Station does not write the directory this package resolves to.',
+  },
+  'name-mismatch': {
+    reason: 'directory-name-mismatch',
+    detail:
+      "The package discovery found for it sits in a directory whose name is not this skill's name.",
+  },
+} as const satisfies Record<
+  SkillPackageDirectoryCondition,
+  Pick<SkillWriteRefusal, 'reason' | 'detail'>
+>;
+
+/** The clause the write path slots into its own sentence, kept verbatim. */
+const SKILL_REFUSAL_FRAGMENT = {
+  'unsafe-name': (_name: string, _directory: string) =>
+    'its name cannot be used as a directory name, so Station cannot work out where it would write this package',
+  unreadable: (_name: string, directory: string) =>
+    `the package Station found for it at ${directory} could not be read, so where a write would land is unknown`,
+  'outside-writable-root': (_name: string, directory: string) =>
+    `it is served from ${directory}, which is not a skills root Station writes`,
+  'name-mismatch': (name: string, directory: string) =>
+    `the package discovery found for it is ${directory}, whose directory name is not '${name}'`,
+} as const satisfies Record<
+  SkillPackageDirectoryCondition,
+  (name: string, directory: string) => string
+>;
 
 /**
  * The identity record was published but an exact cleanup could not be made
@@ -718,6 +876,11 @@ export class SkillService {
   listSkills(): SkillListing[] {
     const usage = this.usage.snapshot();
     const records = this.skillRecords();
+    // Resolved ONCE for the whole listing rather than per row: the writability
+    // rule reads the filesystem (`resolveSkillDirectory` follows the skills
+    // root through `realpathSync`), and every row would otherwise re-resolve
+    // the same home.
+    const projectHomeDir = this.projectHomeDir();
     // Declarations become behaviour in ONE place, across every root: a command
     // word nobody can type, or one two skills both claim, is reported disabled
     // with the reason rather than listed as enabled and doing nothing. Origin
@@ -761,6 +924,7 @@ export class SkillService {
         ...(install.legacyIds ? { legacyIds: install.legacyIds } : {}),
         ...(origin ? { origin } : {}),
         ...(s.provided ? { servedInPlace: true as const } : {}),
+        ...this.writabilityAgainstHome(s.name, projectHomeDir),
       };
     });
   }
@@ -961,17 +1125,21 @@ export class SkillService {
    * It asks WHICH ROOT holds the package, not whether its name resolves to one
    * particular directory. That comparison answered "not writable" for every
    * workspace package, because the directory it compared against was derived
-   * from a slug the caller did not have (#1619). The floor is the containment
-   * `assertSkillPackageDirectory` states, and its message is carried through
-   * verbatim rather than flattened into "Station does not own this" — a
-   * directory whose name differs from the skill's only in case is a package
-   * plainly the user's own, and telling them Station does not own it is a
-   * false explanation of a real refusal (review low).
+   * from a slug the caller did not have (#1619).
+   *
+   * The floor is `skillPackageDirectoryReport`, which names every condition that
+   * holds; this picks the one to speak about. Messages are no longer carried
+   * through from the floor verbatim — that shape could only say ONE thing, so
+   * three distinct conditions arrived wearing the same explanation. Each
+   * condition now has a statement Station owns and a remedy keyed to its reason
+   * code, and `SKILL_CONDITION_PRECEDENCE` records why the ordering is what it
+   * is: a refusal must speak about the thing the reader has to fix first, and
+   * has to be able to fix at all.
    */
   private packageOwnershipRefusal(
     name: string,
     projectHomeDir: string,
-  ): string | undefined {
+  ): PackageOwnershipRefusal | undefined {
     const registered = this.registry.get(name);
     // A source whose generation has been retired is not a writability answer
     // either way: nothing about the package can be trusted until discovery
@@ -981,22 +1149,119 @@ export class SkillService {
     if (!registered?.location) return undefined;
     const directory = dirname(registered.location);
     if (registered.provided)
-      return `it is served in place from ${directory}, which Station does not own`;
+      return {
+        messageFragment: `it is served in place from ${directory}, which Station does not own`,
+        refusal: {
+          reason: 'served-in-place',
+          detail:
+            'A plugin serves it in place, from a directory Station does not own.',
+          packageDirectory: directory,
+        },
+      };
     if (this.canonicalSourceFor(registered.location))
-      return `it is served from the package at ${directory}, which Station does not own`;
-    // Named apart from the root failure below, because they are different
-    // facts with different remedies: a directory whose name differs from the
-    // skill's — by case, or because the frontmatter names it something else —
-    // is a package plainly the user's own, and "Station does not own this"
-    // would be a false explanation of a real refusal (review low).
-    if (basename(directory) !== name)
-      return `the package discovery found for it is ${directory}, whose directory name is not '${name}'`;
-    try {
-      assertSkillPackageDirectory(projectHomeDir, name, directory);
-      return undefined;
-    } catch {
-      return `it is served from ${directory}, which is not a skills root Station writes`;
-    }
+      return {
+        messageFragment: `it is served from the package at ${directory}, which Station does not own`,
+        refusal: {
+          reason: 'canonical-package',
+          detail: 'It is served from a package that ships read-only.',
+          packageDirectory: directory,
+        },
+      };
+    // The floor's OWN verdict, threaded out rather than re-derived. It
+    // distinguishes four conditions and an earlier draft collapsed three of
+    // them into "not a skills root Station writes", which published a false
+    // explanation twice over (review H1): a dangling link INSIDE a writable
+    // root was told it sat outside one and to install itself, and a name that
+    // can never be a directory name was told the same. Reading the conditions
+    // is the only way the projection can say which refusal this is without
+    // parsing the floor's prose.
+    //
+    // PRECEDENCE IS THIS CALLER'S, and deliberately not the assert's. Where the
+    // package sits outranks what its directory is called, because "rename the
+    // directory" is unfollowable advice for a package in a root Station will
+    // never write — the rename would change nothing (review M2). So
+    // `directory-name-mismatch` is published only once containment has
+    // succeeded, which is exactly what its docblock claims about it.
+    const report = skillPackageDirectoryReport(projectHomeDir, name, directory);
+    const condition = worstSkillPackageCondition(report.conditions);
+    if (!condition) return undefined;
+    return {
+      messageFragment: SKILL_REFUSAL_FRAGMENT[condition](name, directory),
+      refusal: {
+        ...SKILL_REFUSAL_STATEMENT[condition],
+        packageDirectory: directory,
+      },
+    };
+  }
+
+  /**
+   * The writability decision as the read models carry it, resolved the way the
+   * ROUTE resolves it.
+   *
+   * `this.projectHomeDir()` is `configLoader.getProjectHomeDir()` — the very
+   * call `createSkillRoutes`' `getProjectHomeDir` closure makes, on the same
+   * `ConfigLoader` instance (`runtime-service-bootstrap.ts` hands both the
+   * same one). A second resolution of the project root would be the same
+   * defect this projection exists to remove, one layer up.
+   *
+   * There is no scope to omit or thread: the rule takes a name and a home and
+   * asks which root holds the package, so the projection and the enforcement
+   * cannot be handed different arguments.
+   */
+  private skillWritability(name: string): {
+    writable: boolean;
+    writeRefusal?: SkillWriteRefusal;
+  } {
+    return this.writabilityAgainstHome(name, this.projectHomeDir());
+  }
+
+  /**
+   * `skillWritability` with the home resolved once, for a whole listing.
+   *
+   * The hoist is the ONLY thing saved across rows, and it is the part that was
+   * worth saving: `projectHomeDir()` resolves the skills root through
+   * `realpathSync`, and every row would otherwise redo it. The decision itself
+   * is recomputed per row on purpose. A memo lived here briefly and was
+   * deleted: the registry is keyed by name, so one listing never asks about the
+   * same name twice and it could not fire — a trip-wire throwing on any hit ran
+   * 173 tests across seven suites without one. What it did carry was a
+   * parameter a future caller could thread into the write gate, which is
+   * exactly how the round-one defect happened.
+   *
+   * MEASURED after deleting it, and stated PER ROW because that is the durable
+   * fact: 36-50us per row, WARM (25 runs after 5 warm-ups, median), and linear
+   * — per-row cost held within a few percent across 50, 100 and 200 rows, so
+   * the total is just that times the row count.
+   *
+   * The root the packages sit in moves it by about a third, and the direction is
+   * worth recording because it is not the one the mechanism suggests: rows in
+   * the WRITABLE root measured slower (44-50us) than rows outside it (36-37us),
+   * though both reach `resolveSkillDir`. Not chased further — the number is a
+   * scale check, not a budget.
+   *
+   * A bare total is what NOT to write here. The memo's own docblock claimed
+   * ~8.3ms for the writability portion with no fixture, no row count and no
+   * cache state named, and a "5ms for 100 packages" replacement repeats the
+   * defect at a different magnitude.
+   *
+   * There is no scope to keep in lockstep. The rule takes a name and a home and
+   * asks which root holds the package, so this projection and the write gate
+   * cannot be handed different arguments and cannot answer different questions.
+   * An earlier draft of this comment predicted the opposite — that a sibling
+   * change would thread a slug — which was a claim about another branch stated
+   * as fact, and it was wrong. A comment describes the tree it ships on.
+   */
+  private writabilityAgainstHome(
+    name: string,
+    projectHomeDir: string,
+  ): { writable: boolean; writeRefusal?: SkillWriteRefusal } {
+    const writeRefusal = this.packageOwnershipRefusal(
+      name,
+      projectHomeDir,
+    )?.refusal;
+    return writeRefusal
+      ? { writable: false, writeRefusal }
+      : { writable: true };
   }
 
   /**
@@ -1125,6 +1390,17 @@ export class SkillService {
    */
   async getSkill(name: string): Promise<SkillDetail> {
     skillOps.add(1, { operation: 'get' });
+    // ONE decoration site for four answers. The writability projection is a
+    // fact about the PACKAGE, not about which of the four reads found it, so
+    // deciding it here rather than inside each branch is also the only shape
+    // in which the four cannot disagree.
+    return {
+      ...(await this.readSkillDetail(name)),
+      ...this.skillWritability(name),
+    };
+  }
+
+  private async readSkillDetail(name: string): Promise<SkillDetailBody> {
     // Canonical package skills have no installed config record — serve them
     // straight from the registry (read-only, content from the package).
     const registered = this.registry.get(name);
@@ -1314,7 +1590,7 @@ export class SkillService {
   private fromInstallRecordOnly(
     config: SkillConfig,
     declarationsDiagnostic: string,
-  ): SkillDetail {
+  ): SkillDetailBody {
     // The mirror goes through the SAME resolution frontmatter does. Returning
     // it raw let a mirrored `enabled: true` that is invalid or clashes come
     // back as an active command with no diagnostic, while the listing — which
@@ -1934,9 +2210,18 @@ export class SkillService {
     // with no discovered location is writable by definition, so this condition
     // is exactly the predicate's own — with no unreachable "or else" to
     // describe a case it cannot produce.
+    //
+    // `messageFragment`, not the projected refusal: this path states the reason
+    // in a sentence and the read models state it in a code plus prose that
+    // carries no author-controlled text. Same rule, same call, two shapes —
+    // which is the point. (The fragment does interpolate paths and the name;
+    // that is pre-existing and tracked in #1681, not introduced here.)
     const refusal = this.packageOwnershipRefusal(name, projectHomeDir);
     if (refusal) {
-      return { success: false, message: `Cannot edit '${name}': ${refusal}.` };
+      return {
+        success: false,
+        message: `Cannot edit '${name}': ${refusal.messageFragment}.`,
+      };
     }
     const current = await this.getSkill(name);
     const skillPath = join(skillDir, 'SKILL.md');
@@ -2158,7 +2443,7 @@ export class SkillService {
         // silently reverted every ownership refusal to a false 404 (delta
         // review).
         reason: 'not-owned',
-        message: `Cannot remove '${name}': ${refusal}.`,
+        message: `Cannot remove '${name}': ${refusal.messageFragment}.`,
       };
     }
     return removeInstalledSkill({
