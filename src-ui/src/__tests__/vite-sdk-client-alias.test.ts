@@ -19,8 +19,10 @@ const configFile = fileURLToPath(
  * root alias that would otherwise have rewritten each to
  * `packages/sdk/src/index.ts/<subpath>`.
  *
- * Two rows were never aliased and are the ones this file could not have
- * caught before. `secret-bindings` is imported by
+ * Three rows were never aliased and are the ones this file could not have
+ * caught before. `testing` is imported only by a src-server voice test and
+ * resolved to `packages/sdk/src/index.ts/testing` under the old prefix alias
+ * in vitest. `secret-bindings` is imported by
  * `views/integrations/SecretBindingPicker.tsx` as `import type`, which erases
  * before resolution ever runs. `client/flow-gate-evaluations` sat behind the
  * deleted `.../client` alias, which prefix-matched it into
@@ -33,6 +35,7 @@ const sdkExportSubpaths = [
     'core-update-restart-status',
     '../../../packages/sdk/src/core-update-restart-status.ts',
   ],
+  ['testing', '../../../packages/sdk/src/voice/testing.ts'],
   ['client', '../../../packages/sdk/src/client/index.ts'],
   [
     'project-task-rooms',

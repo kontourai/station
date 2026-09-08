@@ -3906,11 +3906,13 @@ describe('upgrade', () => {
 
   it('rebuilds through buildApplication so the promoted manifest sha matches the built tree (station#2671)', async () => {
     ensureDir(join(TEST_CWD, '.git'));
-    // The git root is deliberately NOT `CWD`: `station upgrade` run from a
-    // subdirectory pulls and installs at the repository root while the build
-    // resolves against the process cwd. Holding them apart is what gives the
-    // `cwd` assertion below any power — with one directory serving both, an
-    // installer spawned in the wrong one is indistinguishable.
+    // The git root is deliberately NOT `CWD`. In production the two coincide
+    // (`upgrade` only proceeds when `.git` sits in the process cwd, and
+    // `git rev-parse --show-toplevel` then returns that cwd), so this is a
+    // fixture divergence, not a reachable one; it exists because the `cwd`
+    // assertion below has no power when one directory serves both — an
+    // installer spawned in the wrong one would be indistinguishable. What the
+    // pin guards is "install where the pull ran", the same root as `git pull`.
     const upgradeGitRoot = join(TEST_ROOT, 'upgrade-git-root');
     ensureDir(join(upgradeGitRoot, '.git'));
     writeOwnedDependencyLifecycle(upgradeGitRoot);
