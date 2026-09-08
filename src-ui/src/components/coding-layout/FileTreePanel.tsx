@@ -363,7 +363,7 @@ export function FileTreePanel({
             openMenu(null, r.left, r.bottom + 2);
           }}
         >
-          ＋
+          +
         </button>
       </div>
 

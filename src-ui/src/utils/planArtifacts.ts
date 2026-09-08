@@ -45,6 +45,25 @@ const LINE_STATUS_PATTERNS: Array<{
   },
 ];
 
+/**
+ * Every character any `LINE_STATUS_PATTERNS` entry can begin a step with.
+ *
+ * A streamed answer is re-derived on every token with the whole accumulated
+ * text, and the parse below splits it into lines and runs six regexes over
+ * each one. Prose that contains none of these characters cannot produce a
+ * single step, so the scan is skipped rather than performed and discarded.
+ *
+ * This must stay a SUPERSET of what the patterns match: a family dropped from
+ * here is a plan that silently stops rendering, which is why the tests walk
+ * every pattern rather than a sample.
+ */
+const PLAN_MARKER_CHARACTERS =
+  /[-*\d\u2705\u2611\u2714\u23f3\u2b1c\u25a1]|\u{1f504}/u;
+
+export function hasPlanMarker(text: string): boolean {
+  return PLAN_MARKER_CHARACTERS.test(text);
+}
+
 function normalizePlanLine(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
@@ -88,6 +107,11 @@ export function derivePlanArtifactFromText(
 ): PlanArtifact | null {
   const rawText = text?.trim();
   if (!rawText) {
+    return null;
+  }
+  // No character any step pattern can start with — `parsePlanSteps` would
+  // walk every line and find nothing.
+  if (!hasPlanMarker(rawText)) {
     return null;
   }
 

@@ -48,7 +48,17 @@ const loadShareAnswerButton = () =>
     default: module.ShareAnswerButton,
   }));
 
-interface Session {
+/**
+ * The exact fields a row reads off the active session — not the session.
+ *
+ * `useDerivedSessions` mints a new `ChatSession` per streamed token by design
+ * (the plan panel needs the artifact to advance), so passing the whole object
+ * made every mounted row miss `memo` on every token even though none of these
+ * eight values had moved. `messages` and `pendingApprovals` are counts here
+ * because a row only ever read their lengths, and an array whose identity
+ * churns per token would have defeated the memo just as thoroughly.
+ */
+export interface MessageBubbleSession {
   id: string;
   agentSlug: string;
   /**
@@ -64,9 +74,11 @@ interface Session {
   projectSlug?: string;
   /** Present once a conversation can span replacement execution Sessions. */
   conversationId?: string;
-  messages: ChatMessage[];
+  /** `activeSession.messages.length` — the row only needs to know if it is last. */
+  messageCount: number;
   isThinking?: boolean;
-  pendingApprovals?: unknown[];
+  /** `activeSession.pendingApprovals.length`; the row renders only the count. */
+  pendingApprovalCount?: number;
 }
 
 type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
@@ -81,7 +93,7 @@ const FALLBACK_AGENT: { name: string } = { name: 'AI' };
 interface MessageBubbleProps {
   msg: ChatMessage;
   idx: number;
-  activeSession: Session;
+  activeSession: MessageBubbleSession;
   agents: AgentData[];
   chatFontSize: number;
   showReasoning: boolean;
@@ -183,7 +195,7 @@ function MessageBubbleComponent({
     return <ConversationContextBoundary boundary={contextBoundary} />;
   }
 
-  const isLastMessage = idx === activeSession.messages.length - 1;
+  const isLastMessage = idx === activeSession.messageCount - 1;
   const isStreamingMessage = isLastMessage && msg.role === 'assistant';
 
   const isAssistant = msg.role === 'assistant';
@@ -630,15 +642,15 @@ function MessageBubbleComponent({
                 </span>
               </div>
             )}
-            {activeSession.pendingApprovals &&
-              activeSession.pendingApprovals.length > 0 && (
+            {activeSession.pendingApprovalCount !== undefined &&
+              activeSession.pendingApprovalCount > 0 && (
                 <div className="message__pending-approval">
                   <span>
                     <PauseGlyph />
                   </span>
                   <span>
-                    Awaiting tool approval (
-                    {activeSession.pendingApprovals.length})
+                    Awaiting tool approval ({activeSession.pendingApprovalCount}
+                    )
                   </span>
                 </div>
               )}

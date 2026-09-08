@@ -241,6 +241,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // its exit STATUS is asserted, not just its pure decision functions — a
   // rejection path that has never executed is unproven.
   'scripts/__tests__/prepush-ui-bundle.test.ts',
+  // Asks git (`check-ignore`, `ls-files`) whether the generated Basis MCP app
+  // bundles are ignored and untracked, because .gitignore's text cannot say
+  // whether a rule still matches or a file was force-added. Two single-shot
+  // children, no wall-clock assertion.
+  'scripts/__tests__/basis-mcp-apps.test.ts',
   // #1459: runs the completion-gate summary reporter as a real child process
   // so its EXIT STATUS and its stdout annotations are what the assertions
   // read. Both are the contract — the reporter must never fail a job it only
@@ -321,6 +326,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // through `execFileSync` on purpose — its oracle has to be what git actually
   // returns for a pathspec, not a fixture that would pin the bug instead.
   'scripts/__tests__/gate-scope.test.ts',
+  // station#1649: runs the glyph-coverage ratchet as a real child process
+  // against a throwaway git repository, because the thing under test is the
+  // gate's EXIT STATUS on a rejection — a guardrail whose failure branch has
+  // never executed is unproven. Bounded and single-shot; also builds the
+  // fixture with real `git init`/`git add`.
+  'scripts/__tests__/ui-glyph-coverage-gate.cli.test.ts',
   // station#928: the placement-vocabulary ratchet enumerates its scan scope
   // through one single-shot `git ls-files` for the same reason as
   // gate-scope.test.ts above — the scope must be what git tracks, not a

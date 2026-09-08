@@ -44,6 +44,9 @@ const adoptionIntent = vi.hoisted(() =>
   Object.freeze({ idempotencyKey: 'adopt-session-test-intent' }),
 );
 let sessions: Array<Record<string, unknown>> = [];
+// Every config this render passed to the sessions query, so the list's own
+// refresh cadence can be read from the query rather than inferred.
+const orchestrationSessionsQueryConfig = vi.hoisted(() => [] as unknown[]);
 let pairedDevices: Array<Record<string, unknown>> = [];
 let sessionsQueryError: Error | null = null;
 let feedEvents: Array<Record<string, unknown>> = [];
@@ -129,12 +132,15 @@ vi.mock('@kontourai/station-sdk', () => ({
   useProjectQuery: () => ({ data: undefined }),
   // The open-chats refactor (archive#2683) renders shared membership metadata.
   useAgentsQuery: () => ({ data: [], isLoading: false }),
-  useOrchestrationSessionsQuery: () => ({
-    data: sessions,
-    isLoading: false,
-    error: sessionsQueryError,
-    refetch: refetchSessions,
-  }),
+  useOrchestrationSessionsQuery: (config?: unknown) => {
+    orchestrationSessionsQueryConfig.push(config);
+    return {
+      data: sessions,
+      isLoading: false,
+      error: sessionsQueryError,
+      refetch: refetchSessions,
+    };
+  },
   usePairedDevicesQuery,
   usePullRequestContextQuery: () => ({ data: { available: false } }),
   usePullRequestsQuery: () => ({ data: undefined }),
@@ -4257,6 +4263,38 @@ describe('SessionsView', () => {
 
       await waitFor(() => expect(document.activeElement).toBe(evidenceRegion));
       expect(onFocusConsumed).toHaveBeenCalledTimes(2);
+    });
+
+    /**
+     * The list is kept fresh by polling because the SSE feed is per-session.
+     * That poll belongs to the query: the interval this replaced called
+     * `refetch()` on the same cache entry from a second scheduler, so it kept
+     * firing in every state React Query pauses a `refetchInterval` for.
+     */
+    test('polls the sessions list through the query, not an interval beside it', () => {
+      orchestrationSessionsQueryConfig.length = 0;
+      const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+      try {
+        renderView();
+
+        expect(orchestrationSessionsQueryConfig.length).toBeGreaterThan(0);
+        expect(orchestrationSessionsQueryConfig[0]).toMatchObject({
+          refetchInterval: 5000,
+        });
+        // Some five-second timers in this tree belong to React Query's own
+        // `refetchInterval` machinery, so their presence proves nothing. What
+        // the removed interval did was call the list query's `refetch()`, so
+        // fire every five-second timer and assert none of them does.
+        refetchSessions.mockClear();
+        for (const [handler] of setIntervalSpy.mock.calls.filter(
+          ([, delay]) => delay === 5000,
+        )) {
+          (handler as () => void)();
+        }
+        expect(refetchSessions).not.toHaveBeenCalled();
+      } finally {
+        setIntervalSpy.mockRestore();
+      }
     });
   });
 });

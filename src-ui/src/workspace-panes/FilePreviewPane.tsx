@@ -24,7 +24,7 @@ import {
 } from 'react';
 import { Empty, SkeletonBlock } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
-import { langFromFilePath } from '../contexts/SyntaxHighlighterContext';
+import { langFromFilePath } from '../highlight/langFromFilePath';
 import {
   browserEpochMs,
   emitFilePreviewCommitPerformanceMark,

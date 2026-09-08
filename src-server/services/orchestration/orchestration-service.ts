@@ -72,6 +72,12 @@ import type {
   FlowRunFreshness,
 } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
+import {
+  foldedSessionLifecycleState,
+  SESSION_ENDED_REJECTION_CODE,
+  SESSION_LIFECYCLE_TRANSITIONS,
+} from '@kontourai/station-contracts/session-lifecycle';
 import type { DeclaredOutputDescriptor } from '@kontourai/station-contracts/session-output-declaration';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -84,12 +90,6 @@ import type { SessionBuilderRunView } from '@kontourai/station-contracts/workflo
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
-import type { SessionLifecycleState } from '../../../packages/contracts/src/session-lifecycle.js';
-import {
-  foldedSessionLifecycleState,
-  SESSION_ENDED_REJECTION_CODE,
-  SESSION_LIFECYCLE_TRANSITIONS,
-} from '../../../packages/contracts/src/session-lifecycle.js';
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
 import type { UsagePricingSnapshotCapture } from '../../analytics/usage-pricing-snapshot-capture.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';

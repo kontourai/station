@@ -15,6 +15,7 @@ import {
 import { useMemo, useReducer, useState } from 'react';
 import { selectChatReadyAgents } from '../components/agent-selection-policy';
 import { Button } from '../components/Button';
+import { BranchGlyph } from '../components/icons/Glyph';
 import { PageCallout, PageCalloutStack } from '../components/PageCallout';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
@@ -331,7 +332,8 @@ export function ProjectPage({ slug }: { slug: string }) {
           <div className="project-page__git-section">
             <div className="project-page__section-header">
               <span className="project-page__section-label">
-                ⎇ {gitStatus.branch}
+                <BranchGlyph className="project-page__section-label-icon" />{' '}
+                {gitStatus.branch}
                 {gitStatus.changes.length > 0 && (
                   <span className="project-page__git-section-dirty">
                     {' '}

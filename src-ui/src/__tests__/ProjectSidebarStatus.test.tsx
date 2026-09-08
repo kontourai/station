@@ -42,8 +42,12 @@ vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => agents,
 }));
 
+// Mutable so one test can put the registry in the state it is in for the
+// first tick after boot: `CommandPalette` registers `command-palette` from a
+// lazily-loaded chunk, and `getDisplay` answers '' until it lands.
+let paletteChord = 'Ctrl+K';
 vi.mock('../hooks/useKeyboardShortcut', () => ({
-  useShortcutDisplay: () => 'Ctrl+K',
+  useShortcutDisplay: () => paletteChord,
 }));
 
 beforeAll(() => {
@@ -162,8 +166,46 @@ describe('ProjectSidebarStatus', () => {
     expect(version.getAttribute('title')).toContain('commit dev');
   });
 
-  test('the ⌘K chip dispatches open-command-palette', () => {
+  test('the palette chip shows the chord the registry reports (#1649)', () => {
+    // It used to render a literal `⌘K`, which named a chord Windows and Linux
+    // users cannot press and which would not have followed a rebinding from
+    // Settings either. The stub is deliberately NOT the default chord: an
+    // assertion of `Ctrl+K` here would pass on the static fallback too, and
+    // prove nothing about which of the two the chip is reading.
     resetSessions();
+    paletteChord = 'Ctrl+Shift+P';
+    render(<ProjectSidebarStatus />);
+    const chip = screen.getByRole('button', { name: 'Command palette' });
+    expect(chip.textContent).toBe('Ctrl+Shift+P');
+    expect(chip.textContent).not.toContain('⌘');
+  });
+
+  test('the palette chip still names a chord before the registry has one', () => {
+    // The lazy-chunk window: `CommandPalette` registers `command-palette` from
+    // a deferred chunk, so `getDisplay` answers '' for the first tick. An
+    // empty chip would collapse the button to its padding. The fallback is
+    // platform-derived, so it is never the Mac keycap on a non-Mac platform —
+    // jsdom reports no Mac here, which is exactly the platform the bug was on.
+    resetSessions();
+    paletteChord = '';
+    render(<ProjectSidebarStatus />);
+    const chip = screen.getByRole('button', { name: 'Command palette' });
+    expect(chip.textContent).toBe('Ctrl+K');
+    expect(chip.textContent).not.toContain('⌘');
+  });
+
+  test('an unbound shortcut falls back rather than reading "Not set"', () => {
+    resetSessions();
+    paletteChord = 'Not set';
+    render(<ProjectSidebarStatus />);
+    expect(
+      screen.getByRole('button', { name: 'Command palette' }).textContent,
+    ).toBe('Ctrl+K');
+  });
+
+  test('the palette chip dispatches open-command-palette', () => {
+    resetSessions();
+    paletteChord = 'Ctrl+K';
     render(<ProjectSidebarStatus />);
     const listener = vi.fn();
     window.addEventListener('open-command-palette', listener);
