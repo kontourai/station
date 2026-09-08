@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 import { loadAll } from 'js-yaml';
 
@@ -52,8 +52,14 @@ const SPAWN_FORM_PATTERN =
   /\bspawnSync\b|\bexecFileSync\b|\bexecFile\(|\bspawn\(/;
 const SCRIPT_FILE_PATTERN = /scripts\/[A-Za-z0-9][A-Za-z0-9._-]*\.mjs/g;
 const CORPUS_EXECUTION_KEY = '_corpusExecution';
-const CORPUS_EXECUTION_ACKNOWLEDGED = 'acknowledged';
 const MAPPING_METADATA_KEYS = new Set(['_note', CORPUS_EXECUTION_KEY]);
+// An acknowledgement names the file that runs the check. A bare "yes" was
+// earned by ANY spawning file that happened to co-name the script -- two
+// unrelated test files did in this repository -- so deleting the real
+// executor left the acknowledgement green, which is the same underived label
+// the acknowledgement exists to remove.
+const RESOURCE_MANIFEST_PATH = 'scripts/vitest-resource-manifest.mjs';
+const TEST_FILE_PATTERN = /^[A-Za-z0-9._\-/]+\.test\.[cm]?[jt]sx?$/;
 
 function parseArguments(argv) {
   if (argv.length === 0) return DEFAULT_REPO_ROOT;
@@ -245,6 +251,14 @@ function resolveScriptFiles(scripts, scriptName) {
   return [...files].sort();
 }
 
+function readResourceManifest(repoRoot) {
+  try {
+    return readFileSync(resolve(repoRoot, RESOURCE_MANIFEST_PATH), 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
 function corpusExecutors(scripts, scriptName, corpusIndex) {
   const executors = [];
   for (const file of resolveScriptFiles(scripts, scriptName)) {
@@ -337,7 +351,7 @@ function validate(repoRoot) {
     }
   }
   const acknowledgements = mapping[CORPUS_EXECUTION_KEY];
-  const acknowledgedIds = new Set();
+  const acknowledgedExecutors = new Map();
   if (acknowledgements !== undefined) {
     if (
       !acknowledgements ||
@@ -345,7 +359,7 @@ function validate(repoRoot) {
       Array.isArray(acknowledgements)
     ) {
       errors.push(
-        `execution mapping ${CORPUS_EXECUTION_KEY} must be an object of evidence-check id to ${JSON.stringify(CORPUS_EXECUTION_ACKNOWLEDGED)}`,
+        `execution mapping ${CORPUS_EXECUTION_KEY} must be an object of evidence-check id to the test file that runs it`,
       );
     } else {
       for (const [id, value] of Object.entries(acknowledgements)) {
@@ -355,13 +369,13 @@ function validate(repoRoot) {
           );
           continue;
         }
-        if (value !== CORPUS_EXECUTION_ACKNOWLEDGED) {
+        if (typeof value !== 'string' || !TEST_FILE_PATTERN.test(value)) {
           errors.push(
-            `execution mapping ${CORPUS_EXECUTION_KEY}."${id}" must be ${JSON.stringify(CORPUS_EXECUTION_ACKNOWLEDGED)}, not ${JSON.stringify(value)}`,
+            `execution mapping ${CORPUS_EXECUTION_KEY}."${id}" must name the repository-relative test file that runs the check, not ${JSON.stringify(value)}`,
           );
           continue;
         }
-        acknowledgedIds.add(id);
+        acknowledgedExecutors.set(id, value);
       }
     }
   }
@@ -371,6 +385,7 @@ function validate(repoRoot) {
   const workflowReachable = workflowReachability(repoRoot, errors);
   const reachable = new Set([...laneReachable, ...workflowReachable]);
   const corpusIndex = corpusExecutionIndex(repoRoot, errors);
+  const resourceManifest = readResourceManifest(repoRoot);
 
   for (const [id, classification] of mappingEntries) {
     if (!CLASSIFICATIONS.has(classification)) {
@@ -415,14 +430,16 @@ function validate(repoRoot) {
       );
     }
     // An advisory check the Vitest corpus spawns is executed, whatever the
-    // npm-run graph says. Either the mapping acknowledges that execution, or
-    // the classification is a claim the repository contradicts.
+    // npm-run graph says. The scan is the DETECTOR of an unacknowledged
+    // executor; the acknowledgement itself names one file and is checked
+    // against that file, so deleting the real executor fails even while other
+    // files still co-name the script.
     const executors = corpusExecutors(scripts, scriptName, corpusIndex);
-    const acknowledged = acknowledgedIds.has(id);
+    const acknowledgedExecutor = acknowledgedExecutors.get(id);
     if (
       classification === 'advisory' &&
       executors.length > 0 &&
-      !acknowledged
+      acknowledgedExecutor === undefined
     ) {
       errors.push(
         `evidence check "${id}" is advisory but the Vitest corpus reaches it: ${executors
@@ -432,17 +449,40 @@ function validate(repoRoot) {
           )
           .join(
             '; ',
-          )}; reclassify it, or record "${id}": "${CORPUS_EXECUTION_ACKNOWLEDGED}" under ${CORPUS_EXECUTION_KEY} and say so in _note`,
+          )}; reclassify it, or record "${id}": "<the test file that runs it>" under ${CORPUS_EXECUTION_KEY} and say so in _note`,
       );
     }
-    if (acknowledged && classification !== 'advisory') {
+    if (acknowledgedExecutor === undefined) continue;
+    if (classification !== 'advisory') {
       errors.push(
         `evidence check "${id}" is ${classification} but ${CORPUS_EXECUTION_KEY} acknowledges it; the acknowledgement only qualifies an advisory classification`,
       );
+      continue;
     }
-    if (acknowledged && executors.length === 0) {
+    if (!existsSync(resolve(repoRoot, acknowledgedExecutor))) {
       errors.push(
-        `evidence check "${id}" is acknowledged as corpus-executed but no test file names a script "npm run ${scriptName}" runs while spawning a child process; remove the ${CORPUS_EXECUTION_KEY} entry`,
+        `evidence check "${id}" names ${acknowledgedExecutor} as its corpus executor, but that file does not exist`,
+      );
+      continue;
+    }
+    if (!executors.some(({ test }) => test === acknowledgedExecutor)) {
+      errors.push(
+        `evidence check "${id}" names ${acknowledgedExecutor} as its corpus executor, but that file does not name a script "npm run ${scriptName}" runs while spawning a child process`,
+      );
+      continue;
+    }
+    // The _note tells a reader which lane runs the check. A file no resource
+    // group claims is not a classified child-process test, so the lane claim
+    // would be prose nothing computes.
+    if (resourceManifest === undefined) {
+      errors.push(
+        `evidence check "${id}" is acknowledged as corpus-executed but ${RESOURCE_MANIFEST_PATH} could not be read to confirm ${acknowledgedExecutor} is a classified child-process test`,
+      );
+      continue;
+    }
+    if (!resourceManifest.includes(`'${acknowledgedExecutor}'`)) {
+      errors.push(
+        `evidence check "${id}" names ${acknowledgedExecutor} as its corpus executor, but ${RESOURCE_MANIFEST_PATH} does not classify it as a child-process test`,
       );
     }
   }

@@ -43,6 +43,12 @@ const MENTIONING_CORPUS_TEST = [
 const DEFAULT_CORPUS: Record<string, string> = {
   [CORPUS_TEST_PATH]: SPAWNING_CORPUS_TEST,
 };
+// The gate confirms the acknowledged executor is a classified child-process
+// test, so the fixture carries the same declaration the real repository does.
+const RESOURCE_MANIFEST_PATH = 'scripts/vitest-resource-manifest.mjs';
+const CLASSIFYING_RESOURCE_MANIFEST = `export const PROCESS_HEAVY_VITEST_FILES = ['${CORPUS_TEST_PATH}'];\n`;
+const EMPTY_RESOURCE_MANIFEST =
+  'export const PROCESS_HEAVY_VITEST_FILES = [];\n';
 
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) {
@@ -122,6 +128,11 @@ function createFixture(
       '      - run: npm run test:connected-agents',
     ].join('\n'),
   );
+  if (!Object.hasOwn(corpus, RESOURCE_MANIFEST_PATH))
+    corpus = {
+      ...corpus,
+      [RESOURCE_MANIFEST_PATH]: CLASSIFYING_RESOURCE_MANIFEST,
+    };
   for (const [path, contents] of Object.entries(corpus)) {
     const file = join(root, path);
     mkdirSync(dirname(file), { recursive: true });
@@ -244,12 +255,41 @@ describe('evidence-check execution gate', () => {
     expect(status).toBe(0);
   });
 
-  test('an acknowledgement no corpus file earns fails', () => {
-    const root = createFixture(() => {}, {});
+  test('deleting the named executor fails even while other files co-name the script', () => {
+    // The decisive case: a second file still names the script and spawns, so
+    // the co-occurrence scan alone would stay satisfied.
+    const root = createFixture(() => {}, {
+      'scripts/__tests__/unrelated-spawner.test.ts': SPAWNING_CORPUS_TEST,
+    });
 
     const { status, output } = runGate(root);
     expect(output).toContain(
-      'evidence check "repo-guardrails" is acknowledged as corpus-executed but no test file names a script "npm run proof:repo-guardrails" runs while spawning a child process',
+      `evidence check "repo-guardrails" names ${CORPUS_TEST_PATH} as its corpus executor, but that file does not exist`,
+    );
+    expect(status).toBe(1);
+  });
+
+  test('an acknowledgement pointing at a file that does not spawn fails', () => {
+    const root = createFixture(() => {}, {
+      [CORPUS_TEST_PATH]: MENTIONING_CORPUS_TEST,
+    });
+
+    const { status, output } = runGate(root);
+    expect(output).toContain(
+      `evidence check "repo-guardrails" names ${CORPUS_TEST_PATH} as its corpus executor, but that file does not name a script "npm run proof:repo-guardrails" runs while spawning a child process`,
+    );
+    expect(status).toBe(1);
+  });
+
+  test('an executor the resource manifest does not classify fails', () => {
+    const root = createFixture(() => {}, {
+      [CORPUS_TEST_PATH]: SPAWNING_CORPUS_TEST,
+      [RESOURCE_MANIFEST_PATH]: EMPTY_RESOURCE_MANIFEST,
+    });
+
+    const { status, output } = runGate(root);
+    expect(output).toContain(
+      `evidence check "repo-guardrails" names ${CORPUS_TEST_PATH} as its corpus executor, but ${RESOURCE_MANIFEST_PATH} does not classify it as a child-process test`,
     );
     expect(status).toBe(1);
   });
@@ -257,6 +297,7 @@ describe('evidence-check execution gate', () => {
   test('an acknowledgement on a non-advisory classification fails', () => {
     const root = createFixture(({ mapping, packageJson }) => {
       mapping['repo-guardrails'] = 'enforced';
+      void packageJson;
       packageJson.scripts['verify:static:raw'] +=
         ' && npm run proof:repo-guardrails';
     });
@@ -280,14 +321,14 @@ describe('evidence-check execution gate', () => {
     expect(status).toBe(1);
   });
 
-  test('a _corpusExecution value other than acknowledged fails', () => {
+  test('a _corpusExecution value that is not a test file path fails', () => {
     const root = createFixture(({ mapping }) => {
-      mapping._corpusExecution = { 'repo-guardrails': true };
+      mapping._corpusExecution = { 'repo-guardrails': 'acknowledged' };
     });
 
     const { status, output } = runGate(root);
     expect(output).toContain(
-      'execution mapping _corpusExecution."repo-guardrails" must be "acknowledged", not true',
+      'execution mapping _corpusExecution."repo-guardrails" must name the repository-relative test file that runs the check, not "acknowledged"',
     );
     expect(status).toBe(1);
   });

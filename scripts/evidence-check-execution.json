@@ -1,7 +1,7 @@
 {
-  "_note": "repo-guardrails remains advisory: it currently passes with 104 baselined violations, and no npm-run lane root or workflow run block invokes \"npm run proof:repo-guardrails\" (station#2299). It is not unreached, though: scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts runs the proof inside the PROCESS_HEAVY Vitest corpus -- under full:regression, the nightly and release gate -- and asserts its exit status, including a positive control that the unmutated proof passes. _corpusExecution records that execution so the advisory label cannot be read as \"nothing runs this\" (#1746). Promoting it to enforced is a separate decision that also depends on the station#2765 burn-down.",
+  "_note": "repo-guardrails remains advisory: it currently passes with 104 baselined violations, and no npm-run lane root or workflow run block invokes \"npm run proof:repo-guardrails\" (station#2299). It is not unreached, though: the test file named in _corpusExecution runs the proof inside the Vitest corpus and asserts its exit status, including a positive control that the unmutated proof passes; scripts/vitest-resource-manifest.mjs classifies that file as process-heavy, so full:regression -- the nightly and release gate -- is the lane that runs it. The acknowledgement names its executor so the label stays derived from a file the gate checks rather than from prose (#1746). Promoting the check to enforced is a separate decision that also depends on the station#2765 burn-down.",
   "_corpusExecution": {
-    "repo-guardrails": "acknowledged"
+    "repo-guardrails": "scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts"
   },
   "repo-governance": "enforced",
   "verification-policy": "enforced",
