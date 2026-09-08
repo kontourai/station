@@ -29,6 +29,11 @@ vi.mock('../contexts/NavigationContext', () => {
     navigate: vi.fn(),
     setProject: vi.fn(),
     setLayout: vi.fn(),
+    // ProjectSidebarRow selects `pathname` to style its Session Board entry.
+    // The real snapshot always carries a string; leaving it out only avoided
+    // a TypeError because this fixture's board-availability read is
+    // `undefined`, so the branch that dereferences it never runs.
+    pathname: '/',
   });
   return {
     useNavigation: (
