@@ -447,10 +447,60 @@ export function selectInternalGroup(payload, { appId, groupId, groupName }) {
       `App Store Connect beta group ${groupId} is not the exact internal group for app ${appId}`,
     );
   }
+  // hasAccessToAllBuilds decides whether membership is automatic (the
+  // provider refuses a manual POST with HTTP 422) or must be assigned. A
+  // missing or non-boolean value is not a default; it is an unknown shape.
+  if (typeof group.attributes.hasAccessToAllBuilds !== 'boolean') {
+    throw new Error(
+      `App Store Connect beta group ${groupId} does not report hasAccessToAllBuilds as a boolean`,
+    );
+  }
   return group;
 }
 
-export async function attachInternalGroup(argv, env) {
+const MEMBERSHIP_POLL_MS = 10_000;
+
+/**
+ * Reads the group's build list until it lists the build exactly once or the
+ * deadline passes. A freshly processed build can take a moment to appear in
+ * a group that receives every build automatically.
+ */
+async function waitForGroupMembership(
+  { appId, buildId, groupId, groupName, deadline },
+  env,
+  { sleep, now },
+) {
+  for (;;) {
+    const relationships = await appStoreConnectRequest(
+      `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/builds?limit=200`,
+      credentialsFromEnvironment(env),
+    );
+    const attached = Array.isArray(relationships?.data)
+      ? relationships.data.filter(
+          (entry) => entry?.type === 'builds' && entry?.id === buildId,
+        )
+      : [];
+    if (attached.length === 1) return;
+    if (attached.length > 1)
+      throw new Error(
+        `App Store Connect beta group ${groupId} lists build ${buildId} ${attached.length} times`,
+      );
+    if (now() >= deadline)
+      throw new Error(
+        `App Store Connect beta group ${groupName} (${groupId}) for app ${appId} does not contain build ${buildId} before the deadline`,
+      );
+    await sleep(MEMBERSHIP_POLL_MS);
+  }
+}
+
+export async function attachInternalGroup(
+  argv,
+  env,
+  {
+    sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    now = Date.now,
+  } = {},
+) {
   const appId = requiredOption(argv, '--app-id');
   const buildId = requiredOption(argv, '--build-id');
   const groupId = requiredOption(argv, '--group-id');
@@ -458,6 +508,15 @@ export async function attachInternalGroup(argv, env) {
   const output = requiredOption(argv, '--output');
   if (!/^[A-Za-z0-9-]+$/.test(groupId))
     throw new Error('--group-id must be an App Store Connect resource id');
+  const deadlineSeconds = Number(
+    valueAfter(argv, '--deadline-seconds') ?? '60',
+  );
+  if (
+    !Number.isInteger(deadlineSeconds) ||
+    deadlineSeconds < 10 ||
+    deadlineSeconds > 600
+  )
+    throw new Error('--deadline-seconds must be an integer from 10 to 600');
   const groupQuery = new URLSearchParams({
     'filter[app]': appId,
     'filter[name]': groupName,
@@ -467,7 +526,29 @@ export async function attachInternalGroup(argv, env) {
     `/v1/betaGroups?${groupQuery}`,
     credentialsFromEnvironment(env),
   );
-  selectInternalGroup(payload, { appId, groupId, groupName });
+  const group = selectInternalGroup(payload, { appId, groupId, groupName });
+  const hasAccessToAllBuilds = group.attributes.hasAccessToAllBuilds;
+  const deadline = now() + deadlineSeconds * 1000;
+  const membership = { appId, buildId, groupId, groupName, deadline };
+  if (hasAccessToAllBuilds) {
+    // An internal group with access to all builds receives every build
+    // automatically and refuses manual attachment (#1777). Membership is
+    // derived from the group's build list, never asserted by a POST.
+    await waitForGroupMembership(membership, env, { sleep, now });
+    writeReceipt(output, {
+      schemaVersion: 1,
+      kind: 'testflight-internal-group-assignment',
+      appId,
+      buildId,
+      groupId,
+      groupName,
+      membership: 'automatic',
+      hasAccessToAllBuilds,
+      assignmentResponseStatus: null,
+      observedAt: new Date().toISOString(),
+    });
+    return;
+  }
   const token = createAppStoreConnectJwt(credentialsFromEnvironment(env));
   const response = await fetch(
     new URL(
@@ -501,19 +582,7 @@ export async function attachInternalGroup(argv, env) {
     throw new Error(
       'App Store Connect beta-group response exceeded the 1 MiB limit',
     );
-  const relationships = await appStoreConnectRequest(
-    `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/builds?limit=200`,
-    credentialsFromEnvironment(env),
-  );
-  const attached = Array.isArray(relationships?.data)
-    ? relationships.data.filter(
-        (entry) => entry?.type === 'builds' && entry?.id === buildId,
-      )
-    : [];
-  if (attached.length !== 1)
-    throw new Error(
-      `App Store Connect beta group ${groupId} does not contain build ${buildId} exactly once`,
-    );
+  await waitForGroupMembership(membership, env, { sleep, now });
   writeReceipt(output, {
     schemaVersion: 1,
     kind: 'testflight-internal-group-assignment',
@@ -521,6 +590,8 @@ export async function attachInternalGroup(argv, env) {
     buildId,
     groupId,
     groupName,
+    membership: 'assigned',
+    hasAccessToAllBuilds,
     assignmentResponseStatus: response.status,
     observedAt: new Date().toISOString(),
   });

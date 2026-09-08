@@ -11,7 +11,7 @@ import {
   nightlyDayNumber,
   nightlyVersion,
 } from './lib/nightly-build-identity.mjs';
-import { canonicalJson } from './release-cohort.mjs';
+import { canonicalJson, unshippedState } from './release-cohort.mjs';
 
 const fail = (message) => {
   throw new Error(`release cohort workflow: ${message}`);
@@ -56,7 +56,7 @@ function planInput([destination, sourceSha, workflowRunId, date, build]) {
     workflowRunId: required(workflowRunId, 'workflow run id'),
     versionIdentities: identities(date, build),
     availabilityPolicy: {
-      releaseMode: 'atomic',
+      releaseMode: 'per-platform',
       requiredReceipt: 'provider-backed',
       externalEvidenceAuthority: 'github-artifact-attestation',
     },
@@ -265,12 +265,16 @@ function providerClaim([destination, planPath, platform, observationPath]) {
   });
 }
 
-function unknownClaim([destination, planPath, platform, reference]) {
+function unresolvedClaim(
+  [destination, planPath, platform, reference],
+  outcome,
+  recoveryAction,
+) {
   const plan = json(planPath);
   const provider = platform === 'android' ? 'google-play' : 'github-releases';
   const claim = {
     platform,
-    outcome: 'unknown',
+    outcome,
     providerEvidenceClaim: {
       provider,
       immutableReference: `unresolved:${required(reference, 'observation reference')}`,
@@ -278,9 +282,35 @@ function unknownClaim([destination, planPath, platform, reference]) {
       cohortId: plan.cohortId,
       sourceSha: plan.sourceSha,
     },
-    recoveryAction: `Do not rerun promotion; inspect ${reference} and reconcile the provider before retrying.`,
+    recoveryAction,
   };
   write(destination, claim);
+}
+
+/**
+ * The platform's job ran but its outcome is unresolved. The provider effect
+ * (Play upload, release assets and the rolling tag) precedes the claim step,
+ * so it may already have happened: this is NOT_VERIFIED, never "not
+ * published". Rerunning the job would re-upload the same reserved version
+ * code; the next plan reads both rolling markers as they stand (#1774).
+ */
+function unknownClaim(args) {
+  const [, , platform, reference] = args;
+  unresolvedClaim(
+    args,
+    'unknown',
+    `Do not rerun this promotion job; inspect ${reference}. The ${platform} outcome is unverified: its provider effect may have happened before the claim was recorded. The next Nightly plans from the rolling markers as they stand.`,
+  );
+}
+
+/** The platform's job never ran, so no provider effect was attempted. */
+function notAttemptedClaim(args) {
+  const [, , platform, reference] = args;
+  unresolvedClaim(
+    args,
+    'not_attempted',
+    `The ${platform} publishing job did not run (${reference}); no provider effect was attempted.`,
+  );
 }
 
 function readOptional(path) {
@@ -292,6 +322,66 @@ function readOptional(path) {
   }
 }
 
+const COHORT_PLATFORMS = Object.freeze(['android', 'macos']);
+/** The jobs whose non-success makes a night incomplete (#1774). */
+const COHORT_CHAIN_JOBS = Object.freeze([
+  'promote-android',
+  'promote-macos',
+  'protected-finalize',
+  'record-native-completion',
+  'promotion-fence-clear',
+]);
+const RECOVERY_STATE = 'incomplete';
+
+/**
+ * What one platform's publishing job left behind: its own job result and,
+ * when its per-platform state artifact exists, the provider claim it
+ * recorded. An absent state is disclosed as such rather than inferred.
+ */
+function platformDisclosure(platform, jobResults, statePath) {
+  const bytes = readOptional(statePath);
+  let claim = 'absent';
+  if (bytes) {
+    let state;
+    try {
+      state = JSON.parse(bytes);
+    } catch {
+      fail(`recovery ${platform} promotion state is not valid JSON`);
+    }
+    const receipt = state?.promotionReceipts?.[0];
+    if (
+      state?.kind !== 'station.release-cohort-state/v1' ||
+      !Array.isArray(state.promotionReceipts) ||
+      state.promotionReceipts.length !== 1 ||
+      receipt?.platform !== platform ||
+      typeof receipt.outcome !== 'string'
+    ) {
+      fail(`recovery ${platform} promotion state is not that platform's claim`);
+    }
+    claim = receipt.outcome;
+  }
+  const jobResult = jobResults[`promote-${platform}`] ?? 'not-run';
+  return {
+    jobResult,
+    claim,
+    // REPORTED: the job recorded a reported-success claim; whether it was
+    // verified is the final receipt's business, not this one's.
+    state:
+      claim === 'reported_success'
+        ? 'REPORTED'
+        : unshippedState(claim, jobResult),
+    claimDigest: bytes ? `sha256:${sha256(bytes)}` : null,
+  };
+}
+
+/**
+ * Discloses an incomplete native cohort run: which chain jobs did not
+ * succeed, what each platform's own job recorded, and the digests of every
+ * evidence file the run left behind. It is a receipt, not a lock (#1774):
+ * automation never writes `refs/tags/nightly-recovery-lock`; an owner who
+ * wants to halt the next Nightly places that tag with this receipt's
+ * canonical message (`canonical-recovery-message`).
+ */
 function recoveryReceipt([
   destination,
   sourceSha,
@@ -302,6 +392,8 @@ function recoveryReceipt([
   candidatePath,
   playObservationPath,
   githubReleaseObservationPath,
+  androidStatePath,
+  macosStatePath,
 ]) {
   if (!/^[0-9a-f]{40}$/.test(sourceSha ?? ''))
     fail('recovery source sha is invalid');
@@ -346,21 +438,45 @@ function recoveryReceipt([
       githubReleaseObservationDigest: digestFile(githubReleaseObservationPath),
     },
   };
+  if (COHORT_CHAIN_JOBS.every((job) => jobResults[job] === 'success'))
+    fail('every cohort chain job succeeded; there is nothing to disclose');
+  const platforms = Object.fromEntries(
+    COHORT_PLATFORMS.map((platform) => [
+      platform,
+      platformDisclosure(
+        platform,
+        jobResults,
+        platform === 'android' ? androidStatePath : macosStatePath,
+      ),
+    ]),
+  );
   const finalityConfirmed = jobResults['protected-finalize'] === 'success';
-  const durableCompletionPartial =
-    jobResults['record-native-completion'] !== 'success';
+  // Derived from the record job's durable writes (ledger rows, Android
+  // marker), not from whether the job as a whole failed: a record job that
+  // died before any write recorded nothing; one that wrote the ledger and
+  // then failed the marker recorded part; a successful job recorded all it
+  // set out to (the marker is legitimately skipped when Android did not
+  // publish).
+  const durableWrites = ['ledger', 'tag'].map((key) => jobResults[key]);
+  const durableCompletion =
+    jobResults['record-native-completion'] === 'success'
+      ? 'recorded'
+      : durableWrites.some((value) => value === 'success')
+        ? 'partial'
+        : 'not-recorded';
   const base = {
     kind: 'station.release-cohort-recovery/v1',
-    state: 'partial_recovery_required',
+    state: RECOVERY_STATE,
     sourceSha,
     workflowRunId,
     cohortId: plan?.cohortId ?? null,
     planContentDigest: plan?.planContentDigest ?? null,
     jobResults,
+    platforms,
     evidence,
     completion: {
       providerFinality: finalityConfirmed ? 'confirmed' : 'unconfirmed',
-      durableCompletion: durableCompletionPartial ? 'partial' : 'not-recorded',
+      durableCompletion,
       finalAttestation: jobResults['final-attestation'] ?? 'not-run',
       appToken: jobResults['app-token'] ?? 'not-run',
       ledger: jobResults.ledger ?? 'not-run',
@@ -372,7 +488,7 @@ function recoveryReceipt([
       outcome: jobResults['promotion-fence-clear'] ?? 'not-run',
     },
     recoveryAction:
-      'Do not rerun automatically. An owner must reconcile provider, final-attestation, app-token, ledger, and tag state, then explicitly remove refs/tags/nightly-recovery-lock.',
+      'No lock was written and the next Nightly plans normally from the rolling markers as they stand. Inspect jobResults, platforms (NOT_VERIFIED means the provider effect may already be live), evidence, and the ledger rows this run wrote. To halt future Nightlies, an owner may place refs/tags/nightly-recovery-lock with this receipt as its canonical tag message.',
   };
   write(destination, {
     ...base,
@@ -384,7 +500,7 @@ function recoveryValue(value, sourceSha) {
   const { recoveryContentDigest, ...base } = value ?? {};
   if (
     value?.kind !== 'station.release-cohort-recovery/v1' ||
-    value.state !== 'partial_recovery_required' ||
+    value.state !== RECOVERY_STATE ||
     value.sourceSha !== sourceSha ||
     typeof value.workflowRunId !== 'string' ||
     !/^[1-9][0-9]{0,18}$/.test(value.workflowRunId) ||
@@ -426,17 +542,102 @@ function assertRecoveryTagObject([tagPath, sourceSha]) {
     fail('recovery tag message is not canonical recovery JSON');
 }
 
-function assertFinal([receiptPath, sourceSha]) {
+const PLATFORM_PROVIDER = Object.freeze({
+  android: 'google-play',
+  macos: 'github-releases',
+});
+
+/**
+ * Reads a final receipt the protected verifier emitted and re-derives its
+ * disclosed shape: `complete` means every required platform was verified as
+ * published; `partial` means at least one was and every other carries a
+ * NOT_VERIFIED or NOT_PUBLISHED reason derived from its own claim
+ * (`unshippedState`). A platform may only be `complete` when the receipt
+ * carries that platform's provider observation, and vice versa (#1774).
+ */
+function finalReceipt(receiptPath, sourceSha) {
   const receipt = json(receiptPath);
   const { finalContentDigest, ...base } = receipt;
   if (
     receipt.kind !== 'station.release-cohort-final/v1' ||
-    receipt.state !== 'complete' ||
+    !['complete', 'partial'].includes(receipt.state) ||
     receipt.sourceSha !== sourceSha ||
     typeof finalContentDigest !== 'string' ||
     finalContentDigest !== `sha256:${sha256(Buffer.from(canonicalJson(base)))}`
   ) {
-    fail('final receipt is not a complete exact-source cohort receipt');
+    fail('final receipt is not an exact-source cohort receipt');
+  }
+  const platforms = receipt.platforms;
+  if (
+    !platforms ||
+    typeof platforms !== 'object' ||
+    Array.isArray(platforms) ||
+    canonicalJson(Object.keys(platforms).sort()) !==
+      canonicalJson(COHORT_PLATFORMS) ||
+    !Array.isArray(receipt.providers)
+  ) {
+    fail('final receipt does not disclose every required platform');
+  }
+  const observed = receipt.providers.map((provider) => provider?.provider);
+  const shipped = [];
+  for (const platform of COHORT_PLATFORMS) {
+    const entry = platforms[platform];
+    const provider = PLATFORM_PROVIDER[platform];
+    if (entry?.state === 'complete') {
+      if (
+        entry.provider !== provider ||
+        observed.filter((name) => name === provider).length !== 1
+      )
+        fail(
+          `final receipt marks ${platform} complete without exactly one ${provider} observation`,
+        );
+      shipped.push(platform);
+    } else if (
+      entry?.state === 'NOT_PUBLISHED' ||
+      entry?.state === 'NOT_VERIFIED'
+    ) {
+      if (typeof entry.reason !== 'string' || !entry.reason.trim())
+        fail(
+          `final receipt discloses ${platform} ${entry.state} without a reason`,
+        );
+      if (unshippedState(entry.outcome) !== entry.state)
+        fail(
+          `final receipt ${platform} ${entry.state} is not derived from its claim outcome ${String(entry.outcome)}`,
+        );
+      if (observed.includes(provider))
+        fail(
+          `final receipt carries a ${provider} observation for unverified ${platform}`,
+        );
+    } else {
+      fail(`final receipt has no disclosed state for ${platform}`);
+    }
+  }
+  if (!shipped.length)
+    fail('final receipt must verify at least one published platform');
+  const derived =
+    shipped.length === COHORT_PLATFORMS.length ? 'complete' : 'partial';
+  if (receipt.state !== derived)
+    fail(`final receipt state ${receipt.state} is not its derived ${derived}`);
+  return { receipt, shipped };
+}
+
+function assertFinal([receiptPath, sourceSha]) {
+  finalReceipt(receiptPath, sourceSha);
+}
+
+/**
+ * One ledger note per platform the final receipt discloses as NOT_VERIFIED
+ * or NOT_PUBLISHED, so a partial night is readable from every ledger row it
+ * did write.
+ */
+function finalPlatformNotes([receiptPath, sourceSha]) {
+  const { receipt } = finalReceipt(receiptPath, sourceSha);
+  for (const platform of COHORT_PLATFORMS) {
+    const entry = receipt.platforms[platform];
+    if (entry.state !== 'complete')
+      process.stdout.write(
+        `${platform}: ${entry.state} (${entry.reason.replace(/\s+/g, ' ').trim()})\n`,
+      );
   }
 }
 
@@ -458,13 +659,17 @@ try {
   else if (command === 'provider-claim' && args.length === 4)
     providerClaim(args);
   else if (command === 'unknown-claim' && args.length === 4) unknownClaim(args);
-  else if (command === 'recovery-receipt' && args.length === 9)
+  else if (command === 'not-attempted-claim' && args.length === 4)
+    notAttemptedClaim(args);
+  else if (command === 'recovery-receipt' && args.length === 11)
     recoveryReceipt(args);
   else if (command === 'canonical-recovery-message' && args.length === 1)
     canonicalRecoveryMessage(args);
   else if (command === 'assert-recovery-tag-object' && args.length === 2)
     assertRecoveryTagObject(args);
   else if (command === 'assert-final' && args.length === 2) assertFinal(args);
+  else if (command === 'final-platform-notes' && args.length === 2)
+    finalPlatformNotes(args);
   else fail('usage is invalid');
 } catch (error) {
   process.stderr.write(`${error.message}\n`);

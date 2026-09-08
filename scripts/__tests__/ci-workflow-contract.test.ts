@@ -346,8 +346,10 @@ describe('CI verification workflow contracts', () => {
         name,
         conclusion: missingTerminal && index === 0 ? 'skipped' : 'success',
       }));
+      // Skipped on a complete night; it runs only when a chain job did not
+      // succeed, and then only writes a receipt (#1774).
       jobs.push({
-        name: 'Recovery lock (owner must reconcile)',
+        name: '3 · Publish native cohort / Record incomplete-cohort receipt',
         conclusion: 'skipped',
       });
       const listJobs = vi.fn();
