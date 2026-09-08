@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { type Alias, defineConfig } from 'vite';
 import tauriConfig from './src-desktop/tauri.conf.json';
 
 // Build identity is injected into index.html rather than the JavaScript module
@@ -164,7 +164,11 @@ export default defineConfig(({ command }) => {
     worker: { format: 'es' },
     root: './src-ui',
     resolve: {
-      alias: {
+      // Vite accepts either an object of aliases (string keys only, matched as
+      // prefixes) or an array (whose `find` may also be a RegExp). The object
+      // below keeps the plain prefix aliases; the array tail carries the one
+      // entry that must match EXACTLY.
+      alias: Object.entries({
         '@': path.resolve(__dirname, './src-ui/src'),
         '@shared': path.resolve(__dirname, './src-shared'),
         // SDK subpath aliases must precede the exact package alias so Vite
@@ -293,22 +297,14 @@ export default defineConfig(({ command }) => {
           __dirname,
           './packages/sdk/src/index.ts',
         ),
-        // Subpath aliases must precede the package alias so the longer key wins.
+        // The ONE connect subpath that still needs an alias. Every other
+        // SUBPATH in `packages/connect`'s `exports` map points straight at a
+        // `src/*.ts` file Vite resolves on its own; `./health-probe` is the
+        // exception, pointing — like the root `.` below — at `dist/`, which
+        // `build:ui` does not build.
         '@kontourai/station-connect/health-probe': path.resolve(
           __dirname,
           './packages/connect/src/core/healthProbe.ts',
-        ),
-        '@kontourai/station-connect/known-environment': path.resolve(
-          __dirname,
-          './packages/connect/src/core/knownEnvironmentRegistry.ts',
-        ),
-        '@kontourai/station-connect/pairing-deep-link': path.resolve(
-          __dirname,
-          './packages/connect/src/core/pairingDeepLink.ts',
-        ),
-        '@kontourai/station-connect': path.resolve(
-          __dirname,
-          './packages/connect/src/index.ts',
         ),
         '@kontourai/station-contracts/orchestration': path.resolve(
           __dirname,
@@ -322,7 +318,26 @@ export default defineConfig(({ command }) => {
           __dirname,
           './packages/contracts/src/runtime-events.ts',
         ),
-      },
+      })
+        .map(([find, replacement]): Alias => ({ find, replacement }))
+        .concat([
+          {
+            // #1748: EXACT match, never a prefix. As a string key this alias
+            // also matched `@kontourai/station-connect/<anything>` and
+            // rewrote it to `packages/connect/src/index.ts/<anything>`, so
+            // every subpath without its own alias above failed `build:ui`
+            // with ENOTDIR. Anchored, unlisted subpaths fall through to
+            // Node resolution and connect's own `exports` map, which points
+            // them at `src/*.ts`. `vitest.config.ts` already anchors the
+            // same alias. It is last because an alias array is matched in
+            // order and an exact match cannot shadow anything above it.
+            find: /^@kontourai\/station-connect$/,
+            replacement: path.resolve(
+              __dirname,
+              './packages/connect/src/index.ts',
+            ),
+          },
+        ]),
     },
     build: {
       sourcemap: process.env.STATION_JOURNEY_PROFILE_DIR ? 'hidden' : false,
