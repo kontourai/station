@@ -115,9 +115,18 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
 }));
 
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ setLayout: () => {} }),
-}));
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({ setLayout: () => {} });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 
 import { ChatDockHeaderMoreMenu } from '../components/chat-dock/ChatDockHeaderMoreMenu';
 import { DockPlacementControl } from '../components/chat-dock/DockPlacementControl';

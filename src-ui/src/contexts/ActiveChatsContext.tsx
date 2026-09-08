@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { usePruneActiveChats } from '../hooks/usePruneActiveChats';
+import { isShallowEqual } from '../utils/isShallowEqual';
 import {
   type ActiveChatMetadata,
   type ActiveChatsMap,
@@ -234,29 +235,6 @@ export function useActiveChatState(sessionId: string): ChatUIState | null {
   );
 
   return chats[sessionId] || null;
-}
-
-function isShallowEqual<T>(a: T, b: T): boolean {
-  if (Object.is(a, b)) return true;
-  if (
-    typeof a !== 'object' ||
-    a === null ||
-    typeof b !== 'object' ||
-    b === null
-  ) {
-    return false;
-  }
-  const aRecord = a as Record<string, unknown>;
-  const bRecord = b as Record<string, unknown>;
-  const aKeys = Object.keys(aRecord);
-  const bKeys = Object.keys(bRecord);
-  if (aKeys.length !== bKeys.length) return false;
-  for (const key of aKeys) {
-    if (!Object.is(aRecord[key], bRecord[key])) {
-      return false;
-    }
-  }
-  return true;
 }
 
 /**
