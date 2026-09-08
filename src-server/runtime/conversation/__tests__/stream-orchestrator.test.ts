@@ -84,6 +84,30 @@ describe('writeSSEChunk', () => {
     expect(order).toEqual(['writeSSEChunk-resolved', 'pre-queued-macrotask']);
   });
 
+  test('resolves without a CHECK-phase turn either — a setImmediate yield is the same per-frame round trip', async () => {
+    // The timer test above does not cover this and neither does the bulk one:
+    // `setImmediate` has no 1ms clamp, so a per-frame
+    // `await new Promise((r) => setImmediate(r))` finishes 1000 frames well
+    // inside the bulk bound, and it resolves ahead of a pre-queued
+    // `setTimeout(0)` rather than behind it. Only a pre-queued IMMEDIATE
+    // discriminates: an immediate scheduled inside the call is queued behind
+    // this one, so the write could not resolve first.
+    const streamWriter = { write: () => Promise.resolve() };
+    const order: string[] = [];
+    const preQueuedImmediate = new Promise<void>((resolve) => {
+      setImmediate(() => {
+        order.push('pre-queued-immediate');
+        resolve();
+      });
+    });
+
+    await writeSSEChunk(streamWriter, { type: 'text-delta', text: 'hi' });
+    order.push('writeSSEChunk-resolved');
+    await preQueuedImmediate;
+
+    expect(order).toEqual(['writeSSEChunk-resolved', 'pre-queued-immediate']);
+  });
+
   test('1000 sequential frames cost no event-loop turns — a per-frame setTimeout(0) could not finish this fast', async () => {
     const streamWriter = { write: () => Promise.resolve() };
 
