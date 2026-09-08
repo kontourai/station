@@ -1,33 +1,25 @@
 import type { Page } from '@playwright/test';
 import {
-  LOCAL_UI_SESSION_ATTEMPT_LIMIT,
   LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS,
+  LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS,
+  LOCAL_UI_SESSION_IDENTITY_TOTAL_DEADLINE_MS,
 } from '../../src-ui/src/lib/local-ui-session-retry';
 
 /**
- * On a loaded host, one `/api/system/identity` request has been observed waiting
- * this long before the Station-owned UI proxy answered
- * `{"ready":false,"status":"unavailable"}` (station#1617). It is the slowest real
- * dependency of everything below.
+ * WHAT USED TO BE HERE, and why it is not: `OBSERVED_SLOW_IDENTITY_ANSWER_MS`,
+ * one measured 6.6 s answer from a loaded host, multiplied by the attempt limit
+ * as though it were a bound (#1661). The only real bound on one request was the UI
+ * proxy's own 30 s upstream timeout (`proxyToBackend` in
+ * `packages/cli/src/commands/lifecycle.ts`), roughly four times larger — and
+ * fixing station#1654 made the gap worse rather than better, because a proxy
+ * timeout is now the host being away, so a long answer sits INSIDE the retry
+ * ladder instead of ending it.
  *
- * A SAMPLE, not a bound, and the name says so on purpose: the UI proxy's own
- * upstream timeout is 30 s (`proxyToBackend` in
- * `packages/cli/src/commands/lifecycle.ts`), so one request can legitimately take
- * that long. A SINGLE such attempt is reachable today and already grazes the
- * budget below — 30 s leaves 3.4 s of this 4 s render allowance, so on exactly
- * the loaded host the allowance exists for, the wait expires before the gate
- * settles and reports "never settled" instead of the accurate refusal.
- *
- * What caps the long attempts at ONE is today's MISCLASSIFICATION: a proxy
- * timeout answers 504, the ladder reads that as a refusal, and the ladder ends.
- * So #1654's prescribed fix — classify that timeout as `host-unavailable` — puts
- * a 30 s response INSIDE the ladder and multiplies it by the attempt limit,
- * roughly 90 s against this 33.4 s budget. Fixing #1654 UNCAPS them, and after
- * it the failure is not a possible misdiagnosis but a guaranteed timeout. The
- * remedy #1661 needs is therefore a per-request deadline on the identity read,
- * not a larger allowance here.
+ * The gate now declares its own per-attempt deadlines, so the sample lives beside
+ * them as the evidence they answer to
+ * (`src-ui/src/lib/local-ui-session-retry.ts`), and this budget derives from the
+ * deadlines instead of scaling the sample.
  */
-const OBSERVED_SLOW_IDENTITY_ANSWER_MS = 6_600;
 /** The navigation's module graph and the gate's first render. */
 const NAVIGATION_AND_RENDER_ALLOWANCE_MS = 4_000;
 /** Tearing the document down and back up for a gate-directed reload. */
@@ -51,6 +43,12 @@ const GATE_DIRECTED_RELOAD_ALLOWANCE_MS = 2_000;
  * worst case: a full ladder on the first page, the reload, and one more answer
  * on the reloaded page.
  *
+ * Every one of those reads is now BOUNDED by the gate's own per-attempt deadline
+ * (#1661), which is what makes this sum a derivation rather than a sample scaled
+ * up. The ladder term is the whole schedule, because a host that stays away
+ * spends every rung; the post-reload term is the FIRST deadline, because that is
+ * the rung the reloaded page starts on.
+ *
  * This EXCEEDS `PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS`, the runner default
  * `playwright.config.ts` sets, so a caller that has not raised its own
  * `test.setTimeout` dies as a bare test timeout — naming nothing, which is the
@@ -62,10 +60,10 @@ const GATE_DIRECTED_RELOAD_ALLOWANCE_MS = 2_000;
  */
 export const LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS =
   NAVIGATION_AND_RENDER_ALLOWANCE_MS +
-  OBSERVED_SLOW_IDENTITY_ANSWER_MS * LOCAL_UI_SESSION_ATTEMPT_LIMIT +
+  LOCAL_UI_SESSION_IDENTITY_TOTAL_DEADLINE_MS +
   LOCAL_UI_SESSION_HOST_RETRY_TOTAL_DELAY_MS +
   GATE_DIRECTED_RELOAD_ALLOWANCE_MS +
-  OBSERVED_SLOW_IDENTITY_ANSWER_MS;
+  LOCAL_UI_SESSION_IDENTITY_DEADLINES_MS[0];
 
 /**
  * A bound on the loop itself, not a second budget — the deadline above is what
@@ -306,21 +304,32 @@ export async function waitForLocalUiAccessReadinessThrough(
  *
  * MAY NAVIGATE: when the gate reports its host away, this follows the recovery
  * screen's own instruction and reloads — which would be unsafe if that reload
- * could re-present a one-shot `#station-ui-bootstrap` token. It cannot.
- * `host-unavailable` is reachable only after `bootstrapLocalUiSession` returned
- * false, which is only when the capture DECLINED, and that happens for exactly
- * two reasons: no valid token was in the address, or the latch had already spent
- * one (in which case the fragment was stripped when it was spent). Either way
- * there is no token in the address for this reload to carry. A token that is
- * present and accepted resolves `authenticated` before the identity request is
- * made, and one that is refused throws to `access-required`, so neither reaches
- * this screen at all.
+ * could re-present a one-shot `#station-ui-bootstrap` token. It cannot, in all
+ * THREE ways `host-unavailable` is now reachable.
  *
- * This is the same terminal-bootstrap property `resolveLocalUiSession`
- * (`src-ui/src/lib/local-ui-bootstrap.ts`) documents, with the same two-case
- * enumeration. Keep them in step: an earlier revision of both derived "no token
- * was ever present" from the decline, which silently dropped case (b) — the one a
- * pairing recheck actually takes.
+ * Two of them are reached after `bootstrapLocalUiSession` returned false, which is
+ * only when the capture DECLINED, and that happens for exactly two reasons: no
+ * valid token was in the address, or the latch had already spent one (in which
+ * case the fragment was stripped when it was spent). Either way there is no token
+ * in the address for this reload to carry.
+ *
+ * The THIRD is new with station#1654 and is not covered by that reasoning at all:
+ * the exchange itself can fail to reach a responder, which now reports the host as
+ * away rather than asking this browser to pair. That reaches this screen with a
+ * token that WAS present and IS consumed. The reload is still safe, for a
+ * different reason: the fragment is stripped inside
+ * `captureLocalUiBootstrapToken`, BEFORE the exchange is attempted, so a failed
+ * exchange leaves the address bar already clean. A token that is present and
+ * accepted resolves `authenticated` before the identity request is made, and one
+ * that is REFUSED throws to `access-required`, so neither of those reaches this
+ * screen.
+ *
+ * This is the same enumeration `resolveLocalUiSession`
+ * (`src-ui/src/lib/local-ui-bootstrap.ts`) documents. Keep them in step: an
+ * earlier revision of both derived "no token was ever present" from the decline,
+ * which silently dropped the pairing-recheck case, and the revision before this
+ * one still said "only after `bootstrapLocalUiSession` returned false" after that
+ * had stopped being true.
  */
 export async function waitForLocalUiAccessReadiness(
   page: Page,

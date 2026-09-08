@@ -1,6 +1,11 @@
 {
   "unguardedReads": [
     {
+      "entry": "src-server/runtime/conversation/native-foreground-invocation.ts :: workingDirectory :: if (workspaceRoot) capturedProject.workingDirectory = workspaceRoot;",
+      "category": 2,
+      "reason": "Assignment of the private relay's server-resolved Session cwd, not a read of the stored Project path. OrchestrationService resolves session creation through resolveStartSessionCwd using resolve(expandTilde(...)), including its admitted worktree binding, before passing Session cwd to createNativeForegroundRelay. Preserve that exact execution directory; the native worktree host-action integration executes real Bash in it."
+    },
+    {
       "entry": "packages/cli/src/commands/cloud-project-import.ts :: workingDirectory :: created.workingDirectory !== workingDirectory",
       "category": 1,
       "reason": "Exact comparison of authenticated remote Project metadata to the explicitly supplied target path. Never used for local filesystem access; local tilde expansion would compare the wrong host namespace."

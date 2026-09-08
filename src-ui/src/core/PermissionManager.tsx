@@ -31,6 +31,7 @@ interface ConsentRequest {
    * the tree is final.
    */
   decisionOnly: boolean;
+  recovery?: boolean;
   resolve: (granted: boolean) => void;
 }
 
@@ -51,6 +52,7 @@ interface PermissionContextType {
     pluginName: string,
     displayName: string,
     permissions: PermissionRequest[],
+    options?: { action: 'recover' },
   ) => Promise<boolean>;
   /** Grant permissions on the server */
   grantPermissions: (
@@ -111,6 +113,7 @@ export function PermissionManager({ children }: { children: ReactNode }) {
       pluginName: string,
       displayName: string,
       permissions: PermissionRequest[],
+      options?: { action: 'recover' },
     ): Promise<boolean> => {
       return new Promise((resolve) => {
         setPending({
@@ -118,6 +121,7 @@ export function PermissionManager({ children }: { children: ReactNode }) {
           displayName,
           permissions,
           decisionOnly: true,
+          recovery: options?.action === 'recover',
           resolve,
         });
       });
@@ -295,14 +299,24 @@ export function PermissionManager({ children }: { children: ReactNode }) {
             zIndex: 10000,
           }}
         >
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: this dialog surface only shields backdrop dismissal; it is not an interactive control. */}
           {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users do not need to activate a propagation shield. */}
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={
+              pending.recovery
+                ? 'Recover plugin permissions'
+                : pending.decisionOnly
+                  ? 'Install plugin permissions'
+                  : 'Plugin permissions'
+            }
             style={{
               background: 'var(--bg-primary, #1a1a2e)',
               borderRadius: 12,
               padding: '1.5rem',
               maxWidth: 480,
+              maxHeight: '90vh',
+              overflowY: 'auto',
               width: '90%',
               boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
             }}
@@ -310,7 +324,9 @@ export function PermissionManager({ children }: { children: ReactNode }) {
           >
             <h3 style={{ margin: '0 0 4px', fontSize: '1rem' }}>
               {pending.decisionOnly
-                ? 'Install this plugin?'
+                ? pending.recovery
+                  ? 'Recover this plugin?'
+                  : 'Install this plugin?'
                 : 'Permission Request'}
             </h3>
             <p
@@ -322,7 +338,9 @@ export function PermissionManager({ children }: { children: ReactNode }) {
             >
               <strong>{pending.displayName || pending.pluginName}</strong>
               {pending.decisionOnly
-                ? ' has not been installed yet. Installing it requires:'
+                ? pending.recovery
+                  ? ' has retained files awaiting activation. Recovery requires:'
+                  : ' has not been installed yet. Installing it requires:'
                 : ' is requesting the following permissions:'}
             </p>
 
@@ -394,7 +412,9 @@ export function PermissionManager({ children }: { children: ReactNode }) {
                 Trusted permissions can run server-side code or modify Station
                 behavior.{' '}
                 {pending.decisionOnly
-                  ? 'They are not granted by installing: after the install, a separate host-owned review page — which plugin code cannot submit for you — decides them.'
+                  ? pending.recovery
+                    ? 'They are not granted by this decision. A separate host-owned review page decides trusted access.'
+                    : 'They are not granted by installing: after the install, a separate host-owned review page — which plugin code cannot submit for you — decides them.'
                   : 'Approval opens a separate, host-owned review page that plugin code cannot submit for you.'}
               </div>
             )}
@@ -411,6 +431,7 @@ export function PermissionManager({ children }: { children: ReactNode }) {
                 onClick={handleDeny}
                 style={{
                   padding: '8px 16px',
+                  minHeight: 44,
                   borderRadius: 6,
                   fontSize: '13px',
                   border: '1px solid var(--border-primary)',
@@ -426,6 +447,7 @@ export function PermissionManager({ children }: { children: ReactNode }) {
                 onClick={handleApprove}
                 style={{
                   padding: '8px 16px',
+                  minHeight: 44,
                   borderRadius: 6,
                   fontSize: '13px',
                   border: 'none',
@@ -436,7 +458,9 @@ export function PermissionManager({ children }: { children: ReactNode }) {
                 }}
               >
                 {pending.decisionOnly
-                  ? 'Install'
+                  ? pending.recovery
+                    ? 'Recover plugin'
+                    : 'Install'
                   : pending.permissions.some((p) => p.tier === 'trusted')
                     ? 'Review trusted access'
                     : 'Approve'}

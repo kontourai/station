@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { publishGrantedPluginProviderGeneration } from '../services/plugins/plugin-installation-generation-fence.js';
 import {
+  type CapturedPluginPermissionArtifact,
   type PluginProviderGrantSnapshot,
   withPluginProviderGrantSnapshot,
   withPluginProviderGrantsPublication,
@@ -13,6 +14,7 @@ import { assertExistingPathInside } from '../utils/path-containment.js';
 import { isProviderAdapterShape } from './adapter-shape.js';
 import {
   disposePreparedPluginProviders,
+  type PluginProviderVisibility,
   type PreparedPluginProviderRegistration,
   pluginProviderRegistryGeneration,
   pluginProviderSourceGeneration,
@@ -31,7 +33,12 @@ export async function loadPluginProviders(
   pluginName: string,
   manifest: PluginManifest,
   logger: Pick<Logger, 'error'>,
-  options: { strict?: boolean } = {},
+  options: {
+    strict?: boolean;
+    packageRoot?: string;
+    artifact?: CapturedPluginPermissionArtifact;
+    visibility?: PluginProviderVisibility;
+  } = {},
 ): Promise<number> {
   const expectedProviderGeneration = pluginProviderSourceGeneration(pluginName);
   const prepared = await preparePluginProviders(
@@ -47,14 +54,15 @@ export async function loadPluginProviders(
           pluginName,
           expectedProviderGeneration,
           prepared,
-          () => true,
+          () => options.artifact?.isCurrent() ?? true,
         )
       : await publishGrantedPluginProviderGeneration({
           projectHomeDir: dirname(pluginsDir),
           pluginName,
           expectedProviderGeneration,
           prepared,
-          isCurrent: () => true,
+          isCurrent: () => options.artifact?.isCurrent() ?? true,
+          artifact: options.artifact,
         });
   return outcome === 'activated' ? prepared.length : 0;
 }
@@ -91,6 +99,7 @@ export async function capturePluginProviderGeneration<T>(
 export async function publishPluginProviderGeneration(
   basis: PluginProviderGenerationBasis,
   prepared: PreparedPluginProviderRegistration[],
+  artifacts?: ReadonlyMap<string, CapturedPluginPermissionArtifact>,
 ): Promise<PreparedPluginProviderRegistration[]> {
   let registryOwnsPrepared = false;
   let unowned = prepared;
@@ -119,11 +128,17 @@ export async function publishPluginProviderGeneration(
         registryOwnsPrepared = true;
         await replacePluginProviders(
           accepted,
-          () => pluginProviderRegistryGeneration() === expectedGeneration,
+          () =>
+            pluginProviderRegistryGeneration() === expectedGeneration &&
+            (!artifacts ||
+              accepted.every(
+                (entry) => artifacts.get(entry.source)?.isCurrent() === true,
+              )),
         );
         return accepted;
       },
       grantSnapshot,
+      artifacts,
     );
   } catch (error) {
     if (!registryOwnsPrepared) await disposePreparedPluginProviders(unowned);
@@ -132,6 +147,9 @@ export async function publishPluginProviderGeneration(
 }
 
 export interface PluginProviderPreparationRequest {
+  visibility?: PluginProviderVisibility;
+  packageRoot?: string;
+  artifact?: CapturedPluginPermissionArtifact;
   pluginName: string;
   manifest: PluginManifest;
 }
@@ -166,7 +184,12 @@ export async function preparePluginProviderGeneration(
             request.pluginName,
             request.manifest,
             logger,
-            { strict: true },
+            {
+              strict: true,
+              packageRoot: request.packageRoot,
+              artifact: request.artifact,
+              visibility: request.visibility,
+            },
           )),
         );
       } catch (error) {
@@ -192,7 +215,12 @@ export async function preparePluginProviders(
   pluginName: string,
   manifest: PluginManifest,
   logger: Pick<Logger, 'error'>,
-  options: { strict?: boolean } = {},
+  options: {
+    strict?: boolean;
+    packageRoot?: string;
+    artifact?: CapturedPluginPermissionArtifact;
+    visibility?: PluginProviderVisibility;
+  } = {},
 ): Promise<PreparedPluginProviderRegistration[]> {
   if (!manifest.providers) return [];
 
@@ -205,7 +233,9 @@ export async function preparePluginProviders(
 
   const prepared: PreparedPluginProviderRegistration[] = [];
   for (const provider of manifest.providers) {
-    const pluginRoot = join(pluginsDir, pluginName);
+    const pluginRoot = options.packageRoot ?? join(pluginsDir, pluginName);
+    if (options.artifact && !options.artifact.isCurrent())
+      throw new Error('Plugin installation changed before provider import');
     const modulePath = join(pluginRoot, provider.module);
     assertExistingPathInside(pluginRoot, modulePath, 'Plugin provider module');
     if (!existsSync(modulePath)) {
@@ -225,6 +255,10 @@ export async function preparePluginProviders(
         const { JsonManifestRegistryProvider } = await import(
           './registries/json-manifest-registry.js'
         );
+        if (options.artifact && !options.artifact.isCurrent())
+          throw new Error(
+            'Plugin installation changed before provider construction',
+          );
         const instance = new JsonManifestRegistryProvider(
           modulePath,
           dirname(pluginsDir),
@@ -233,6 +267,11 @@ export async function preparePluginProviders(
         );
         prepared.push({
           type: provider.type,
+          visibility:
+            options.visibility ??
+            (options.artifact
+              ? { ready: () => false, permits: () => false }
+              : undefined),
           provider:
             provider.type === 'integrationRegistry'
               ? instance.integrationRegistry()
@@ -250,6 +289,24 @@ export async function preparePluginProviders(
       );
       const mod = await import(fileUrl.href);
       const factory = mod.default || mod;
+      if (options.artifact && !options.artifact.isCurrent()) {
+        // An object export was already constructed by module evaluation. Its
+        // existing owner must dispose it even though publication is refused.
+        // A factory has not run and must not run merely to obtain a disposer.
+        if (typeof factory !== 'function') {
+          await disposePreparedPluginProviders([
+            {
+              type: provider.type,
+              provider: factory,
+              source: pluginName,
+              layout: provider.layout,
+            },
+          ]);
+        }
+        throw new Error(
+          'Plugin installation changed before provider construction',
+        );
+      }
       let instance: unknown;
       try {
         instance =
@@ -276,6 +333,11 @@ export async function preparePluginProviders(
         }
       }
       prepared.push({
+        visibility:
+          options.visibility ??
+          (options.artifact
+            ? { ready: () => false, permits: () => false }
+            : undefined),
         type: provider.type,
         provider: instance,
         source: pluginName,

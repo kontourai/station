@@ -337,7 +337,6 @@ function completionCoordinatorChild({
   laneId,
   binDirectory,
   mode,
-  countPath,
   releasePath,
   descendantPath,
 }: {
@@ -347,7 +346,6 @@ function completionCoordinatorChild({
   laneId: 'ci-fast' | 'full-regression';
   binDirectory: string;
   mode: 'fast' | 'hold-repo-governance' | 'hold-test-full-ordinary';
-  countPath: string;
   releasePath: string;
   descendantPath: string;
 }) {
@@ -373,7 +371,6 @@ function completionCoordinatorChild({
         ...process.env,
         PATH: `${binDirectory}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH ?? ''}`,
         STATION_FIXTURE_MODE: mode,
-        STATION_FIXTURE_COUNT: countPath,
         STATION_FIXTURE_RELEASE: releasePath,
         STATION_FIXTURE_DESCENDANT: descendantPath,
         STATION_FIXTURE_NPM: join(binDirectory, 'npm'),
@@ -935,7 +932,7 @@ describe('verification coordinator', () => {
         },
       });
 
-      expect(started).toEqual(['repo-governance']);
+      expect(started).toEqual(['browser-prerequisite', 'repo-governance']);
       expect(result.receipt.terminal.passed).toBe(false);
     } finally {
       temp.remove();
@@ -1327,7 +1324,7 @@ describe('verification coordinator', () => {
       expect(first.disposition).toBe('executed');
       expect(projected.disposition).toBe('reused');
       expect(localReuse.disposition).toBe('reused');
-      expect(phaseCalls).toBe(18);
+      expect(phaseCalls).toBe(19);
       expect(projected.receipt.request.worktree).toBe(secondWorktree);
       expect(localReuse.receipt.request.worktree).toBe(secondWorktree);
       expect(localReuse.receipt.artifacts).toEqual(projected.receipt.artifacts);
@@ -1365,6 +1362,7 @@ describe('verification coordinator', () => {
       const resumed = await coordinateVerification(options);
       expect(resumed.receipt.terminal.passed).toBe(true);
       expect(calls).toEqual([
+        '0:browser-prerequisite',
         '0:repo-governance',
         '0:sdk-builds',
         '0:verify-static',
@@ -1786,6 +1784,7 @@ describe('verification coordinator', () => {
         ),
       );
       expect(phases).toEqual([
+        'browser-prerequisite',
         'repo-governance',
         'sdk-builds',
         'verify-static',
@@ -1795,6 +1794,7 @@ describe('verification coordinator', () => {
       expect(lowResult.receipt.terminal.passed).toBe(true);
       expect(ciResult.receipt.terminal.passed).toBe(true);
       expect(phases).toEqual([
+        'browser-prerequisite',
         'repo-governance',
         'sdk-builds',
         'verify-static',
@@ -1810,7 +1810,7 @@ describe('verification coordinator', () => {
       const phaseArtifacts = ciResult.receipt.artifacts.filter((artifact) =>
         artifact.path.includes('/attachment-'),
       );
-      expect(phaseArtifacts).toHaveLength(18);
+      expect(phaseArtifacts).toHaveLength(19);
       const records = phaseArtifacts.map((artifact) =>
         JSON.parse(readFileSync(join(worktree, artifact.path), 'utf8')),
       );
@@ -2125,15 +2125,16 @@ describe('verification coordinator', () => {
         fakeNpm,
         `#!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 
 const mode = process.env.STATION_FIXTURE_MODE;
-const countPath = process.env.STATION_FIXTURE_COUNT;
-const count = existsSync(countPath) ? Number(readFileSync(countPath, 'utf8')) + 1 : 1;
-writeFileSync(countPath, String(count));
+// The coordinator invokes \`npm run <privateScript>\`; hold on the phase's
+// own script so the fixture is bound to the phase identity, not to its
+// position in FULL_REGRESSION_PHASES.
+const script = process.argv[2] === 'run' ? process.argv[3] : undefined;
 const holds =
-  (mode === 'hold-test-full-ordinary' && count === 4) ||
-  (mode === 'hold-repo-governance' && count === 1);
+  (mode === 'hold-test-full-ordinary' && script === 'test:full:ordinary:1:raw') ||
+  (mode === 'hold-repo-governance' && script === 'proof:repo-governance');
 if (!holds) process.exit(0);
 if (mode === 'hold-test-full-ordinary') {
   const descendant = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1_000)'], {
@@ -2156,7 +2157,6 @@ setInterval(() => {
         laneId: 'full-regression',
         binDirectory,
         mode: 'hold-test-full-ordinary',
-        countPath: join(temp.root, 'first-count'),
         releasePath: join(temp.root, 'never-release-first'),
         descendantPath,
       });
@@ -2192,7 +2192,6 @@ setInterval(() => {
         laneId: 'full-regression',
         binDirectory,
         mode: 'hold-repo-governance',
-        countPath: join(temp.root, 'second-count'),
         releasePath: secondRelease,
         descendantPath: join(temp.root, 'second-descendant.json'),
       });
@@ -2215,7 +2214,6 @@ setInterval(() => {
         laneId: 'full-regression',
         binDirectory,
         mode: 'fast',
-        countPath: join(temp.root, 'third-count'),
         releasePath: join(temp.root, 'unused-third-release'),
         descendantPath: join(temp.root, 'third-descendant.json'),
       });
@@ -2237,7 +2235,6 @@ setInterval(() => {
         laneId: 'ci-fast',
         binDirectory,
         mode: 'fast',
-        countPath: join(temp.root, 'fast-count'),
         releasePath: join(temp.root, 'unused-fast-release'),
         descendantPath: join(temp.root, 'fast-descendant.json'),
       });
@@ -2380,6 +2377,7 @@ setInterval(() => {
       expect(stderr).toBeDefined();
       const text = readFileSync(join(worktree, stderr!.path), 'utf8');
       for (const id of [
+        'browser-prerequisite',
         'repo-governance',
         'sdk-builds',
         'verify-static',
@@ -2433,13 +2431,14 @@ setInterval(() => {
         const first = await coordinateVerification(options);
         expect(first.receipt.terminal.passed).toBe(false);
         expect(first.receipt.terminal.status).toBe('infrastructure_error');
-        expect(calls).toEqual(['0:repo-governance']);
+        expect(calls).toEqual(['0:browser-prerequisite']);
 
         attempt = 1;
         const retried = await coordinateVerification(options);
         expect(retried.receipt.terminal.passed).toBe(true);
         expect(calls).toEqual([
-          '0:repo-governance',
+          '0:browser-prerequisite',
+          '1:browser-prerequisite',
           '1:repo-governance',
           '1:sdk-builds',
           '1:verify-static',
@@ -2488,13 +2487,14 @@ setInterval(() => {
         status: 'completed',
         passed: false,
       });
-      expect(calls).toEqual(['0:repo-governance']);
+      expect(calls).toEqual(['0:browser-prerequisite']);
 
       attempt = 1;
       const retried = await coordinateVerification(options);
       expect(retried.receipt.terminal.passed).toBe(true);
       expect(calls).toEqual([
-        '0:repo-governance',
+        '0:browser-prerequisite',
+        '1:browser-prerequisite',
         '1:repo-governance',
         '1:sdk-builds',
         '1:verify-static',
@@ -2533,7 +2533,7 @@ setInterval(() => {
     try {
       const first = await coordinateVerification(options);
       expect(first.receipt.terminal.passed).toBe(true);
-      expect(executedPhases).toHaveLength(18);
+      expect(executedPhases).toHaveLength(19);
 
       const path = join(
         worktree,
@@ -2676,6 +2676,7 @@ setInterval(() => {
         },
       });
       expect(phases).toEqual([
+        'browser-prerequisite',
         'repo-governance',
         'sdk-builds',
         'verify-static',
@@ -2757,7 +2758,7 @@ setInterval(() => {
           observed!.phase?.executionStartedAt ?? 0,
         );
         expect(observed!.phase).toMatchObject({
-          id: 'repo-governance',
+          id: 'browser-prerequisite',
           executionDeadlineAt: observed!.deadlineAt,
         });
         expect(result.receipt.terminal).toMatchObject({

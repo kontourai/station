@@ -8,6 +8,7 @@ prove.
 
 | Example | Focus |
 | --- | --- |
+| [Portable Author Kit](portable-author-kit/README.md) | Agent Plugins Skill plus Station Agent; no package dependencies |
 | [Getting Started Starter](getting-started-starter/README.md) | Registry-installed first extension |
 | [Coding Starter](coding-starter/README.md) | Coding-oriented starter layout |
 | [Minimal Layout](minimal-layout/README.md) | Small TypeScript layout and SDK basics |
