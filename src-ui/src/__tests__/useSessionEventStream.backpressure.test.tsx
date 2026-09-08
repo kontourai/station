@@ -198,13 +198,18 @@ describe('useSessionEventStream buffer backpressure', () => {
   });
 
   test('a hidden document publishes on a timer rather than a frame that will not come', async () => {
-    const frames = manualFrames();
     setVisibility('hidden');
+    // Fake timers first: vitest fakes `requestAnimationFrame` too, so a stub
+    // installed before them would be replaced and the assertion below would
+    // read zero whether or not the hidden path was taken.
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    const frames = manualFrames();
 
     const view = await mountStream();
     await deliver([event(1), event(2)]);
 
+    // The scheduler never asked for a frame: a hidden document would not have
+    // been given one.
     expect(frames.requested()).toBe(0);
 
     await act(async () => {
