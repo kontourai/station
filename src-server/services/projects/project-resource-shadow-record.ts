@@ -113,6 +113,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { errorMessage } from '../../utils/error-message.js';
 import { JsonFileStore } from '../infra/json-store.js';
 
 /** File name under the Station home. */
@@ -340,7 +341,7 @@ function readRecordFile(filePath: string): RecordFileRead {
   } catch (error) {
     return {
       kind: 'unusable',
-      reason: error instanceof Error ? error.message : String(error),
+      reason: errorMessage(error),
     };
   }
   // VERSION BEFORE SHAPE, and the order is the whole point (round 3, MEDIUM).

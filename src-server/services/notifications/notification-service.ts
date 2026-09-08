@@ -18,6 +18,7 @@ import {
 } from '@kontourai/station-shared/notification-priority';
 import type { INotificationProvider } from '../../providers/provider-interfaces.js';
 import { notificationOps } from '../../telemetry/metrics.js';
+import { isRecord } from '../../utils/is-record.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import type { EventBus } from '../orchestration/event-bus.js';
 
@@ -1224,10 +1225,6 @@ function isPositiveInteger(value: unknown): value is number {
 
 function isPositiveOrZeroInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**

@@ -4,11 +4,13 @@
  * Station-owned Kit-format adapters so type/status enforcement is identical regardless
  * of which adapter backs a root.
  */
+
 import type {
   KitLink,
   KitRecord,
   KitRecordType,
 } from '@kontourai/station-contracts/knowledge-store';
+import { isRecord } from '../../../utils/is-record.js';
 import { KnowledgeStoreCorruptionError } from '../../errors.js';
 
 export const VALID_TYPES: ReadonlySet<KitRecordType> = new Set([
@@ -25,10 +27,6 @@ export const VALID_STATUS_TRANSITIONS: Record<string, ReadonlySet<string>> = {
   implemented: new Set(['retired']),
   retired: new Set(), // terminal — no further transitions
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
 
 function isNonemptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;

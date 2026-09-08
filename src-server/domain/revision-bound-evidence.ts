@@ -6,6 +6,7 @@ import {
   validateProposedChange,
 } from '@kontourai/station-contracts/proposed-change';
 import { revisionEvidenceOutcomes } from '../telemetry/metrics.js';
+import { isRecord } from '../utils/is-record.js';
 import {
   compareWorkingStateIds,
   SharedWorkingState,
@@ -358,10 +359,6 @@ interface Bounds {
   readonly maxSnapshotBytes: number;
   readonly maxTextBytes: number;
   readonly maxRecordBytes: number;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isWellFormedUnicode(value: string): boolean {

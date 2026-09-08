@@ -7,6 +7,7 @@
  * must be removed before ordinary tool output is persisted or sent to a
  * client.
  */
+
 import crypto from 'node:crypto';
 import { constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
@@ -16,6 +17,7 @@ import type {
   DeclaredSessionOutputRecord,
 } from '@kontourai/station-contracts/session-output-declaration';
 import { DECLARED_SESSION_OUTPUT_V1 } from '@kontourai/station-contracts/session-output-declaration';
+import { isRecord } from '../utils/is-record.js';
 import {
   currentNativeOutputCallScope,
   currentNativeOutputDeclarationOperation,
@@ -98,10 +100,6 @@ const boundedText = (value: unknown, max: number): string | undefined =>
   typeof value === 'string' && value.length > 0 && value.length <= max
     ? value
     : undefined;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
 
 function hasOnlyKeys(value: Record<string, unknown>, keys: string[]): boolean {
   return Object.keys(value).every((key) => keys.includes(key));

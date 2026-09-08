@@ -38,6 +38,7 @@ import type {
   ConversationMessage,
   MessagePart,
 } from '@kontourai/station-shared/conversation-message';
+import { errorMessage } from '../../utils/error-message.js';
 
 /** Every seam below reports failures through this shape; never required. */
 export type UIBlockProvenanceWarn = (
@@ -362,7 +363,7 @@ export function safeSanitizeUIBlockEventProvenance(
         eventId: event.eventId,
         threadId: event.threadId,
         toolCallId: (event as { toolCallId?: unknown }).toolCallId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       },
     );
     try {
@@ -400,7 +401,7 @@ export function safeSanitizeUIBlockCarrierOutput(
       'ui-block provenance sanitizer threw on a message part output; forcing all claiming blocks unattested rather than serving unsanitized output',
       {
         ...context,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       },
     );
     return forceUIBlockCarrierOutputUnattested(output);
@@ -497,7 +498,7 @@ function sanitizeOneMessagePart(
         {
           ...context,
           toolCallId: part.toolCallId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         },
       );
       // archive#1399 micro-round, M2 (independent review): the fallback
@@ -520,10 +521,7 @@ function sanitizeOneMessagePart(
           {
             ...context,
             toolCallId: part.toolCallId,
-            error:
-              fallbackError instanceof Error
-                ? fallbackError.message
-                : String(fallbackError),
+            error: errorMessage(fallbackError),
           },
         );
         sanitizedBlock = undefined;

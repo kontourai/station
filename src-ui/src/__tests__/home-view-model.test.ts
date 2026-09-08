@@ -1940,24 +1940,34 @@ test('Open chats labels use the exact current child model instead of a persisted
       hasUnread: false,
     },
   };
-  const sessions = [
+  // Fully typed through a base summary, not cast: archive#1778 keeps the
+  // shape's required members enforced on every fixture.
+  const base: OrchestrationSessionSummary = {
+    threadId: 'conversation',
+    conversationId: 'conversation',
+    provider: 'codex',
+    status: 'ready',
+    controlMode: 'station-owned',
+    lifecycleState: 'needs_input',
+    pendingReview: false,
+    createdAt: '2026-09-06T00:00:00Z',
+    updatedAt: '2026-09-06T01:00:00Z',
+    isLoaded: true,
+    isPersisted: true,
+    answerability: { answerable: true },
+    eventCount: 1,
+  };
+  const sessions: OrchestrationSessionSummary[] = [
+    { ...base, model: 'gpt-newer-root-event' },
     {
-      threadId: 'conversation',
-      conversationId: 'conversation',
-      provider: 'codex',
-      model: 'gpt-newer-root-event',
-      updatedAt: '2026-09-06T01:00:00Z',
-    },
-    {
+      ...base,
       threadId: 'claude-child',
-      conversationId: 'conversation',
       provider: 'claude',
       reportedModel: 'opus-reported',
-      acceptedModel: 'opus-accepted',
       model: 'opus-retained',
       updatedAt: '2026-09-06T00:00:00Z',
     },
-  ] as OrchestrationSessionSummary[];
+  ];
   const [row] = buildActiveChatTaskItems({
     chats,
     agents: [],

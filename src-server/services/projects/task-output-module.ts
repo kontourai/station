@@ -24,6 +24,7 @@ import {
 } from '@kontourai/station-contracts';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { isRecord } from '../../utils/is-record.js';
 import { expandTilde } from '../../utils/paths';
 import type { TaskGraphService } from './task-graph-service.js';
 
@@ -1331,9 +1332,6 @@ function assertOwnedRegularOrAbsent(path: string): void {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 function isExactRecord(
   value: unknown,
   keys: string[],

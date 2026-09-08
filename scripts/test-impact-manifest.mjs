@@ -78,11 +78,18 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'source-reading helper boundary plus actual native history persistence',
   },
   {
+    // Explicit only: nothing imports the proof runner, so offering it to
+    // related discovery yields an empty graph, which the changed lane
+    // correctly refuses as an infrastructure failure — and did, on every
+    // pull request that touched only this file.
     pattern: 'scripts/proof-repo-guardrails.mjs',
-    related: true,
-    tests: ['scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts'],
+    tests: [
+      'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
+      'scripts/__tests__/repo-guardrail-source.test.ts',
+    ],
     reason:
-      'the proof runner is executed as a child, outside Vitest import analysis',
+      'the proof runner is executed as a child and read as source, outside ' +
+      'Vitest import analysis',
   },
   {
     pattern: 'src-ui/src/index.css',

@@ -32,6 +32,7 @@ import {
   augmentedSpawnEnv,
   findCliBinaryAsync,
 } from '../../providers/auth/cli-auth.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { forceKillProcess, spawnOwnedChild } from '../infra/process-utils.js';
 
 /**
@@ -208,7 +209,7 @@ function describeSpawnFailure(
   command: string,
   cwd: string | undefined,
 ): Error {
-  const detail = error instanceof Error ? error.message : String(error);
+  const detail = errorMessage(error);
   const code = (error as { code?: string } | null)?.code;
   if (code === 'ENOENT' && cwd && !existsSync(cwd)) {
     return new Error(

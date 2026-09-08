@@ -739,7 +739,11 @@ describe('ui-bundle:budget rejects its known-bad build output', {
   it('accepts a build inside the budget — the negative control', () => {
     const dir = scratchRepo({
       script: SCRIPT,
-      libs: ['pnpm-lockfile.mjs', 'workspace-dependency-satisfaction.mjs'],
+      libs: [
+        'pnpm-lockfile.mjs',
+        'workspace-dependency-satisfaction.mjs',
+        'posix-path.mjs',
+      ],
       extraScripts: ['workspace-dependency-provenance.mjs'],
       files: buildOutput(1024),
       git: false,
@@ -753,7 +757,11 @@ describe('ui-bundle:budget rejects its known-bad build output', {
   it('refuses to print a measurement when node_modules belongs to another worktree', () => {
     const dir = scratchRepo({
       script: SCRIPT,
-      libs: ['pnpm-lockfile.mjs', 'workspace-dependency-satisfaction.mjs'],
+      libs: [
+        'pnpm-lockfile.mjs',
+        'workspace-dependency-satisfaction.mjs',
+        'posix-path.mjs',
+      ],
       extraScripts: ['workspace-dependency-provenance.mjs'],
       files: buildOutput(1024),
       git: false,
@@ -783,7 +791,11 @@ describe('ui-bundle:budget rejects its known-bad build output', {
     // costume of a gate.
     const dir = scratchRepo({
       script: SCRIPT,
-      libs: ['pnpm-lockfile.mjs', 'workspace-dependency-satisfaction.mjs'],
+      libs: [
+        'pnpm-lockfile.mjs',
+        'workspace-dependency-satisfaction.mjs',
+        'posix-path.mjs',
+      ],
       extraScripts: ['workspace-dependency-provenance.mjs'],
       files: buildOutput(8192),
       git: false,
@@ -799,7 +811,11 @@ describe('ui-bundle:budget rejects its known-bad build output', {
     // matching just the first asset would report clean here.
     const dir = scratchRepo({
       script: SCRIPT,
-      libs: ['pnpm-lockfile.mjs', 'workspace-dependency-satisfaction.mjs'],
+      libs: [
+        'pnpm-lockfile.mjs',
+        'workspace-dependency-satisfaction.mjs',
+        'posix-path.mjs',
+      ],
       extraScripts: ['workspace-dependency-provenance.mjs'],
       files: buildOutput(3072),
       git: false,
@@ -820,7 +836,9 @@ describe('dist:freshness rejects a build output that no longer matches its sourc
 }, () => {
   const SCRIPT = 'check-dist-freshness.mjs';
   const LIBS = ['module-entry.mjs', 'package-dist-freshness.mjs'];
-  const EXTRA = ['write-dist-stamp.mjs'];
+  // The gate imports the Basis MCP app manifest for its generated-inputs
+  // check; the scratch tree has none of its entries, so that check is inert.
+  const EXTRA = ['write-dist-stamp.mjs', 'basis-mcp-app-manifest.mjs'];
 
   /**
    * A miniature workspace with the exact shape that produced station#1813: one

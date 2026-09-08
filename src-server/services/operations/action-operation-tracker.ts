@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { ActionOperation } from '@kontourai/station-contracts/action-operation';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import type {
   ActionOperationActor,
@@ -38,7 +39,7 @@ export class ActionOperationTrackingHandle {
     } catch (error) {
       this.logger?.warn('Action operation observation unavailable', {
         operationId: this.operation.id,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -63,7 +64,7 @@ export async function beginActionOperationTracking(input: {
       : undefined;
   } catch (error) {
     input.logger?.warn('Action operation admission unavailable', {
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     });
     return undefined;
   }

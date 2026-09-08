@@ -55,3 +55,8 @@ export function reportCliFailure(
   error: unknown,
   options?: { log?: (line: string) => void },
 ): number;
+export function generateBuildInputs(options?: {
+  run?: (command: string, args: string[]) => unknown;
+  exists?: (path: string) => boolean;
+  log?: (line: string) => void;
+}): void;

@@ -2,6 +2,7 @@ import type {
   MCPToolUICsp,
   MCPToolUIPermissions,
 } from '@kontourai/station-shared/mcp';
+import { isRecord } from '../../utils/is-record.js';
 
 export type MCPAppsToolAudience = 'model' | 'app';
 
@@ -148,8 +149,4 @@ function stringField(
 ): string | undefined {
   const value = record?.[key];
   return typeof value === 'string' ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }

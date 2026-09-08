@@ -18,6 +18,7 @@ import {
   providerOps,
 } from '../../telemetry/metrics.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import type {
   ProviderAdapterShape,
@@ -1335,7 +1336,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       .then(() => true)
       .catch((error: unknown) => {
         this.options.logger?.warn?.(
-          `Muse turn process termination was not confirmed: ${error instanceof Error ? error.message : String(error)}`,
+          `Muse turn process termination was not confirmed: ${errorMessage(error)}`,
         );
         return false;
       })

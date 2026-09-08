@@ -21,10 +21,10 @@
  */
 
 import { join } from 'node:path';
+import { isRecord } from '../../utils/is-record.js';
 import {
   GrantsFileStore,
   GrantsStoreUnavailableError,
-  isPlainObject,
 } from './grants-file-store.js';
 
 /** Permission name carried in the tier model for completeness. */
@@ -52,12 +52,12 @@ export function mcpUiRenderGrantsPath(projectHomeDir: string): string {
 
 /** Valid = plain object; every value an object with a boolean `renderAllowed`. */
 function renderGrantsShapeProblems(value: unknown): string[] {
-  if (!isPlainObject(value)) {
+  if (!isRecord(value)) {
     return ['must be a plain object keyed by server id'];
   }
   const problems: string[] = [];
   for (const [serverId, entry] of Object.entries(value)) {
-    if (!isPlainObject(entry)) {
+    if (!isRecord(entry)) {
       problems.push(`${serverId}: must be an object`);
       continue;
     }

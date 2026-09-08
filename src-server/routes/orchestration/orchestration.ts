@@ -40,13 +40,13 @@ import {
   parseStationSessionInventoryMcpNegotiatedInput,
   STATION_SESSION_INVENTORY_MCP_V2_VERSION,
 } from '@kontourai/station-contracts/session-inventory-mcp';
+import { SESSION_LIFECYCLE_STATES } from '@kontourai/station-contracts/session-lifecycle';
 import {
   type HostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
-import { SESSION_LIFECYCLE_STATES } from '../../../packages/contracts/src/session-lifecycle.js';
 import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
 import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
