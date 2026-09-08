@@ -33,6 +33,15 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   'src-server/routes/share/answer-share-routes.ts :: route POST / :: error.message :: 1',
   'src-server/routes/share/answer-share-routes.ts :: route DELETE /:shareId :: error.message :: 1',
   'src-server/routes/system/config.ts :: route PUT /app :: v.message :: 1',
+  // The workflow family's `mapServiceError`: `error` here is a domain class
+  // narrowed by `instanceof`, and its message is a literal that class built
+  // from ids the caller supplied -- not caught engine or CLI text. One entry
+  // per branch, so adding a fifth branch that forwards a different error's
+  // message is a new identity and gets reviewed.
+  'src-server/routes/projects/layouts.ts :: function mapServiceError :: error.message :: 1',
+  'src-server/routes/projects/layouts.ts :: function mapServiceError :: error.message :: 2',
+  'src-server/routes/projects/layouts.ts :: function mapServiceError :: error.message :: 3',
+  'src-server/routes/projects/layouts.ts :: function mapServiceError :: error.message :: 4',
 ]);
 
 const TRANSPORT_AND_DIAGNOSTIC_BOUNDARIES = [
@@ -111,6 +120,33 @@ function isDirectResponseCall(node, sourceFile, contextAliases) {
     ['json', 'text'].includes(node.expression.name.text)
   );
 }
+
+/**
+ * `new RouteError(status, clientMessage, { code, details, cause })` is a
+ * response sink, exactly like `c.json`.
+ *
+ * The boundary (`runtime/bootstrap/runtime-http.ts`) sends `clientMessage`
+ * and `details` to the client, so a route that builds either from a caught
+ * error is doing what this gate exists to review -- but it does it through a
+ * `throw`, and a constructor call is not a call on a Context alias, so the
+ * scan above cannot see it. Without this, migrating a route from
+ * `c.json({ error: errorMessage(e) }, 400)` to
+ * `throw new RouteError(400, e.message)` silently removes it from review.
+ */
+function isRouteErrorConstruction(node) {
+  return (
+    ts.isNewExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === 'RouteError'
+  );
+}
+
+/**
+ * Options the boundary never sends. `cause` is logged (sanitized) on a 5xx
+ * and dropped otherwise, so `{ cause: error }` -- which every mapper writes
+ * -- is not egress and must not be reviewed as if it were.
+ */
+const ROUTE_ERROR_UNSENT_OPTIONS = new Set(['cause']);
 
 function unwrapExpression(node) {
   let current = node;
@@ -568,6 +604,14 @@ export function findDirectRouteMessageEgress(source, file) {
   );
   const found = [];
   const contextAliases = collectHonoContextAliases(sourceFile);
+  const taintOf = collectTaintedErrorBindings(sourceFile);
+  const record = (node, expression) => {
+    found.push({
+      file,
+      scope: routeOrFunctionIdentity(node, sourceFile),
+      expression,
+    });
+  };
   const visit = (node) => {
     if (isDirectResponseCall(node, sourceFile, contextAliases)) {
       const scan = (candidate) => {
@@ -575,15 +619,44 @@ export function findDirectRouteMessageEgress(source, file) {
           ts.isPropertyAccessExpression(candidate) &&
           candidate.name.text === 'message'
         ) {
-          found.push({
-            file,
-            scope: routeOrFunctionIdentity(node, sourceFile),
-            expression: candidate.getText(sourceFile),
-          });
+          record(node, candidate.getText(sourceFile));
         }
         ts.forEachChild(candidate, scan);
       };
       if (node.arguments[0]) scan(node.arguments[0]);
+      return;
+    }
+    if (isRouteErrorConstruction(node)) {
+      const scan = (candidate) => {
+        // `sanitizeFreeText(error.message)` and friends are the reviewed way
+        // to build a client message from caught text.
+        if (isSafeErrorBoundary(candidate)) return;
+        if (
+          ts.isPropertyAssignment(candidate) &&
+          ROUTE_ERROR_UNSENT_OPTIONS.has(candidate.name.getText(sourceFile))
+        ) {
+          return;
+        }
+        if (
+          ts.isPropertyAccessExpression(candidate) &&
+          candidate.name.text === 'message'
+        ) {
+          record(node, candidate.getText(sourceFile));
+          return;
+        }
+        // Anything else the taint resolver traces back to a catch binding:
+        // an alias (`const detail = error.message`), `String(error)`, or a
+        // template literal interpolating one.
+        const coercion = taintOf(candidate);
+        if (coercion && !ts.isObjectLiteralExpression(candidate)) {
+          record(node, coercion);
+          return;
+        }
+        ts.forEachChild(candidate, scan);
+      };
+      // Argument 0 is the numeric status; 1 is `clientMessage`, 2 the
+      // options object whose `code` and `details` are sent.
+      for (const argument of node.arguments?.slice(1) ?? []) scan(argument);
       return;
     }
     ts.forEachChild(node, visit);

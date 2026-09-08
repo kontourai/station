@@ -162,6 +162,86 @@ describe('route error egress gate', () => {
     ]);
   });
 
+  test('flags a caught message thrown through a RouteError, in the message and in details', () => {
+    // The lane-R0 review's probe, verbatim in shape: before the constructor
+    // became a sink this produced ZERO findings, so migrating a route from
+    // `c.json({ error: errorMessage(e) }, 400)` to `throw new RouteError(...)`
+    // removed it from review while sending strictly more to the client.
+    const source = `
+      app.post('/review', async (context) => {
+        try {
+          await task();
+        } catch (error) {
+          throw new RouteError(400, (error as Error).message, {
+            details: { raw: (error as Error).message },
+            cause: error,
+          });
+        }
+      });
+    `;
+
+    expect(findDirectRouteMessageEgress(source, FILE)).toEqual([
+      'src-server/routes/example.ts :: route POST /review :: (error as Error).message :: 1',
+      'src-server/routes/example.ts :: route POST /review :: (error as Error).message :: 2',
+    ]);
+    expect(
+      collectRouteErrorEgressFindingsForSources(
+        { [FILE]: source },
+        { reviewed: new Set() },
+      ),
+    ).toEqual([
+      'Unreviewed direct outward .message serialization: src-server/routes/example.ts :: route POST /review :: (error as Error).message :: 1.',
+      'Unreviewed direct outward .message serialization: src-server/routes/example.ts :: route POST /review :: (error as Error).message :: 2.',
+    ]);
+  });
+
+  test('follows a caught error into a RouteError through an alias, and leaves cause and sanitized text alone', () => {
+    const source = `
+      app.post('/review', async (context) => {
+        try {
+          await task();
+        } catch (error) {
+          const detail = String(error);
+          throw new RouteError(500, detail, { cause: error });
+        }
+      });
+    `;
+
+    // `detail` is an alias of the caught value, so it is flagged even though
+    // no `.message` appears; `cause: error` is not, because the boundary
+    // never sends it.
+    expect(findDirectRouteMessageEgress(source, FILE)).toEqual([
+      'src-server/routes/example.ts :: route POST /review :: String(error) :: 1',
+    ]);
+  });
+
+  test('accepts a RouteError built from literals or from sanitized text', () => {
+    const source = `
+      app.post('/review', async (context) => {
+        try {
+          await task();
+        } catch (error) {
+          throw new RouteError(400, 'Invalid workflow id', {
+            code: 'workflow_invalid',
+            details: { field: 'workflowId' },
+            cause: error,
+          });
+        }
+      });
+      app.post('/other', async (context) => {
+        try {
+          await task();
+        } catch (error) {
+          throw new RouteError(400, sanitizeFreeText((error as Error).message), {
+            cause: error,
+          });
+        }
+      });
+    `;
+
+    expect(findDirectRouteMessageEgress(source, FILE)).toEqual([]);
+  });
+
   test('taints an arbitrary typed error callback parameter without name matching', () => {
     const source = `
       socket.on('error', (providerFault) => {

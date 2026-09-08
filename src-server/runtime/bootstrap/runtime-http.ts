@@ -5,6 +5,7 @@ import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { KNOWLEDGE_ROOT_IDENTITY_HEADER } from '@kontourai/station-shared/knowledge-root-identity';
 import {
+  redactDeep,
   sanitizeError,
   sanitizeFreeText,
 } from '@kontourai/station-shared/redaction';
@@ -172,7 +173,15 @@ function routeErrorResponse(
       success: false,
       error: clientMessage,
       ...(error.code === undefined ? {} : { code: error.code }),
-      ...(error.details === undefined ? {} : { details: error.details }),
+      // `details` is structure, not a sentence, so `sanitizeFreeText` cannot
+      // walk it. `redactDeep` applies the same redaction to every string it
+      // contains, at any depth. A route is supposed to put its own literals
+      // and ids here and never error-derived data -- this is the line for
+      // when it does anyway, and `scripts/route-error-egress-gate.mjs` now
+      // reviews these constructor arguments so the rule has a gate too.
+      ...(error.details === undefined
+        ? {}
+        : { details: redactDeep(error.details) }),
       correlationId,
     },
     error.status,

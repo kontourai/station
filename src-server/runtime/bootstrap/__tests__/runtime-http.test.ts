@@ -335,6 +335,53 @@ describe('resolveRuntimeCorsOrigin', () => {
     expect(warned.clientMessage).toBe(body.error);
   });
 
+  test("a RouteError's details are redacted, not copied through", async () => {
+    const logger = createCapturingLogger();
+    const app = new Hono();
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit: vi.fn() } as unknown as EventBus,
+    } as Parameters<typeof configureRuntimeHttp>[0]);
+    // `details` is structure, so the boundary's free-text sanitizer cannot
+    // reach into it. Nested on purpose: a shallow pass would leave the
+    // second row untouched.
+    app.get('/detailed', () => {
+      throw new RouteError(400, 'Validation failed', {
+        details: {
+          fieldErrors: { token: [`ghp_${'A'.repeat(36)}`] },
+          context: {
+            source: `/Users/${'someone'}/station/agents/planner/build.ts`,
+          },
+          attempts: 3,
+        },
+      });
+    });
+
+    const response = await app.request('http://station.test/detailed');
+    const body = (await response.json()) as {
+      details: {
+        fieldErrors: { token: string[] };
+        context: { source: string };
+        attempts: number;
+      };
+    };
+    const rendered = JSON.stringify(body);
+
+    expect(response.status).toBe(400);
+    expect(rendered).not.toContain('ghp_');
+    expect(rendered).not.toContain('someone');
+    expect(body.details.context.source).toBe('[REDACTED_PATH]');
+    // Structure and non-string values survive: this redacts, it does not
+    // flatten the object a client is meant to read.
+    expect(body.details.attempts).toBe(3);
+    expect(Object.keys(body.details).sort()).toEqual([
+      'attempts',
+      'context',
+      'fieldErrors',
+    ]);
+  });
+
   test('a 4xx RouteError logs at warn; a 5xx logs at error with the sanitized cause', async () => {
     const logger = createCapturingLogger();
     const app = new Hono();
