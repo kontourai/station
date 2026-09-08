@@ -119,11 +119,18 @@ ref, saved only from `main`, #1455).
 Phase two, `nightly-native-cohort.yml`, needs the source gate, the exact-SHA
 full-regression receipt, and phase one, and receives the reserved identity as
 inputs. It admits the staged bytes against their stage receipts, promotes
-Android first, then the existing rolling macOS prerelease, uploads the
-already-audited iOS package to TestFlight from the same run's staged bytes
-(`testflight-delivery.yml` in `delivery: upload` mode, which never rebuilds),
-and performs a protected provider/attestation verification before either
-rolling Android marker or deploy-ledger entry advances.
+Android first, then the existing rolling macOS prerelease, and performs a
+protected provider/attestation verification before either rolling Android
+marker or deploy-ledger entry advances. iOS delivery is independent of that
+Android/macOS chain (#1774): from the same admission and fence, the cohort
+uploads the already-audited iOS package to TestFlight from the same run's
+staged bytes (`testflight-delivery.yml` in `delivery: upload` mode, which
+never rebuilds). A TestFlight failure reddens the Nightly run and opens the
+`main-health` tracker, and its outcome is disclosed as an `ios:` note on both
+`nightly-android` and `nightly-desktop` ledger rows, but it never blocks
+Android/macOS finality, the ledger, the marker, or fence removal, and it never
+writes the recovery lock. The iOS matrix cell keeps `NOT_VERIFIED` evidence
+until a processed TestFlight channel receipt exists (#1016).
 Immediately after admission, an annotated,
 content-bound `refs/tags/nightly-promotion-fence` is created from the exact
 plan and admission; it remains through both provider promotions and is removed
