@@ -3595,7 +3595,7 @@ fn native_profile_lock_birth(app: &AppHandle, pid: u32) -> Result<Option<String>
         // An unavailable identity remains a fence during reclamation, but a
         // fresh writer must not publish a v2 record without one.
         Err(RegistryBridgeFailure::Invocation | RegistryBridgeFailure::Protocol) => Ok(None),
-        Err(RegistryBridgeFailure::Untrusted) => Ok(None),
+        Err(RegistryBridgeFailure::Untrusted | RegistryBridgeFailure::HomeSchema) => Ok(None),
     }
 }
 
@@ -6325,6 +6325,7 @@ struct PrepareRuntimeBridgeResponse {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum RegistryBridgeFailure {
     Untrusted,
+    HomeSchema,
     Protocol,
     Invocation,
 }
@@ -6401,6 +6402,7 @@ fn read_registry_bridge(
 fn registry_bridge_error(response: &RegistryBridgeReadResponse) -> RegistryBridgeFailure {
     match response.error.as_ref().map(|error| error.code.as_str()) {
         Some("REGISTRY_UNTRUSTED") => RegistryBridgeFailure::Untrusted,
+        Some("HOME_SCHEMA_INCOMPATIBLE") => RegistryBridgeFailure::HomeSchema,
         _ => RegistryBridgeFailure::Protocol,
     }
 }
@@ -6435,6 +6437,11 @@ fn prepare_runtime_registry_bridge(
     station_root: &Path,
     station_home: &Path,
 ) -> Result<PrepareRuntimeKind, RegistryBridgeFailure> {
+    // Standalone homes have no distinct shared-root legacy service to move.
+    // Native home admission and schema preparation have already succeeded.
+    if let (Ok(root), Ok(home)) = (station_root.canonicalize(), station_home.canonicalize()) {
+        if root == home { return Ok(PrepareRuntimeKind::Absent); }
+    }
     let output = invoke_registry_bridge(
         resource_dir,
         "prepareRuntime",
@@ -7907,6 +7914,21 @@ fn arm_startup_deadline(app: AppHandle, epoch: u64) {
             let retry_effects = transition_startup_readiness(state.inner(), startup_readiness::ReadinessInput::Retry { now_ms: 0, timeout_ms: 30_000 });
             continue_startup_readiness(&app, state.inner(), &retry_effects);
         });
+}
+
+#[cfg(not(mobile))]
+fn prepare_desktop_station_storage<S, P>(home: PathBuf, root: &Path, ensure_schema: S, ensure_profiles: P) -> Result<PathBuf, String>
+where S: FnOnce(&Path) -> Result<(), String>, P: FnOnce() -> Result<(), String> {
+    if home == root {
+        // A standalone home also holds root metadata. Schema must be born
+        // first, otherwise genesis makes our own empty home look unversioned.
+        let prepared = prepare_desktop_station_home(home, ensure_schema)?;
+        ensure_profiles()?;
+        Ok(prepared)
+    } else {
+        ensure_profiles()?;
+        prepare_desktop_station_home(home, ensure_schema)
+    }
 }
 
 #[cfg(not(mobile))]
@@ -9694,27 +9716,19 @@ If a stable instance is running, this launch will focus its window and exit.",
                     station_root.display(),
                     station_home.display()
                 );
-                if let Err(error) = ensure_station_profile_store_genesis(&app.handle(), &station_root)
-                {
-                    exit_desktop_home_preparation_failure(
-                        app,
-                        "Station could not verify its shared saved Stations",
-                        "Station refused to recreate missing shared Station metadata. Restore the saved Stations file before launching again.",
-                        &error,
-                    );
-                    return Ok(());
-                }
-                let prepared_home = prepare_desktop_station_home(
+                let prepared_home = prepare_desktop_station_storage(
                     station_home.clone(),
+                    &station_root,
                     |home| {
-                        invoke_registry_bridge(
-                            &resource_dir,
-                            "ensureHomeSchema",
-                            serde_json::json!({ "home": home }),
-                        )
-                        .map(|_| ())
-                        .map_err(|error| format!("{error:?}"))
+                        invoke_registry_bridge(&resource_dir, "ensureHomeSchema", serde_json::json!({ "home": home }))
+                            .map(|_| ())
+                            .map_err(|error| match error {
+                                RegistryBridgeFailure::HomeSchema => "This folder contains data without a compatible Station schema. Keep it intact and select a new empty folder or restore a compatible Station home.".to_string(),
+                                RegistryBridgeFailure::Invocation => "The local Node helper could not run. Check that Node 24 is installed and available to the app.".to_string(),
+                                _ => "The local storage helper did not return a valid result. Check the desktop logs before changing this folder.".to_string(),
+                            })
                     },
+                    || ensure_station_profile_store_genesis(&app.handle(), &station_root),
                 );
                 let station_home = match prepared_home {
                     Ok(home) => home,
@@ -14882,5 +14896,19 @@ mod tests {
                 "the detail must not merely restate the code — they are different contracts, one for machines and one for people"
             );
         }
+    }
+}
+
+#[cfg(all(test, not(mobile)))]
+mod standalone_storage_order_tests {
+    use super::*;
+    #[test] fn standalone_schema_is_prepared_before_profile_genesis() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("home");
+        let events = std::cell::RefCell::new(Vec::new());
+        // This helper receives an external path relative to the ambient test
+        // root; admission is independent from the callback-order assertion.
+        prepare_desktop_station_storage(home.clone(), &home, |_| { events.borrow_mut().push("schema"); Ok(()) }, || { events.borrow_mut().push("profiles"); Ok(()) }).unwrap();
+        assert_eq!(*events.borrow(), vec!["schema", "profiles"]);
     }
 }
