@@ -12,7 +12,10 @@ import {
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { readPnpmLockfile } from './pnpm-lockfile.mjs';
+import {
+  readPnpmLockfile,
+  readPnpmLockfileImporters,
+} from './pnpm-lockfile.mjs';
 
 export const LEGACY_NPM_LIFECYCLE_LOCKS = Object.freeze([
   { scope: 'root', path: 'package-lock.json' },
@@ -30,8 +33,11 @@ const ARTIFACT_PROOFS = new Set([
 ]);
 const SAFE_TOKEN = /^[A-Za-z0-9._/@+:-]+$/;
 const SHA512 = /^sha512-[A-Za-z0-9+/]+={0,2}$/;
-const PACKAGE_PATH =
-  /^(?:node_modules\/(?:@[^/]+\/)?[^/]+)(?:\/node_modules\/(?:@[^/]+\/)?[^/]+)*$/;
+// One hoisted package directory chain: `node_modules/<pkg>` optionally nested
+// under further `node_modules/<pkg>` levels. A scope container (`@scope`)
+// alone is never a package, so a scoped name needs both segments.
+const NODE_MODULES_CHAIN =
+  /^node_modules\/(?:@[^/@]+\/[^/@]+|[^/@]+)(?:\/node_modules\/(?:@[^/@]+\/[^/@]+|[^/@]+))*$/;
 const LIFECYCLE_HOOKS = new Set(['preinstall', 'install', 'postinstall']);
 export const PTY_HANDSHAKE_MARKER = 'STATION_NODE_PTY_READY_4296';
 export const PTY_HANDSHAKE_TIMEOUT_MS = 8_000;
@@ -312,6 +318,60 @@ export function readPnpmLifecycleNodes(root) {
   return [...nodes.values()].sort((a, b) => a.path.localeCompare(b.path));
 }
 
+/**
+ * #1718: an allowlist path must name exactly what `readPnpmLifecycleNodes`
+ * can record — `node_modules/<pkg>(/node_modules/<pkg>)*` relative to the
+ * lock root, optionally under one pnpm workspace importer directory
+ * (`examples/builder-delivery-viewer/node_modules/<pkg>`), because the
+ * inventory scans every importer's own `node_modules`. The importer set is
+ * the lockfile's `importers` keys; any other prefix, the root importer `.`,
+ * an absolute path, `..`, `.`, or an empty segment is rejected so the
+ * validator never widens beyond the scanner's own output.
+ * @param {unknown} path
+ * @param {ReadonlySet<string>} importers
+ */
+export function isAllowlistPackagePath(path, importers) {
+  if (typeof path !== 'string' || path.length === 0 || path.length > 512)
+    return false;
+  if (path.includes('\\')) return false;
+  const segments = path.split('/');
+  if (
+    segments.some(
+      (segment) => segment === '' || segment === '.' || segment === '..',
+    )
+  )
+    return false;
+  const chainStart = segments.indexOf('node_modules');
+  if (chainStart === -1) return false;
+  if (!NODE_MODULES_CHAIN.test(segments.slice(chainStart).join('/')))
+    return false;
+  if (chainStart === 0) return true;
+  const importer = segments.slice(0, chainStart).join('/');
+  return importer !== '.' && importers.has(importer);
+}
+
+/**
+ * The importer directories whose `node_modules` the inventory scans, read
+ * from the single dependency authority after the inert install. The cold
+ * bootstrap reads the same keys without the YAML parser; both readers must
+ * agree, otherwise an entry the bootstrap accepted could name a directory
+ * the inventory never visits (or the reverse), so disagreement fails closed.
+ * @returns {Set<string>}
+ */
+export function readLifecycleImporters(root = process.cwd()) {
+  if (!lstatOrNull(resolve(root, 'pnpm-lock.yaml'))) return new Set();
+  const parsed = new Set(Object.keys(readPnpmLockfile(root).importers));
+  const bootstrap = readPnpmLockfileImporters(root);
+  if (
+    parsed.size !== bootstrap.size ||
+    [...parsed].some((importer) => !bootstrap.has(importer))
+  )
+    throw new Error(
+      'pnpm lockfile importers differ between the bootstrap and full readers',
+    );
+  return parsed;
+}
+
 function exactKeys(value, keys) {
   return (
     isObject(value) &&
@@ -328,7 +388,7 @@ function validString(value, max = 512) {
   );
 }
 
-function validateEntry(entry, index, findings) {
+function validateEntry(entry, index, findings, importers) {
   const prefix = `allowlist entries[${index}]`;
   const keys = [
     'scope',
@@ -359,8 +419,10 @@ function validateEntry(entry, index, findings) {
     )
   )
     findings.push(`${prefix} has an unknown lock scope`);
-  if (typeof entry.path !== 'string' || !PACKAGE_PATH.test(entry.path))
-    findings.push(`${prefix} has an invalid package path`);
+  if (!isAllowlistPackagePath(entry.path, importers))
+    findings.push(
+      `${prefix} has an invalid package path: expected node_modules/<package> or <workspace importer>/node_modules/<package> where the importer is listed in pnpm-lock.yaml importers`,
+    );
   if (
     !validString(entry.name, 256) ||
     !validString(entry.version, 128) ||
@@ -463,7 +525,13 @@ function validateEntry(entry, index, findings) {
     findings.push(`${prefix} approval has expired`);
 }
 
-export function validateAllowlist(allowlist) {
+/**
+ * @param {unknown} allowlist
+ * @param {{ importers?: ReadonlySet<string> }} [options] workspace importer
+ * directories from the lockfile; absent means only root `node_modules/...`
+ * paths are accepted (fail-closed).
+ */
+export function validateAllowlist(allowlist, { importers = new Set() } = {}) {
   const findings = [];
   // This bootstrap validator intentionally has no third-party imports. It is
   // the bounded source-of-truth check used before the inert npm install, so a
@@ -478,7 +546,7 @@ export function validateAllowlist(allowlist) {
       'allowlist schema / must contain schemaVersion 1 and non-empty entries',
     ];
   allowlist.entries.forEach((entry, index) =>
-    validateEntry(entry, index, findings),
+    validateEntry(entry, index, findings, importers),
   );
   const ids = new Set();
   for (const entry of allowlist.entries) {
@@ -493,8 +561,11 @@ function nodeIdentity(node) {
   return `${node.lock}:${node.path}`;
 }
 
-export function evaluateLifecyclePolicy({ allowlist, nodes }) {
-  const findings = validateAllowlist(allowlist);
+/**
+ * @param {{ allowlist: any, nodes: any[], importers?: ReadonlySet<string> }} input
+ */
+export function evaluateLifecyclePolicy({ allowlist, nodes, importers }) {
+  const findings = validateAllowlist(allowlist, { importers });
   const byIdentity = new Map(
     allowlist.entries.map((entry) => [nodeIdentity(entry), entry]),
   );

@@ -63,3 +63,34 @@ export function readPnpmLockfile(root, readFile = readFileSync) {
 }
 
 export const readPnpmLock = readPnpmLockfile;
+
+/**
+ * Dependency-free read of the lockfile's importer keys (workspace directories)
+ * for the cold bootstrap check, which runs before `yaml` is installed. pnpm
+ * writes `importers` as a block map whose keys sit at two-space indentation;
+ * `readLifecycleImporters` re-reads the same keys through the full parser and
+ * refuses to proceed when the two readers disagree.
+ * @param {string} root
+ * @param {(path: string, encoding: 'utf8') => string} [readFile]
+ * @returns {Set<string>}
+ */
+export function readPnpmLockfileImporters(root, readFile = readFileSync) {
+  const lines = readFile(resolve(root, 'pnpm-lock.yaml'), 'utf8').split(
+    /\r?\n/,
+  );
+  const start = lines.findIndex((line) => line.startsWith('importers:'));
+  if (start === -1) throw new Error('pnpm lockfile has no importers map');
+  const inline = lines[start].slice('importers:'.length).trim();
+  if (inline === '{}') return new Set();
+  if (inline !== '')
+    throw new Error('pnpm lockfile importers map has an unsupported shape');
+  const importers = new Set();
+  for (const line of lines.slice(start + 1)) {
+    if (/^\S/.test(line)) break;
+    const match = /^ {2}(\S.*?):\s*$/.exec(line);
+    if (!match) continue;
+    const key = match[1];
+    importers.add(/^(['"]).*\1$/.test(key) ? key.slice(1, -1) : key);
+  }
+  return importers;
+}

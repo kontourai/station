@@ -45,7 +45,11 @@
             "pnpm-lock.yaml"
           ]
         },
-        "path": { "type": "string", "pattern": "^node_modules/" },
+        "path": {
+          "type": "string",
+          "description": "node_modules/<package>(/node_modules/<package>)*, optionally under one pnpm workspace importer directory; the policy validator additionally checks the importer against pnpm-lock.yaml importers.",
+          "pattern": "^(?:(?!\\.{1,2}/)[^/]+/)*node_modules/(?:@[^/@]+/[^/@]+|[^/@]+)(?:/node_modules/(?:@[^/@]+/[^/@]+|[^/@]+))*$"
+        },
         "name": { "type": "string" },
         "version": { "type": "string" },
         "integrity": { "type": "string", "pattern": "^sha512-" },

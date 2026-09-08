@@ -28,7 +28,13 @@ exact-hook and artifact proofs; a successful raw pnpm install is not their
 receipt.
 
 `npm run dependencies:check` fails on an unknown, nested-path, version,
-integrity, lifecycle marker, platform, or stale-entry change. `npm run
+integrity, lifecycle marker, platform, or stale-entry change. An entry's
+`path` is the package directory relative to the checkout as the inventory
+records it: `node_modules/<package>`, a nested
+`node_modules/<parent>/node_modules/<package>`, or, when pnpm materializes a
+copy under a workspace package, `<workspace importer>/node_modules/<package>`
+where the importer is a directory listed under `importers` in
+`pnpm-lock.yaml` (never `.`, never an arbitrary prefix). `npm run
 dependencies:propose` emits a review starting point; it is not an approval.
 Every approval names an owner, reason, artifact proof, purl, and dependency
 refresh/removal/advisory trigger. The release SBOM context carries the exact
