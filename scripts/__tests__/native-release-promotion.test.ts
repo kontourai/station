@@ -903,7 +903,7 @@ describe('one-revision native promotion contract', () => {
     );
     const receipt = namedStep(
       iosUpload,
-      'Record processed provider receipt and attach the channel group',
+      'Record processed provider receipt and channel group membership',
     );
     const retain = iosUpload.steps?.find((step) =>
       step.uses?.includes('upload-artifact'),

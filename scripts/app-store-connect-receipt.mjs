@@ -61,13 +61,33 @@ export function appStoreConnectErrorDetail(payload) {
     : '';
 }
 
+/**
+ * Resolves a request path, or an absolute URL such as a collection's
+ * `links.next`, against the provider origin and refuses anything else. A
+ * URL parsed with a base keeps its own origin when it is absolute, so the
+ * check is what stops a response body from redirecting the bearer token.
+ */
+export function resolveAppStoreConnectUrl(pathOrUrl) {
+  let url;
+  try {
+    url = new URL(pathOrUrl, API_ORIGIN);
+  } catch {
+    throw new Error('App Store Connect request URL is malformed');
+  }
+  if (url.origin !== API_ORIGIN || url.username || url.password) {
+    throw new Error(`App Store Connect request must stay on ${API_ORIGIN}`);
+  }
+  return url;
+}
+
 export async function appStoreConnectRequest(
   path,
   credentials,
   fetchImpl = fetch,
 ) {
+  const url = resolveAppStoreConnectUrl(path);
   const token = createAppStoreConnectJwt(credentials);
-  const response = await fetchImpl(new URL(path, API_ORIGIN), {
+  const response = await fetchImpl(url, {
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
@@ -96,7 +116,7 @@ export async function appStoreConnectRequest(
 }
 
 async function appStoreConnectMutation(path, credentials, method, body) {
-  const response = await fetch(new URL(path, API_ORIGIN), {
+  const response = await fetch(resolveAppStoreConnectUrl(path), {
     method,
     headers: {
       Accept: 'application/json',
@@ -459,35 +479,103 @@ export function selectInternalGroup(payload, { appId, groupId, groupName }) {
 }
 
 const MEMBERSHIP_POLL_MS = 10_000;
+const MEMBERSHIP_PAGE_LIMIT = 200;
+const MEMBERSHIP_MAX_PAGES = 10;
+
+function membershipRelationshipPath(groupId) {
+  return `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/builds`;
+}
+
+/**
+ * The next page of a group's build relationship, or null on the last page.
+ * A collection response carries `links: { self, next? }`; `next` is data
+ * from the provider body, so it is followed only when it is an absolute URL
+ * on the provider origin for this same group's relationship and is not the
+ * page that returned it. Anything else fails closed (#1782).
+ */
+export function selectMembershipNextPage(payload, { groupId, currentUrl }) {
+  const next = payload?.links?.next;
+  if (next === undefined || next === null) return null;
+  const expectedPath = membershipRelationshipPath(groupId);
+  let url = null;
+  if (typeof next === 'string') {
+    try {
+      url = new URL(next);
+    } catch {
+      url = null;
+    }
+  }
+  if (
+    !url ||
+    url.origin !== API_ORIGIN ||
+    url.username ||
+    url.password ||
+    url.pathname !== expectedPath ||
+    url.href === currentUrl
+  ) {
+    throw new Error(
+      `App Store Connect beta group ${groupId} returned a next-page link that is not ${API_ORIGIN}${expectedPath}; refusing to follow it`,
+    );
+  }
+  return url.href;
+}
+
+/**
+ * One walk of the group's build list: page by page until the build is
+ * listed, the pages run out, or the page cap is reached. Stopping at the
+ * first page that lists the build keeps a group larger than the cap working
+ * whenever the build is inside the walked prefix; the cap fails closed with
+ * its own text, since another poll cannot reveal pages this reader will not
+ * read. The duplicate refusal counts every page walked, so a build listed
+ * twice on any of them fails closed; a duplicate on a page after the one
+ * that listed it is not observed.
+ */
+async function readGroupMembership(
+  { appId, buildId, groupId, groupName },
+  env,
+) {
+  const credentials = credentialsFromEnvironment(env);
+  let url = `${API_ORIGIN}${membershipRelationshipPath(groupId)}?limit=${MEMBERSHIP_PAGE_LIMIT}`;
+  let pagesRead = 0;
+  let buildsListed = 0;
+  let attached = 0;
+  for (;;) {
+    const page = await appStoreConnectRequest(url, credentials);
+    pagesRead += 1;
+    const entries = Array.isArray(page?.data) ? page.data : [];
+    buildsListed += entries.length;
+    attached += entries.filter(
+      (entry) => entry?.type === 'builds' && entry?.id === buildId,
+    ).length;
+    if (attached > 1)
+      throw new Error(
+        `App Store Connect beta group ${groupId} lists build ${buildId} ${attached} times`,
+      );
+    if (attached === 1) return { found: true, pagesRead, buildsListed };
+    const next = selectMembershipNextPage(page, { groupId, currentUrl: url });
+    if (next === null) return { found: false, pagesRead, buildsListed };
+    if (pagesRead >= MEMBERSHIP_MAX_PAGES)
+      throw new Error(
+        `build ${buildId} was not found in the first ${buildsListed} builds (${pagesRead} pages) of App Store Connect beta group ${groupName} (${groupId}) for app ${appId}; the group lists more pages than this reader walks`,
+      );
+    url = next;
+  }
+}
 
 /**
  * Reads the group's build list until it lists the build exactly once or the
  * deadline passes. A freshly processed build can take a moment to appear in
- * a group that receives every build automatically.
+ * a group that receives every build automatically. Each poll re-walks the
+ * pages; the result reports what the successful walk read.
  */
-async function waitForGroupMembership(
-  { appId, buildId, groupId, groupName, deadline },
-  env,
-  { sleep, now },
-) {
+async function waitForGroupMembership(membership, env, { sleep, now }) {
+  const { appId, buildId, groupId, groupName, deadline } = membership;
   for (;;) {
-    const relationships = await appStoreConnectRequest(
-      `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/builds?limit=200`,
-      credentialsFromEnvironment(env),
-    );
-    const attached = Array.isArray(relationships?.data)
-      ? relationships.data.filter(
-          (entry) => entry?.type === 'builds' && entry?.id === buildId,
-        )
-      : [];
-    if (attached.length === 1) return;
-    if (attached.length > 1)
-      throw new Error(
-        `App Store Connect beta group ${groupId} lists build ${buildId} ${attached.length} times`,
-      );
+    const read = await readGroupMembership(membership, env);
+    if (read.found) return read;
     if (now() >= deadline)
       throw new Error(
-        `App Store Connect beta group ${groupName} (${groupId}) for app ${appId} does not contain build ${buildId} before the deadline`,
+        `App Store Connect beta group ${groupName} (${groupId}) for app ${appId} does not contain build ${buildId} before the deadline; the last read listed ${read.buildsListed} builds across ${read.pagesRead} pages`,
       );
     await sleep(MEMBERSHIP_POLL_MS);
   }
@@ -534,7 +622,7 @@ export async function attachInternalGroup(
     // An internal group with access to all builds receives every build
     // automatically and refuses manual attachment (#1777). Membership is
     // derived from the group's build list, never asserted by a POST.
-    await waitForGroupMembership(membership, env, { sleep, now });
+    const read = await waitForGroupMembership(membership, env, { sleep, now });
     writeReceipt(output, {
       schemaVersion: 1,
       kind: 'testflight-internal-group-assignment',
@@ -545,16 +633,15 @@ export async function attachInternalGroup(
       membership: 'automatic',
       hasAccessToAllBuilds,
       assignmentResponseStatus: null,
+      membershipPagesRead: read.pagesRead,
+      membershipBuildsListed: read.buildsListed,
       observedAt: new Date().toISOString(),
     });
     return;
   }
   const token = createAppStoreConnectJwt(credentialsFromEnvironment(env));
   const response = await fetch(
-    new URL(
-      `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/builds`,
-      API_ORIGIN,
-    ),
+    resolveAppStoreConnectUrl(membershipRelationshipPath(groupId)),
     {
       method: 'POST',
       headers: {
@@ -582,7 +669,7 @@ export async function attachInternalGroup(
     throw new Error(
       'App Store Connect beta-group response exceeded the 1 MiB limit',
     );
-  await waitForGroupMembership(membership, env, { sleep, now });
+  const read = await waitForGroupMembership(membership, env, { sleep, now });
   writeReceipt(output, {
     schemaVersion: 1,
     kind: 'testflight-internal-group-assignment',
@@ -593,6 +680,8 @@ export async function attachInternalGroup(
     membership: 'assigned',
     hasAccessToAllBuilds,
     assignmentResponseStatus: response.status,
+    membershipPagesRead: read.pagesRead,
+    membershipBuildsListed: read.buildsListed,
     observedAt: new Date().toISOString(),
   });
 }
