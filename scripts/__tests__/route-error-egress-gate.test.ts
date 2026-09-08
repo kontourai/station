@@ -1,8 +1,12 @@
-import { describe, expect, test } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import {
   collectRouteErrorEgressFindings,
   collectRouteErrorEgressFindingsForSources,
   findDirectRouteMessageEgress,
+  findRouteErrorReexports,
   findUnsafeTransportErrorEgress,
 } from '../route-error-egress-gate.mjs';
 
@@ -275,7 +279,7 @@ describe('route error egress gate', () => {
     ]);
   });
 
-  test('does not treat a same-named class from another module as the sink', () => {
+  test('reviews a RouteError import whose specifier does not resolve, rather than skipping it', () => {
     const source = `
       import { RouteError } from './board-route-error.js';
       app.post('/review', async (context) => {
@@ -287,16 +291,35 @@ describe('route error egress gate', () => {
       });
     `;
 
-    // Constructing an unrelated class is not egress, and the spelling is not
-    // what makes it one. The negative direction matters: without it the
-    // binding resolution could be a no-op that always falls back to the name.
+    // Nothing on disk answers this specifier here, so the gate cannot tell an
+    // unrelated class from a barrel that re-exports the real one. It reviews
+    // the spelling and lets the allowlist absorb the rare unrelated class --
+    // the opposite tie-break skips whichever one it guessed wrong about, and
+    // the expensive direction to be wrong in is "skipped".
+    expect(findDirectRouteMessageEgress(source, FILE)).toEqual([
+      'src-server/routes/example.ts :: route POST /review :: (error as Error).message :: 1',
+    ]);
+  });
+
+  test('leaves a differently-named local class alone', () => {
+    // The true negative the resolver can establish without reading anything:
+    // this constructs something else entirely.
+    const source = `
+      class BoardError extends Error {}
+      app.post('/review', async (context) => {
+        try {
+          await task();
+        } catch (error) {
+          throw new BoardError((error as Error).message);
+        }
+      });
+    `;
+
     expect(findDirectRouteMessageEgress(source, FILE)).toEqual([]);
   });
 
   test('still reviews the spelling in a file that imports no RouteError at all', () => {
-    // Every case above that omits the import relies on this, and so would a
-    // future re-export through a barrel. For a gate, reviewing an unresolved
-    // name beats skipping it.
+    // Every case above that omits the import relies on this.
     const source = `
       app.post('/review', async (context) => {
         try {
@@ -310,6 +333,146 @@ describe('route error egress gate', () => {
     expect(findDirectRouteMessageEgress(source, FILE)).toEqual([
       'src-server/routes/example.ts :: route POST /review :: (error as Error).message :: 1',
     ]);
+  });
+
+  describe('re-export resolution', () => {
+    const roots: string[] = [];
+
+    afterEach(() => {
+      for (const root of roots.splice(0)) {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    function fixture(files: Record<string, string>) {
+      const root = mkdtempSync(join(tmpdir(), 'route-error-gate-'));
+      roots.push(root);
+      for (const [path, contents] of Object.entries(files)) {
+        const absolute = join(root, path);
+        mkdirSync(join(absolute, '..'), { recursive: true });
+        writeFileSync(absolute, contents);
+      }
+      return root;
+    }
+
+    const ROUTE_ERROR_SOURCE = 'export class RouteError extends Error {}\n';
+    const ROUTE = `
+      import { RouteError } from '../schemas/schemas.js';
+      app.post('/review', async (context) => {
+        try {
+          await task();
+        } catch (error) {
+          throw new RouteError(400, (error as Error).message);
+        }
+      });
+    `;
+
+    test('follows a barrel that re-exports the class', () => {
+      // `schemas/schemas.ts` is a barrel 53 of 54 route files already import
+      // from, so one `export { RouteError } from` line there is the cheapest
+      // way to take every lane out of review.
+      const root = fixture({
+        'src-server/utils/route-error.ts': ROUTE_ERROR_SOURCE,
+        'src-server/routes/schemas/schemas.ts':
+          "export { RouteError } from '../../utils/route-error.js';\n",
+        'src-server/routes/projects/example.ts': ROUTE,
+      });
+
+      expect(
+        findDirectRouteMessageEgress(
+          ROUTE,
+          'src-server/routes/projects/example.ts',
+          { rootDir: root },
+        ),
+      ).toEqual([
+        'src-server/routes/projects/example.ts :: route POST /review :: (error as Error).message :: 1',
+      ]);
+    });
+
+    test('follows a barrel that renames the class on the way out', () => {
+      const renamed = ROUTE.replace(
+        "import { RouteError } from '../schemas/schemas.js';",
+        "import { HttpRefusal } from '../schemas/schemas.js';",
+      ).replace('new RouteError(', 'new HttpRefusal(');
+      const root = fixture({
+        'src-server/utils/route-error.ts': ROUTE_ERROR_SOURCE,
+        'src-server/routes/schemas/schemas.ts':
+          "export { RouteError as HttpRefusal } from '../../utils/route-error.js';\n",
+        'src-server/routes/projects/example.ts': renamed,
+      });
+
+      expect(
+        findDirectRouteMessageEgress(
+          renamed,
+          'src-server/routes/projects/example.ts',
+          { rootDir: root },
+        ),
+      ).toEqual([
+        'src-server/routes/projects/example.ts :: route POST /review :: (error as Error).message :: 1',
+      ]);
+    });
+
+    test('skips an import from a module that resolves and does not provide the class', () => {
+      // The only negative this resolver can establish by reading rather than
+      // guessing: the specifier resolved, and the class is not there.
+      const root = fixture({
+        'src-server/utils/route-error.ts': ROUTE_ERROR_SOURCE,
+        'src-server/routes/schemas/schemas.ts':
+          'export class RouteError extends Error {}\n',
+        'src-server/routes/projects/example.ts': ROUTE,
+      });
+
+      expect(
+        findDirectRouteMessageEgress(
+          ROUTE,
+          'src-server/routes/projects/example.ts',
+          { rootDir: root },
+        ),
+      ).toEqual([]);
+    });
+
+    test('reports a second-level barrel instead of silently failing to follow it', () => {
+      // The resolver stops at one level on purpose. This is what keeps that
+      // from being a hole: the shape it cannot follow is reported here.
+      const root = fixture({
+        'src-server/utils/route-error.ts': ROUTE_ERROR_SOURCE,
+        'src-server/routes/schemas/inner.ts':
+          "export { RouteError } from '../../utils/route-error.js';\n",
+        'src-server/routes/schemas/schemas.ts':
+          "export { RouteError } from './inner.js';\n",
+      });
+
+      expect(findRouteErrorReexports({ rootDir: root })).toEqual([
+        "src-server/routes/schemas/schemas.ts re-exports RouteError through './inner.js', which the egress gate's one-level resolver cannot follow.",
+      ]);
+    });
+
+    test('reports a star re-export of a module that provides the class', () => {
+      const root = fixture({
+        'src-server/utils/route-error.ts': ROUTE_ERROR_SOURCE,
+        'src-server/routes/schemas/inner.ts':
+          "export { RouteError } from '../../utils/route-error.js';\n",
+        'src-server/routes/schemas/schemas.ts': "export * from './inner.js';\n",
+      });
+
+      expect(findRouteErrorReexports({ rootDir: root })).toEqual([
+        "src-server/routes/schemas/schemas.ts re-exports RouteError through './inner.js', which the egress gate's one-level resolver cannot follow.",
+      ]);
+    });
+
+    test('accepts a barrel the resolver can follow, and this repo has none it cannot', () => {
+      const root = fixture({
+        'src-server/utils/route-error.ts': ROUTE_ERROR_SOURCE,
+        'src-server/routes/schemas/schemas.ts':
+          "export { RouteError } from '../../utils/route-error.js';\n",
+      });
+      expect(findRouteErrorReexports({ rootDir: root })).toEqual([]);
+
+      // The real assertion. The four cases above are what make it mean
+      // something: an empty list from a scanner that never fires would look
+      // identical.
+      expect(findRouteErrorReexports({ rootDir: process.cwd() })).toEqual([]);
+    });
   });
 
   test('accepts a RouteError built from literals or from sanitized text', () => {

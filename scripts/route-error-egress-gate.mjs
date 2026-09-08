@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
 import ts from 'typescript';
 import { toPosixPath } from './lib/posix-path.mjs';
 
@@ -124,66 +124,212 @@ function isDirectResponseCall(node, sourceFile, contextAliases) {
 
 const ROUTE_ERROR_CLASS = 'RouteError';
 const ROUTE_ERROR_MODULE = /(?:^|\/)utils\/route-error\.(?:js|ts)$/;
+const RELATIVE_SPECIFIER = /^\.\.?\//;
+
+/**
+ * The file a relative specifier names, or undefined when it cannot be read.
+ *
+ * TypeScript sources import each other with a `.js` extension, so the
+ * candidate list maps that back to the source on disk. A bare specifier
+ * (`hono`, `@kontourai/...`) is deliberately not resolved: package
+ * resolution is a different problem, and the caller treats "not resolved"
+ * as "review it" rather than "skip it".
+ */
+function resolveRelativeModule(rootDir, fromFile, specifier) {
+  if (!rootDir || !RELATIVE_SPECIFIER.test(specifier)) return undefined;
+  const base = join(rootDir, dirname(fromFile), specifier);
+  const candidates = base.endsWith('.js')
+    ? [base.replace(/\.js$/, '.ts'), base.replace(/\.js$/, '.tsx'), base]
+    : [base, `${base}.ts`, `${base}.tsx`];
+  return candidates.find((candidate) => existsSync(candidate));
+}
+
+function namesRouteErrorModule(rootDir, fromFile, specifier) {
+  if (ROUTE_ERROR_MODULE.test(specifier)) return true;
+  const resolved = resolveRelativeModule(rootDir, fromFile, specifier);
+  return (
+    resolved !== undefined && ROUTE_ERROR_MODULE.test(toPosixPath(resolved))
+  );
+}
+
+/**
+ * The names `file` exports that ARE the `RouteError` class, following
+ * `export { RouteError } from`, `export { RouteError as X } from`, and
+ * `export * from` — one level.
+ *
+ * One level, not a transitive walk, because the depth has to be bounded
+ * somewhere and a second-level barrel is a thing a reader should be told
+ * about rather than a thing a resolver should quietly absorb.
+ * {@link findRouteErrorReexports} is the structural check that makes that
+ * boundary fail loudly instead: it reports any re-export this cannot follow.
+ */
+function routeErrorExportsOf(rootDir, absoluteFile) {
+  const relativeFile = toPosixPath(relative(rootDir, absoluteFile));
+  const sourceFile = ts.createSourceFile(
+    relativeFile,
+    readFileSync(absoluteFile, 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const names = new Set();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isExportDeclaration(statement)) continue;
+    const specifier = statement.moduleSpecifier;
+    if (!specifier || !ts.isStringLiteralLike(specifier)) continue;
+    if (!namesRouteErrorModule(rootDir, relativeFile, specifier.text)) continue;
+    if (!statement.exportClause) {
+      names.add(ROUTE_ERROR_CLASS);
+      continue;
+    }
+    if (!ts.isNamedExports(statement.exportClause)) continue;
+    for (const element of statement.exportClause.elements) {
+      if ((element.propertyName ?? element.name).text === ROUTE_ERROR_CLASS) {
+        names.add(element.name.text);
+      }
+    }
+  }
+  return names;
+}
 
 /**
  * The local names in this file that mean the `RouteError` class, resolved
  * from the imports rather than from the spelling.
  *
  * Matching a bare `RouteError` identifier is both too narrow and too wide.
- * Too narrow: `import { RouteError as RE }` and
- * `import * as Errors` + `new Errors.RouteError(...)` are one-line evasions
- * a lane could write without meaning anything by it. Too wide: another
- * module could export a class of the same name, and constructing that is not
- * egress.
+ * Too narrow: `import { RouteError as RE }`, `import * as Errors` +
+ * `new Errors.RouteError(...)`, and an import through a barrel that
+ * re-exports it are all one-line evasions a lane could write without meaning
+ * anything by it. Too wide: another module could export a class of the same
+ * name, and constructing that is not egress.
  *
- * `fallback` is true when the file imports no `RouteError` at all. A source
- * fragment (the gate's own test cases) and a future re-export through a
- * barrel both land there, and for a gate the safe direction is to review the
- * spelling rather than skip it.
+ * So: a direct `utils/route-error.js` specifier binds, and a RELATIVE
+ * specifier that resolves on disk is read one level for a re-export of the
+ * class (under any exported name). Everything else that imports the NAME
+ * `RouteError` — a bare package specifier, or a relative path that does not
+ * resolve, which is every source fragment in this gate's own tests — is
+ * reviewed on the spelling. Only a specifier that resolved and turned out
+ * NOT to provide the class is treated as a different class and skipped;
+ * that is the one negative this can establish rather than assume.
+ *
+ * `fallback` covers the remaining case: a file that constructs `RouteError`
+ * while importing no such name at all.
  */
-function collectRouteErrorBindings(sourceFile) {
+function collectRouteErrorBindings(sourceFile, rootDir, file) {
   const classNames = new Set();
-  const namespaceNames = new Set();
-  let importsForeignRouteError = false;
+  const namespaceMembers = new Set();
+  let importsResolvedForeignClass = false;
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement)) continue;
     if (!ts.isStringLiteralLike(statement.moduleSpecifier)) continue;
-    const fromRouteErrorModule = ROUTE_ERROR_MODULE.test(
-      statement.moduleSpecifier.text,
-    );
     const bindings = statement.importClause?.namedBindings;
     if (!bindings) continue;
+    const specifier = statement.moduleSpecifier.text;
+    const direct = namesRouteErrorModule(rootDir, file, specifier);
+    const resolved = direct
+      ? undefined
+      : resolveRelativeModule(rootDir, file, specifier);
+    const reexported = resolved
+      ? routeErrorExportsOf(rootDir, resolved)
+      : undefined;
+
     if (ts.isNamespaceImport(bindings)) {
-      if (fromRouteErrorModule) namespaceNames.add(bindings.name.text);
+      const local = bindings.name.text;
+      if (direct) namespaceMembers.add(`${local}.${ROUTE_ERROR_CLASS}`);
+      else if (reexported) {
+        for (const name of reexported) namespaceMembers.add(`${local}.${name}`);
+      } else namespaceMembers.add(`${local}.${ROUTE_ERROR_CLASS}`);
       continue;
     }
+
     for (const element of bindings.elements) {
-      if ((element.propertyName ?? element.name).text !== ROUTE_ERROR_CLASS) {
+      const imported = (element.propertyName ?? element.name).text;
+      if (direct) {
+        if (imported === ROUTE_ERROR_CLASS) classNames.add(element.name.text);
         continue;
       }
-      if (fromRouteErrorModule) classNames.add(element.name.text);
-      else importsForeignRouteError = true;
+      if (reexported) {
+        if (reexported.has(imported)) classNames.add(element.name.text);
+        else if (imported === ROUTE_ERROR_CLASS) {
+          importsResolvedForeignClass = true;
+        }
+        continue;
+      }
+      // Unresolved specifier: reviewed on the spelling. An unrelated class
+      // of the same name behind a package specifier is absorbed by the
+      // allowlist, which is the cheaper mistake.
+      if (imported === ROUTE_ERROR_CLASS) classNames.add(element.name.text);
     }
   }
   return {
     classNames,
-    namespaceNames,
-    fallback: classNames.size === 0 && !importsForeignRouteError,
+    namespaceMembers,
+    fallback: classNames.size === 0 && !importsResolvedForeignClass,
   };
 }
 
 /**
- * `new RouteError(status, clientMessage, { code, details, cause })` is a
- * response sink, exactly like `c.json`.
+ * Every re-export of `RouteError` under `directories` that
+ * {@link routeErrorExportsOf} could NOT follow to the class in one level.
  *
- * The boundary (`runtime/bootstrap/runtime-http.ts`) sends `clientMessage`
- * and `details` to the client, so a route that builds either from a caught
- * error is doing what this gate exists to review -- but it does it through a
- * `throw`, and a constructor call is not a call on a Context alias, so the
- * scan above cannot see it. Without this, migrating a route from
- * `c.json({ error: errorMessage(e) }, 400)` to
- * `throw new RouteError(400, e.message)` silently removes it from review.
+ * The resolver stops at one level by design, so this is what keeps that from
+ * becoming a silent hole: a barrel that re-exports the class through another
+ * barrel appears here and fails a test, instead of appearing nowhere and
+ * taking every importing route out of review.
  */
+export function findRouteErrorReexports({
+  rootDir,
+  directories = ['src-server'],
+}) {
+  const unfollowable = [];
+  for (const directory of directories) {
+    for (const file of listSourceFiles(rootDir, directory)) {
+      const absolute = join(rootDir, file);
+      const sourceFile = ts.createSourceFile(
+        file,
+        readFileSync(absolute, 'utf8'),
+        ts.ScriptTarget.Latest,
+        true,
+      );
+      for (const statement of sourceFile.statements) {
+        if (!ts.isExportDeclaration(statement)) continue;
+        const specifier = statement.moduleSpecifier;
+        if (!specifier || !ts.isStringLiteralLike(specifier)) continue;
+        const named =
+          statement.exportClause && ts.isNamedExports(statement.exportClause)
+            ? statement.exportClause.elements.some(
+                (element) =>
+                  (element.propertyName ?? element.name).text ===
+                  ROUTE_ERROR_CLASS,
+              )
+            : undefined;
+        if (named === false) continue;
+        // Handled: the resolver binds an import through this re-export.
+        if (namesRouteErrorModule(rootDir, file, specifier.text)) continue;
+        const report = () =>
+          unfollowable.push(
+            `${file} re-exports ${ROUTE_ERROR_CLASS} through '${specifier.text}', which the egress gate's one-level resolver cannot follow.`,
+          );
+        if (named === true) {
+          // Naming the class explicitly is unambiguous whatever the
+          // specifier is, so it is always worth a reader's attention.
+          report();
+          continue;
+        }
+        // `export * from` a bare package specifier cannot re-export THIS
+        // repo's class; only an internal path can.
+        if (!RELATIVE_SPECIFIER.test(specifier.text)) continue;
+        const resolved = resolveRelativeModule(rootDir, file, specifier.text);
+        if (!resolved) {
+          report();
+          continue;
+        }
+        if (routeErrorExportsOf(rootDir, resolved).size > 0) report();
+      }
+    }
+  }
+  return unfollowable;
+}
+
 function isRouteErrorConstruction(node, bindings) {
   if (!ts.isNewExpression(node)) return false;
   const target = node.expression;
@@ -194,8 +340,9 @@ function isRouteErrorConstruction(node, bindings) {
   return (
     ts.isPropertyAccessExpression(target) &&
     ts.isIdentifier(target.expression) &&
-    bindings.namespaceNames.has(target.expression.text) &&
-    target.name.text === ROUTE_ERROR_CLASS
+    bindings.namespaceMembers.has(
+      `${target.expression.text}.${target.name.text}`,
+    )
   );
 }
 
@@ -653,7 +800,7 @@ export function collectTransportErrorEgressFindingsForSources(sources) {
   return findings;
 }
 
-export function findDirectRouteMessageEgress(source, file) {
+export function findDirectRouteMessageEgress(source, file, options = {}) {
   const sourceFile = ts.createSourceFile(
     file,
     source,
@@ -662,7 +809,11 @@ export function findDirectRouteMessageEgress(source, file) {
   );
   const found = [];
   const contextAliases = collectHonoContextAliases(sourceFile);
-  const routeErrorBindings = collectRouteErrorBindings(sourceFile);
+  const routeErrorBindings = collectRouteErrorBindings(
+    sourceFile,
+    options.rootDir,
+    file,
+  );
   const taintOf = collectTaintedErrorBindings(sourceFile);
   const record = (node, expression) => {
     found.push({
@@ -749,7 +900,9 @@ export function collectRouteErrorEgressFindings({
   for (const directory of ['src-server/routes', 'src-server/runtime']) {
     for (const file of listSourceFiles(rootDir, directory)) {
       const source = readFileSync(join(rootDir, file), 'utf8');
-      for (const identity of findDirectRouteMessageEgress(source, file)) {
+      for (const identity of findDirectRouteMessageEgress(source, file, {
+        rootDir,
+      })) {
         actual.add(identity);
       }
     }
