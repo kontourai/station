@@ -2660,6 +2660,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/plugins/:name/settings' },
     { method: 'PUT', path: '/api/plugins/:name/settings' },
     { method: 'POST', path: '/api/plugins/:name/update' },
+    // #1377 (agent plugin loader): retained-generation recovery. Both GETs
+    // read this Station's own package journal — the retained generations of
+    // one installed plugin and a recovery preview (the same consent/digest
+    // projection `/preview` returns for a fresh install) — no other Station's
+    // or environment's data, no authority minted: family read tier. POST
+    // /recover re-activates a generation the operator already approved,
+    // through the same configuration-mutation seam and operator-decision
+    // consent as `/install` and `/:name/update` above, so the family's
+    // ordinary mutate tier is the considered call, not an override.
+    { method: 'GET', path: '/api/plugins/:name/retained-generations' },
+    { method: 'GET', path: '/api/plugins/:name/recovery-preview' },
+    { method: 'POST', path: '/api/plugins/:name/recover' },
     { method: 'GET', path: '/api/plugins/check-updates' },
     // POST /api/plugins/:name/fetch is currently a stub that always 403s
     // ("Plugin fetch proxy is disabled until plugin execution identity is
