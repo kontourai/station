@@ -54,11 +54,17 @@ describe('cross-platform release invariant matrix', () => {
       status: 'VERIFIED',
       sha: ledger.find((entry: any) => entry.channel === 'nightly-desktop').sha,
     });
+    // Each platform is required for its own promotion; the cohort publishes
+    // per platform and discloses a partial night rather than withholding the
+    // other platform (#1774).
     for (const cell of [nightlyAndroid, nightlyDesktop]) {
       expect(cell).toMatchObject({
         requiredForPromotion: true,
-        availabilityPolicy: expect.stringContaining('atomic-native-cohort'),
+        availabilityPolicy: expect.stringContaining(
+          'per-platform-native-cohort',
+        ),
       });
+      expect(cell?.availabilityPolicy).not.toContain('atomic');
     }
     // Nightly iOS is delivered outside the atomic chain (#1774): its policy
     // must say so rather than claim a recovery lock the workflow never writes

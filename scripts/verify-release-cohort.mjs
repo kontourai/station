@@ -193,12 +193,93 @@ export function parseVerifiedAttestation(
   };
 }
 
-function requiredArtifactPaths(candidate, input) {
-  if (!plain(input) || !plain(input.artifacts))
-    fail('artifact input is malformed');
-  const groups = input.artifacts;
+const PLATFORM_PROVIDER = Object.freeze({
+  android: 'google-play',
+  macos: 'github-releases',
+});
+
+/**
+ * The platforms whose own publishing job recorded a reported-success provider
+ * claim. Only these have a provider effect for the protected verifier to
+ * observe; every other required platform is disclosed as NOT_PUBLISHED in the
+ * final receipt rather than verified or withheld (#1774).
+ */
+export function shippedPlatforms(candidate) {
+  const claims = candidate.providerClaims;
+  if (!Array.isArray(claims)) fail('candidate provider claims are malformed');
+  const shipped = claims
+    .filter((claim) => claim.outcome === 'reported_success')
+    .map((claim) => claim.platform);
+  if (!shipped.length)
+    fail('candidate has no reported-success provider claim to verify');
+  return shipped;
+}
+
+/**
+ * Per-platform outcome for the final receipt. A shipped platform is
+ * `complete` only when its provider observation is present; an unshipped
+ * platform is `NOT_PUBLISHED` with the reason its own claim recorded, and
+ * never carries a provider observation.
+ */
+export function finalPlatformStates(candidate, providers) {
+  const shipped = shippedPlatforms(candidate);
+  const observed = providers.map((provider) => provider?.provider);
+  /** @type {Record<string, Record<string, string>>} */
+  const platforms = {};
+  for (const platform of candidate.admission.plan.requiredPlatforms) {
+    const claim = candidate.providerClaims.find(
+      (entry) => entry.platform === platform,
+    );
+    if (!claim) fail(`candidate carries no ${platform} provider claim`);
+    const provider = PLATFORM_PROVIDER[platform];
+    if (!provider) fail(`no provider is bound for ${platform}`);
+    const observations = observed.filter((name) => name === provider).length;
+    if (shipped.includes(platform)) {
+      if (observations !== 1)
+        fail(`${platform} reported success but ${provider} was not observed`);
+      platforms[platform] = {
+        state: 'complete',
+        provider,
+        claimDigest: digest(claim),
+      };
+    } else {
+      if (observations !== 0)
+        fail(`${platform} did not report success but ${provider} was observed`);
+      platforms[platform] = {
+        state: 'NOT_PUBLISHED',
+        outcome: claim.outcome,
+        reason: `${platform} provider outcome ${claim.outcome}: ${claim.providerEvidenceClaim.immutableReference}`,
+        claimDigest: digest(claim),
+      };
+    }
+  }
+  return {
+    platforms,
+    state:
+      shipped.length === candidate.admission.plan.requiredPlatforms.length
+        ? 'complete'
+        : 'partial',
+  };
+}
+
+/**
+ * Resolves and byte-verifies the staged artifacts of every shipped platform.
+ * The input is exactly what `release-cohort-workflow.mjs artifact-input`
+ * writes — the admission reader shape `{ <platform>: { <name>: { path } } }`
+ * that admission itself consumes, with no transport wrapper. The workflow
+ * hands over every admitted platform's group; groups for unshipped platforms
+ * are neither verified nor listed in the receipt, and a group for a platform
+ * the cohort never admitted is refused.
+ */
+export function requiredArtifactPaths(candidate, input, shipped) {
+  if (!plain(input)) fail('artifact input is malformed');
+  const groups = input;
+  for (const platform of Object.keys(groups))
+    if (!candidate.admission.plan.requiredPlatforms.includes(platform))
+      fail(`artifact input names unadmitted platform ${platform}`);
   const result = [];
   for (const stage of candidate.stageClaims) {
+    if (!shipped.includes(stage.platform)) continue;
     const values = groups[stage.platform];
     if (!plain(values)) fail(`artifact input has no ${stage.platform} group`);
     const expected = stage.artifacts.map((record) => record.name).sort();
@@ -207,8 +288,11 @@ function requiredArtifactPaths(candidate, input) {
         `artifact input does not exactly match staged ${stage.platform} assets`,
       );
     for (const record of stage.artifacts) {
+      const entry = values[record.name];
+      if (!plain(entry))
+        fail(`artifact entry ${stage.platform}/${record.name} is invalid`);
       const path = text(
-        values[record.name],
+        entry.path,
         `artifact path ${stage.platform}/${record.name}`,
       );
       const bytes = readFileSync(resolve(path));
@@ -224,17 +308,20 @@ function requiredArtifactPaths(candidate, input) {
   const macos = candidate.stageClaims.find(
     (stage) => stage.platform === 'macos',
   );
-  if (!android) fail('Android delivery inventory is missing');
-  if (
-    android.artifacts.length !== 1 ||
-    !android.artifacts[0].name.endsWith('.aab')
-  ) {
-    fail('Android delivery inventory must contain exactly one AAB');
+  if (shipped.includes('android')) {
+    if (!android) fail('Android delivery inventory is missing');
+    if (
+      android.artifacts.length !== 1 ||
+      !android.artifacts[0].name.endsWith('.aab')
+    ) {
+      fail('Android delivery inventory must contain exactly one AAB');
+    }
   }
   if (
-    !macos ||
-    canonicalJson(macos.artifacts.map((record) => record.name).sort()) !==
-      canonicalJson(MACOS_NIGHTLY_ASSETS)
+    shipped.includes('macos') &&
+    (!macos ||
+      canonicalJson(macos.artifacts.map((record) => record.name).sort()) !==
+        canonicalJson(MACOS_NIGHTLY_ASSETS))
   ) {
     fail('macOS delivery inventory does not exactly match the Nightly assets');
   }
@@ -682,14 +769,17 @@ function verifyCandidateObservations(candidateInput, artifactInput) {
       'only Nightly identities match the protected verifier source identity',
     );
   assertNightlyVersionRelationship(candidate.versionIdentities);
-  const paths = requiredArtifactPaths(candidate, artifactInput);
+  const shipped = shippedPlatforms(candidate);
+  const paths = requiredArtifactPaths(candidate, artifactInput, shipped);
   const androidAab = paths.find((artifact) => artifact.platform === 'android');
-  if (!androidAab) fail('candidate is missing Android AAB delivery artifact');
-  verifyAndroidAabIdentity(
-    androidAab.path,
-    candidate.versionIdentities.android,
-    protectedTools,
-  );
+  if (shipped.includes('android')) {
+    if (!androidAab) fail('candidate is missing Android AAB delivery artifact');
+    verifyAndroidAabIdentity(
+      androidAab.path,
+      candidate.versionIdentities.android,
+      protectedTools,
+    );
+  }
   const artifacts = paths.map(({ platform, record, path }) => {
     const entries = jsonOutput(
       runner('gh', ghAttestationArgs(path, candidate.sourceSha), {
@@ -713,108 +803,123 @@ function verifyCandidateObservations(candidateInput, artifactInput) {
       ),
     };
   });
-  const playBefore = new Date();
-  const android = validatePlayObservation(
-    candidate.versionIdentities.android,
-    jsonOutput(
+  function verifyMacosPublication() {
+    const macosRecords = candidate.stageClaims.find(
+      (stage) => stage.platform === 'macos',
+    )?.artifacts;
+    if (!macosRecords) fail('candidate is missing macOS stage records');
+    const macosPaths = new Map(
+      paths
+        .filter((artifact) => artifact.platform === 'macos')
+        .map((artifact) => [artifact.record.name, artifact.path]),
+    );
+    const updaterPublicKeyFile = process.env.STATION_UPDATER_PUBLIC_KEY_FILE;
+    if (typeof updaterPublicKeyFile !== 'string' || !updaterPublicKeyFile)
+      fail(
+        'STATION_UPDATER_PUBLIC_KEY_FILE is required on the protected verifier runner',
+      );
+    const updaterPath = macosPaths.get(
+      'station-nightly-desktop-macos-aarch64.app.tar.gz',
+    );
+    const signaturePath = macosPaths.get(
+      'station-nightly-desktop-macos-aarch64.app.tar.gz.sig',
+    );
+    if (!updaterPath || !signaturePath)
+      fail('macOS updater/signature assets are missing');
+    verifyTauriUpdaterSignature({
+      updater: updaterPath,
+      signature: signaturePath,
+      updaterPublicKey: readFileSync(
+        resolve(updaterPublicKeyFile),
+        'utf8',
+      ).trim(),
+    });
+    verifyMacosArchive(updaterPath, candidate.versionIdentities.desktop);
+    parseLatestUpdaterManifest(
+      readFileSync(
+        macosPaths.get('latest.json') ?? fail('latest.json is missing'),
+      ),
+      candidate.versionIdentities.desktop,
+      readFileSync(signaturePath),
+    );
+    const githubTag = parseGithubTagReference(
+      jsonOutput(
+        runner(
+          'gh',
+          ghTagArgs(candidate.versionIdentities.desktop.releaseTag),
+          {
+            encoding: 'utf8',
+            shell: false,
+            windowsHide: true,
+            timeout: 30_000,
+          },
+        ),
+        'gh api tag query',
+      ),
+      candidate.versionIdentities.desktop.releaseTag,
+      candidate.sourceSha,
+    );
+    const githubReleasePayload = jsonOutput(
       runner(
-        process.execPath,
-        [
-          PLAY_ADAPTER,
-          'query-json',
-          canonicalJson(candidate.versionIdentities.android),
-        ],
+        'gh',
+        ghReleaseArgs(candidate.versionIdentities.desktop.releaseTag),
         {
           encoding: 'utf8',
           shell: false,
           windowsHide: true,
-          timeout: 90_000,
+          timeout: 30_000,
         },
       ),
-      'Google Play observation adapter',
-    ),
-    androidAab.record,
-    playBefore,
-    new Date(),
-  );
-  const macosRecords = candidate.stageClaims.find(
-    (stage) => stage.platform === 'macos',
-  )?.artifacts;
-  if (!macosRecords) fail('candidate is missing macOS stage records');
-  const macosPaths = new Map(
-    paths
-      .filter((artifact) => artifact.platform === 'macos')
-      .map((artifact) => [artifact.record.name, artifact.path]),
-  );
-  const updaterPublicKeyFile = process.env.STATION_UPDATER_PUBLIC_KEY_FILE;
-  if (typeof updaterPublicKeyFile !== 'string' || !updaterPublicKeyFile)
-    fail(
-      'STATION_UPDATER_PUBLIC_KEY_FILE is required on the protected verifier runner',
+      'gh api release query',
     );
-  const updaterPath = macosPaths.get(
-    'station-nightly-desktop-macos-aarch64.app.tar.gz',
-  );
-  const signaturePath = macosPaths.get(
-    'station-nightly-desktop-macos-aarch64.app.tar.gz.sig',
-  );
-  if (!updaterPath || !signaturePath)
-    fail('macOS updater/signature assets are missing');
-  verifyTauriUpdaterSignature({
-    updater: updaterPath,
-    signature: signaturePath,
-    updaterPublicKey: readFileSync(
-      resolve(updaterPublicKeyFile),
-      'utf8',
-    ).trim(),
-  });
-  verifyMacosArchive(updaterPath, candidate.versionIdentities.desktop);
-  parseLatestUpdaterManifest(
-    readFileSync(
-      macosPaths.get('latest.json') ?? fail('latest.json is missing'),
-    ),
-    candidate.versionIdentities.desktop,
-    readFileSync(signaturePath),
-  );
-  const githubTag = parseGithubTagReference(
-    jsonOutput(
-      runner('gh', ghTagArgs(candidate.versionIdentities.desktop.releaseTag), {
-        encoding: 'utf8',
-        shell: false,
-        windowsHide: true,
-        timeout: 30_000,
-      }),
-      'gh api tag query',
-    ),
-    candidate.versionIdentities.desktop.releaseTag,
-    candidate.sourceSha,
-  );
-  const githubReleasePayload = jsonOutput(
-    runner(
-      'gh',
-      ghReleaseArgs(candidate.versionIdentities.desktop.releaseTag),
+    return parseGithubReleaseObservation(
+      githubReleasePayload,
       {
-        encoding: 'utf8',
-        shell: false,
-        windowsHide: true,
-        timeout: 30_000,
+        ...candidate.versionIdentities.desktop,
+        sourceSha: candidate.sourceSha,
       },
-    ),
-    'gh api release query',
-  );
-  const githubRelease = parseGithubReleaseObservation(
-    githubReleasePayload,
-    {
-      ...candidate.versionIdentities.desktop,
-      sourceSha: candidate.sourceSha,
-    },
-    macosRecords,
-    githubTag,
-    new Date(),
-  );
+      macosRecords,
+      githubTag,
+      new Date(),
+    );
+  }
+  const providers = [];
+  if (shipped.includes('android')) {
+    const playBefore = new Date();
+    providers.push(
+      validatePlayObservation(
+        candidate.versionIdentities.android,
+        jsonOutput(
+          runner(
+            process.execPath,
+            [
+              PLAY_ADAPTER,
+              'query-json',
+              canonicalJson(candidate.versionIdentities.android),
+            ],
+            {
+              encoding: 'utf8',
+              shell: false,
+              windowsHide: true,
+              timeout: 90_000,
+            },
+          ),
+          'Google Play observation adapter',
+        ),
+        androidAab.record,
+        playBefore,
+        new Date(),
+      ),
+    );
+  }
+  if (shipped.includes('macos')) providers.push(verifyMacosPublication());
+  const { platforms, state } = finalPlatformStates(candidate, providers);
   return {
     candidate,
     artifacts,
-    providers: [android, githubRelease],
+    providers,
+    platforms,
+    state,
     observedAt: iso(new Date().toISOString()),
     gh: ghVersion(runner),
     protectedTools,
@@ -831,19 +936,25 @@ async function main(argv = process.argv.slice(2)) {
     jsonFile(argv[1]),
     jsonFile(argv[2]),
   );
-  const googleAuthLibrary = observations.providers.find(
+  const play = observations.providers.find(
     (provider) => provider.provider === 'google-play',
-  )?.adapterVersion;
-  if (typeof googleAuthLibrary !== 'string')
+  );
+  const googleAuthLibrary = play ? play.adapterVersion : null;
+  if (play && typeof googleAuthLibrary !== 'string')
     fail('Google Play adapter version is unavailable');
+  // `state` and `platforms` are the verifier's derivation from which
+  // providers it actually observed (#1774): `complete` when every required
+  // platform was verified as published, `partial` when only a subset was and
+  // the rest are disclosed as NOT_PUBLISHED with their own claim's reason.
   const base = {
     kind: 'station.release-cohort-final/v1',
-    state: 'complete',
+    state: observations.state,
     candidateContentDigest: observations.candidate.candidateContentDigest,
     cohortId: observations.candidate.cohortId,
     sourceSha: observations.candidate.sourceSha,
     authenticatedWorkflowRunId: observations.candidate.workflowRunId,
     versionIdentities: observations.candidate.versionIdentities,
+    platforms: observations.platforms,
     artifacts: observations.artifacts,
     providers: observations.providers,
     verifier: {

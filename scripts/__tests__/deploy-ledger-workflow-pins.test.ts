@@ -231,6 +231,29 @@ describe('the desktop nightly workflow records what it ships (station#575)', () 
     expect(step).toContain('steps.ledger_token.outputs.token');
   });
 
+  it('records each platform only when the verified final receipt says it published (#1774)', () => {
+    // A partial night writes a row for the platform that shipped and none
+    // for the one that did not; the gate column carries the receipt state
+    // rather than a hand-written `complete`, and the Android marker moves
+    // only behind Android's own row.
+    const step = stepBlock(nightly, NIGHTLY_ANDROID_LEDGER_STEP);
+    expect(step).toContain('if [ "$android_state" = complete ]; then');
+    expect(step).toContain('if [ "$macos_state" = complete ]; then');
+    expect(step).toContain(
+      '--gate-result "native cohort final receipt $final_state"',
+    );
+    expect(step).not.toContain("'native cohort final receipt complete'");
+    expect(step).toContain(
+      'if: $' + "{{ steps.durable_ledger.outputs.android == 'complete' }}",
+    );
+    expect(step.indexOf('if [ "$android_state" = complete ]')).toBeLessThan(
+      step.indexOf('--channel nightly-android'),
+    );
+    expect(step.indexOf('if [ "$macos_state" = complete ]')).toBeLessThan(
+      step.indexOf('--channel nightly-desktop'),
+    );
+  });
+
   it('lets a ledger failure redden the job without blocking any ship', () => {
     expect(stepBlock(nightly, NIGHTLY_DESKTOP_LEDGER_STEP)).not.toContain(
       'continue-on-error',

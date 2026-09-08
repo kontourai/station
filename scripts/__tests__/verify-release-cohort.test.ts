@@ -1,9 +1,21 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  admitCohort,
+  beginPromotion,
+  canonicalJson,
+  createCohortPlan,
+  createStageReceipt,
+  finalizeCohort,
+  recordProviderPromotion,
+} from '../release-cohort.mjs';
 import {
   assertNightlyVersionRelationship,
+  finalPlatformStates,
   ghAttestationArgs,
   parseAndroidManifestIdentity,
   parseGithubReleaseObservation,
@@ -11,6 +23,8 @@ import {
   parseLatestUpdaterManifest,
   parseMacosInfoPlist,
   parseVerifiedAttestation,
+  requiredArtifactPaths,
+  shippedPlatforms,
   verifyAndroidAabIdentity,
   verifyMacosArchive,
 } from '../verify-release-cohort.mjs';
@@ -389,4 +403,235 @@ test('verifies archive listings beyond the child-process default buffer without 
       platform: 'darwin',
     }),
   ).toThrow(/unsafe/);
+});
+
+/**
+ * A real admitted cohort with the Nightly delivery inventory, so the
+ * subset verification below runs against candidates the structural state
+ * machine actually emits rather than hand-shaped objects.
+ */
+const roots: string[] = [];
+afterEach(() =>
+  roots
+    .splice(0)
+    .forEach((root) => rmSync(root, { recursive: true, force: true })),
+);
+function cohortFixture() {
+  const root = mkdtempSync(join(tmpdir(), 'station-verify-subset-'));
+  roots.push(root);
+  const files: Record<string, Record<string, Buffer>> = {
+    android: { 'station-nightly-universal.aab': Buffer.from('aab bytes') },
+    macos: Object.fromEntries(
+      macRecords.map((record) => [record.name, Buffer.from(record.name)]),
+    ),
+  };
+  const paths: Record<string, Record<string, string>> = {};
+  for (const [platform, group] of Object.entries(files)) {
+    paths[platform] = {};
+    for (const [name, bytes] of Object.entries(group)) {
+      const path = join(root, `${platform}-${name}`);
+      writeFileSync(path, bytes);
+      paths[platform][name] = path;
+    }
+  }
+  const plan = createCohortPlan({
+    channel: 'nightly',
+    sourceSha,
+    workflowRunId: '112061',
+    versionIdentities: identity,
+    availabilityPolicy: {
+      releaseMode: 'per-platform',
+      requiredReceipt: 'provider-backed',
+      externalEvidenceAuthority: 'github-artifact-attestation',
+    },
+    requiredPlatforms: ['android', 'macos'],
+  });
+  const stage = (platform: 'android' | 'macos') => {
+    const records = Object.entries(files[platform]).map(([name, bytes]) => ({
+      name,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      size: bytes.length,
+    }));
+    return createStageReceipt(plan, {
+      platform,
+      artifacts: Object.entries(files[platform]).map(([name, bytes]) => ({
+        name,
+        bytes,
+      })),
+      artifactAttestationClaim: {
+        authority: 'github-artifact-attestation',
+        repository: 'kontourai/station',
+        workflowRef: `.github/workflows/nightly-native-stage.yml@${sourceSha}`,
+        runId: '112061',
+        subjectDigest: `sha256:${createHash('sha256').update(canonicalJson(records)).digest('hex')}`,
+        verificationReference: `github:attestation:${platform}:112061`,
+      },
+    });
+  };
+  const admission = admitCohort(
+    plan,
+    [stage('android'), stage('macos')],
+    files,
+  );
+  const claim = (
+    platform: 'android' | 'macos',
+    outcome: 'reported_success' | 'unknown',
+  ) =>
+    recordProviderPromotion(beginPromotion(admission), {
+      platform,
+      outcome,
+      providerEvidenceClaim: {
+        provider: platform === 'android' ? 'google-play' : 'github-releases',
+        immutableReference:
+          outcome === 'unknown'
+            ? `unresolved:run:112061:${platform}`
+            : `${platform}:receipt:1`,
+        queryReceiptDigest: `sha256:${'b'.repeat(64)}`,
+        cohortId: plan.cohortId,
+        sourceSha,
+      },
+      ...(outcome === 'unknown' ? { recoveryAction: 'inspect' } : {}),
+    });
+  return {
+    root,
+    paths,
+    complete: finalizeCohort([
+      claim('android', 'reported_success'),
+      claim('macos', 'reported_success'),
+    ]),
+    macosOnly: finalizeCohort([
+      claim('android', 'unknown'),
+      claim('macos', 'reported_success'),
+    ]),
+  };
+}
+
+describe('protected verifier verifies only the platforms that published (#1774)', () => {
+  test("reads the shipped subset from each platform's own claim and refuses a candidate with nothing to verify", () => {
+    const { complete, macosOnly } = cohortFixture();
+    expect(shippedPlatforms(complete)).toEqual(['android', 'macos']);
+    expect(shippedPlatforms(macosOnly)).toEqual(['macos']);
+    expect(() =>
+      shippedPlatforms({
+        providerClaims: [{ platform: 'android', outcome: 'unknown' }],
+      }),
+    ).toThrow('no reported-success provider claim');
+  });
+
+  test('derives complete or partial from the observed providers and refuses an unobserved or over-observed platform', () => {
+    const { complete, macosOnly } = cohortFixture();
+    const play = { provider: 'google-play' };
+    const github = { provider: 'github-releases' };
+    expect(finalPlatformStates(complete, [play, github])).toMatchObject({
+      state: 'complete',
+      platforms: {
+        android: { state: 'complete', provider: 'google-play' },
+        macos: { state: 'complete', provider: 'github-releases' },
+      },
+    });
+    const partial = finalPlatformStates(macosOnly, [github]);
+    expect(partial).toMatchObject({
+      state: 'partial',
+      platforms: {
+        android: {
+          state: 'NOT_PUBLISHED',
+          outcome: 'unknown',
+          reason:
+            'android provider outcome unknown: unresolved:run:112061:android',
+        },
+        macos: { state: 'complete', provider: 'github-releases' },
+      },
+    });
+    // The claim digest binds the disclosure to the platform's own recorded
+    // claim, so a reader can match it to that job's state artifact.
+    const androidClaim = macosOnly.providerClaims.find(
+      (claim: any) => claim.platform === 'android',
+    );
+    expect(partial.platforms.android.claimDigest).toBe(
+      `sha256:${createHash('sha256').update(canonicalJson(androidClaim)).digest('hex')}`,
+    );
+    // A shipped platform without its observation, or an unshipped one with
+    // an observation, is a receipt claiming what was not verified.
+    expect(() => finalPlatformStates(macosOnly, [])).toThrow(
+      'macos reported success but github-releases was not observed',
+    );
+    expect(() => finalPlatformStates(macosOnly, [play, github])).toThrow(
+      'android did not report success but google-play was observed',
+    );
+    expect(() => finalPlatformStates(complete, [play])).toThrow(
+      'macos reported success but github-releases was not observed',
+    );
+  });
+
+  test("byte-verifies only the shipped platforms' staged artifacts and refuses an unadmitted group", () => {
+    const { root, paths, complete, macosOnly } = cohortFixture();
+    // The input is the real `artifact-input` writer's output, so this pins
+    // the verifier to the shape the workflow actually hands it (the finalize
+    // step on main never parsed it: the reader wanted `{artifacts:{…:"path"}}`
+    // while the writer emits the admission shape `{…:{path}}`).
+    const written = join(root, 'final-artifacts.json');
+    const writer = spawnSync(
+      process.execPath,
+      [
+        join(process.cwd(), 'scripts/release-cohort-workflow.mjs'),
+        'artifact-input',
+        written,
+        ...Object.entries(paths).flatMap(([platform, group]) =>
+          Object.entries(group).map(
+            ([name, path]) => `${platform}=${name}=${path}`,
+          ),
+        ),
+      ],
+      { encoding: 'utf8', windowsHide: true },
+    );
+    expect(writer.status, writer.stderr).toBe(0);
+    const input = () => JSON.parse(readFileSync(written, 'utf8'));
+    expect(Object.keys(input()).sort()).toEqual(['android', 'macos']);
+    expect(() =>
+      requiredArtifactPaths(complete, { artifacts: input() }, [
+        'android',
+        'macos',
+      ]),
+    ).toThrow('unadmitted platform artifacts');
+    const both = requiredArtifactPaths(complete, input(), ['android', 'macos']);
+    expect(both.map((entry) => entry.platform)).toEqual([
+      'android',
+      'macos',
+      'macos',
+      'macos',
+      'macos',
+    ]);
+    // The macOS-only night still receives the Android group from the
+    // workflow; it is neither verified nor listed.
+    const drifted = join(root, 'drifted.aab');
+    writeFileSync(drifted, 'not the admitted bytes');
+    const withDriftedAndroid = input();
+    withDriftedAndroid.android['station-nightly-universal.aab'] = {
+      path: drifted,
+    };
+    expect(
+      requiredArtifactPaths(macosOnly, withDriftedAndroid, ['macos']).map(
+        (entry) => entry.platform,
+      ),
+    ).toEqual(['macos', 'macos', 'macos', 'macos']);
+    const withoutAndroid = input();
+    delete withoutAndroid.android;
+    expect(
+      requiredArtifactPaths(macosOnly, withoutAndroid, ['macos']),
+    ).toHaveLength(4);
+    // The same drift is refused the moment Android is in the shipped set.
+    expect(() =>
+      requiredArtifactPaths(complete, withDriftedAndroid, ['android', 'macos']),
+    ).toThrow(
+      'artifact bytes drifted for android/station-nightly-universal.aab',
+    );
+    expect(() =>
+      requiredArtifactPaths(complete, withoutAndroid, ['android', 'macos']),
+    ).toThrow('artifact input has no android group');
+    const unadmitted = input();
+    unadmitted.ios = { 'app.ipa': { path: drifted } };
+    expect(() =>
+      requiredArtifactPaths(macosOnly, unadmitted, ['macos']),
+    ).toThrow('unadmitted platform ios');
+  });
 });
