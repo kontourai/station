@@ -91,6 +91,54 @@ describe('usability feedback coverage and reviewer failures', () => {
     expect(result.status).toBe('NOT_VERIFIED');
     expect(result.detail).toContain('429');
   });
+  test('a later provider failure cannot erase an already observed defect', async () => {
+    const finding = {
+      screen: 'a',
+      kind: 'defect',
+      severity: 'high',
+      confidence: 'visible',
+      title: 'Clipped approval control',
+      evidence: 'The approval action is outside the modal.',
+    };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: 'completed',
+          output: [
+            {
+              type: 'message',
+              content: [
+                {
+                  type: 'output_text',
+                  text: JSON.stringify({
+                    reviewed: ['a', 'b', 'c', 'd'],
+                    findings: [finding],
+                  }),
+                },
+              ],
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        json: async () => ({}),
+      });
+    const result = await reviewScreens(
+      ['a', 'b', 'c', 'd', 'e'].map((id) => ({
+        id,
+        bytes: Buffer.from('png'),
+      })),
+      { apiKey: 'test', model: 'test', fetchImpl },
+    );
+    expect(result.status).toBe('FAIL');
+    expect(result.findings).toEqual([finding]);
+    expect(result.reviewed).toEqual(['a', 'b', 'c', 'd']);
+    expect(result.detail).toContain('batch 2 incomplete');
+  });
   test('visible issue is actionable while valid empty review passes', async () => {
     for (const findings of [
       [],

@@ -235,7 +235,11 @@ export async function reviewScreens(
       });
     } catch (error) {
       return {
-        status: 'NOT_VERIFIED',
+        status: findings.some(
+          (f) => f.kind === 'defect' && f.confidence === 'visible',
+        )
+          ? 'FAIL'
+          : 'NOT_VERIFIED',
         findings,
         reviewed,
         receipts,

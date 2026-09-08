@@ -70,7 +70,9 @@ jobs:
       - name: Apply Dev Android launcher, splash, and label resources
         run: node scripts/apply-android-channel-icons.mjs dev
       - name: Apply native credential bootstrap to the generated namespace
-        run: node scripts/apply-android-native-bootstrap.mjs
+        run: |
+          node scripts/apply-android-native-bootstrap.mjs
+          node scripts/apply-android-network-policy.mjs
       # Must run AFTER init (which generates gen/android) and BEFORE the build
       # that packages its assets. The desktop bundle has stamped its origin
       # since #1085; without this the APK's only version signal is a
@@ -106,7 +108,10 @@ jobs:
       # and still not reach the APK. This is the only thing that derives "this
       # APK can say where it came from" rather than asserting it.
       - name: Verify the APK carries its build provenance
-        run: node scripts/read-android-build-provenance.mjs src-desktop/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+        run: |
+          apk=src-desktop/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+          node scripts/read-android-build-provenance.mjs "$apk"
+          aapt dump xmltree "$apk" AndroidManifest.xml | grep -E 'android:usesCleartextTraffic.*0xffffffff'
       # Name matches what android-test.yml's `Android Tests` workflow_run
       # chain downloads (two `download-artifact` steps, name:
       # station-android-debug) — this workflow's completion is what triggers

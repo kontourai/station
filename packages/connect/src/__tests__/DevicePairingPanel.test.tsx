@@ -843,7 +843,51 @@ describe('device pairing panels', () => {
     ).toBeNull();
   });
 
-  test('native request-access to an unreachable host keeps the existing error copy', async () => {
+  test('direct HTTP requests require consent and do not duplicate an in-flight request', async () => {
+    const pendingRequest = deferred<Response>();
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockReturnValueOnce(pendingRequest.promise);
+    render(
+      <JoinDevicePairingPanel
+        initialMode="direct"
+        originIsStation={false}
+        directEndpoint="http://100.64.0.21:3492"
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'Request access' });
+    fireEvent.click(button);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: 'Allow HTTP for this Station on this device',
+      }),
+    );
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(
+      screen
+        .getByRole('button', { name: 'Sending request…' })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+    await act(async () =>
+      pendingRequest.resolve(response({ error: 'rate_limited' }, 429)),
+    );
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Too many access requests',
+    );
+    expect(
+      screen
+        .getByRole('button', { name: 'Try again' })
+        .hasAttribute('disabled'),
+    ).toBe(false);
+    localStorage.removeItem('station-http-development:http://100.64.0.21:3492');
+  });
+
+  test('native request-access explains an unreachable host and offers retry', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
       new TypeError('network unavailable'),
     );
@@ -863,10 +907,12 @@ describe('device pairing panels', () => {
 
     expect(
       await screen.findByText(
-        'This Station could not create an access request. Try again.',
+        'Could not reach the Station at that address. Check that it is running and that this device can reach it.',
       ),
     ).toBeTruthy();
     expect(document.body.textContent).not.toContain('network unavailable');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
   test('defaults the device name from userAgentData high-entropy values while staying editable', async () => {
@@ -1880,14 +1926,32 @@ describe('device pairing panels', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  test('manual entry nudges away from raw http but not from https', async () => {
+  test('manual HTTP entry requires an explicit exception for the exact origin', async () => {
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
     const address = screen.getByLabelText('Station server address');
-    const hint = /Connecting over http to a raw address/i;
+    const hint = /For development only/i;
 
     fireEvent.change(address, { target: { value: 'http://192.168.1.9:3141' } });
     expect(await screen.findByText(hint)).toBeTruthy();
+    const request = screen.getByRole('button', { name: 'Request access' });
+    expect(request.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: 'Allow HTTP for this Station on this device',
+      }),
+    );
+    expect(request.hasAttribute('disabled')).toBe(false);
+    fireEvent.change(address, { target: { value: 'http://192.168.1.9:3142' } });
+    expect(request.hasAttribute('disabled')).toBe(true);
+    fireEvent.change(address, { target: { value: 'http://192.168.1.9:3141' } });
+    expect(request.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: 'Allow HTTP for this Station on this device',
+      }),
+    );
+    expect(request.hasAttribute('disabled')).toBe(true);
 
     fireEvent.change(address, {
       target: { value: 'https://station.foo.ts.net' },

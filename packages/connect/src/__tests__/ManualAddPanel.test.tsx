@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { ManualAddPanel } from '../react/connection-manager-modal/ManualAddPanel';
 
-const HINT = /Connecting over http to a raw address/i;
+const HINT = /For development only/i;
 
 function renderPanel(url: string) {
   return render(
@@ -18,7 +18,7 @@ function renderPanel(url: string) {
   );
 }
 
-describe('ManualAddPanel prefer-HTTPS hint', () => {
+describe('ManualAddPanel explicit HTTP exception', () => {
   it('defaults the address placeholder to an HTTPS example', () => {
     renderPanel('');
     expect(
@@ -49,6 +49,20 @@ describe('ManualAddPanel prefer-HTTPS hint', () => {
   it('shows the hint when the entry is http:// to a raw IP', () => {
     renderPanel('http://192.168.1.5:3141');
     expect(screen.getByText(HINT)).toBeTruthy();
+    const add = screen.getByRole('button', { name: 'Add' });
+    expect(add.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: 'Allow HTTP for this Station on this device',
+      }),
+    );
+    expect(add.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: 'Allow HTTP for this Station on this device',
+      }),
+    );
+    expect(add.hasAttribute('disabled')).toBe(true);
   });
 
   it('hides the hint for an https entry', () => {

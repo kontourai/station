@@ -21,6 +21,7 @@ import {
   decodeDevicePairingPayload,
   describePairingRequestFailure,
   encodeDevicePairingPayload,
+  isTransportFailure,
   loadPendingExchange,
   type PendingPairingExchange,
   requestCurrentStationAccess,
@@ -40,7 +41,10 @@ import {
   primaryBtnStyle,
   secondaryBtnStyle,
 } from './connection-manager-modal/styles';
-import { HttpsPreferenceHint } from './HttpsPreferenceHint';
+import {
+  HttpConnectionConsent,
+  useHttpConnectionConsent,
+} from './HttpConnectionConsent';
 import { QRDisplay } from './QRDisplay';
 import { QRScanner } from './QRScanner';
 
@@ -259,6 +263,8 @@ export function JoinDevicePairingPanel({
     return () => clearInterval(timer);
   }, [pending]);
   const [error, setError] = useState<string | null>(null);
+  const [requestingAccess, setRequestingAccess] = useState(false);
+  const requestInFlight = useRef(false);
   // Set while the exchange is retrying something worth waiting out, so the
   // panel says why nothing is happening instead of sitting mute.
   const [waitingOnConnection, setWaitingOnConnection] = useState(false);
@@ -383,6 +389,7 @@ export function JoinDevicePairingPanel({
   }, [directLabel, onPaired, pending]);
 
   const begin = async (offer: ScannedPairingOffer) => {
+    if (!httpConsent.allowed) return;
     setError(null);
     setWaitingOnConnection(false);
     try {
@@ -416,6 +423,7 @@ export function JoinDevicePairingPanel({
   };
 
   const beginManual = async () => {
+    if (!httpConsent.allowed) return;
     setError(null);
     setWaitingOnConnection(false);
     let endpoint: string;
@@ -487,8 +495,18 @@ export function JoinDevicePairingPanel({
   // to request access from, so neither the page origin nor a typed address
   // applies. Otherwise fall back to the existing origin/manual-entry split.
   const knowsEndpoint = Boolean(directEndpoint) || originIsStation;
+  const httpConsent = useHttpConnectionConsent(
+    reviewOffer?.endpoint ??
+      (mode === 'direct'
+        ? (directEndpoint ??
+          (originIsStation ? window.location.origin : manualEndpoint))
+        : manualEndpoint),
+  );
 
   const beginDirect = async () => {
+    if (requestInFlight.current || !httpConsent.allowed) return;
+    requestInFlight.current = true;
+    setRequestingAccess(true);
     setError(null);
     setWaitingOnConnection(false);
     try {
@@ -548,12 +566,17 @@ export function JoinDevicePairingPanel({
     } catch (requestError) {
       const status = (requestError as { status?: number }).status;
       setError(
-        status === 403
-          ? 'This Station does not allow access requests from this app address.'
-          : status === 429
-            ? 'Too many access requests. Wait a moment, then try again.'
-            : 'This Station could not create an access request. Try again.',
+        isTransportFailure(requestError)
+          ? describePairingRequestFailure(requestError)
+          : status === 403
+            ? 'This Station does not allow access requests from this app address.'
+            : status === 429
+              ? 'Too many access requests. Wait a moment, then try again.'
+              : 'This Station could not create an access request. Try again.',
       );
+    } finally {
+      requestInFlight.current = false;
+      setRequestingAccess(false);
     }
   };
 
@@ -676,6 +699,7 @@ export function JoinDevicePairingPanel({
     return (
       <div style={{ display: 'grid', gap: 12 }}>
         <strong>Review pairing offer</strong>
+        <HttpConnectionConsent consent={httpConsent} />
         <span style={{ color: 'var(--text-secondary, #999)', fontSize: 13 }}>
           Backend ID: {reviewOffer.environmentId}. Endpoint:{' '}
           {reviewOffer.endpoint}. Expires:{' '}
@@ -683,6 +707,7 @@ export function JoinDevicePairingPanel({
         </span>
         <button
           type="button"
+          disabled={!httpConsent.allowed}
           onClick={() => void begin(reviewOffer)}
           style={primaryBtnStyle}
         >
@@ -776,9 +801,30 @@ export function JoinDevicePairingPanel({
               style={inputStyle}
             />
           )}
-          {!knowsEndpoint && <HttpsPreferenceHint address={manualEndpoint} />}
-          <button type="button" onClick={beginDirect} style={primaryBtnStyle}>
-            Request access
+          <HttpConnectionConsent consent={httpConsent} />
+          {directEndpoint && (
+            <div className="pairing-target">
+              <span>Connecting to {directLabel || 'Station'}</span>
+              <span className="pairing-target__address">{directEndpoint}</span>
+            </div>
+          )}
+          {error && (
+            <div className="pairing-error" role="alert">
+              <strong>Connection request failed</strong>
+              <p>{error}</p>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={beginDirect}
+            disabled={requestingAccess || !httpConsent.allowed}
+            style={primaryBtnStyle}
+          >
+            {requestingAccess
+              ? 'Sending request…'
+              : error
+                ? 'Try again'
+                : 'Request access'}
           </button>
           <button type="button" onClick={onCancel} style={secondaryBtnStyle}>
             Back
@@ -832,7 +878,7 @@ export function JoinDevicePairingPanel({
             onChange={(event) => setManualEndpoint(event.target.value)}
             style={inputStyle}
           />
-          <HttpsPreferenceHint address={manualEndpoint} />
+          <HttpConnectionConsent consent={httpConsent} />
           <input
             aria-label="Pairing code"
             autoCapitalize="characters"
@@ -842,7 +888,12 @@ export function JoinDevicePairingPanel({
             onChange={(event) => setManualCode(event.target.value)}
             style={inputStyle}
           />
-          <button type="button" onClick={beginManual} style={primaryBtnStyle}>
+          <button
+            type="button"
+            onClick={beginManual}
+            disabled={!httpConsent.allowed}
+            style={primaryBtnStyle}
+          >
             Request access
           </button>
           <button type="button" onClick={onCancel} style={secondaryBtnStyle}>
@@ -850,7 +901,11 @@ export function JoinDevicePairingPanel({
           </button>
         </div>
       )}
-      {error && <div role="alert">{error}</div>}
+      {error && mode !== 'direct' && (
+        <div className="pairing-error" role="alert">
+          {error}
+        </div>
+      )}
     </div>
   );
 }

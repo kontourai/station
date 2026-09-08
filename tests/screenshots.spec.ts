@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { expect, type Page, type Route, test } from '@playwright/test';
+import { contrastRatio } from './helpers/color-contrast';
 import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-sequence';
 
 /**
@@ -1273,6 +1274,76 @@ interface Screen {
 }
 
 const SCREENS: Screen[] = [
+  ...[320, 390].flatMap((width): Screen[] => [
+    {
+      name: `mobile-http-consent-${width}`,
+      title: `Mobile — explicit HTTP development exception (${width}px)`,
+      path: '/settings?view=overview',
+      viewport: { width, height: 844 },
+      waitFor: '[data-testid="app-toolbar-connection"]',
+      afterGoto: async (page) => {
+        await page.getByTestId('app-toolbar-connection').click();
+        const dialog = page.getByRole('dialog');
+        await dialog
+          .getByRole('button', { name: 'Add a Station address', exact: true })
+          .click();
+        await dialog
+          .getByRole('textbox', { name: 'Station address', exact: true })
+          .fill('http://100.64.0.20:3492');
+        await expect(
+          dialog.getByRole('checkbox', {
+            name: 'Allow HTTP for this Station on this device',
+          }),
+        ).not.toBeChecked();
+        await expect(
+          dialog.getByRole('button', { name: 'Add', exact: true }),
+        ).toBeDisabled();
+      },
+    },
+    {
+      name: `mobile-access-request-error-${width}`,
+      title: `Mobile — failed access request and retry (${width}px)`,
+      path: '/settings?view=overview',
+      viewport: { width, height: 844 },
+      waitFor: '[data-testid="app-toolbar-connection"]',
+      afterGoto: async (page) => {
+        const cleanup = await withRoute(
+          page,
+          '**/.well-known/station/v1/pairing/access-request',
+          (route) =>
+            route.fulfill({
+              status: 503,
+              contentType: 'application/json',
+              body: JSON.stringify({ error: 'temporarily_unavailable' }),
+            }),
+        );
+        try {
+          await page.getByTestId('app-toolbar-connection').click();
+          const dialog = page.getByRole('dialog');
+          await dialog
+            .getByRole('button', { name: 'Request access', exact: true })
+            .click();
+          await dialog
+            .getByRole('button', { name: 'Request access', exact: true })
+            .click();
+          await expect(dialog.getByRole('alert')).toHaveCount(1);
+          await expect(dialog.getByRole('alert')).toContainText(
+            'Connection request failed',
+          );
+          await expect(
+            dialog.getByRole('button', { name: 'Try again', exact: true }),
+          ).toBeVisible();
+          expect(
+            await contrastRatio(
+              dialog.getByRole('button', { name: 'Try again', exact: true }),
+            ),
+          ).toBeGreaterThanOrEqual(4.5);
+        } finally {
+          await cleanup();
+        }
+      },
+    },
+  ]),
   {
     name: 'home',
     title: 'Home / Coding layout',

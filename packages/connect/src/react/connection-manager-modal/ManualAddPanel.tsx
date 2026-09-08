@@ -1,5 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { HttpsPreferenceHint } from '../HttpsPreferenceHint';
+import {
+  HttpConnectionConsent,
+  useHttpConnectionConsent,
+} from '../HttpConnectionConsent';
 
 interface ManualAddPanelProps {
   name: string;
@@ -21,6 +24,7 @@ export function ManualAddPanel({
   onCancel,
   checking = false,
 }: ManualAddPanelProps) {
+  const httpConsent = useHttpConnectionConsent(url);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -46,16 +50,17 @@ export function ManualAddPanel({
         aria-label="Station address"
         className="station-connect-input"
         onKeyDown={(event) => {
-          if (event.key === 'Enter') onAdd();
+          if (event.key === 'Enter' && httpConsent.allowed && !checking)
+            onAdd();
           if (event.key === 'Escape') onCancel();
         }}
       />
-      <HttpsPreferenceHint address={url} />
+      <HttpConnectionConsent consent={httpConsent} />
       <div className="station-connect-btn-row">
         <button
           type="button"
           onClick={onAdd}
-          disabled={!url.trim() || checking}
+          disabled={!url.trim() || checking || !httpConsent.allowed}
           className="station-connect-btn station-connect-btn--primary"
         >
           {checking ? 'Checking…' : 'Add'}

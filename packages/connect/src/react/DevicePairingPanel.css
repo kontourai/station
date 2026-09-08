@@ -61,3 +61,34 @@
 .pairing-wait__terminal small {
   overflow-wrap: anywhere;
 }
+
+.pairing-target {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font-size: 13px;
+}
+.pairing-target__address {
+  color: var(--text-secondary, #999);
+  overflow-wrap: anywhere;
+}
+.pairing-error {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--status-error, #e66);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.pairing-error strong {
+  color: var(--status-error, #e66);
+}
+.pairing-error p {
+  margin: 0;
+}
+.pairing-error p + p {
+  color: var(--text-secondary, #999);
+}

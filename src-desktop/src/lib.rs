@@ -1644,6 +1644,7 @@ fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), Strin
 fn ensure_station_profile_store_genesis(app: &AppHandle, root: &std::path::Path) -> Result<(), String> {
     ensure_station_profile_store_genesis_after_schema(app, root, false)
 }
+#[cfg(not(mobile))]
 fn ensure_station_profile_store_genesis_after_schema(app: &AppHandle, root: &std::path::Path, fresh_schema: bool) -> Result<(), String> {
     let path = root.join("config").join("profiles.json");
     ensure_station_profile_store_root(root)?;
