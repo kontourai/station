@@ -61,7 +61,16 @@ const bundleProvenance = {
 };
 
 function createApp(
-  logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  // The full `Logger` surface this route uses. `createSystemUpdateRoutes`
+  // takes `logger: any`, so a stub missing a level is not a type error — it
+  // is a `logger.<level> is not a function` throw inside the route's own
+  // catch block, which turns a diagnostic into a changed response body.
+  logger = {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
   restartStateWriter?: typeof writeSelfUpdateRestartRecord,
 ) {
   const deps = { getAppConfig: () => ({}), eventBus: { emit: vi.fn() } };
