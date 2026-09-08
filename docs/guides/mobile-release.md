@@ -144,6 +144,41 @@ handoff: unpack its `Payload/*.app`, then run `node ../scripts/check-ios-store-p
 profile, signing identity, and App Store Connect/TestFlight setup; this command
 does not change that matrix.
 
+## Channel app icon on iOS
+
+`bundle.icon` in the channel overlay (`scripts/ios-testflight-channel.mjs`)
+only feeds desktop bundling. The iOS icon is the asset catalog
+`src-desktop/gen/apple/Assets.xcassets/AppIcon.appiconset`, and
+`tauri ios init` regenerates that catalog from Tauri's template with Tauri's
+own default PNGs — the yellow/cyan Tauri logo — whenever `gen/apple` is
+absent, which `testflight-delivery.yml` guarantees by deleting it before both
+inits (#1776 shipped exactly that icon to Nightly testers).
+
+The delivery workflow therefore runs
+`node scripts/ios-channel-icons.mjs apply <channel>` immediately after each
+`tauri ios init`, copying the channel's committed set — for example
+`src-desktop/icons/nightly/ios/`, named by `iosIconSet` in the channel
+identity table in `scripts/ios-testflight-channel.mjs` and by `iosIconSource`
+in `config/channel-platform-matrix.json` — over the catalog. It fails closed when
+the set lacks a file the catalog's `Contents.json` references or when any file
+the template wrote survives. After the build,
+`node scripts/ios-channel-icons.mjs verify <channel> --app <Payload/*.app> --receipt provider-receipts/channel-icon-receipt.json`
+compares the compiled catalog to the set byte for byte and the loose
+`AppIcon60x60@2x.png` inside the `.app` to the set pixel for pixel (Xcode
+re-encodes it as CgBI, so it is reverted with `pngcrush` and decoded with
+`sips` first). The receipt's `catalogMatchesChannelSet`,
+`shippedIconPixelsMatchChannelSet`, and `iconSetSha256` are the outcome of
+those comparisons; the upload job refuses a staged receipt without them. The
+overlay step seeds that receipt with `channel`, `sourceSha`,
+`desktopBundleIcon`, and `desktopBundleIconSha256`: the desktop master
+`bundle.icon` named, which never reaches the IPA. The shipped icon's digest is
+`shippedIconSha256`.
+
+The sets are generated, not hand-edited: `node scripts/generate-app-icons.mjs`
+emits them from each channel's opaque square master (iOS rejects alpha; the
+committed `gen/apple` catalog is the stable set, which local and simulator
+builds reuse as is). See `src-desktop/icons/README.md`.
+
 ## Runtime privacy permissions
 
 The signed mobile clients declare only the capabilities Station can explain to

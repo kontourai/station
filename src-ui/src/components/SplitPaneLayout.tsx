@@ -10,7 +10,7 @@ import React, {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigation } from '../contexts/NavigationContext';
+import { useNavigationActions } from '../contexts/NavigationContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { activatable } from '../utils/activatable';
 import { Button } from './Button';
@@ -294,7 +294,7 @@ export function SplitPaneLayout({
   const isMobile = useIsMobile();
   const framed = useIsPageFramed();
   const actionsSlot = usePageFrameActionsSlot();
-  const { navigate } = useNavigation();
+  const { navigate } = useNavigationActions();
   const paneRef = useRef<HTMLDivElement | null>(null);
   const resizeCleanupRef = useRef<(() => void) | null>(null);
   const collapseButtonRef = useRef<HTMLButtonElement | null>(null);
