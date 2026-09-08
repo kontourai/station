@@ -173,6 +173,7 @@ import {
   keptRowsForTaskSession,
 } from '../../routes/orchestration/tasks.js';
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
+import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
 import { createRegistryRoutes } from '../../routes/plugins/registry.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
@@ -231,6 +232,7 @@ import {
   type RuntimeCallerRequest,
   type RuntimeDeviceActivityClassifierContext,
   type RuntimeSecurityAuditRecord,
+  resolveClientOriginForRequest,
 } from '../../security/runtime-request-security.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
@@ -334,6 +336,7 @@ import {
   isMcpUiRenderRevoked,
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
+import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { readCheckoutRemotes } from '../../services/projects/checkout-remote-reader.js';
 import { DiffCommentService } from '../../services/projects/diff-comment-service.js';
@@ -454,6 +457,7 @@ import {
   loadHostedTenantRegistryFromEnvironment,
   tenantExecutionContextForRequest,
 } from '../bootstrap/runtime-tenant-context.js';
+import { nativeRuntimeSpecMatches } from '../conversation/native-foreground-invocation.js';
 import {
   createStationEngineAvailabilityReader,
   resolveBedrockConnectionAuth,
@@ -472,6 +476,7 @@ import {
   createRuntimeSystemRouteDeps,
 } from './runtime-route-support.js';
 import { createTaskBasisMcpInitialRead } from './task-basis-mcp-initial-read.js';
+import { createRuntimeWorkspacePaneHostActions } from './workspace-pane-host-actions.js';
 
 type HonoApp = Parameters<NonNullable<HonoServerConfig['configureApp']>>[0];
 
@@ -540,6 +545,7 @@ export interface ConfigureRuntimeRoutesContext {
   /** Runtime-owned durable operation authority shared with fleet dispatch. */
   actionOperations: ActionOperationService;
   orchestrationEventStore?: EventStore;
+  pluginInstallationHost?: PluginInstallationHost;
   pluginOperationalEventSubscriptions: Pick<
     import('../plugins/plugin-operational-event-subscriptions.js').PluginOperationalEventSubscriptionService,
     'quiesce' | 'reconcile'
@@ -1156,6 +1162,7 @@ export function configureRuntimeRoutes(
   const layoutCatalog = new DistributionProfileService(
     context.configLoader.getProjectHomeDir(),
     context.appConfig.distributionProfile,
+    context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
   );
   const kitObservabilityRegistry = new StationKitObservabilityRegistry(
     new StationKitObservabilityHost({
@@ -1321,6 +1328,8 @@ export function configureRuntimeRoutes(
       }),
   );
   const reviewedSourceBasisResolver = new ReviewedSourceBasisResolver({
+    packageMcpJournal:
+      context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
     projectHomeDir: context.configLoader.getProjectHomeDir(),
     logger: context.logger,
   });
@@ -1520,6 +1529,9 @@ export function configureRuntimeRoutes(
       context.eventBus,
       {
         consentChannel: context.consentChannel,
+        packageMcpJournal:
+          context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+        installationHost: context.pluginInstallationHost,
         applyConfigurationMutation: context.applyAgentConfigurationMutation,
         refreshKitObservability: () =>
           kitObservabilityRegistry.discoverInstalled([
@@ -1528,11 +1540,11 @@ export function configureRuntimeRoutes(
           ]),
         settleProviderAdapterRetirements: () =>
           context.orchestrationService.settleProviderAdapterRetirements(),
-        reconcileEngineConnections: async (plugin) => {
+        reconcileEngineConnections: async (plugin, view) => {
           await replacePluginEngineConnections(
             context.configLoader,
             plugin,
-            listProviders('acpConnections')
+            listProviders('acpConnections', view)
               .filter((entry: any) => entry.source === plugin)
               .flatMap((entry: any) =>
                 (entry.provider.getConnections?.() ?? []).map(
@@ -1566,6 +1578,9 @@ export function configureRuntimeRoutes(
       context.reloadSkillsAndAgents,
       context.skillService,
       {
+        packageMcpJournal:
+          context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+        installationHost: context.pluginInstallationHost,
         applyConfigurationMutation: context.applyAgentConfigurationMutation,
         approveKitOperatorAction: (candidate) =>
           context.approvalRegistry.register(
@@ -2447,6 +2462,37 @@ export function configureRuntimeRoutes(
   // Current-host composer staging is intentionally process-local: unfinished
   // uploads expire on restart rather than becoming a durable hidden queue.
   const attachmentStaging = new AttachmentStagingService();
+  const paneHostActions = createRuntimeWorkspacePaneHostActions({
+    projectHomeDir: context.configLoader.getProjectHomeDir(),
+    journal:
+      context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+    projects: context.storageAdapter,
+    orchestration: context.orchestrationService,
+    getConnection: (id) => context.connectionService.getConnection(id),
+    nativeAgentAvailable: (id, spec) => {
+      const runtime = context.buildRuntimeContext();
+      return (
+        runtime.getAgentConfigurationRevision() !== null &&
+        runtime.activeAgents.has(id) &&
+        nativeRuntimeSpecMatches(spec, runtime.agentSpecs.get(id))
+      );
+    },
+  });
+  context.app.route(
+    '/api/orchestration/pane-host',
+    createWorkspacePaneHostActionRoutes({
+      service: paneHostActions,
+      actorFor: (c) => {
+        const principal = resolveOrchestrationRequestPrincipal(c);
+        return {
+          principal,
+          readAuthority: readAuthorityForExecution(principal.id),
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          isCurrent: () => isRequestPrincipalCurrent(c.req.raw),
+        };
+      },
+    }),
+  );
   context.app.route(
     '/api/orchestration/attachment-staging',
     createAttachmentStagingRoutes({

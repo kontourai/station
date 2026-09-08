@@ -1,12 +1,14 @@
 import { readFileSync } from 'node:fs';
-import { buildPlugin } from '@kontourai/station-shared/build';
-import { readPluginManifest } from '@kontourai/station-shared/parsers';
+import {
+  buildPlugin,
+  readPluginBuildManifest,
+} from '@kontourai/station-shared/build';
 import { INVOKED_CWD } from './helpers.js';
 
 export async function build(
   mode: 'production' | 'dev' = 'production',
 ): Promise<void> {
-  const manifest = readPluginManifest(INVOKED_CWD);
+  const manifest = readPluginBuildManifest(INVOKED_CWD);
   console.log(
     `📦 Building ${manifest.displayName || manifest.name}${mode === 'dev' ? ' (dev)' : ''}...`,
   );

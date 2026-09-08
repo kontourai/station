@@ -20,8 +20,6 @@
  * before granting.
  */
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { type Context, Hono } from 'hono';
 import { setCookie } from 'hono/cookie';
@@ -39,25 +37,30 @@ import {
   type ConsentTargetSnapshot,
 } from '../../services/consent/consent-transactions.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
-import {
-  computePluginContentDigest,
-  withPluginContentLock,
-} from '../../services/plugins/plugin-content-integrity.js';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import { withPluginContentLock } from '../../services/plugins/plugin-content-integrity.js';
 import type { PluginGrantReconciliationService } from '../../services/plugins/plugin-grant-reconciliation.js';
-import { readPluginManifestFile } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   assertGrantablePermissions,
+  createPluginGrantMutationScope,
   getPermissionTier,
   grantPermissions,
   PluginContentUnavailableError,
+  PluginGrantMutationSupersededError,
   PluginGrantsUnavailableError,
+  readPluginGrantRevision,
 } from '../../services/plugins/plugin-permissions.js';
+import {
+  capturePluginRuntimeArtifact,
+  type PluginRuntimeArtifact,
+} from '../../services/plugins/plugin-runtime-artifact.js';
 import { consentTransactionOps } from '../../telemetry/metrics.js';
 import { assertPluginNameSegment } from './plugin-install-shared.js';
 
 const CONSENT_TARGET_KIND = 'plugin-trusted-permissions';
 
 interface PluginHostApprovalRouteDeps {
+  packageMcpJournal?: PackageMcpAdmissionJournal;
   pluginsDir: string;
   projectHomeDir: string;
   eventBus?: EventBus;
@@ -89,15 +92,25 @@ async function derivePluginTrustTarget(
   pluginsDir: string,
   pluginName: string,
   permissions: readonly string[],
+  projectHomeDir: string,
+  journal?: PackageMcpAdmissionJournal,
+  captured?: PluginRuntimeArtifact,
 ): Promise<{
   target: ConsentTargetSnapshot;
   displayName: string;
+  artifact: PluginRuntimeArtifact;
+  grantRevision: string;
 } | null> {
-  const manifestPath = join(pluginsDir, pluginName, 'plugin.json');
-  if (!existsSync(manifestPath)) return null;
-  let manifest: Awaited<ReturnType<typeof readPluginManifestFile>>;
+  let artifact: PluginRuntimeArtifact | null;
   try {
-    manifest = await readPluginManifestFile(manifestPath);
+    artifact =
+      captured ?? capturePluginRuntimeArtifact(pluginsDir, pluginName, journal);
+  } catch {
+    return null;
+  }
+  if (!artifact) return null;
+  const manifest = artifact.manifest;
+  try {
     assertGrantablePermissions(manifest, [...permissions]);
   } catch {
     return null;
@@ -110,11 +123,13 @@ async function derivePluginTrustTarget(
   ) {
     return null;
   }
-  const contentDigest = computePluginContentDigest(pluginsDir, pluginName);
-  if (contentDigest === null) return null;
+  const contentDigest = artifact.digest;
+  const grantRevision = readPluginGrantRevision(projectHomeDir, pluginName);
   const displayName = manifest.displayName || pluginName;
   return {
     displayName,
+    artifact,
+    grantRevision,
     target: {
       kind: CONSENT_TARGET_KIND,
       subject: pluginName,
@@ -124,6 +139,8 @@ async function derivePluginTrustTarget(
         version: manifest.version ?? null,
         permissions: [...permissions].sort(),
         contentDigest,
+        installationGeneration: artifact.generation ?? null,
+        grantRevision,
       }),
     },
   };
@@ -237,14 +254,46 @@ export function registerPluginHostApprovalRoutes(
         ),
       ),
     );
-    if (!existsSync(join(deps.pluginsDir, pluginName, 'plugin.json'))) {
-      return c.json({ success: false, error: 'Plugin not found' }, 404);
+    let readyArtifact: PluginRuntimeArtifact | null;
+    try {
+      readyArtifact = capturePluginRuntimeArtifact(
+        deps.pluginsDir,
+        pluginName,
+        deps.packageMcpJournal,
+      );
+    } catch {
+      return c.json(
+        { success: false, error: 'Plugin approval target is invalid' },
+        400,
+      );
     }
-    const derived = await derivePluginTrustTarget(
-      deps.pluginsDir,
-      pluginName,
-      normalized,
-    );
+    if (!readyArtifact)
+      return c.json(
+        { success: false, error: 'Plugin is absent or not ready' },
+        404,
+      );
+    let derived: Awaited<ReturnType<typeof derivePluginTrustTarget>>;
+    try {
+      derived = await derivePluginTrustTarget(
+        deps.pluginsDir,
+        pluginName,
+        normalized,
+        deps.projectHomeDir,
+        deps.packageMcpJournal,
+        readyArtifact,
+      );
+    } catch (error) {
+      if (error instanceof PluginGrantsUnavailableError)
+        return c.json(
+          {
+            success: false,
+            error:
+              'Permission store is unavailable; recover it before opening approval',
+          },
+          503,
+        );
+      throw error;
+    }
     if (derived === null) {
       return c.json(
         {
@@ -291,6 +340,8 @@ export function registerPluginHostApprovalRoutes(
           deps.pluginsDir,
           pluginName,
           normalized,
+          deps.projectHomeDir,
+          deps.packageMcpJournal,
         );
         return revalidated?.target ?? null;
       },
@@ -303,12 +354,25 @@ export function registerPluginHostApprovalRoutes(
       commitApproval: async () => {
         let outcome: Awaited<ReturnType<typeof grantPermissions>>;
         try {
-          outcome = await grantPermissions(
+          const scope = createPluginGrantMutationScope(
             deps.projectHomeDir,
             pluginName,
-            normalized,
+            { expectedRevision: derived.grantRevision },
           );
+          outcome = await scope.run(() =>
+            grantPermissions(
+              deps.projectHomeDir,
+              pluginName,
+              normalized,
+              derived.artifact,
+            ),
+          );
+          scope.commit();
         } catch (error) {
+          if (error instanceof PluginGrantMutationSupersededError)
+            throw new ConsentCommitRefusedError(
+              'The permission decision changed; open a fresh approval.',
+            );
           if (error instanceof PluginGrantsUnavailableError) {
             // Nothing was granted; the transaction stays pending so it can be
             // retried once the store is recovered (archive#1835).

@@ -1,7 +1,9 @@
 import { lstatSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import { agentAvailableInProject } from '@kontourai/station-contracts/project-reference-integrity';
+import type { WorkspacePaneHostAgentRef } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { capturePluginAgentInvocation } from '../../domain/config-loader-agents.js';
 import { readRegularFileNoFollow } from '../../domain/home-schema-gate.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
@@ -10,13 +12,101 @@ import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from '../orchestration/foreground-invocation-admission.js';
+import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import { scanPluginPromptGeneration } from './plugin-command-skill-source.js';
 import {
   computePluginContentDigest,
   withPluginContentLock,
 } from './plugin-content-integrity.js';
-import { withPluginInstallationGeneration } from './plugin-installation-generation-fence.js';
-import { parsePluginManifest } from './plugin-manifest-loader.js';
+import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
+import { captureLocalPluginInstallation } from './plugin-installation-local.js';
+import { parsePluginManifestDocumentWithFormat } from './plugin-manifest-loader.js';
+import type { CapturedPluginPermissionArtifact } from './plugin-permissions.js';
+import { migrateLegacyLayoutHostContribution } from './workspace-pane-host-contributions.js';
+
+/** Read the selected immutable artifact through its installation owner. */
+export function captureWorkspacePaneHostPackage(
+  projectHomeDir: string,
+  pluginId: string,
+  journal?: PackageMcpAdmissionJournal,
+) {
+  const pluginsDir = join(projectHomeDir, 'plugins');
+  const captured = journal
+    ? captureLocalPluginInstallation(pluginsDir, journal, pluginId)
+    : (() => {
+        const root = resolveInstalledPluginRoot(pluginsDir, pluginId);
+        // Legacy compatibility only: retained installations require journal authority.
+        if (root?.kind !== 'legacy') return null;
+        return {
+          root,
+          installation: null,
+          isCurrent: () =>
+            resolveInstalledPluginRoot(pluginsDir, pluginId)?.packageRoot ===
+            root.packageRoot,
+        };
+      })();
+  if (!captured?.isCurrent()) throw new ForegroundInvocationUnavailableError();
+  const pluginDir = captured.root.packageRoot;
+  const manifestPath = join(pluginDir, 'plugin.json');
+  const stat = lstatSync(manifestPath);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 256 * 1024)
+    throw new ForegroundInvocationUnavailableError();
+  const parsed = parsePluginManifestDocumentWithFormat(
+    readRegularFileNoFollow(projectHomeDir, manifestPath, {
+      maxBytes: 256 * 1024,
+    }),
+    manifestPath,
+  );
+  if (parsed.stationExtension?.status === 'disabled')
+    throw new ForegroundInvocationUnavailableError();
+  let manifest = parsed.manifest;
+  if (
+    parsed.format === 'legacy' &&
+    !manifest.workspacePaneHost &&
+    manifest.layout?.source
+  ) {
+    const layout = JSON.parse(
+      readRegularFileNoFollow(
+        pluginDir,
+        join(pluginDir, manifest.layout.source),
+        { maxBytes: 256 * 1024 },
+      ),
+    );
+    const migration = migrateLegacyLayoutHostContribution({ pluginId, layout });
+    if (migration.state === 'migrated')
+      manifest = { ...manifest, workspacePaneHost: migration.contribution };
+  }
+  const digest = computePluginContentDigest(
+    dirname(pluginDir),
+    basename(pluginDir),
+  );
+  if (
+    !digest ||
+    manifest.name !== pluginId ||
+    (captured.installation && captured.installation.contentDigest !== digest)
+  )
+    throw new ForegroundInvocationUnavailableError();
+  return Object.freeze({
+    pluginId,
+    pluginDir,
+    manifest,
+    digest,
+    generation: captured.installation?.incarnation ?? digest,
+    isCurrent() {
+      try {
+        return (
+          captured.isCurrent() &&
+          computePluginContentDigest(
+            dirname(pluginDir),
+            basename(pluginDir),
+          ) === digest
+        );
+      } catch {
+        return false;
+      }
+    },
+  });
+}
 
 /**
  * Local server-owned prerequisite, not an API or a UI registration. The caller
@@ -25,7 +115,15 @@ import { parsePluginManifest } from './plugin-manifest-loader.js';
  */
 export function createWorkspacePaneHostAdmission(input: {
   projectHomeDir: string;
+  journal?: PackageMcpAdmissionJournal;
   projects: Pick<IStorageAdapter, 'projectRevision'>;
+  nativeAgentAvailable?(agentId: string, spec: AgentSpec): boolean;
+  /** Production grant gate wraps the short final Project/Agent admission. */
+  withInvocationPermission?<T>(
+    pluginId: string,
+    invoke: () => Promise<T>,
+    artifact: CapturedPluginPermissionArtifact,
+  ): Promise<T>;
 }) {
   const projectHomeDir = input.projectHomeDir;
   const projectRevisionFor = input.projects.projectRevision.bind(
@@ -37,42 +135,44 @@ export function createWorkspacePaneHostAdmission(input: {
       pluginId: string;
       projectSlug: string;
       actionId: string;
+      installationGeneration?: string;
+      selectedAgent?: WorkspacePaneHostAgentRef;
     }) {
       const { pluginId, projectSlug, actionId } = request;
       if (!isCanonicalPluginId(pluginId))
         throw new ForegroundInvocationUnavailableError();
       return withPluginContentLock(pluginsDir, pluginId, async () => {
-        const pluginDir = join(pluginsDir, pluginId);
-        const manifestPath = join(pluginDir, 'plugin.json');
-        for (const directory of [pluginsDir, pluginDir]) {
-          const stat = lstatSync(directory);
-          if (!stat.isDirectory() || stat.isSymbolicLink())
-            throw new ForegroundInvocationUnavailableError();
-        }
-        const manifestStat = lstatSync(manifestPath);
-        if (
-          !manifestStat.isFile() ||
-          manifestStat.isSymbolicLink() ||
-          manifestStat.size > 256 * 1024
-        ) {
-          throw new ForegroundInvocationUnavailableError();
-        }
-        const manifest = parsePluginManifest(
-          readRegularFileNoFollow(projectHomeDir, manifestPath, {
-            maxBytes: 256 * 1024,
-          }),
-          manifestPath,
+        const source = captureWorkspacePaneHostPackage(
+          projectHomeDir,
+          pluginId,
+          input.journal,
         );
-        const digest = computePluginContentDigest(pluginsDir, pluginId);
+        const { pluginDir, manifest, generation } = source;
         const contribution = manifest.workspacePaneHost;
         const action = contribution?.actions.find(
           (candidate) => candidate.id === actionId,
         );
+        const selected = request.selectedAgent;
+        const sameAgent = (
+          left: WorkspacePaneHostAgentRef,
+          right: WorkspacePaneHostAgentRef,
+        ) => left.kind === right.kind && left.agentId === right.agentId;
+        if (
+          selected &&
+          (!contribution?.agentSelection.availableAgents.some((candidate) =>
+            sameAgent(candidate, selected),
+          ) ||
+            (action?.intent.agent && !sameAgent(action.intent.agent, selected)))
+        )
+          throw new ForegroundInvocationUnavailableError();
         const agent =
-          action?.intent.agent ?? contribution?.agentSelection.defaultAgent;
+          action?.intent.agent ??
+          selected ??
+          contribution?.agentSelection.defaultAgent;
         if (
           manifest.name !== pluginId ||
-          !digest ||
+          (request.installationGeneration !== undefined &&
+            request.installationGeneration !== generation) ||
           !action ||
           !agent ||
           agent.kind !== 'own-plugin-agent' ||
@@ -87,14 +187,8 @@ export function createWorkspacePaneHostAdmission(input: {
         const withCurrentProject =
           projectRevision.withCurrentRead.bind(projectRevision);
         const project = structuredClone(projectRevision.value);
-        if (
-          project.slug !== projectSlug ||
-          project.defaultWorkspaceIsolation === 'worktree'
-        ) {
-          // Worktree provisioning is a pre-invocation effect and is not admitted
-          // by this bounded first slice. Never silently substitute shared work.
+        if (project.slug !== projectSlug)
           throw new ForegroundInvocationUnavailableError();
-        }
         const agentSnapshot = await capturePluginAgentInvocation(
           projectHomeDir,
           agent.agentId,
@@ -102,23 +196,28 @@ export function createWorkspacePaneHostAdmission(input: {
         );
         const agentSpec = agentSnapshot.read();
         if (
-          !agentSpec.execution?.agentConnectionId ||
+          (!agentSpec.execution?.agentConnectionId &&
+            !input.nativeAgentAvailable?.(agent.agentId, agentSpec)) ||
           !agentAvailableInProject(projectSlug, project.agents, {
             slug: agent.agentId,
             project: agentSpec.project,
           })
         ) {
-          // Native Agent execution rereads mutable runtime definitions after
-          // the relay boundary. Until it can consume this snapshot, refuse.
+          // Native mode requires the production captured-runtime bridge.
           throw new ForegroundInvocationUnavailableError();
         }
         let message: string;
         if (action.intent.kind === 'prompt') message = action.intent.prompt;
         else {
-          const exact = scanPluginPromptGeneration(pluginDir, pluginId, {
-            maxFiles: 32,
-            maxFileBytes: 64 * 1024,
-          }).filter(
+          const exact = scanPluginPromptGeneration(
+            pluginDir,
+            pluginId,
+            {
+              maxFiles: 32,
+              maxFileBytes: 64 * 1024,
+            },
+            manifest,
+          ).filter(
             (prompt) =>
               prompt.id ===
               `${pluginId}:${action.intent.kind === 'plugin-prompt' ? action.intent.promptId : ''}`,
@@ -135,9 +234,17 @@ export function createWorkspacePaneHostAdmission(input: {
         let used = false;
         let active = false;
         let thread: string | undefined;
+        let provisionedThread: string | undefined;
+        let provisionedWorkspace: ForegroundInvocationAdmission['provisionedWorkspace'];
         let turnInvoked = false;
+        let nativeRelayInvoked = false;
         const admission: ForegroundInvocationAdmission = Object.freeze({
           agentId: agent.agentId,
+          source: Object.freeze({
+            pluginId,
+            installationGeneration: generation,
+            actionId: action.id,
+          }),
           get agentSpec() {
             return structuredClone(agentSpec);
           },
@@ -145,41 +252,87 @@ export function createWorkspacePaneHostAdmission(input: {
             return structuredClone(project);
           },
           message,
+          get provisionedWorkspace() {
+            return provisionedWorkspace;
+          },
           async invoke<R>(
-            phase: 'start' | 'turn',
+            phase: 'provision' | 'start' | 'turn' | 'native-relay',
             actual: Parameters<ForegroundInvocationAdmission['invoke']>[1],
             effect: () => Promise<R>,
           ): Promise<R> {
             if (!active) throw new ForegroundInvocationUnavailableError();
-            const invoked = await withCurrentProject(async (current) =>
-              agentSnapshot.invokeIfCurrent(() => {
-                if (
-                  !active ||
-                  computePluginContentDigest(pluginsDir, pluginId) !== digest ||
-                  current.id !== project.id ||
-                  current.slug !== projectSlug ||
-                  !agentAvailableInProject(current.slug, current.agents, {
-                    slug: agent.agentId,
-                    project: agentSpec.project,
-                  }) ||
-                  actual.agentId !== agent.agentId ||
-                  actual.projectSlug !== projectSlug ||
-                  !actual.threadId ||
-                  (phase === 'start'
-                    ? thread !== undefined
-                    : thread !== actual.threadId ||
-                      turnInvoked ||
-                      actual.message !== message)
+            const invokeWithProject = () =>
+              withCurrentProject(async (current) =>
+                agentSnapshot.invokeIfCurrent(() => {
+                  if (
+                    !active ||
+                    !source.isCurrent() ||
+                    current.id !== project.id ||
+                    current.slug !== projectSlug ||
+                    !agentAvailableInProject(current.slug, current.agents, {
+                      slug: agent.agentId,
+                      project: agentSpec.project,
+                    }) ||
+                    actual.agentId !== agent.agentId ||
+                    actual.projectSlug !== projectSlug ||
+                    !actual.threadId ||
+                    (phase === 'native-relay' &&
+                      (Boolean(agentSpec.execution?.agentConnectionId) ||
+                        nativeRelayInvoked)) ||
+                    (phase === 'turn' &&
+                      !agentSpec.execution?.agentConnectionId &&
+                      !nativeRelayInvoked) ||
+                    (phase === 'provision'
+                      ? project.defaultWorkspaceIsolation !== 'worktree' ||
+                        provisionedThread !== undefined ||
+                        thread !== undefined
+                      : phase === 'start'
+                        ? thread !== undefined ||
+                          (provisionedWorkspace !== undefined &&
+                            actual.cwd !== provisionedWorkspace.cwd) ||
+                          (provisionedThread !== undefined &&
+                            provisionedThread !== actual.threadId) ||
+                          (project.defaultWorkspaceIsolation === 'worktree' &&
+                            provisionedWorkspace === undefined)
+                        : thread !== actual.threadId ||
+                          turnInvoked ||
+                          actual.message !== message)
+                  )
+                    throw new ForegroundInvocationUnavailableError();
+                  if (phase === 'provision')
+                    provisionedThread = actual.threadId;
+                  else if (phase === 'start') thread = actual.threadId;
+                  else if (phase === 'native-relay') nativeRelayInvoked = true;
+                  else turnInvoked = true;
+                  // Box the Promise: Project and Agent mutation locks release
+                  // after the synchronous invocation, BEFORE provider settlement.
+                  return { pending: effect() };
+                }),
+              );
+            const invoked = input.withInvocationPermission
+              ? await input.withInvocationPermission(
+                  pluginId,
+                  invokeWithProject,
+                  source,
                 )
-                  throw new ForegroundInvocationUnavailableError();
-                if (phase === 'start') thread = actual.threadId;
-                else turnInvoked = true;
-                // Box the Promise: Project and Agent mutation locks release
-                // after the synchronous invocation, BEFORE provider settlement.
-                return { pending: effect() };
-              }),
-            );
-            return invoked.pending;
+              : await invokeWithProject();
+            const result = await invoked.pending;
+            if (phase === 'provision') {
+              if (
+                !result ||
+                typeof result !== 'object' ||
+                !('path' in result) ||
+                typeof result.path !== 'string' ||
+                !result.path
+              )
+                throw new ForegroundInvocationUnavailableError();
+              provisionedWorkspace = Object.freeze({
+                threadId: actual.threadId,
+                projectSlug,
+                cwd: result.path,
+              });
+            }
+            return result;
           },
         });
         return Object.freeze({
@@ -190,11 +343,12 @@ export function createWorkspacePaneHostAdmission(input: {
             used = true;
             // Plugin content is acquired OUTSIDE Session coordination, keeping
             // the existing lifecycle content -> Session lock order intact.
-            const outcome = await withPluginInstallationGeneration({
+            return await withPluginContentLock(
               pluginsDir,
-              pluginName: pluginId,
-              expected: { installed: true, installationGeneration: digest },
-              effect: async () => {
+              pluginId,
+              async () => {
+                if (!source.isCurrent())
+                  throw new ForegroundInvocationUnavailableError();
                 active = true;
                 try {
                   return await operation(admission);
@@ -202,10 +356,7 @@ export function createWorkspacePaneHostAdmission(input: {
                   active = false;
                 }
               },
-            });
-            if (outcome.kind !== 'applied')
-              throw new ForegroundInvocationUnavailableError();
-            return outcome.value;
+            );
           },
         });
       }).catch((error) => {
