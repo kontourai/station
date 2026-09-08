@@ -10,7 +10,11 @@ import {
   outboundDispatch,
   type QueuedOutboundTurn,
 } from '../lib/outboundQueue';
-import { _resetOutboundQueueSource } from '../lib/outboundQueueSnapshotSource';
+import {
+  _resetOutboundQueueSource,
+  attachOutboundQueueSource,
+  detachOutboundQueueSource,
+} from '../lib/outboundQueueSnapshotSource';
 
 /**
  * Counts every durable read the queue performs. `updateItem` is the
@@ -108,5 +112,30 @@ describe('useOutboundQueueSnapshot', () => {
     ).toHaveLength(1);
 
     view.unmount();
+  });
+
+  /**
+   * `attach` reaches the queue through a dynamic import, so a consumer that
+   * mounts and unmounts inside that window would otherwise leave a live
+   * subscription (and a durable read) behind for a store nobody is watching.
+   * Driven against the source directly because the race IS the gap between
+   * `attach` starting and its import resolving.
+   */
+  it('abandons an attach whose consumer left before the queue module loaded', async () => {
+    const { storage, calls } = countingStorage();
+    _setOutboundQueueStorage(storage);
+    const subscribe = vi.spyOn(outboundDispatch, 'subscribe');
+
+    const attaching = attachOutboundQueueSource();
+    detachOutboundQueueSource();
+    await attaching;
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(subscribe).not.toHaveBeenCalled();
+    expect(calls.durableReads).toBe(0);
+
+    subscribe.mockRestore();
   });
 });
