@@ -329,6 +329,20 @@ test('replays a persisted host restoration mark observed before the measure list
 });
 
 test('classifies every 100k measurement stage without retaining volatile driver output', () => {
+  expect(
+    productMarkFailureCode(
+      new Error('100k file measurement OPEN_FILE failed', {
+        cause: new Error('file-preview-commit product timed out'),
+      }),
+    ),
+  ).toBe('PRODUCT_FILE_PREVIEW_COMMIT_TIMEOUT');
+  expect(
+    productMarkFailureCode(
+      new Error('100k file measurement OPEN_FILE failed', {
+        cause: new Error('/private/unrecognized/page-text'),
+      }),
+    ),
+  ).toBe('PRODUCT_FILE_100K_OPEN_FILE_FAILED');
   for (const stage of [
     'PREPARE_CORPUS',
     'OPEN_FILE',

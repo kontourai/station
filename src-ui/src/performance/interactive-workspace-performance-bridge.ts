@@ -1112,8 +1112,11 @@ type FileMeasurementStage =
   | 'SCROLL_FILE'
   | 'RENDER_DIFF';
 
-function fileMeasurementStageError(stage: FileMeasurementStage): Error {
-  return new Error(`100k file measurement ${stage} failed`);
+function fileMeasurementStageError(
+  stage: FileMeasurementStage,
+  cause?: unknown,
+): Error {
+  return new Error(`100k file measurement ${stage} failed`, { cause });
 }
 
 function corpusReceiptDiagnostic(
@@ -1160,10 +1163,9 @@ async function measure100kStage<T>(
       )
     )
       throw error;
-    // Preserve only the stable stage in the public reason code. Driver and DOM
-    // failures may contain volatile paths or browser text, neither of which is
-    // suitable for a durable performance receipt.
-    throw fileMeasurementStageError(stage);
+    // Keep the stage and cause locally; public receipts classify them through
+    // a closed vocabulary without retaining driver paths or browser text.
+    throw fileMeasurementStageError(stage, error);
   }
 }
 
@@ -2083,8 +2085,15 @@ export function productMarkFailureCode(error: unknown): string {
   const fileMeasurementStage = /100k file measurement ([A-Z_]+) failed/.exec(
     message,
   );
-  if (fileMeasurementStage)
+  if (fileMeasurementStage) {
+    // Classify one underlying message through the same closed vocabulary.
+    // Never serialize driver paths, page text, or an arbitrary cause chain.
+    if (error instanceof Error && error.cause instanceof Error) {
+      const detail = productMarkFailureCode(new Error(error.cause.message));
+      if (detail !== 'PRODUCT_MARK_FAILURE_UNCLASSIFIED') return detail;
+    }
     return `PRODUCT_FILE_100K_${fileMeasurementStage[1]!}_FAILED`;
+  }
   const presenceStage =
     /Collaboration presence (navigation|leave|owner-absence|join|announce) failed/.exec(
       message,

@@ -1081,6 +1081,16 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         context,
       ),
     ).toEqual({ state: 'unavailable' });
+    // Real worker retirement can truthfully return winding-down. Settle this
+    // test's reader before the general runtime fixture teardown releases home.
+    await expect
+      .poll(
+        async () =>
+          (await subject.runtimeSearch!.retireAfterFailedInitialization())
+            .state,
+        { timeout: 5_000 },
+      )
+      .toBe('closed');
   });
 
   it('settles async route-service readiness before capturing agent configuration', async () => {

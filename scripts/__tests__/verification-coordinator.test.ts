@@ -2031,6 +2031,7 @@ describe('verification coordinator', () => {
         heartbeatMs: 1,
         collectProvenance: () =>
           worktreeProvenance(fastWorktree, 'bounded-fast'),
+        hostCpuSampler: healthySampler(),
         runner: async () => ({ status: 0 }),
       });
       // `passed` is not earnable here — see the note on the first ci:fast
