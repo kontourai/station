@@ -51,7 +51,27 @@ export async function attachOutboundQueueSource(): Promise<void> {
   const attempt = ++generation;
   const { outboundDispatch } = await import('./outboundQueue');
   if (attempt !== generation) return;
-  detachUpstream = outboundDispatch.subscribe(refresh);
+  const stops = [
+    outboundDispatch.subscribe(refresh),
+    // Another tab's mutation reaches this renderer only through the queue's
+    // cross-tab channel — its `subscribe` Set is per-renderer.
+    outboundDispatch.subscribeRemoteChange(refresh),
+  ];
+  if (typeof document !== 'undefined') {
+    // A tab that was hidden while a sibling drained the queue can have missed
+    // the message (a discarded channel, a restored bfcache page). Coming back
+    // into view is the moment its projection is about to be read.
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    stops.push(() =>
+      document.removeEventListener('visibilitychange', onVisibility),
+    );
+  }
+  detachUpstream = () => {
+    for (const stop of stops) stop();
+  };
   refresh();
 }
 
