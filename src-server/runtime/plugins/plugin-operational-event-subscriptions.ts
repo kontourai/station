@@ -28,7 +28,7 @@ import {
   readPluginGrantState,
 } from '../../services/plugins/plugin-permissions.js';
 import {
-  capturePluginRuntimeArtifact,
+  capturePluginRuntimeArtifactAsync,
   type PluginRuntimeArtifact,
 } from '../../services/plugins/plugin-runtime-artifact.js';
 import { pluginEventSubscriptionOperations } from '../../telemetry/metrics.js';
@@ -229,7 +229,7 @@ export function createPluginOperationalEventSubscriptionService(
       authorize: authorization,
     });
 
-  const discover = (): Map<string, DesiredSubscription> => {
+  const discover = async (): Promise<Map<string, DesiredSubscription>> => {
     const found = new Map<string, DesiredSubscription>();
     if (!existsSync(pluginsDir)) return found;
     const names = new Set(
@@ -246,7 +246,7 @@ export function createPluginOperationalEventSubscriptionService(
       names.add(installed.pluginId);
     for (const name of [...names].sort()) {
       try {
-        const artifact = capturePluginRuntimeArtifact(
+        const artifact = await capturePluginRuntimeArtifactAsync(
           pluginsDir,
           name,
           options.packageMcpJournal,
@@ -366,7 +366,7 @@ export function createPluginOperationalEventSubscriptionService(
     if (closing) return { kind: 'unavailable' };
     let discovered: Map<string, DesiredSubscription>;
     try {
-      discovered = discover();
+      discovered = await discover();
     } catch (error) {
       log('error', 'Plugin operational event subscription discovery failed', {
         error: error instanceof Error ? error.message : 'unknown',

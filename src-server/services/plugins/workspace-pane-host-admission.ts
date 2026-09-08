@@ -16,6 +16,7 @@ import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import { scanPluginPromptGeneration } from './plugin-command-skill-source.js';
 import {
   computePluginContentDigest,
+  computePluginContentDigestAsync,
   withPluginContentLock,
 } from './plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
@@ -25,7 +26,7 @@ import type { CapturedPluginPermissionArtifact } from './plugin-permissions.js';
 import { migrateLegacyLayoutHostContribution } from './workspace-pane-host-contributions.js';
 
 /** Read the selected immutable artifact through its installation owner. */
-export function captureWorkspacePaneHostPackage(
+export async function captureWorkspacePaneHostPackage(
   projectHomeDir: string,
   pluginId: string,
   journal?: PackageMcpAdmissionJournal,
@@ -47,6 +48,11 @@ export function captureWorkspacePaneHostPackage(
       })();
   if (!captured?.isCurrent()) throw new ForegroundInvocationUnavailableError();
   const pluginDir = captured.root.packageRoot;
+  const digest = await computePluginContentDigestAsync(
+    dirname(pluginDir),
+    basename(pluginDir),
+  );
+  if (!captured.isCurrent()) throw new ForegroundInvocationUnavailableError();
   const manifestPath = join(pluginDir, 'plugin.json');
   const stat = lstatSync(manifestPath);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 256 * 1024)
@@ -76,10 +82,6 @@ export function captureWorkspacePaneHostPackage(
     if (migration.state === 'migrated')
       manifest = { ...manifest, workspacePaneHost: migration.contribution };
   }
-  const digest = computePluginContentDigest(
-    dirname(pluginDir),
-    basename(pluginDir),
-  );
   if (
     !digest ||
     manifest.name !== pluginId ||
@@ -92,6 +94,20 @@ export function captureWorkspacePaneHostPackage(
     manifest,
     digest,
     generation: captured.installation?.incarnation ?? digest,
+    async isCurrentAsync() {
+      try {
+        return (
+          captured.isCurrent() &&
+          (await computePluginContentDigestAsync(
+            dirname(pluginDir),
+            basename(pluginDir),
+          )) === digest &&
+          captured.isCurrent()
+        );
+      } catch {
+        return false;
+      }
+    },
     isCurrent() {
       try {
         return (
@@ -142,7 +158,7 @@ export function createWorkspacePaneHostAdmission(input: {
       if (!isCanonicalPluginId(pluginId))
         throw new ForegroundInvocationUnavailableError();
       return withPluginContentLock(pluginsDir, pluginId, async () => {
-        const source = captureWorkspacePaneHostPackage(
+        const source = await captureWorkspacePaneHostPackage(
           projectHomeDir,
           pluginId,
           input.journal,

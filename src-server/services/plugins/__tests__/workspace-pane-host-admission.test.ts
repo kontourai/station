@@ -510,7 +510,7 @@ describe('Workspace Pane host invocation admission', () => {
       home,
       pluginId,
       ['agents.invoke'],
-      captureWorkspacePaneHostPackage(
+      await captureWorkspacePaneHostPackage(
         home,
         pluginId,
         store.createPackageMcpAdmissionJournal(),
@@ -720,7 +720,7 @@ describe('Workspace Pane host invocation admission', () => {
     const proof = await nativeHostProof({ retainArtifact: true });
     if (proof.retained?.state !== 'observed')
       throw new Error('fixture installation absent');
-    const permissionArtifact = captureWorkspacePaneHostPackage(
+    const permissionArtifact = await captureWorkspacePaneHostPackage(
       home,
       pluginId,
       store.createPackageMcpAdmissionJournal(),

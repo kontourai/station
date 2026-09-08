@@ -124,6 +124,8 @@ vi.mock(
       typeof import('../../../services/plugins/plugin-content-integrity.js')
     >()),
     computePluginContentDigest,
+    computePluginContentDigestAsync: async (...args: unknown[]) =>
+      computePluginContentDigest(...args),
     forgetPluginContentDigest,
   }),
 );
@@ -177,6 +179,14 @@ vi.mock('../../../services/plugins/plugin-permissions.js', () => ({
   processInstallPermissions: vi.fn(),
   // archive#4288: the list route reads the derivation, not the raw entry.
   readPluginGrantState: vi.fn().mockReturnValue({
+    recorded: ['network'],
+    granted: ['network'],
+    withheld: [],
+    binding: 'bound',
+    recordedDigest: 'sha256:test',
+    currentDigest: 'sha256:test',
+  }),
+  readPluginGrantStateAsync: vi.fn().mockResolvedValue({
     recorded: ['network'],
     granted: ['network'],
     withheld: [],

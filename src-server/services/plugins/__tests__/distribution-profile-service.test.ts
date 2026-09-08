@@ -2,6 +2,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -9,10 +10,16 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { readCurrentWorkspacePaneCatalog } from '../../projects/workspace-pane-catalog.js';
 import {
   DistributionProfileService,
   resolveDistributionProfile,
 } from '../distribution-profile-service.js';
+
+vi.mock('node:fs', async (original) => {
+  const actual = await original<typeof import('node:fs')>();
+  return { ...actual, readFileSync: vi.fn(actual.readFileSync) };
+});
 
 describe('DistributionProfileService', () => {
   const homes: string[] = [];
@@ -75,6 +82,49 @@ describe('DistributionProfileService', () => {
     homes
       .splice(0)
       .forEach((value) => rmSync(value, { recursive: true, force: true }));
+  });
+
+  test('resolving a built-in does not read unrelated plugin payloads', () => {
+    const projectHome = home();
+    const other = join(
+      realpathSync(writePlugin(projectHome, 'other-plugin')),
+      'server.mjs',
+    );
+    writeFileSync(other, 'export const value = 1;');
+    const service = new DistributionProfileService(projectHome);
+    vi.mocked(readFileSync).mockClear();
+    expect(service.resolveForCatalog('builtin:coding').item.id).toBe(
+      'builtin:coding',
+    );
+    expect(
+      vi.mocked(readFileSync).mock.calls.filter(([path]) => path === other),
+    ).toHaveLength(0);
+  });
+
+  test('a known plugin layout reads only its own payload once', () => {
+    const projectHome = home();
+    const other = join(
+      realpathSync(writePlugin(projectHome, 'other-plugin')),
+      'server.mjs',
+    );
+    const selected = join(
+      realpathSync(writePlugin(projectHome, 'selected-plugin', 'selected')),
+      'server.mjs',
+    );
+    writeFileSync(other, 'export const value = 1;');
+    writeFileSync(selected, 'export const value = 2;');
+    const service = new DistributionProfileService(projectHome);
+    vi.mocked(readFileSync).mockClear();
+    expect(
+      service.resolveForCatalog('plugin:selected-plugin:selected').definition
+        .slug,
+    ).toBe('selected');
+    expect(
+      vi.mocked(readFileSync).mock.calls.filter(([path]) => path === other),
+    ).toHaveLength(0);
+    expect(
+      vi.mocked(readFileSync).mock.calls.filter(([path]) => path === selected),
+    ).toHaveLength(1);
   });
 
   test('standard is offline-safe and exposes installed Coding, Tasks, and Session Board starters', () => {
@@ -598,6 +648,46 @@ describe('DistributionProfileService', () => {
       expect.anything(),
     );
     diagnostic.mockRestore();
+  });
+
+  test('one pane catalog observes each package once and the next request sees new bytes', async () => {
+    const projectHome = realpathSync(home());
+    const pluginDir = writePlugin(projectHome, 'catalog-cost');
+    const payload = join(pluginDir, 'payload.txt');
+    writeFileSync(payload, 'first');
+    const service = new DistributionProfileService(projectHome);
+    vi.mocked(readFileSync).mockClear();
+    const first = readCurrentWorkspacePaneCatalog(
+      await service.captureCatalog(),
+      'project-a',
+    );
+    expect(
+      first.contributions.some(
+        (item) => item.sourceIdentity.id === 'catalog-cost',
+      ),
+    ).toBe(true);
+    expect(
+      vi.mocked(readFileSync).mock.calls.filter(([path]) => path === payload),
+    ).toHaveLength(1);
+    const manifestPath = join(pluginDir, 'plugin.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ ...manifest, version: '2.0.0' }),
+    );
+    vi.mocked(readFileSync).mockClear();
+    const next = readCurrentWorkspacePaneCatalog(
+      await service.captureCatalog(),
+      'project-a',
+    );
+    expect(
+      next.contributions.find(
+        (item) => item.sourceIdentity.id === 'catalog-cost',
+      )?.contribution.version,
+    ).toBe('2.0.0');
+    expect(
+      vi.mocked(readFileSync).mock.calls.filter(([path]) => path === payload),
+    ).toHaveLength(1);
   });
 
   test('rejects duplicate and unsafe profile sources without touching the network', () => {

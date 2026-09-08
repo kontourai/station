@@ -22,8 +22,15 @@ import { verifyPluginActivation } from '../../../services/plugins/plugin-activat
 import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
 import { createLocalPluginInstallationService } from '../../../services/plugins/plugin-installation-local.js';
 import { readPluginManifestFileSync } from '../../../services/plugins/plugin-manifest-loader.js';
-import { grantPermissions } from '../../../services/plugins/plugin-permissions.js';
-import { capturePluginRuntimeArtifact } from '../../../services/plugins/plugin-runtime-artifact.js';
+import {
+  grantPermissions,
+  readPluginGrantStateAsync,
+  revokeGrants,
+} from '../../../services/plugins/plugin-permissions.js';
+import {
+  capturePluginRuntimeArtifact,
+  capturePluginRuntimeArtifactAsync,
+} from '../../../services/plugins/plugin-runtime-artifact.js';
 import { readCurrentWorkspacePaneCatalog } from '../../../services/projects/workspace-pane-catalog.js';
 import { readPluginBundle } from '../plugin-bundles.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
@@ -138,6 +145,26 @@ const logger = {
   info: vi.fn(),
 } as any;
 
+test('async capture binds the declaration whose bytes are scanned after yielding', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'station-async-manifest-'));
+  cleanups.push(() => rmSync(home, { recursive: true, force: true }));
+  const plugins = join(home, 'plugins');
+  mkdirSync(join(plugins, 'manifest-race'), { recursive: true });
+  const path = join(plugins, 'manifest-race', 'plugin.json');
+  writeFileSync(
+    path,
+    JSON.stringify({ name: 'manifest-race', version: '1.0.0' }),
+  );
+  const pending = capturePluginRuntimeArtifactAsync(plugins, 'manifest-race');
+  writeFileSync(
+    path,
+    JSON.stringify({ name: 'manifest-race', version: '2.0.0' }),
+  );
+  const artifact = await pending;
+  expect(artifact?.manifest.version).toBe('2.0.0');
+  expect(artifact?.isCurrent()).toBe(true);
+});
+
 test('pending selected artifacts expose neither bundles nor manifests nor server imports; ready selection executes its installed declaration', async () => {
   const f = await fixture();
   const globals = globalThis as typeof globalThis & {
@@ -206,11 +233,13 @@ test('captured public module refuses currentness after physical content changes 
     { journal: f.journal },
   );
   expect(acquired!.isCurrent()).toBe(true);
+  expect(await acquired!.isCurrentAsync()).toBe(true);
   writeFileSync(
     join(artifact.packageRoot, 'server.mjs'),
     'export function register() {}',
   );
   expect(acquired!.isCurrent()).toBe(false);
+  expect(await acquired!.isCurrentAsync()).toBe(false);
   expect(
     await acquirePluginPublicServerModule(
       f.plugins,
@@ -489,4 +518,36 @@ test('inventory does not advertise a ready bundle when journal selection becomes
     await response;
     spy.mockRestore();
   }
+});
+
+test('a grant revoked while an asynchronous content check yields cannot survive in its result', async () => {
+  const f = await fixture();
+  await f.ready();
+  const artifact = capturePluginRuntimeArtifact(
+    f.plugins,
+    f.manifest.name,
+    f.journal,
+  )!;
+  await grantPermissions(f.home, f.manifest.name, ['plugin.server'], artifact);
+  expect(
+    (await readPluginGrantStateAsync(f.home, f.manifest.name, artifact))
+      .granted,
+  ).toContain('plugin.server');
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const reading = readPluginGrantStateAsync(f.home, f.manifest.name, {
+    ...artifact,
+    async isCurrentAsync() {
+      await held;
+      return artifact.isCurrentAsync();
+    },
+  });
+  try {
+    await revokeGrants(f.home, f.manifest.name, ['plugin.server']);
+  } finally {
+    release();
+  }
+  expect((await reading).granted).not.toContain('plugin.server');
 });

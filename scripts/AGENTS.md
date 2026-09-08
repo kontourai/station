@@ -11,3 +11,5 @@ For evidence tooling, use the [fixture/profile/mutation commands](../docs/guides
 For asynchronous verification, collect the process exit status before reporting PASS. A log containing only the command header, or no error yet, is still pending. Resolve retained artifact paths before passing them to owners that require absolute paths; relative report directories are valid caller inputs.
 
 Before a scripted bulk edit, assert the expected match count and anchor replacement boundaries within the intended owner. Repeated loop names are not unique anchors. Inspect the complete diff and its size before committing; a green source guard does not prove unrelated checks survived its own edit.
+
+One Vitest worker bounds one invocation, not aggregate disk I/O across worktrees. Use coordinated lanes for broad verification selections. Before interpreting browser latency failures, check for concurrent bulk tests and retain the host-load observation; do not increase product deadlines to compensate for a saturated host.

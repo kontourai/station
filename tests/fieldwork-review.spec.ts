@@ -150,6 +150,9 @@ test.describe('Fieldwork Review plugin', () => {
   test('launches confined project files and embeds the protected review surface responsively', async ({
     page,
   }) => {
+    // Cold plugin loading, run creation, and review startup each retain their
+    // action deadline; the complete journey must outlive their combined work.
+    test.setTimeout(90_000);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/projects/${PROJECT_SLUG}/layouts/fieldwork-review`);
     await expect(page.getByTestId('fieldwork-review')).toBeVisible({

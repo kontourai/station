@@ -23,9 +23,12 @@ import {
 } from '../../services/plugins/plugin-installation-generation-fence.js';
 import {
   hasGrant,
-  readPluginGrantState,
+  readPluginGrantStateAsync,
 } from '../../services/plugins/plugin-permissions.js';
-import { capturePluginRuntimeArtifact } from '../../services/plugins/plugin-runtime-artifact.js';
+import {
+  capturePluginRuntimeArtifact,
+  capturePluginRuntimeArtifactAsync,
+} from '../../services/plugins/plugin-runtime-artifact.js';
 import type { Logger } from '../../utils/logger.js';
 import { buildPlugin } from './plugin-bundles.js';
 import { registerPluginConfigRoutes } from './plugin-config-routes.js';
@@ -84,13 +87,22 @@ export function createPluginRoutes(
     runtime.reconcileEngineConnections
       ? createPluginGrantReconciliationService({
           snapshot: async (pluginName) => {
-            const artifact = capture(pluginName);
+            const artifact = await capturePluginRuntimeArtifactAsync(
+              pluginsDir,
+              pluginName,
+              runtime?.packageMcpJournal,
+            );
             return {
               ...artifactGeneration(artifact),
               providerGeneration: pluginProviderSourceGeneration(pluginName),
               grants: artifact
-                ? readPluginGrantState(projectHomeDir, pluginName, artifact)
-                    .granted
+                ? (
+                    await readPluginGrantStateAsync(
+                      projectHomeDir,
+                      pluginName,
+                      artifact,
+                    )
+                  ).granted
                 : [],
             };
           },

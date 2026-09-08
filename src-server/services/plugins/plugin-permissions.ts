@@ -766,6 +766,7 @@ export interface CapturedPluginPermissionArtifact {
   readonly pluginId: string;
   readonly digest: string;
   isCurrent(): boolean;
+  isCurrentAsync?(): Promise<boolean>;
 }
 
 /**
@@ -857,6 +858,31 @@ export function readPluginGrantState(
           ? artifact.digest
           : null
         : pluginContentDigest(pluginsDirFor(projectHomeDir), pluginName);
+  return pluginGrantState(record, currentDigest);
+}
+
+/** Reread grants after the yielding byte check so revocation during I/O wins. */
+export async function readPluginGrantStateAsync(
+  projectHomeDir: string,
+  pluginName: string,
+  artifact: CapturedPluginPermissionArtifact,
+): Promise<PluginGrantState> {
+  const initial = readPluginGrantRecord(projectHomeDir, pluginName);
+  if (initial.permissions.length === 0) return pluginGrantState(initial, null);
+  const current =
+    artifact.pluginId === pluginName &&
+    (await (artifact.isCurrentAsync?.() ?? artifact.isCurrent()));
+  const record = readPluginGrantRecord(projectHomeDir, pluginName);
+  return pluginGrantState(
+    record,
+    current && record.permissions.length > 0 ? artifact.digest : null,
+  );
+}
+
+function pluginGrantState(
+  record: PluginGrantRecord,
+  currentDigest: string | null,
+): PluginGrantState {
   const { binding, granted, withheld } = derivePluginGrantBinding(
     record,
     currentDigest,
