@@ -114,6 +114,26 @@ describe('useOutboundQueueSnapshot', () => {
     view.unmount();
   });
 
+  it('opens nothing at all while the consumer is disabled', async () => {
+    const { storage, calls } = countingStorage();
+    _setOutboundQueueStorage(storage);
+    const subscribe = vi.spyOn(outboundDispatch, 'subscribe');
+
+    const view = renderHook(() => useOutboundQueueSnapshot(false));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // A dock with no conversation has nothing to gate on, so it must not
+    // charge the boot with opening IndexedDB.
+    expect(view.result.current.status).toBe('pending');
+    expect(calls.durableReads).toBe(0);
+    expect(subscribe).not.toHaveBeenCalled();
+
+    subscribe.mockRestore();
+    view.unmount();
+  });
+
   /**
    * `attach` reaches the queue through a dynamic import, so a consumer that
    * mounts and unmounts inside that window would otherwise leave a live

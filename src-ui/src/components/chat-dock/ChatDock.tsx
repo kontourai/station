@@ -1187,7 +1187,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // subscription, so this reads a cached projection and is told when it
   // changed. It used to re-read IndexedDB once a second for a value that only
   // moves when the user queues, sends, or discards a message.
-  const durableHandoffQueue = useOutboundQueueSnapshot();
+  const durableHandoffQueue = useOutboundQueueSnapshot(
+    Boolean(activeSession?.conversationId),
+  );
   const durableHandoffQueueCount = durableHandoffQueue.turns.filter(
     (turn) =>
       turn.conversationId === activeSession?.conversationId ||

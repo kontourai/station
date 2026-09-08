@@ -64,10 +64,28 @@ export function subscribeOutboundQueueSnapshot(
   };
 }
 
-export function useOutboundQueueSnapshot(): OutboundQueueSnapshot {
+function noSubscription(): () => void {
+  return () => {};
+}
+
+function readPending(): OutboundQueueSnapshot {
+  return PENDING;
+}
+
+/**
+ * `enabled: false` never opens the queue: no dynamic import, no IndexedDB
+ * read, no cross-tab channel. The projection stays `pending`, which is what a
+ * disabled React Query reported, so a consumer gating on "not yet known"
+ * behaves as it did. Both branches are module constants, so flipping the flag
+ * re-subscribes and nothing else does.
+ */
+export function useOutboundQueueSnapshot(
+  enabled = true,
+): OutboundQueueSnapshot {
+  const read = enabled ? getOutboundQueueSnapshot : readPending;
   return useSyncExternalStore(
-    subscribeOutboundQueueSnapshot,
-    getOutboundQueueSnapshot,
-    getOutboundQueueSnapshot,
+    enabled ? subscribeOutboundQueueSnapshot : noSubscription,
+    read,
+    read,
   );
 }
