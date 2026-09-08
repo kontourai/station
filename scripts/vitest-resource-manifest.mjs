@@ -85,9 +85,11 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 ]);
 
 // Direct `node:child_process` importers discovered from the root corpus, with
-// the reviewed shared-output and dogfood exceptions removed.  The final entry
-// is the responsive UI member of TIMING_RELIABILITY_TEST_FILES; it has no
-// child_process import, but must remain in the bounded timing-sensitive pool.
+// the reviewed shared-output and dogfood exceptions removed, plus reviewed
+// timing-sensitive and other bounded-pool members that import no child_process
+// but must not contend in the ordinary pool. Such admissions should be
+// annotated inline with their reason; do not infer membership from the import
+// alone.
 //
 // ## The constraint on anything you add here (station#1804)
 //
@@ -645,6 +647,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts',
   'src-server/services/ssh/__tests__/openssh-worker-probe.test.ts',
   'src-server/services/terminal/__tests__/terminal-subprocess-state.test.ts',
+  // Timing-sensitive responsive-UI suites: no child_process import, kept out
+  // of the ordinary pool so a loaded host cannot turn their waits into flakes.
   'src-ui/src/contexts/__tests__/ApiBaseContext.test.tsx',
   'src-ui/src/contexts/__tests__/ApiBaseContext.no-duplicate-connection.test.tsx',
   // Builds a production Vite artifact in a disposable directory to prove the
