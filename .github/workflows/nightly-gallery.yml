@@ -42,10 +42,13 @@ jobs:
     # have). Fonts are not incidental here: `--font-sans` resolves to
     # `"DM Sans", system-ui, sans-serif` and the bundled woff2 subsets cover
     # latin + latin-ext only, so the glyphs the UI actually draws for `⌘`,
-    # `⋯`, `─`, `→`, `●`, `✓` and friends come from the HOST's fonts. Pinning
+    # `⋯`, `→`, `●`, `✓` and friends come from the HOST's fonts. Pinning
     # the image by digest pins the rasterizer, fontconfig and that font set
     # together, and lets anyone reproduce the gate's renderer locally instead
-    # of learning to discount a local diff.
+    # of learning to discount a local diff. Which codepoints this covers is
+    # derived rather than listed from memory: `ui-glyph-coverage:ratchet`
+    # (verify:static) parses `src-ui/src/fonts.css` and holds the declared
+    # inventory in `scripts/ui-glyph-coverage-allowlist.json` (#1649).
     #
     # Pinned by digest, not by tag: `v1.62.1-noble` is republished, and a
     # rebuilt base image is a different renderer wearing the same name.

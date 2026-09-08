@@ -399,10 +399,24 @@ not an implementation detail: the comparator hashes a decoded RGBA buffer with
 no threshold, so a baseline is only meaningful against the renderer that
 produced it, and that renderer has to be reproducible. `--font-sans` resolves
 to `"DM Sans", system-ui, sans-serif` and the bundled woff2 subsets cover
-latin + latin-ext only, so the glyphs the UI draws for `⌘`, `⋯`, `─`, `→`,
-`●` and `✓` come from the **host's** fonts — pinning the image by digest pins
-the rasterizer, fontconfig and that font set together. The job logs the
-Playwright build and the resolved font families for exactly this reason.
+latin + latin-ext only, so the glyphs the UI draws for `⌘`, `⋯`, `→`, `●` and
+`✓` come from the **host's** fonts — pinning the image by digest pins the
+rasterizer, fontconfig and that font set together. The job logs the Playwright
+build and the resolved font families for exactly this reason.
+
+**The render container's font set is part of the baseline.** A hash captured
+under one font set is not a claim about the UI alone; it is a claim about the
+UI as drawn by that container's fonts, and changing the image's fonts
+invalidates every baseline exactly as a product change would.
+`npm run ui-glyph-coverage:ratchet` (in `verify:static`) derives which
+codepoints that applies to, by parsing the `unicode-range` declarations out of
+`src-ui/src/fonts.css` and requiring every uncovered codepoint the UI ships to
+be declared in `scripts/ui-glyph-coverage-allowlist.json` with a reason
+(#1649). Read that allowlist as the list of glyphs the baseline is borrowing
+from the container. It does not prove any of them renders — nothing in this
+repository opens a font — only that the dependency is written down. Note that
+DM Sans is published in latin and latin-ext only, so this cannot be closed by
+re-subsetting; #1704 shrinks it by replacing the icon-shaped glyphs.
 
 Two consequences worth stating plainly:
 

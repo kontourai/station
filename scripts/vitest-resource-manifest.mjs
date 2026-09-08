@@ -326,6 +326,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // through `execFileSync` on purpose — its oracle has to be what git actually
   // returns for a pathspec, not a fixture that would pin the bug instead.
   'scripts/__tests__/gate-scope.test.ts',
+  // station#1649: runs the glyph-coverage ratchet as a real child process
+  // against a throwaway git repository, because the thing under test is the
+  // gate's EXIT STATUS on a rejection — a guardrail whose failure branch has
+  // never executed is unproven. Bounded and single-shot; also builds the
+  // fixture with real `git init`/`git add`.
+  'scripts/__tests__/ui-glyph-coverage-gate.cli.test.ts',
   // station#928: the placement-vocabulary ratchet enumerates its scan scope
   // through one single-shot `git ls-files` for the same reason as
   // gate-scope.test.ts above — the scope must be what git tracks, not a

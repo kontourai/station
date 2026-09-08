@@ -98,6 +98,12 @@
   flex-shrink: 0;
 }
 
+/* An inline SVG sits on the text baseline; nudge it onto the optical
+   centre of the branch name beside it. */
+.branch-toolbar__repo-item-branch-icon {
+  vertical-align: -0.15em;
+}
+
 .branch-toolbar__menu-item--follow .branch-toolbar__menu-item-name {
   color: var(--text-secondary);
 }
@@ -135,6 +141,7 @@
 }
 
 .branch-toolbar__branch-icon {
+  flex: none;
   color: var(--text-secondary);
 }
 

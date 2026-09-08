@@ -64,4 +64,16 @@ export function useShortcutDisplay(id: string): string {
   return getDisplay(id);
 }
 
+/**
+ * The registry's chord lookup as a plain function, for a surface that draws a
+ * chord for a VARIABLE number of shortcut ids — `useShortcutDisplay` is a hook
+ * and cannot be called inside a `map`. Lives here rather than being reached
+ * for through `useShortcutRegistry` directly so that every component's route
+ * to a displayed chord is this one module.
+ */
+export function useShortcutDisplayLookup(): (id: string) => string {
+  const { getDisplay } = useShortcutRegistry();
+  return getDisplay;
+}
+
 // Re-export for convenience
