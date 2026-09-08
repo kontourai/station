@@ -46,7 +46,7 @@ export const SESSION_LANE_LABELS: Record<SessionLaneId, string> = {
   activeNow: 'Active now',
   recentlyFinished: 'Recently finished',
   earlier: 'Earlier',
-  external: 'Outside Station',
+  external: 'From other apps',
 };
 
 export interface SessionLane {

@@ -37,7 +37,7 @@ export interface HomeWorkItem {
     | 'Direct chat'
     | 'Session'
     | 'Remote session'
-    | 'External conversation';
+    | 'Conversation';
   title: string;
   projectLabel: string;
   agentLabel: string;
@@ -360,7 +360,7 @@ function buildSessionWorkItem(
     kindLabel: provenance
       ? 'Remote session'
       : session.controlMode === 'read-only-attached'
-        ? 'External conversation'
+        ? 'Conversation'
         : 'Session',
     // archive#3227 A2: `sessionTitle` is the one name a session is listed
     // under, and its contract is that no branch may return a raw thread id.

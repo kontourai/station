@@ -2258,7 +2258,7 @@ describe('SessionsView', () => {
 
     const detail = screen.getByTestId('session-detail');
     expect(
-      within(detail).getByText('External conversation · Read only'),
+      within(detail).getByText('Started in Claude Code · Read only'),
     ).toBeTruthy();
     expect(within(detail).getByText('Inspect the workspace')).toBeTruthy();
     expect(within(detail).getByText('The workspace is ready.')).toBeTruthy();
@@ -2596,7 +2596,7 @@ describe('SessionsView', () => {
       within(detail).queryByRole('button', { name: 'Continue in Station' }),
     ).toBeNull();
     expect(
-      within(detail).queryByText('External conversation · Read only'),
+      within(detail).queryByText('Started in Claude Code · Read only'),
     ).toBeNull();
   });
 

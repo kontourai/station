@@ -446,7 +446,7 @@ describe('ChatDockInboxPanel', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Attached session, station, outside Station, open chat details',
+        name: 'Attached session, station, started in Claude Code',
       }),
     );
 

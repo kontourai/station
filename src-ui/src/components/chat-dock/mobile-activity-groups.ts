@@ -128,7 +128,7 @@ export function groupMobileActivity(
       ? [
           {
             id: 'external' as const,
-            label: 'Outside Station',
+            label: 'From other apps',
             items: partition.external,
           },
         ]

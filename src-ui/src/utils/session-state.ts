@@ -1,3 +1,4 @@
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { sessionAttentionDisposition } from '@kontourai/station-contracts/session-attention';
 import type {
   OrchestrationSessionSummary,
@@ -246,7 +247,7 @@ export function sessionStatusWord(
   session: OrchestrationSessionSummary,
 ): string {
   if (session.controlMode === 'read-only-attached')
-    return 'External conversation';
+    return `Started in ${engineDisplayLabel(session.provider) ?? 'another app'}`;
   const canonical = orchestrationLifecycleLabel(session);
   const refined = session.lifecycleState
     ? sessionLifecycleLabel(session.lifecycleState)

@@ -137,22 +137,24 @@ function renderAttached({
   );
 }
 
-test('external chat presentation uses ordinary messages with a disabled composer and explicit continuation', () => {
+test('reply intent offers continuation in the normal composer without changing the conversation automatically', () => {
   adoptOrchestrationSession.mockClear();
   renderAttached({ presentation: 'chat' });
-  expect(
-    (
-      screen.getByRole('textbox', {
-        name: 'Read-only external conversation',
-      }) as HTMLTextAreaElement
-    ).disabled,
-  ).toBe(true);
+  const composer = screen.getByRole('textbox', {
+    name: 'Message',
+  }) as HTMLTextAreaElement;
+  expect(composer.disabled).toBe(false);
+  expect(composer.readOnly).toBe(true);
   expect(screen.getByText('Sure.')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
-  expect(
-    screen.getAllByRole('button', { name: 'Continue in Station' }),
-  ).toHaveLength(1);
-  expect(screen.queryByText('Details')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Continue here' })).toBeNull();
+  fireEvent.focus(composer);
+  expect(screen.getByRole('button', { name: 'Continue here' })).toBeTruthy();
+  expect(screen.getByText('Continue this conversation here?')).toBeTruthy();
+  expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+  expect(screen.queryByRole('button', { name: 'Continue here' })).toBeNull();
+  expect(screen.getByText('Sure.')).toBeTruthy();
   expect(adoptOrchestrationSession).not.toHaveBeenCalled();
 });
 

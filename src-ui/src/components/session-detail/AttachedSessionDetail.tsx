@@ -14,7 +14,7 @@ import {
 } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { useMutation } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
 import type { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
@@ -60,7 +60,10 @@ function reservationFailure(
  */
 export function AttachedSessionDetail({
   apiBase,
+  chatFontSize = 14,
   presentation = 'inspector',
+  openingContinuation = false,
+  continuationCreated = false,
   onLoadOlder,
   session,
   onAdopted,
@@ -76,8 +79,11 @@ export function AttachedSessionDetail({
   visualViewport,
 }: {
   presentation?: 'inspector' | 'chat';
+  openingContinuation?: boolean;
+  continuationCreated?: boolean;
   onLoadOlder?: () => Promise<void>;
   apiBase: string;
+  chatFontSize?: number;
   session: OrchestrationSessionSummary;
   onAdopted: (session: AdoptedSessionResult, intent: number) => void;
   getSelectionIntent: () => number;
@@ -123,6 +129,8 @@ export function AttachedSessionDetail({
   const messages = projectRuntimeEventsToMessages(
     events.filter(hasCanonicalEventId),
   );
+  const [replyRequested, setReplyRequested] = useState(false);
+  const continuationDescriptionId = useId();
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
   const transcriptBodyRef = useRef<HTMLDivElement>(null);
@@ -293,7 +301,11 @@ export function AttachedSessionDetail({
     adoptionError?.failureClass === 'uncertain-no-response';
   const adoptionTransportFailed = isStationTransportFailure(adoption.error);
   const adoptionDisabled =
-    !continuationSupported || adoption.isPending || serverRejectedRetry;
+    !continuationSupported ||
+    adoption.isPending ||
+    openingContinuation ||
+    continuationCreated ||
+    serverRejectedRetry;
   // archive#3227 C3: this was an inline copy of `sessionTitle`'s first and
   // last branches with its delegation branch missing, so an attached session
   // that DID carry a delegated task id read "Claude Code session" here and
@@ -303,10 +315,14 @@ export function AttachedSessionDetail({
   const continuationControls = (
     <div className="sessions-detail__adoption">
       <div>
-        <strong>Continue independently</strong>
-        <p>
+        <strong>
+          {presentation === 'chat'
+            ? 'Continue this conversation here?'
+            : 'Continue independently'}
+        </strong>
+        <p id={continuationDescriptionId}>
           {continuationSupport.state === 'native'
-            ? 'Station creates its own continuation. Your terminal keeps the original session.'
+            ? `Continue from this history. The original conversation in ${displayProvider(session)} stays available.`
             : continuationSupport.reason}
         </p>
       </div>
@@ -326,8 +342,25 @@ export function AttachedSessionDetail({
           adoption.mutate(getSelectionIntent());
         }}
       >
-        {adoption.isPending ? 'Continuing…' : 'Continue in Station'}
+        {adoption.isPending || openingContinuation
+          ? 'Continuing…'
+          : presentation === 'chat'
+            ? 'Continue here'
+            : 'Continue in Station'}
       </Button>
+      {presentation === 'chat' &&
+        !adoption.isPending &&
+        !openingContinuation && (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setReplyRequested(false);
+              transcriptScrollRef.current?.focus({ preventScroll: true });
+            }}
+          >
+            Not now
+          </Button>
+        )}
       {adoption.error && (
         <p className="sessions-detail__adoption-reason" role="alert">
           {serverRejectedRetry
@@ -355,30 +388,37 @@ export function AttachedSessionDetail({
       data-testid="session-detail"
       style={visualViewport.style}
     >
-      <header className="sessions-detail__header">
-        <div>
-          <p className="sessions-detail__eyebrow">Outside Station</p>
-          <h2>{title}</h2>
-          <p className="sessions-detail__meta">
-            <span>{displayProvider(session)}</span>
-            {session.model && <span>{session.model}</span>}
-            <span>
-              {messages.length === 0
-                ? 'No messages yet'
-                : `${messages.length} message${messages.length === 1 ? '' : 's'}`}
-            </span>
-          </p>
-        </div>
-      </header>
+      {presentation !== 'chat' && (
+        <header className="sessions-detail__header">
+          <div>
+            <p className="sessions-detail__eyebrow">
+              Started in {displayProvider(session)}
+            </p>
+            <h2>{title}</h2>
+            <p className="sessions-detail__meta">
+              <span>{displayProvider(session)}</span>
+              {session.model && <span>{session.model}</span>}
+              <span>
+                {messages.length === 0
+                  ? 'No messages yet'
+                  : `${messages.length} message${messages.length === 1 ? '' : 's'}`}
+              </span>
+            </p>
+          </div>
+        </header>
+      )}
 
       {/* archive#3305: one scroll region for everything below the pinned
           header. The previous fixed grid template declared 3 rows for a
           variable child list, so the transcript and adoption controls could
           land past the pane's clipped height with no way to reach them. */}
       <div
-        className="sessions-detail__scroll"
+        className={
+          presentation === 'chat' ? 'chat-messages' : 'sessions-detail__scroll'
+        }
         role="log"
-        aria-label="External conversation messages"
+        tabIndex={-1}
+        aria-label="Conversation messages"
         ref={transcriptScrollRef}
         onWheel={(event) => {
           if (event.deltaY < 0) followLatest.current = false;
@@ -396,9 +436,11 @@ export function AttachedSessionDetail({
             followLatest.current = true;
         }}
       >
-        <p className="sessions-detail__readonly-label">
-          External conversation · Read only
-        </p>
+        {presentation !== 'chat' && (
+          <p className="sessions-detail__readonly-label">
+            Started in {displayProvider(session)} · Read only
+          </p>
+        )}
 
         {upgradeRequired ? (
           <div className="sessions-detail__connection-state" role="status">
@@ -512,7 +554,7 @@ export function AttachedSessionDetail({
                       messageCount: messages.length,
                     }}
                     agents={[]}
-                    chatFontSize={14}
+                    chatFontSize={chatFontSize}
                     showReasoning={false}
                     showToolDetails={false}
                     onCopy={(text) => {
@@ -559,15 +601,34 @@ export function AttachedSessionDetail({
         </div>
       </div>
       {presentation === 'chat' && (
-        <div className="external-chat-composer">
-          <textarea
-            disabled
-            aria-label="Read-only external conversation"
-            placeholder="Continue in Station to reply"
-            rows={2}
-          />
-          {continuationControls}
-        </div>
+        <fieldset
+          className="external-chat-composer chat-input"
+          aria-label="Message composer"
+        >
+          {(replyRequested || openingContinuation) &&
+            (!continuationCreated || openingContinuation) &&
+            continuationControls}
+          <div className="chat-input__capsule">
+            <div className="chat-input__textarea-wrapper">
+              <textarea
+                readOnly
+                aria-label="Message"
+                placeholder="Type a message…"
+                rows={2}
+                aria-describedby={
+                  replyRequested ? continuationDescriptionId : undefined
+                }
+                onFocus={() => setReplyRequested(true)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    setReplyRequested(false);
+                    transcriptScrollRef.current?.focus({ preventScroll: true });
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </fieldset>
       )}
     </section>
   );

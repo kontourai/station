@@ -231,7 +231,7 @@ export function InboxRow({
       <button
         type="button"
         className={`chat-dock-inbox__item${showsIcons ? ' chat-dock-inbox__item--avatars' : ''}`}
-        aria-label={`${item.title}, ${item.projectLabel}${item.controlMode === 'read-only-attached' ? ', outside Station, open chat details' : ''}`}
+        aria-label={`${item.title}, ${item.projectLabel}${item.controlMode === 'read-only-attached' ? `, started in ${item.agentLabel}` : ''}`}
         aria-current={isCurrent ? 'true' : undefined}
         onClick={() => onActivate(item)}
       >
@@ -252,8 +252,9 @@ export function InboxRow({
         <span className="chat-dock-inbox__project">{item.projectLabel}</span>
         <strong className="chat-dock-inbox__title">{item.title}</strong>
         <span className="chat-dock-inbox__meta">
-          {item.agentLabel} · {item.modelLabel}
-          {item.controlMode === 'read-only-attached' && ' · Outside Station'}
+          {item.controlMode === 'read-only-attached'
+            ? `Started in ${item.agentLabel}`
+            : `${item.agentLabel} · ${item.modelLabel}`}
         </span>
         {/* station#1783: the chip is a pointer; this is what computed it.
             `LIFECYCLE_CHIP_LABELS` is shared, so adding `'Unanswerable'` to
@@ -421,7 +422,10 @@ export function InboxGroupList({
                 <InboxRow
                   key={item.id}
                   item={item}
-                  isCurrent={item.chatSessionId === activeChatSessionId}
+                  isCurrent={
+                    item.chatSessionId === activeChatSessionId ||
+                    item.orchestrationThreadId === activeChatSessionId
+                  }
                   isSnoozed={group.id === 'snoozed'}
                   isOpenChat={Boolean(
                     item.chatSessionId && openChatIds.has(item.chatSessionId),

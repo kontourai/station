@@ -1015,22 +1015,22 @@
 }
 
 .sessions-detail--chat {
-  height: min(72dvh, 780px);
+  flex: 1;
+  height: 100%;
+  padding: 0;
+  gap: 0;
 }
 .external-chat-composer {
   flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
-.external-chat-composer textarea {
-  width: 100%;
-  resize: none;
-  padding: 12px;
-  color: var(--text-muted);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
+.external-chat-composer .sessions-detail__adoption {
+  margin-bottom: 12px;
 }
 .sessions-detail--chat .sessions-detail__transcript {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
 }

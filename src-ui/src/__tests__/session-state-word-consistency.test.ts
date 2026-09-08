@@ -23,7 +23,7 @@ import {
  */
 const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
   // You owe this session something. Which thing you owe is the refinement.
-  external: new Set(['External conversation']),
+  external: new Set(['Started in Claude Code', 'Started in Codex']),
   needsYou: new Set([
     'Needs attention',
     'Waiting on you',

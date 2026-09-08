@@ -14,15 +14,21 @@ import '../../views/SessionsView.css';
 
 export function SessionDetail({
   apiBase,
+  chatFontSize = 14,
   session,
   onTaskChanged,
   onAdopted,
   getSelectionIntent,
   evidenceReveal,
   presentation = 'inspector',
+  openingContinuation,
+  continuationCreated,
 }: {
   presentation?: 'inspector' | 'chat';
+  openingContinuation?: boolean;
+  continuationCreated?: boolean;
   apiBase: string;
+  chatFontSize?: number;
   session: OrchestrationSessionSummary;
   onTaskChanged: () => void;
   onAdopted: (session: AdoptedSessionResult, intent: number) => void;
@@ -114,6 +120,9 @@ export function SessionDetail({
           key={session.threadId}
           apiBase={apiBase}
           presentation={presentation}
+          chatFontSize={chatFontSize}
+          openingContinuation={openingContinuation}
+          continuationCreated={continuationCreated}
           onLoadOlder={hasMore ? loadOlder : undefined}
           session={session}
           onAdopted={onAdopted}

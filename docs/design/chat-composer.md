@@ -5,17 +5,25 @@
 > This is the contract for the chat composer/dock and for the principle it
 > enforces. Revise this doc — not just the code — when direction changes.
 
-## Interaction stability and inbox destinations
+## Interaction stability and conversation continuity
+
+Every conversation uses the chat dock's reading surface and header, including
+conversations discovered in another coding app. A quiet "Started in Claude Code"
+(or the observed app name) identifies origin. Discovery is not evidence of running
+work; history uses source-event time and remains separate from active work.
+
+Opening a conversation does not migrate it. Focusing the reply box offers
+"Continue here" inline. An accepted continuation opens through the normal dock
+controller after the server resolves it; the original conversation remains
+available in its original app. A failed opening retains the reader and offers a
+retry that does not create another continuation. Metadata is available through
+an explicit Details action.
 
 Message action rows reserve their layout space. Hover and keyboard focus may
 reveal controls, but must not change bubble size or the position of later messages.
 The shared popover shell opens toward the roomier viewport edge, including when
-the dock is maximized. Read-only external sessions have a separate Outside Station group; discovery
-is not evidence of running work, and recency uses source-event time. They open
-ordinary chat bubbles with a disabled composer and an explicit independent
-Continue in Station action. Session diagnostics remain in the inspector; navigation to Activity
-is an explicit secondary action. A narrow Activity region shows its list or its
-selected detail, with a Back to list control, instead of squeezing both columns.
+the dock is maximized. A narrow Activity region shows its list or its selected
+detail, with a Back to list control, instead of squeezing both columns.
 
 ## 1. The principle: if an agent can't drive it, it's broken
 

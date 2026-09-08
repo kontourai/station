@@ -40,23 +40,26 @@ export function useChatDockOverlays({
   setDeviceSetting: DeviceSettingsActions['setDeviceSetting'];
   setShowNewChatModalState: (open: boolean) => void;
 }) {
+  const [importedSessionId, setImportedSessionId] = useState<string | null>(
+    null,
+  );
+  // An imported conversation occupies the same reading surface as an owned chat.
+  const onOpenInboxSession = useCallback(
+    (threadId: string) => setImportedSessionId(threadId),
+    [],
+  );
   const [newChatRequestEpoch, setNewChatRequestEpoch] = useState(0);
   const setShowNewChatModal = useCallback(
     (open: boolean) => {
-      if (open) setNewChatRequestEpoch((epoch) => epoch + 1);
+      if (open) {
+        setImportedSessionId(null);
+        setNewChatRequestEpoch((epoch) => epoch + 1);
+      }
       setShowNewChatModalState(open);
     },
     [setShowNewChatModalState],
   );
 
-  const [inboxDetailSessionId, setInboxDetailSessionId] = useState<
-    string | null
-  >(null);
-  // An inbox click opens visible chat details; Activity navigation is explicit.
-  const onOpenInboxSession = useCallback(
-    (threadId: string) => setInboxDetailSessionId(threadId),
-    [],
-  );
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   // Persisted via the device-settings store (station#settings-revamp
   // slice 2 — previously its own raw `station.inbox.open` localStorage key).
@@ -135,8 +138,8 @@ export function useChatDockOverlays({
   const closeHistory = useCallback(() => setIsHistoryOpen(false), []);
 
   return {
-    inboxDetailSessionId,
-    setInboxDetailSessionId,
+    importedSessionId,
+    setImportedSessionId,
     onOpenInboxSession,
     newChatRequestEpoch,
     setShowNewChatModal,
