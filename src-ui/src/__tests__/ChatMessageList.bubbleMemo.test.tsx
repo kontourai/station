@@ -116,7 +116,6 @@ function session(planRawText: string) {
       steps: [],
       updatedAt: planRawText,
     },
-    // biome-ignore lint/suspicious/noExplicitAny: the list's own prop type is
     // the full ChatSession; this fixture carries only what it reads.
   } as any;
 }
