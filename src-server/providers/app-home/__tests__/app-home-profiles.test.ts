@@ -1417,6 +1417,74 @@ describe('markAppHomeProfileImported', () => {
     const entries = readdirSync(dir);
     expect(entries).toEqual(['profile.json']);
   });
+
+  test('removes the staged marker when the commit rename fails', async () => {
+    // The clean-path test above cannot see this: the temp name carries a
+    // random suffix, so nothing reuses or reaps a leaked one, and the
+    // collision refusal is the only thing that would ever notice.
+    const { dir } = await ensureAppHomeProfile('claude', { homeDir });
+    const unusable = () => {
+      throw new Error('not used in this test');
+    };
+    const fs: AppHomeFsPort = {
+      lstat: async (path) => {
+        try {
+          const stat = lstatSync(path);
+          return {
+            isSymbolicLink: stat.isSymbolicLink(),
+            isFile: stat.isFile(),
+            isDirectory: stat.isDirectory(),
+            size: stat.size,
+            dev: stat.dev,
+            ino: stat.ino,
+          };
+        } catch {
+          return null;
+        }
+      },
+      realpath: async (path) => realpathSync(path),
+      mkdirRecursive: unusable,
+      mkdtemp: unusable,
+      readdir: unusable,
+      readFile: unusable,
+      openForRead: async (path) => {
+        let handle: Awaited<ReturnType<typeof openP>>;
+        try {
+          handle = await openP(path, fsConstants.O_RDONLY);
+        } catch {
+          return null;
+        }
+        const stat = await handle.stat();
+        return {
+          isFile: stat.isFile(),
+          size: stat.size,
+          dev: stat.dev,
+          ino: stat.ino,
+          read: () => handle.readFile() as Promise<Buffer>,
+          close: () => handle.close(),
+        };
+      },
+      writeFile: unusable,
+      writeFileExclusive: async (path, data) => {
+        await writeFileP(path, data, { flag: 'wx' });
+        return 'created';
+      },
+      rename: async () => {
+        throw Object.assign(new Error('EIO: i/o error, rename'), {
+          code: 'EIO',
+        });
+      },
+      rmRecursive: async (path) => {
+        await rmP(path, { recursive: true, force: true });
+      },
+    };
+
+    await expect(
+      markAppHomeProfileImported('claude', dir, { fs }),
+    ).rejects.toThrow(/rename/);
+
+    expect(readdirSync(dir)).toEqual(['profile.json']);
+  });
 });
 
 describe('symlink dodge on the profile dir itself', () => {
