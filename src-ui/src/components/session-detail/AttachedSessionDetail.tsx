@@ -377,6 +377,9 @@ export function AttachedSessionDetail({
           land past the pane's clipped height with no way to reach them. */}
       <div
         className="sessions-detail__scroll"
+        role="log"
+        aria-label="External conversation messages"
+        tabIndex={0}
         ref={transcriptScrollRef}
         onWheel={(event) => {
           if (event.deltaY < 0) followLatest.current = false;
