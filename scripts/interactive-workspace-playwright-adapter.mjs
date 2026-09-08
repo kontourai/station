@@ -1568,7 +1568,9 @@ export async function publishPeerPresence(
       if (name === 'join' && error instanceof LiveCommandOutcomeError)
         joinOutcome = error.outcome;
       const diagnostic = closedLiveCommandDiagnostic(error);
-      const state = await readLiveCommandFailureState(peer);
+      const state = await readLiveCommandFailureState(
+        name === 'owner-absence' ? owner : peer,
+      );
       const index = validDriverIteration(iteration) ? iteration : 'UNKNOWN';
       throw new Error(
         `Collaboration presence ${name} failed${diagnostic ? `: ${diagnostic}` : ''}; iteration=${index}; joinOutcome=${joinOutcome}; stream=${state.stream}; join=${state.join}; announce=${state.announce}; dialog=${state.dialog}; telemetry=${state.telemetry}`,
