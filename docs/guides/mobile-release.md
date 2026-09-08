@@ -157,9 +157,9 @@ inits (#1776 shipped exactly that icon to Nightly testers).
 The delivery workflow therefore runs
 `node scripts/ios-channel-icons.mjs apply <channel>` immediately after each
 `tauri ios init`, copying the channel's committed set — for example
-`src-desktop/icons/nightly/ios/`, named by `iosIconSet` in the channel overlay
-and `iosIconSource` in `config/channel-platform-matrix.json` — over the
-catalog. It fails closed when
+`src-desktop/icons/nightly/ios/`, named by `iosIconSet` in the channel
+identity table in `scripts/ios-testflight-channel.mjs` and by `iosIconSource`
+in `config/channel-platform-matrix.json` — over the catalog. It fails closed when
 the set lacks a file the catalog's `Contents.json` references or when any file
 the template wrote survives. After the build,
 `node scripts/ios-channel-icons.mjs verify <channel> --app <Payload/*.app> --receipt provider-receipts/channel-icon-receipt.json`

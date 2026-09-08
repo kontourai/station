@@ -37,6 +37,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PNG } from 'pngjs';
 import { iosTestFlightChannel } from './ios-testflight-channel.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -50,7 +51,7 @@ export const SHIPPED_IOS_APP_ICON = {
   setFile: 'AppIcon-60x60@2x.png',
 };
 
-const PNG = /\.png$/;
+const PNG_NAME = /\.png$/;
 
 function fail(message) {
   throw new Error(`iOS channel icons: ${message}`);
@@ -76,7 +77,7 @@ export function catalogFilenames(catalog) {
   const contents = JSON.parse(readFileSync(contentsPath, 'utf8'));
   const names = new Set();
   for (const image of contents.images ?? []) {
-    if (typeof image.filename !== 'string' || !PNG.test(image.filename))
+    if (typeof image.filename !== 'string' || !PNG_NAME.test(image.filename))
       fail(`Contents.json names a non-PNG image: ${JSON.stringify(image)}`);
     names.add(image.filename);
   }
@@ -88,7 +89,7 @@ export function catalogFilenames(catalog) {
 export function channelSetFilenames(setDir) {
   if (!existsSync(setDir)) fail(`channel icon set ${setDir} does not exist`);
   return readdirSync(setDir)
-    .filter((name) => PNG.test(name))
+    .filter((name) => PNG_NAME.test(name))
     .sort();
 }
 
@@ -105,6 +106,36 @@ export function channelSetDigest(setDir) {
     hash.update('\0');
   }
   return hash.digest('hex');
+}
+
+/**
+ * Every pixel of every PNG in an iOS set must be fully opaque. App Store
+ * icons reject alpha, and the shipped-icon pixel comparison below depends on
+ * it: Apple's CgBI re-encode premultiplies alpha, which is lossless only at
+ * alpha 255 (a rounded-corner master drifts by hundreds of bytes at 120px).
+ * Decoded with pngjs (pure JS) so generation and unit tests can both run it.
+ * Returns the offending filenames; `assertOpaqueIosPngs` throws on any.
+ */
+export function translucentIosPngs(setDir) {
+  const offending = [];
+  for (const name of channelSetFilenames(setDir)) {
+    const { data } = PNG.sync.read(readFileSync(join(setDir, name)));
+    for (let at = 3; at < data.length; at += 4) {
+      if (data[at] !== 255) {
+        offending.push(name);
+        break;
+      }
+    }
+  }
+  return offending;
+}
+
+export function assertOpaqueIosPngs(setDir) {
+  const offending = translucentIosPngs(setDir);
+  if (offending.length > 0)
+    fail(
+      `${offending.join(', ')} in ${setDir} carry alpha below 255; iOS icon sets must come from the opaque square master`,
+    );
 }
 
 /**
@@ -132,7 +163,7 @@ export function applyIosChannelIcons(channel, { root = ROOT } = {}) {
   // needs to apply twice without an init in between.
   const before = new Map();
   for (const name of readdirSync(catalog)) {
-    if (PNG.test(name))
+    if (PNG_NAME.test(name))
       before.set(name, sha256(readFileSync(join(catalog, name))));
   }
   const survivors = required.filter(

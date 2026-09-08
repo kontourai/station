@@ -10,13 +10,16 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
+import { PNG } from 'pngjs';
 import { describe, expect, it } from 'vitest';
 import {
   applyIosChannelIcons,
+  assertOpaqueIosPngs,
   catalogFilenames,
   channelSetDigest,
   IOS_APP_ICON_CATALOG,
   SHIPPED_IOS_APP_ICON,
+  translucentIosPngs,
   verifyIosChannelIcons,
   verifyShippedIosAppIcon,
 } from '../ios-channel-icons.mjs';
@@ -66,6 +69,29 @@ describe('iOS channel icon sets', () => {
         expect(readFileSync(join(dir, name)).length).toBeGreaterThan(0);
     },
   );
+
+  it.each(iosChannels)(
+    'commits a fully opaque %s set (CgBI premultiplication is lossless only at alpha 255)',
+    (channel) => {
+      expect(translucentIosPngs(setDir(channel))).toEqual([]);
+      expect(() => assertOpaqueIosPngs(setDir(channel))).not.toThrow();
+    },
+  );
+
+  it('names every PNG in a set that carries any alpha below 255', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'station-ios-alpha-'));
+    const opaque = new PNG({ width: 2, height: 2 });
+    opaque.data.fill(255);
+    writeFileSync(join(dir, 'AppIcon-20x20@1x.png'), PNG.sync.write(opaque));
+    const translucent = new PNG({ width: 2, height: 2 });
+    translucent.data.fill(255);
+    translucent.data[3 * 4 + 3] = 254; // one corner pixel, one step off
+    writeFileSync(join(dir, 'AppIcon-512@2x.png'), PNG.sync.write(translucent));
+    expect(translucentIosPngs(dir)).toEqual(['AppIcon-512@2x.png']);
+    expect(() => assertOpaqueIosPngs(dir)).toThrow(
+      /AppIcon-512@2x\.png in .* alpha below 255/,
+    );
+  });
 
   it('binds the overlay iosIconSet to the channel-platform matrix authority', () => {
     const matrix = JSON.parse(

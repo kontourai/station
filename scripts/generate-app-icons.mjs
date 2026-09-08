@@ -64,6 +64,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertOpaqueIosPngs } from './ios-channel-icons.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BRAND_DIR = join(ROOT, 'assets', 'brand');
@@ -412,8 +413,11 @@ function tauriIcon(source, outDir) {
  * Fan an opaque square master out to an iOS asset-catalog set: the exact
  * AppIcon-*.png filenames Tauri's Contents.json template references. Stale
  * PNGs in the destination are removed first so the set is exactly the
- * fan-out. Exported so the byte-stability test reaches the real `tauri icon`
- * seam without rendering the masters.
+ * fan-out. Every emitted PNG must be fully opaque (App Store rule, and the
+ * delivery's CgBI pixel comparison is only lossless at alpha 255), so a
+ * rounded or otherwise translucent master is refused here rather than after
+ * a signed build. Exported so the byte-stability test reaches the real
+ * `tauri icon` seam without rendering the masters.
  */
 export function writeIosIconSet(squareMaster, destinationDir) {
   const outDir = mkdtempSync(join(tmpdir(), 'station-ios-set-'));
@@ -429,6 +433,7 @@ export function writeIosIconSet(squareMaster, destinationDir) {
   } finally {
     rmSync(outDir, { recursive: true, force: true });
   }
+  assertOpaqueIosPngs(destinationDir);
   return readdirSync(destinationDir)
     .filter((name) => name.endsWith('.png'))
     .sort();
@@ -479,6 +484,7 @@ async function main() {
       copyInto(join(squareOutDir, 'ios'), destinationDir, (name) =>
         name.endsWith('.png'),
       );
+      assertOpaqueIosPngs(destinationDir);
     };
 
     // Rounded master drives the whole default fan-out first...
