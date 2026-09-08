@@ -164,10 +164,12 @@ must contain the exact `scope`, `package`, resolved `version`, `advisory`,
 expired, duplicate, or unused record.
 
 Within 14 days of an `expires` date the policy prints a `WARN:` line naming
-the record and the days remaining, and the daily scheduled run in
-`.github/workflows/dependency-advisory.yml` raises it as a GitHub warning
-annotation; the reminder never changes the exit code, so renew or remediate
-before the date rather than after the floor starts failing.
+the record and the days remaining, and raises it as a GitHub warning
+annotation on any Actions run that scans — the daily scheduled run in
+`.github/workflows/dependency-advisory.yml`, and any pull request or merge
+group whose diff touches a dependency input. The reminder never changes the
+exit code, so renew or remediate before the date rather than after the floor
+starts failing.
 
 Critical/high exception entries contain only:
 

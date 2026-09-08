@@ -297,7 +297,6 @@ function validateExpiry(value, label, errors, now, warnings, descriptor) {
   // An expiry that lands on a quiet day reds whoever gates next, with no
   // prior signal (#1753). Warn while the record can still be renewed; the
   // floor itself is unchanged, so this never moves the exit code.
-  if (!warnings) return;
   const days = Math.round(
     (expires.valueOf() - today.valueOf()) / MILLISECONDS_PER_DAY,
   );
