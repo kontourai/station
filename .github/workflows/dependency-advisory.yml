@@ -30,6 +30,11 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: npm run dependencies:ci
+      # This daily run is also where an approaching approval expiry surfaces:
+      # the policy emits a ::warning:: annotation for every exception or
+      # residual within 14 days of its `expires` date, so a maintainer sees
+      # the reminder in the run summary before the floor starts failing
+      # (#1753). The annotation does not change the step's exit status.
       - name: Audit every committed dependency scope
         timeout-minutes: 9
         run: npm run audit:policy

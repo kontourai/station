@@ -163,6 +163,12 @@ must contain the exact `scope`, `package`, resolved `version`, `advisory`,
 `expires`, and a `recheckTrigger`. The gate rejects a missing, mismatched,
 expired, duplicate, or unused record.
 
+Within 14 days of an `expires` date the policy prints a `WARN:` line naming
+the record and the days remaining, and the daily scheduled run in
+`.github/workflows/dependency-advisory.yml` raises it as a GitHub warning
+annotation; the reminder never changes the exit code, so renew or remediate
+before the date rather than after the floor starts failing.
+
 Critical/high exception entries contain only:
 
 ```json
