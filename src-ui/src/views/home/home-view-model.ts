@@ -21,14 +21,23 @@ import {
   activeTurnProgress,
   orchestrationLifecycleLabel,
 } from '../../utils/session-state';
-import { sessionProjectLabel, sessionTitle } from '../../utils/sessionDisplay';
+import {
+  sessionProjectLabel,
+  sessionRecency,
+  sessionTitle,
+} from '../../utils/sessionDisplay';
 
 export interface HomeWorkItem {
   id: string;
   /** Durable conversation identity when this row represents one. */
   conversationId?: string;
   kind: 'task' | 'chat' | 'orchestration' | 'remote-session';
-  kindLabel: 'Durable Task' | 'Direct chat' | 'Session' | 'Remote session';
+  kindLabel:
+    | 'Durable Task'
+    | 'Direct chat'
+    | 'Session'
+    | 'Remote session'
+    | 'External conversation';
   title: string;
   projectLabel: string;
   agentLabel: string;
@@ -348,7 +357,11 @@ function buildSessionWorkItem(
       ? { conversationId: session.conversationId }
       : {}),
     kind: provenance ? 'remote-session' : 'orchestration',
-    kindLabel: provenance ? 'Remote session' : 'Session',
+    kindLabel: provenance
+      ? 'Remote session'
+      : session.controlMode === 'read-only-attached'
+        ? 'External conversation'
+        : 'Session',
     // archive#3227 A2: `sessionTitle` is the one name a session is listed
     // under, and its contract is that no branch may return a raw thread id.
     // Home carried a private copy with a different taskId regex that
@@ -378,11 +391,7 @@ function buildSessionWorkItem(
     model: session.reportedModel ?? session.effectiveModel ?? session.model,
     ...(cwdLabel ? { cwdLabel: `…/${cwdLabel}` } : {}),
     turnProgress: activeTurnProgress(session),
-    updatedAt: Math.max(
-      timestamp(session.updatedAt),
-      timestamp(session.lastEventAt),
-      timestamp(session.createdAt),
-    ),
+    updatedAt: sessionRecency(session),
     lifecycleLabel,
     // The basis behind an `'Unanswerable'` chip. Carried on the item rather
     // than recomputed at render so the row and the label come from one read

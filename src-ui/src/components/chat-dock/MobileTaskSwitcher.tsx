@@ -53,6 +53,7 @@ export type MobileTaskSwitcherMode = 'tasks' | 'activity';
 
 const ACTIVITY_GROUPS: MobileActivityGroupId[] = [
   'active',
+  'external',
   'settled',
   'snoozed',
 ];

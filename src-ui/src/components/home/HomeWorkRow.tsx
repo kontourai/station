@@ -122,9 +122,10 @@ export function renderHomeWorkRow({
                   {task.environmentLabel}
                 </span>
               )}
-              {hasLifecycleChip(task.lifecycleLabel) && (
-                <LifecycleStatusChip lifecycle={task.lifecycleLabel} />
-              )}
+              {task.controlMode !== 'read-only-attached' &&
+                hasLifecycleChip(task.lifecycleLabel) && (
+                  <LifecycleStatusChip lifecycle={task.lifecycleLabel} />
+                )}
               {isWoken && (
                 <span className="home-view__woke-pill">Woke from snooze</span>
               )}

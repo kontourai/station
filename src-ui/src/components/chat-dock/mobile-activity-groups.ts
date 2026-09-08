@@ -16,6 +16,7 @@ import type { HomeWorkItem } from '../../views/home/home-view-model';
 export { clearSnooze, readSnoozes, type SnoozeMap, writeSnooze };
 
 export type MobileActivityGroupId =
+  | 'external'
   | 'active'
   | 'settled'
   | 'snoozed'
@@ -123,5 +124,14 @@ export function groupMobileActivity(
     },
     { id: 'snoozed', label: 'Snoozed', items: partition.snoozed },
     { id: 'earlier', label: 'Earlier', items: partition.settled },
+    ...(partition.external?.length
+      ? [
+          {
+            id: 'external' as const,
+            label: 'Outside Station',
+            items: partition.external,
+          },
+        ]
+      : []),
   ];
 }

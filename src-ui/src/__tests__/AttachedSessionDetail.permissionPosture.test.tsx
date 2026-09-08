@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
+vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
+
 const adoptOrchestrationSession = vi.hoisted(() => vi.fn());
 /**
  * `importOriginal`, not a bare factory. A factory mock makes every unlisted
@@ -68,6 +70,7 @@ const ev = (
   ({ eventId: `e${n++}`, ...base, ...e }) as unknown as CanonicalRuntimeEvent;
 
 function renderAttached({
+  presentation = 'inspector',
   connected = true,
   upgradeRequired,
   streamError,
@@ -77,6 +80,7 @@ function renderAttached({
   onRetryCapabilityRecovery,
   session: sessionOverrides,
 }: {
+  presentation?: 'inspector' | 'chat';
   connected?: boolean;
   upgradeRequired?: boolean;
   streamError?: Error;
@@ -97,6 +101,7 @@ function renderAttached({
       <ToastProvider>
         <AttachedSessionDetail
           apiBase="http://station.test"
+          presentation={presentation}
           session={
             {
               threadId: 'external:claude:raw-thread-id',
@@ -131,6 +136,24 @@ function renderAttached({
     </QueryClientProvider>,
   );
 }
+
+test('external chat presentation uses ordinary messages with a disabled composer and explicit continuation', () => {
+  adoptOrchestrationSession.mockClear();
+  renderAttached({ presentation: 'chat' });
+  expect(
+    (
+      screen.getByRole('textbox', {
+        name: 'Read-only external conversation',
+      }) as HTMLTextAreaElement
+    ).disabled,
+  ).toBe(true);
+  expect(screen.getByText('Sure.')).toBeTruthy();
+  expect(
+    screen.getAllByRole('button', { name: 'Continue in Station' }),
+  ).toHaveLength(1);
+  expect(screen.queryByText('Details')).toBeNull();
+  expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+});
 
 describe('AttachedSessionDetail permission-posture row badge (station#1424)', () => {
   test.each(['codex', 'future-engine'])(

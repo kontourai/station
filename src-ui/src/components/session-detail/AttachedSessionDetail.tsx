@@ -14,7 +14,7 @@ import {
 } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { useMutation } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
 import type { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
@@ -27,6 +27,7 @@ import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
 import { isStationTransportFailure } from '../../utils/stationTransportFailure';
 import { Button } from '../Button';
 import { PermissionPostureBadge } from '../badges/PermissionPostureBadge';
+import { MessageBubble } from '../chat/MessageBubble';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
 
 function hasCanonicalEventId(
@@ -59,6 +60,8 @@ function reservationFailure(
  */
 export function AttachedSessionDetail({
   apiBase,
+  presentation = 'inspector',
+  onLoadOlder,
   session,
   onAdopted,
   getSelectionIntent,
@@ -72,6 +75,8 @@ export function AttachedSessionDetail({
   onRetryCapabilityRecovery,
   visualViewport,
 }: {
+  presentation?: 'inspector' | 'chat';
+  onLoadOlder?: () => Promise<void>;
   apiBase: string;
   session: OrchestrationSessionSummary;
   onAdopted: (session: AdoptedSessionResult, intent: number) => void;
@@ -118,6 +123,19 @@ export function AttachedSessionDetail({
   const messages = projectRuntimeEventsToMessages(
     events.filter(hasCanonicalEventId),
   );
+  const transcriptScrollRef = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
+  useEffect(() => {
+    if (
+      events.length > 0 &&
+      presentation === 'chat' &&
+      followLatest.current &&
+      transcriptScrollRef.current
+    ) {
+      transcriptScrollRef.current.scrollTop =
+        transcriptScrollRef.current.scrollHeight;
+    }
+  }, [presentation, events.length]);
   const adoption = useMutation({
     mutationFn: async (_intent: number) => {
       try {
@@ -264,15 +282,64 @@ export function AttachedSessionDetail({
   // "Worker task · <id>" in the list it was opened from.
   const title = sessionTitle(session);
 
+  const continuationControls = (
+    <div className="sessions-detail__adoption">
+      <div>
+        <strong>Continue independently</strong>
+        <p>
+          {continuationSupport.state === 'native'
+            ? 'Station creates its own continuation. Your terminal keeps the original session.'
+            : continuationSupport.reason}
+        </p>
+      </div>
+      {/* The stream's SSE state says nothing about whether this REST
+            action would succeed (sol review of #2630, finding 1) — the
+            button stays enabled and failures are classified below. */}
+      <Button
+        variant="primary"
+        disabled={adoptionDisabled}
+        onClick={() => {
+          if (
+            !continuationSupported ||
+            adoption.isPending ||
+            serverRejectedRetryRef.current
+          )
+            return;
+          adoption.mutate(getSelectionIntent());
+        }}
+      >
+        {adoption.isPending ? 'Continuing…' : 'Continue in Station'}
+      </Button>
+      {adoption.error && (
+        <p className="sessions-detail__adoption-reason" role="alert">
+          {serverRejectedRetry
+            ? 'Station says this continuation cannot be retried safely from this state.'
+            : adoptionNonRetryable
+              ? "Couldn't safely start the continuation. Browser storage is unavailable or corrupt, so retrying could duplicate it."
+              : adoptionDidNotReachStation ||
+                  adoptionOutcomeUncertain ||
+                  adoptionTransportFailed
+                ? "Couldn't start the continuation — Station isn't responding right now."
+                : "Couldn't start the continuation. Technical detail is under Details below."}
+        </p>
+      )}
+      {adoptionOutcomeUncertain && !serverRejectedRetry && (
+        <p className="sessions-detail__disabled-reason">
+          Retry safely — Station will not duplicate the continuation.
+        </p>
+      )}
+    </div>
+  );
+
   return (
     <section
-      className="sessions-detail sessions-detail--read-only"
+      className={`sessions-detail sessions-detail--read-only${presentation === 'chat' ? ' sessions-detail--chat' : ''}`}
       data-testid="session-detail"
       style={visualViewport.style}
     >
       <header className="sessions-detail__header">
         <div>
-          <p className="sessions-detail__eyebrow">Attached session</p>
+          <p className="sessions-detail__eyebrow">Outside Station</p>
           <h2>{title}</h2>
           <p className="sessions-detail__meta">
             <span>{displayProvider(session)}</span>
@@ -290,9 +357,17 @@ export function AttachedSessionDetail({
           header. The previous fixed grid template declared 3 rows for a
           variable child list, so the transcript and adoption controls could
           land past the pane's clipped height with no way to reach them. */}
-      <div className="sessions-detail__scroll">
+      <div
+        className="sessions-detail__scroll"
+        ref={transcriptScrollRef}
+        onScroll={(event) => {
+          const node = event.currentTarget;
+          followLatest.current =
+            node.scrollHeight - node.scrollTop - node.clientHeight < 64;
+        }}
+      >
         <p className="sessions-detail__readonly-label">
-          Following terminal session · Read only
+          External conversation · Read only
         </p>
 
         {upgradeRequired ? (
@@ -338,64 +413,34 @@ export function AttachedSessionDetail({
           ))
         )}
 
-        <div className="sessions-detail__adoption">
-          <div>
-            <strong>Continue independently</strong>
+        {presentation !== 'chat' && continuationControls}
+        {presentation !== 'chat' && (
+          <details className="sessions-detail__details">
+            <summary>Details</summary>
             <p>
-              {continuationSupport.state === 'native'
-                ? 'Station creates its own continuation. Your terminal keeps the original session.'
-                : continuationSupport.reason}
+              <strong>Session ID:</strong> <code>{session.threadId}</code>
             </p>
-          </div>
-          {/* The stream's SSE state says nothing about whether this REST
-            action would succeed (sol review of #2630, finding 1) — the
-            button stays enabled and failures are classified below. */}
+            {technicalErrors.map((message) => (
+              <p key={message}>
+                <strong>Technical detail:</strong> <code>{message}</code>
+              </p>
+            ))}
+          </details>
+        )}
+
+        {presentation === 'chat' && onLoadOlder && (
           <Button
-            variant="primary"
-            disabled={adoptionDisabled}
             onClick={() => {
-              if (
-                !continuationSupported ||
-                adoption.isPending ||
-                serverRejectedRetryRef.current
-              )
-                return;
-              adoption.mutate(getSelectionIntent());
+              followLatest.current = false;
+              void onLoadOlder().then(() => {
+                if (transcriptScrollRef.current)
+                  transcriptScrollRef.current.scrollTop = 0;
+              });
             }}
           >
-            {adoption.isPending ? 'Continuing…' : 'Continue in Station'}
+            Show older messages
           </Button>
-          {adoption.error && (
-            <p className="sessions-detail__adoption-reason" role="alert">
-              {serverRejectedRetry
-                ? 'Station says this continuation cannot be retried safely from this state.'
-                : adoptionNonRetryable
-                  ? "Couldn't safely start the continuation. Browser storage is unavailable or corrupt, so retrying could duplicate it."
-                  : adoptionDidNotReachStation ||
-                      adoptionOutcomeUncertain ||
-                      adoptionTransportFailed
-                    ? "Couldn't start the continuation — Station isn't responding right now."
-                    : "Couldn't start the continuation. Technical detail is under Details below."}
-            </p>
-          )}
-          {adoptionOutcomeUncertain && !serverRejectedRetry && (
-            <p className="sessions-detail__disabled-reason">
-              Retry safely — Station will not duplicate the continuation.
-            </p>
-          )}
-        </div>
-        <details className="sessions-detail__details">
-          <summary>Details</summary>
-          <p>
-            <strong>Session ID:</strong> <code>{session.threadId}</code>
-          </p>
-          {technicalErrors.map((message) => (
-            <p key={message}>
-              <strong>Technical detail:</strong> <code>{message}</code>
-            </p>
-          ))}
-        </details>
-
+        )}
         <div
           className="sessions-detail__transcript"
           data-testid="attached-session-transcript"
@@ -405,7 +450,7 @@ export function AttachedSessionDetail({
               Waiting for transcript events from this terminal session…
             </p>
           ) : (
-            messages.map((message) => {
+            messages.map((message, index) => {
               const contentParts = message.parts.map((part) => ({
                 type: part.type,
                 content: part.text,
@@ -416,6 +461,38 @@ export function AttachedSessionDetail({
                 state: part.state,
                 isError: part.isError,
               }));
+              if (presentation === 'chat')
+                return (
+                  <MessageBubble
+                    key={message.id}
+                    msg={{
+                      role: message.role,
+                      content: '',
+                      contentParts: contentParts as ChatMessage['contentParts'],
+                    }}
+                    idx={index}
+                    activeSession={{
+                      id: session.threadId,
+                      agentSlug: session.provider,
+                      agentName: displayProvider(session),
+                      messageCount: messages.length,
+                    }}
+                    agents={[]}
+                    chatFontSize={14}
+                    showReasoning={false}
+                    showToolDetails={false}
+                    onCopy={(text) => {
+                      void navigator.clipboard
+                        .writeText(text)
+                        .catch(() =>
+                          showToast(
+                            'Could not copy this message.',
+                            session.threadId,
+                          ),
+                        );
+                    }}
+                  />
+                );
               return (
                 <article
                   className={`sessions-detail__transcript-message sessions-detail__transcript-message--${message.role}`}
@@ -447,6 +524,17 @@ export function AttachedSessionDetail({
           )}
         </div>
       </div>
+      {presentation === 'chat' && (
+        <div className="external-chat-composer">
+          <textarea
+            disabled
+            aria-label="Read-only external conversation"
+            placeholder="Continue in Station to reply"
+            rows={2}
+          />
+          {continuationControls}
+        </div>
+      )}
     </section>
   );
 }

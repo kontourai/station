@@ -302,6 +302,22 @@ function HomeWorkLanesContent({
         agents={agents}
         onOpen={onOpen}
       />
+      {controller.lanes.external?.length ? (
+        <details className="home-view__settled-tail">
+          <summary>
+            Outside Station ({controller.lanes.external.length})
+          </summary>
+          <p>
+            Imported conversations. Their presence does not mean they are
+            running.
+          </p>
+          <ul className="home-view__task-list">
+            {controller.lanes.external.map((task) =>
+              renderHomeWorkRow({ task, isWoken: false, agents, onOpen }),
+            )}
+          </ul>
+        </details>
+      ) : null}
       <HomeSnoozeMenu controller={controller} />
       <HomeSnoozedShelf controller={controller} />
       <HomeSettledTail

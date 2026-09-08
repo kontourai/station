@@ -245,6 +245,8 @@ const SESSION_STATE_REFINEMENTS: Record<
 export function sessionStatusWord(
   session: OrchestrationSessionSummary,
 ): string {
+  if (session.controlMode === 'read-only-attached')
+    return 'External conversation';
   const canonical = orchestrationLifecycleLabel(session);
   const refined = session.lifecycleState
     ? sessionLifecycleLabel(session.lifecycleState)

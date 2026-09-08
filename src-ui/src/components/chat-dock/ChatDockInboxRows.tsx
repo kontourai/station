@@ -281,7 +281,8 @@ export function InboxRow({
           </span>
         )}
         <span className="chat-dock-inbox__state">
-          {hasLifecycleChip(item.lifecycleLabel) ? (
+          {item.controlMode !== 'read-only-attached' &&
+          hasLifecycleChip(item.lifecycleLabel) ? (
             <>
               <LifecycleStatusChip lifecycle={item.lifecycleLabel} />
               {/* Chip AND recency, not either/or: a `Failed`/`Completed` row

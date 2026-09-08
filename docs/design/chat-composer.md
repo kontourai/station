@@ -10,8 +10,10 @@
 Message action rows reserve their layout space. Hover and keyboard focus may
 reveal controls, but must not change bubble size or the position of later messages.
 The shared popover shell opens toward the roomier viewport edge, including when
-the dock is maximized. Read-only external sessions in the inbox identify their
-origin as outside Station and open visible chat details; navigation to Activity
+the dock is maximized. Read-only external sessions have a separate Outside Station group; discovery
+is not evidence of running work, and recency uses source-event time. They open
+ordinary chat bubbles with a disabled composer and an explicit independent
+Continue in Station action. Session diagnostics remain in the inspector; navigation to Activity
 is an explicit secondary action. A narrow Activity region shows its list or its
 selected detail, with a Back to list control, instead of squeezing both columns.
 

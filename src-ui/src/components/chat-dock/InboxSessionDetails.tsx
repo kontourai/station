@@ -47,6 +47,7 @@ export default function InboxSessionDetails({
         )}
         {detail.data && (
           <SessionDetail
+            presentation="chat"
             apiBase={apiBase}
             session={detail.data.session}
             onTaskChanged={() => void detail.refetch()}

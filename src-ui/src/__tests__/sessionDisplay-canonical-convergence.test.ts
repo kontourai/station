@@ -3,7 +3,11 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/o
 import { describe, expect, test } from 'vitest';
 import type { OrchestrationEvent } from '../hooks/orchestration/types';
 import { mutableSessionTitle } from '../hooks/useMutableSessionDetailState';
-import { sessionProjectLabel, sessionTitle } from '../utils/sessionDisplay';
+import {
+  sessionProjectLabel,
+  sessionRecency,
+  sessionTitle,
+} from '../utils/sessionDisplay';
 import { buildOrchestrationItems } from '../views/home/home-view-model';
 
 /**
@@ -364,4 +368,16 @@ describe('A4/C5: one provider table', () => {
       )[0].agentLabel,
     ).toBe('Agent not reported');
   });
+});
+
+test('external recency uses the source event time, not the discovery poll time', () => {
+  const external = session({
+    controlMode: 'read-only-attached',
+    createdAt: '2026-08-01T00:00:00Z',
+    lastEventAt: '2026-08-02T00:00:00Z',
+    updatedAt: '2026-09-08T00:00:00Z',
+  });
+  const expected = Date.parse('2026-08-02T00:00:00Z');
+  expect(sessionRecency(external)).toBe(expected);
+  expect(buildOrchestrationItems([external], [])[0].updatedAt).toBe(expected);
 });

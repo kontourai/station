@@ -1013,3 +1013,24 @@
     max-height: 2.75rem;
   }
 }
+
+.sessions-detail--chat {
+  height: min(72dvh, 780px);
+}
+.external-chat-composer {
+  flex: 0 0 auto;
+}
+.external-chat-composer textarea {
+  width: 100%;
+  resize: none;
+  padding: 12px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+}
+.sessions-detail--chat .sessions-detail__transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}

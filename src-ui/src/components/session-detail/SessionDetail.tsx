@@ -19,7 +19,9 @@ export function SessionDetail({
   onAdopted,
   getSelectionIntent,
   evidenceReveal,
+  presentation = 'inspector',
 }: {
+  presentation?: 'inspector' | 'chat';
   apiBase: string;
   session: OrchestrationSessionSummary;
   onTaskChanged: () => void;
@@ -64,7 +66,7 @@ export function SessionDetail({
           className="button button--secondary session-history-controls__more"
           onClick={() => void loadOlder()}
         >
-          Load earlier events
+          Show older messages
         </button>
       )}
       {upgradeRequired && (
@@ -94,7 +96,7 @@ export function SessionDetail({
             because it is NOT among the props handed to
             `AttachedSessionDetail`: nothing downstream can render it a second
             time, and these two branches are mutually exclusive anyway. */}
-        {(hasMore || elidedHistoryNotice) && (
+        {presentation !== 'chat' && (hasMore || elidedHistoryNotice) && (
           <div className="session-history-controls">
             {hasMore && (
               <button
@@ -102,7 +104,7 @@ export function SessionDetail({
                 className="button button--secondary session-history-controls__more"
                 onClick={() => void loadOlder()}
               >
-                Load earlier events
+                Show older messages
               </button>
             )}
             {elidedHistoryNotice}
@@ -111,6 +113,8 @@ export function SessionDetail({
         <AttachedSessionDetail
           key={session.threadId}
           apiBase={apiBase}
+          presentation={presentation}
+          onLoadOlder={hasMore ? loadOlder : undefined}
           session={session}
           onAdopted={onAdopted}
           getSelectionIntent={getSelectionIntent}
