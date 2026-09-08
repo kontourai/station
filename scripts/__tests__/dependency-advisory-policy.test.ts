@@ -21,6 +21,7 @@ import {
   collectAudits,
   dependencyAuditDecision,
   evaluateAuditPolicy,
+  formatExpiryAnnotations,
   formatPolicyReport,
   parseAuditCommandResult,
   runPolicyCli,
@@ -608,6 +609,97 @@ overrides:
     );
     expect(fullResult.ok).toBe(true);
     expect(fullResult.scopes['root/full']).toMatchObject({ low: 1 });
+  });
+
+  it('warns before a residual expires without changing the verdict', () => {
+    // NOW is 2026-07-10; ten days of notice remain.
+    const result = evaluateAuditPolicy(
+      [productionLowDocument()],
+      {
+        version: 2,
+        exceptions: [],
+        residuals: [validResidual({ expires: '2026-07-20' })],
+      },
+      { now: NOW },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.exceptionErrors).toEqual([]);
+    expect(result.expiryWarnings).toEqual([
+      'residual 1 (@ai-sdk/provider-utils GHSA-866g-f22w-33x8) expires in 10 days (2026-07-20) \u2014 renew or remediate before 2026-07-20',
+    ]);
+    expect(formatPolicyReport(result)).toContain(
+      'WARN: residual 1 (@ai-sdk/provider-utils GHSA-866g-f22w-33x8) expires in 10 days (2026-07-20)',
+    );
+    expect(formatPolicyReport(result)).toContain(
+      'PASS: no unaccepted critical/high advisories or production residuals',
+    );
+  });
+
+  it('stays silent while a residual expiry is more than a fortnight out', () => {
+    const result = evaluateAuditPolicy(
+      [productionLowDocument()],
+      {
+        version: 2,
+        exceptions: [],
+        residuals: [validResidual({ expires: '2026-07-30' })],
+      },
+      { now: NOW },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.expiryWarnings).toEqual([]);
+    expect(formatPolicyReport(result)).not.toContain('WARN:');
+  });
+
+  it('warns on the fourteenth day and not the fifteenth', () => {
+    const warningsFor = (expires: string) =>
+      evaluateAuditPolicy(
+        [productionLowDocument()],
+        { version: 2, exceptions: [], residuals: [validResidual({ expires })] },
+        { now: NOW },
+      ).expiryWarnings;
+
+    expect(warningsFor('2026-07-24')).toHaveLength(1);
+    expect(warningsFor('2026-07-25')).toHaveLength(0);
+  });
+
+  it('fails rather than warns once a residual has expired', () => {
+    const result = evaluateAuditPolicy(
+      [productionLowDocument()],
+      {
+        version: 2,
+        exceptions: [],
+        residuals: [validResidual({ expires: '2026-07-09' })],
+      },
+      { now: NOW },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.expiryWarnings).toEqual([]);
+    const report = formatPolicyReport(result);
+    expect(report).toContain('EXCEPTION ERROR: residual 1 is expired');
+    expect(report).not.toContain('WARN:');
+    expect(report).toContain('FAIL: dependency advisory floor not met');
+  });
+
+  it('raises an expiring approval as a GitHub annotation only inside Actions', () => {
+    const result = evaluateAuditPolicy(
+      [productionLowDocument()],
+      {
+        version: 2,
+        exceptions: [],
+        residuals: [validResidual({ expires: '2026-07-20' })],
+      },
+      { now: NOW },
+    );
+
+    expect(formatExpiryAnnotations(result, { GITHUB_ACTIONS: 'true' })).toEqual(
+      [
+        '::warning title=Dependency advisory approval expiring::residual 1 (@ai-sdk/provider-utils GHSA-866g-f22w-33x8) expires in 10 days (2026-07-20) \u2014 renew or remediate before 2026-07-20',
+      ],
+    );
+    expect(formatExpiryAnnotations(result, {})).toEqual([]);
   });
 
   it.each([
