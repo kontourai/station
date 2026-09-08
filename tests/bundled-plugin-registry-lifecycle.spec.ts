@@ -111,6 +111,10 @@ test.describe('Bundled plugin registry lifecycle', () => {
       await detail
         .getByRole('button', { name: 'Install', exact: true })
         .click();
+      await page
+        .getByRole('dialog', { name: 'Install Preview' })
+        .getByRole('button', { name: 'Confirm Install', exact: true })
+        .click();
       await expect(page.getByText('Installed Minimal Layout')).toBeVisible({
         timeout: 60_000,
       });
@@ -118,7 +122,7 @@ test.describe('Bundled plugin registry lifecycle', () => {
       // A reload must project the persisted registry alias as installed, not
       // merely preserve optimistic client mutation state.
       await page.reload();
-      await page.getByRole('button', { name: 'Plugins', exact: true }).click();
+      await page.getByRole('tab', { name: 'Plugins', exact: true }).click();
       await expect(
         page.getByRole('article').filter({ hasText: 'Minimal Layout' }).first(),
       ).toContainText('Installed');
@@ -134,7 +138,9 @@ test.describe('Bundled plugin registry lifecycle', () => {
       expect(project.ok()).toBe(true);
 
       await page.goto(`/projects/${slug}`);
-      await page.getByRole('button', { name: '+ Add', exact: true }).click();
+      await page
+        .getByRole('button', { name: '+ Add layout', exact: true })
+        .click();
       const picker = page.getByRole('dialog', { name: 'Add Layout' });
       const minimalLayout = picker
         .getByRole('button', { name: /Minimal.*Plugin: minimal-layout/ })
@@ -185,6 +191,10 @@ test.describe('Bundled plugin registry lifecycle', () => {
       const reinstallDetail = await openBundledPluginInRegistry(page);
       await reinstallDetail
         .getByRole('button', { name: 'Install', exact: true })
+        .click();
+      await page
+        .getByRole('dialog', { name: 'Install Preview' })
+        .getByRole('button', { name: 'Confirm Install', exact: true })
         .click();
       await expect(page.getByText('Installed Minimal Layout')).toBeVisible({
         timeout: 60_000,

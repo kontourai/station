@@ -1018,8 +1018,7 @@
 .message__model-claim {
   font-family: var(--font-mono);
   font-size: 0.64em;
-  color: var(--text-muted);
-  opacity: 0.7;
+  color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
 
@@ -1030,7 +1029,6 @@
 .message__model-claim-label {
   font-weight: 600;
   margin-right: 1px;
-  opacity: 0.75;
 }
 
 /* ── MessageAttribution (archive#1424) ──
@@ -2361,6 +2359,10 @@
 }
 .message-details__body .turn-footer__actions {
   flex-wrap: wrap;
+  opacity: 1;
+  height: auto;
+  overflow: visible;
+  pointer-events: auto;
 }
 
 .message-details__body > .message__copy-btn,

@@ -437,6 +437,16 @@ export async function measureInteractiveWorkspace(
           observations.push(await measureReconnect(fixture, input.sampling));
         else observations.push(unavailableFixture(fixture.id));
       } catch (error) {
+        // Numeric DOM diagnostics stay in the raw failure artifact; they do
+        // not become measurements or expose file paths/content in a receipt.
+        const fileSurfaces =
+          fixture.id === 'open-100k-lines'
+            ? Array.from(
+                document.querySelectorAll<HTMLElement>(
+                  '[data-station-performance-surface="workspace-file-preview"]',
+                ),
+              )
+            : [];
         observations.push({
           fixtureId: fixture.id,
           status: 'NOT_VERIFIED',
@@ -447,7 +457,23 @@ export async function measureInteractiveWorkspace(
           ...(error instanceof ClosedCollaborationFailure
             ? { driverFailure: error.receipt }
             : {}),
-          counts: { failures: 1, degraded: 0 },
+          counts: {
+            failures: 1,
+            degraded: 0,
+            ...(fixture.id === 'open-100k-lines'
+              ? {
+                  fileSurfaceCount: fileSurfaces.length,
+                  visibleFileSurfaceCount: fileSurfaces.filter(
+                    (surface) => surface.getClientRects().length > 0,
+                  ).length,
+                  selectedSurfaceClientHeight:
+                    fileSurfaces[0]?.clientHeight ?? 0,
+                  selectedSurfaceScrollHeight:
+                    fileSurfaces[0]?.scrollHeight ?? 0,
+                  selectedSurfaceScrollTop: fileSurfaces[0]?.scrollTop ?? 0,
+                }
+              : {}),
+          },
         });
       } finally {
         const observation = observations.at(-1);

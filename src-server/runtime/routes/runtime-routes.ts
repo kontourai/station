@@ -1603,14 +1603,16 @@ export function configureRuntimeRoutes(
     ),
   );
 
-  // #749: these route families are the only public conversation discovery and
-  // open surfaces. Bind the same principal-derived authority used by
-  // orchestration before either route can inspect inventory or transcript.
+  // Discovery, reopening, and Task references must use the same verified
+  // principal as the chat that produced the answer. An OS-alias fallback here
+  // rejects new principal-owned Sessions and can select legacy-owned history.
   context.app.use('/agents/*', bindConversationReadAuthority);
   context.app.use('/api/conversations', bindConversationReadAuthority);
   context.app.use('/api/conversations/*', bindConversationReadAuthority);
   context.app.use('/api/search', bindConversationReadAuthority);
   context.app.use('/api/search/*', bindConversationReadAuthority);
+  context.app.use('/api/tasks', bindConversationReadAuthority);
+  context.app.use('/api/tasks/*', bindConversationReadAuthority);
   context.app.route(
     '/agents',
     createAgentRoutes(
@@ -2015,7 +2017,7 @@ export function configureRuntimeRoutes(
     createTaskOutputRoutes(taskOutputs, {
       taskGraph: context.taskGraphService,
       sessionOutputs: context.orchestrationService.sessionOutputs,
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       canReadSession: (sessionId, authority) =>
         context.orchestrationService.canUserReadSession(sessionId, authority),
       isRequestPrincipalCurrent,
@@ -2026,7 +2028,7 @@ export function configureRuntimeRoutes(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
       taskDispatcher: context.taskDispatcher,
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       canReadSession: (sessionId, authority) =>
         context.orchestrationService.canUserReadSession(sessionId, authority),
       sessionInventory,
