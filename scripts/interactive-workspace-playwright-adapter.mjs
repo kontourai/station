@@ -200,7 +200,11 @@ function controlCommand(socketPath, command) {
     socket.setTimeout(REFERENCE_CONTROL_SOCKET_RESPONSE_TIMEOUT_MS, () =>
       socket.destroy(new Error('control timed out')),
     );
-    socket.on('connect', () => socket.end(`${JSON.stringify(command)}\n`));
+    socket.on('connect', () =>
+      socket.write(
+        `${JSON.stringify({ protocol: 'station.task-room-control/v1', request: command })}\n`,
+      ),
+    );
     socket.on('data', (chunk) => {
       bytes += chunk.length;
       if (bytes > MAX_CONTROL_RECEIPT_BYTES)

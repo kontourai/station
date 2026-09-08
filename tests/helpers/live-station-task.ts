@@ -205,8 +205,8 @@ export async function publishTaskRoomAgentEdit(
       callback();
     };
     socket.on('connect', () => {
-      socket.end(
-        `${JSON.stringify({ command: 'publish-agent-edit', ...input })}\n`,
+      socket.write(
+        `${JSON.stringify({ protocol: 'station.task-room-control/v1', request: { command: 'publish-agent-edit', ...input } })}\n`,
       );
     });
     socket.on('data', (chunk: Buffer) => {
