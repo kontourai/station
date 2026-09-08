@@ -50,8 +50,8 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
     addEphemeralMessage: vi.fn(),
   }),
 }));
-vi.mock('../hooks/useMessageContext', () => ({
-  useMessageContext: () => ({ getComposedContext: () => '' }),
+vi.mock('../contexts/MessageContextContext', () => ({
+  useMessageContextContext: () => ({ getComposedContext: () => '' }),
 }));
 vi.mock('../hooks/useShareReceiver', () => ({ useShareReceiver: () => {} }));
 vi.mock('../hooks/useSTT', () => ({

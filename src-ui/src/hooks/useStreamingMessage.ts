@@ -1,6 +1,5 @@
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
-import { useStreaming } from '../contexts/StreamingContext';
 
 /**
  * archive#3168: this hook previously also exposed `handleStreamEvent`, an
@@ -17,20 +16,24 @@ import { useStreaming } from '../contexts/StreamingContext';
  * (`streaming/__tests__/ToolLifecycleHandler.test.ts`, deleted) and
  * `docs/adr/0014-*`, which records every interactive caller routing through
  * `POST /api/orchestration/chat` instead.
+ *
+ * This also used to clear a second copy of the in-flight assistant message
+ * held by a `StreamingContext` provider. Nothing ever wrote that copy —
+ * `setStreamingMessage` had no production caller — so clearing it was
+ * clearing an always-empty map. The provider and its context are deleted;
+ * the live streaming message is the one on the active chat, updated below.
  */
 export function useStreamingMessage() {
   const { updateChat } = useActiveChatActions();
-  const { clearStreamingMessage: clearStreamingMsg } = useStreaming();
 
   const clearStreamingMessage = useCallback(
     (sessionId: string) => {
-      clearStreamingMsg(sessionId);
       updateChat(sessionId, {
         streamingMessage: undefined,
         isProcessingStep: false,
       });
     },
-    [clearStreamingMsg, updateChat],
+    [updateChat],
   );
 
   return { clearStreamingMessage };

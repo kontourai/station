@@ -43,7 +43,6 @@ import { MessageContextContext } from './contexts/MessageContextContext';
 import { NavigationProvider } from './contexts/NavigationContext';
 import { PreviewProvider } from './contexts/PreviewContext';
 import { RegionModelProvider } from './contexts/RegionModelContext';
-import { StreamingProvider } from './contexts/StreamingContext';
 import { SyntaxHighlighterProvider } from './contexts/SyntaxHighlighterContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { VoiceProviderContext } from './contexts/VoiceProviderContext';
@@ -282,22 +281,18 @@ function renderApp(): void {
                               <ActiveChatsProvider>
                                 <VoiceProviderContext>
                                   <MessageContextContext>
-                                    <StreamingProvider>
-                                      <AnalyticsProvider>
-                                        <PreviewProvider>
-                                          <LocaleProvider
-                                            developmentLocale={
-                                              developmentLocale
-                                            }
-                                          >
-                                            <RegionModelProvider>
-                                              <App />
-                                            </RegionModelProvider>
-                                            <NotificationContainer />
-                                          </LocaleProvider>
-                                        </PreviewProvider>
-                                      </AnalyticsProvider>
-                                    </StreamingProvider>
+                                    <AnalyticsProvider>
+                                      <PreviewProvider>
+                                        <LocaleProvider
+                                          developmentLocale={developmentLocale}
+                                        >
+                                          <RegionModelProvider>
+                                            <App />
+                                          </RegionModelProvider>
+                                          <NotificationContainer />
+                                        </LocaleProvider>
+                                      </PreviewProvider>
+                                    </AnalyticsProvider>
                                   </MessageContextContext>
                                 </VoiceProviderContext>
                               </ActiveChatsProvider>

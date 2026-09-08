@@ -18,7 +18,6 @@ import { PageSection } from '../components/PageSection';
 import { PathAutocomplete } from '../components/PathAutocomplete';
 import { SectionNav } from '../components/SectionNav';
 import { ErrorState, Skeleton } from '../components/state';
-import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import type { ProjectConfig } from '../contexts/ProjectsContext';
 import { useShowSurface } from '../contexts/useShowSurface';
@@ -52,7 +51,6 @@ const PROJECT_SETTINGS_SECTIONS = [
 ] as const;
 
 export function ProjectSettingsView({ slug }: { slug: string }) {
-  const { apiBase } = useApiBase();
   const { navigate } = useNavigation();
   const showSurface = useShowSurface();
 
@@ -274,7 +272,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
               </label>
               <PathAutocomplete
                 id="project-working-directory"
-                apiBase={apiBase}
                 autoFocus={false}
                 suggestionsInitiallyOpen={false}
                 value={form.workingDirectory ?? ''}

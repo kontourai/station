@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 
@@ -20,6 +20,35 @@ const realMapping = JSON.parse(
   readFileSync(join(repoRoot, 'scripts/evidence-check-execution.json'), 'utf8'),
 );
 const temporaryRoots: string[] = [];
+
+// Mirrors the real corpus shape the gate reads: a Vitest file that names the
+// advisory check's script and spawns a child process. The real test spawns a
+// COPY of the script's source, so the gate's signal is file-level
+// co-occurrence, and this fixture keeps that shape rather than an argv match
+// the real corpus never produces.
+const CORPUS_TEST_PATH =
+  'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts';
+const SPAWNING_CORPUS_TEST = [
+  "import { spawnSync } from 'node:child_process';",
+  "const scriptPath = join(repoRoot, 'scripts/proof-repo-guardrails.mjs');",
+  'const copy = join(root, "proof-repo-guardrails.mjs");',
+  'const result = spawnSync(process.execPath, [copy], { cwd: repoRoot });',
+].join('\n');
+// False-positive control: the same path, named and read, with no spawn form.
+const MENTIONING_CORPUS_TEST = [
+  '// Documents scripts/proof-repo-guardrails.mjs; this test never runs it.',
+  "import { readFileSync } from 'node:fs';",
+  "const source = readFileSync('scripts/proof-repo-guardrails.mjs', 'utf8');",
+].join('\n');
+const DEFAULT_CORPUS: Record<string, string> = {
+  [CORPUS_TEST_PATH]: SPAWNING_CORPUS_TEST,
+};
+// The gate confirms the acknowledged executor is a classified child-process
+// test, so the fixture carries the same declaration the real repository does.
+const RESOURCE_MANIFEST_PATH = 'scripts/vitest-resource-manifest.mjs';
+const CLASSIFYING_RESOURCE_MANIFEST = `export const PROCESS_HEAVY_VITEST_FILES = ['${CORPUS_TEST_PATH}'];\n`;
+const EMPTY_RESOURCE_MANIFEST =
+  'export const PROCESS_HEAVY_VITEST_FILES = [];\n';
 
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) {
@@ -42,7 +71,7 @@ function baseScripts() {
     'verify:static': pass,
     'proof:repo-governance': pass,
     'verification:policy:gate': pass,
-    'proof:repo-guardrails': pass,
+    'proof:repo-guardrails': 'node scripts/proof-repo-guardrails.mjs',
     'proof:architecture-boundaries': fail,
     'proof:ui-data-access': fail,
     'proof:runtime-contracts': fail,
@@ -61,6 +90,7 @@ function createFixture(
     mapping: typeof realMapping;
     packageJson: { scripts: ReturnType<typeof baseScripts> };
   }) => void,
+  corpus: Record<string, string> = DEFAULT_CORPUS,
 ) {
   const root = mkdtempSync(join(tmpdir(), 'station-evidence-execution-'));
   temporaryRoots.push(root);
@@ -98,6 +128,16 @@ function createFixture(
       '      - run: npm run test:connected-agents',
     ].join('\n'),
   );
+  if (!Object.hasOwn(corpus, RESOURCE_MANIFEST_PATH))
+    corpus = {
+      ...corpus,
+      [RESOURCE_MANIFEST_PATH]: CLASSIFYING_RESOURCE_MANIFEST,
+    };
+  for (const [path, contents] of Object.entries(corpus)) {
+    const file = join(root, path);
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, contents);
+  }
   return root;
 }
 
@@ -182,6 +222,112 @@ describe('evidence-check execution gate', () => {
     const { status, output } = runGate(root);
     expect(output).toContain(
       'evidence check "architecture-boundaries" is candidate but "npm run proof:architecture-boundaries" exited 0',
+    );
+    expect(status).toBe(1);
+  });
+
+  test('an unacknowledged advisory check the corpus runs fails by test file', () => {
+    const root = createFixture(({ mapping }) => {
+      delete mapping._corpusExecution;
+    });
+
+    const { status, output } = runGate(root);
+    expect(output).toContain(
+      'evidence check "repo-guardrails" is advisory but the Vitest corpus reaches it',
+    );
+    expect(output).toContain(
+      `${CORPUS_TEST_PATH} names scripts/proof-repo-guardrails.mjs and spawns a child process`,
+    );
+    expect(status).toBe(1);
+  });
+
+  test('a corpus file that names the script without a spawn form is not counted', () => {
+    const root = createFixture(
+      ({ mapping }) => {
+        delete mapping._corpusExecution;
+      },
+      { [CORPUS_TEST_PATH]: MENTIONING_CORPUS_TEST },
+    );
+
+    const { status, output } = runGate(root);
+    expect(output).toContain('Evidence-check execution gate passed.');
+    expect(output).not.toContain('repo-guardrails');
+    expect(status).toBe(0);
+  });
+
+  test('deleting the named executor fails even while other files co-name the script', () => {
+    // The decisive case: a second file still names the script and spawns, so
+    // the co-occurrence scan alone would stay satisfied.
+    const root = createFixture(() => {}, {
+      'scripts/__tests__/unrelated-spawner.test.ts': SPAWNING_CORPUS_TEST,
+    });
+
+    const { status, output } = runGate(root);
+    expect(output).toContain(
+      `evidence check "repo-guardrails" names ${CORPUS_TEST_PATH} as its corpus executor, but that file does not exist`,
+    );
+    expect(status).toBe(1);
+  });
+
+  test('an acknowledgement pointing at a file that does not spawn fails', () => {
+    const root = createFixture(() => {}, {
+      [CORPUS_TEST_PATH]: MENTIONING_CORPUS_TEST,
+    });
+
+    const { status, output } = runGate(root);
+    expect(output).toContain(
+      `evidence check "repo-guardrails" names ${CORPUS_TEST_PATH} as its corpus executor, but that file does not name a script "npm run proof:repo-guardrails" runs while spawning a child process`,
+    );
+    expect(status).toBe(1);
+  });
+
+  test('an executor the resource manifest does not classify fails', () => {
+    const root = createFixture(() => {}, {
+      [CORPUS_TEST_PATH]: SPAWNING_CORPUS_TEST,
+      [RESOURCE_MANIFEST_PATH]: EMPTY_RESOURCE_MANIFEST,
+    });
+
+    const { status, output } = runGate(root);
+    expect(output).toContain(
+      `evidence check "repo-guardrails" names ${CORPUS_TEST_PATH} as its corpus executor, but ${RESOURCE_MANIFEST_PATH} does not classify it as a child-process test`,
+    );
+    expect(status).toBe(1);
+  });
+
+  test('an acknowledgement on a non-advisory classification fails', () => {
+    const root = createFixture(({ mapping, packageJson }) => {
+      mapping['repo-guardrails'] = 'enforced';
+      packageJson.scripts['verify:static:raw'] +=
+        ' && npm run proof:repo-guardrails';
+    });
+
+    const { status, output } = runGate(root);
+    expect(output).toContain(
+      'evidence check "repo-guardrails" is enforced but _corpusExecution acknowledges it',
+    );
+    expect(status).toBe(1);
+  });
+
+  test('an unknown _corpusExecution id fails by name', () => {
+    const root = createFixture(({ mapping }) => {
+      mapping._corpusExecution = { 'not-a-check': 'acknowledged' };
+    });
+
+    const { status, output } = runGate(root);
+    expect(output).toContain(
+      'execution mapping _corpusExecution has unknown evidence-check id "not-a-check"',
+    );
+    expect(status).toBe(1);
+  });
+
+  test('a _corpusExecution value that is not a test file path fails', () => {
+    const root = createFixture(({ mapping }) => {
+      mapping._corpusExecution = { 'repo-guardrails': 'acknowledged' };
+    });
+
+    const { status, output } = runGate(root);
+    expect(output).toContain(
+      'execution mapping _corpusExecution."repo-guardrails" must name the repository-relative test file that runs the check, not "acknowledged"',
     );
     expect(status).toBe(1);
   });

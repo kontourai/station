@@ -268,6 +268,110 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
 ]);
 
 /** Deterministic, reviewable edges the runtime dependency graph cannot see. */
+/**
+ * Scripts no test imports, whose only coverage runs the script (directly or
+ * as a copy of its source) or reads its source from a test Vitest's import
+ * graph therefore cannot reach. Before these edges a diff touching one of
+ * them produced an empty related selection.
+ *
+ * An edge is only listed when a change to the script itself could fail the
+ * named test. A test that merely pins the script's command TEXT somewhere
+ * else -- package.json, a workflow, the pre-push hook, another script's
+ * source -- is deliberately NOT an edge: selecting it would report `executed
+ * > 0` with no lane and a `completed` receipt for a script nothing exercised,
+ * which is worse than the test-full deferral escalateEmptyRelatedSelection
+ * leaves behind. Seven such candidates were rejected for exactly that reason.
+ *
+ * `related` stays true so a future importing test supplements the edge rather
+ * than replacing it (selectChangedVerification treats tests + related as a
+ * supplement).
+ */
+const EXECUTED_SCRIPT_EDGE_REASON =
+  'script is run by its test rather than imported, so the import graph has ' +
+  'no edge to it (#1757)';
+const SOURCE_READ_SCRIPT_EDGE_REASON =
+  'script source is read and asserted by its test rather than imported, so ' +
+  'the import graph has no edge to it (#1757)';
+
+export const SPAWNED_SCRIPT_EDGES = Object.freeze([
+  Object.freeze({
+    pattern: 'scripts/build-desktop.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/desktop-build-manifest.test.ts']),
+    reason: EXECUTED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/check-dist-freshness.mjs',
+    related: true,
+    tests: Object.freeze([
+      'scripts/__tests__/guardrail-known-bad-fixtures.test.ts',
+    ]),
+    reason: EXECUTED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/ecosystem-manifest.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/ecosystem-manifest.test.ts']),
+    reason: EXECUTED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/evidence-check-execution-gate.mjs',
+    related: true,
+    tests: Object.freeze([
+      'scripts/__tests__/evidence-check-execution-gate.test.ts',
+    ]),
+    reason: EXECUTED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/literal-swap-gate.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/literal-swap-gate.test.ts']),
+    reason: EXECUTED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/merge-ui-bundle-budget.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/ui-bundle-budget.test.ts']),
+    reason: EXECUTED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/release-cohort-workflow.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/release-cohort.test.ts']),
+    reason: EXECUTED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/voice-realtime-live-smoke.mjs',
+    related: true,
+    tests: Object.freeze([
+      'scripts/__tests__/voice-realtime-live-smoke.test.ts',
+    ]),
+    reason: EXECUTED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/write-dist-stamp.mjs',
+    related: true,
+    tests: Object.freeze([
+      'scripts/__tests__/guardrail-known-bad-fixtures.test.ts',
+    ]),
+    reason: EXECUTED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/build-desktop-resources.mjs',
+    related: true,
+    tests: Object.freeze([
+      'scripts/__tests__/server-build-portability.test.ts',
+    ]),
+    reason: SOURCE_READ_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/check-mobile-compile.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/verification-lanes.test.ts']),
+    reason: SOURCE_READ_SCRIPT_EDGE_REASON,
+  }),
+]);
+
 export const TEST_IMPACT_MANIFEST = Object.freeze([
   {
     pattern: 'src-desktop/Cargo.toml',
@@ -1007,6 +1111,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     related: true,
     reason: 'script boundary',
   },
+  ...SPAWNED_SCRIPT_EDGES,
   {
     pattern: 'scripts/prepush-test-manifest.mjs',
     tests: [

@@ -26,8 +26,10 @@ import {
   validateChangedVerificationReceipt,
   validateSelectedTestFiles,
 } from '../run-changed-verification.mjs';
+import { SELECTOR_DEFERRED_EXIT_CODE } from '../run-ci-fast.mjs';
 import {
   E2E_CONTRACT_BOUNDARIES,
+  SPAWNED_SCRIPT_EDGES,
   TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
@@ -721,8 +723,18 @@ describe('changed verification selection', () => {
       rmSync(temporary, { recursive: true, force: true });
     }
   });
-  test('records empty related discovery as infrastructure failure without starting tests', async () => {
-    const run = vi.fn();
+  test('records empty related discovery as an empty selection, not an infrastructure failure', async () => {
+    // #1757: discovery that ran and matched nothing is a selection decision.
+    // The child that produced the empty answer is the discovery process
+    // itself, so `run` is called exactly once and no Vitest child follows.
+    const run = vi.fn(async () => ({
+      status: 0,
+      signal: null,
+      stdout: '[]',
+      stderr: '',
+      launch: { attempted: true, started: true },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+    }));
     const result = await runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run,
@@ -730,22 +742,78 @@ describe('changed verification selection', () => {
         mergeBase: 'base-sha',
         paths: [scenarios.sourceEdges.server],
       }),
-      discoverRelatedFiles: () => [],
       collectProvenance: provenance,
       writeReceipt: vi.fn(),
     });
-    expect(run).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(1);
     expect(result.executed).toEqual([]);
-    expect(result.preparation).toMatchObject({
-      phase: 'resource-plan',
-      childStarted: false,
-      infrastructureError: true,
-    });
+    expect(result.preparation).toBeUndefined();
     expect(result.receipt.counts).toMatchObject({
       executed: 0,
-      infrastructureErrors: 1,
+      infrastructureErrors: 0,
     });
-    expect(result.receipt.terminal.status).toBe('infrastructure_error');
+    expect(result.receipt.terminal.status).toBe('provisional');
+    expect(result.receipt.terminal.passed).toBe(false);
+    // Exit 3 must name the next lane (docs/guides/testing.md) and the
+    // test-changed lane declares that empty selections escalate to named
+    // deferred lanes (scripts/verification-lanes.mjs).
+    expect(result.selection.lanes).toEqual([
+      {
+        id: 'test-full',
+        reasons: [
+          `no related suites for ${scenarios.sourceEdges.server}; declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file`,
+        ],
+      },
+    ]);
+    expect(result.selection.escalated).toBe(true);
+    expect(result.nextCommands.map(({ id }) => id)).toEqual(['test-full']);
+    // Pinned to the constant run-ci-fast reads, and to its literal value:
+    // the whole point of this status is that ci:fast passes over it.
+    expect(SELECTOR_DEFERRED_EXIT_CODE).toBe(3);
+    expect(result.exitCode).toBe(SELECTOR_DEFERRED_EXIT_CODE);
+    expect(result.emptyRelatedSelection).toMatchObject({
+      relatedPaths: [scenarios.sourceEdges.server],
+      remedy:
+        'declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file',
+    });
+    const summary = renderChangedVerificationSummary(result);
+    expect(summary).toContain('[test:changed] lanes: test-full');
+    expect(summary).toContain(
+      `[test:changed] no related suites for: ${scenarios.sourceEdges.server}`,
+    );
+    expect(summary).toContain(
+      '[test:changed] remedy: declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file',
+    );
+  });
+  test('keeps discovery output it could not have produced an infrastructure failure', async () => {
+    // The fail-closed half of #1757: an empty array is an answer, but output
+    // that is not an array of usable paths means discovery could not run.
+    for (const stdout of ['null', '{}', '["ok.test.ts", ""]', 'not-json']) {
+      const result = await runChangedVerification(['--base=origin/main'], {
+        root: process.cwd(),
+        run: async () => ({
+          status: 0,
+          signal: null,
+          stdout,
+          stderr: '',
+          launch: { attempted: true, started: true },
+          cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+        }),
+        changedPathsFn: () => ({
+          mergeBase: 'base-sha',
+          paths: [scenarios.sourceEdges.server],
+        }),
+        collectProvenance: provenance,
+        writeReceipt: vi.fn(),
+      });
+      expect(result.emptyRelatedSelection).toBeUndefined();
+      expect(result.preparation).toMatchObject({
+        phase: 'related-discovery',
+        infrastructureError: true,
+      });
+      expect(result.receipt.terminal.status).toBe('infrastructure_error');
+      expect(result.exitCode).toBe(1);
+    }
   });
   test('redacts and bounds retained preparation failures with explicit truncation', async () => {
     const writeReceipt = vi.fn();
@@ -786,10 +854,59 @@ describe('changed verification selection', () => {
   });
   test.each([
     [{ status: 0, stdout: 'not-json' }, 'malformed JSON'],
-    [{ status: 0, stdout: '[]' }, 'no valid test files'],
+    [{ status: 0, stdout: 'null' }, 'no valid test files'],
+    [{ status: 0, stdout: '[""]' }, 'no valid test files'],
     [{ status: 1, stderr: 'discovery failed' }, 'discovery failed'],
   ])('fails closed on malformed related discovery: %s', (result, message) => {
     expect(() => parseRelatedTestDiscovery(result)).toThrow(message);
+  });
+  test('routes every spawned-not-imported script to a test that references it', () => {
+    // Derived, not asserted: each edge must name a test file that exists and
+    // actually references the script, and the selector must reach it. An edge
+    // naming a test that never mentions the script would be a coverage claim
+    // nothing computes.
+    //
+    // What this does NOT prove is that the reference is an execution or a
+    // source read rather than a command-text pin. A call-argument scan cannot
+    // decide it: nine of these eleven tests build the path through a const or
+    // a join() before spawning it, and one splits it across join arguments,
+    // so the literal never appears inside a spawn call. That judgement stays
+    // with the reviewer of the edge; the pin-only candidates were rejected by
+    // hand and the docblock on SPAWNED_SCRIPT_EDGES records the rule.
+    expect(SPAWNED_SCRIPT_EDGES.length).toBe(11);
+    for (const edge of SPAWNED_SCRIPT_EDGES) {
+      expect(existsSync(edge.pattern), edge.pattern).toBe(true);
+      expect(edge.related, edge.pattern).toBe(true);
+      const scriptName = edge.pattern.slice('scripts/'.length);
+      for (const testPath of edge.tests) {
+        expect(existsSync(testPath), testPath).toBe(true);
+        expect(readFileSync(testPath, 'utf8'), testPath).toContain(scriptName);
+      }
+      const selection = selectChangedVerification([edge.pattern]);
+      expect(
+        selection.tests.map(({ path }) => path),
+        edge.pattern,
+      ).toEqual([...edge.tests]);
+      // The explicit tests supplement the import graph rather than replacing
+      // it, so a future importing test still selects.
+      expect(selection.relatedPaths, edge.pattern).toEqual([edge.pattern]);
+    }
+  });
+  test('reads an empty related discovery array as an empty selection', () => {
+    expect(parseRelatedTestDiscovery({ status: 0, stdout: '[]' })).toEqual([]);
+  });
+  test('plans nothing when related discovery matches no suite', async () => {
+    await expect(
+      planChangedVitestExecutions(
+        process.cwd(),
+        {
+          relatedPaths: ['scripts/dependency-advisory-exceptions.json'],
+          tests: [],
+          lanes: [],
+        },
+        { discoverRelated: () => [] },
+      ),
+    ).resolves.toEqual([]);
   });
   test('preserves a failed discovery launch as prelaunch provenance', async () => {
     let failure:

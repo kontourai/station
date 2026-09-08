@@ -10,7 +10,6 @@ import { LayoutAssignmentModal } from './LayoutAssignmentModal';
 import type { PluginMessage, PreviewData } from './types';
 
 export function PluginModalStack({
-  apiBase,
   showInstallModal,
   showFolderPicker,
   previewData,
@@ -43,7 +42,6 @@ export function PluginModalStack({
   onCreateProject,
   onAddToProjects,
 }: {
-  apiBase: string;
   showInstallModal: boolean;
   showFolderPicker: boolean;
   previewData: PreviewData | null;
@@ -106,7 +104,6 @@ export function PluginModalStack({
     <>
       {showInstallModal && (
         <InstallPluginModal
-          apiBase={apiBase}
           installSource={installSource}
           installMessage={installMessage}
           installPending={installPending}
