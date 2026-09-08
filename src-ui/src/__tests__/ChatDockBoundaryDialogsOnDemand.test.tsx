@@ -5,16 +5,22 @@
  * (`ConversationBoundaryDialogs`), and `ChatWorkspacePane` mounts it only
  * while `handoffSource` or `contextResetSource` is set. A dock with neither
  * — including one in the middle of a fork, which renders nothing here — must
- * not have that subtree in its tree at all.
+ * not have that subtree in its tree at all; a dock with either must.
  *
- * What this proves and what it does not. It asserts the ABSENCE direction
- * only, after a full flush of the lazy import and its Suspense resolution, so
- * "not yet loaded" cannot pass for "not mounted". It says nothing about which
- * chunk the code lands in: it would pass just as well against a static import
- * of the wrapper, and it is the entry-bundle ceiling
- * (`scripts/check-prepush-ui-bundle.mjs`) that proves the chunking. The
- * present direction — a set source renders its dialog — is unchanged JSX and
- * is not exercised here; no test in this repo drives the dock that far.
+ * Both directions run against the REAL guard, the REAL `LazyBoundary` and the
+ * REAL hook: only the one source field under test is forced over the hook's
+ * own result, so every hook in the pane still runs in its real order.
+ *
+ * Waiting, in both directions, is bounded real time rather than a microtask
+ * chain, so a loader slower than a few microtasks cannot turn either
+ * direction into a false green: the present cases poll for the marker until
+ * it appears, and the absent cases poll for the same window and require that
+ * it never does.
+ *
+ * What this does NOT prove: which chunk the code lands in. It would pass just
+ * as well against a static import of the wrapper — that shape is exactly what
+ * put the entry 66 bytes over its ceiling — and it is the entry-bundle
+ * ceiling (`scripts/check-prepush-ui-bundle.mjs`) that proves the chunking.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -37,12 +43,17 @@ vi.mock('../components/chat-dock/ConversationBoundaryDialogs', () => ({
 }));
 
 /**
- * A fork in progress, injected over the REAL hook's result so every hook in
- * the pane still runs in its real order and only the one field under test is
- * forced. `null` leaves the hook untouched.
+ * The one boundary source a test forces over the REAL hook's result. `null`
+ * leaves the hook untouched. Only the named field is replaced, so the pane's
+ * hooks all still run — this drives the guard, not a stand-in for it.
  */
-const forkOverride = vi.hoisted(() => ({
-  value: null as { id: string; agentSlug: string } | null,
+type BoundarySourceOverride =
+  | { kind: 'fork'; value: { id: string; agentSlug: string } }
+  | { kind: 'handoff'; value: { id: string; agentSlug: string } }
+  | { kind: 'contextReset'; value: { id: string } };
+
+const sourceOverride = vi.hoisted(() => ({
+  value: null as BoundarySourceOverride | null,
 }));
 
 vi.mock(
@@ -58,16 +69,20 @@ vi.mock(
         args: Parameters<typeof actual.useConversationBoundaryDialogs>[0],
       ) => {
         const real = actual.useConversationBoundaryDialogs(args);
-        return forkOverride.value
-          ? {
-              ...real,
-              forkSource: {
-                turnId: 'turn-1',
-                idempotencyKey: 'fork-idem-1',
-                ...forkOverride.value,
-              },
-            }
-          : real;
+        const override = sourceOverride.value;
+        if (!override) return real;
+        if (override.kind === 'fork')
+          return {
+            ...real,
+            forkSource: {
+              turnId: 'turn-1',
+              idempotencyKey: 'fork-idem-1',
+              ...override.value,
+            },
+          };
+        if (override.kind === 'handoff')
+          return { ...real, handoffSource: override.value };
+        return { ...real, contextResetSource: override.value };
       },
     };
   },
@@ -276,68 +291,92 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  forkOverride.value = null;
+  sourceOverride.value = null;
   cleanup();
   window.localStorage.clear();
   window.history.replaceState({}, '', '/');
   navigationStore.navigate('/', { dock: null, maximize: null });
 });
 
+/**
+ * How long a wrapper that IS mounted gets to resolve its chunk and paint.
+ * The absent cases poll for the whole window and require the marker never to
+ * appear, so a slower loader makes them stricter, never flakier.
+ */
+const RESOLVE_WINDOW_MS = 1_000;
+
+function renderDockedChat() {
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <KeyboardShortcutsProvider>
+        <NavigationProvider>
+          <DockedChat />
+        </NavigationProvider>
+      </KeyboardShortcutsProvider>
+    </QueryClientProvider>,
+  );
+  expect(document.querySelector('.chat-dock')).not.toBeNull();
+}
+
+/** Load the chunk so the window below measures rendering, not the import. */
+async function settleChunk() {
+  await act(async () => {
+    await import('../components/chat-dock/ConversationBoundaryDialogs');
+  });
+}
+
+async function expectWrapperAbsent() {
+  await settleChunk();
+  await expect(
+    screen.findByTestId(BOUNDARY_MARKER, undefined, {
+      timeout: RESOLVE_WINDOW_MS,
+    }),
+  ).rejects.toThrow();
+}
+
+async function expectWrapperPresent() {
+  await settleChunk();
+  expect(
+    await screen.findByTestId(BOUNDARY_MARKER, undefined, {
+      timeout: RESOLVE_WINDOW_MS,
+    }),
+  ).not.toBeNull();
+}
+
 describe('conversation-boundary dialogs are on demand', () => {
   test('a dock with no fork, handoff or context reset never mounts them', async () => {
-    render(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <KeyboardShortcutsProvider>
-          <NavigationProvider>
-            <DockedChat />
-          </NavigationProvider>
-        </KeyboardShortcutsProvider>
-      </QueryClientProvider>,
-    );
-
-    expect(document.querySelector('.chat-dock')).not.toBeNull();
-
-    // Resolve the chunk and flush: a wrapper mounted at dock mount would have
-    // finished its lazy import and painted by now, so absence after this is
-    // absence of the mount, not of the load.
-    await act(async () => {
-      await import('../components/chat-dock/ConversationBoundaryDialogs');
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(screen.queryByTestId(BOUNDARY_MARKER)).toBeNull();
+    renderDockedChat();
+    await expectWrapperAbsent();
   });
 
   test('a fork in progress does not mount them either', async () => {
-    forkOverride.value = { id: 'conversation-under-fork', agentSlug: 'codex' };
+    sourceOverride.value = {
+      kind: 'fork',
+      value: { id: 'conversation-under-fork', agentSlug: 'codex' },
+    };
+    renderDockedChat();
+    await expectWrapperAbsent();
+  });
 
-    render(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <KeyboardShortcutsProvider>
-          <NavigationProvider>
-            <DockedChat />
-          </NavigationProvider>
-        </KeyboardShortcutsProvider>
-      </QueryClientProvider>,
-    );
+  test('a context reset in progress mounts them', async () => {
+    sourceOverride.value = {
+      kind: 'contextReset',
+      value: { id: 'conversation-under-reset' },
+    };
+    renderDockedChat();
+    await expectWrapperPresent();
+  });
 
-    expect(document.querySelector('.chat-dock')).not.toBeNull();
-
-    await act(async () => {
-      await import('../components/chat-dock/ConversationBoundaryDialogs');
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(screen.queryByTestId(BOUNDARY_MARKER)).toBeNull();
+  test('a handoff in progress mounts them', async () => {
+    sourceOverride.value = {
+      kind: 'handoff',
+      value: { id: 'conversation-under-handoff', agentSlug: 'codex' },
+    };
+    renderDockedChat();
+    await expectWrapperPresent();
   });
 });
