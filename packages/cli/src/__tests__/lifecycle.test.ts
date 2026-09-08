@@ -3940,6 +3940,9 @@ describe('upgrade', () => {
       'git rev-parse --abbrev-ref main@{u}',
       'git pull',
       'npm install',
+      // The pull deletes nothing tracked any more, but it can bring a new
+      // browser entry, and the raw install above runs no generation.
+      'npm run basis:mcp:generate',
       'npm run build:server',
       'npm run build:ui',
       'git rev-parse HEAD',
@@ -6927,7 +6930,8 @@ describe('lifecycle build + restart ergonomics', () => {
         (error: unknown) => error as Error,
       );
     expect(thrown).toBeInstanceOf(Error);
-    expect(thrown?.message).toContain('Server build failed');
+    // The first build step is the Basis MCP app generation.
+    expect(thrown?.message).toContain('Basis MCP apps build failed');
     expect(thrown?.message).toContain('build stopped for this test');
     expect(thrown?.cause).toBe(buildFailed);
 

@@ -139,17 +139,15 @@ describe('Basis MCP app output routing', () => {
   });
 
   test('generation runs where the readers of the output run', () => {
-    // Builds: build:basis-pane, and the container's build stage (its
-    // dependencies stage has no sources). ci:fast: as the typecheck
-    // aggregate's precondition, like build:connect.
+    // Builds: build:basis-pane, and `station build` (its step order is pinned
+    // by packages/cli/src/__tests__/lifecycle.test.ts, which is what the
+    // container's build stage and `station upgrade` run). ci:fast: as the
+    // typecheck aggregate's precondition, like build:connect.
     expect(
       JSON.parse(readFileSync('package.json', 'utf8')).scripts[
         'build:basis-pane'
       ],
     ).toMatch(/^npm run basis:mcp:generate && /);
-    expect(readFileSync('Dockerfile', 'utf8')).toContain(
-      'RUN node scripts/generate-basis-mcp-apps.mjs\nRUN STATION_UI_BUNDLE_BUDGET=observe ./station build',
-    );
     expect(readFileSync('scripts/run-ci-fast.mjs', 'utf8')).toContain(
       "['scripts/generate-basis-mcp-apps.mjs']",
     );
