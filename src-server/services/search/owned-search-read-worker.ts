@@ -9,6 +9,20 @@ export interface OwnedSearchReadWorker {
     decode: (value: unknown) => T | null,
     signal?: AbortSignal,
   ): Promise<T | null>;
+  /**
+   * Start the worker if it is not started, and resolve once it is running
+   * its entry module — or once it has failed, which is equally "no longer
+   * booting". Never rejects, and never resolves later than `deadlineMs`, so
+   * a caller can wait for readiness without inheriting an unbounded wait
+   * from a thread that never comes up.
+   *
+   * It exists so the SPAWN is not billed to a read budget. Creating the
+   * thread, loading its entry module (under a test runner, transforming it
+   * first) and opening the database are startup costs; a caller that waits
+   * for them inside a deadline meant for the query converts an ordinary cold
+   * start into a timeout — see station#1707.
+   */
+  whenReady(): Promise<void>;
   /** No queue. Retiring/incomplete custody continues occupying the sole slot. */
   inspect(): { phase: Phase };
   /** Bounded truthful result; repeated close joins pending cleanup or retries a rejection. */
@@ -54,6 +68,8 @@ export function createOwnedSearchReadWorker(
   };
   type OwnedWorker = {
     worker: Worker;
+    /** Settles when the thread is online, or has failed/exited. Never rejects. */
+    ready: Promise<void>;
     phase: 'idle' | 'running' | 'retiring' | 'incomplete';
     flight?: Flight;
     termination?: Promise<void>;
@@ -100,8 +116,20 @@ export function createOwnedSearchReadWorker(
       // Do not inherit eval/debug flags (e.g. --input-type) into a file entry.
       execArgv: source.pathname.endsWith('.ts') ? ['--import', 'tsx'] : [],
     });
-    const record: OwnedWorker = { worker, phase: 'idle', exited: false };
+    let settleReady: () => void = () => {};
+    const record: OwnedWorker = {
+      worker,
+      // Resolved by the 'online' listener below, and by the 'error'/'exit'
+      // listeners: a worker that died is not going to become ready, and a
+      // waiter must not hang for one.
+      ready: new Promise<void>((resolve) => {
+        settleReady = resolve;
+      }),
+      phase: 'idle',
+      exited: false,
+    };
     owned = record;
+    worker.on('online', settleReady);
     worker.on('message', (wire: unknown) => {
       if (owned !== record || record.phase !== 'running' || !record.flight)
         return;
@@ -140,9 +168,11 @@ export function createOwnedSearchReadWorker(
       }
     });
     worker.on('error', () => {
+      settleReady();
       void retire(record);
     });
     worker.on('exit', () => {
+      settleReady();
       record.exited = true;
       record.flight?.finish(null);
       if (owned === record) owned = undefined;
@@ -211,8 +241,27 @@ export function createOwnedSearchReadWorker(
     });
   }
 
+  async function whenReady(): Promise<void> {
+    if (closed) return;
+    let record: OwnedWorker;
+    try {
+      record = acquire();
+    } catch {
+      return; // A worker that cannot be constructed is not going to be ready.
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      record.ready,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, deadlineMs);
+      }),
+    ]);
+    clearTimeout(timer);
+  }
+
   return {
     execute,
+    whenReady,
     inspect: () => ({ phase: owned?.phase ?? (closed ? 'closed' : 'idle') }),
     async close() {
       closed = true;

@@ -81,6 +81,13 @@ export function createIsolatedSessionTranscriptSearch(
 
   return {
     inspect: source.inspect,
+    /**
+     * station#1707: readiness is a startup cost, not a read. Exposed so a
+     * caller can wait for the worker OUTSIDE the budget that bounds the
+     * query — never inside `readAuthorized`, whose deadline exists to bound
+     * the read itself.
+     */
+    whenReady: source.whenReady,
     close() {
       closed = true;
       active?.abort();

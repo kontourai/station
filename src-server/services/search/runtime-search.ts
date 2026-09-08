@@ -41,6 +41,26 @@ export function createRuntimeSearch(input: {
     );
   let closed = false;
   const active = new Set<AbortController>();
+  /**
+   * station#1707: the transcript reader is a `worker_threads` worker created
+   * on first use. Every budget that brackets a search — the unified
+   * service's `providerTimeoutMs`, `readAuthorized`'s own deadline, and the
+   * worker's read deadline — starts before that spawn, so the FIRST search
+   * after a runtime boots was paying thread creation, entry-module load
+   * (transform included, under a test runner) and database open out of a
+   * budget meant for the query. On a loaded host it exceeded it, and the
+   * response was an honest-looking 200 whose `station.messages` source was
+   * `unavailable` with `provider-timeout-or-error`.
+   *
+   * Started here, at composition, so the boot overlaps runtime startup
+   * instead of a request; awaited in `run` so that when a request does
+   * arrive mid-boot it waits for the worker rather than billing the wait to
+   * the read. `whenReady` never rejects and is itself bounded, so this can
+   * only delay a read by the worker's own deadline in the degenerate case
+   * where the thread never comes up — which is what used to happen to every
+   * cold first search.
+   */
+  const transcriptsReady = transcripts.whenReady();
   const current = (context: SearchReadContext) => {
     try {
       return (
@@ -58,6 +78,9 @@ export function createRuntimeSearch(input: {
     unavailable: T,
     read: (context: SearchReadContext) => Promise<T>,
   ): Promise<T> {
+    if (!current(context)) return unavailable;
+    // Before the controller, and so before every downstream deadline.
+    await transcriptsReady;
     if (!current(context)) return unavailable;
     const controller = new AbortController();
     active.add(controller);
