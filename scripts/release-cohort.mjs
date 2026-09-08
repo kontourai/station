@@ -400,7 +400,11 @@ function receipt(a, value) {
       providerEvidenceClaim,
       recoveryAction: text(value.recoveryAction, 'recoveryAction'),
     };
-  if (outcome === 'unknown')
+  // `unknown`: the platform's job ran and its outcome is unresolved (the
+  // provider effect may already have happened). `not_attempted`: the job
+  // never ran, so no provider effect was attempted. They are distinct claims
+  // because the verifier discloses them differently (#1774).
+  if (outcome === 'unknown' || outcome === 'not_attempted')
     return {
       platform,
       outcome,
@@ -519,6 +523,20 @@ export function recordProviderPromotion(input, raw) {
  * candidate exists only when at least one platform reported success, so the
  * protected verifier has a provider effect to observe.
  */
+/**
+ * The disclosed state of a platform that did not report success, derived
+ * from what its job left behind rather than from a name (#1774):
+ * NOT_PUBLISHED only when no provider effect was attempted (the job never
+ * ran); NOT_VERIFIED whenever the job ran and its outcome is unresolved,
+ * because the effect precedes the claim step and may already be served.
+ * Structural: it names what is not known, never what was verified.
+ */
+export function unshippedState(claimOutcome, jobResult) {
+  if (claimOutcome === 'not_attempted') return 'NOT_PUBLISHED';
+  if (claimOutcome === 'absent' && jobResult === 'skipped')
+    return 'NOT_PUBLISHED';
+  return 'NOT_VERIFIED';
+}
 export function finalizeCohort(inputs) {
   const values = Array.isArray(inputs) ? inputs : [inputs];
   if (!values.length)

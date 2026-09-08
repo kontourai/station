@@ -13,6 +13,7 @@ import {
   createStageReceipt,
   finalizeCohort,
   recordProviderPromotion,
+  unshippedState,
 } from '../release-cohort.mjs';
 
 const sourceSha = 'a'.repeat(40);
@@ -41,7 +42,7 @@ const success = (platform: 'android' | 'macos', cohortId?: string) => ({
 });
 const unresolved = (
   platform: 'android' | 'macos',
-  outcome: 'unknown' | 'reported_absent' = 'unknown',
+  outcome: 'unknown' | 'reported_absent' | 'not_attempted' = 'unknown',
 ) => ({
   platform,
   outcome,
@@ -383,6 +384,31 @@ describe('release cohort content-bound state machine', () => {
       platform: 'android',
       outcome: 'reported_absent',
     });
+    // A job that never ran records `not_attempted`, a distinct claim from
+    // `unknown` because only it means no provider effect was attempted.
+    const notAttempted = recordProviderPromotion(
+      beginPromotion(admission),
+      unresolved('android', 'not_attempted'),
+    );
+    expect(
+      finalizeCohort([notAttempted, macos]).providerClaims[0],
+    ).toMatchObject({ platform: 'android', outcome: 'not_attempted' });
+    expect(() =>
+      recordProviderPromotion(beginPromotion(admission), {
+        ...unresolved('android'),
+        outcome: 'pending',
+      }),
+    ).toThrow('promotion outcome is invalid');
+    // The disclosure is derived from the claim: an unresolved outcome after
+    // the job ran is NOT_VERIFIED (the effect precedes the claim step);
+    // only a job that never ran is NOT_PUBLISHED.
+    expect(unshippedState('unknown')).toBe('NOT_VERIFIED');
+    expect(unshippedState('unknown', 'skipped')).toBe('NOT_VERIFIED');
+    expect(unshippedState('reported_absent')).toBe('NOT_VERIFIED');
+    expect(unshippedState('absent', 'failure')).toBe('NOT_VERIFIED');
+    expect(unshippedState('absent', 'cancelled')).toBe('NOT_VERIFIED');
+    expect(unshippedState('absent', 'skipped')).toBe('NOT_PUBLISHED');
+    expect(unshippedState('not_attempted', 'skipped')).toBe('NOT_PUBLISHED');
     // Nothing published: there is no provider effect to verify, so there is
     // no candidate (the workflow's finalize guard prevents the job anyway).
     const macosUnknown = recordProviderPromotion(
@@ -640,13 +666,21 @@ test("recovery receipt is content-bound, discloses each platform's own claim, an
       android: {
         jobResult: 'success',
         claim: 'reported_success',
+        state: 'REPORTED',
         claimDigest: `sha256:${createHash('sha256').update(androidStateBytes).digest('hex')}`,
       },
-      macos: { jobResult: 'success', claim: 'absent', claimDigest: null },
+      // The job ran (success) and left no state: its effect may be live.
+      macos: {
+        jobResult: 'success',
+        claim: 'absent',
+        state: 'NOT_VERIFIED',
+        claimDigest: null,
+      },
     },
     completion: {
       providerFinality: 'confirmed',
-      durableCompletion: 'partial',
+      // Ledger failed and the marker was skipped: no durable write landed.
+      durableCompletion: 'not-recorded',
       finalAttestation: 'success',
       appToken: 'success',
       ledger: 'failure',
@@ -662,39 +696,97 @@ test("recovery receipt is content-bound, discloses each platform's own claim, an
   expect(receipt.recoveryAction).toContain('next Nightly plans normally');
   expect(receipt.recoveryAction).toContain('an owner may place');
   expect(receipt.recoveryAction).not.toMatch(/must .*remove/);
-  // Durable completion is derived from the record job's result, not from
-  // whether the run happened to reach recovery.
+  expect(receipt.recoveryAction).not.toContain('re-plans');
+  // Durable completion is derived from the record job's durable writes
+  // (ledger, marker), not from its overall result.
+  const completionOf = (overrides: Record<string, string>) => {
+    const run = recovery(results(overrides));
+    expect(run.status, run.stderr).toBe(0);
+    return JSON.parse(readFileSync(receiptPath, 'utf8')).completion
+      .durableCompletion;
+  };
+  expect(completionOf({ 'record-native-completion': 'skipped' })).toBe(
+    'not-recorded',
+  );
   expect(
-    recovery(results({ 'record-native-completion': 'skipped' })).status,
-  ).toBe(0);
+    completionOf({ 'final-attestation': 'failure', 'app-token': 'skipped' }),
+  ).toBe('not-recorded');
+  expect(completionOf({ ledger: 'success', tag: 'failure' })).toBe('partial');
+  expect(completionOf({ ledger: 'failure', tag: 'success' })).toBe('partial');
   expect(
-    JSON.parse(readFileSync(receiptPath, 'utf8')).completion,
-  ).toMatchObject({ durableCompletion: 'not-recorded' });
-  expect(
-    recovery(
-      results({
-        'promote-android': 'failure',
-        'record-native-completion': 'success',
-        ledger: 'success',
-        tag: 'skipped',
-      }),
-      absent,
-    ).status,
-  ).toBe(0);
-  expect(JSON.parse(readFileSync(receiptPath, 'utf8'))).toMatchObject({
-    platforms: { android: { jobResult: 'failure', claim: 'absent' } },
-    completion: { durableCompletion: 'recorded', tag: 'skipped' },
-  });
-  // A night on which every chain job succeeded has nothing to disclose.
-  const green = recovery(
-    results({
+    completionOf({
+      'promote-android': 'failure',
       'record-native-completion': 'success',
       ledger: 'success',
-      tag: 'success',
+      tag: 'skipped',
     }),
+  ).toBe('recorded');
+  expect(JSON.parse(readFileSync(receiptPath, 'utf8'))).toMatchObject({
+    platforms: {
+      android: { jobResult: 'failure', claim: 'absent', state: 'NOT_VERIFIED' },
+    },
+    completion: { tag: 'skipped' },
+  });
+  // Only a platform whose job never ran is NOT_PUBLISHED.
+  expect(
+    recovery(results({ 'promote-android': 'skipped' }), absent).status,
+  ).toBe(0);
+  expect(JSON.parse(readFileSync(receiptPath, 'utf8')).platforms).toMatchObject(
+    {
+      android: {
+        jobResult: 'skipped',
+        claim: 'absent',
+        state: 'NOT_PUBLISHED',
+      },
+    },
   );
+  const notAttemptedState = join(root, 'promotion-android-not-attempted.json');
+  writeFileSync(
+    notAttemptedState,
+    JSON.stringify(
+      recordProviderPromotion(
+        beginPromotion(admission),
+        unresolved('android', 'not_attempted'),
+      ),
+    ),
+  );
+  expect(recovery(results({}), notAttemptedState).status).toBe(0);
+  expect(JSON.parse(readFileSync(receiptPath, 'utf8')).platforms).toMatchObject(
+    {
+      android: { claim: 'not_attempted', state: 'NOT_PUBLISHED' },
+    },
+  );
+  const unknownState = join(root, 'promotion-android-unknown.json');
+  writeFileSync(
+    unknownState,
+    JSON.stringify(
+      recordProviderPromotion(beginPromotion(admission), unresolved('android')),
+    ),
+  );
+  expect(recovery(results({}), unknownState).status).toBe(0);
+  expect(JSON.parse(readFileSync(receiptPath, 'utf8')).platforms).toMatchObject(
+    {
+      android: { claim: 'unknown', state: 'NOT_VERIFIED' },
+    },
+  );
+  // A night on which every chain job succeeded has nothing to disclose; a
+  // failed fence clear alone is something to disclose.
+  const allGreen = {
+    'record-native-completion': 'success',
+    ledger: 'success',
+    tag: 'success',
+  };
+  const green = recovery(results(allGreen));
   expect(green.status).toBe(1);
   expect(green.stderr).toContain('nothing to disclose');
+  expect(
+    recovery(results({ ...allGreen, 'promotion-fence-clear': 'failure' }))
+      .status,
+  ).toBe(0);
+  expect(JSON.parse(readFileSync(receiptPath, 'utf8')).fence).toEqual({
+    ref: 'refs/tags/nightly-promotion-fence',
+    outcome: 'failure',
+  });
   // A state file that is not that platform's own claim is refused.
   expect(recovery(results({}), absent, androidState).status).toBe(1);
   expect(recovery(results({}), androidState).status, 'restore').toBe(0);
@@ -823,12 +915,15 @@ describe('final receipt disclosure (#1774)', () => {
     provider,
     claimDigest: `sha256:${'c'.repeat(64)}`,
   });
+  // Derived: an `unknown` claim (job ran) is NOT_VERIFIED; only a
+  // `not_attempted` claim (job never ran) is NOT_PUBLISHED.
   const unpublished = (
     platform: string,
     reason = `${platform} provider outcome unknown: unresolved:run:1:${platform}`,
+    outcome: 'unknown' | 'not_attempted' = 'unknown',
   ) => ({
-    state: 'NOT_PUBLISHED',
-    outcome: 'unknown',
+    state: outcome === 'unknown' ? 'NOT_VERIFIED' : 'NOT_PUBLISHED',
+    outcome,
     reason,
     claimDigest: `sha256:${'d'.repeat(64)}`,
   });
@@ -884,7 +979,19 @@ describe('final receipt disclosure (#1774)', () => {
     const notes = run('final-platform-notes', partial);
     expect(notes.status, notes.stderr).toBe(0);
     expect(notes.stdout).toBe(
-      'macos: NOT_PUBLISHED (macos provider outcome unknown: unresolved:run:1:macos)\n',
+      'macos: NOT_VERIFIED (macos provider outcome unknown: unresolved:run:1:macos)\n',
+    );
+    const neverRan = receipt(
+      'partial',
+      {
+        android: complete('google-play'),
+        macos: unpublished('macos', 'macos job skipped', 'not_attempted'),
+      },
+      [{ provider: 'google-play' }],
+    );
+    expect(run('assert-final', neverRan).status).toBe(0);
+    expect(run('final-platform-notes', neverRan).stdout).toBe(
+      'macos: NOT_PUBLISHED (macos job skipped)\n',
     );
     const none = run('final-platform-notes', full);
     expect(none.status, none.stderr).toBe(0);
@@ -896,7 +1003,7 @@ describe('final receipt disclosure (#1774)', () => {
     );
     expect(run('assert-final', macosOnly).status).toBe(0);
     expect(run('final-platform-notes', macosOnly).stdout).toMatch(
-      /^android: NOT_PUBLISHED \(/,
+      /^android: NOT_VERIFIED \(/,
     );
   });
 
@@ -921,7 +1028,34 @@ describe('final receipt disclosure (#1774)', () => {
           },
           [{ provider: 'google-play' }],
         ),
-        'NOT_PUBLISHED without a reason',
+        'NOT_VERIFIED without a reason',
+      ],
+      [
+        'NOT_PUBLISHED asserted over an unknown claim (the job ran)',
+        receipt(
+          'partial',
+          {
+            android: complete('google-play'),
+            macos: { ...unpublished('macos'), state: 'NOT_PUBLISHED' },
+          },
+          [{ provider: 'google-play' }],
+        ),
+        'macos NOT_PUBLISHED is not derived from its claim outcome unknown',
+      ],
+      [
+        'NOT_VERIFIED asserted over a not_attempted claim',
+        receipt(
+          'partial',
+          {
+            android: complete('google-play'),
+            macos: {
+              ...unpublished('macos', 'skipped', 'not_attempted'),
+              state: 'NOT_VERIFIED',
+            },
+          },
+          [{ provider: 'google-play' }],
+        ),
+        'macos NOT_VERIFIED is not derived from its claim outcome not_attempted',
       ],
       [
         'a platform marked complete with no provider observation',
@@ -942,7 +1076,7 @@ describe('final receipt disclosure (#1774)', () => {
           { android: complete('google-play'), macos: unpublished('macos') },
           [{ provider: 'google-play' }, { provider: 'github-releases' }],
         ),
-        'carries a github-releases observation for unpublished macos',
+        'carries a github-releases observation for unverified macos',
       ],
       [
         'state complete while a platform is unpublished',
@@ -1016,4 +1150,130 @@ describe('final receipt disclosure (#1774)', () => {
       expect(run('final-platform-notes', value).status, label).toBe(1);
     }
   });
+});
+
+test('the documented owner lock recipe produces a tag object the plan-time validator accepts (#1774)', () => {
+  // docs/guides/native-releases.md tells an owner to create the lock with
+  // `git tag -a --cleanup=verbatim -F <file>`; `-m` would append a newline
+  // and the validator requires the canonical message byte for byte. This
+  // builds the tag exactly as documented, in a scratch repository, and
+  // validates the stored object the way planning validates the REST one.
+  const root = mkdtempSync(join(tmpdir(), 'station-cohort-lock-recipe-'));
+  roots.push(root);
+  const git = (...args: string[]) => {
+    const result = spawnSync('git', args, {
+      cwd: root,
+      encoding: 'utf8',
+      windowsHide: true,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'owner',
+        GIT_AUTHOR_EMAIL: 'owner@example.test',
+        GIT_COMMITTER_NAME: 'owner',
+        GIT_COMMITTER_EMAIL: 'owner@example.test',
+      },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    return result.stdout;
+  };
+  git('init', '-q');
+  git('commit', '-q', '--allow-empty', '-m', 'source');
+  const lockedSource = git('rev-parse', 'HEAD').trim();
+  const command = join(process.cwd(), 'scripts/release-cohort-workflow.mjs');
+  const planPath = join(root, 'plan.json');
+  writeFileSync(
+    planPath,
+    JSON.stringify(createCohortPlan(input({ sourceSha: lockedSource }))),
+  );
+  const resultsPath = join(root, 'results.json');
+  writeFileSync(
+    resultsPath,
+    JSON.stringify({
+      'promote-android': 'failure',
+      'promote-macos': 'success',
+    }),
+  );
+  const receiptPath = join(root, 'native-cohort-recovery.json');
+  const absent = join(root, 'absent.json');
+  const built = spawnSync(
+    process.execPath,
+    [
+      command,
+      'recovery-receipt',
+      receiptPath,
+      lockedSource,
+      '112061',
+      planPath,
+      resultsPath,
+      ...Array(6).fill(absent),
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(built.status, built.stderr).toBe(0);
+  const message = spawnSync(
+    process.execPath,
+    [command, 'canonical-recovery-message', receiptPath],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(message.status, message.stderr).toBe(0);
+  const messagePath = join(root, 'lock-message.json');
+  writeFileSync(messagePath, message.stdout);
+  git(
+    'tag',
+    '-a',
+    '--cleanup=verbatim',
+    '-F',
+    messagePath,
+    'nightly-recovery-lock',
+    lockedSource,
+  );
+  // Read the stored object back as git holds it: headers, blank line, then
+  // the message verbatim — the same fields the REST tag object carries.
+  const object = git('cat-file', '-p', 'refs/tags/nightly-recovery-lock');
+  const divider = object.indexOf('\n\n');
+  const headers = Object.fromEntries(
+    object
+      .slice(0, divider)
+      .split('\n')
+      .map((line) => [
+        line.slice(0, line.indexOf(' ')),
+        line.slice(line.indexOf(' ') + 1),
+      ]),
+  );
+  const storedMessage = object.slice(divider + 2);
+  expect(storedMessage).toBe(message.stdout);
+  const tagPath = join(root, 'tag.json');
+  writeFileSync(
+    tagPath,
+    JSON.stringify({
+      tag: headers.tag,
+      object: { type: headers.type, sha: headers.object },
+      message: storedMessage,
+    }),
+  );
+  const accepted = spawnSync(
+    process.execPath,
+    [command, 'assert-recovery-tag-object', tagPath, lockedSource],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(accepted.status, accepted.stderr).toBe(0);
+  // The plain `-m` form the recipe warns against stores a trailing newline
+  // and is refused, which is why the recipe says `--cleanup=verbatim -F`.
+  git('tag', '-a', '-m', message.stdout, 'lock-with-m', lockedSource);
+  const withNewline = git('cat-file', '-p', 'refs/tags/lock-with-m');
+  writeFileSync(
+    tagPath,
+    JSON.stringify({
+      tag: 'nightly-recovery-lock',
+      object: { type: 'commit', sha: lockedSource },
+      message: withNewline.slice(withNewline.indexOf('\n\n') + 2),
+    }),
+  );
+  const refused = spawnSync(
+    process.execPath,
+    [command, 'assert-recovery-tag-object', tagPath, lockedSource],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(refused.status).toBe(1);
+  expect(refused.stderr).toContain('not canonical recovery JSON');
 });

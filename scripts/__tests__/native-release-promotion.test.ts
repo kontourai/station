@@ -306,10 +306,31 @@ describe('one-revision native promotion contract', () => {
       finalize,
       'Join per-platform claims, verify the published subset, and finalize',
     );
-    // A platform whose job never retained its state is joined as an explicit
-    // unknown claim, and the join reads both platforms' own state files.
-    expect(finalizeStep.run).toContain('unknown-claim');
-    expect(finalizeStep.run).toContain('$platform-state-absent');
+    // A platform whose job left no state is joined from its job result: a
+    // skipped job attempted no effect (not_attempted), a job that ran and
+    // died may already have had its effect (unknown). The join reads both
+    // platforms' own state files.
+    expect(finalizeStep.env).toMatchObject({
+      PROMOTE_ANDROID_RESULT: '$' + '{{ needs.promote-android.result }}',
+      PROMOTE_MACOS_RESULT: '$' + '{{ needs.promote-macos.result }}',
+    });
+    const joinLines = (finalizeStep.run ?? '')
+      .split('\n')
+      .map((line) => line.trim());
+    const skippedGuard = joinLines.indexOf(
+      `if [ "\${!result_variable}" = skipped ]; then`,
+    );
+    expect(skippedGuard).toBeGreaterThan(0);
+    expect(joinLines.slice(skippedGuard, skippedGuard + 5)).toEqual([
+      `if [ "\${!result_variable}" = skipped ]; then`,
+      'claim=not-attempted-claim',
+      'else',
+      'claim=unknown-claim',
+      'fi',
+    ]);
+    expect(finalizeStep.run).toContain(
+      `"$claim" "$platform-absent-claim.json" cohort/cohort-plan.json "$platform" "run:$GITHUB_RUN_ID:$platform-state-absent:\${!result_variable}"`,
+    );
     expect(finalizeStep.run).toContain(
       'finalize cohort/promotion-android-state.json cohort/promotion-macos-state.json > verification-candidate.json',
     );
@@ -384,8 +405,13 @@ describe('one-revision native promotion contract', () => {
       'clear-promotion-fence',
     ]);
     // An iOS-only failure never produces the incomplete-cohort receipt, but
-    // the receipt still discloses the iOS result whenever it is written.
+    // the receipt still discloses the iOS result whenever it is written. A
+    // failed fence clear does produce it: the receipt's fence block is the
+    // disclosure of a fence left standing.
     expect(recover.if).not.toContain('deliver-ios');
+    expect(recover.if).toContain(
+      "needs.clear-promotion-fence.result != 'success'",
+    );
     expect(recover.if).toContain("needs.promote-android.result != 'success'");
     expect(recover.if).toContain("needs.promote-macos.result != 'success'");
     expect(recover.if).toContain(
@@ -560,10 +586,13 @@ describe('one-revision native promotion contract', () => {
       ),
     );
     // The fence is cleared by its own terminal job at the end of every run
-    // that created it, whatever the platforms' outcomes (#1774), so a
-    // disclosed partial night never blocks the next plan; a cancelled run
-    // leaves it for the plan-time check. It still re-asserts the exact fence
-    // object before deleting and confirms the 404.
+    // whose fence job ran, whatever that job's or the platforms' outcomes
+    // (#1774): the fence job can create the ref and then fail its own
+    // readback, so the gate is "not skipped", never "success". A disclosed
+    // partial night never blocks the next plan; a cancelled run leaves it
+    // for the plan-time check. It still re-asserts the exact fence object
+    // before deleting, confirms the 404, and treats a 404 on the first read
+    // (no fence was created) as nothing to clear.
     const clearJob = cohort.jobs?.['clear-promotion-fence'] ?? {};
     expect(clearJob.needs).toEqual([
       'create-promotion-fence',
@@ -575,7 +604,10 @@ describe('one-revision native promotion contract', () => {
     ]);
     expect(clearJob.if).toBe(
       '$' +
-        "{{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.create-promotion-fence.result == 'success' }}",
+        "{{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.create-promotion-fence.result != 'skipped' }}",
+    );
+    expect(clearJob.if).not.toContain(
+      "needs.create-promotion-fence.result == 'success'",
     );
     for (const id of [
       'promote-android',
@@ -594,6 +626,16 @@ describe('one-revision native promotion contract', () => {
     expect(clear.id).toBe('clear_promotion_fence');
     expect(clear.env?.GITHUB_TOKEN).toBe('$' + '{{ secrets.GITHUB_TOKEN }}');
     expect(clear.run).toContain('assert-promotion-fence-tag-object');
+    const firstRead =
+      clear.run?.indexOf('git/ref/tags/nightly-promotion-fence') ?? -1;
+    const tolerate404 =
+      clear.run?.indexOf('if [ "$status" = 404 ]; then') ?? -1;
+    const require200 = clear.run?.indexOf('test "$status" = 200') ?? -1;
+    expect(firstRead).toBeGreaterThanOrEqual(0);
+    expect(tolerate404).toBeGreaterThan(firstRead);
+    expect(require200).toBeGreaterThan(tolerate404);
+    expect(clear.run?.slice(tolerate404, require200)).toContain('exit 0');
+    expect(clear.run?.indexOf('--request DELETE')).toBeGreaterThan(require200);
     expect(clear.run).toContain('--request DELETE');
     expect(clear.run).toContain('test "$status" = 204');
     expect(clear.run).toContain('test "$status" = 404');

@@ -138,18 +138,24 @@ release assets, rolling tag, updater signature and manifest for macOS — and
 emits the attested final receipt. That receipt's `state` is derived from what
 was observed: `complete` when every required platform was verified as
 published, `partial` when only a subset was, and its `platforms` map names
-each platform `complete` (with its provider) or `NOT_PUBLISHED` (with the
-reason from that platform's own claim). A platform can be `complete` only
-when the receipt carries its provider observation, and an unpublished
-platform never carries one. A partial cohort is a disclosed outcome, not an
-error the other platform pays for.
+each platform `complete` (with its provider), `NOT_VERIFIED`, or
+`NOT_PUBLISHED`, the last two with the reason from that platform's own
+claim. The distinction is derived from the claim, not chosen: the provider
+effect (Play upload; release assets and the `nightly-desktop` tag move)
+precedes the claim step, so a job that ran and whose outcome is unresolved
+(`unknown`, or no state left behind) is `NOT_VERIFIED` — its build may
+already be served — and only a job that never ran (`not_attempted`) is
+`NOT_PUBLISHED`. A platform can be `complete` only when the receipt carries
+its provider observation, and an unverified platform never carries one. A
+partial cohort is a disclosed outcome, not an error the other platform pays
+for.
 
 Recording (`record-native-completion`) verifies the final receipt's
 attestation, then writes one deploy-ledger row per platform the receipt
 verified as published, with `native cohort final receipt <state>` in the gate
-column and, on every row it writes, a note per `NOT_PUBLISHED` platform and an
-`ios:` note carrying the TestFlight job result (iOS has no ledger channel of
-its own). The rolling Android marker `refs/tags/nightly` moves only when the
+column and, on every row it writes, a note per `NOT_VERIFIED` or
+`NOT_PUBLISHED` platform and an `ios:` note carrying the TestFlight job
+result (iOS has no ledger channel of its own). The rolling Android marker `refs/tags/nightly` moves only when the
 receipt says Android published; macOS binds its own `nightly-desktop` tag in
 its publishing job. A night that published macOS but not Android therefore
 leaves `nightly` behind, and the next plan's decide step rebuilds the cohort.
@@ -160,29 +166,42 @@ channel receipt exists (#1016).
 
 Immediately after admission, an annotated, content-bound
 `refs/tags/nightly-promotion-fence` is created from the exact plan and
-admission, and each publishing job revalidates the live fence immediately
-before its provider effect. Planning fails closed on any earlier valid fence:
-it means a prior run that had provider effects in flight did not reach its
-end. The fence is cleared by the terminal `clear-promotion-fence` job at the
-end of every run that created it, whatever the platforms' outcomes, after
-re-asserting the exact fence object and confirming the 404, so a disclosed
-partial night never blocks the next one. Only a cancelled run, or a run whose
-clear step itself failed, leaves the fence standing for an owner to inspect
-and remove.
+admission, and the Android and macOS publishing jobs revalidate the live
+fence immediately before their provider effect (the iOS delivery workflow
+does not read it). Planning fails closed on any earlier valid fence: it means
+a prior run that had provider effects in flight did not reach its end. The
+fence is cleared by the terminal `clear-promotion-fence` job at the end of
+every run whose fence job ran — whether that job succeeded or created the
+ref and then failed its own readback — whatever the platforms' outcomes: it
+re-asserts the exact fence object when the ref exists, deletes it, and
+confirms the 404 (a 404 on the first read means no fence was created and
+there is nothing to clear). A disclosed partial night therefore never blocks
+the next one. Only a cancelled run, or a run whose clear job itself failed,
+leaves the fence standing for an owner to inspect and remove; that failure is
+disclosed in the recovery receipt's `fence` block.
 
-When any of the Android/macOS publish, finalize, or record jobs did not
-succeed, `record-native-recovery` uploads a content-bound
+When any of the Android/macOS publish, finalize, record, or fence-clear jobs
+did not succeed, `record-native-recovery` uploads a content-bound
 `native-cohort-recovery.json` receipt (`state: incomplete`) disclosing every
-job result, each platform's own recorded claim and job result, the fence
-outcome, and the digests of every evidence file the run left behind. It
-writes no ref. `refs/tags/nightly-recovery-lock` is an owner-placed halt
-only: automation never creates it, and planning dereferences and validates it
-(`assert-recovery-tag-object`) and fails closed while it exists. To halt
-future Nightlies after an incomplete night, an owner creates that annotated
-tag on the run's source SHA with the uploaded receipt's canonical message
-(`node scripts/release-cohort-workflow.mjs canonical-recovery-message
-native-cohort-recovery.json`), and removes the tag explicitly when done;
-without it, the next Nightly plans normally.
+job result, each platform's own recorded claim, job result, and derived
+state (`REPORTED`, `NOT_VERIFIED`, `NOT_PUBLISHED`), the fence outcome, and
+the digests of every evidence file the run left behind. It writes no ref.
+`refs/tags/nightly-recovery-lock` is an owner-placed halt only: automation
+never creates it, and planning dereferences and validates it
+(`assert-recovery-tag-object`) and fails closed while it exists. The
+validator requires the tag message to be the receipt's canonical JSON byte
+for byte, and `git tag -m` appends a newline, so an owner halting future
+Nightlies after an incomplete night creates the tag from a file with
+verbatim cleanup:
+
+```sh
+node scripts/release-cohort-workflow.mjs canonical-recovery-message native-cohort-recovery.json > lock-message.json
+git tag -a --cleanup=verbatim -F lock-message.json nightly-recovery-lock <source sha>
+git push origin refs/tags/nightly-recovery-lock
+```
+
+and removes the tag explicitly when done; without it, the next Nightly plans
+normally.
 
 macOS staging passes `--overlap-notarization`, so the two `notarytool submit
 --wait` waits run concurrently: the Nightly disk image encloses a signed but
@@ -191,10 +210,12 @@ the disk image and the updater archive's application both carry stapled
 tickets. Preview and stable releases keep the serial staple-then-package order,
 so an application copied out of one of their disk images validates offline.
 The independently published CLI remains outside this cohort. The Nightly
-Android and macOS matrix cells have `requiredForPromotion: true` — each
-platform is required for its own promotion, not for the cohort's — and the
-`per-platform-native-cohort` availability policy; this is only an available
-configured subset, and fleet/CLI completion remains `NOT_VERIFIED`.
+Android and macOS matrix cells carry `requiredForPromotion: true` and the
+`per-platform-native-cohort` availability policy; both are invariants
+`scripts/release-platform-matrix.mjs` asserts for those two cells so a matrix
+edit cannot silently demote either, not properties the cohort derives at
+run time. This is only an available configured subset, and fleet/CLI
+completion remains `NOT_VERIFIED`.
 
 ## Nightly fleet staging
 

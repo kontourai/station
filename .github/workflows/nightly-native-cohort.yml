@@ -10,9 +10,9 @@ name: Nightly native cohort
 # provider-side failure on one platform is disclosed — in the final receipt,
 # on every ledger row this run writes, and in the recovery receipt — but it
 # never withholds another platform's publication, ledger row, or marker. The
-# fence is cleared at the end of every run that created it, and automation
-# never writes `refs/tags/nightly-recovery-lock`: that tag is an owner-placed
-# halt only. iOS delivery runs beside the chain from the same admission and
+# fence is cleared at the end of every run whose fence job ran, whether or
+# not that job succeeded, and automation never writes
+# `refs/tags/nightly-recovery-lock`: that tag is an owner-placed halt only. iOS delivery runs beside the chain from the same admission and
 # its TestFlight outcome is disclosed on every ledger row.
 on:
   workflow_call:
@@ -373,14 +373,25 @@ jobs:
       - name: Join per-platform claims, verify the published subset, and finalize
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMOTE_ANDROID_RESULT: ${{ needs.promote-android.result }}
+          PROMOTE_MACOS_RESULT: ${{ needs.promote-macos.result }}
         run: |
           set -euo pipefail
-          # A platform whose job died before retaining its state is joined as
-          # an explicit unknown claim, never inferred as published or skipped.
+          # A platform whose job left no state is joined from its job result,
+          # never inferred: a skipped job attempted no provider effect
+          # (not_attempted → NOT_PUBLISHED); a job that ran and died before
+          # retaining its state may already have had its effect (unknown →
+          # NOT_VERIFIED).
           for platform in android macos; do
             if [ ! -f "cohort/promotion-$platform-state.json" ]; then
+              result_variable="PROMOTE_$(printf '%s' "$platform" | tr '[:lower:]' '[:upper:]')_RESULT"
+              if [ "${!result_variable}" = skipped ]; then
+                claim=not-attempted-claim
+              else
+                claim=unknown-claim
+              fi
               node scripts/release-cohort.mjs begin-promotion cohort/cohort-admission.json > "promotion-$platform-started.json"
-              node scripts/release-cohort-workflow.mjs unknown-claim "$platform-absent-claim.json" cohort/cohort-plan.json "$platform" "run:$GITHUB_RUN_ID:$platform-state-absent"
+              node scripts/release-cohort-workflow.mjs "$claim" "$platform-absent-claim.json" cohort/cohort-plan.json "$platform" "run:$GITHUB_RUN_ID:$platform-state-absent:${!result_variable}"
               node scripts/release-cohort.mjs promotion-receipt "promotion-$platform-started.json" "$platform-absent-claim.json" > "cohort/promotion-$platform-state.json"
             fi
           done
@@ -476,7 +487,7 @@ jobs:
           # The verified receipt decides which channels get a row (#1774): one
           # row per platform it verified as published, its gate column naming
           # the receipt state, and every row carrying a note per platform the
-          # receipt discloses as NOT_PUBLISHED.
+          # receipt discloses as NOT_PUBLISHED or NOT_VERIFIED.
           final_state=$(node -e 'console.log(require("./cohort/final-cohort-receipt.json").state)')
           android_state=$(node -e 'console.log(require("./cohort/final-cohort-receipt.json").platforms.android.state)')
           macos_state=$(node -e 'console.log(require("./cohort/final-cohort-receipt.json").platforms.macos.state)')
@@ -532,14 +543,16 @@ jobs:
   clear-promotion-fence:
     name: Clear promotion fence
     # The fence blocks the next plan while a run that created it is still in
-    # flight; it is cleared at the end of every run that created it, whatever
-    # each platform's outcome (#1774), so a disclosed partial night never
-    # blocks the next one. A cancelled run leaves it standing, which is
+    # flight; it is cleared at the end of every run whose fence job ran,
+    # whatever that job's or each platform's outcome (#1774): the fence job
+    # can create the ref and then fail its own readback, so gating on its
+    # success would leave that fence standing. A disclosed partial night
+    # never blocks the next one. A cancelled run leaves it standing, which is
     # exactly the case the plan-time fence check exists for. The same
     # GITHUB_TOKEN that created the fence removes it; no tag ruleset protects
     # this ref.
     needs: [create-promotion-fence, promote-android, promote-macos, deliver-ios, protected-finalize, record-native-completion]
-    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.create-promotion-fence.result == 'success' }}
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.create-promotion-fence.result != 'skipped' }}
     runs-on: ubuntu-22.04
     permissions: { contents: write }
     steps:
@@ -560,6 +573,12 @@ jobs:
           ref='refs/tags/nightly-promotion-fence'
           readback=$(mktemp)
           status=$(curl --silent --show-error --output "$readback" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/tags/nightly-promotion-fence")
+          # A fence job that failed before creating the ref leaves nothing to
+          # clear; any other non-200 is an answer this step cannot act on.
+          if [ "$status" = 404 ]; then
+            echo "No promotion fence exists for this run; nothing to clear." >&2
+            exit 0
+          fi
           test "$status" = 200
           tag_sha=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.ref!==process.argv[2]||value.object?.type!=="tag"||!/^[0-9a-f]{40}$/.test(value.object?.sha??"")) process.exit(1); process.stdout.write(value.object.sha)' "$readback" "$ref")
           tag_object=$(mktemp)
@@ -579,9 +598,10 @@ jobs:
     # the evidence the run left behind. It writes no ref: the recovery lock is
     # an owner-placed halt, never automation's, and the next Nightly plans
     # normally. `deliver-ios` is a dependency only so its outcome is disclosed;
-    # an iOS-only failure never triggers this job.
+    # an iOS-only failure never triggers this job. A failed fence clear does:
+    # the receipt's fence block is the disclosure of a fence left standing.
     needs: [create-promotion-fence, promote-android, promote-macos, deliver-ios, protected-finalize, record-native-completion, clear-promotion-fence]
-    if: ${{ always() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.build == 'true' && (needs.promote-android.result != 'success' || needs.promote-macos.result != 'success' || needs.protected-finalize.result != 'success' || needs.record-native-completion.result != 'success') }}
+    if: ${{ always() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.build == 'true' && (needs.promote-android.result != 'success' || needs.promote-macos.result != 'success' || needs.protected-finalize.result != 'success' || needs.record-native-completion.result != 'success' || needs.clear-promotion-fence.result != 'success') }}
     runs-on: ubuntu-22.04
     permissions: { contents: read }
     steps:

@@ -127,8 +127,9 @@ export function validateReleasePlatformMatrix({
 
       const evidence = cell.evidence;
       if (channel === 'nightly' && ['android', 'macos'].includes(platform)) {
-        // Each platform is required for its OWN promotion; the cohort
-        // publishes per platform and discloses a partial night (#1774).
+        // A matrix invariant for the two cohort cells (a matrix edit cannot
+        // silently demote either), not a property the cohort derives: the
+        // cohort publishes per platform and discloses a partial night (#1774).
         if (cell.requiredForPromotion !== true)
           errors.push(`${label}.requiredForPromotion must be true`);
         if (

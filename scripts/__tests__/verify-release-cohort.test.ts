@@ -475,7 +475,7 @@ function cohortFixture() {
   );
   const claim = (
     platform: 'android' | 'macos',
-    outcome: 'reported_success' | 'unknown',
+    outcome: 'reported_success' | 'unknown' | 'not_attempted',
   ) =>
     recordProviderPromotion(beginPromotion(admission), {
       platform,
@@ -483,14 +483,14 @@ function cohortFixture() {
       providerEvidenceClaim: {
         provider: platform === 'android' ? 'google-play' : 'github-releases',
         immutableReference:
-          outcome === 'unknown'
-            ? `unresolved:run:112061:${platform}`
-            : `${platform}:receipt:1`,
+          outcome === 'reported_success'
+            ? `${platform}:receipt:1`
+            : `unresolved:run:112061:${platform}`,
         queryReceiptDigest: `sha256:${'b'.repeat(64)}`,
         cohortId: plan.cohortId,
         sourceSha,
       },
-      ...(outcome === 'unknown' ? { recoveryAction: 'inspect' } : {}),
+      ...(outcome === 'reported_success' ? {} : { recoveryAction: 'inspect' }),
     });
   return {
     root,
@@ -501,6 +501,10 @@ function cohortFixture() {
     ]),
     macosOnly: finalizeCohort([
       claim('android', 'unknown'),
+      claim('macos', 'reported_success'),
+    ]),
+    androidNeverRan: finalizeCohort([
+      claim('android', 'not_attempted'),
       claim('macos', 'reported_success'),
     ]),
   };
@@ -519,7 +523,7 @@ describe('protected verifier verifies only the platforms that published (#1774)'
   });
 
   test('derives complete or partial from the observed providers and refuses an unobserved or over-observed platform', () => {
-    const { complete, macosOnly } = cohortFixture();
+    const { complete, macosOnly, androidNeverRan } = cohortFixture();
     const play = { provider: 'google-play' };
     const github = { provider: 'github-releases' };
     expect(finalPlatformStates(complete, [play, github])).toMatchObject({
@@ -529,18 +533,30 @@ describe('protected verifier verifies only the platforms that published (#1774)'
         macos: { state: 'complete', provider: 'github-releases' },
       },
     });
+    // An `unknown` claim means the Android job ran and its outcome is
+    // unresolved: the Play upload precedes the claim step, so the build may
+    // already be live. That is NOT_VERIFIED, never "not published".
     const partial = finalPlatformStates(macosOnly, [github]);
     expect(partial).toMatchObject({
       state: 'partial',
       platforms: {
         android: {
-          state: 'NOT_PUBLISHED',
+          state: 'NOT_VERIFIED',
           outcome: 'unknown',
           reason:
-            'android provider outcome unknown: unresolved:run:112061:android',
+            'android provider outcome unknown: unresolved:run:112061:android (the provider effect may already be live)',
         },
         macos: { state: 'complete', provider: 'github-releases' },
       },
+    });
+    // Only a job that never ran attempted no provider effect.
+    expect(
+      finalPlatformStates(androidNeverRan, [github]).platforms.android,
+    ).toMatchObject({
+      state: 'NOT_PUBLISHED',
+      outcome: 'not_attempted',
+      reason:
+        'android provider outcome not_attempted: unresolved:run:112061:android',
     });
     // The claim digest binds the disclosure to the platform's own recorded
     // claim, so a reader can match it to that job's state artifact.

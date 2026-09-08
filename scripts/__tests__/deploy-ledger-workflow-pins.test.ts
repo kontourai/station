@@ -73,7 +73,10 @@ function stepBlock(workflow: string, stepName: string): string {
   expect(start, `step must exist: ${stepName}`).toBeGreaterThanOrEqual(0);
   const nameLineStart = workflow.lastIndexOf('\n', start) + 1;
   const rest = workflow.slice(start + stepName.length);
-  const nextIndex = rest.match(/\n\s+- (?:name:|uses:|run:)/)?.index;
+  // A step may start with `- id:` (the cohort's ledger and marker steps do);
+  // without that marker the block ran through the next step and a pin could
+  // be satisfied by a neighbour's `if:` by accident.
+  const nextIndex = rest.match(/\n\s+- (?:name:|uses:|run:|id:)/)?.index;
   const end =
     nextIndex === undefined ? undefined : start + stepName.length + nextIndex;
   const block = workflow.slice(nameLineStart, end);
@@ -243,9 +246,17 @@ describe('the desktop nightly workflow records what it ships (station#575)', () 
       '--gate-result "native cohort final receipt $final_state"',
     );
     expect(step).not.toContain("'native cohort final receipt complete'");
-    expect(step).toContain(
+    // The ledger block ends at the marker's `- id:`; the marker's own block
+    // carries its gate, so a revert of either guard fails its own pin.
+    expect(step).not.toContain('git/refs/tags/nightly');
+    const marker = stepBlock(
+      nightly,
+      'Advance final Android marker with exact REST readback',
+    );
+    expect(marker).toContain(
       'if: $' + "{{ steps.durable_ledger.outputs.android == 'complete' }}",
     );
+    expect(marker).toContain('git/refs/tags/nightly');
     expect(step.indexOf('if [ "$android_state" = complete ]')).toBeLessThan(
       step.indexOf('--channel nightly-android'),
     );

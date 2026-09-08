@@ -10,6 +10,7 @@ import {
   canonicalJson,
   createArtifactRecord,
   parseVerificationCandidate,
+  unshippedState,
 } from './release-cohort.mjs';
 
 const REPOSITORY = 'kontourai/station';
@@ -217,9 +218,11 @@ export function shippedPlatforms(candidate) {
 
 /**
  * Per-platform outcome for the final receipt. A shipped platform is
- * `complete` only when its provider observation is present; an unshipped
- * platform is `NOT_PUBLISHED` with the reason its own claim recorded, and
- * never carries a provider observation.
+ * `complete` only when its provider observation is present. An unshipped
+ * platform never carries a provider observation and is disclosed from its
+ * own claim: `NOT_PUBLISHED` when its job never attempted a provider effect,
+ * `NOT_VERIFIED` when the job ran and the outcome is unresolved — the
+ * effect precedes the claim step, so it may already be live (#1774).
  */
 export function finalPlatformStates(candidate, providers) {
   const shipped = shippedPlatforms(candidate);
@@ -245,10 +248,11 @@ export function finalPlatformStates(candidate, providers) {
     } else {
       if (observations !== 0)
         fail(`${platform} did not report success but ${provider} was observed`);
+      const state = unshippedState(claim.outcome);
       platforms[platform] = {
-        state: 'NOT_PUBLISHED',
+        state,
         outcome: claim.outcome,
-        reason: `${platform} provider outcome ${claim.outcome}: ${claim.providerEvidenceClaim.immutableReference}`,
+        reason: `${platform} provider outcome ${claim.outcome}: ${claim.providerEvidenceClaim.immutableReference}${state === 'NOT_VERIFIED' ? ' (the provider effect may already be live)' : ''}`,
         claimDigest: digest(claim),
       };
     }
