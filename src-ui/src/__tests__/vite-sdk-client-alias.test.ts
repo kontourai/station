@@ -12,7 +12,23 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 const configFile = fileURLToPath(
   new URL('../../../vite.config.ts', import.meta.url),
 );
-const sdkAliases = [
+/**
+ * SDK subpaths, none of them aliased any more (#1748): all 30 explicit
+ * subpath aliases named exactly the file their own entry in `packages/sdk`'s
+ * `exports` map names, and they existed only to stay ahead of an unanchored
+ * root alias that would otherwise have rewritten each to
+ * `packages/sdk/src/index.ts/<subpath>`.
+ *
+ * Two rows were never aliased and are the ones this file could not have
+ * caught before. `secret-bindings` is imported by
+ * `views/integrations/SecretBindingPicker.tsx` as `import type`, which erases
+ * before resolution ever runs. `client/flow-gate-evaluations` sat behind the
+ * deleted `.../client` alias, which prefix-matched it into
+ * `packages/sdk/src/client/index.ts/flow-gate-evaluations` — the same ENOTDIR
+ * the root alias produced, one level down. `error-state` is the map's only
+ * `.tsx`.
+ */
+const sdkExportSubpaths = [
   [
     'core-update-restart-status',
     '../../../packages/sdk/src/core-update-restart-status.ts',
@@ -38,6 +54,12 @@ const sdkAliases = [
     'resource-posture',
     '../../../packages/sdk/src/query-domains/resourcePosture.ts',
   ],
+  ['secret-bindings', '../../../packages/sdk/src/client/secret-bindings.ts'],
+  [
+    'client/flow-gate-evaluations',
+    '../../../packages/sdk/src/client/flow-gate-evaluations.ts',
+  ],
+  ['error-state', '../../../packages/sdk/src/components/ErrorState.tsx'],
 ] as const;
 
 /**
@@ -106,8 +128,20 @@ afterAll(async () => {
 });
 
 describe('Vite Station SDK aliases', () => {
-  test.each(sdkAliases)(
-    'resolves the SDK %s subpath before the SDK root alias',
+  test('resolves the SDK package root to its source entry', async () => {
+    if (!server || !cacheDir) throw new Error('Vite fixture did not start');
+    expect(server.config.cacheDir).toBe(cacheDir);
+    await expect(
+      server.pluginContainer.resolveId('@kontourai/station-sdk'),
+    ).resolves.toMatchObject({
+      id: fileURLToPath(
+        new URL('../../../packages/sdk/src/index.ts', import.meta.url),
+      ),
+    });
+  });
+
+  test.each(sdkExportSubpaths)(
+    'resolves the SDK %s subpath to source, never through the root entry',
     async (subpath, expectedRelativePath) => {
       const expectedEntry = fileURLToPath(
         new URL(expectedRelativePath, import.meta.url),
