@@ -72,18 +72,36 @@ export function computePluginTreeDigest(root: string): string | null {
   }
 }
 
+export interface PluginTreeObservation {
+  readonly digest: string;
+  readonly manifestText?: string;
+}
+
 /** Same full-byte observation, yielding between batches so HTTP work can progress. */
 export async function computePluginTreeDigestAsync(
   root: string,
 ): Promise<string | null> {
+  return (await observePluginTreeAsync(root))?.digest ?? null;
+}
+
+/** Captures the declaration from the same bytes that contribute to the digest. */
+export async function observePluginTreeAsync(
+  root: string,
+): Promise<PluginTreeObservation | null> {
   try {
     const hash = treeHasher();
     let entries = 0;
+    let manifestText: string | undefined;
     for (const entry of treeEntries(root)) {
       hash.entryFrame(entry.kind, entry.path, entry.bytes);
+      if (entry.path === 'plugin.json' && entry.kind === 'F')
+        manifestText = entry.bytes.toString('utf8');
       if (++entries % 64 === 0) await setImmediate();
     }
-    return hash.finish();
+    return {
+      digest: hash.finish(),
+      ...(manifestText === undefined ? {} : { manifestText }),
+    };
   } catch {
     return null;
   }

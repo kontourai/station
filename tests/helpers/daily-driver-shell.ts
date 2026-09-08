@@ -78,6 +78,11 @@ export interface DailyDriverShellOptions {
 }
 
 export interface DailyDriverShell {
+  recordHandoff(
+    conversationId: string,
+    targetAgentSlug: string,
+    sessionId: string,
+  ): void;
   recordFork(
     sourceConversationId: string,
     target: ShellConversation,
@@ -547,7 +552,12 @@ export async function seedDailyDriverShell(
         conversations.some(
           (entry) =>
             entry.id === decodeURIComponent(ancillary[2]!) &&
-            entry.agentSlug === decodeURIComponent(ancillary[1]!),
+            (entry.agentSlug === decodeURIComponent(ancillary[1]!) ||
+              (sessionIdsByConversation.get(entry.id) ?? []).some(
+                (sessionId) =>
+                  executionBySession.get(sessionId)?.agentId ===
+                  decodeURIComponent(ancillary[1]!),
+              )),
         )
       ) {
         // These conversations have no generated summary or provider usage report.
@@ -562,6 +572,22 @@ export async function seedDailyDriverShell(
                 503,
               ),
         );
+      }
+      const basis =
+        /^\/api\/orchestration\/sessions\/([^/]+)\/turns\/[^/]+\/basis$/.exec(
+          path,
+        );
+      if (basis) {
+        const sessionId = decodeURIComponent(basis[1]!);
+        if (
+          conversations.some((entry) => entry.id === sessionId) ||
+          executionBySession.has(sessionId)
+        ) {
+          // Runtime provenance exists here, but no answer basis was published.
+          return route.fulfill(
+            json({ success: false, error: 'Basis not found' }, 404),
+          );
+        }
       }
       const checkpoints =
         /^\/api\/orchestration\/sessions\/([^/]+)\/checkpoints$/.exec(path);
@@ -606,6 +632,46 @@ export async function seedDailyDriverShell(
       ],
     );
   return {
+    recordHandoff(conversationId, targetAgentSlug, sessionId) {
+      const conversation = conversations.find(
+        (entry) => entry.id === conversationId,
+      );
+      const target = agents.find(
+        (entry) => entry.agentSlug === targetAgentSlug,
+      );
+      const previous = agents.find(
+        (entry) => entry.agentSlug === conversation?.agentSlug,
+      );
+      if (!conversation || !target || !previous)
+        throw new Error('Handoff fixture identity is undeclared');
+      const lineage = sessionIdsByConversation.get(conversationId) ?? [
+        conversationId,
+      ];
+      const predecessor = lineage.at(-1)!;
+      if (
+        predecessor === sessionId &&
+        conversation.agentSlug === targetAgentSlug
+      )
+        return;
+      if (!executionBySession.has(predecessor))
+        executionBySession.set(predecessor, {
+          sessionId: predecessor,
+          agentId: agentId(previous.agentSlug),
+          provider: engineIdFor(previous.provider),
+          engineConnectionId: previous.connectionId,
+          model: previous.defaultModel,
+        });
+      terminalSessions.add(predecessor);
+      sessionIdsByConversation.set(conversationId, [...lineage, sessionId]);
+      executionBySession.set(sessionId, {
+        sessionId,
+        agentId: agentId(target.agentSlug),
+        provider: engineIdFor(target.provider),
+        engineConnectionId: target.connectionId,
+        model: target.defaultModel,
+      });
+      conversation.agentSlug = targetAgentSlug;
+    },
     recordFork(sourceConversationId, target, branchPointTurnId) {
       if (conversations.some((conversation) => conversation.id === target.id))
         return;

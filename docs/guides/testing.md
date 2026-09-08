@@ -15,6 +15,15 @@ timeouts are unchanged. It retains a failing verdict and stops on
 cancellation, truncated output, or unsafe process cleanup. The ordinary
 `npm run test:full` retains its fail-fast behavior. Neither is promotion evidence.
 
+For an exhaustive repair pass, collect the complete independent failure set with
+`npm run test:full:audit` before starting another repair batch. Record each failure
+as a product defect, fixture or assertion defect, environmental failure, or
+unresolved; retain its revision, reproduction, and evidence for that classification.
+A timeout alone does not establish flakiness. Fix confirmed causes with focused
+regressions, then freeze the candidate for completion verification. Any source
+change requires fresh evidence for the affected completion scope; diagnostic
+passes from different revisions cannot be combined into a green completion claim.
+
 Read `.kontourai/veritas/external/fallow-audit.json` and its linked raw reports.
 A missing metric or incomplete tool invocation is an error, never zero findings.
 The inventory does not follow symbolic links. Analyzer configuration, supported

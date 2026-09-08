@@ -1,4 +1,11 @@
-import { cpSync, existsSync, lstatSync, readlinkSync, rmSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+} from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
@@ -126,6 +133,10 @@ vi.mock(
     computePluginContentDigest,
     computePluginContentDigestAsync: async (...args: unknown[]) =>
       computePluginContentDigest(...args),
+    observePluginContentAsync: async (directory: string, name: string) => ({
+      digest: computePluginContentDigest(directory, name),
+      manifestText: readFileSync(`${directory}/${name}/plugin.json`, 'utf8'),
+    }),
     forgetPluginContentDigest,
   }),
 );

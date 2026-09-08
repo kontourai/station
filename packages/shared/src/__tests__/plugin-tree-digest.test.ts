@@ -15,6 +15,7 @@ import * as rootExports from '@kontourai/station-shared';
 import {
   computePluginTreeDigest,
   computePluginTreeDigestAsync,
+  observePluginTreeAsync,
 } from '@kontourai/station-shared/plugin-tree-digest';
 import { expect, test } from 'vitest';
 
@@ -160,6 +161,21 @@ test('yielding digest permits other work and observes later file bytes without a
     const [observed] = await Promise.all([digest, changed]);
     expect(observed).not.toBe(original);
     expect(observed).toBe(computePluginTreeDigest(root));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a tree observation retains the manifest bytes that contributed to its digest', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'station-observed-manifest-'));
+  const manifest = '{ "name": "observed", "version": "1.0.0" }\n';
+  try {
+    writeFileSync(join(root, 'plugin.json'), manifest);
+    const expected = computePluginTreeDigest(root);
+    const observed = await observePluginTreeAsync(root);
+    writeFileSync(join(root, 'plugin.json'), '{"name":"changed"}');
+    expect(observed).toEqual({ digest: expected, manifestText: manifest });
+    expect((await observePluginTreeAsync(root))?.digest).not.toBe(expected);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

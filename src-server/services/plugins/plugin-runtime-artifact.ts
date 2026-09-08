@@ -5,10 +5,14 @@ import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import {
   computePluginContentDigest,
   computePluginContentDigestAsync,
+  observePluginContentAsync,
 } from './plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
 import { captureLocalPluginInstallation } from './plugin-installation-local.js';
-import { readPluginManifestFileSync } from './plugin-manifest-loader.js';
+import {
+  parsePluginManifestDocument,
+  readPluginManifestFileSync,
+} from './plugin-manifest-loader.js';
 import type { CapturedPluginPermissionArtifact } from './plugin-permissions.js';
 
 /** Runtime-only selection. Pending generations never become execution inputs. */
@@ -48,6 +52,7 @@ function bindRuntimeArtifact(
   const { pluginsDir, pluginId, root, captured, manifest } = candidate;
   if (
     !digest ||
+    manifest.name !== pluginId ||
     (captured?.installation && captured.installation.contentDigest !== digest)
   )
     return null;
@@ -62,6 +67,7 @@ function bindRuntimeArtifact(
       return false;
     }
   };
+  if (!selectionCurrent()) return null;
   return Object.freeze({
     pluginId,
     ...(captured?.installation
@@ -117,16 +123,19 @@ export async function capturePluginRuntimeArtifactAsync(
 ): Promise<PluginRuntimeArtifact | null> {
   const candidate = runtimeArtifactCandidate(pluginsDir, pluginId, journal);
   if (!candidate) return null;
-  const digest = await computePluginContentDigestAsync(
+  const observed = await observePluginContentAsync(
     dirname(candidate.root.packageRoot),
     basename(candidate.root.packageRoot),
   );
-  // A manifest can change before the yielding scan reaches it. Bind the
-  // post-scan declaration, then recheck its bytes and original selection.
-  if (candidate.captured && !candidate.captured.isCurrent()) return null;
-  const observed = runtimeArtifactCandidate(pluginsDir, pluginId, journal);
-  if (!observed || observed.root.packageRoot !== candidate.root.packageRoot)
-    return null;
-  const artifact = bindRuntimeArtifact(observed, digest);
-  return artifact && (await artifact.isCurrentAsync()) ? artifact : null;
+  if (!observed || observed.manifestText === undefined) return null;
+  return bindRuntimeArtifact(
+    {
+      ...candidate,
+      manifest: parsePluginManifestDocument(
+        observed.manifestText,
+        join(candidate.root.packageRoot, 'plugin.json'),
+      ),
+    },
+    observed.digest,
+  );
 }

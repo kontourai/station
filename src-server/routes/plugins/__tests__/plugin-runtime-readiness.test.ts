@@ -1,6 +1,7 @@
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   unlinkSync,
   writeFileSync,
@@ -41,6 +42,11 @@ import {
   readPluginPublicManifest,
 } from '../plugin-public-server.js';
 import * as pluginSource from '../plugin-source.js';
+
+vi.mock('node:fs', async (original) => {
+  const actual = await original<typeof import('node:fs')>();
+  return { ...actual, readFileSync: vi.fn(actual.readFileSync) };
+});
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -164,6 +170,37 @@ test('async capture binds the declaration whose bytes are scanned after yielding
   const artifact = await pending;
   expect(artifact?.manifest.version).toBe('2.0.0');
   expect(artifact?.isCurrent()).toBe(true);
+});
+
+test('async runtime admission binds its manifest with one full payload scan', async () => {
+  const f = await fixture();
+  await f.ready();
+  const initial = capturePluginRuntimeArtifact(
+    f.plugins,
+    f.manifest.name,
+    f.journal,
+  )!;
+  const payload = join(initial.packageRoot, 'server.mjs');
+  vi.mocked(readFileSync).mockClear();
+  const captured = await capturePluginRuntimeArtifactAsync(
+    f.plugins,
+    f.manifest.name,
+    f.journal,
+  );
+  expect(captured?.digest).toBe(initial.digest);
+  expect(captured?.manifest.name).toBe(f.manifest.name);
+  expect(
+    vi.mocked(readFileSync).mock.calls.filter(([path]) => path === payload),
+  ).toHaveLength(1);
+  writeFileSync(payload, 'export default function changed() {}');
+  expect(captured?.isCurrent()).toBe(false);
+  expect(
+    await capturePluginRuntimeArtifactAsync(
+      f.plugins,
+      f.manifest.name,
+      f.journal,
+    ),
+  ).toBeNull();
 });
 
 test('pending selected artifacts expose neither bundles nor manifests nor server imports; ready selection executes its installed declaration', async () => {

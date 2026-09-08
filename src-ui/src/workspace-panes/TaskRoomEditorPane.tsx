@@ -86,6 +86,17 @@ export function TaskRoomEditorPane({
   >(undefined);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const cursorSampleNonces = useRef(new Map<string, string>());
+  const cursorContext = useRef('');
+  const cursorFlight = useRef<string | undefined>(undefined);
+  const queuedCursor = useRef<
+    | {
+        key: string;
+        context: string;
+        generation: number;
+        send(): Promise<unknown>;
+      }
+    | undefined
+  >(undefined);
   if (authorizationRef.current !== authorizationCurrent) {
     authorizationRef.current = authorizationCurrent;
     operationGeneration.current += 1;
@@ -202,6 +213,12 @@ export function TaskRoomEditorPane({
   const displayedDocument = appliedDocument ?? queryDocument;
   const documentLoaded = displayedDocument !== undefined;
   const documentRevision = displayedDocument?.revision;
+  cursorContext.current = JSON.stringify([
+    taskId,
+    shared?.ownActorId,
+    shared?.live?.generation,
+    documentRevision,
+  ]);
   // A stream-applied document may remain visible while recovery is needed,
   // but gap/unavailable/error query truth revokes edit authority immediately.
   // Display continuity is not authority to plan or save from stale text.
@@ -359,18 +376,53 @@ export function TaskRoomEditorPane({
     )
       return;
     const bound = authoritativeText.length;
-    void shared
-      .command({
-        command: 'cursor',
-        generation: shared.live.generation,
-        workingRevision: documentRevision,
-        selection: {
-          anchor: Math.min(selection.anchor, bound),
-          focus: Math.min(selection.focus, bound),
-        },
-      })
-      .catch(() => {});
+    const generation = operationGeneration.current;
+    const context = cursorContext.current;
+    const key = `${generation}:${context}`;
+    queuedCursor.current = {
+      key,
+      context,
+      generation,
+      send: () =>
+        shared.command({
+          command: 'cursor',
+          generation: shared.live!.generation,
+          workingRevision: documentRevision,
+          selection: {
+            anchor: Math.min(selection.anchor, bound),
+            focus: Math.min(selection.focus, bound),
+          },
+        }),
+    };
+    if (cursorFlight.current === key) return;
+    cursorFlight.current = key;
+    // Ephemeral cursor updates have one in-flight request and one latest
+    // pending value. Older HTTP responses cannot overtake the newest intent.
+    void (async () => {
+      try {
+        while (
+          cursorFlight.current === key &&
+          queuedCursor.current?.key === key
+        ) {
+          const pending = queuedCursor.current;
+          queuedCursor.current = undefined;
+          if (
+            !isCurrentOperation(pending.generation) ||
+            pending.context !== cursorContext.current
+          )
+            continue;
+          try {
+            await pending.send();
+          } catch {
+            /* The authoritative live result owns availability. */
+          }
+        }
+      } finally {
+        if (cursorFlight.current === key) cursorFlight.current = undefined;
+      }
+    })();
   }
+
   async function adoptSettledText(
     settled: {
       kind: 'committed' | 'duplicate';

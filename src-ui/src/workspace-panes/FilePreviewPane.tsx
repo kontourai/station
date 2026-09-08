@@ -1043,7 +1043,10 @@ export function FilePreviewPane({
           )
             return;
           const surface = event.currentTarget;
-          const scrolledEpochMs = browserEpochMs();
+          const scrolledEpochMs =
+            event.timeStamp >= performance.timeOrigin
+              ? event.timeStamp
+              : performance.timeOrigin + event.timeStamp;
           requestAnimationFrame(() => {
             if (
               !surface.isConnected ||

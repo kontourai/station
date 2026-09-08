@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => ({
   },
   command: vi.fn(),
   stream: 'live' as 'live' | 'terminal',
+  liveGeneration: undefined as string | undefined,
   documentListener: undefined as
     | ((document: {
         kind: 'snapshot' | 'delta';
@@ -72,7 +73,7 @@ vi.mock('../workspace-panes/ProjectTaskRoomContext', () => ({
     taskId: 'task-1',
     discovery: mocks.discovery,
     stream: mocks.stream,
-    live: { panes: [], cursors: [] },
+    live: { panes: [], cursors: [], generation: mocks.liveGeneration },
     command: mocks.command,
     commandPending: false,
     subscribeDocument: (
@@ -150,6 +151,7 @@ beforeEach(() => {
   mocks.command.mockReset();
   mocks.command.mockResolvedValue({ kind: 'available' });
   mocks.stream = 'live';
+  mocks.liveGeneration = undefined;
   mocks.documentListener = undefined;
 });
 
@@ -1052,4 +1054,33 @@ describe('TaskRoomEditorPane', () => {
     expect((editor() as HTMLTextAreaElement).value).toBe('shared base');
     expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
   });
+});
+
+test('cursor publication serializes requests, keeps only the latest pending selection, and stops on retirement', async () => {
+  mocks.liveGeneration = 'generation';
+  const completions: Array<(value: unknown) => void> = [];
+  mocks.command.mockImplementation(
+    () => new Promise((resolve) => completions.push(resolve)),
+  );
+  const view = render(<TaskRoomEditorPane taskId="task-1" />);
+  const input = editor();
+  fireEvent.select(input, { target: { selectionStart: 1, selectionEnd: 1 } });
+  fireEvent.select(input, { target: { selectionStart: 2, selectionEnd: 2 } });
+  fireEvent.select(input, { target: { selectionStart: 3, selectionEnd: 3 } });
+  try {
+    expect(mocks.command).toHaveBeenCalledTimes(1);
+    await act(async () => completions.shift()!({ kind: 'available' }));
+    await waitFor(() => expect(mocks.command).toHaveBeenCalledTimes(2));
+    expect(mocks.command.mock.calls[1]![0]).toMatchObject({
+      command: 'cursor',
+      selection: { anchor: 3, focus: 3 },
+    });
+    fireEvent.select(input, { target: { selectionStart: 4, selectionEnd: 4 } });
+    view.unmount();
+    await act(async () => completions.shift()!({ kind: 'available' }));
+    expect(mocks.command).toHaveBeenCalledTimes(2);
+  } finally {
+    view.unmount();
+    for (const complete of completions) complete({ kind: 'available' });
+  }
 });

@@ -239,6 +239,52 @@ describe('FilePreviewPane', () => {
     },
   );
 
+  test.each(['relative', 'epoch'] as const)(
+    'scroll marks preserve the %s event timestamp rather than its later handler time',
+    async (clock) => {
+      const marks: unknown[] = [];
+      const unsubscribe = subscribeInteractiveWorkspacePerformanceMarks(
+        (mark) => marks.push(mark),
+      );
+      previewQuery.mockReturnValue({
+        isLoading: false,
+        isError: false,
+        data: {
+          path: 'file.txt',
+          status: 'ready',
+          renderKind: 'text',
+          sizeBytes: 1,
+          lineCount: 1,
+          content: 'x',
+        },
+      });
+      const view = renderPaneAt('file.txt');
+      try {
+        const surface = document.querySelector(
+          '[data-station-performance-surface="workspace-file-preview"]',
+        )!;
+        const event = new Event('scroll');
+        Object.defineProperty(event, 'timeStamp', {
+          value: clock === 'relative' ? 12 : performance.timeOrigin + 12,
+        });
+        fireEvent(surface, event);
+        await waitFor(() =>
+          expect(marks).toContainEqual(
+            expect.objectContaining({
+              kind: 'file-preview-scroll',
+              mark: expect.objectContaining({
+                scrolledEpochMs: performance.timeOrigin + 12,
+              }),
+            }),
+          ),
+        );
+      } finally {
+        view.unmount();
+        unsubscribe();
+      }
+    },
+  );
+
   test('a retired preview cannot publish a pending scroll frame', () => {
     const marks: unknown[] = [];
     const unsubscribe = subscribeInteractiveWorkspacePerformanceMarks((mark) =>

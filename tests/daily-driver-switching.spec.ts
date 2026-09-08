@@ -476,13 +476,16 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     page,
   }, testInfo) => {
     test.setTimeout(120_000);
+    const conversations = SHELL_CONVERSATIONS.map((conversation) => ({
+      ...conversation,
+    }));
     const handoffRequests: Array<Record<string, unknown>> = [];
     let handoffAccepted = false;
     let idempotencyKey = '';
     let acceptedSessionId = '';
-    await seedDailyDriverShell(page, {
+    const shell = await seedDailyDriverShell(page, {
       agents: SHELL_AGENTS,
-      conversations: SHELL_CONVERSATIONS,
+      conversations,
       conversationLineageWindow: false,
       extraRoutes: async (path, route) => {
         if (
@@ -514,6 +517,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
             },
           });
           acceptedSessionId = receipt.sessionId;
+          shell.recordHandoff(HANDOFF_CONVERSATION, 'codex', receipt.sessionId);
           await route.fulfill({
             status: 200,
             contentType: 'application/json',

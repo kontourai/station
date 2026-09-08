@@ -31,7 +31,8 @@ import { setImmediate } from 'node:timers/promises';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import {
   computePluginTreeDigest,
-  computePluginTreeDigestAsync,
+  observePluginTreeAsync,
+  type PluginTreeObservation,
 } from '@kontourai/station-shared/plugin-tree-digest';
 import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
 
@@ -73,15 +74,24 @@ export function computePluginContentDigest(
 const contentObservations = new Map<
   string,
   {
-    tail: Promise<string | null>;
-    queued?: Promise<string | null>;
+    tail: Promise<PluginTreeObservation | null>;
+    queued?: Promise<PluginTreeObservation | null>;
   }
 >();
 
-export function computePluginContentDigestAsync(
+export async function computePluginContentDigestAsync(
   pluginsDir: string,
   pluginName: string,
 ): Promise<string | null> {
+  return (
+    (await observePluginContentAsync(pluginsDir, pluginName))?.digest ?? null
+  );
+}
+
+export function observePluginContentAsync(
+  pluginsDir: string,
+  pluginName: string,
+): Promise<PluginTreeObservation | null> {
   const root = pluginContentRoot(pluginsDir, pluginName);
   if (!root) return Promise.resolve(null);
   const absoluteRoot = resolve(root);
@@ -96,7 +106,7 @@ export function computePluginContentDigestAsync(
       // Requests received during this scan join the NEXT scan. Its bytes are
       // observed after every caller arrived, and physical scans never overlap.
       queue.queued = undefined;
-      return computePluginTreeDigestAsync(absoluteRoot);
+      return observePluginTreeAsync(absoluteRoot);
     });
   queue.queued = observation;
   queue.tail = observation;
