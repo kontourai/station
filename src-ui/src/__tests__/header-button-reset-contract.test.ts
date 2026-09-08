@@ -73,7 +73,7 @@ describe('header button visual resets', () => {
     // line-start anchor would match the selector-list line and reintroduce the
     // wrong body.
     const focusVisible =
-      /(?:^|\})\s*(?:\/\*[\s\S]*?\*\/\s*)*\.page-breadcrumb__link:focus-visible\s*\{([^}]*)\}/.exec(
+      /(?:^|\})\s*(?:\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\/\s*)*\.page-breadcrumb__link:focus-visible\s*\{([^}]*)\}/.exec(
         breadcrumbStyles,
       )?.[1];
     expect(

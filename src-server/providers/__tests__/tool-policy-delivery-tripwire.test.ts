@@ -226,7 +226,7 @@ describe('tool-policy delivery declaration tripwire (station#2245)', () => {
             wiring.propertyNames.has(delivery.preToolHook),
             `${delivery.adapterModule}.ts must ATTACH the declared pre-tool hook ` +
               `'${delivery.preToolHook}' as an object-literal property name -- ` +
-              'that property IS the attachment to the engine SDK. The same ' +
+              'that property is how the hook reaches the engine SDK options. The same ' +
               "string appearing as a property VALUE (the hook's own output " +
               'envelope) is emitted by the callback and survives deleting the ' +
               'wiring entirely.',

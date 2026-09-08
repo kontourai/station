@@ -13,8 +13,8 @@ test.describe('Android — Mobile Layout', () => {
    * `navigation.spec.ts` and `webview-compat.spec.ts` were deleted for having
    * no power. Most of what those files asserted was tautological
    * (`title.length > 0`, `fontFamily.length > 0`, touch support under
-   * Playwright's own touch emulation) or guarded behind `if (count > 0)` on
-   * selectors with no occurrence outside tests. These two were not, and the
+   * Playwright's own touch emulation), guarded behind `if (count > 0)`, or
+   * duplicated by this file's broader sweeps. These two were not, and the
    * `android` bucket had no other copy of either, so they move rather than go.
    *
    * Both wait on the shell instead of a fixed sleep, and neither swallows its
