@@ -15,9 +15,13 @@ import {
 } from '../lib/local-ui-bootstrap';
 import { LOCAL_UI_SESSION_ATTEMPT_LIMIT } from '../lib/local-ui-session-retry';
 import { ElapsedWait } from './ElapsedWait';
-import { GuidedConnect } from './GuidedConnect';
 import { LazyBoundary } from './LazyBoundary';
 import { SkeletonBlock } from './state';
+
+const loadGuidedConnect = () =>
+  import('./GuidedConnect').then((module) => ({
+    default: module.GuidedConnect,
+  }));
 
 const loadUnpairedSampleWorkspace = async () => {
   const module = await import('./first-run/UnpairedSampleWorkspace');
@@ -145,9 +149,15 @@ export function LocalUiSessionGate({
     return (
       <section aria-label="Station access required">
         {resolution.message && <p role="alert">{resolution.message}</p>}
-        <GuidedConnect
-          onSessionEstablished={handleSessionEstablished}
-          onExploreSample={() => setSampleOpen(true)}
+        <LazyBoundary
+          load={loadGuidedConnect}
+          componentProps={{
+            onSessionEstablished: handleSessionEstablished,
+            onExploreSample: () => setSampleOpen(true),
+          }}
+          pending={
+            <SkeletonBlock count={1} label="Opening connection options" />
+          }
         />
       </section>
     );
