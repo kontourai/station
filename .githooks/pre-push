@@ -58,8 +58,15 @@ node scripts/check-prepush-orchestration-transfer.mjs
 
 # ~7s, and only when this push changes something these gates read (#3208).
 # The UI-contract ratchets and the content gates live in verify:static, which
-# only full:regression composes, which CI runs only on push-to-main — so
-# without this they evaluate a change after it is already on main, and the red
+# only full:regression composes — and full-regression.yml is workflow_call
+# only, reached from nightly.yml (09:00 UTC schedule or dispatch), release.yml
+# (tagged promotion), and ci.yml's workflow_dispatch-only job. NO
+# pull_request, merge_group or push-to-main run composes it: ci:fast, the
+# required `fast-checks` lane, does not include verify-static. The nearest
+# post-merge coverage is windows-verification.yml, which runs gate:naming and
+# gate:ui-contracts on a paths-filtered push to main and nothing else from the
+# chain. So without this hook these gates evaluate a change after it is
+# already on main — most of them not until the next Nightly — and the red
 # lands on whoever gates next. Three regressions reached main in one day that
 # way (two motion literals, one undeclared Coding dependency).
 echo "[station pre-push] static gates (UI contracts, content)"
