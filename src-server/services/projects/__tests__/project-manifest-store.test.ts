@@ -21,6 +21,7 @@ vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
   projectManifestBackfills: backfillCounter,
 }));
 
+import { captureLoggerLines } from '../../../__test-utils__/logger-capture.js';
 import { putProject } from '../../../domain/__tests__/file-storage-test-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { execGitSync } from '../../../utils/git-exec.js';
@@ -622,7 +623,7 @@ describe('ProjectManifestStore — backfill is an exclusive create (D2)', () => 
       workingDirectory: checkout,
     });
     const sidecar = projectManifestPath(home, 'acme');
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const captured = captureLoggerLines();
 
     // The winner recorded local-only; this store derived a real git origin.
     // Adopting silently would present two contradictory observations of the
@@ -645,11 +646,11 @@ describe('ProjectManifestStore — backfill is an exclusive create (D2)', () => 
       outcome: 'adopted-existing',
       adopted: 'divergent',
     });
-    expect(warn).toHaveBeenCalledTimes(1);
-    const message = String(warn.mock.calls[0][0]);
-    expect(message).toContain('local-only local:acme');
-    expect(message).toContain('github.com/kontourai/station');
-    warn.mockRestore();
+    const observed = captured.at('warn');
+    expect(observed).toHaveLength(1);
+    expect(observed[0].adopted).toBe('local-only local:acme');
+    expect(observed[0].derived).toContain('github.com/kontourai/station');
+    captured.stop();
   });
 
   test('adopting a winner that AGREES with the derivation is silent, and the metric says which it was', async () => {
@@ -659,7 +660,7 @@ describe('ProjectManifestStore — backfill is an exclusive create (D2)', () => 
       slug: 'acme',
       workingDirectory: checkout,
     });
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const captured = captureLoggerLines();
 
     const result = await racingStore(home, adapter, {
       schemaVersion: 1,
@@ -681,8 +682,8 @@ describe('ProjectManifestStore — backfill is an exclusive create (D2)', () => 
       outcome: 'adopted-existing',
       adopted: 'identical',
     });
-    expect(warn).not.toHaveBeenCalled();
-    warn.mockRestore();
+    expect(captured.at('warn')).toHaveLength(0);
+    captured.stop();
   });
 });
 

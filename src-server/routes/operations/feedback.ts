@@ -5,12 +5,15 @@
 import { Hono } from 'hono';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import { feedbackOps } from '../../telemetry/metrics.js';
+import { createLogger } from '../../utils/logger.js';
 import {
   feedbackDeleteSchema,
   getBody,
   rateSchema,
   validate,
 } from '../schemas/schemas.js';
+
+const logger = createLogger({ name: 'feedback-routes' });
 
 export function createFeedbackRoutes(feedbackService: FeedbackService) {
   const app = new Hono();
@@ -81,7 +84,9 @@ export function createFeedbackRoutes(feedbackService: FeedbackService) {
         );
       }
     } catch (e) {
-      console.debug('Failed to parse feedback analyze request body:', e);
+      logger.debug('Failed to parse feedback analyze request body', {
+        error: e,
+      });
       /* no body is fine */
     }
     const summary = await feedbackService.runAnalysisPipeline();

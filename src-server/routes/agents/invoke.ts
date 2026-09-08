@@ -15,6 +15,7 @@ import { guardRuntimeGenerationTools } from '../../runtime/tools/runtime-generat
 import type { ITool, RuntimeContext } from '../../runtime/types.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
+import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import { chatRequests } from '../../telemetry/metrics.js';
 import {
   errorMessage,
@@ -39,7 +40,6 @@ import {
   NativeInvocationPartialError,
   NativeInvocationStorageUnavailableError,
 } from './native-invocation.js';
-import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 
 function nativeInvocationErrorResponse(
   ctx: RuntimeContext,
@@ -252,7 +252,9 @@ export function createInvokeRoutes(
                 .trim();
               parsed = JSON.parse(cleaned);
             } catch (e) {
-              console.debug('Failed to parse JSON from agent response:', e);
+              ctx.logger.debug('Failed to parse JSON from agent response', {
+                error: e,
+              });
               const jsonMatch = textResult.text!.match(/\{[\s\S]*\}/);
               parsed = jsonMatch
                 ? JSON.parse(jsonMatch[0])

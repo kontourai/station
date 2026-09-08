@@ -18,9 +18,12 @@ import type {
 } from '../../domain/terminal-types.js';
 import { terminalOps } from '../../telemetry/metrics.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
+import { createLogger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
 import { resolveTerminalShellCandidates } from './terminal-shells.js';
 import { pollTerminalSubprocessActivity } from './terminal-subprocess-state.js';
+
+const logger = createLogger({ name: 'terminal-service' });
 
 const HISTORY_LINE_LIMIT = 5000;
 const PERSIST_DEBOUNCE_MS = 40;
@@ -155,7 +158,10 @@ export class TerminalService {
         // found", which reads as a shell problem the user cannot act on
         // (#1244).
         if (isPtyUnavailableError(e)) throw e;
-        console.debug('Failed to spawn shell candidate:', candidate.shell, e);
+        logger.debug('Failed to spawn shell candidate', {
+          shell: candidate.shell,
+          error: e,
+        });
       }
     }
 

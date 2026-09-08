@@ -1,4 +1,7 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger({ name: 'delta-coalescer' });
 
 /**
  * Batches streamed content deltas so one model token stops costing one of
@@ -159,7 +162,7 @@ export class DeltaCoalescer {
       // Only reached by a caller that supplied no logger; a swallowed
       // delivery failure with nothing written anywhere is the one outcome
       // this must not have.
-      warn: (message, meta) => console.warn(message, meta),
+      warn: (message, meta) => logger.warn(message, meta),
     };
   }
 

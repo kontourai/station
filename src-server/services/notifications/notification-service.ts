@@ -18,8 +18,11 @@ import {
 } from '@kontourai/station-shared/notification-priority';
 import type { INotificationProvider } from '../../providers/provider-interfaces.js';
 import { notificationOps } from '../../telemetry/metrics.js';
+import { createLogger } from '../../utils/logger.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import type { EventBus } from '../orchestration/event-bus.js';
+
+const logger = createLogger({ name: 'notification-service' });
 
 type NotificationActionLease = {
   id: string;
@@ -891,11 +894,10 @@ export class NotificationService {
     try {
       this.onAsyncDispatchError?.(operation, error);
     } catch (observerError) {
-      console.warn(
-        'Notification async adapter error observer failed',
+      logger.warn('Notification async adapter error observer failed', {
         operation,
-        observerError,
-      );
+        error: observerError,
+      });
     }
   }
 
@@ -953,11 +955,10 @@ export class NotificationService {
           const items = await provider.poll();
           for (const opts of items) await this.schedule(provider.id, opts);
         } catch (e) {
-          console.debug(
-            'Failed to poll notification provider:',
-            provider.id,
-            e,
-          );
+          logger.debug('Failed to poll notification provider', {
+            provider: provider.id,
+            error: e,
+          });
         }
       }
       if (provider.syncStatus) {
@@ -976,11 +977,10 @@ export class NotificationService {
             }
           }
         } catch (e) {
-          console.debug(
-            'Failed to sync status for notification provider:',
-            provider.id,
-            e,
-          );
+          logger.debug('Failed to sync status for notification provider', {
+            provider: provider.id,
+            error: e,
+          });
         }
       }
     }

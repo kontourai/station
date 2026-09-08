@@ -36,11 +36,14 @@ import {
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
+import { createLogger } from '../../utils/logger.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import {
   listPluginCatalogIdentities,
   readPluginCatalogInstallation,
 } from './plugin-catalog-installation.js';
+
+const logger = createLogger({ name: 'distribution-profile-service' });
 
 const SAFE_ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const LIFECYCLE_FILE = ['config', 'distribution-lifecycle.json'] as const;
@@ -233,7 +236,10 @@ function readPluginLayoutFiles(
 }
 
 function logInvalidPlugin(pluginName: string, error: unknown): void {
-  console.debug('Failed to read installed plugin layout:', pluginName, error);
+  logger.debug('Failed to read installed plugin layout', {
+    plugin: pluginName,
+    error,
+  });
 }
 
 function cloneProfile(profile: DistributionProfile): DistributionProfile {

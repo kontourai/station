@@ -1,4 +1,7 @@
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger({ name: 'launchability-revision' });
 
 export type LaunchabilityRevisionListener = (revision: number) => void;
 
@@ -36,7 +39,7 @@ export class LaunchabilityRevision implements LaunchabilityRevisionSource {
       try {
         listener(this.revision);
       } catch {
-        console.debug('Launchability revision listener failed.');
+        logger.debug('Launchability revision listener failed.');
       }
     }
     return this.revision;

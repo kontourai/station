@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { captureLoggerLines } from '../../../__test-utils__/logger-capture.js';
 
 const backfillCounter = vi.hoisted(() => ({ add: vi.fn() }));
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -247,7 +248,7 @@ describe('ProjectService', () => {
     // ENOSPC, or a read-only home do the same. The project route's catch turns
     // any of them into a 400 for a project that WAS created.
     const adapter = createMockStorageAdapter();
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const captured = captureLoggerLines();
     const svc = new ProjectService(
       adapter as any,
       {
@@ -265,9 +266,10 @@ describe('ProjectService', () => {
     // The absence of a manifest is the defined compat state (§5 point 1), so
     // nothing was lost — but it is recorded rather than swallowed.
     expect(backfillCounter.add).toHaveBeenCalledWith(1, { outcome: 'failed' });
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0][0])).toContain('acme');
-    warn.mockRestore();
+    const observed = captured.at('warn');
+    expect(observed).toHaveLength(1);
+    expect(observed[0].project).toBe('acme');
+    captured.stop();
   });
 
   test('createProject still succeeds with no manifest store wired', async () => {

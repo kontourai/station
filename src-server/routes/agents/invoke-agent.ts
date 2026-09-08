@@ -10,12 +10,15 @@ import { createRuntimeModelSelection } from '../../runtime/plugins/runtime-provi
 import { executeRuntimeGenerationToolWithinLease } from '../../runtime/tools/runtime-generation-tools.js';
 import { isTrustedNativeStationControlTool } from '../../runtime/tools/tool-provenance.js';
 import type { RuntimeContext } from '../../runtime/types.js';
+import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import { requireToolServerResult } from '../../services/plugins/tool-server-oauth.js';
 import { controlActions } from '../../telemetry/metrics.js';
 import { isAuthError } from '../../utils/auth-errors.js';
+import { createLogger } from '../../utils/logger.js';
 import { errorMessage } from '../schemas/schemas.js';
 import { executeNativeInvocation } from './native-invocation.js';
-import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
+
+const logger = createLogger({ name: 'invoke-agent' });
 
 interface ToolResult {
   content?: Array<{ text?: string }>;
@@ -36,7 +39,7 @@ function unwrapMCPResult(toolResult: unknown): unknown {
       }
       return parsed;
     } catch (error) {
-      console.debug('Failed to parse MCP result JSON:', error);
+      logger.debug('Failed to parse MCP result JSON', { error });
       return text;
     }
   }

@@ -8,6 +8,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { captureLoggerLines } from '../../../__test-utils__/logger-capture.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   notificationOps: { add: vi.fn() },
@@ -277,7 +278,7 @@ describe('NotificationService', () => {
   });
 
   test('observer failure cannot reject shutdown', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const captured = captureLoggerLines();
     const target = new NotificationService(bus, dir, 999_999, {
       onAsyncDispatchError: () => {
         throw new Error('observer failed');
@@ -288,12 +289,14 @@ describe('NotificationService', () => {
     });
 
     await expect(target.shutdown()).resolves.toBeUndefined();
-    expect(warn).toHaveBeenCalledWith(
-      'Notification async adapter error observer failed',
-      'failed-event',
-      expect.objectContaining({ message: 'observer failed' }),
-    );
-    warn.mockRestore();
+    const observed = captured.at('warn');
+    expect(observed).toHaveLength(1);
+    expect(observed[0]).toMatchObject({
+      msg: 'Notification async adapter error observer failed',
+      operation: 'failed-event',
+      error: expect.objectContaining({ message: 'observer failed' }),
+    });
+    captured.stop();
   });
 
   test('shutdown bounds a hung admitted task without an unhandled rejection', async () => {

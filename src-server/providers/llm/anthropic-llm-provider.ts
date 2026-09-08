@@ -8,6 +8,7 @@ import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import type { LanguageModel } from 'ai';
 import { buildAiSdkLanguageModel } from '../../runtime/frameworks/framework-model-factory.js';
 import { throwIfAborted } from '../../utils/bounded-async.js';
+import { createLogger } from '../../utils/logger.js';
 import {
   catalogLimit,
   createCatalogByteBudget,
@@ -22,6 +23,8 @@ import type {
   LLMModelCatalog,
   ModelCatalogRequest,
 } from './model-provider-types.js';
+
+const logger = createLogger({ name: 'anthropic-llm-provider' });
 
 export class AnthropicLLMProvider extends AiSdkLLMProvider {
   readonly id = 'anthropic';
@@ -136,7 +139,7 @@ export class AnthropicLLMProvider extends AiSdkLLMProvider {
       // (`ConnectionService.describeModelCheckFailure`). Discarding it
       // entirely is what left "Connection failed" with no reason and no HTTP
       // code anywhere in the product (station RT-06).
-      console.debug('Failed to list Anthropic models.');
+      logger.debug('Failed to list Anthropic models.');
       return {
         source: 'unavailable',
         models: [],
