@@ -136,11 +136,9 @@
 .guided-connect__footer p {
   margin: 0;
 }
-@media (max-width: 440px) {
-  .guided-connect {
-    padding: 16px;
-  }
-  .guided-connect__alternatives {
-    flex-direction: column;
-  }
+.guided-connect__alternatives {
+  flex-wrap: wrap;
+}
+.guided-connect__alternatives .guided-connect__action {
+  flex: 1 1 180px;
 }

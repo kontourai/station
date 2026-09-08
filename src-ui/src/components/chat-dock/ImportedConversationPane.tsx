@@ -157,7 +157,6 @@ export default function ImportedConversationPane({
           action={
             <Button
               pending={continued.isFetching}
-              pendingLabel="Opening…"
               onClick={() => {
                 if (continued.isError) void continued.refetch();
                 else void openContinued();
