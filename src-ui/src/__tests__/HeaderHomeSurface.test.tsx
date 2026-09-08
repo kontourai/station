@@ -25,9 +25,18 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: null }),
 }));
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ navigate }),
-}));
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({ navigate });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurface,
 }));
