@@ -129,12 +129,24 @@ describe('useOutboundQueueSnapshot', () => {
       join(__dirname, '..', 'components', 'chat-dock', 'ChatDock.tsx'),
       'utf8',
     );
-    const call = dockSource.match(
+    expect(dockSource).toContain('useConversationBoundaryDialogs({');
+    const boundarySource = readFileSync(
+      join(
+        __dirname,
+        '..',
+        'components',
+        'chat-dock',
+        'useConversationBoundaryDialogs.ts',
+      ),
+      'utf8',
+    );
+    const call = boundarySource.match(
       /useOutboundQueueSnapshot\(([\s\S]{0,120}?)\);/,
     );
-    expect(call, 'ChatDock must read the queue through this hook').not.toBe(
-      null,
-    );
+    expect(
+      call,
+      'The dock boundary hook must gate its queue subscription',
+    ).not.toBe(null);
     expect((call?.[1] ?? '').replace(/\s+/g, ' ')).toContain(
       'Boolean(activeSession?.conversationId)',
     );
