@@ -1,6 +1,6 @@
 /**
  * Every portable Basis MCP app is built from this explicit manifest. Adding an
- * app is declarative: its browser entry and checked-in generated module stay
+ * app is declarative: its browser entry and git-ignored generated module stay
  * paired, and the plural generator owns the same procedure for each one.
  */
 export const BASIS_MCP_APP_MANIFEST = Object.freeze([

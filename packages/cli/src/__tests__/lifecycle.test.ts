@@ -3940,6 +3940,9 @@ describe('upgrade', () => {
       'git rev-parse --abbrev-ref main@{u}',
       'git pull',
       'npm install',
+      // The pull deletes nothing tracked any more, but it can bring a new
+      // browser entry, and the raw install above runs no generation.
+      'npm run basis:mcp:generate',
       'npm run build:server',
       'npm run build:ui',
       'git rev-parse HEAD',
@@ -6926,8 +6929,8 @@ describe('lifecycle build + restart ergonomics', () => {
   // station#1867 review round: the test above proves the prune FUNCTION works,
   // but nothing proved `buildApplication` actually calls it — deleting the call
   // site left the whole lifecycle suite green. This pins the WIRING. The build
-  // is made to fail immediately (`execSync` throws on the first `npm run
-  // build:server`), which is enough: the prune runs before the build starts, so
+  // is made to fail immediately (`execSync` throws on the first build step,
+  // `npm run basis:mcp:generate`), which is enough: the prune runs before the build starts, so
   // a swept orphan proves the call site is present without running a real build.
   it('buildApplication prunes stale candidates before the build runs (station#1867)', async () => {
     ensureDir(TEST_CWD);
@@ -6960,7 +6963,8 @@ describe('lifecycle build + restart ergonomics', () => {
         (error: unknown) => error as Error,
       );
     expect(thrown).toBeInstanceOf(Error);
-    expect(thrown?.message).toContain('Server build failed');
+    // The first build step is the Basis MCP app generation.
+    expect(thrown?.message).toContain('Basis MCP apps build failed');
     expect(thrown?.message).toContain('build stopped for this test');
     expect(thrown?.cause).toBe(buildFailed);
 
