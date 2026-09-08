@@ -100,6 +100,32 @@ describe('the nightly workflow records what it ships', () => {
     );
   });
 
+  it('decides the cohort from the ledger at origin/main, not marker position alone (#1780)', () => {
+    const decision = stepBlock(
+      nightly,
+      'Decide one cohort rather than independent native ships',
+    );
+    // A marker at HEAD without a ledger row is a served, unverified release
+    // (macOS moves nightly-desktop before its claim step). The decision must
+    // consult the ledger, and the ledger it consults must be main's: rows
+    // land on main after the ship, so the checkout at the source SHA never
+    // contains the row for its own marker.
+    expect(decision).toContain('node scripts/nightly-cohort-decide.mjs');
+    expect(decision).toContain('--android-candidate "$normalized_android_sha"');
+    expect(decision).toContain('--desktop-candidate "$normalized_desktop_sha"');
+    expect(decision).toContain('--ledger-ref origin/main');
+    expect(decision).not.toContain(
+      '[ "$normalized_android_sha" = "$android_sha" ]',
+    );
+    expect(decision).not.toContain("echo 'build=false'");
+    // The ref the CLI reads was fetched by this job before the decision.
+    const source = stepBlock(nightly, "Re-bind the caller's exact source");
+    expect(source).toContain('git fetch --no-tags origin main');
+    expect(nightly.indexOf("Re-bind the caller's exact source")).toBeLessThan(
+      nightly.indexOf('Decide one cohort rather than independent native ships'),
+    );
+  });
+
   it('records the Android ship only after provider finality and before the final marker', () => {
     const playUpload = nightly.indexOf(
       'name: Upload the admitted AAB with its exact release name',
