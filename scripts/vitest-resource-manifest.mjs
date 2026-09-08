@@ -291,6 +291,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/shared/src/__tests__/workspace-package.test.ts',
   'packages/cli/src/__tests__/cloud.test.ts',
   'packages/cli/src/__tests__/cloud-project-import.test.ts',
+  'packages/cli/src/__tests__/cloud-project-import-durability.test.ts',
   // Bounded disposable npm-shaped children; no registry/network calls.
   'scripts/__tests__/dependency-audit-diagnostics.test.ts',
   // station#1085: builds throwaway git checkouts and drives `git` through
