@@ -45,3 +45,26 @@ export class WorkflowExistsError extends Error {
     this.name = 'WorkflowExistsError';
   }
 }
+
+/**
+ * A workflow already on disk whose content fails the context-safety scan.
+ *
+ * Separate from {@link WorkflowInvalidError} because the request is not
+ * malformed and re-sending it will not help: the stored file is. The route
+ * answers 422 -- the request was understood and the stored entity cannot be
+ * served -- and carries this message, which names the rule and the file, so
+ * the user knows which of their own files to fix.
+ *
+ * Disclosure: the message quotes ±30 characters around the match, i.e. the
+ * file's own bytes. That is the same sentence the write path already returns
+ * at 400 when the same content is submitted, so a reader learns nothing here
+ * they could not learn by writing the file again.
+ */
+export class WorkflowUnsafeContentError extends Error {
+  readonly code = 'workflow_unsafe_content';
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'WorkflowUnsafeContentError';
+  }
+}

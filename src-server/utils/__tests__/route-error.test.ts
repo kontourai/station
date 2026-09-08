@@ -93,5 +93,14 @@ describe('isRouteError', () => {
     messageless.name = ROUTE_ERROR_NAME;
     Object.assign(messageless, { status: 400 });
     expect(isRouteError(messageless)).toBe(false);
+
+    // Shaped exactly like one and named something else. The docblock calls
+    // the name the load-bearing check, and this is the only case that
+    // fails if it is removed -- every other negative here is rejected by a
+    // field check as well.
+    const misnamed = new Error('x');
+    misnamed.name = 'SomethingElse';
+    Object.assign(misnamed, { status: 409, clientMessage: 'x' });
+    expect(isRouteError(misnamed)).toBe(false);
   });
 });

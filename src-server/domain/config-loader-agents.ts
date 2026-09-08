@@ -27,6 +27,7 @@ import {
   WorkflowExistsError,
   WorkflowInvalidError,
   WorkflowNotFoundError,
+  WorkflowUnsafeContentError,
 } from './agent-workflow-errors.js';
 import { readRegularFileNoFollow } from './home-schema-gate.js';
 import {
@@ -780,9 +781,20 @@ export async function readAgentWorkflow(
   }
 
   const content = await readFile(path, 'utf-8');
-  assertSafeContextText(content, {
-    source: `workflow '${workflowId}' for agent '${slug}'`,
-  });
+  try {
+    assertSafeContextText(content, {
+      source: `workflow '${workflowId}' for agent '${slug}'`,
+    });
+  } catch (error) {
+    // The stored file, not the request. Typed separately from the write
+    // path's `WorkflowInvalidError` so the route can say "your file" rather
+    // than "your request" -- and so this stops reaching the boundary as an
+    // unclassified 500 with no text, which told the reader nothing about
+    // which file to fix.
+    throw new WorkflowUnsafeContentError(
+      error instanceof Error ? error.message : 'Workflow content was refused',
+    );
+  }
   return content;
 }
 

@@ -42,6 +42,7 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   'src-server/routes/projects/layouts.ts :: function mapServiceError :: error.message :: 2',
   'src-server/routes/projects/layouts.ts :: function mapServiceError :: error.message :: 3',
   'src-server/routes/projects/layouts.ts :: function mapServiceError :: error.message :: 4',
+  'src-server/routes/projects/layouts.ts :: function mapServiceError :: error.message :: 5',
 ]);
 
 const TRANSPORT_AND_DIAGNOSTIC_BOUNDARIES = [

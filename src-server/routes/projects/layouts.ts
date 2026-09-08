@@ -24,6 +24,7 @@ import {
   WorkflowExistsError,
   WorkflowInvalidError,
   WorkflowNotFoundError,
+  WorkflowUnsafeContentError,
 } from '../../domain/agent-workflow-errors.js';
 import type { LayoutService } from '../../services/projects/layout-service.js';
 import { RouteError } from '../../utils/route-error.js';
@@ -54,6 +55,14 @@ function mapServiceError(error: unknown): RouteError | undefined {
   }
   if (error instanceof WorkflowExistsError) {
     return new RouteError(409, error.message, {
+      code: error.code,
+      cause: error,
+    });
+  }
+  // 422: the request was understood and is well-formed; the stored file
+  // cannot be served. Re-sending the request will not change that.
+  if (error instanceof WorkflowUnsafeContentError) {
+    return new RouteError(422, error.message, {
       code: error.code,
       cause: error,
     });
