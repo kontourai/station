@@ -335,7 +335,11 @@ async function expectWrapperAbsent() {
     screen.findByTestId(BOUNDARY_MARKER, undefined, {
       timeout: RESOLVE_WINDOW_MS,
     }),
-  ).rejects.toThrow();
+  ).rejects.toThrow(/Unable to find an element/);
+  // The message pin matters: a lazy subtree that THROWS is caught by
+  // LazyImportErrorBoundary and renders its retry notice instead of the
+  // marker, which would also time out here. Only the query's own "not found"
+  // error means the wrapper genuinely never mounted.
 }
 
 async function expectWrapperPresent() {
