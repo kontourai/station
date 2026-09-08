@@ -37,10 +37,6 @@
   font-weight: 500;
 }
 
-.editor-label--inline {
-  margin-bottom: 0;
-}
-
 .editor-hint,
 .editor-field-hint {
   display: block;
