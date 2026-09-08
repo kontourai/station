@@ -1449,6 +1449,9 @@ fn station_profile_store_genesis_lock_target(
 /// installer materializes its channel release before the first desktop launch.
 #[cfg(not(mobile))]
 fn station_profile_store_genesis_admissible(root: &std::path::Path) -> Result<bool, String> {
+    station_profile_store_genesis_admissible_with_schema(root, false)
+}
+fn station_profile_store_genesis_admissible_with_schema(root: &std::path::Path, fresh_schema: bool) -> Result<bool, String> {
     match std::fs::read_dir(root) {
         Ok(entries) => {
             for entry in entries {
@@ -1456,6 +1459,9 @@ fn station_profile_store_genesis_admissible(root: &std::path::Path) -> Result<bo
                 let name = entry.file_name();
                 let metadata = std::fs::symlink_metadata(entry.path())
                     .map_err(|error| format!("inspect Station install root: {error}"))?;
+                if fresh_schema && name == ".station-home-schema.json" && metadata.file_type().is_file() && !metadata.file_type().is_symlink() {
+                    continue;
+                }
                 if !metadata.file_type().is_dir() {
                     return Ok(false);
                 }
@@ -1636,6 +1642,9 @@ fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), Strin
 /// as virgin and publish a credentialless replacement over its profile set.
 #[cfg(not(mobile))]
 fn ensure_station_profile_store_genesis(app: &AppHandle, root: &std::path::Path) -> Result<(), String> {
+    ensure_station_profile_store_genesis_after_schema(app, root, false)
+}
+fn ensure_station_profile_store_genesis_after_schema(app: &AppHandle, root: &std::path::Path, fresh_schema: bool) -> Result<(), String> {
     let path = root.join("config").join("profiles.json");
     ensure_station_profile_store_root(root)?;
     #[cfg(windows)]
@@ -1661,7 +1670,7 @@ fn ensure_station_profile_store_genesis(app: &AppHandle, root: &std::path::Path)
             Ok(())
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            if marker_exists || !station_profile_store_genesis_admissible(root)? {
+            if marker_exists || !station_profile_store_genesis_admissible_with_schema(root, fresh_schema)? {
                 return Err("saved Station metadata is missing from an initialized or in-progress shared root; restore profiles.json before launching Station".to_string());
             }
             let parent = path.parent().expect("profiles path has config parent");
@@ -7918,15 +7927,16 @@ fn arm_startup_deadline(app: AppHandle, epoch: u64) {
 
 #[cfg(not(mobile))]
 fn prepare_desktop_station_storage<S, P>(home: PathBuf, root: &Path, ensure_schema: S, ensure_profiles: P) -> Result<PathBuf, String>
-where S: FnOnce(&Path) -> Result<(), String>, P: FnOnce() -> Result<(), String> {
+where S: FnOnce(&Path) -> Result<(), String>, P: FnOnce(bool) -> Result<(), String> {
     if home == root {
         // A standalone home also holds root metadata. Schema must be born
         // first, otherwise genesis makes our own empty home look unversioned.
+        let fresh_schema = !home.join(".station-home-schema.json").exists() && station_profile_store_genesis_admissible(&home)?;
         let prepared = prepare_desktop_station_home(home, ensure_schema)?;
-        ensure_profiles()?;
+        ensure_profiles(fresh_schema)?;
         Ok(prepared)
     } else {
-        ensure_profiles()?;
+        ensure_profiles(false)?;
         prepare_desktop_station_home(home, ensure_schema)
     }
 }
@@ -9728,7 +9738,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                                 _ => "The local storage helper did not return a valid result. Check the desktop logs before changing this folder.".to_string(),
                             })
                     },
-                    || ensure_station_profile_store_genesis(&app.handle(), &station_root),
+                    |fresh_schema| ensure_station_profile_store_genesis_after_schema(&app.handle(), &station_root, fresh_schema),
                 );
                 let station_home = match prepared_home {
                     Ok(home) => home,
@@ -14908,7 +14918,19 @@ mod standalone_storage_order_tests {
         let events = std::cell::RefCell::new(Vec::new());
         // This helper receives an external path relative to the ambient test
         // root; admission is independent from the callback-order assertion.
-        prepare_desktop_station_storage(home.clone(), &home, |_| { events.borrow_mut().push("schema"); Ok(()) }, || { events.borrow_mut().push("profiles"); Ok(()) }).unwrap();
+        prepare_desktop_station_storage(home.clone(), &home, |_| { events.borrow_mut().push("schema"); Ok(()) }, |fresh| { assert!(fresh); events.borrow_mut().push("profiles"); Ok(()) }).unwrap();
         assert_eq!(*events.borrow(), vec!["schema", "profiles"]);
     }
+}
+
+#[cfg(all(test, not(mobile)))] mod profile_schema_birth_tests {
+ use super::*;
+ #[test] fn a_schema_marker_is_not_general_permission_to_recreate_lost_profiles() {
+   let directory = tempfile::tempdir().unwrap();
+   std::fs::write(directory.path().join(".station-home-schema.json"), "{\"schemaVersion\":2}").unwrap();
+   assert!(!station_profile_store_genesis_admissible(directory.path()).unwrap());
+   assert!(station_profile_store_genesis_admissible_with_schema(directory.path(), true).unwrap());
+   std::fs::write(directory.path().join("other-data"), "keep").unwrap();
+   assert!(!station_profile_store_genesis_admissible_with_schema(directory.path(), true).unwrap());
+ }
 }
