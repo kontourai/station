@@ -3,15 +3,14 @@
  *
  * ## The gap this closes
  *
- * `guardrail-known-bad-fixtures.test.ts` (station#1555) proved seven
- * guardrails bite. It did not enumerate the rest. Re-deriving the list
- * mechanically — a gate counts as executed only when some test names its
- * basename inside a `spawnSync`/`execFileSync` argument list, not merely
- * imports its detectors — found **28 more** gates composed into
- * `verify:static:raw` whose `main()` had never run under test. Their tests
- * import the pure scanners and feed them strings, which leaves the entry
- * guard, baseline loading, ceiling comparison, the `FAIL:` output and **the
- * exit code itself** uncovered.
+ * `guardrail-known-bad-fixtures.test.ts` (station#1555) proved five of the
+ * gates in this chain bite. It did not enumerate the rest. Walking the
+ * package-script graph from `verify:static:raw` finds **53** gates; 17 were
+ * already executed as a child process by some test (5 there, 12 by their own
+ * test file); the other **36 had never had `main()` run under test at all**.
+ * Their tests import the pure scanners and feed them strings, which leaves
+ * the entry guard, baseline loading, ceiling comparison, the `FAIL:` output
+ * and **the exit code itself** uncovered.
  *
  * That is not a hypothetical gap. Two of the gates below reach a non-zero
  * exit by setting `process.exitCode = 1` and falling off the end of `main()`
@@ -30,14 +29,23 @@
  * 2. **Production-tree accept runs** — for gates whose known-bad fixture
  *    would cost more than it proves (a 70-entry declared-dependency list to
  *    stand up, a build artifact, a second toolchain). These run the real gate
- *    against this repo and assert exit 0 and no `FAIL:`. That is weaker: it
- *    proves the entry guard fires, the production baseline parses and the
- *    scope resolves, and nothing more. It is recorded here rather than
- *    claimed as a rejection-path proof.
+ *    against this repo and assert exit 0 and no `FAIL:`. That is weaker, and
+ *    weaker in a specific way: for a gate that PRINTS its verdict, the output
+ *    is what shows `main()` ran, and the case proves the production baseline
+ *    parses and the scope resolves. For a gate that says nothing, exit 0 is
+ *    indistinguishable from a gate whose entry guard never fired — so those
+ *    five carry a second case that runs the same script over an empty tree
+ *    and requires it to fail naming one of ITS OWN inputs. Neither case is a
+ *    rejection-path proof, and neither is claimed as one.
  *
- * A gate appears in exactly one lane. Together they cover every gate the
- * classification found unexecuted, so "never spawned" is now an empty set —
- * pinned by `guardrail-execution-coverage.test.ts`.
+ * A gate appears in exactly one lane: 13 fixture pairs and 17 accept runs,
+ * which is 30 of the 36. The remaining 6 are not covered by anything and are
+ * recorded as such, with reasons, in `guardrail-execution-coverage.test.ts` —
+ * that file holds the exact partition, so the claim above is a derivation
+ * from the package-script graph rather than a count written down here.
+ * (`check-generated-pages-links.mjs` also gets a pair below. It is NOT one of
+ * the 53: the Pages workflow runs it, not `verify:static:raw`. It is here
+ * because the fixture was free once the harness existed.)
  *
  * ## What this suite deliberately does NOT do
  *
