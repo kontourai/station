@@ -9,7 +9,7 @@ import {
   pairingScopePresetString,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
-import { describe, expect, test, vi } from 'vitest';
+import { afterAll, describe, expect, test, vi } from 'vitest';
 import { publishActiveLocalStation } from '../commands/active-local-station.js';
 import { runEnvironmentCommand } from '../commands/environment.js';
 
@@ -39,6 +39,20 @@ function proofFor(nonce: string) {
   };
 }
 
+// `/tmp/station-home` and `/tmp/station-beta` were fixed names in the shared
+// system temp directory. `runEnvironmentCommand` resolves `projectHome`, so an
+// unrelated process leaving a regular file at either name made the home
+// admission check refuse it and these tests fail for a reason with nothing to
+// do with the offer command (#1790). Own the root instead; the names stay
+// absent leaves inside it.
+const TEST_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-offer-test-'));
+const STATION_HOME = join(TEST_TEMP_ROOT, 'station-home');
+const STATION_BETA_HOME = join(TEST_TEMP_ROOT, 'station-beta');
+
+afterAll(() => {
+  rmSync(TEST_TEMP_ROOT, { force: true, recursive: true });
+});
+
 function dependencies(
   request: ReturnType<typeof vi.fn<OperatorJsonRequest>>,
 ): EnvironmentCommandDependencies & {
@@ -49,7 +63,7 @@ function dependencies(
   };
 } {
   return {
-    projectHome: '/tmp/station-home',
+    projectHome: STATION_HOME,
     createService: () => ({
       initialize: async () => SNAPSHOT,
       readExistingRecord: async () => SNAPSHOT,
@@ -142,7 +156,7 @@ describe('environment offer', () => {
   test('reads the active-local record from the resolved channel home', async () => {
     const request = vi.fn<OperatorJsonRequest>();
     const deps = dependencies(request);
-    deps.projectHome = '/tmp/station-beta';
+    deps.projectHome = STATION_BETA_HOME;
     const readActiveLocalStation = vi.fn(() => undefined);
     deps.offer.readActiveLocalStation = readActiveLocalStation;
 
@@ -150,7 +164,7 @@ describe('environment offer', () => {
       /No running local Station was discovered/,
     );
     expect(readActiveLocalStation).toHaveBeenCalledWith({
-      path: '/tmp/station-beta/runtime/active-local.json',
+      path: join(STATION_BETA_HOME, 'runtime', 'active-local.json'),
     });
   });
 
