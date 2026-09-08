@@ -455,6 +455,7 @@ export function ChatDockHeader({
           </div>
         )}
         {chatControls &&
+          (!chatIdentity || chatControls.sessions.length > 0) &&
           (chatControls.sessions.length === 0 ? (
             !isDockOpen ? (
               // #800: this read "Start a chat" and carried a pointer cursor,

@@ -126,7 +126,7 @@ export function ChatDockActiveIdentity({
         </span>
         {engineTrail && (
           <span
-            className="chat-dock__active-identity-engine"
+            className={`chat-dock__active-identity-engine${originLabel ? ' chat-dock__active-identity-origin' : ''}`}
             title={engineTrail}
           >
             {engineTrail}

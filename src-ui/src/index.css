@@ -3536,6 +3536,11 @@ button:hover {
   white-space: nowrap;
 }
 
+.chat-dock__active-identity-origin {
+  flex: 0 1 auto;
+  min-width: min(145px, 30%);
+}
+
 /* #1552 D3: quiet until the row is engaged.
  *
  * `opacity: 0` + `pointer-events: none`, NOT `display: none` or `visibility:

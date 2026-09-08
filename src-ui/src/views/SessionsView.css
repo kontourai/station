@@ -1034,3 +1034,9 @@
   flex-direction: column;
   gap: 0;
 }
+
+.external-chat-composer .button--primary {
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border-color: var(--accent-primary);
+}
