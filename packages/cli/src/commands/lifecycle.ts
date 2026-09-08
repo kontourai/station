@@ -4813,7 +4813,7 @@ export async function upgrade(options: BuildOptions = {}): Promise<void> {
     throw new Error(
       `station upgrade cannot install dependencies: ${installerUnavailable}.\n` +
         'The pulled tree does not carry this repository\'s owned dependency lifecycle, and a raw "npm install" is not a substitute — this workspace installs through a pinned pnpm and arms only reviewed lifecycle hooks.\n' +
-        'The pull already landed; nothing was rebuilt and the previous build is untouched. Check out a tree that carries the lifecycle and rerun "station upgrade".',
+        'The pull already landed; nothing was rebuilt. Any Station instance this checkout was running was stopped for the upgrade, and the previous build is untouched, so "station start" relaunches it. Check out a tree that carries the lifecycle and rerun "station upgrade".',
     );
   }
 

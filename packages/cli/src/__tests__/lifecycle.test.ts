@@ -3977,6 +3977,15 @@ describe('upgrade', () => {
       'npm run build:ui',
       'git rev-parse HEAD',
     ]);
+    // The command list above says nothing about WHERE each ran, and the
+    // installer only reaches the workspace it is spawned in: `npm run
+    // dependencies:install` must run at the git root the pull just updated,
+    // which is `resolveGitInfo`'s root and not necessarily `process.cwd()`.
+    expect(execSync).toHaveBeenNthCalledWith(
+      3,
+      'npm run dependencies:install',
+      expect.objectContaining({ cwd: TEST_CWD }),
+    );
     expect(execFileSync).not.toHaveBeenCalled();
   });
 
@@ -3984,8 +3993,10 @@ describe('upgrade', () => {
     const root = join(TEST_ROOT, 'upgrade-no-owned-installer');
     ensureDir(join(root, '.git'));
     writeOwnedDependencyLifecycle(root);
-    // The tree declares the script but does not carry the script file — the
-    // shape a pull from a branch predating the owned lifecycle leaves.
+    // The binding survives but the file it runs is gone: a half-applied
+    // checkout, or the script moved without `package.json` following. (A tree
+    // predating the owned lifecycle would lack the BINDING instead — that is
+    // the case below.)
     rmSync(join(root, 'scripts', 'dependency-lifecycle.mjs'));
     const execSync = vi.fn((command: string) =>
       command === 'git pull' ? '' : 'origin/main\n',
@@ -4001,6 +4012,39 @@ describe('upgrade', () => {
     );
     // The pull ran; nothing installed or built after it. A raw `npm install`
     // is never the fallback — it is the defect the owned installer replaced.
+    expect(execSync.mock.calls.map(([command]) => command)).toEqual([
+      'git rev-parse --abbrev-ref main@{u}',
+      'git pull',
+    ]);
+  });
+
+  it('refuses to install when the pulled tree does not declare the owned installer (station#1747)', async () => {
+    const root = join(TEST_ROOT, 'upgrade-no-install-script');
+    ensureDir(join(root, '.git'));
+    writeOwnedDependencyLifecycle(root);
+    // `scripts/dependency-lifecycle.mjs` stays. Only the binding `npm run`
+    // resolves is gone — the shape a tree predating the owned lifecycle (or
+    // one whose script was renamed) actually has, and the branch the
+    // missing-file case above cannot reach.
+    writeFileSync(
+      join(root, 'package.json'),
+      `${JSON.stringify({
+        name: '@kontourai/station-core',
+        scripts: { build: 'node esbuild.config.mjs' },
+      })}\n`,
+    );
+    const execSync = vi.fn((command: string) =>
+      command === 'git pull' ? '' : 'origin/main\n',
+    );
+    const { lifecycle } = await loadLifecycleModule({
+      cwd: root,
+      gitRoot: root,
+      childProcessMock: { execSync, execFileSync: vi.fn() },
+    });
+
+    await expect(lifecycle.upgrade()).rejects.toThrow(
+      /station upgrade cannot install dependencies:.*does not define the "dependencies:install" script/s,
+    );
     expect(execSync.mock.calls.map(([command]) => command)).toEqual([
       'git rev-parse --abbrev-ref main@{u}',
       'git pull',
