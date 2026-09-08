@@ -125,6 +125,24 @@ export function AttachedSessionDetail({
   );
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
+  const transcriptBodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const scroll = transcriptScrollRef.current;
+    const body = transcriptBodyRef.current;
+    if (
+      presentation !== 'chat' ||
+      !scroll ||
+      !body ||
+      typeof ResizeObserver === 'undefined'
+    )
+      return;
+    const observer = new ResizeObserver(() => {
+      if (followLatest.current) scroll.scrollTop = scroll.scrollHeight;
+    });
+    observer.observe(body);
+    observer.observe(scroll);
+    return () => observer.disconnect();
+  }, [presentation]);
   useEffect(() => {
     if (
       events.length > 0 &&
@@ -360,10 +378,20 @@ export function AttachedSessionDetail({
       <div
         className="sessions-detail__scroll"
         ref={transcriptScrollRef}
+        onWheel={(event) => {
+          if (event.deltaY < 0) followLatest.current = false;
+        }}
+        onPointerDown={() => {
+          followLatest.current = false;
+        }}
+        onKeyDown={(event) => {
+          if (['ArrowUp', 'PageUp', 'Home'].includes(event.key))
+            followLatest.current = false;
+        }}
         onScroll={(event) => {
           const node = event.currentTarget;
-          followLatest.current =
-            node.scrollHeight - node.scrollTop - node.clientHeight < 64;
+          if (node.scrollHeight - node.scrollTop - node.clientHeight < 64)
+            followLatest.current = true;
         }}
       >
         <p className="sessions-detail__readonly-label">
@@ -444,6 +472,7 @@ export function AttachedSessionDetail({
         <div
           className="sessions-detail__transcript"
           data-testid="attached-session-transcript"
+          ref={transcriptBodyRef}
         >
           {messages.length === 0 ? (
             <p className="sessions-detail__feed-empty">
