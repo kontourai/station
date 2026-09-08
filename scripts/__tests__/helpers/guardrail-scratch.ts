@@ -20,11 +20,62 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { expect } from 'vitest';
+import { afterAll, expect } from 'vitest';
+
+/**
+ * Every scratch directory this module has made, so they can be removed.
+ *
+ * `mkdtempSync` does not clean up after itself, and each case here makes one:
+ * the two suites left ~40 per run and $TMPDIR had accumulated 3,014 of them
+ * (9.5 GB) before anyone looked. A harness that quietly grows the developer's
+ * temp directory forever is a cost the tests impose on everything else
+ * running on the host.
+ */
+const scratchDirectories: string[] = [];
+
+/**
+ * Keep the trees for inspection. Set `STATION_KEEP_GUARDRAIL_SCRATCH=1` when
+ * a case fails and the question is what the guardrail actually walked; the
+ * paths are printed so they can be found without guessing.
+ */
+const KEEP = process.env.STATION_KEEP_GUARDRAIL_SCRATCH === '1';
+
+/**
+ * Remove them. Registered here rather than left to each suite's own
+ * `afterAll`, so a third suite importing this harness cannot forget — the
+ * failure mode would be silent and identical to the one being fixed.
+ */
+export function cleanupGuardrailScratch(): void {
+  if (KEEP) {
+    if (scratchDirectories.length > 0) {
+      // Straight to the stream: vitest captures `console.*` from an
+      // `afterAll` hook and the message did not survive the focused runner,
+      // which would have left this promising paths it never printed.
+      process.stderr.write(
+        `[guardrail-scratch] STATION_KEEP_GUARDRAIL_SCRATCH=1; keeping ${scratchDirectories.length} tree(s):\n  ${scratchDirectories.join('\n  ')}\n`,
+      );
+    }
+    scratchDirectories.length = 0;
+    return;
+  }
+  // `force` so a case that already removed its own tree is not an error, and
+  // a failure to remove one never turns a passing suite red: cleanup is
+  // hygiene, not a verdict on the code under test.
+  while (scratchDirectories.length > 0) {
+    const dir = scratchDirectories.pop();
+    if (dir === undefined) continue;
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {}
+  }
+}
+
+afterAll(cleanupGuardrailScratch);
 
 export interface ScratchOptions {
   /** Guardrail script basename under `scripts/`, e.g. `state-primitives-ratchet.mjs`. */
@@ -82,6 +133,7 @@ export function scratchRepo({
   git: useGit = true,
 }: ScratchOptions): string {
   const dir = mkdtempSync(join(tmpdir(), 'station-guardrail-fixture-'));
+  scratchDirectories.push(dir);
   const git = (...args: string[]) =>
     execFileSync('git', args, {
       cwd: dir,
