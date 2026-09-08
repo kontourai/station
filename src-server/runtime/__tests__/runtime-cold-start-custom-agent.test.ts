@@ -71,12 +71,31 @@ const routeMocks = vi.hoisted(() => {
     notificationService: { shutdown: ReturnType<typeof vi.fn> };
   }> = [];
   const taskDispatches: Array<Promise<unknown>> = [];
-  return {
+  let announceRoutesConfigured: () => void = () => {};
+  const state = {
     servicePairs,
     taskDispatches,
     deferServerFactory: false,
     kitLifecycleReady: Promise.resolve(),
+    /**
+     * Resolved the moment `configureRuntimeRoutes` below is called (#1791).
+     *
+     * Route configuration is an event this file's own mock receives, so a
+     * case that needs to observe it can await the event. Polling the call
+     * count against a fixed deadline instead measured a cold boot's wall
+     * time: on a loaded host the boot was still progressing when the
+     * deadline expired, and the case failed with `expected "vi.fn()" to be
+     * called at least once` for a runtime that had nothing wrong with it.
+     */
+    routesConfigured: Promise.resolve(),
+    /** Re-armed per case, so a resolved promise cannot satisfy the next one. */
+    armRoutesConfigured(): void {
+      state.routesConfigured = new Promise<void>((resolve) => {
+        announceRoutesConfigured = resolve;
+      });
+    },
     configureRuntimeRoutes: vi.fn((context: any) => {
+      announceRoutesConfigured();
       // This crosses the same Dispatcher Interface that task routes and
       // capability bindings receive while `initializeRuntime` is still
       // constructing VoltAgent/routes. Before archive#2528's ordering repair this
@@ -96,6 +115,8 @@ const routeMocks = vi.hoisted(() => {
       return services;
     }),
   };
+  state.armRoutesConfigured();
+  return state;
 });
 
 vi.mock('../routes/runtime-routes.js', () => routeMocks);
@@ -266,6 +287,48 @@ vi.mock('../bootstrap/engine-prerequisite-priming.js', () => ({
   },
 }));
 
+/**
+ * #1791. Boot also fires native-engine adoption, and the real thing probes
+ * the host's PATH for `claude`/`codex`/`muse` (`which` per candidate, on a
+ * `[0, 10s, 30s, 90s]` retry schedule) and then WRITES whatever it found into
+ * this home's agent registry. Both halves are wrong for a hermetic cold-boot
+ * regression:
+ *
+ *  - the write makes what `initializeRuntimeAgents` finds depend on which
+ *    CLIs the dev machine happens to have installed; and
+ *  - the window is fire-and-forget and outlives the case that opened it.
+ *    `shutdown()` aborts its signal, which ends the retry schedule, but does
+ *    not await the promise — so a probe or registry write already running
+ *    continues after `afterEach` has removed the home under it. On a loaded
+ *    host this file logged exactly that: `Native engine adoption failed
+ *    {"engine":"codex"} STATION_HOME_RESET_REQUIRED` and an `ENOENT: rename`
+ *    out of `materializeStationAgent`, minutes into the run, attributed to
+ *    whichever case happened to be executing.
+ *
+ * Recorded rather than deleted, for the same reason as the priming above:
+ * the call is what proves a cold boot performs the adoption at all, and the
+ * behaviour behind it is proven in
+ * `bootstrap/__tests__/native-engine-adoption.test.ts`.
+ */
+const nativeEngineAdoption = vi.hoisted(() => ({
+  calls: [] as Array<{ signal?: AbortSignal }>,
+  adoptDetectedNativeEngines: (options: { signal?: AbortSignal }) => {
+    nativeEngineAdoption.calls.push(options);
+    return Promise.resolve({ outcomes: {} });
+  },
+}));
+vi.mock('../bootstrap/native-engine-adoption.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../bootstrap/native-engine-adoption.js')
+    >();
+  return {
+    ...actual,
+    adoptDetectedNativeEngines: (options: { signal?: AbortSignal }) =>
+      nativeEngineAdoption.adoptDetectedNativeEngines(options),
+  };
+});
+
 const { StationRuntime } = await import('../bootstrap/station-runtime.js');
 const { BedrockAdapter } = await import(
   '../../providers/adapters/bedrock-adapter.js'
@@ -314,6 +377,43 @@ function replaceTerminalListener(
   return { start, stop };
 }
 
+/**
+ * Wait for the boot under test to reach route configuration (#1791).
+ *
+ * Deliberately not `vi.waitFor`: a fixed deadline polled against a call
+ * count is a measurement of the host, not of the runtime, and this file
+ * cold-boots a real `StationRuntime` — SQLite schema, skills discovery,
+ * provider seeding and agent construction — before routes are configured.
+ * Under load that boot legitimately takes longer than any deadline worth
+ * writing, and the case then failed while the runtime was still making
+ * progress. `configureRuntimeRoutes` is this file's own mock, so the event
+ * is directly observable and needs no budget at all.
+ *
+ * The race against the initialization keeps a boot that FAILS before route
+ * configuration reporting its own error, instead of parking on a promise
+ * that will never resolve until the suite's hang cap.
+ */
+async function awaitRouteConfiguration(
+  initialization: Promise<unknown>,
+): Promise<void> {
+  const reachedRoutes = await Promise.race([
+    routeMocks.routesConfigured.then(() => true),
+    initialization.then(
+      () => false,
+      () => false,
+    ),
+  ]);
+  if (reachedRoutes) return;
+  // A boot that rejects here reports its own error. One that settled to a
+  // value reports that value — including a caller that folded its rejection
+  // into one, as the Kit-failure case below does, so the message is never
+  // just "something ended early".
+  const outcome = await initialization;
+  throw new Error(
+    `initialize() settled before route services were configured: ${String(outcome)}`,
+  );
+}
+
 // archive#1019: these cases cold-boot a real StationRuntime (route services, servers,
 // terminal/voice seams) — under parallel vitest workers or a sibling agent
 // session on the same host, real spawns starve the 5s default budget and this
@@ -341,6 +441,8 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     routeMocks.taskDispatches.length = 0;
     routeMocks.deferServerFactory = false;
     routeMocks.kitLifecycleReady = Promise.resolve();
+    routeMocks.armRoutesConfigured();
+    nativeEngineAdoption.calls.length = 0;
     if (originalHostedRegistryFile === undefined)
       delete process.env[hostedRegistryFileEnv];
     else process.env[hostedRegistryFileEnv] = originalHostedRegistryFile;
@@ -448,6 +550,15 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     // Live at boot…
     expect(primed.signal).toBeInstanceOf(AbortSignal);
     expect(primed.signal?.aborted).toBe(false);
+    // Native-engine adoption is the other fire-and-forget window boot opens,
+    // and it carries the same signal coupling for the same reason (#1791):
+    // it WRITES detected engines into this home's agent registry, so a
+    // window nothing bounds keeps writing after the runtime that opened it
+    // is gone.
+    expect(nativeEngineAdoption.calls).toHaveLength(1);
+    const [adoption] = nativeEngineAdoption.calls;
+    expect(adoption.signal).toBeInstanceOf(AbortSignal);
+    expect(adoption.signal?.aborted).toBe(false);
 
     await runtime.shutdown();
     runtime = undefined;
@@ -455,6 +566,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     // no longer has a use for. (It does not kill a probe child already
     // spawned — see `enginePrerequisitePrimingAbort`'s doc.)
     expect(primed.signal?.aborted).toBe(true);
+    expect(adoption.signal?.aborted).toBe(true);
   });
 
   it('restores a saved usage-telemetry disclosure receipt during runtime bootstrap (#2015)', async () => {
@@ -1172,12 +1284,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     const initialization = runtime.initialize().finally(() => {
       settled = true;
     });
-    await vi.waitFor(
-      () => {
-        expect(routeMocks.configureRuntimeRoutes).toHaveBeenCalled();
-      },
-      { timeout: 10_000 },
-    );
+    await awaitRouteConfiguration(initialization);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(settled).toBe(false);
     releaseDiscovery();
@@ -1204,12 +1311,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     const initialization = runtime
       .initialize()
       .catch((error: unknown) => error);
-    await vi.waitFor(
-      () => {
-        expect(routeMocks.configureRuntimeRoutes).toHaveBeenCalled();
-      },
-      { timeout: 10_000 },
-    );
+    await awaitRouteConfiguration(initialization);
     rejectDiscovery(new Error('Kit lifecycle discovery failed'));
     const initializationError = await initialization;
     expect(initializationError).toBeInstanceOf(Error);
