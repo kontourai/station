@@ -102,7 +102,6 @@ import {
   isChatPaneFileDropEnabled,
 } from './ChatPaneFileDropBoundary';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
-import { ConversationBoundaryDialogs } from './ConversationBoundaryDialogs';
 import {
   chatModelLabel,
   effectiveChatModelId,
@@ -250,6 +249,17 @@ const loadMobileTaskSwitcher = () =>
 const loadChatDockModalStack = () =>
   import('./ChatDockModalStack').then((module) => ({
     default: module.ChatDockModalStack,
+  }));
+
+/**
+ * The Agent-handoff and context-reset dialogs, and the props that drive them,
+ * as ONE chunk. It is mounted only once a boundary source is set, so this
+ * import runs on the first open of either dialog — where the two dialogs'
+ * own imports used to run — and never at dock mount.
+ */
+const loadConversationBoundaryDialogs = () =>
+  import('./ConversationBoundaryDialogs').then((module) => ({
+    default: module.ConversationBoundaryDialogs,
   }));
 
 const loadConversationOpenRecoveryNotice = () =>
@@ -727,6 +737,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     allSessions,
   });
   const {
+    handoffSource,
     setHandoffSource,
     handoffDisabledReason,
     openConversationHandoff,
@@ -738,6 +749,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     forkGenerationRef,
     cancelFork,
     forkEligibleAgents,
+    contextResetSource,
     setContextResetSource,
     contextBoundaryLabel,
   } = conversationBoundaryDialogs;
@@ -2430,22 +2442,28 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         />
       )}
 
-      <ConversationBoundaryDialogs
-        dialogs={conversationBoundaryDialogs}
-        apiBase={apiBase}
-        agents={agents}
-        projects={projects}
-        activeSession={activeSession}
-        activeOrchestrationSession={activeOrchestrationSession}
-        activeOrchestrationSessionRead={activeOrchestrationSessionRead}
-        chatInput={chatInput}
-        composerMenuTriggerRef={composerMenuTriggerRef}
-        updateChat={updateChat}
-        focusSessionInPane={focusSessionInPane}
-        invalidate={invalidate}
-        showToast={showToast}
-        refetchOrchestrationSessions={refetchOrchestrationSessions}
-      />
+      {(forkSource || handoffSource || contextResetSource) && (
+        <LazyBoundary
+          load={loadConversationBoundaryDialogs}
+          componentProps={{
+            dialogs: conversationBoundaryDialogs,
+            apiBase,
+            agents,
+            projects,
+            activeSession,
+            activeOrchestrationSession,
+            activeOrchestrationSessionRead,
+            chatInput,
+            composerMenuTriggerRef,
+            updateChat,
+            focusSessionInPane,
+            invalidate,
+            showToast,
+            refetchOrchestrationSessions,
+          }}
+          pending={null}
+        />
+      )}
 
       <LazyBoundary
         load={loadChatDockModalStack}
