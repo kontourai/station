@@ -412,10 +412,6 @@ describe('changed verification selection', () => {
       'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
     ],
     [
-      'scripts/proof-repo-guardrails.mjs',
-      'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
-    ],
-    [
       'src-ui/src/index.css',
       'src-ui/src/__tests__/ChatDockActiveIdentity.overflow.test.tsx',
     ],
@@ -427,6 +423,17 @@ describe('changed verification selection', () => {
       expect(selection.relatedPaths).toContain(path);
     },
   );
+  test('keeps the guardrail proof runner explicit-only: nothing imports it, so an empty discovery must never be requested', () => {
+    const path = 'scripts/proof-repo-guardrails.mjs';
+    const selection = selectChangedVerification([path]);
+    expect(selection.tests.map((entry) => entry.path)).toEqual(
+      expect.arrayContaining([
+        'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
+        'scripts/__tests__/repo-guardrail-source.test.ts',
+      ]),
+    );
+    expect(selection.relatedPaths).not.toContain(path);
+  });
   test('uses focused tests for the project-bound file preview contract', () => {
     const selection = selectChangedVerification([
       'packages/contracts/src/workspace-file-preview.ts',

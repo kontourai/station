@@ -9,6 +9,7 @@ import {
   orchestrationQueries,
   telemetry,
   useAcknowledgeConversationMutation,
+  useConversationContextBoundaryStatusQuery,
   useConversationInventoryQuery,
   useEngineConnectionsQuery,
   useGenerateSessionSummaryMutation,
@@ -20,7 +21,6 @@ import {
   applyReturnFocus,
   captureReturnFocus,
 } from '@kontourai/station-shared/return-focus';
-import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { resolveViewFromPath } from '../../app-shell/routing';
 import {
@@ -72,6 +72,7 @@ import {
 } from '../../hooks/useDockShellChrome';
 import { useExitTransition } from '../../hooks/useExitTransition';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import { useOutboundQueueSnapshot } from '../../hooks/useOutboundQueueSnapshot';
 import {
   OPEN_PROJECT_CHATS_EVENT,
   type OpenProjectChatsDetail,
@@ -821,31 +822,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, [activeConversationId]);
-  // This dock chrome is eagerly mounted. Keep the status client's query
-  // implementation lazy with the reset dialog instead of charging every
-  // first paint for a rare conversation action.
-  const contextBoundaryStatusQuery = useQuery({
-    queryKey: [
-      'conversation-context-boundary',
-      apiBase,
-      activeConversationId,
-      contextBoundaryStored?.idempotencyKey,
-    ],
-    enabled: Boolean(activeConversationId && contextBoundaryStored),
-    queryFn: async () => {
-      const { getConversationContextBoundaryStatus } = await import(
-        '@kontourai/station-sdk/client'
-      );
-      return getConversationContextBoundaryStatus(
-        apiBase,
-        activeConversationId,
-        contextBoundaryStored!.idempotencyKey,
-      );
-    },
-    staleTime: 2_000,
-    refetchInterval: 2_000,
-    retry: false,
-  });
+  // The SDK owns this read (`useConversationContextBoundaryStatusQuery`), and
+  // `ConversationContextResetDialog` — the dock's own overlay for the same
+  // conversation — already calls it. This used to be a second, hand-rolled
+  // query against the same endpoint under a different key, so a dock with the
+  // dialog open ran two caches and two two-second timers over one status.
+  // Same call shape as the dialog's, so both observe one cache entry.
+  const contextBoundaryStatusQuery = useConversationContextBoundaryStatusQuery(
+    activeConversationId,
+    contextBoundaryStored?.idempotencyKey ?? '',
+    apiBase,
+    { enabled: Boolean(contextBoundaryStored), refetchInterval: 2_000 },
+  );
   useEffect(() => {
     if (!contextBoundaryStored || !contextBoundaryStatusQuery.data) return;
     if (
@@ -1195,25 +1183,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
   const commandLauncherShortcut = isMac ? '⌘⇧L' : 'Ctrl+Shift+L';
 
-  const durableHandoffQueue = useQuery({
-    queryKey: [
-      'conversation-handoff-outbound-queue',
-      activeSession?.conversationId,
-      activeSession?.id,
-    ],
-    enabled: Boolean(activeSession?.conversationId),
-    queryFn: async () => {
-      const { outboundDispatch } = await import('../../lib/outboundQueue');
-      const turns = await outboundDispatch.snapshot();
-      return turns.filter(
-        (turn) =>
-          turn.conversationId === activeSession?.conversationId ||
-          turn.sessionId === activeSession?.id,
-      ).length;
-    },
-    staleTime: 0,
-    refetchInterval: 1_000,
-  });
+  // The queue publishes every durable transition through its own
+  // subscription, so this reads a cached projection and is told when it
+  // changed. It used to re-read IndexedDB once a second for a value that only
+  // moves when the user queues, sends, or discards a message.
+  const durableHandoffQueue = useOutboundQueueSnapshot(
+    Boolean(activeSession?.conversationId),
+  );
+  const durableHandoffQueueCount = durableHandoffQueue.turns.filter(
+    (turn) =>
+      turn.conversationId === activeSession?.conversationId ||
+      turn.sessionId === activeSession?.id,
+  ).length;
   const contextBoundaryStatus =
     contextBoundaryStatusQuery.data?.status ?? contextBoundaryStored?.status;
   const contextBoundaryLabel =
@@ -1239,11 +1220,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ? 'Wait for the current turn to finish before changing Agent.'
       : hasLocalDeferredMessages
         ? 'Resolve queued or offline messages before changing Agent.'
-        : durableHandoffQueue.isPending
+        : durableHandoffQueue.status === 'pending'
           ? 'Checking queued messages before changing Agent.'
-          : durableHandoffQueue.isError
+          : durableHandoffQueue.status === 'error'
             ? 'Queued message state is unavailable. Try again.'
-            : (durableHandoffQueue.data ?? 0) > 0
+            : durableHandoffQueueCount > 0
               ? 'Resolve queued or offline messages before changing Agent.'
               : undefined;
 
