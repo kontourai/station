@@ -20,7 +20,16 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
  */
 
 const SCRIPT = join(process.cwd(), 'scripts/nightly-cohort-decide.mjs');
+const NORMALIZER = join(
+  process.cwd(),
+  'scripts/normalize-deploy-ledger-head.mjs',
+);
+const COHORT_WORKFLOW = join(
+  process.cwd(),
+  '.github/workflows/nightly-native-cohort.yml',
+);
 const LEDGER = 'docs/reference/deploy-ledger.json';
+const LEDGER_MD = 'docs/reference/deploy-ledger.md';
 const HEAD = 'a'.repeat(40);
 
 function row(channel: string, sha: string) {
@@ -58,6 +67,38 @@ function commitLedger(content: string, subject: string) {
   git('add', '--', LEDGER);
   git('commit', '--quiet', '-m', subject);
   return git('rev-parse', 'HEAD');
+}
+
+/** The subject the cohort's record job writes for `channel`, read from the
+ * workflow itself with its shell variables substituted — so this fixture is
+ * bound to the writer, not to a string the test happens to agree with. */
+function cohortLedgerSubject(channel: string, version: string, runId: string) {
+  const workflow = readFileSync(COHORT_WORKFLOW, 'utf8');
+  const subjects = Array.from(
+    workflow.matchAll(/--commit-subject "([^"]+)"/g),
+    (m) => m[1],
+  ).filter((subject) => subject.includes(channel));
+  expect(subjects, `one cohort subject for ${channel}`).toHaveLength(1);
+  return subjects[0]
+    .replace(/\$GITHUB_RUN_ID\b/g, runId)
+    .replace(/\$[A-Za-z_][A-Za-z0-9_]*/g, version);
+}
+
+function commitLedgerPair(json: string, subject: string) {
+  mkdirSync(join(repo, 'docs/reference'), { recursive: true });
+  writeFileSync(join(repo, LEDGER), json, 'utf8');
+  writeFileSync(join(repo, LEDGER_MD), `# ledger\n${subject}\n`, 'utf8');
+  git('add', '--', LEDGER, LEDGER_MD);
+  git('commit', '--quiet', '-m', subject);
+  return git('rev-parse', 'HEAD');
+}
+
+function normalize(headSha: string, stopSha: string) {
+  return spawnSync(
+    process.execPath,
+    [NORMALIZER, '--head-sha', headSha, '--stop-sha', stopSha],
+    { cwd: repo, encoding: 'utf8', windowsHide: true },
+  );
 }
 
 function run(extra: string[] = []) {
@@ -160,6 +201,74 @@ describe('nightly-cohort-decide CLI against a git repository', () => {
     expect(rebuild.status).toBe(0);
     expect(rebuild.output).toBe('build=true\n');
     expect(rebuild.summary).toContain('rebuild_index=2');
+  });
+
+  it("peels the cohort record job's own ledger commits back to the source (#1802)", () => {
+    // Real history after run 34252063142: source fd2c04e86 shipped, then
+    // main gained the npm row, the Android row, and the desktop row as three
+    // ledger-only commits. The cohort's subjects lacked `from run N`, so the
+    // last two never peeled and an idle main read as "behind source".
+    const source = commitLedgerPair(
+      `${JSON.stringify([], null, 2)}\n`,
+      'feat: a source change',
+    );
+    const androidRow = commitLedgerPair(
+      `${JSON.stringify([row('nightly-android', source)], null, 2)}\n`,
+      cohortLedgerSubject(
+        'nightly-android',
+        '0.1.11-nightly.2442.5',
+        '34252063142',
+      ),
+    );
+    const desktopRow = commitLedgerPair(
+      `${JSON.stringify([row('nightly-desktop', source), row('nightly-android', source)], null, 2)}\n`,
+      cohortLedgerSubject(
+        'nightly-desktop',
+        '0.1.11-nightly.2442.5',
+        '34252063142',
+      ),
+    );
+    expect(androidRow).not.toBe(source);
+    expect(desktopRow).not.toBe(androidRow);
+
+    for (const stop of ['', source]) {
+      const peeled = normalize(desktopRow, stop);
+      expect(peeled.status, peeled.stderr).toBe(0);
+      expect(peeled.stdout.trim()).toBe(source);
+    }
+
+    // Known-bad control: the pre-#1802 subject shape does not peel, which is
+    // the defect this fixture exists to keep closed at the writer.
+    const legacy = commitLedgerPair(
+      `${JSON.stringify([row('nightly-desktop', source), row('nightly-android', source)], null, 2)}\n`,
+      'docs(ledger): record finalized nightly-desktop 0.1.11-nightly.2442.5',
+    );
+    const stuck = normalize(legacy, source);
+    expect(stuck.status).toBe(0);
+    expect(stuck.stdout.trim()).toBe(legacy);
+
+    // With the source peeled out and both rows at the source, the decision
+    // the workflow makes next is "no cohort" — end to end.
+    git('update-ref', 'refs/remotes/origin/main', desktopRow);
+    const decided = spawnSync(
+      process.execPath,
+      [
+        SCRIPT,
+        '--head-sha',
+        desktopRow,
+        '--android-marker',
+        source,
+        '--android-candidate',
+        source,
+        '--desktop-marker',
+        source,
+        '--desktop-candidate',
+        source,
+      ],
+      { cwd: repo, encoding: 'utf8', windowsHide: true },
+    );
+    expect(decided.status, decided.stderr).toBe(0);
+    expect(decided.stdout).toContain('build=false');
   });
 
   it('fails closed on a malformed ledger at origin/main', () => {
