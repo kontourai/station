@@ -279,6 +279,9 @@ const loadConversationContextResetDialog = () =>
   import('./ConversationContextResetDialog').then((module) => ({
     default: module.ConversationContextResetDialog,
   }));
+
+import { SkeletonBlock } from '../state';
+
 const loadInboxSessionDetails = () => import('./InboxSessionDetails');
 const loadConversationOpenRecoveryNotice = () =>
   import('./ConversationOpenRecoveryNotice').then((module) => ({
@@ -3033,7 +3036,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               showSurface('activity', { session: threadId });
             },
           }}
-          pending={<p role="status">Opening chat details…</p>}
+          pending={<SkeletonBlock count={1} label="Opening chat details" />}
         />
       )}
       <ShareIntakeController />

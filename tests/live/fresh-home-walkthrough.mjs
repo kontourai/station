@@ -295,6 +295,26 @@ async function sweepRoutes(page, routes) {
       await assertTextAbsent(page, 'Page not found', route);
     }
     await screenshot(page, routeShotName(route));
+    // Exercise narrow regions inside desktop chrome, plus the phone layout.
+    // These are capture variants of the same route, not substitutes for the
+    // actual desktop journey above or for a physical-device check.
+    if (
+      [
+        '/',
+        '/?surface=activity',
+        '/connections',
+        '/settings',
+        '/projects/new',
+      ].includes(route)
+    ) {
+      for (const width of [830, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await settlePage(page, `${route} at ${width}px`);
+        await screenshot(page, `${routeShotName(route)}-${width}px`);
+      }
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await settlePage(page, `${route} restored desktop`);
+    }
   }
 }
 

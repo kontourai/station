@@ -6,6 +6,7 @@ import {
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import { SessionDetail } from '../session-detail/SessionDetail';
+import { SkeletonBlock } from '../state';
 import './InboxSessionDetails.css';
 
 export default function InboxSessionDetails({
@@ -35,7 +36,9 @@ export default function InboxSessionDetails({
         onClose={onClose}
       />
       <div className="inbox-session-details__body">
-        {detail.isLoading && <p role="status">Loading chat details…</p>}
+        {detail.isLoading && (
+          <SkeletonBlock count={1} label="Loading chat details" />
+        )}
         {detail.isError && (
           <div role="alert">
             <p>Could not load this session.</p>
