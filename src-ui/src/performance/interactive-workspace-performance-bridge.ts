@@ -667,7 +667,7 @@ async function measureCollaboration(
       if (receipt) throw new ClosedCollaborationFailure(receipt);
       const message = error instanceof Error ? error.message : 'unknown';
       const diagnostic =
-        /Live command (Leave room|Join room|Announce work) status (\d{3}|UNKNOWN) outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN)/.exec(
+        /Live command (Leave room|Join room|Announce work|Cursor) status (\d{3}|UNKNOWN) outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN)/.exec(
           message,
         );
       const presence =
@@ -2054,7 +2054,7 @@ export function productMarkFailureCode(error: unknown): string {
   if (corpusReceipt)
     return `PRODUCT_FILE_100K_PREPARE_CORPUS_${corpusReceipt[1]!}`;
   const liveCommand =
-    /Collaboration (?:presence|measure) ([a-z-]+) failed: (?:Collaboration presence (?:navigation|leave|owner-absence|join|announce) failed: )?Live command (?:Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN)/.exec(
+    /Collaboration (?:presence|measure) ([a-z-]+) failed: (?:Collaboration presence (?:navigation|leave|owner-absence|join|announce) failed: )?Live command (?:Leave room|Join room|Announce work|Cursor) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN)/.exec(
       message,
     );
   if (liveCommand)

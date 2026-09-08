@@ -2264,6 +2264,34 @@ describe('ProjectTaskRoomRuntime', () => {
     store.close();
   });
 
+  test('reports a cursor read rate limit without misclassifying it as lost authorization', async () => {
+    const { runtime } = fixture();
+    const request = new Request('http://station');
+    const joined = await runtime.live({
+      taskId: task.id,
+      request,
+      command: 'join',
+    });
+    const document = await runtime.document({ taskId: task.id, request });
+    if (
+      joined.kind !== 'available' ||
+      (document.kind !== 'snapshot' && document.kind !== 'delta')
+    )
+      throw new Error('Expected joined room document');
+    for (let index = 0; index < 119; index++)
+      await runtime.live({ taskId: task.id, request, command: 'heartbeat' });
+    expect(
+      await runtime.live({
+        taskId: task.id,
+        request,
+        command: 'cursor',
+        generation: joined.generation,
+        workingRevision: document.revision,
+        selection: { anchor: 0, focus: 0 },
+      }),
+    ).toMatchObject({ kind: 'available', result: { outcome: 'rate_limited' } });
+  });
+
   test('admits the intended 120 live transitions per minute without two checkpoint exports per command', async () => {
     const { runtime } = fixture();
     const request = new Request('http://station');

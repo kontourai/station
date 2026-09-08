@@ -662,11 +662,19 @@ const PERFORMANCE_RECEIPT_PRODUCT_MARK_COLLABORATION_ACTIONS = [
   'JOIN',
   'ANNOUNCE',
 ];
+// Closed failure labels do not turn a rejected/incomplete sample into acceptance.
 const PERFORMANCE_RECEIPT_PRODUCT_MARK_LIVE_OUTCOMES = [
   'DEPARTED',
   'JOINED',
   'UPDATED',
   'REFRESHED',
+  'CLEARED',
+  'PAUSED',
+  'INVALID',
+  'FORBIDDEN',
+  'IDENTITY_CHANGED',
+  'CAPACITY_EXCEEDED',
+  'RATE_LIMITED',
   'DEGRADED',
   'REFUSED',
   'UNAVAILABLE',

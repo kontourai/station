@@ -444,6 +444,13 @@ test('keeps only a closed live-command diagnostic through collaboration failure'
   expect(
     productMarkFailureCode(
       new Error(
+        'Collaboration measure peer-cursor failed: Live command Cursor status 200 outcome RATE_LIMITED',
+      ),
+    ),
+  ).toBe('PRODUCT_COLLABORATION_PEER_CURSOR_LIVE_COMMAND_OUTCOME_RATE_LIMITED');
+  expect(
+    productMarkFailureCode(
+      new Error(
         'Collaboration measure leave failed: Live command Leave room status 200 outcome DEGRADED',
       ),
     ),

@@ -2293,8 +2293,8 @@ export class ProjectTaskRoomRuntime {
     )
       return { outcome: 'invalid' };
     const live = input.entry.room.snapshot(input.authorization, input.now);
+    if (live.outcome !== 'available') return live;
     if (
-      live.outcome !== 'available' ||
       !live.snapshot.participants.some(
         (participant) => participant.actor.actorId === input.actorId,
       )

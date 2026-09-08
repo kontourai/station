@@ -1327,7 +1327,12 @@ class LiveCommandStepError extends Error {
   }
 }
 
-async function interactForLiveResponse(page, command, interaction) {
+async function interactForLiveResponse(
+  page,
+  command,
+  interaction,
+  expectedCursor,
+) {
   // Observe both outcomes immediately. Input can fail (or remain pending)
   // before this waiter settles; page teardown must not create an unhandled
   // rejection that replaces the primary input failure.
@@ -1336,7 +1341,7 @@ async function interactForLiveResponse(page, command, interaction) {
       (candidate) =>
         candidate.request().method() === 'POST' &&
         new URL(candidate.url()).pathname.endsWith('/room/live') &&
-        liveCommandRequestMatches(candidate.request(), command),
+        liveCommandRequestMatches(candidate.request(), command, expectedCursor),
     )
     .then(
       (value) => ({ kind: 'received', value }),
@@ -1415,10 +1420,20 @@ function closedLiveOutcome(value) {
     : 'UNKNOWN';
 }
 
-export function liveCommandRequestMatches(request, expectedCommand) {
+export function liveCommandRequestMatches(
+  request,
+  expectedCommand,
+  expectedCursor,
+) {
   try {
     const body = JSON.parse(request.postData() ?? '');
-    return body?.command === expectedCommand;
+    return (
+      body?.command === expectedCommand &&
+      (!expectedCursor ||
+        (body.workingRevision === expectedCursor.workingRevision &&
+          body.selection?.anchor === expectedCursor.selection.anchor &&
+          body.selection?.focus === expectedCursor.selection.focus))
+    );
   } catch {
     return false;
   }
@@ -1664,14 +1679,14 @@ export function closedLiveCommandDiagnostic(error) {
     )
   )
     return message;
-  return /^Live command (Leave room|Join room|Announce work) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN)$/.test(
+  return /^Live command (Leave room|Join room|Announce work|Cursor) status [1-5][0-9][0-9] outcome (DEPARTED|JOINED|UPDATED|REFRESHED|CLEARED|PAUSED|DEGRADED|REFUSED|UNAVAILABLE|INVALID|FORBIDDEN|IDENTITY_CHANGED|CAPACITY_EXCEEDED|RATE_LIMITED|UNKNOWN)$/.test(
     message,
   )
     ? message
     : undefined;
 }
 
-async function publishPeerCursor(peer, owner, taskId, iteration) {
+export async function publishPeerCursor(peer, owner, taskId, iteration) {
   const editor = peer.getByRole('textbox', { name: 'Task document' });
   let workingRevision = await editor.getAttribute(
     'data-station-working-revision',
@@ -1729,18 +1744,28 @@ async function publishPeerCursor(peer, owner, taskId, iteration) {
     },
   );
   const startedEpochMs = await epoch(peer);
-  const settled = await interactForLiveResponse(peer, 'cursor', async () => {
-    await editor.click();
-    await editor.press('ControlOrMeta+A');
-    if (iteration % 2 !== 0) await editor.press('ArrowRight');
-  });
+  const settled = await interactForLiveResponse(
+    peer,
+    'cursor',
+    async () => {
+      await editor.focus();
+      await editor.press('ControlOrMeta+A');
+      if (iteration % 2 !== 0) await editor.press('ArrowRight');
+    },
+    { workingRevision, selection },
+  );
   const body = await settled.json();
   if (
     settled.status() !== 200 ||
     body?.success !== true ||
-    body?.data?.kind !== 'available'
+    body?.data?.kind !== 'available' ||
+    closedLiveOutcome(body?.data?.result?.outcome) !== 'UPDATED'
   )
-    throw new Error(`Cursor command status ${settled.status()}`);
+    throw new LiveCommandOutcomeError(
+      'Cursor',
+      settled.status(),
+      closedLiveOutcome(body?.data?.result?.outcome),
+    );
   return {
     kind: 'cursor-published',
     peerActorId,
