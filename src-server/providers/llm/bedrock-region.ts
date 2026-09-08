@@ -10,7 +10,7 @@
  * actually runs — resolved `spec.region -> connection.config.region ->
  * appConfig.region -> 'us-east-1'`; `runtime-provider-resolution.ts` had a
  * second copy of that same chain; `bedrock.ts`, `runtime-initialize.ts`,
- * `agent-hooks.ts`, and `tool-execution-usage.ts` each stopped at
+ * `agent-hooks.ts`, and `tool-execution-usage.ts` (since deleted) each stopped at
  * `appConfig.region || 'us-east-1'`; and the model-catalogue route resolved
  * `process.env.AWS_REGION || 'us-east-1'` with no reference to the stored
  * setting at all. With a stored region of `eu-west-1` and no `AWS_REGION`,

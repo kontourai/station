@@ -61,6 +61,31 @@
   line-height: 1.5;
 }
 
+/* The refusal's package path. Its own block, its own label, monospace: the
+   string is author-controlled and must never read as part of the sentence
+   above it. `overflow-wrap` because a plugin's path can be arbitrarily long
+   and must not push the pane wide. */
+.skill-detail__source-path {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0.25rem 0 0;
+  font-size: var(--text-sm);
+}
+
+.skill-detail__source-path-label {
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: var(--text-xs);
+}
+
+.skill-detail__source-path code {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
 .skills-view__sidebar-actions {
   display: grid;
   gap: 0.5rem;

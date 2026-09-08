@@ -169,6 +169,10 @@ export function parseImportedSkillMarkdown(
   };
 }
 
+export type {
+  SkillPackageDirectoryCondition,
+  SkillPackageDirectoryReport,
+} from '../../domain/skill-paths.js';
 export {
   assertSafeProjectSlug,
   assertSafeSkillName,
@@ -178,5 +182,6 @@ export {
   isSafeSkillName,
   PROTOTYPE_AFFECTING_KEYS,
   resolveSkillDirectory,
+  skillPackageDirectoryReport,
   skillsRootDir,
 } from '../../domain/skill-paths.js';
