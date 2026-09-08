@@ -1,12 +1,4 @@
 #!/usr/bin/env node
-import { realpathSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import {
-  STORE_INTEGRITY_EXIT_CODE,
-  type StoreIntegrityReport,
-  storeIntegrityExitCode,
-  verifySqliteStore,
-} from '@kontourai/station-shared/sqlite-store-integrity';
 /**
  * store-integrity-probe — a short-lived child process that runs
  * `PRAGMA quick_check` against Station's SQLite stores and prints the verdict
@@ -30,6 +22,14 @@ import {
  * The same entry point is what `station home verify` reports, so an operator
  * and the scheduler read one verdict rather than two that agree today.
  */
+import { realpathSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  STORE_INTEGRITY_EXIT_CODE,
+  type StoreIntegrityReport,
+  storeIntegrityExitCode,
+  verifySqliteStore,
+} from '@kontourai/station-shared/sqlite-store-integrity';
 import { errorMessage } from '../utils/error-message.js';
 
 export interface StoreIntegrityProbeDeps {
