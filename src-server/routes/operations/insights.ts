@@ -64,9 +64,9 @@ const EVENT_FILE_DAY_PATTERN = /^events-(\d{4})-(\d{2})-(\d{2})\.ndjson$/;
  * midnight can land a next-day-stamped row in today's file. Such a row is
  * dropped by this skip once the cutoff passes that file's day end, where the
  * old full scan would have kept it. Accepted: it needs a clock-skewed
- * exporter and a midnight boundary, it costs at most an hourly bucket at the
- * very edge of the window, and the alternative is reading every file on
- * every request.
+ * exporter and a midnight boundary, it loses at most the rows that exporter
+ * stamped into its skew window at the one day boundary the cutoff just
+ * crossed, and the alternative is reading every file on every request.
  *
  * Returns `null` rather than guessing for anything that is not a date
  * (`events-test.ndjson`, an operator's hand-placed export, a rolled-over
