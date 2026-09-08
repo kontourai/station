@@ -13,6 +13,23 @@ export type MCPLocalPurpose =
   | 'app'
   | 'oauth'
   | 'native-control';
+export interface MCPDefinitionAdmission {
+  isCurrent(): boolean;
+  enter(): void;
+  settle(started: boolean): void;
+}
+const definitionAdmission = Symbol('Station captured package admission');
+type AdmittedDefinition = ToolDef & {
+  [definitionAdmission]?: (purpose: MCPLocalPurpose) => MCPDefinitionAdmission;
+};
+/** First-party loader capability; a JSON ToolDef cannot forge this symbol.
+ * Enumerable symbol ownership survives the ordinary secret-env object spread. */
+export function bindMCPDefinitionAdmission(
+  def: ToolDef,
+  admit: (purpose: MCPLocalPurpose) => MCPDefinitionAdmission,
+): ToolDef {
+  return Object.assign(def, { [definitionAdmission]: admit });
+}
 export interface MCPLocalCleanup {
   scope: 'local-sdk-handles';
   state: 'settled' | 'pending' | 'failed';
@@ -35,7 +52,10 @@ export interface MCPLocalClaim {
   finishAuth(params: URLSearchParams): Promise<void>;
   close(): Promise<void>;
   /** First-party alternate harness owns its SDK-specific fields behind this capability. */
-  attach(resource: Pick<MCPPreparedConnection, 'close' | 'inspect'>): void;
+  attach(
+    resource: Pick<MCPPreparedConnection, 'close' | 'inspect'>,
+    definition?: ToolDef,
+  ): void;
 }
 type RecordEntry = {
   id: string;
@@ -72,7 +92,11 @@ export class MCPLocalConnectionCustody {
         this.records.delete(record);
     }
   }
-  acquire(id: string, purpose: MCPLocalPurpose): MCPLocalClaim {
+  acquire(
+    id: string,
+    purpose: MCPLocalPurpose,
+    definition?: ToolDef,
+  ): MCPLocalClaim {
     this.prune();
     if (!this.accepting || this.mutations.has(id))
       throw new MCPLocalCustodyError('pending');
@@ -82,6 +106,18 @@ export class MCPLocalConnectionCustody {
       throw new MCPLocalCustodyError('capacity');
     let connection: Promise<MCPConnection> | undefined;
     let prepared: MCPPreparedConnection | undefined;
+    let admission: MCPDefinitionAdmission | undefined;
+    let effectStarted = false;
+    const bind = (def: ToolDef) => {
+      if (!admission)
+        admission = (def as AdmittedDefinition)[definitionAdmission]?.(purpose);
+    };
+    if (definition) bind(definition);
+    const enter = () => {
+      if (effectStarted) return;
+      admission?.enter();
+      effectStarted = true;
+    };
     const record = {
       id,
       purpose,
@@ -92,6 +128,7 @@ export class MCPLocalConnectionCustody {
       record.current &&
       this.accepting &&
       !this.mutations.has(id) &&
+      (admission?.isCurrent() ?? true) &&
       this.records.has(record);
     const assertCurrent = () => {
       if (!isCurrent()) throw new MCPLocalCustodyError('stale');
@@ -123,6 +160,9 @@ export class MCPLocalConnectionCustody {
         if (connection) return connection;
         if (record.resource) throw new MCPLocalCustodyError('stale');
         if (def.id !== id) throw new MCPLocalCustodyError('stale');
+        bind(def);
+        assertCurrent();
+        enter();
         // The record is already retained before constructing the resource
         // handle or invoking its constructor/connect/discovery effects.
         prepared = prepareMCPConnection(def, options, isCurrent);
@@ -152,11 +192,14 @@ export class MCPLocalConnectionCustody {
         if (record.resource) await record.resource.close();
         while (record.pending.size)
           await Promise.allSettled([...record.pending]);
+        admission?.settle(effectStarted);
         this.records.delete(record);
       },
-      attach: (resource) => {
+      attach: (resource, definition) => {
+        if (definition) bind(definition);
         assertCurrent();
         if (record.resource) throw new MCPLocalCustodyError('stale');
+        enter();
         record.resource = resource;
       },
     };

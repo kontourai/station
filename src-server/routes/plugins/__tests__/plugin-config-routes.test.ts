@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { rm } from 'node:fs/promises';
@@ -10,10 +11,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { ConfigLoader } from '../../../domain/config-loader.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
+import {
+  closePluginActivationSession,
+  createPluginActivationSession,
+} from '../../../services/plugins/plugin-activation-composition.js';
 import {
   emittedPluginSettings,
   registerPluginConfigRoutes,
 } from '../plugin-config-routes.js';
+import { installPluginFromSource } from '../plugin-install-shared.js';
 
 // archive#3576: `field.secret` is manifest-author-controlled, so a plugin
 // author who declares a genuinely sensitive setting and forgets
@@ -630,4 +638,121 @@ describe('PUT /:name/settings unbounded nesting (station#4307 review)', () => {
     );
     expect(stored.demo.settings.extra).toEqual({ a: { b: [1, 2] } });
   });
+});
+
+describe('managed configuration uses captured installation authority', () => {
+  test.each(['ready', 'pending'] as const)(
+    'alias-free %s package configuration follows journal admission',
+    async (phase) => {
+      const root = mkdtempSync(join(tmpdir(), 'station-config-capture-'));
+      const store = new EventStore(join(root, 'events.sqlite'));
+      const other = new EventStore(join(root, 'events.sqlite'));
+      const session = createPluginActivationSession();
+      try {
+        const pluginsDir = join(root, 'plugins');
+        const source = join(root, 'source');
+        mkdirSync(source);
+        mkdirSync(pluginsDir);
+        writeFileSync(
+          join(source, 'plugin.json'),
+          JSON.stringify({
+            $schema:
+              'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+            name: 'configured',
+            version: '1.0.0',
+            extensions: {
+              'io.kontourai.station': {
+                schemaVersion: '1.0',
+                settings: [
+                  {
+                    key: 'theme',
+                    title: 'Theme',
+                    type: 'string',
+                    default: 'light',
+                  },
+                ],
+              },
+            },
+          }),
+        );
+        const journal = store.createPackageMcpAdmissionJournal();
+        const logger = {
+          error: vi.fn(),
+          warn: vi.fn(),
+          info: vi.fn(),
+          debug: vi.fn(),
+        } as any;
+        await installPluginFromSource(
+          source,
+          [],
+          {
+            projectHomeDir: root,
+            pluginsDir,
+            agentsDir: join(root, 'agents'),
+            packageMcpJournal: journal,
+            buildPlugin: async () => {},
+            logger,
+          },
+          phase === 'pending' ? { activationSession: session } : undefined,
+        );
+        unlinkSync(join(pluginsDir, 'configured'));
+        const app = new Hono();
+        registerPluginConfigRoutes(app, {
+          projectHomeDir: root,
+          pluginsDir,
+          packageMcpJournal: journal,
+          logger,
+        });
+        for (const path of ['settings', 'providers', 'changelog', 'overrides'])
+          expect((await app.request(`/configured/${path}`)).status).toBe(
+            phase === 'ready' ? 200 : 404,
+          );
+        const put = (theme = 'dark') =>
+          app.request('/configured/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ settings: { theme } }),
+          });
+        expect((await put()).status).toBe(phase === 'ready' ? 200 : 404);
+        if (phase === 'ready') {
+          expect(
+            await (await app.request('/configured/settings')).json(),
+          ).toMatchObject({ values: { theme: 'dark' } });
+          const original = ConfigLoader.prototype.loadPluginOverrides;
+          const spy = vi
+            .spyOn(ConfigLoader.prototype, 'loadPluginOverrides')
+            .mockImplementationOnce(async function (this: ConfigLoader) {
+              const value = await original.call(this);
+              const foreign = other.createPackageMcpAdmissionJournal();
+              const selected = foreign.currentInstallation('configured');
+              if (selected.state !== 'observed')
+                throw new Error('Selection disappeared');
+              expect(
+                foreign.requestRetirement(selected.installation).state,
+              ).toBe('fenced');
+              return value;
+            });
+          try {
+            expect((await put('unreviewed')).status).toBe(409);
+          } finally {
+            spy.mockRestore();
+          }
+          expect((await app.request('/configured/settings')).status).toBe(404);
+          expect(
+            JSON.parse(
+              readFileSync(
+                join(root, 'config', 'plugin-overrides.json'),
+                'utf8',
+              ),
+            ).configured.settings.theme,
+          ).toBe('dark');
+        }
+      } finally {
+        closePluginActivationSession(session);
+        other.close();
+        store.close();
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 });

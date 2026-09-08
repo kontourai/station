@@ -28,6 +28,11 @@ export interface ChatFocusTarget {
 }
 
 export interface OpenChatsNavigation {
+  /** Canonical Conversation resolution/hydration, without inventing an Agent. */
+  openConversation?: (
+    conversationId: string,
+    isCurrent?: () => boolean,
+  ) => Promise<boolean>;
   focus: (target: ChatFocusTarget) => void | Promise<void>;
   focusRemote?: (
     target: Required<
@@ -74,6 +79,16 @@ class OpenChatsStore {
       return;
     }
     void this.navigation.focus(target);
+  }
+
+  async openConversation(
+    conversationId: string,
+    isCurrent?: () => boolean,
+  ): Promise<boolean> {
+    return (
+      (await this.navigation?.openConversation?.(conversationId, isCurrent)) ??
+      false
+    );
   }
 
   openCollection() {

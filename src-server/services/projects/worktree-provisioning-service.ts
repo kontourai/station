@@ -345,6 +345,15 @@ export class WorktreeProvisioningService {
     private readonly git: GitCommandRunner = new SpawnGitCommandRunner(),
   ) {}
 
+  /** Read-only continuation proof, sharing cleanup's hostile-metadata checks. */
+  async assertSessionWorkspace(
+    metadata: WorktreeSessionMetadata,
+    ownerThreadId: string,
+  ): Promise<void> {
+    assertWorktreeMetadataSessionBinding(metadata, ownerThreadId);
+    await this.assertRegisteredCleanupTarget(metadata);
+  }
+
   async provision(
     request: WorktreeProvisionRequest,
   ): Promise<WorktreeSessionMetadata | null> {
