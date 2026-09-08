@@ -258,6 +258,6 @@ test('explicit batch disclosure shows tool rows when inline details are hidden',
   fireEvent.click(
     await screen.findByRole('button', { name: /Read 4 files|Used 4 tools/ }),
   );
-  expect(await screen.findByText('source-0.ts')).toBeTruthy();
-  expect(screen.getByText('source-3.ts')).toBeTruthy();
+  expect(await screen.findByText('Read source-0.ts')).toBeTruthy();
+  expect(screen.getByText('Read source-3.ts')).toBeTruthy();
 });
