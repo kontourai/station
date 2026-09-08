@@ -57,16 +57,23 @@ echo "[station pre-push] orchestration transfer budgets"
 node scripts/check-prepush-orchestration-transfer.mjs
 
 # ~7s, and only when this push changes something these gates read (#3208).
-# The UI-contract ratchets and the content gates live in verify:static, which
-# only full:regression composes — and full-regression.yml is workflow_call
-# only, reached from nightly.yml (09:00 UTC schedule or dispatch), release.yml
-# (tagged promotion), and ci.yml's workflow_dispatch-only job. NO
-# pull_request, merge_group or push-to-main run composes it: ci:fast, the
-# required `fast-checks` lane, does not include verify-static. The nearest
-# post-merge coverage is windows-verification.yml, which runs gate:naming and
-# gate:ui-contracts on a paths-filtered push to main and nothing else from the
-# chain. So without this hook these gates evaluate a change after it is
-# already on main — most of them not until the next Nightly — and the red
+# The UI-contract ratchets live in verify:static, which only full:regression
+# composes — and full-regression.yml is workflow_call only, reached from
+# nightly.yml (09:00 UTC schedule or dispatch), release.yml (tagged
+# promotion), and ci.yml's workflow_dispatch-only job. No pull_request,
+# merge_group or push-to-main run composes the whole chain.
+#
+# That does not mean nothing from the chain runs pre-merge: ci:fast, the
+# required `fast-checks` lane, composes node-runtime-contract,
+# lockfile-sync:gate, channel-ports:check, gate:workflows and the typecheck
+# aggregate. What it does NOT compose is any of the fourteen ratchets this
+# step runs. Post-merge, windows-verification.yml runs typecheck, gate:naming
+# and gate:ui-contracts on a paths-filtered push to main, which does cover
+# thirteen of the fourteen (agent-plugin-validators-gate is the exception).
+#
+# So the gap this closes is pre-merge, not absolute: without this hook these
+# ratchets first evaluate a change AFTER it is on main — and only if the push
+# touched the filtered paths, else not until the next Nightly — so the red
 # lands on whoever gates next. Three regressions reached main in one day that
 # way (two motion literals, one undeclared Coding dependency).
 echo "[station pre-push] static gates (UI contracts, content)"

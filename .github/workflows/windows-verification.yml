@@ -7,7 +7,9 @@ name: Windows Verification
 #
 # Its run steps look like a duplicate of windows-pr-verification.yml's, and
 # they deliberately are not one. Three things depend on this lane existing
-# separately, each pinned by a test in ci-workflow-contract.test.ts:
+# separately. The first two are pinned by tests in
+# ci-workflow-contract.test.ts; the third is branch-ruleset state, which no
+# test in this repository asserts:
 #
 #   1. main-health.yml watches this workflow by NAME and files a P1 when it
 #      fails on main. The PR lane runs on pull_request_target and merge_group,
@@ -19,7 +21,10 @@ name: Windows Verification
 #      different machine, a different toolchain state, and no lease.
 #   3. The required check is the PR lane's ("Windows PR portable floor"); this
 #      job's name is not required, so its verdict is advisory-on-main rather
-#      than blocking-on-merge. Those are different jobs, not two copies of one.
+#      than blocking-on-merge. Those are different jobs, not two copies of
+#      one. Read this one from the ruleset
+#      (`gh api repos/kontourai/station/rules/branches/main`), not from a
+#      test: required-check identity lives there, and nothing here mirrors it.
 #
 # The `if: github.event_name != 'pull_request'` below is defence in depth for
 # a self-hosted runner, not dead code: this workflow declares no pull_request

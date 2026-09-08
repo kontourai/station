@@ -210,7 +210,7 @@ const PRODUCTION_ACCEPT_GATES: ReadonlyArray<{
   {
     script: 'motion-contract-ratchet.mjs',
     reason:
-      'already spawned by prepush-static-gates.test.ts through the pre-push composer; what was missing here is only the direct accept run',
+      'a scan whose findings are already covered by its own unit test; prepush-static-gates.test.ts only `node --check`s it (parse, not execute), so this is its first execution',
   },
   {
     script: 'native-platform-boundary.mjs',
