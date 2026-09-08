@@ -17,6 +17,10 @@ on:
     types: [completed]
 
 permissions:
+  # `contents: read` buys exactly one thing: checking out the default
+  # branch so this job can call scripts/main-health-comment-policy.mjs.
+  # No other scope is granted, so a bug here cannot write to the tree.
+  contents: read
   issues: write
 
 jobs:
@@ -28,6 +32,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
+      # The comment policy is a module, not inline script, so its four
+      # transitions are unit-testable without a workflow_run event
+      # (scripts/__tests__/main-health-comment-policy.test.ts). Same shape as
+      # issue-lifecycle.yml: repository-controlled code, decisions in the
+      # module, API calls here.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The default branch, never the code of the run being reported on: a
+          # policy read from the failing commit would be frozen at whatever it
+          # said then. persist-credentials: false — nothing here pushes.
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
       - name: Open or update the workflow tracking issue
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         # Event values stay data: env indirection prevents injection into JavaScript source.
@@ -37,6 +53,7 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         with:
           script: |
+            const { decideMainHealthComment, summarizeRunFailure } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
             const workflowName = process.env.WORKFLOW_NAME;
             const runUrl = process.env.RUN_URL;
             const headSha = process.env.HEAD_SHA;
@@ -63,7 +80,8 @@ jobs:
               });
               return;
             }
-            if (existing.state !== 'open') {
+            const reopened = existing.state !== 'open';
+            if (reopened) {
               await github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -77,11 +95,49 @@ jobs:
               issue_number: existing.number,
               labels: ['bug', 'P1'],
             });
+            // Everything above is the tracker itself and runs first on purpose:
+            // by this point the issue exists, is open and is labelled, so a
+            // throw below costs one comment rather than the tracker. The jobs
+            // call is the same one close-after-success already makes under
+            // these permissions.
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.payload.workflow_run.id,
+              per_page: 100,
+            });
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              per_page: 100,
+            });
+            const decision = decideMainHealthComment({
+              workflowName,
+              runUrl,
+              headSha,
+              failures: summarizeRunFailure(jobs),
+              reopened,
+              comments,
+            });
+            core.info(`main-health: ${decision.action} (${decision.reason})`);
+            if (decision.action === 'update-marker') {
+              // Same failure, inside the heartbeat window: record the run in
+              // the marker of the comment that already exists. An edit sends
+              // no notification, so a persistent red stops paging anyone.
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: decision.commentId,
+                body: decision.body,
+              });
+              return;
+            }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: existing.number,
-              body: `The workflow failed again on main.\n\n${details}`,
+              body: decision.body,
             });
 
   close-after-success:
