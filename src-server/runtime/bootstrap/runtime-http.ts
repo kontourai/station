@@ -158,9 +158,10 @@ function routeErrorResponse(
         error: sanitizeError(cause instanceof Error ? cause : error),
       });
     } catch {
-      // Mirrors the generic path below: a cause whose shape the sanitizer
-      // rejects must not turn a chosen status into an unhandled throw out of
-      // `onError`, which is where the response would be lost.
+      // Mirrors the guard in {@link unexpectedRuntimeErrorResponse} above:
+      // a cause whose shape the sanitizer rejects must not turn a chosen
+      // status into an unhandled throw out of `onError`, which is where the
+      // response would be lost.
       logger.fatal('Route error sanitizer rejected an error shape', context);
     }
   } else {

@@ -109,80 +109,88 @@ describe('Workflow Routes', () => {
     // the raw (sanitized) message under a hard-coded status: 500 for the
     // list, 404 for the read, 400 for the three mutations. `LayoutService`
     // throws only bare `Error`s, so after the migration all five reach the
-    // boundary's generic envelope. The status column is the behaviour
-    // change this test records.
-    const cases = [
+    // boundary's generic envelope. The `previousStatus` column is the
+    // behaviour change this test records.
+    type Service = ReturnType<typeof createMockLayoutService>;
+    const cases: {
+      name: string;
+      previousStatus: number;
+      /** The service's real text for this failure. */
+      message: string;
+      /** A phrase of `message` that must not survive to the client. */
+      withheld: string;
+      arrange: (service: Service, failure: Error) => void;
+      request: readonly [string, RequestInit | undefined];
+    }[] = [
       {
         name: 'list',
         previousStatus: 500,
-        arrange: (s: ReturnType<typeof createMockLayoutService>) =>
-          s.listAgentWorkflows.mockRejectedValue(
-            new Error('EACCES: permission denied'),
-          ),
-        request: () => ['/agents/agent1/workflows/files', undefined] as const,
+        message: 'EACCES: permission denied',
+        withheld: 'permission denied',
+        arrange: (s, failure) =>
+          s.listAgentWorkflows.mockRejectedValue(failure),
+        request: ['/agents/agent1/workflows/files', undefined],
       },
       {
         name: 'read',
         previousStatus: 404,
-        arrange: (s: ReturnType<typeof createMockLayoutService>) =>
-          s.getWorkflow.mockRejectedValue(
-            new Error("Workflow 'wf1.ts' not found"),
-          ),
-        request: () => ['/agents/agent1/workflows/wf1.ts', undefined] as const,
+        message: "Workflow 'wf1.ts' not found",
+        withheld: "'wf1.ts' not found",
+        arrange: (s, failure) => s.getWorkflow.mockRejectedValue(failure),
+        request: ['/agents/agent1/workflows/wf1.ts', undefined],
       },
       {
         name: 'create',
         previousStatus: 400,
-        arrange: (s: ReturnType<typeof createMockLayoutService>) =>
-          s.createWorkflow.mockRejectedValue(
-            new Error(
-              'Workflow filename must end with .ts, .js, .mjs, or .cjs',
-            ),
-          ),
-        request: () =>
-          [
-            '/agents/agent1/workflows',
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ filename: 'test.txt', content: '// c' }),
-            },
-          ] as const,
+        message: 'Workflow filename must end with .ts, .js, .mjs, or .cjs',
+        withheld: 'must end with',
+        arrange: (s, failure) => s.createWorkflow.mockRejectedValue(failure),
+        request: [
+          '/agents/agent1/workflows',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: 'test.txt', content: '// c' }),
+          },
+        ],
       },
       {
         name: 'update',
         previousStatus: 400,
-        arrange: (s: ReturnType<typeof createMockLayoutService>) =>
-          s.updateWorkflow.mockRejectedValue(new Error('Invalid workflow id')),
-        request: () =>
-          [
-            '/agents/agent1/workflows/wf1.ts',
-            {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ content: '// updated' }),
-            },
-          ] as const,
+        message: 'Invalid workflow id',
+        withheld: 'Invalid workflow id',
+        arrange: (s, failure) => s.updateWorkflow.mockRejectedValue(failure),
+        request: [
+          '/agents/agent1/workflows/wf1.ts',
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: '// updated' }),
+          },
+        ],
       },
       {
         name: 'delete',
         previousStatus: 400,
-        arrange: (s: ReturnType<typeof createMockLayoutService>) =>
-          s.deleteWorkflow.mockRejectedValue(
-            new Error("Workflow 'wf1.ts' not found"),
-          ),
-        request: () =>
-          ['/agents/agent1/workflows/wf1.ts', { method: 'DELETE' }] as const,
+        message: "Workflow 'wf1.ts' not found",
+        withheld: "'wf1.ts' not found",
+        arrange: (s, failure) => s.deleteWorkflow.mockRejectedValue(failure),
+        request: ['/agents/agent1/workflows/wf1.ts', { method: 'DELETE' }],
       },
     ];
 
     for (const scenario of cases) {
-      const service = createMockLayoutService();
-      scenario.arrange(service);
-      const app = mount(service);
-      const [path, init] = scenario.request();
+      // The phrase really is in the text this case throws, so the
+      // non-disclosure assertion below is live for every case. A single
+      // shared token would be vacuous for whichever message lacks it.
+      expect(scenario.message, scenario.name).toContain(scenario.withheld);
 
-      const response = await app.request(path, init as RequestInit | undefined);
+      const service = createMockLayoutService();
+      scenario.arrange(service, new Error(scenario.message));
+      const app = mount(service);
+      const [path, init] = scenario.request;
+
+      const response = await app.request(path, init);
       const body = (await response.json()) as Record<string, unknown>;
 
       expect(
@@ -193,11 +201,10 @@ describe('Workflow Routes', () => {
         success: false,
         error: { code: 'internal_error', correlationId: expect.any(String) },
       });
-      // The underlying text is no longer disclosed. Asserted per case
-      // because each one's message is different, and this is the half of
-      // the change a status assertion cannot see.
-      expect(JSON.stringify(body), scenario.name).not.toContain('Workflow');
-      expect(JSON.stringify(body), scenario.name).not.toContain('EACCES');
+      // The half of the change a status assertion cannot see.
+      expect(JSON.stringify(body), scenario.name).not.toContain(
+        scenario.withheld,
+      );
     }
   });
 });
