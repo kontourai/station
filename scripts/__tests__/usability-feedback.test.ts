@@ -59,6 +59,7 @@ describe('usability feedback coverage and reviewer failures', () => {
           findings: [
             {
               screen: 'invented',
+              kind: 'defect',
               severity: 'high',
               confidence: 'visible',
               title: 'bad',
@@ -92,6 +93,7 @@ describe('usability feedback coverage and reviewer failures', () => {
       [
         {
           screen: 'a',
+          kind: 'defect',
           severity: 'high',
           confidence: 'visible',
           title: 'Clipped menu',
