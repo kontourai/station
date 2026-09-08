@@ -3046,6 +3046,74 @@ describe('Orchestration Routes', () => {
     expect(refreshDelegatedTaskActivity).toHaveBeenCalledTimes(2);
   });
 
+  // A failing refresh must clear its own latch. Both shapes are covered
+  // because they reach the latch differently: a SYNCHRONOUS throw runs the
+  // whole try/catch to completion before the async IIFE returns its promise,
+  // so cleanup arranged from inside that body targets a key the caller has
+  // not written yet. The production binding resolves
+  // `readAuthorityForExecution(input.userId)` before its async body, so a
+  // synchronous throw is reachable, and the failure mode is silent: peer
+  // reconciliation simply stops for that user until the process restarts.
+  test('a refresh that throws SYNCHRONOUSLY still answers, warns, and leaves the latch clear (#847)', async () => {
+    const refreshDelegatedTaskActivity = vi.fn((): Promise<void> => {
+      throw new Error('authority unresolved');
+    });
+    const warn = vi.fn();
+    const service = {
+      listSessionReadModel: vi.fn().mockResolvedValue([]),
+    };
+    const app = createOrchestrationRoutes(service as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn(), warn },
+      getUserId: () => ROUTE_TEST_USER_ID,
+      refreshDelegatedTaskActivity,
+    });
+
+    // The poll answers from the local store; the peer's failure is not the
+    // caller's problem and never reaches the response.
+    expect((await app.request('/sessions/read-model')).status).toBe(200);
+    expect(warn).toHaveBeenCalledWith(
+      'Peer delegation activity refresh failed',
+      expect.objectContaining({ error: 'authority unresolved' }),
+    );
+
+    // The latch is clear, so the NEXT poll tries again. A leaked latch is
+    // invisible from the response — it looks exactly like this one.
+    await Promise.resolve();
+    expect((await app.request('/sessions/read-model')).status).toBe(200);
+    expect(refreshDelegatedTaskActivity).toHaveBeenCalledTimes(2);
+  });
+
+  test('a refresh that REJECTS still answers, warns, and leaves the latch clear (#847)', async () => {
+    const refreshDelegatedTaskActivity = vi.fn(() =>
+      Promise.reject(new Error('peer unreachable')),
+    );
+    const debug = vi.fn();
+    const service = {
+      listSessionReadModel: vi.fn().mockResolvedValue([]),
+    };
+    // No `warn` on this double deliberately: the fallback to `debug` is the
+    // shape most of this file's existing test doubles have, and it had never
+    // been executed.
+    const app = createOrchestrationRoutes(service as any, {
+      eventBus: new EventBus(),
+      logger: { debug },
+      getUserId: () => ROUTE_TEST_USER_ID,
+      refreshDelegatedTaskActivity,
+    });
+
+    expect((await app.request('/sessions/read-model')).status).toBe(200);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(debug).toHaveBeenCalledWith(
+      'Peer delegation activity refresh failed',
+      expect.objectContaining({ error: 'peer unreachable' }),
+    );
+
+    expect((await app.request('/sessions/read-model')).status).toBe(200);
+    expect(refreshDelegatedTaskActivity).toHaveBeenCalledTimes(2);
+  });
+
   test("one caller's outstanding refresh does not suppress another caller's (#847)", async () => {
     // The single flight is keyed by principal. A global latch would let the
     // first poller on a shared Station hold every other user's peer

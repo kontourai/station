@@ -1002,8 +1002,8 @@ export function createOrchestrationRoutes(
    *
    * Keyed by userId, never shared: a poll from one caller must not suppress
    * another caller's reconciliation, whose peer set and authority are
-   * different. The entry is cleared in `finally`, so a completed (or failed)
-   * refresh does not stop the next poll from starting a fresh one.
+   * different. The entry is cleared once the refresh settles, so a completed
+   * (or failed) refresh does not stop the next poll from starting a fresh one.
    */
   const delegationActivityRefreshes = new Map<string, Promise<void>>();
   const startDelegatedTaskActivityRefresh = (userId: string): void => {
@@ -1021,11 +1021,29 @@ export function createOrchestrationRoutes(
           'Peer delegation activity refresh failed',
           { error: error instanceof Error ? error.message : String(error) },
         );
-      } finally {
-        delegationActivityRefreshes.delete(userId);
       }
     })();
+    // Install BEFORE arranging the cleanup. `refresh` can throw
+    // SYNCHRONOUSLY — the production binding at `runtime-routes.ts` resolves
+    // `readAuthorityForExecution(input.userId)` before its async body — and a
+    // synchronous throw runs the whole try/catch to completion before the
+    // async IIFE even returns. Clearing the entry from inside that body
+    // therefore deleted a key that had not been written yet, and the `set`
+    // below then installed an already-settled promise nothing would ever
+    // remove: peer reconciliation silently off for that user for the life of
+    // the process.
     delegationActivityRefreshes.set(userId, settled);
+    const clearEntry = () => {
+      // Identity-checked so an older refresh settling can never evict the
+      // newer entry that replaced it.
+      if (delegationActivityRefreshes.get(userId) === settled) {
+        delegationActivityRefreshes.delete(userId);
+      }
+    };
+    // `then(clear, clear)` rather than `finally`: the returned promise
+    // fulfills on both paths, so even a logger double that throws inside the
+    // catch above cannot produce a second unhandled rejection here.
+    void settled.then(clearEntry, clearEntry);
   };
 
   const toolResultUnavailable = (c: Context, status: 404 | 503 = 404) => {
