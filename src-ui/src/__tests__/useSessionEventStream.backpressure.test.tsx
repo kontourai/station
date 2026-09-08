@@ -282,6 +282,50 @@ describe('useSessionEventStream buffer backpressure', () => {
     view.unmount();
   });
 
+  test('a frame admitted just before the thread changes is dropped, not re-homed', async () => {
+    const frames = manualFrames();
+    const view = await mountStream('task:1');
+
+    // The next thread's hydration is held open, so nothing else can clear the
+    // buffer: hydration itself discards it, which would mask the window this
+    // guard covers — between the stray frame's queue turn and the new feed's
+    // first read, where a publish would draw the previous thread's events.
+    let releaseHydration: (value: unknown) => void = () => {};
+    fetchSession.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseHydration = resolve;
+        }),
+    );
+
+    // The frame is admitted, so its queue turn is scheduled as a microtask —
+    // and then the thread changes SYNCHRONOUSLY, which runs the effect
+    // cleanup before any microtask can. The turn therefore resolves into a
+    // torn-down effect. Dispatching and switching inside one async `act`
+    // would let the turn run first and prove nothing.
+    (streamOptions.onMessage as ((frame: unknown) => void) | undefined)?.({
+      event: 'orchestration:event',
+      id: '99',
+      data: JSON.stringify({ event: event(11) }),
+    });
+    act(() => {
+      view.rerender({ id: 'task:2' });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await frames.runAll();
+
+    expect(view.result.current.events).toEqual([]);
+
+    await act(async () => {
+      releaseHydration({ session: {}, events: [] });
+      await Promise.resolve();
+    });
+    view.unmount();
+  });
+
   test('a hidden document publishes on a timer rather than a frame that will not come', async () => {
     setVisibility('hidden');
     // Fake timers first: vitest fakes `requestAnimationFrame` too, so a stub
