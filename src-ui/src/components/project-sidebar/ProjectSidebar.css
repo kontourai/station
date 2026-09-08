@@ -863,20 +863,11 @@
   .sidebar__layout-btn {
     min-height: 44px;
   }
-
-  /* Hide the old edge-tab toggle */
-  .sidebar__mobile-toggle {
-    display: none;
-  }
 }
 
 /* Desktop: hide mobile-only elements */
 @media (min-width: 769px) and (not ((max-height: 540px) and (pointer: coarse))) {
   .sidebar-backdrop {
-    display: none;
-  }
-
-  .sidebar__mobile-toggle {
     display: none;
   }
 }

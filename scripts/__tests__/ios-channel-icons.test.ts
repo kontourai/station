@@ -240,6 +240,53 @@ describe.skipIf(process.platform !== 'darwin')(
         /ships no app icon/,
       );
     });
+
+    it('verify keeps the overlay receipt fields unchanged while adding the derived ones', () => {
+      // The workflow's overlay step seeds the receipt; `verify` merges the
+      // derived fields into that file. The desktop master fields must come
+      // through byte for byte, and no shipped-icon-looking alias of them may
+      // appear (#1781 review). Stable: the committed catalog IS the stable set.
+      const work = mkdtempSync(join(tmpdir(), 'station-ios-receipt-'));
+      const app = join(work, 'Payload', 'Station.app');
+      mkdirSync(app, { recursive: true });
+      cgbi(
+        join(setDir('stable'), SHIPPED_IOS_APP_ICON.setFile),
+        join(app, SHIPPED_IOS_APP_ICON.bundleFile),
+      );
+      const receiptPath = join(work, 'channel-icon-receipt.json');
+      const seeded = {
+        channel: 'stable',
+        sourceSha: 'a'.repeat(40),
+        desktopBundleIcon: 'icons/icon.png',
+        desktopBundleIconSha256: 'b'.repeat(64),
+      };
+      writeFileSync(receiptPath, `${JSON.stringify(seeded)}\n`);
+      execFileSync(
+        process.execPath,
+        [
+          resolve(root, 'scripts/ios-channel-icons.mjs'),
+          'verify',
+          'stable',
+          '--app',
+          app,
+          '--receipt',
+          receiptPath,
+        ],
+        { cwd: root, stdio: 'pipe', windowsHide: true },
+      );
+      const merged = JSON.parse(readFileSync(receiptPath, 'utf8'));
+      expect(merged).toMatchObject(seeded);
+      expect(merged).toMatchObject({
+        iconSet: IOS_TESTFLIGHT_CHANNELS.stable.iosIconSet,
+        catalogMatchesChannelSet: true,
+        shippedIcon: SHIPPED_IOS_APP_ICON.bundleFile,
+        shippedIconPixelsMatchChannelSet: true,
+      });
+      expect(merged.iconSetSha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(merged.shippedIconSha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(Object.keys(merged)).not.toContain('icon');
+      expect(Object.keys(merged)).not.toContain('iconSha256');
+    });
   },
 );
 
@@ -306,6 +353,20 @@ describe('TestFlight delivery applies and verifies the channel icon set', () => 
       'iosTestFlightChannel(process.argv[1]).iosIconSet',
     );
     expect(overlay).toContain('test -d "src-desktop/$icon_set"');
+  });
+
+  it('names the overlay bundle.icon as the desktop master, not as the shipped icon', () => {
+    // The overlay's bundle.icon[0] never reaches the IPA. Seeded beside the
+    // iosIconSet*/shippedIcon* fields that verify adds, a bare `icon` /
+    // `iconSha256` reads as the shipped icon (#1781 review).
+    const overlay = named('Generate the exact channel identity overlay')
+      .run as string;
+    expect(overlay).toContain(
+      '"desktopBundleIcon":"%s","desktopBundleIconSha256":"%s"',
+    );
+    expect(overlay).toContain('shasum -a 256 "src-desktop/$icon"');
+    expect(overlay).not.toContain('"icon":');
+    expect(overlay).not.toContain('iconSha256');
   });
 
   it('refuses to upload a staged receipt whose derived fields are absent', () => {
