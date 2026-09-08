@@ -193,6 +193,31 @@ describe('outbound queue cross-tab convergence', () => {
     view.unmount();
   });
 
+  it('announces its own change to the other tabs', async () => {
+    const { storage } = countingStorage();
+    _setOutboundQueueStorage(storage);
+    // A sibling tab already listening, exactly as it would be in a second
+    // window. Created BEFORE the local mutation, or there would be nothing to
+    // deliver to.
+    const sibling = new FakeBroadcastChannel('station-outbound-queue');
+    const received: unknown[] = [];
+    sibling.addEventListener('message', (event) => received.push(event.data));
+
+    await outboundDispatch.enqueue({
+      clientTurnId: 'turn-this-tab-enqueued',
+      sessionId: 'session-a',
+      agentSlug: 'codex',
+      conversationId: 'conversation-a',
+      content: 'local',
+    });
+
+    // Without this the other tab's projection stays stale until it mutates the
+    // queue itself — the exact staleness the removed poll used to paper over.
+    expect(received).toHaveLength(1);
+
+    sibling.close();
+  });
+
   it('re-reads when a hidden tab becomes visible again', async () => {
     const { storage, calls, seedFromAnotherTab } = countingStorage();
     _setOutboundQueueStorage(storage);
