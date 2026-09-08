@@ -20,7 +20,9 @@ import {
   applyConfiguredLogLevel,
   createLogger,
   envLogLevelOverride,
+  installLoggerLineSink,
   invalidEnvLogLevelValue,
+  type LoggerLineSink,
   logStartupLogLevelDiagnostics,
   resolveLogLevel,
   setGlobalLogLevel,
@@ -595,5 +597,68 @@ describe('a log call never throws (station#2502 sibling: the ACP probe outage)',
   it('still renders a correct string message unchanged', () => {
     const logger = createLogger({ name: 'ordinary-logger', level: 'info' });
     expect(() => logger.warn('an ordinary message', { a: 1 })).not.toThrow();
+  });
+});
+
+/**
+ * The logger seam owns its own durable-line sink and `installServerLogSink`
+ * pushes into it; the logger no longer imports
+ * `services/infra/server-log-store.js` to pull the sink back out.
+ *
+ * The store tee itself is already well covered above — 'a module-scope logger
+ * created before boot lands in the store once installed' pins exactly the
+ * install-ordering case, and every store-tee assertion in this file goes red
+ * if `installServerLogSink` stops calling `installLoggerLineSink` (verified
+ * by injection: 19 failures). These two cases add what none of them assert:
+ * that a line logged with no sink installed neither throws nor is replayed
+ * once one arrives, and that the seam takes a plain structural sink with no
+ * server-log store in the graph at all.
+ */
+describe('the durable-line sink is injected into the logger seam', () => {
+  it('tees lines written after installServerLogSink and never replays lines written before it', async () => {
+    const directory = createTempDir();
+    // Created before any sink exists: the pre-install line must not throw and
+    // must not be replayed into the store once one arrives.
+    const logger = createLogger({ name: 'pre-install-logger', level: 'info' });
+    expect(() =>
+      logger.info('a line logged before any sink was installed'),
+    ).not.toThrow();
+
+    installServerLogSink({ directory });
+    logger.info('a line logged after the sink was installed');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const messages = readTodayLines(directory).map((line) => line.msg);
+    expect(messages).toContain('a line logged after the sink was installed');
+    expect(messages).not.toContain(
+      'a line logged before any sink was installed',
+    );
+  });
+
+  it('accepts any structural line sink, with no server-log store involved', () => {
+    const written: string[] = [];
+    const sink: LoggerLineSink = {
+      writeLine: (line) => {
+        written.push(line);
+      },
+    };
+    const logger = createLogger({
+      name: 'injected-sink-logger',
+      level: 'info',
+    });
+    logger.info('before the injected sink');
+    installLoggerLineSink(sink);
+    try {
+      logger.info('after the injected sink', { marker: 7 });
+    } finally {
+      installLoggerLineSink(undefined);
+    }
+    logger.info('after the injected sink was removed');
+
+    expect(written).toHaveLength(1);
+    const record = JSON.parse(written[0]) as Record<string, unknown>;
+    expect(record.msg).toBe('after the injected sink');
+    expect(record.marker).toBe(7);
+    expect(record.level).toBe('info');
   });
 });
