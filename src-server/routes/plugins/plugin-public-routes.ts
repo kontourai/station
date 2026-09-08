@@ -11,12 +11,14 @@ import {
 } from '../../services/plugins/plugin-grant-reconciliation.js';
 import {
   assertGrantablePermissions,
+  describePluginGrantState,
   getPermissionTier,
   getPluginGrants,
   grantPermissions,
   hasGrantOrThrow,
   PluginContentUnavailableError,
   PluginGrantsUnavailableError,
+  readPluginGrantRecord,
   readPluginGrantStateAsync,
   requiredPermissionsForManifest,
   revokeGrants,
@@ -452,11 +454,14 @@ export function registerPluginPublicRoutes(
     if (!manifest?.serverModule) {
       return c.json({ success: false, error: 'Plugin route not found' }, 404);
     }
+    // This preflight explains a missing grant. Module acquisition below owns
+    // the fresh content/grant authorization before any plugin code executes.
     try {
       if (
         !artifact ||
-        !(
-          await readPluginGrantStateAsync(projectHomeDir, name, artifact)
+        !describePluginGrantState(
+          readPluginGrantRecord(projectHomeDir, name),
+          artifact.digest,
         ).granted.includes('plugin.server')
       ) {
         return c.json(

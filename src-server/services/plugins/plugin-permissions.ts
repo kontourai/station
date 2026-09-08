@@ -858,7 +858,7 @@ export function readPluginGrantState(
           ? artifact.digest
           : null
         : pluginContentDigest(pluginsDirFor(projectHomeDir), pluginName);
-  return pluginGrantState(record, currentDigest);
+  return describePluginGrantState(record, currentDigest);
 }
 
 /** Reread grants after the yielding byte check so revocation during I/O wins. */
@@ -868,18 +868,20 @@ export async function readPluginGrantStateAsync(
   artifact: CapturedPluginPermissionArtifact,
 ): Promise<PluginGrantState> {
   const initial = readPluginGrantRecord(projectHomeDir, pluginName);
-  if (initial.permissions.length === 0) return pluginGrantState(initial, null);
+  if (initial.permissions.length === 0)
+    return describePluginGrantState(initial, null);
   const current =
     artifact.pluginId === pluginName &&
     (await (artifact.isCurrentAsync?.() ?? artifact.isCurrent()));
   const record = readPluginGrantRecord(projectHomeDir, pluginName);
-  return pluginGrantState(
+  return describePluginGrantState(
     record,
     current && record.permissions.length > 0 ? artifact.digest : null,
   );
 }
 
-function pluginGrantState(
+/** Inert presentation of a caller's observed bytes; invocation checks own fresh observation. */
+export function describePluginGrantState(
   record: PluginGrantRecord,
   currentDigest: string | null,
 ): PluginGrantState {

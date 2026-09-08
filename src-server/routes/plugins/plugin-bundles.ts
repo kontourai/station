@@ -61,7 +61,7 @@ export async function readPluginBundle(
       artifact.packageRoot,
       join(artifact.packageRoot, 'dist', file),
     );
-    if (!path || !(await artifact.isCurrentAsync())) return null;
+    if (!path) return null;
     const content = await readFile(path, 'utf8');
     return (await artifact.isCurrentAsync()) ? content : null;
   } catch {

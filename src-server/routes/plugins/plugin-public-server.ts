@@ -509,8 +509,10 @@ export async function acquirePluginPublicServerModule(
       const moduleUrl = `file://${modulePath}?mtime=${statSync(modulePath).mtimeMs}&generation=${generation}`;
       let cached = loadedPluginServerModules.get(cacheKey);
       if (cached?.moduleUrl !== moduleUrl) {
-        if (cached) await disposeCachedPluginServerModule(cacheKey, cached);
-        if (!(await authorizedAsync())) return null;
+        if (cached) {
+          await disposeCachedPluginServerModule(cacheKey, cached);
+          if (!(await authorizedAsync())) return null;
+        }
         if (
           globalPluginServerQuiescence > 0 ||
           (pluginServerQuiescence.get(cacheKey) ?? 0) > 0 ||

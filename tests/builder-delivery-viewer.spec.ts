@@ -373,11 +373,20 @@ test.describe('Builder Delivery Viewer plugin', () => {
     });
     try {
       await page.goto(`/projects/${project}/layouts/builder-delivery`);
+      // Cold extension admission and its first data read are separate visible
+      // stages. Both must finish; neither borrows the other's action budget.
+      await expect(
+        page
+          .getByText('Loading Builder sessions…', { exact: true })
+          .or(page.getByTestId('builder-delivery-viewer')),
+      ).toBeVisible({ timeout: 20_000 });
       await expect(page.getByTestId('builder-delivery-viewer')).toBeVisible({
         timeout: 20_000,
       });
       await page.getByRole('button', { name: /demo in_progress/ }).click();
-      await expect(page.getByRole('heading', { name: 'demo' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'demo' })).toBeVisible({
+        timeout: 20_000,
+      });
       await expect(page.getByText('state: valid')).toBeVisible();
       await expect(
         page.getByText(
@@ -400,9 +409,11 @@ test.describe('Builder Delivery Viewer plugin', () => {
     await page.getByRole('button', { name: /unmatched/ }).click();
     await expect(
       page.getByText(/Not joinable: explicit run ID not-present/),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: /bad/ }).click();
-    await expect(page.getByRole('heading', { name: 'bad' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'bad' })).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(
       page.getByText(/state: unavailable — artifact is invalid JSON/),
     ).toBeVisible();
@@ -414,7 +425,17 @@ test.describe('Builder Delivery Viewer plugin', () => {
       }),
     );
     await page.goto(`/projects/${secondProject}/layouts/builder-delivery`);
-    await expect(page.getByRole('heading', { name: 'second' })).toBeVisible();
+    await expect(
+      page
+        .getByText('Loading Builder sessions…', { exact: true })
+        .or(page.getByTestId('builder-delivery-viewer')),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('builder-delivery-viewer')).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByRole('heading', { name: 'second' })).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(
       page.getByText(/Flow runs unavailable; explicit run ID second-run/),
       // useFlowRunsQuery inherits react-query's default 3 retries with

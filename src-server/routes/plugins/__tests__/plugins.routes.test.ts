@@ -186,6 +186,20 @@ vi.mock('../../../services/plugins/plugin-permissions.js', () => ({
     recordedDigest: 'sha256:test',
     currentDigest: 'sha256:test',
   }),
+  readPluginGrantRecord: vi
+    .fn()
+    .mockReturnValue({
+      permissions: ['network'],
+      contentDigest: 'sha256:test',
+    }),
+  describePluginGrantState: vi.fn().mockReturnValue({
+    recorded: ['network'],
+    granted: ['network'],
+    withheld: [],
+    binding: 'bound',
+    recordedDigest: 'sha256:test',
+    currentDigest: 'sha256:test',
+  }),
   readPluginGrantStateAsync: vi.fn().mockResolvedValue({
     recorded: ['network'],
     granted: ['network'],

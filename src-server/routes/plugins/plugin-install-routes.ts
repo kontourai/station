@@ -31,10 +31,11 @@ import type { PluginInstallationHost } from '../../services/plugins/plugin-insta
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import { readPluginManifestFileWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import {
+  describePluginGrantState,
   getPermissionTier,
   observePluginGrantRevisions,
   PluginGrantsUnavailableError,
-  readPluginGrantStateAsync,
+  readPluginGrantRecord,
   requiredPermissionsForManifest,
 } from '../../services/plugins/plugin-permissions.js';
 import type { Logger } from '../../utils/logger.js';
@@ -187,10 +188,12 @@ export function registerPluginInstallRoutes(
               ? observation.git
               : undefined;
           const declared = requiredPermissionsForManifest(manifest);
-          const grantState = await readPluginGrantStateAsync(
-            projectHomeDir,
-            manifest.name,
-            catalog.artifact,
+          // Inventory is an inert description of the just-observed package.
+          // Project stored grants against that observation without rescanning;
+          // bundle delivery and every invocation recheck their own authority.
+          const grantState = describePluginGrantState(
+            readPluginGrantRecord(projectHomeDir, manifest.name),
+            catalog.artifact.digest,
           );
           const granted = grantState.granted;
           plugins.push({

@@ -168,6 +168,37 @@ describe('PluginRegistryGate', () => {
     },
   );
 
+  test.each(['ready', 'degraded'] as const)(
+    'first connection lets the initial load settle %s before deciding whether to retry',
+    async (settled) => {
+      mocks.connectionStatus = 'connecting';
+      mocks.reload.mockImplementation(async () => 'loading');
+      const view = render(
+        <PluginRegistryGate>
+          <main>Station shell</main>
+        </PluginRegistryGate>,
+      );
+      await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(1));
+      mocks.connectionStatus = 'connected';
+      view.rerender(
+        <PluginRegistryGate>
+          <main>Station shell</main>
+        </PluginRegistryGate>,
+      );
+      expect(mocks.reload).toHaveBeenCalledTimes(1);
+      act(() =>
+        setLoadStatus(
+          settled,
+          [],
+          settled === 'degraded' ? 'registry-unavailable' : undefined,
+        ),
+      );
+      await waitFor(() =>
+        expect(mocks.reload).toHaveBeenCalledTimes(settled === 'ready' ? 1 : 2),
+      );
+    },
+  );
+
   test('reloads on reconnect even when the outage-era attempt has not settled yet', async () => {
     // The reconnect can land while the offline attempt is still in flight.
     // Gating the reload on the SETTLED state loses it entirely: the transition

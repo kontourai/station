@@ -19,6 +19,7 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { DistributionProfileService } from '../../../services/plugins/distribution-profile-service.js';
 import { verifyPluginActivation } from '../../../services/plugins/plugin-activation-plan.js';
+import * as contentIntegrity from '../../../services/plugins/plugin-content-integrity.js';
 import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
 import { createLocalPluginInstallationService } from '../../../services/plugins/plugin-installation-local.js';
 import { readPluginManifestFileSync } from '../../../services/plugins/plugin-manifest-loader.js';
@@ -396,6 +397,55 @@ test('ordinary provider boot imports only ready journal selections and refuses p
   } finally {
     delete globals.__stationReadyProviderFactoryGate;
     await clearAll();
+  }
+});
+
+test('inventory projects grants from one fresh content scan and observes later revocation', async () => {
+  const f = await fixture();
+  await f.ready();
+  await grantPermissions(
+    f.home,
+    f.manifest.name,
+    ['plugin.server'],
+    capturePluginRuntimeArtifact(f.plugins, f.manifest.name, f.journal)!,
+  );
+  const app = new Hono();
+  registerPluginInstallRoutes(app, {
+    pluginsDir: f.plugins,
+    projectHomeDir: f.home,
+    agentsDir: join(f.home, 'agents'),
+    packageMcpJournal: f.journal,
+    logger,
+  });
+  const observed = vi.spyOn(
+    contentIntegrity,
+    'computePluginContentDigestAsync',
+  );
+  try {
+    const response = (await (await app.request('/')).json()) as {
+      plugins: unknown[];
+    };
+    expect(response.plugins).toContainEqual(
+      expect.objectContaining({
+        name: f.manifest.name,
+        hasBundle: true,
+        permissions: expect.objectContaining({ granted: ['plugin.server'] }),
+      }),
+    );
+    expect(observed).toHaveBeenCalledTimes(1);
+    await revokeGrants(f.home, f.manifest.name, ['plugin.server']);
+    observed.mockClear();
+    const next = (await (await app.request('/')).json()) as {
+      plugins: unknown[];
+    };
+    expect(next.plugins).toContainEqual(
+      expect.objectContaining({
+        permissions: expect.objectContaining({ granted: [] }),
+      }),
+    );
+    expect(observed).toHaveBeenCalledTimes(1);
+  } finally {
+    observed.mockRestore();
   }
 });
 
