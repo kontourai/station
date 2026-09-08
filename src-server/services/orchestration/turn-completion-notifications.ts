@@ -29,11 +29,13 @@
  * operation-level failure; the adapter observes any rejection that escapes it
  * without creating an unhandled promise or poisoning later notifications.
  */
+
 import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
 import { turnCompletionNotificationOps } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { NotificationService } from '../notifications/notification-service.js';
 import type { EventBus } from './event-bus.js';
 import type {
@@ -486,7 +488,7 @@ export function wireTurnCompletionNotifications(
           turnCompletionNotificationOps.add(1, { result: 'error' });
           logger.warn(
             'turn-completion: failed to schedule a push-on-completion notification',
-            { error: error instanceof Error ? error.message : String(error) },
+            { error: errorMessage(error) },
           );
         }
       });
@@ -573,7 +575,7 @@ export function wireInternalStopRedispatchFailureNotifications(
           turnCompletionNotificationOps.add(1, { result: 'error' });
           logger.warn(
             'internal-stop-redispatch-failed: failed to schedule a push-on-completion notification',
-            { error: error instanceof Error ? error.message : String(error) },
+            { error: errorMessage(error) },
           );
         }
       },

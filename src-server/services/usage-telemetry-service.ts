@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import { redactDeep } from '@kontourai/station-shared/redaction';
 import { usageTelemetryOutcomes } from '../telemetry/metrics.js';
+import { errorMessage } from '../utils/error-message.js';
 import type { Logger } from '../utils/logger.js';
 import { persistedRandomIdentifierHash } from './persisted-random-identifier.js';
 import {
@@ -270,7 +271,7 @@ export class UsageTelemetryService {
       if (error === undefined) this.options.logger.warn(message);
       else
         this.options.logger.warn(message, {
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
     } catch {
       /* optional diagnostics */

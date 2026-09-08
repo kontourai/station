@@ -47,6 +47,7 @@ import {
 } from '@kontourai/station-shared/station-home-schema';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { STATION_CAPABILITY_FLAGS } from '../../capabilities/station-capability-flags.js';
+import { sleep } from '../../utils/sleep.js';
 import { DevicePairingService } from './device-pairing-service.js';
 
 const SECURITY_DIRECTORY = 'security';
@@ -112,10 +113,6 @@ export class EnvironmentSecurityRecordError extends Error {
     super(message, options);
     this.name = 'EnvironmentSecurityRecordError';
   }
-}
-
-function sleep(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function isNodeError(error: unknown, code: string): boolean {

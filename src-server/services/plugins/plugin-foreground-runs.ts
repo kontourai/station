@@ -14,6 +14,7 @@ import {
 } from '@kontourai/station-contracts/plugin-foreground-work';
 import type { RunSummary } from '@kontourai/station-contracts/runs';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import type { ActionOperationActor } from '../operations/action-operation-service.js';
 import {
@@ -700,7 +701,7 @@ export function createPluginForegroundRuns(options: {
               'Plugin foreground run late observation unavailable',
               {
                 runId,
-                error: error instanceof Error ? error.message : String(error),
+                error: errorMessage(error),
               },
             );
           }
@@ -732,7 +733,7 @@ export function createPluginForegroundRuns(options: {
       } catch (error) {
         options.logger?.warn('Plugin foreground run observation unavailable', {
           runId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
         return;
       }

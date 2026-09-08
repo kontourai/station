@@ -12,6 +12,7 @@ import {
   isProviderInterruptTurnResult,
   type ProviderAdapterShape,
 } from '../../providers/adapter-shape.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { interruptibleTurnIdForEvents } from './session-lifecycle-service.js';
 
 /**
@@ -288,7 +289,7 @@ export class CooperativeStop {
         this.deps.logger.warn('Deferred user stop could not be applied', {
           provider: adapter.provider,
           threadId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       },
     );
@@ -454,7 +455,7 @@ export class CooperativeStop {
           this.deps.logger.warn('Engine did not acknowledge cooperative stop', {
             provider: adapter.provider,
             threadId,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           });
         })
         // A plugin's foreign thenable or even the logger itself can throw.

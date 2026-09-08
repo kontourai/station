@@ -7,11 +7,11 @@
  */
 
 import { join } from 'node:path';
+import { isRecord } from '../../utils/is-record.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   GrantsFileStore,
   GrantsStoreUnavailableError,
-  isPlainObject,
 } from '../plugins/grants-file-store.js';
 
 export interface FeaturePreviewDefinition {
@@ -55,10 +55,10 @@ export function featurePreviewStatePath(homeDir: string): string {
 }
 
 function stateProblems(value: unknown): string[] {
-  if (!isPlainObject(value)) return ['must be an object keyed by preview id'];
+  if (!isRecord(value)) return ['must be an object keyed by preview id'];
   const problems: string[] = [];
   for (const [id, entry] of Object.entries(value)) {
-    if (!isPlainObject(entry) || typeof entry.enabled !== 'boolean') {
+    if (!isRecord(entry) || typeof entry.enabled !== 'boolean') {
       problems.push(`${id}: must contain a boolean enabled value`);
     }
   }

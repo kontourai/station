@@ -1,4 +1,5 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { errorMessage } from '../../utils/error-message.js';
 
 /**
  * Batches streamed content deltas so one model token stops costing one of
@@ -402,7 +403,7 @@ export class DeltaCoalescer {
       this.logger.warn('Content delta could not be published', {
         method: event.method,
         threadId: event.threadId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
         ...(suppressed > 0
           ? { suppressedSincePreviousWarning: suppressed }
           : {}),

@@ -18,6 +18,7 @@ import type {
   ProviderSessionAdoptInput,
 } from '../../providers/adapter-shape.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type {
   AdoptionLedger,
   AdoptionReservation,
@@ -350,7 +351,7 @@ export class AttachedSessionAdoption {
       this.deps.logger.warn('Attached session adoption failed', {
         provider: context.source.provider,
         sourceThreadId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       if (
         idempotencyKey &&

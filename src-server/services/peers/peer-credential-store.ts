@@ -16,7 +16,10 @@ import {
 import { dirname, join } from 'node:path';
 import { parsePairingScope } from '@kontourai/station-contracts/environment-security';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLockAsync,
+  type FileMutationLock,
+} from '@kontourai/station-shared/lifecycle-events';
 
 /**
  * Outbound peer-credential store (archive#1123,
@@ -85,13 +88,6 @@ interface PeerCredentialDocument {
   peers: StoredPeerCredential[];
 }
 
-// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
-// so a contended acquisition yields the event loop; sync test fakes remain
-// assignable (awaiting a non-promise is a no-op).
-type PeerCredentialMutationLock = (
-  lockPath: string,
-) => (() => void | Promise<void>) | Promise<() => void | Promise<void>>;
-
 type PeerCredentialWriteOperations = {
   closeSync: typeof closeSync;
   fsyncDirectorySync: typeof fsyncDirectorySync;
@@ -112,7 +108,7 @@ const peerCredentialWriteOperations: PeerCredentialWriteOperations = {
 
 export interface PeerCredentialStoreOptions {
   /** Injectable only for deterministic cross-process mutation tests. */
-  acquireMutationLock?: PeerCredentialMutationLock;
+  acquireMutationLock?: FileMutationLock;
   /** Injectable only for durable-write fault-injection tests. */
   writeOperations?: Partial<PeerCredentialWriteOperations>;
 }
@@ -282,7 +278,7 @@ function validateDocument(value: unknown): PeerCredentialDocument {
 export class PeerCredentialStore {
   readonly #directory: string;
   readonly #file: string;
-  readonly #acquireMutationLock: PeerCredentialMutationLock;
+  readonly #acquireMutationLock: FileMutationLock;
   readonly #writeOperations: PeerCredentialWriteOperations;
 
   constructor(homeDir: string, options: PeerCredentialStoreOptions = {}) {

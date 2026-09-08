@@ -25,6 +25,7 @@
  * NEVER throws out of `listWorkItems`, so a project with no flow-agents
  * setup renders local-only behavior with zero errors.
  */
+
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
@@ -41,6 +42,7 @@ import type {
   IWorkItemProvider,
   WorkItemProjectContext,
 } from '../../providers/provider-interfaces.js';
+import { errorMessage } from '../../utils/error-message.js';
 
 const require = createRequire(import.meta.url);
 
@@ -289,7 +291,7 @@ export class FlowAgentsWorkItemProvider implements IWorkItemProvider {
       }
       return await this.listReadyWorkItems(context, settingsResult.settings);
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = errorMessage(error);
       this.logger?.warn('flow-agents work-item listing failed', {
         projectId: context.projectId,
         reason,

@@ -35,6 +35,7 @@ import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
 import type { EventStore } from './event-store.js';
@@ -1233,7 +1234,7 @@ export async function startRecoveredOrchestrationSession(options: {
           {
             provider: session.provider,
             threadId: session.threadId,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           },
         );
       }
@@ -1274,7 +1275,7 @@ export async function startRecoveredOrchestrationSession(options: {
     deps.eventStore?.upsertSession(nextSession);
     return nextSession;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     deps.logger.warn('Failed to recover provider session', {
       provider: session.provider,
       threadId: session.threadId,
@@ -1434,7 +1435,7 @@ export async function recoverOrchestrationSessions(options: {
         {
           provider: session.provider,
           threadId: session.threadId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         },
       );
     }

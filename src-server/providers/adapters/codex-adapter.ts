@@ -37,6 +37,7 @@ import {
   raceWithSignal,
   throwIfAborted,
 } from '../../utils/bounded-async.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import type {
   ProviderAdapterModelCatalog,
@@ -1358,7 +1359,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         );
       }
       (this.options.logger ?? console).warn?.(
-        `Codex app-home profile lookup failed; continuing with the global Codex config: ${error instanceof Error ? error.message : String(error)}`,
+        `Codex app-home profile lookup failed; continuing with the global Codex config: ${errorMessage(error)}`,
       );
       return undefined;
     }

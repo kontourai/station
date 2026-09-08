@@ -4,6 +4,7 @@ import {
   schedulerJobDuration,
   schedulerJobRuns,
 } from '../../telemetry/metrics.js';
+import { errorMessage as messageOf } from '../../utils/error-message.js';
 import type { NotificationService } from '../notifications/notification-service.js';
 import type {
   ScheduledTurnAdapter,
@@ -590,10 +591,6 @@ class SchedulerIndeterminateInvocationError extends Error {
     super(message);
     this.name = 'SchedulerIndeterminateInvocationError';
   }
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function observe(effect: () => void): void {

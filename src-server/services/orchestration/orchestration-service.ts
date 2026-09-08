@@ -152,6 +152,7 @@ import {
 } from '../../telemetry/metrics.js';
 import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
 import { type AgentPolicyService } from '../agents/agent-policy-service.js';
@@ -1620,7 +1621,7 @@ export class OrchestrationService {
         this.options.logger.warn('Session conversation query is unavailable', {
           intent: query.type,
           threadId: query.threadId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       },
     });
@@ -1736,7 +1737,7 @@ export class OrchestrationService {
       },
       reportUnavailable: (error) =>
         options.logger.warn('Conversation open resolution is unavailable', {
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         }),
     });
     this.flowPolicy = new FlowPolicySidecar({
@@ -1977,7 +1978,7 @@ export class OrchestrationService {
         // the `finally` below always runs.
         this.options.logger.warn(
           'Session recovery did not complete; attachment settles on whatever this process reached',
-          { error: error instanceof Error ? error.message : String(error) },
+          { error: errorMessage(error) },
         );
       })
       .finally(() => {
@@ -2023,7 +2024,7 @@ export class OrchestrationService {
           // rejection after attachment state has already settled.
           this.options.logger.warn(
             'Recovery-intent reconciliation did not complete after session attachment settled',
-            { error: error instanceof Error ? error.message : String(error) },
+            { error: errorMessage(error) },
           );
         }
         // archive#4080: after recovered sessions are tracked, so a
@@ -2035,7 +2036,7 @@ export class OrchestrationService {
         void this.interruptedTurns.consume().catch((error) => {
           this.options.logger.warn(
             'Interrupted-turn boundary consumption did not complete',
-            { error: error instanceof Error ? error.message : String(error) },
+            { error: errorMessage(error) },
           );
         });
       });
@@ -2427,7 +2428,7 @@ export class OrchestrationService {
         {
           threadId: input.threadId,
           agentSlug,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         },
       );
       return input;
@@ -2494,7 +2495,7 @@ export class OrchestrationService {
       // agent store is rare and loud, while a turn on the wrong account is
       // silent and unrecoverable.
       (this.options.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-        `Credential profile: could not read the agent's execution config, so the account it runs on is unknown: ${error instanceof Error ? error.message : String(error)}`,
+        `Credential profile: could not read the agent's execution config, so the account it runs on is unknown: ${errorMessage(error)}`,
       );
       throw new Error(
         "The agent's execution configuration could not be read, so Station cannot tell which account this session should use.",
@@ -2558,7 +2559,7 @@ export class OrchestrationService {
       this.deltaCoalescer.flushAll();
     } catch (error) {
       this.options.logger.warn('Final content delta flush failed at shutdown', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
     // archive#2959: never leave a watchdog timer outliving this service.
@@ -3806,7 +3807,7 @@ export class OrchestrationService {
             phase,
             commandId: receipt.commandId,
             threadId: receipt.threadId,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           }),
       },
       sessionState: {
@@ -4991,8 +4992,7 @@ export class OrchestrationService {
                     provider: adapter.provider,
                     threadId: turnInput.threadId,
                     turnId: result.turnId,
-                    error:
-                      error instanceof Error ? error.message : String(error),
+                    error: errorMessage(error),
                   },
                 );
               }
@@ -5012,7 +5012,7 @@ export class OrchestrationService {
                   provider: adapter.provider,
                   threadId: turnInput.threadId,
                   turnId: result.turnId,
-                  error: error instanceof Error ? error.message : String(error),
+                  error: errorMessage(error),
                 },
               );
             }
@@ -5040,7 +5040,7 @@ export class OrchestrationService {
                 provider: adapter.provider,
                 threadId: turnInput.threadId,
                 turnId: result.turnId,
-                error: error instanceof Error ? error.message : String(error),
+                error: errorMessage(error),
               });
             }
             try {
@@ -5522,7 +5522,7 @@ export class OrchestrationService {
       };
       this.persistReceipt(failedReceipt);
       throw new OrchestrationCommandDispatchError(
-        error instanceof Error ? error.message : String(error),
+        errorMessage(error),
         failedReceipt,
         undefined,
         'persisted',
@@ -5894,7 +5894,7 @@ export class OrchestrationService {
         }
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorMessage(error);
       if (controller.signal.aborted || !this.isAdapterCurrent(adapter)) return;
       restart = true;
       // A SQLITE_BUSY from the loop's own event-store work is not an agent
@@ -5958,10 +5958,7 @@ export class OrchestrationService {
             {
               provider: adapter.provider,
               threadId,
-              error:
-                surfacingError instanceof Error
-                  ? surfacingError.message
-                  : String(surfacingError),
+              error: errorMessage(surfacingError),
             },
           );
         }
@@ -6001,7 +5998,7 @@ export class OrchestrationService {
       this.options.logger.warn('Usage pricing snapshot capture failed', {
         provider: event.provider,
         model,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return event;
     }
@@ -6150,7 +6147,7 @@ export class OrchestrationService {
     } catch (error) {
       this.options.logger.warn('Failed to read adapter prerequisites', {
         provider: adapter.provider,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return [];
     }
@@ -6277,7 +6274,7 @@ export class OrchestrationService {
     this.options.logger.warn(`Failed to discard abandoned ${resource}`, {
       provider: reservation.provider,
       threadId: reservation.targetThreadId,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     });
   }
 

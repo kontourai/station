@@ -34,7 +34,10 @@ import { isPlainJsonObject } from '@kontourai/station-contracts/channel-assuranc
 import { findChannelForbiddenKeys } from '@kontourai/station-contracts/channel-log';
 import { resolveAnswerShareState } from '@kontourai/station-shared/answer-share-projection';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLockAsync,
+  type FileMutationLock,
+} from '@kontourai/station-shared/lifecycle-events';
 
 /**
  * Answer-share store (archive#1423) — the durable half of Station's first
@@ -385,24 +388,17 @@ export interface AnswerShareStoreOptions {
   now?: () => number;
   maxRecords?: number;
   /** Injectable only for deterministic cross-process mutation tests. */
-  acquireMutationLock?: AnswerShareMutationLock;
+  acquireMutationLock?: FileMutationLock;
   /** Injectable only for durable-write fault-injection tests. */
   writeOperations?: Partial<AnswerShareWriteOperations>;
 }
-
-// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
-// so a contended acquisition yields the event loop; sync test fakes remain
-// assignable (awaiting a non-promise is a no-op).
-type AnswerShareMutationLock = (
-  lockPath: string,
-) => (() => void | Promise<void>) | Promise<() => void | Promise<void>>;
 
 export class AnswerShareStore {
   readonly #directory: string;
   readonly #file: string;
   readonly #now: () => number;
   readonly #maxRecords: number;
-  readonly #acquireMutationLock: AnswerShareMutationLock;
+  readonly #acquireMutationLock: FileMutationLock;
   readonly #writeOperations: AnswerShareWriteOperations;
 
   constructor(options: AnswerShareStoreOptions) {

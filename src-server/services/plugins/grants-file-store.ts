@@ -74,6 +74,7 @@ import { dirname } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { pluginGrantsStoreCorruption } from '../../telemetry/metrics.js';
+import { isRecord } from '../../utils/is-record.js';
 import { createLogger } from '../../utils/logger.js';
 import {
   isReservedObjectKey,
@@ -124,12 +125,6 @@ export interface GrantsFileStoreOptions<T extends Record<string, unknown>> {
     cause: unknown,
   ) => GrantsStoreUnavailableError;
   emptyValue: T;
-}
-
-export function isPlainObject(
-  value: unknown,
-): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -208,7 +203,7 @@ export class GrantsFileStore<T extends Record<string, unknown>> {
     } catch (error) {
       throw this.reportCorruption('corrupt JSON', error);
     }
-    if (isPlainObject(value)) {
+    if (isRecord(value)) {
       const reserved = Object.keys(value).filter((key) =>
         isReservedObjectKey(key),
       );

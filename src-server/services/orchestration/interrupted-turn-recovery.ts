@@ -6,6 +6,7 @@ import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-even
 // different depth would silently get the REAL resolver and red the
 // delegation test — the T12 failure mode in a non-metrics guise.
 import { resolveConversationTranscriptSource } from '../../runtime/conversation/conversation-transcript-source.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore } from './event-store.js';
 
 /** Narrow structural logger: this module warns, never debugs. */
@@ -272,7 +273,7 @@ export class InterruptedTurnRecovery {
               {
                 threadId: record.threadId,
                 agentSlug,
-                error: error instanceof Error ? error.message : String(error),
+                error: errorMessage(error),
               },
             );
           }
@@ -355,7 +356,7 @@ export class InterruptedTurnRecovery {
           'Interrupted-turn banner failed; leaving the boundary row for the next boot',
           {
             threadId: record.threadId,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           },
         );
       }
