@@ -125,10 +125,10 @@ jobs:
             const hasSuccessfulJob = jobs.some((job) => job.conclusion === 'success');
             const hasSkippedJob = jobs.some((job) => job.conclusion === 'skipped');
             if (workflowName === 'Nightly') {
-              // Recovery and the unused half of the reusable iOS workflow
-              // are intentionally skipped even in a completed Nightly.
-              // Require the terminal delivery jobs instead of treating those
-              // expected skips as missing delivery evidence.
+              // The incomplete-cohort receipt job and the unused half of the
+              // reusable iOS workflow are intentionally skipped even in a
+              // completed Nightly. Require the terminal delivery jobs instead
+              // of treating those expected skips as missing delivery evidence.
               const requiredJobs = [
                 '3 · Publish native cohort / Record ledger and markers',
                 '3 · Publish CLI to npm nightly',

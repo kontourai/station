@@ -1,5 +1,65 @@
 [
   {
+    "timestampUtc": "2026-09-08T16:34:52Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2442.4",
+    "sha": "9ef6da41656621fb1c4b7b8fca1e528521df127e",
+    "artifactBuiltAt": "2026-09-08T15:57:01.936Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34247229018",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt partial",
+    "notes": [
+      "ios: TestFlight delivery failure (run 34247229018)",
+      "macos: NOT_VERIFIED (macos provider outcome unknown: unresolved:run:34247229018:macos-state-absent:failure (the provider effect may already be live))"
+    ],
+    "changelog": {
+      "previousSha": "f1073fa4cefe4f46a58409e7cfd493f2d6d29228",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": "Changelog slice omitted: previous ship SHA f1073fa is not reachable in this repository's history, so no commit range exists to derive.",
+      "commitCount": 0
+    }
+  },
+  {
+    "timestampUtc": "2026-09-08T16:28:03Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2442.34247229018",
+    "sha": "9ef6da41656621fb1c4b7b8fca1e528521df127e",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34247229018",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2442.34247229018 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "92b5e7b30978b0c40c4d5c1424662f6e7e8900b5",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#1778](https://github.com/kontourai/station/pull/1778) fix(release): derive TestFlight internal-group membership instead of posting it (#1777)"
+        ],
+        "ci": [
+          "[#1779](https://github.com/kontourai/station/pull/1779) ci(nightly): publish Android and macOS per platform with a disclosed-partial receipt (#1774)",
+          "[#1775](https://github.com/kontourai/station/pull/1775) ci(nightly): deliver iOS beside the native cohort, not inside it (#1774)"
+        ],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
     "timestampUtc": "2026-09-08T14:27:53Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2442.34234368088",

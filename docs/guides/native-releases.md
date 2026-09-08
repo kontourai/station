@@ -118,45 +118,104 @@ ref, saved only from `main`, #1455).
 
 Phase two, `nightly-native-cohort.yml`, needs the source gate, the exact-SHA
 full-regression receipt, and phase one, and receives the reserved identity as
-inputs. It admits the staged bytes against their stage receipts, promotes
-Android first, then the existing rolling macOS prerelease, and performs a
-protected provider/attestation verification before either rolling Android
-marker or deploy-ledger entry advances. iOS delivery is independent of that
-Android/macOS chain (#1774): from the same admission and fence, the cohort
-uploads the already-audited iOS package to TestFlight from the same run's
-staged bytes (`testflight-delivery.yml` in `delivery: upload` mode, which
-never rebuilds). A TestFlight failure reddens the Nightly run and opens the
-`main-health` tracker, and its outcome is disclosed as an `ios:` note on both
-`nightly-android` and `nightly-desktop` ledger rows, but it never blocks
-Android/macOS finality, the ledger, the marker, or fence removal, and it never
-writes the recovery lock. The iOS matrix cell keeps `NOT_VERIFIED` evidence
-until a processed TestFlight channel receipt exists (#1016).
-Immediately after admission, an annotated,
-content-bound `refs/tags/nightly-promotion-fence` is created from the exact
-plan and admission; it remains through both provider promotions and is removed
-only as the final successful durable-completion step after final attestation,
-both ledger entries, and exact Android-marker readback. Planning validates and
-blocks on any earlier valid promotion fence, and Android revalidates the live
-fence immediately before Play. A missing credential, ambiguous provider result,
-verifier failure, or post-finalization durable-recording failure creates the
-authoritative annotated `refs/tags/nightly-recovery-lock`; its tag message is
-the canonical, content-bound recovery receipt. The uploaded receipt is a
-convenience copy, not the authority. Planning dereferences and validates the
-tag before allocating an Android version, so it fails closed until an owner
-reconciles the provider/final-attestation/app-token/ledger/tag facts and
-explicitly removes the lock; automation never clears it. Recovery records the
-promotion-fence ref/outcome but never deletes the fence, so a failed recovery
-lock write still leaves the original pre-effect fence blocking the next plan.
+inputs. It admits the staged bytes against their stage receipts, creates the
+promotion fence, and then publishes **per platform** (#1774): Android (Play
+internal), the rolling macOS prerelease, and the already-audited iOS package
+(`testflight-delivery.yml` in `delivery: upload` mode, which never rebuilds)
+each run from that one admission and fence, in parallel, and none of them
+waits on or is withheld by another's provider outcome. Each Android/macOS job
+begins its own promotion state from the admission and records exactly its own
+provider claim — `reported_success` from a provider readback, or `unknown`
+with the run reference when its provider step did not succeed — as a
+per-platform state artifact.
+
+The protected verifier (`protected-finalize`) runs whenever at least one of
+Android/macOS published. It joins both platforms' own state files into one
+verification candidate (a platform that never retained its state is joined as
+an explicit `unknown` claim, never inferred), observes the provider of every
+platform that reported success — Play track and AAB identity for Android;
+release assets, rolling tag, updater signature and manifest for macOS — and
+emits the attested final receipt. That receipt's `state` is derived from what
+was observed: `complete` when every required platform was verified as
+published, `partial` when only a subset was, and its `platforms` map names
+each platform `complete` (with its provider), `NOT_VERIFIED`, or
+`NOT_PUBLISHED`, the last two with the reason from that platform's own
+claim. The distinction is derived from the claim, not chosen: the provider
+effect (Play upload; release assets and the `nightly-desktop` tag move)
+precedes the claim step, so a job that ran and whose outcome is unresolved
+(`unknown`, or no state left behind) is `NOT_VERIFIED` — its build may
+already be served — and only a job that never ran (`not_attempted`) is
+`NOT_PUBLISHED`. A platform can be `complete` only when the receipt carries
+its provider observation, and an unverified platform never carries one. A
+partial cohort is a disclosed outcome, not an error the other platform pays
+for.
+
+Recording (`record-native-completion`) verifies the final receipt's
+attestation, then writes one deploy-ledger row per platform the receipt
+verified as published, with `native cohort final receipt <state>` in the gate
+column and, on every row it writes, a note per `NOT_VERIFIED` or
+`NOT_PUBLISHED` platform and an `ios:` note carrying the TestFlight job
+result (iOS has no ledger channel of its own). The rolling Android marker `refs/tags/nightly` moves only when the
+receipt says Android published; macOS binds its own `nightly-desktop` tag in
+its publishing job. A night that published macOS but not Android therefore
+leaves `nightly` behind, and the next plan's decide step rebuilds the cohort.
+A TestFlight failure reddens the Nightly run and opens the `main-health`
+tracker, but never blocks Android/macOS finality, the ledger, or the marker.
+The iOS matrix cell keeps `NOT_VERIFIED` evidence until a processed TestFlight
+channel receipt exists (#1016).
+
+Immediately after admission, an annotated, content-bound
+`refs/tags/nightly-promotion-fence` is created from the exact plan and
+admission, and the Android and macOS publishing jobs revalidate the live
+fence immediately before their provider effect (the iOS delivery workflow
+does not read it). Planning fails closed on any earlier valid fence: it means
+a prior run that had provider effects in flight did not reach its end. The
+fence is cleared by the terminal `clear-promotion-fence` job at the end of
+every run whose fence job ran — whether that job succeeded or created the
+ref and then failed its own readback — whatever the platforms' outcomes: it
+re-asserts the exact fence object when the ref exists, deletes it, and
+confirms the 404 (a 404 on the first read means no fence was created and
+there is nothing to clear). A disclosed partial night therefore never blocks
+the next one. Only a cancelled run, or a run whose clear job itself failed,
+leaves the fence standing for an owner to inspect and remove; that failure is
+disclosed in the recovery receipt's `fence` block.
+
+When any of the Android/macOS publish, finalize, record, or fence-clear jobs
+did not succeed, `record-native-recovery` uploads a content-bound
+`native-cohort-recovery.json` receipt (`state: incomplete`) disclosing every
+job result, each platform's own recorded claim, job result, and derived
+state (`REPORTED`, `NOT_VERIFIED`, `NOT_PUBLISHED`), the fence outcome, and
+the digests of every evidence file the run left behind. It writes no ref.
+`refs/tags/nightly-recovery-lock` is an owner-placed halt only: automation
+never creates it, and planning dereferences and validates it
+(`assert-recovery-tag-object`) and fails closed while it exists. The
+validator requires the tag message to be the receipt's canonical JSON byte
+for byte, and `git tag -m` appends a newline, so an owner halting future
+Nightlies after an incomplete night creates the tag from a file with
+verbatim cleanup:
+
+```sh
+node scripts/release-cohort-workflow.mjs canonical-recovery-message native-cohort-recovery.json > lock-message.json
+git tag -a --cleanup=verbatim -F lock-message.json nightly-recovery-lock <source sha>
+git push origin refs/tags/nightly-recovery-lock
+```
+
+and removes the tag explicitly when done; without it, the next Nightly plans
+normally.
+
 macOS staging passes `--overlap-notarization`, so the two `notarytool submit
 --wait` waits run concurrently: the Nightly disk image encloses a signed but
 not-yet-stapled application, whose own ticket Gatekeeper resolves online, while
 the disk image and the updater archive's application both carry stapled
 tickets. Preview and stable releases keep the serial staple-then-package order,
 so an application copied out of one of their disk images validates offline.
-The independently published CLI remains outside this cohort. The Nightly Android and macOS matrix cells have
-`requiredForPromotion: true` and an atomic cohort availability policy; this is
-only an available configured subset, and fleet/CLI completion remains
-`NOT_VERIFIED`.
+The independently published CLI remains outside this cohort. The Nightly
+Android and macOS matrix cells carry `requiredForPromotion: true` and the
+`per-platform-native-cohort` availability policy; both are invariants
+`scripts/release-platform-matrix.mjs` asserts for those two cells so a matrix
+edit cannot silently demote either, not properties the cohort derives at
+run time. This is only an available configured subset, and fleet/CLI
+completion remains `NOT_VERIFIED`.
 
 ## Nightly fleet staging
 
