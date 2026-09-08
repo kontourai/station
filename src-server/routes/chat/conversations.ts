@@ -71,7 +71,7 @@ import type { Logger } from '../../utils/logger.js';
 import {
   publicAgentIdFromRuntimeKey,
   runtimeAgentKey,
-} from '../agents/runtime-agent-identity.js';
+} from '../../services/agents/runtime-agent-identity.js';
 import {
   contextActionSchema,
   conversationUpdateSchema,

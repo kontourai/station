@@ -51,7 +51,7 @@ import {
 } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
-import { publicIdentityAgentSetView } from '../../routes/agents/runtime-agent-identity.js';
+import { publicIdentityAgentSetView } from '../../services/agents/runtime-agent-identity.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import {

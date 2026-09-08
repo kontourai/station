@@ -39,7 +39,7 @@ import {
   NativeInvocationPartialError,
   NativeInvocationStorageUnavailableError,
 } from './native-invocation.js';
-import { runtimeAgentKey } from './runtime-agent-identity.js';
+import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 
 function nativeInvocationErrorResponse(
   ctx: RuntimeContext,

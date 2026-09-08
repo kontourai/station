@@ -15,7 +15,7 @@ import { controlActions } from '../../telemetry/metrics.js';
 import { isAuthError } from '../../utils/auth-errors.js';
 import { errorMessage } from '../schemas/schemas.js';
 import { executeNativeInvocation } from './native-invocation.js';
-import { runtimeAgentKey } from './runtime-agent-identity.js';
+import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 
 interface ToolResult {
   content?: Array<{ text?: string }>;

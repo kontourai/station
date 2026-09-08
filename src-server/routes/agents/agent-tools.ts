@@ -18,7 +18,7 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
-import { runtimeAgentKey } from './runtime-agent-identity.js';
+import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 
 type ToolWithDescription = { description?: string; [key: string]: any };
 
