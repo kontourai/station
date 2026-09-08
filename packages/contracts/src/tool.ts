@@ -71,7 +71,11 @@ export interface ToolDef {
   transport?: 'stdio' | 'sse' | 'streamable-http';
   command?: string;
   args?: string[];
+  /** Resolved subprocess working directory for a live stdio definition. */
+  cwd?: string;
   endpoint?: string;
+  /** Literal package-declared remote headers; never a secret mechanism. */
+  headers?: Record<string, string>;
   env?: Record<string, string>;
   /**
    * Station-owned references to secret bindings for a stdio MCP child. Values

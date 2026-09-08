@@ -1,0 +1,4 @@
+{
+  "name": "Portable Author Note",
+  "prompt": "Help the user turn supplied notes into a concise brief. Preserve stated facts, distinguish assumptions, and identify missing information. Ask before adding unsupported claims."
+}

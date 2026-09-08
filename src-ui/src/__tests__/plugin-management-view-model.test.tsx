@@ -170,7 +170,9 @@ describe('usePluginManagementViewModel', () => {
       error: null,
     });
     mocks.projects = [];
-    mocks.addLayoutFromPlugin.mockReset().mockResolvedValue(undefined);
+    mocks.addLayoutFromPlugin
+      .mockReset()
+      .mockResolvedValue({ slug: 'getting-started' });
     mocks.setLayout.mockReset();
   });
 
@@ -201,6 +203,63 @@ describe('usePluginManagementViewModel', () => {
       });
       expect(mocks.setLayout).toHaveBeenCalledWith('demo', 'getting-started');
       expect(result.current.layoutAssignment).toBeNull();
+    });
+
+    test('opens the newly created copy when adding the same layout again', async () => {
+      mocks.projects = [{ slug: 'demo', name: 'Demo' }];
+      mocks.addLayoutFromPlugin
+        .mockResolvedValueOnce({ slug: 'getting-started' })
+        .mockResolvedValueOnce({ slug: 'getting-started-2' });
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await act(async () => {
+        await result.current.addPluginLayout(starter);
+      });
+      await act(async () => {
+        await result.current.addPluginLayout(starter);
+      });
+      expect(mocks.setLayout).toHaveBeenNthCalledWith(
+        1,
+        'demo',
+        'getting-started',
+      );
+      expect(mocks.setLayout).toHaveBeenNthCalledWith(
+        2,
+        'demo',
+        'getting-started-2',
+      );
+    });
+
+    test('opens the first project actual created copy after a multi-project add', async () => {
+      mocks.projects = [
+        { slug: 'demo', name: 'Demo' },
+        { slug: 'other', name: 'Other' },
+      ];
+      mocks.addLayoutFromPlugin
+        .mockResolvedValueOnce({ slug: 'getting-started-2' })
+        .mockResolvedValueOnce({ slug: 'getting-started-5' });
+      const { result } = renderHook(() => usePluginManagementViewModel());
+      await act(async () => {
+        await result.current.addPluginLayout(starter);
+      });
+      act(() => {
+        result.current.toggleProjectSelection('demo', true);
+        result.current.toggleProjectSelection('other', true);
+      });
+      await act(async () => {
+        await result.current.addLayoutToProjects();
+      });
+      expect(mocks.addLayoutFromPlugin).toHaveBeenNthCalledWith(1, {
+        projectSlug: 'demo',
+        plugin: starter.name,
+      });
+      expect(mocks.addLayoutFromPlugin).toHaveBeenNthCalledWith(2, {
+        projectSlug: 'other',
+        plugin: starter.name,
+      });
+      expect(mocks.setLayout).toHaveBeenCalledExactlyOnceWith(
+        'demo',
+        'getting-started-2',
+      );
     });
 
     test('asks which project when there is more than one, and adds nothing yet', async () => {
@@ -766,6 +825,8 @@ describe('usePluginManagementViewModel', () => {
     expect(mocks.installMutate.mock.calls[0][0]).toEqual({
       source: '/tmp/network-kit',
       skip: [],
+      dataPolicy: 'preserve',
+      expectedInstallation: undefined,
       consent: {
         permissions: ['navigation.dock', 'network.fetch'],
         contentDigest: 'sha256:reviewed',

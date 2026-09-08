@@ -914,6 +914,57 @@ const { mutate } = usePluginPreviewMutation();
 mutate('https://github.com/org/my-plugin.git');
 ```
 
+### Retained plugin recovery
+
+`usePluginRecoveryPreviewQuery(name, config?)` reads the retained selection through
+`GET /api/plugins/:name/recovery-preview`. `requestPluginRecoveryPreview(name)`
+provides the same read without a hook. The React-free client entry exports
+`previewPluginRecovery(apiBase, name, options?)` and
+`recoverPlugin(apiBase, name, input, options?)`; use the normal Station credential
+and origin options. No local paths or internal runtime imports are required.
+
+The preview carries the exact installation, retained content digest, opaque
+`recoveryRevision`, current `grantRevision`, permission review, skipped components,
+and dependency installation/consent rows. These are review preconditions, not
+permission grants. Show the review and obtain an explicit decision before calling
+`usePluginRecoveryMutation()`. Its input is `{ name, recoveryRevision, consent }`;
+recovery consent requires the fresh grant revision, including each dependency
+approval. Never derive approval merely from a cached preview or retry an old
+consent automatically.
+
+```ts
+import { previewPluginRecovery, recoverPlugin } from '@kontourai/station-sdk/client';
+
+const preview = await previewPluginRecovery(apiBase, name, requestOptions);
+// Present preview.permissions and preview.dependencies in your application's
+// review UI. Continue only with the operator's explicit selected permissions.
+const result = await recoverPlugin(apiBase, name, {
+  recoveryRevision: preview.recoveryRevision,
+  consent: {
+    contentDigest: preview.contentDigest,
+    grantRevision: preview.grantRevision,
+    permissions: operatorDecision.permissions,
+    dependencies: preview.dependencies.map(({ id }) => id),
+    dependencyApprovals: preview.dependencies.map(({ id, consent }) => ({
+      ...consent, id,
+      permissions: operatorDecision.dependencies[id],
+    })),
+  },
+}, requestOptions);
+// A 202 receipt with configurationActivation.status === 'pending' is retained
+// work awaiting activation. It is not completed installation or a retry signal.
+```
+
+Recovery continues retained bytes and their data scope; it does not fetch missing
+dependencies or adopt unrelated installations. A changed selection/decision yields
+HTTP 409; unavailable grant evidence can yield 503. Surface the error and require
+a fresh preview and decision. `PluginRecoveryResult` preserves the existing
+`PluginInstallResult` plus the acceptance-time `configurationActivation` receipt.
+The mutation disables retries and refreshes plugin, recovery, layout, Agent, and
+Project queries after an accepted response, including pending activation. A network
+failure does not prove that the server had no effect; inspect current state before
+asking for another recovery decision.
+
 ### `usePluginUpdateMutation()`
 
 Updates an installed plugin. Invalidates plugins cache on success.
@@ -1639,6 +1690,14 @@ are an explicit host contract, not a global replacement for authentication.
 
 Query factory for imperative fetching (e.g. in slash commands). Returns React Query config objects.
 
+Successful Agent detail reads infer `EnrichedAgentProjection`; tool reads retain
+an `unknown[]` payload for callers to narrow. Conversation list factories accept
+the existing array or `{ items }` response forms, and provider factories infer
+`OrchestrationProviderSummary[]`. These envelope types work in Node and browser
+consumers without relying on ambient `Response.json()` returning `any`. They do
+not add payload validation; conversation statistics keep their existing runtime
+parser, and HTTP status/error handling is unchanged.
+
 ```ts
 agentQueries.agent(agentSlug)                        // GET /api/agents/:slug
 agentQueries.tools(agentSlug)                        // GET /agents/:slug/tools
@@ -1824,6 +1883,112 @@ It is intentionally separate from `requestAuthority`: a valid authenticated
 recovery may advance credential generation while its host binding remains live.
 Ordinary unscoped SDK calls do not gain a host binding requirement.
 
+### Package host actions
+
+Import `useWorkspacePaneHostActionsQuery` and `useWorkspacePaneHostActionMutation`
+from `@kontourai/station-sdk/workspace-pane`. The query projects a Project's
+installed package actions and exact installation-bound available/default Agents.
+The mutation accepts the package id, opaque installation generation, opaque
+action key, and an optional explicit Agent reference from that package's
+available set. Fixed action bindings always take precedence. There are no
+physical package paths in this API.
+
+The portable client exports `getWorkspacePaneHostActions`,
+`prepareWorkspacePaneHostAction`, and `executeWorkspacePaneHostAction` from
+`@kontourai/station-sdk/client`. Preparation returns a short-lived, actor- and
+Project-bound one-shot ticket. Execution consumes it before any provider work.
+Do not store or log tickets, and never retry execution automatically. An
+`indeterminate` result means work may have started; use existing Activity and
+conversation evidence to inspect it. An accepted result carries distinct
+conversation, execution-session, and provider-turn identities.
+
+For an external client, obtain the Station API credential through the deployment's
+existing authentication flow and pass it to all three calls. Keep `apiBase`,
+Project, and credential fixed for the operation. This function runs a named
+installed action using its authored default or fixed Agent; it does not select
+the first available Agent:
+
+```ts
+import {
+  getWorkspacePaneHostActions,
+  prepareWorkspacePaneHostAction,
+  executeWorkspacePaneHostAction,
+} from '@kontourai/station-sdk/client';
+
+export async function runPackageAction(
+  apiBase: string,
+  projectSlug: string,
+  credential: string,
+  pluginId: string,
+  actionId: string,
+) {
+  const options = { headers: { Authorization: `Bearer ${credential}` } };
+  const catalog = await getWorkspacePaneHostActions(apiBase, projectSlug, options);
+  const contribution = catalog.contributions.find(
+    ({ projection }) => projection.owner.pluginId === pluginId,
+  );
+  const action = contribution?.projection.actions.find(({ id }) => id === actionId);
+  if (!contribution || contribution.reason || action?.availability !== 'available') {
+    throw new Error('Review the installed package and its Project Agent configuration.');
+  }
+  const prepared = await prepareWorkspacePaneHostAction(apiBase, projectSlug, {
+    ...contribution.projection.owner,
+    actionKey: action.key,
+  }, options);
+  if (prepared.state === 'unavailable') return prepared;
+  return executeWorkspacePaneHostAction(apiBase, projectSlug, prepared.ticket, options);
+}
+```
+
+Render an `unavailable` reason for the user to resolve, and expose the returned
+Session/conversation identities for an `accepted` result. Treat a thrown catalog
+or preparation error as an unavailable operation; do not downgrade to an ordinary
+chat launch. For `indeterminate`, direct the user to Activity without calling
+this function again automatically. Catalog availability is a display snapshot;
+preparation and execution repeat authorization against the current installation.
+
+Host actions require the package's current `agents.invoke` permission. They use
+captured Project and Agent authority at provider invocation and cannot substitute
+an ambient Agent, override a fixed action, or revive a retired installation.
+Host actions support native Station Agents and externally connected Agents in shared or provisioned Project worktrees. Native execution preserves the existing configured Agent and model; a private relay capability verifies its runtime generation and repeats admission immediately before the native model call. Canonical provisioning mints a private exact Session/Project/CWD binding. The native relay carries that Session directory into Project context, Bash children, and relative file operations; explicit MCP resource roots retain their configured meaning.
+
+A host-created Session retains server-stamped `workspacePaneHostAction` metadata:
+package id, action id, and opaque installation generation. These coordinates
+survive completion and package removal alongside the existing Session command
+receipts. Public metadata/options cannot forge this reserved field; callers
+receive the existing client-origin and principal attribution as well.
+
+Host action reads and mutations accept the standard `ApiRequestScope`/client
+request options so the preparation and execution stay on the same Station
+and authority. The mutation refreshes canonical Session and conversation
+inventory queries before exposing its result. In Station's host UI, **Open
+conversation** uses canonical resolution and hydration; **View result** stays
+anchored to the execution Session returned by this invocation. A removed Agent
+falls back to read-only evidence, never to another default Agent.
+
+## Package lifecycle results
+
+`listPlugins` also reports optional `installationReadiness`: `ready`, `pending`
+(with `recovery: "review"`), or `unavailable`. Absence preserves compatibility
+with older servers; it is not a new readiness proof. Keep pending rows visible,
+but do not load their bundles or enable their actions. The server sets
+`hasBundle: false` until readiness is established. Project Pane availability
+uses `installation-pending` or `installation-unavailable` diagnostics, separate
+from distribution-policy disablement. Readiness notifications refresh the
+Project Pane and host-action catalogs as well as the installed-plugin list.
+
+`listPlugins` includes optional `retainedOnRemoval` metadata for packages using
+retained code generations. Normal package updates keep their stable data
+scope. `usePluginInstallMutation` accepts optional `dataPolicy`: `preserve`
+is the default; an explicit `retain-and-reset` starts a new data scope while
+retaining the previous scope. The latter is a reset choice, not a claim of
+state-preserving update. The host preview exposes `existingDataScope` so the
+first-party confirmation can explain the choice before submitting it.
+
+Removal success means future contributions are withdrawn. A retained package
+returns lifecycle metadata with `reclamation: not-proven`; the UI must not say
+its bytes or external effects were deleted. See the
+[installation lifecycle](../design/plugin-installation-lifecycle.md).
 ### Inspect a learning source
 
 `observeLearningSource(apiBase, reference, options?)` is available from
