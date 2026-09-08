@@ -29,6 +29,8 @@ afterEach(() => {
   delete window.__stationInteractiveWorkspacePerformance;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  vi.useRealTimers();
 });
 
 test('installs the production bridge on the exact Project Work Board route', async () => {

@@ -138,55 +138,44 @@ describe('FilePreviewPane', () => {
     unsubscribe();
   });
 
-  test('a reference refresh performs one query read and commits its exact nonce', async () => {
-    vi.stubEnv('VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE', '1');
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    const read = vi.fn(async () => ({
-      path: 'file.txt',
-      status: 'ready' as const,
-      renderKind: 'text' as const,
-      sizeBytes: 1,
-      lineCount: 1,
-      content: 'x',
-    }));
-    previewQuery.mockImplementation(function usePreviewQuery(
-      projectSlug: string,
-      request: object,
-    ) {
-      return useQuery({
-        queryKey: ['projects', projectSlug, 'file-preview', request],
-        queryFn: read,
-        staleTime: Infinity,
+  test.each([false, true])(
+    'a reference refresh performs one query read and commits its exact nonce (cached: %s)',
+    async (cached) => {
+      vi.stubEnv('VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE', '1');
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
       });
-    });
-    const marks: unknown[] = [];
-    const unsubscribe = subscribeInteractiveWorkspacePerformanceMarks((mark) =>
-      marks.push(mark),
-    );
-    const view = render(
-      <QueryClientProvider client={client}>
-        <FilePreviewPane
-          projectSlug="demo"
-          stateKey="refresh-test"
-          state={{
-            version: '1.0',
-            projectSlug: 'demo',
+      const read = vi.fn(async () => ({
+        path: 'file.txt',
+        status: 'ready' as const,
+        renderKind: 'text' as const,
+        sizeBytes: 1,
+        lineCount: 1,
+        content: 'x',
+      }));
+      previewQuery.mockImplementation(function usePreviewQuery(
+        projectSlug: string,
+        request: object,
+      ) {
+        return useQuery({
+          queryKey: ['projects', projectSlug, 'file-preview', request],
+          queryFn: read,
+          staleTime: Infinity,
+        });
+      });
+      if (cached)
+        client.setQueryData(
+          ['projects', 'demo', 'file-preview', { path: 'file.txt' }],
+          {
             path: 'file.txt',
-            wrap: true,
-          }}
-        />
-      </QueryClientProvider>,
-    );
-    try {
-      await waitFor(() =>
-        expect(marks).toContainEqual(
-          expect.objectContaining({ kind: 'file-preview-commit' }),
-        ),
-      );
-      expect(read).toHaveBeenCalledTimes(1);
-      act(() =>
+            status: 'ready',
+            renderKind: 'text',
+            sizeBytes: 1,
+            lineCount: 1,
+            content: 'x',
+          },
+        );
+      const refresh = () =>
         window.dispatchEvent(
           new CustomEvent(INTERACTIVE_WORKSPACE_FILE_PREVIEW_REFRESH_EVENT, {
             detail: {
@@ -195,25 +184,60 @@ describe('FilePreviewPane', () => {
               nonce: 'fp-0-cold',
             },
           }),
-        ),
+        );
+      let dispatched = false;
+      const marks: unknown[] = [];
+      const unsubscribe = subscribeInteractiveWorkspacePerformanceMarks(
+        (mark) => {
+          marks.push(mark);
+          if (cached && !dispatched && mark.kind === 'file-preview-commit') {
+            dispatched = true;
+            refresh();
+          }
+        },
       );
-      await waitFor(() =>
-        expect(marks).toContainEqual(
-          expect.objectContaining({
-            kind: 'file-preview-commit',
-            mark: expect.objectContaining({ refreshNonce: 'fp-0-cold' }),
-          }),
-        ),
+      const view = render(
+        <QueryClientProvider client={client}>
+          <FilePreviewPane
+            projectSlug="demo"
+            stateKey="refresh-test"
+            state={{
+              version: '1.0',
+              projectSlug: 'demo',
+              path: 'file.txt',
+              wrap: true,
+            }}
+          />
+        </QueryClientProvider>,
       );
-      expect(read).toHaveBeenCalledTimes(2);
-    } finally {
-      view.unmount();
-      unsubscribe();
-      client.clear();
-      previewQuery.mockReset();
-      vi.unstubAllEnvs();
-    }
-  });
+      try {
+        await waitFor(() =>
+          expect(marks).toContainEqual(
+            expect.objectContaining({ kind: 'file-preview-commit' }),
+          ),
+        );
+        if (!cached) {
+          expect(read).toHaveBeenCalledTimes(1);
+          act(refresh);
+        }
+        await waitFor(() =>
+          expect(marks).toContainEqual(
+            expect.objectContaining({
+              kind: 'file-preview-commit',
+              mark: expect.objectContaining({ refreshNonce: 'fp-0-cold' }),
+            }),
+          ),
+        );
+        expect(read).toHaveBeenCalledTimes(cached ? 1 : 2);
+      } finally {
+        view.unmount();
+        unsubscribe();
+        client.clear();
+        previewQuery.mockReset();
+        vi.unstubAllEnvs();
+      }
+    },
+  );
 
   test('a retired preview cannot publish a pending scroll frame', () => {
     const marks: unknown[] = [];

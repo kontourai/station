@@ -10,7 +10,6 @@ import {
   type WorkspaceFilePreviewPaneState,
   type WorkspaceFilePreviewStatus,
 } from '@kontourai/station-sdk/workspace-file-preview';
-import { type QueryKey, useQueryClient } from '@tanstack/react-query';
 import {
   lazy,
   type ReactNode,
@@ -89,16 +88,15 @@ const STATUS_COPY: Record<
 function ReferenceFilePreviewRefresh({
   projectSlug,
   path,
-  queryKey,
+  refetch,
   completed,
 }: {
   projectSlug: string;
   path: string;
-  queryKey: QueryKey;
+  refetch(): Promise<unknown>;
   completed(nonce: string): void;
 }) {
-  const queryClient = useQueryClient();
-  useEffect(() => {
+  useLayoutEffect(() => {
     const refresh = (event: Event) => {
       if (!(event instanceof CustomEvent)) return;
       const detail = event.detail;
@@ -113,11 +111,9 @@ function ReferenceFilePreviewRefresh({
       )
         return;
       const nonce = (detail as { nonce: string }).nonce;
-      // Exact key only: a reference corpus rebuild must not refresh unrelated
-      // files, and a cached response can never count as the sample.
-      void queryClient
-        .refetchQueries({ queryKey, exact: true, type: 'active' })
-        .then(() => completed(nonce));
+      // Use this query observer directly, including before its first passive
+      // subscription. A cache-only render must still perform a real read.
+      void refetch().then(() => completed(nonce));
     };
     window.addEventListener(
       INTERACTIVE_WORKSPACE_FILE_PREVIEW_REFRESH_EVENT,
@@ -128,7 +124,7 @@ function ReferenceFilePreviewRefresh({
         INTERACTIVE_WORKSPACE_FILE_PREVIEW_REFRESH_EVENT,
         refresh,
       );
-  }, [completed, path, projectSlug, queryClient, queryKey]);
+  }, [completed, path, projectSlug, refetch]);
   return null;
 }
 
@@ -876,12 +872,6 @@ export function FilePreviewPane({
     path: state.path,
     ...(state.lineRange ? { lineRange: state.lineRange } : {}),
   };
-  const previewQueryKey = [
-    'projects',
-    projectSlug,
-    'file-preview',
-    previewRequest,
-  ] as const;
   const query = useProjectWorkspaceFilePreviewQuery(
     projectSlug,
     previewRequest,
@@ -979,7 +969,7 @@ export function FilePreviewPane({
         <ReferenceFilePreviewRefresh
           projectSlug={projectSlug}
           path={state.path}
-          queryKey={previewQueryKey}
+          refetch={query.refetch}
           completed={(nonce) => {
             refreshNonceRef.current = nonce;
             setCompletedRefreshNonce(nonce);
