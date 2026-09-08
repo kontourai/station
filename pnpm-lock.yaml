@@ -17,14 +17,14 @@ overrides:
   router>path-to-regexp: ^8.4.2
   anymatch>picomatch: ^2.3.2
   micromatch>picomatch: ^2.3.2
-  gray-matter>js-yaml: ^3.15.1
-  read-yaml-file>js-yaml: ^3.15.1
+  gray-matter>js-yaml: ^3.15.2
+  read-yaml-file>js-yaml: ^3.15.2
   readdirp>picomatch: ^2.3.2
   socket.io-parser: ^4.2.7
   minimatch@^10.0.0>brace-expansion: ^5.0.9
   brace-expansion@^2.0.2: ^2.1.4
-  js-yaml@^4.1.0: ^4.3.1
-  js-yaml@^4.1.1: ^4.3.1
+  js-yaml@^4.1.0: ^4.3.2
+  js-yaml@^4.1.1: ^4.3.2
   nanoid: ^3.3.18
   engine.io-client: ^6.6.6
   '@strands-agents/sdk>@anthropic-ai/sdk': ^0.122.0
@@ -5214,12 +5214,12 @@ packages:
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
 
-  js-yaml@3.15.1:
-    resolution: {integrity: sha512-S99WuO3HlhO3XN41EtYUNl9zzXjoJx7QvmipxsJVxtCBT0YHEFy+iOJhjSvrmV12nYhWpZaM8lPHkJm0yUMbag==}
+  js-yaml@3.15.2:
+    resolution: {integrity: sha512-6EuL879VkRA+1Cz578mKMiKvjPNEuk6+r1JaFzoSWejZmtf7xWbIyw1e3KkxlkzTIt9Taw6JBhEppG7utc1P+w==}
     hasBin: true
 
-  js-yaml@4.3.1:
-    resolution: {integrity: sha512-CY6crGq313MX8GkwvB7tzgp99vjQxY1++5y10/BKN/GUfHqWaOGQMNZkBvqSzsZKWk/ijwHlWzzkLulsGHhjWQ==}
+  js-yaml@4.3.2:
+    resolution: {integrity: sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==}
     hasBin: true
 
   js-yaml@5.4.1:
@@ -10771,7 +10771,7 @@ snapshots:
       ajv: 8.20.0
       compute-cosine-similarity: 1.1.0
       js-levenshtein: 1.1.6
-      js-yaml: 4.3.1
+      js-yaml: 4.3.2
       linear-sum-assignment: 1.0.9
       mustache: 4.2.0
       openai: 4.104.0(encoding@0.1.13)(ws@8.21.3)(zod@3.25.76)
@@ -11907,7 +11907,7 @@ snapshots:
 
   gray-matter@4.0.3:
     dependencies:
-      js-yaml: 3.15.1
+      js-yaml: 3.15.2
       kind-of: 6.0.3
       section-matter: 1.0.0
       strip-bom-string: 1.0.0
@@ -12255,12 +12255,12 @@ snapshots:
 
   js-tokens@4.0.0: {}
 
-  js-yaml@3.15.1:
+  js-yaml@3.15.2:
     dependencies:
       argparse: 1.0.10
       esprima: 4.0.1
 
-  js-yaml@4.3.1:
+  js-yaml@4.3.2:
     dependencies:
       argparse: 2.0.1
 
@@ -14615,7 +14615,7 @@ snapshots:
       '@oozcitak/dom': 2.0.2
       '@oozcitak/infra': 2.0.2
       '@oozcitak/util': 10.0.0
-      js-yaml: 4.3.1
+      js-yaml: 4.3.2
 
   xmlchars@2.2.0: {}
 
