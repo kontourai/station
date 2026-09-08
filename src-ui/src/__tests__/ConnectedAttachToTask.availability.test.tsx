@@ -97,9 +97,7 @@ describe('Task attachment affordances follow the Task catalog', () => {
       screen.getByRole('dialog', { name: 'Add answer to Task' }),
     ).toBeTruthy();
     expect(screen.queryByRole('menu', { name: 'Answer actions' })).toBeNull();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Cancel' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
