@@ -75,6 +75,25 @@ describe('iOS TestFlight channel config', () => {
     },
   );
 
+  test.each(['stable', 'beta', 'nightly'] as const)(
+    'names the committed %s iOS asset-catalog set the delivery copies over gen/apple',
+    (channel) => {
+      const identity = IOS_TESTFLIGHT_CHANNELS[channel];
+      expect(identity.iosIconSet).toBe(`icons/${channel}/ios`);
+      expect(identity.iosIconSet).not.toBe(identity.icon);
+      expect(
+        readFileSync(
+          resolve(
+            import.meta.dirname,
+            '../../src-desktop',
+            identity.iosIconSet,
+            'AppIcon-512@2x.png',
+          ),
+        ).length,
+      ).toBeGreaterThan(0);
+    },
+  );
+
   test('rejects nonnumeric marketing and unsafe build versions', () => {
     expect(() =>
       createIosTestFlightConfig({
