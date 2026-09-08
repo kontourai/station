@@ -24,11 +24,96 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
  * still reach it, so the cost was removed rather than the subscription.
  */
 
+const rowRenders = vi.hoisted(() => ({ count: 0 }));
+
 vi.mock('@kontourai/station-sdk', () => ({
   useProjectLayoutsQuery: () => ({ data: undefined }),
   useBoardAvailabilityQuery: () => ({ data: undefined }),
+  useOrchestrationSessionsQuery: () => ({ data: [] }),
+  useReorderProjectsMutation: () => ({ mutate: vi.fn() }),
+  useFeaturePreviewsQuery: () => ({ data: [] }),
 }));
 
+// Counts renders of the REAL row. The mounted test below needs per-row
+// renders, not subtree commits: a row re-renders whenever its parent does,
+// whatever its own subscription says, and that is the whole point of M1.
+vi.mock(
+  '../../components/project-sidebar/ProjectSidebarRow',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../../components/project-sidebar/ProjectSidebarRow')
+      >();
+    return {
+      ProjectSidebarRow: (
+        props: Parameters<typeof actual.ProjectSidebarRow>[0],
+      ) => {
+        rowRenders.count += 1;
+        return <actual.ProjectSidebarRow {...props} />;
+      },
+    };
+  },
+);
+
+// The sidebar's own dependencies, mirroring ProjectSidebar.test.tsx's mock
+// shape. NavigationContext is deliberately NOT mocked here — the real hook
+// and the real store are the subject.
+const PROJECTS = [
+  {
+    id: 'p1',
+    slug: 'alpha',
+    name: 'Alpha',
+    hasWorkingDirectory: true,
+    layoutCount: 1,
+    hasKnowledge: false,
+  },
+  {
+    id: 'p2',
+    slug: 'beta',
+    name: 'Beta',
+    hasWorkingDirectory: true,
+    layoutCount: 1,
+    hasKnowledge: false,
+  },
+  {
+    id: 'p3',
+    slug: 'gamma',
+    name: 'Gamma',
+    hasWorkingDirectory: true,
+    layoutCount: 1,
+    hasKnowledge: false,
+  },
+];
+
+vi.mock('../ProjectsContext', () => ({
+  useProjects: () => ({ projects: PROJECTS, isLoading: false }),
+}));
+vi.mock('../AgentsContext', () => ({ useAgents: () => [] }));
+vi.mock('../ActiveChatsContext', () => ({ useAllActiveChats: () => ({}) }));
+vi.mock('../open-chats-store', () => ({
+  useOpenChats: () => [],
+  openChatsStore: {
+    focus: vi.fn(),
+    openCollection: vi.fn(),
+    registerNavigation: () => vi.fn(),
+  },
+}));
+vi.mock('../useShowSurface', () => ({ useShowSurface: () => vi.fn() }));
+vi.mock('../RegionModelContext', () => ({
+  useRegionModelOptional: () => null,
+}));
+vi.mock('../../hooks/useBranding', () => ({
+  useBranding: () => ({ appName: 'Station' }),
+}));
+vi.mock('../../platform/PlatformProfileContext', () => ({
+  usePlatformProfile: () => ({ isTauri: false }),
+}));
+vi.mock('../../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../../build-info', () => ({
+  buildInfo: { version: '0.0.0-test', commit: 'test' },
+}));
+
+import { ProjectSidebar } from '../../components/project-sidebar/ProjectSidebar';
 import { ProjectSidebarRow } from '../../components/project-sidebar/ProjectSidebarRow';
 import {
   NavigationProvider,
@@ -107,6 +192,54 @@ describe('navigation store fan-out to a per-project sidebar row', () => {
     expect(probeRenders() - probeRendersAfterMount).toBe(NAVIGATION_UPDATES);
 
     expect(rowCommits() - rowCommitsAfterMount).toBe(0);
+  });
+
+  test('every mounted sidebar row is spared an unrelated navigation write', () => {
+    // The isolated test above measures the ROW's own subscription, which is
+    // not what decides whether it renders. This one measures the shape the
+    // app mounts: rows under the real ProjectSidebar, under a parent that
+    // reads the whole snapshot — `App` (App.tsx:177-185, `<ProjectSidebar />`
+    // at :629) reads `lastProject`/`lastProjectLayout`, store memory no
+    // selector can see, so it re-renders on every store write and always
+    // will. Before ProjectSidebar took a selector AND a memo boundary this
+    // read 24: three rows, eight dock toggles, every one of them through the
+    // parent.
+    rowRenders.count = 0;
+    let probeRenders = 0;
+
+    function WholeSnapshotProbe() {
+      useNavigation();
+      probeRenders += 1;
+      return <div />;
+    }
+
+    function AppLikeParent() {
+      // Stands in for App: subscribes to everything, renders the sidebar.
+      useNavigation();
+      return <ProjectSidebar />;
+    }
+
+    render(
+      <NavigationProvider>
+        <AppLikeParent />
+        <WholeSnapshotProbe />
+      </NavigationProvider>,
+    );
+
+    // Three rows really are mounted, so a 0 below is a spared row, not an
+    // empty list.
+    expect(rowRenders.count).toBe(3);
+    const rowRendersAfterMount = rowRenders.count;
+    const probeRendersAfterMount = probeRenders;
+
+    for (let i = 0; i < NAVIGATION_UPDATES; i += 1) {
+      act(() => {
+        navigationStore.setDockState(i % 2 === 0);
+      });
+    }
+
+    expect(probeRenders - probeRendersAfterMount).toBe(NAVIGATION_UPDATES);
+    expect(rowRenders.count - rowRendersAfterMount).toBe(0);
   });
 
   test('an object selector holds its reference across unrelated store writes', () => {
