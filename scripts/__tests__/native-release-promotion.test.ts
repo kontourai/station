@@ -260,15 +260,35 @@ describe('one-revision native promotion contract', () => {
       "inputs.build == 'true'",
     );
     expect(cohort.jobs?.['promote-macos']?.needs).toEqual(['promote-android']);
-    expect(cohort.jobs?.['deliver-ios']?.needs).toEqual(['promote-macos']);
-    expect(cohort.jobs?.['protected-finalize']?.needs).toEqual([
-      'promote-macos',
-      'deliver-ios',
+    // iOS is cut out of the atomic chain (#1774): it uploads the admitted IPA
+    // from the same admission and fence, in parallel with Android/macOS, and
+    // its outcome gates neither finality nor recovery.
+    const deliverIos = cohort.jobs?.['deliver-ios'] ?? {};
+    expect(deliverIos.needs).toEqual([
+      'admit-cohort',
+      'create-promotion-fence',
     ]);
-    expect(cohort.jobs?.['record-native-completion']?.needs).toEqual([
-      'protected-finalize',
-    ]);
-    expect(cohort.jobs?.['recover-native-cohort']?.needs).toEqual([
+    expect(deliverIos.needs).not.toContain('promote-android');
+    expect(deliverIos.needs).not.toContain('promote-macos');
+    expect(deliverIos.if).toBe(
+      '$' +
+        "{{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.admit-cohort.result == 'success' && needs.create-promotion-fence.result == 'success' }}",
+    );
+    const finalize = cohort.jobs?.['protected-finalize'] ?? {};
+    expect(finalize.needs).toEqual(['promote-macos']);
+    expect(finalize.if).toContain("needs.promote-macos.result == 'success'");
+    expect(finalize.if).not.toContain('deliver-ios');
+    // Recording depends on iOS only to disclose its result; the status
+    // functions keep the job reachable after an iOS failure while finality
+    // is still granted by protected-finalize alone.
+    const record = cohort.jobs?.['record-native-completion'] ?? {};
+    expect(record.needs).toEqual(['protected-finalize', 'deliver-ios']);
+    expect(record.if).toBe(
+      '$' +
+        "{{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.protected-finalize.result == 'success' }}",
+    );
+    const recover = cohort.jobs?.['recover-native-cohort'] ?? {};
+    expect(recover.needs).toEqual([
       'create-promotion-fence',
       'promote-android',
       'promote-macos',
@@ -276,19 +296,50 @@ describe('one-revision native promotion contract', () => {
       'protected-finalize',
       'record-native-completion',
     ]);
-    expect(cohort.jobs?.['recover-native-cohort']?.if).toContain(
-      "needs.deliver-ios.result != 'success'",
+    // An iOS-only failure must never write the recovery lock, but the
+    // recovery receipt still discloses the iOS result whenever it is written.
+    expect(recover.if).not.toContain('deliver-ios');
+    expect(recover.if).toContain("needs.promote-android.result != 'success'");
+    expect(recover.if).toContain("needs.promote-macos.result != 'success'");
+    expect(recover.if).toContain(
+      "needs.protected-finalize.result != 'success'",
     );
-    expect(cohort.jobs?.['recover-native-cohort']?.if).toContain(
+    expect(recover.if).toContain(
       "needs.record-native-completion.result != 'success'",
     );
     const recoveryReceipt = namedStep(
-      cohort.jobs?.['recover-native-cohort'] ?? {},
+      recover,
       'Construct content-bound durable recovery receipt',
     );
     expect((recoveryReceipt as any).env?.JOB_RESULTS).toContain(
       '"deliver-ios":"$' + '{{ needs.deliver-ios.result }}"',
     );
+  });
+
+  test('discloses the independent iOS delivery outcome on both cohort ledger rows (#1774)', () => {
+    const cohort = workflow('nightly-native-cohort.yml');
+    const ledger = namedStep(
+      cohort.jobs?.['record-native-completion'] ?? {},
+      'Record durable completion only after the verified final receipt',
+    );
+    expect(ledger.env?.IOS_DELIVERY_RESULT).toBe(
+      '$' + '{{ needs.deliver-ios.result }}',
+    );
+    const ledgerCalls = (ledger.run ?? '')
+      .split('\n')
+      .filter((line) => line.includes('node scripts/deploy-ledger.mjs'));
+    expect(ledgerCalls).toHaveLength(2);
+    expect(
+      ledgerCalls.map((line) => /--channel (\S+)/.exec(line)?.[1]),
+    ).toEqual(['nightly-android', 'nightly-desktop']);
+    for (const call of ledgerCalls) {
+      expect(call).toContain(
+        '--note "ios: TestFlight delivery $IOS_DELIVERY_RESULT (run $GITHUB_RUN_ID)"',
+      );
+    }
+    // The note must be the job result, never a hand-written success.
+    expect(ledger.run).toContain('test -n "$IOS_DELIVERY_RESULT"');
+    expect(ledger.run).not.toMatch(/TestFlight delivery success/);
   });
 
   test('moves the Android completion marker and durable ledgers only after final verification', () => {
