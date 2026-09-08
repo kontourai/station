@@ -42,8 +42,9 @@ export function createRuntimeSearch(input: {
   let closed = false;
   const active = new Set<AbortController>();
   /**
-   * station#1707: the transcript reader is a `worker_threads` worker created
-   * on first use. Every budget that brackets a search — the unified
+   * station#1707: BOTH readers are `worker_threads` workers created on first
+   * use — the transcript reader is the one the reported failure named, and
+   * the Task reader has the identical shape behind `station.tasks`. Every budget that brackets a search — the unified
    * service's `providerTimeoutMs`, `readAuthorized`'s own deadline, and the
    * worker's read deadline — starts before that spawn, so the FIRST search
    * after a runtime boots was paying thread creation, entry-module load
@@ -60,6 +61,7 @@ export function createRuntimeSearch(input: {
    * where the thread never comes up — which is what used to happen to every
    * cold first search.
    */
+  void tasks.whenReady();
   void transcripts.whenReady();
   const current = (context: SearchReadContext) => {
     try {
@@ -85,7 +87,7 @@ export function createRuntimeSearch(input: {
     // and a promise captured at composition would report that new thread as
     // already ready — putting the respawn back on the read budget, which is
     // the whole defect.
-    await transcripts.whenReady();
+    await Promise.all([tasks.whenReady(), transcripts.whenReady()]);
     if (!current(context)) return unavailable;
     const controller = new AbortController();
     active.add(controller);
