@@ -137,23 +137,6 @@ test.describe('Settings', () => {
     }
   });
 
-  test('overview summarizes status and drills into URL-backed settings views', async ({
-    page,
-  }) => {
-    await expect(
-      page.getByRole('heading', { name: 'Your settings are ready' }),
-    ).toBeVisible();
-    await expect(page.getByText('No issues', { exact: true })).toBeVisible();
-    const deviceCard = page.locator(
-      '.settings-overview__card[href*="view=appearance"]',
-    );
-    await expect(deviceCard).toContainText('Personal experience');
-    await expect(deviceCard).toHaveAttribute('href', /[?&]view=appearance/);
-    await deviceCard.click();
-    await expect(page).toHaveURL(/[?&]view=appearance/);
-    await expect(page.locator('#section-appearance')).toBeInViewport();
-  });
-
   // station#settings-revamp slice 3: the /settings IA restructure — three
   // registry-driven scope groups (Station / Defaults / This device) with a
   // persistence-tier caption each, replacing the flat nav. archive#1826

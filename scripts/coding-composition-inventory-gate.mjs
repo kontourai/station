@@ -106,7 +106,6 @@ const expectedDependencies = new Map(
     'src-ui/src/components/coding-layout/planSession.ts': 'task-plan',
     'src-ui/src/components/coding-layout/terminalSelectionHandoff.ts':
       'chat-handoff',
-    'src-ui/src/components/coding-layout/treeSnap.ts': 'presentation',
     'src-ui/src/components/coding-layout/types.ts': 'private-contract',
     'src-ui/src/components/coding-layout/utils.ts': 'presentation',
     'src-ui/src/components/modals/NewChatModal.tsx': 'chat-handoff',

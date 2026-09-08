@@ -6,7 +6,6 @@ import {
 } from '../../components/ResponsiveDialogSurface';
 
 export function InstallPluginModal({
-  apiBase,
   installSource,
   installMessage,
   installPending,
@@ -16,7 +15,6 @@ export function InstallPluginModal({
   onInstall,
   onClose,
 }: {
-  apiBase: string;
   installSource: string;
   installMessage: { type: 'success' | 'error'; text: string } | null;
   installPending: boolean;
@@ -60,7 +58,6 @@ export function InstallPluginModal({
             onSubmit={onInstall}
             placeholder="git@github.com:org/plugin.git or /local/path"
             disabled={installPending}
-            apiBase={apiBase}
           />
           <button
             type="button"

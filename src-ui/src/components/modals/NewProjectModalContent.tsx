@@ -91,10 +91,9 @@ function NewProjectFormActions({
 }
 
 function NewProjectDirectoryInput({ state }: { state: NewProjectModalState }) {
-  const { apiBase, draft, starter, submission } = state;
+  const { draft, starter, submission } = state;
   return (
     <NewProjectDirectoryField
-      apiBase={apiBase}
       directory={draft.directory}
       error={submission.directoryError}
       notice={submission.directoryNotice}

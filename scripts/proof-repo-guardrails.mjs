@@ -5044,21 +5044,11 @@ for (const retiredInlineConnectionsHubSnippet of [
   }
 }
 
-const connectionsHubUtils = readRequiredSource(
-  '../src-ui/src/views/connections-hub/utils.tsx',
-);
-for (const requiredHelper of [
-  'export function getProviderIcon',
-  'export function getConnectionStatusClass',
-  'export function describeConnection',
-  // station#3879: `getConnectionTypeText` no longer exists in the repo.
-  'export function IconDatabase',
-  'export function IconTool',
-]) {
-  if (!connectionsHubUtils.includes(requiredHelper)) {
-    errors.push(`connections-hub/utils.tsx must include ${requiredHelper}.`);
-  }
-}
+// The extraction target itself is gone: `connections-hub/utils.tsx` held the
+// helpers lifted out of the old ConnectionsHub page, and once #3733 turned
+// that page into a redirect resolver nothing rendered them again. The
+// invariant that still has a subject is the "must not inline" list above —
+// ConnectionsHub may not grow its own copies back.
 
 const connectionsHubSection = readRequiredSource(
   '../src-ui/src/views/connections-hub/ConnectionsHubSection.tsx',
