@@ -18,7 +18,7 @@ import {
 
 /** Database owner only. Callers must still apply the live SessionAuthorization policy. */
 export interface IsolatedTranscriptReads
-  extends Pick<OwnedSearchReadWorker, 'close' | 'inspect'> {
+  extends Pick<OwnedSearchReadWorker, 'close' | 'inspect' | 'whenReady'> {
   readMessagePage(
     input: {
       threadId: string;
@@ -93,6 +93,7 @@ export function createIsolatedTranscriptReads(
   return {
     inspect: worker.inspect,
     close: worker.close,
+    whenReady: worker.whenReady,
     async readMessagePage(input, signal) {
       const result = await execute(
         (id) =>
