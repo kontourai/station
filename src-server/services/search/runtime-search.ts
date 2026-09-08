@@ -53,14 +53,14 @@ export function createRuntimeSearch(input: {
    * `unavailable` with `provider-timeout-or-error`.
    *
    * Started here, at composition, so the boot overlaps runtime startup
-   * instead of a request; awaited in `run` so that when a request does
+   * instead of a request; awaited again in `run` so that when a request does
    * arrive mid-boot it waits for the worker rather than billing the wait to
    * the read. `whenReady` never rejects and is itself bounded, so this can
    * only delay a read by the worker's own deadline in the degenerate case
    * where the thread never comes up — which is what used to happen to every
    * cold first search.
    */
-  const transcriptsReady = transcripts.whenReady();
+  void transcripts.whenReady();
   const current = (context: SearchReadContext) => {
     try {
       return (
@@ -79,8 +79,13 @@ export function createRuntimeSearch(input: {
     read: (context: SearchReadContext) => Promise<T>,
   ): Promise<T> {
     if (!current(context)) return unavailable;
-    // Before the controller, and so before every downstream deadline.
-    await transcriptsReady;
+    // Before the controller, and so before every downstream deadline. Asked
+    // per read rather than once: a worker retired mid-life (a read that
+    // timed out, an `error`/`exit`) is respawned by the next `whenReady`,
+    // and a promise captured at composition would report that new thread as
+    // already ready — putting the respawn back on the read budget, which is
+    // the whole defect.
+    await transcripts.whenReady();
     if (!current(context)) return unavailable;
     const controller = new AbortController();
     active.add(controller);
