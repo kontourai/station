@@ -264,6 +264,41 @@ physical Windows
 workflow remains a separate post-merge hardware-reference diagnostic and does
 not replace the PR gate.
 
+### Unified usability feedback
+
+The fresh-home workflow combines its route walkthrough, core-loop receipts,
+UI sweep result, and semantic image review into one report. The implementation
+is `scripts/usability-feedback.mjs`; the workflow uploads `report.json` and
+`report.md` and updates one rolling comment on the audit batch issue.
+
+Run the existing walkthrough and core-loop commands first, then:
+
+```bash
+UI_AUDIT_REVISION=$(git rev-parse HEAD) node scripts/usability-feedback.mjs
+```
+
+Only `test-results/fresh-home-walkthrough/gallery/*.png` is sent for image
+review. Use isolated test homes, not personal desktop captures. The reviewer
+uses `OPENAI_API_KEY`, optional `OPENAI_BASE_URL`, and `UI_REVIEW_MODEL` (matching
+the repository review model by default). The hosted workflow reuses the
+repository's existing review credential. It sends four images per request,
+records their SHA-256 hashes, and requires an acknowledgement of every image.
+Missing credentials, missing artifacts, invalid output, incomplete responses,
+and unexercised journeys are `NOT_VERIFIED`. Exit 0 means all reported checks
+passed; 1 means a failure or candidate visual finding; 2 means incomplete
+coverage. Local callers must provide `UI_SWEEP_RESULT=success` only after
+actually running the UI sweep.
+
+Image findings are candidates requiring reproduction, not permission to edit
+code or replace reference images. The exact pixel comparison remains a separate
+check against the reviewed gallery baseline below. A screenshot audit cannot
+establish model/cache continuity, device delivery, or the absence of a transient
+error between frames. Exercise those journeys and retain their separate results.
+For UI repairs, capture the failing state, add a meaningful behavior or browser
+geometry regression, fix it, and repeat the same action sequence. Include narrow
+regions inside wide windows, hover and keyboard focus, external sessions, and
+reconnection; do not merely reload the default home screen.
+
 ### Targeted screenshot capture and the baseline diff loop (station#4464)
 
 `tests/screenshots.spec.ts`'s `SCREENS` list can be captured as a named

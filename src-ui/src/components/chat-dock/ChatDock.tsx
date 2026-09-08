@@ -279,6 +279,7 @@ const loadConversationContextResetDialog = () =>
   import('./ConversationContextResetDialog').then((module) => ({
     default: module.ConversationContextResetDialog,
   }));
+const loadInboxSessionDetails = () => import('./InboxSessionDetails');
 const loadConversationOpenRecoveryNotice = () =>
   import('./ConversationOpenRecoveryNotice').then((module) => ({
     default: module.ConversationOpenRecoveryNotice,
@@ -1045,13 +1046,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // collapse a maximized dock first so the destination is actually visible.
   // Same stabilization reason as the block comment above: this used to be
   // an inline closure at the `ChatDockInboxPanel` call site.
-  const onOpenInboxSession = useCallback(
-    (threadId: string) => {
-      collapseDockForNavigation();
-      showSurface('activity', { session: threadId });
-    },
-    [collapseDockForNavigation, showSurface],
-  );
+  const [inboxDetailSessionId, setInboxDetailSessionId] = useState<
+    string | null
+  >(null);
+  const onOpenInboxSession = useCallback((threadId: string) => {
+    setInboxDetailSessionId(threadId);
+  }, []);
   const openChatSettings = useCallback(
     () => setShowChatSettings(true),
     [setShowChatSettings],
@@ -3020,6 +3020,22 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         />
       ) : null}
 
+      {inboxDetailSessionId && (
+        <LazyBoundary
+          load={loadInboxSessionDetails}
+          componentProps={{
+            threadId: inboxDetailSessionId,
+            apiBase,
+            onClose: () => setInboxDetailSessionId(null),
+            onOpenActivity: (threadId: string) => {
+              setInboxDetailSessionId(null);
+              collapseDockForNavigation();
+              showSurface('activity', { session: threadId });
+            },
+          }}
+          pending={<p role="status">Opening chat details…</p>}
+        />
+      )}
       <ShareIntakeController />
     </>
   );

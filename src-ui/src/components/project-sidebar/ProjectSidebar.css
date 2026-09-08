@@ -71,6 +71,10 @@
    this file, so it wins at mobile widths; --titlebar-inset-left is stamped
    by PlatformBootstrap on the macOS desktop shell only. */
 .sidebar__brand-name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

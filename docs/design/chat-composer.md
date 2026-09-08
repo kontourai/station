@@ -5,6 +5,16 @@
 > This is the contract for the chat composer/dock and for the principle it
 > enforces. Revise this doc — not just the code — when direction changes.
 
+## Interaction stability and inbox destinations
+
+Message action rows reserve their layout space. Hover and keyboard focus may
+reveal controls, but must not change bubble size or the position of later messages.
+The shared popover shell opens toward the roomier viewport edge, including when
+the dock is maximized. Read-only external sessions in the inbox identify their
+origin as outside Station and open visible chat details; navigation to Activity
+is an explicit secondary action. A narrow Activity region shows its list or its
+selected detail, with a Back to list control, instead of squeezing both columns.
+
 ## 1. The principle: if an agent can't drive it, it's broken
 
 Station's thesis is agents doing real work with receipts. That obligates Station's own UI

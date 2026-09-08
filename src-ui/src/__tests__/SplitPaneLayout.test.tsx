@@ -578,7 +578,7 @@ describe('SplitPaneLayout', () => {
     expect(screen.getByText('Skills').getAttribute('tabindex')).toBeNull();
   });
 
-  test('desktop keeps both panes visible with no back affordance', () => {
+  test('desktop keeps both pane contents mounted for region-responsive presentation', () => {
     isMobileMock.mockReturnValue(false);
     const { container } = renderWithSelection();
 
@@ -586,7 +586,7 @@ describe('SplitPaneLayout', () => {
     // on desktop, so panes sit side-by-side rather than stacking.
     expect(container.querySelector('.split-pane__left--visible')).toBeTruthy();
     expect(container.querySelector('.split-pane__right--visible')).toBeTruthy();
-    expect(screen.queryByText('← Back to list')).toBeNull();
+    expect(document.querySelector('.split-pane__back')).toBeNull();
   });
 
   test('mobile collapses to a single column with a back affordance', () => {

@@ -78,6 +78,22 @@ afterEach(() => {
 });
 
 describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => {
+  test('an engine-reported model missing from the catalog keeps its display name', () => {
+    const { result } = renderHook(() =>
+      useChatDockViewModel({
+        activeSessionId: 's1',
+        availableModels,
+        agents,
+        sessions: [{ ...sessions[0], model: 'claude-opus-5' }],
+      }),
+    );
+    expect(
+      result.current.effectiveModels.find(
+        (model) => model.id === 'claude-opus-5',
+      )?.name,
+    ).toBe('Opus 5');
+  });
+
   test('marks hydrated catalog data until a live fetch succeeds after mount', () => {
     queryState.modelCatalogFetchedAfterMount = false;
     const { result, rerender } = renderVM('s1');

@@ -44,6 +44,7 @@ import { WALKTHROUGH_ALLOWLIST } from './fresh-home-walkthrough-allowlist.mjs';
 import {
   api,
   apiOk,
+  countVisibleLoadingMarkers,
   pairBrowser as pairBrowserForInstance,
   poll,
   runStation as runStationAt,
@@ -73,27 +74,7 @@ const SETTLE_TIMEOUT_MS = 30_000;
  * must be removed, and letting it linger would silently excuse the next
  * regression. Keep this empty unless a tracked issue names the breakage.
  */
-const EXPECTED_PLUGIN_FAILURES = new Map([
-  // kontourai/station#765 finding D1 (Critical) hit every bundled layout
-  // plugin: installed layouts rendered 'Unsupported layout tab — Plugin
-  // layout component "…" is not installed or registered.' The renderer was
-  // treating the still-loading lazy PluginRegistry as authoritative absence;
-  // with the loading-state fix in src-ui/src/layouts/index.tsx this suite
-  // reproduced getting-started-starter, coding-starter,
-  // knowledge-docs-starter, and minimal-layout all PASSING live
-  // (2026-08-29, this branch), so their entries are gone. Remove each
-  // remaining entry as its fix lands; the run FAILS when an expected
-  // failure starts passing.
-  // demo-layout shows the class one step earlier: it installs, but its
-  // declared layout never appears in the layout catalog at all.
-  [
-    'demo-layout',
-    {
-      issue: 'kontourai/station#765 D1 (same class)',
-      expectedMessageSubstring: 'none appeared in the layout catalog',
-    },
-  ],
-]);
+const EXPECTED_PLUGIN_FAILURES = new Map();
 
 // ---------------------------------------------------------------------------
 // Route derivation — imported from the real tables so the sweep cannot drift.
@@ -215,6 +196,10 @@ async function screenshot(page, name) {
     `${String(shotIndex).padStart(2, '0')}-${name}.png`,
   );
   await page.screenshot({ path: file });
+  if ((await countVisibleLoadingMarkers(page)) > 0)
+    fail(
+      `${name}: captured a loading or empty route shell instead of settled content`,
+    );
 }
 
 function routeShotName(route) {

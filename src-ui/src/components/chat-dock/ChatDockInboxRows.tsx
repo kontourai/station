@@ -231,7 +231,7 @@ export function InboxRow({
       <button
         type="button"
         className={`chat-dock-inbox__item${showsIcons ? ' chat-dock-inbox__item--avatars' : ''}`}
-        aria-label={`${item.title}, ${item.projectLabel}`}
+        aria-label={`${item.title}, ${item.projectLabel}${item.controlMode === 'read-only-attached' ? ', outside Station, open chat details' : ''}`}
         aria-current={isCurrent ? 'true' : undefined}
         onClick={() => onActivate(item)}
       >
@@ -253,6 +253,7 @@ export function InboxRow({
         <strong className="chat-dock-inbox__title">{item.title}</strong>
         <span className="chat-dock-inbox__meta">
           {item.agentLabel} · {item.modelLabel}
+          {item.controlMode === 'read-only-attached' && ' · Outside Station'}
         </span>
         {/* station#1783: the chip is a pointer; this is what computed it.
             `LIFECYCLE_CHIP_LABELS` is shared, so adding `'Unanswerable'` to

@@ -418,7 +418,7 @@ describe('ChatDockInboxPanel', () => {
     expect(onOpenSession).not.toHaveBeenCalled();
   });
 
-  it('reveals the Activity surface for a session Station cannot rehydrate (read-only-attached)', () => {
+  it('opens session details and identifies outside work when Station cannot rehydrate', () => {
     const onOpenConversation = vi.fn();
     const onOpenSession = vi.fn();
     const readOnlyItem: HomeWorkItem = {
@@ -446,7 +446,7 @@ describe('ChatDockInboxPanel', () => {
 
     fireEvent.click(
       screen.getByRole('button', {
-        name: 'Attached session, station',
+        name: 'Attached session, station, outside Station, open chat details',
       }),
     );
 

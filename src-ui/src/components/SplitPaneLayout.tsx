@@ -842,6 +842,18 @@ export function SplitPaneLayout({
     ) : null;
   const detailContents = (
     <>
+      {!isMobile && selectedId && onDeselect && (
+        <button
+          type="button"
+          className="split-pane__region-back"
+          onClick={() => {
+            onDeselect();
+            listRef.current?.focus();
+          }}
+        >
+          ← Back to list
+        </button>
+      )}
       {showMobileDetailSheet && (
         <button
           type="button"
@@ -909,6 +921,7 @@ export function SplitPaneLayout({
       className={`split-pane${paneState.collapsed && !isMobile ? ' split-pane--collapsed' : ''}${showMobileDetailSheet ? ' split-pane--mobile-sheet-open' : ''}`}
       ref={paneRef}
       data-first-run-anchor={firstRunAnchor}
+      data-has-detail={selectedId || unselectedDetailOpen ? '' : undefined}
     >
       {!isMobile && paneState.collapsed && (
         <button

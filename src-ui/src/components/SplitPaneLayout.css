@@ -1,4 +1,6 @@
 .split-pane {
+  container-type: inline-size;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -767,5 +769,35 @@
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+/* A dock region can be narrow inside a wide desktop viewport. Show list OR
+   details there, instead of squeezing a transcript beside a 220px list. */
+.split-pane__region-back {
+  display: none;
+}
+@container (max-width: 640px) {
+  .split-pane[data-has-detail] .split-pane__left,
+  .split-pane:not([data-has-detail]) .split-pane__right,
+  .split-pane .split-pane__divider {
+    display: none !important;
+  }
+  .split-pane:not([data-has-detail]) .split-pane__left {
+    width: 100% !important;
+    min-width: 0;
+    max-width: none;
+  }
+  .split-pane .split-pane__region-back {
+    display: block;
+    flex-shrink: 0;
+    min-height: 44px;
+    padding: 8px 12px;
+    text-align: left;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: 0;
+    border-bottom: 1px solid var(--border-primary);
+    cursor: pointer;
   }
 }

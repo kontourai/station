@@ -180,7 +180,13 @@ function usageText(
   provider?: string,
 ): string | null {
   const parts: string[] = [];
-  if (usage.inputTokens !== undefined) parts.push(`${usage.inputTokens} in`);
+  if (usage.inputTokens !== undefined) {
+    const inputLabel =
+      providerPromptCacheInclusivity(provider) === 'disjoint'
+        ? 'uncached input'
+        : 'input';
+    parts.push(`${exactTokenCount(usage.inputTokens)} ${inputLabel}`);
+  }
   if (usage.outputTokens !== undefined) parts.push(`${usage.outputTokens} out`);
   if (usage.totalTokens !== undefined) {
     // archive#4196: for a provider DECLARED 'disjoint', its reported total is
