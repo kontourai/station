@@ -1,6 +1,9 @@
 /**
  * @vitest-environment jsdom
  *
+ * The lifetime of the coalescing buffer: what bounds it, when it drains, and
+ * what happens to it when the feed it belongs to goes away.
+ *
  * The coalescing buffer defers a publish, and a deferred publish can be
  * deferred for a long time: a browser suspends animation frames for a hidden
  * document, so a live turn arriving into a background tab would hold every
@@ -143,9 +146,11 @@ async function deliver(events: OrchestrationEvent[]) {
   }
 }
 
-async function mountStream() {
-  const view = renderHook(() =>
-    useSessionEventStream('http://station.test', 'task:1'),
+async function mountStream(threadId = 'task:1') {
+  const view = renderHook(
+    ({ id }: { id: string }) =>
+      useSessionEventStream('http://station.test', id),
+    { initialProps: { id: threadId } },
   );
   await waitFor(() => expect(fetchSSE).toHaveBeenCalled());
   await waitFor(() => expect(streamOptions.onMessage).toBeTruthy());
@@ -153,6 +158,24 @@ async function mountStream() {
     await Promise.resolve();
   });
   return view;
+}
+
+async function switchThread(
+  view: { rerender: (props: { id: string }) => void },
+  id: string,
+) {
+  const streamsBefore = fetchSSE.mock.calls.length;
+  await act(async () => {
+    view.rerender({ id });
+    await Promise.resolve();
+  });
+  await waitFor(() =>
+    expect(fetchSSE.mock.calls.length).toBeGreaterThan(streamsBefore),
+  );
+  await waitFor(() => expect(streamOptions.onMessage).toBeTruthy());
+  await act(async () => {
+    await Promise.resolve();
+  });
 }
 
 describe('useSessionEventStream buffer backpressure', () => {
@@ -193,6 +216,68 @@ describe('useSessionEventStream buffer backpressure', () => {
     expect(view.result.current.events.map((item) => item.eventId)).toEqual(
       sequentialFold(burst).map((item) => item.eventId),
     );
+
+    view.unmount();
+  });
+
+  test('a pending frame is cancelled on unmount and never publishes', async () => {
+    const frames = manualFrames();
+    const view = await mountStream();
+
+    await deliver([event(1)]);
+    expect(frames.requested()).toBe(1);
+    expect(frames.scheduled.size).toBe(1);
+
+    view.unmount();
+
+    // The scheduled callback is gone, not merely orphaned: nothing can call
+    // `setEvents` on a hook that no longer exists.
+    expect(frames.cancelled).toEqual([1]);
+    expect(frames.scheduled.size).toBe(0);
+  });
+
+  /**
+   * Two distinct leaks, two tests: the buffer is cleared at effect start, and
+   * so is the window every merge builds on. Clearing only the React state left
+   * the ref carrying the previous thread's events into the next merge.
+   */
+  test('frames already folded into the window do not reach the next thread', async () => {
+    const frames = manualFrames();
+    const view = await mountStream('task:1');
+
+    await deliver([event(11), event(12)]);
+    await frames.runAll();
+    await waitFor(() => expect(view.result.current.events).toHaveLength(2));
+
+    await switchThread(view, 'task:2');
+    await deliver([event(21)]);
+    await frames.runAll();
+
+    await waitFor(() => expect(view.result.current.events).toHaveLength(1));
+    expect(view.result.current.events.map((item) => item.eventId)).toEqual([
+      'evt-0021',
+    ]);
+
+    view.unmount();
+  });
+
+  test('frames still buffered when the thread changes do not reach it either', async () => {
+    const frames = manualFrames();
+    const view = await mountStream('task:1');
+
+    await deliver([event(11), event(12)]);
+    // Held, unpublished, by this harness.
+    expect(view.result.current.events).toHaveLength(0);
+    expect(frames.scheduled.size).toBe(1);
+
+    await switchThread(view, 'task:2');
+    await deliver([event(21)]);
+    await frames.runAll();
+
+    await waitFor(() => expect(view.result.current.events).toHaveLength(1));
+    expect(view.result.current.events.map((item) => item.eventId)).toEqual([
+      'evt-0021',
+    ]);
 
     view.unmount();
   });

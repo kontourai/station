@@ -406,6 +406,9 @@ export function useSessionEventStream(
   // biome-ignore lint/correctness/useExhaustiveDependencies: recoveryRevision intentionally restarts this effect after a successful capability recovery; the ref carries the recovery handoff.
   useEffect(() => {
     discardPendingLiveEvents();
+    // The ref is the window every merge builds on, so clearing only the state
+    // left the NEXT thread's first merge folding this one's events back in.
+    eventsRef.current = [];
     setEvents([]);
     setConnected(false);
     setNextCursor(undefined);
@@ -902,6 +905,10 @@ export function useSessionEventStream(
               return;
             }
             queue.current = queue.current.then(() => {
+              // A frame admitted just before teardown resolves its queue turn
+              // after it. Without this it would buffer into — and schedule a
+              // publish for — whatever thread the hook moved on to.
+              if (!active) return;
               appliedWatermark.current = Math.max(
                 appliedWatermark.current,
                 Number(raw.id) || 0,
