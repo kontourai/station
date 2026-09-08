@@ -344,11 +344,11 @@ pub fn spawned_station_root(
     // "the same directory" and withhold a root that may be genuinely
     // different, silently handing the child one derived from its own home.
     let same = match (
-        lexical_absolute(station_root),
-        lexical_absolute(station_home),
+        canonical_path_through_existing_ancestor(station_root),
+        canonical_path_through_existing_ancestor(station_home),
     ) {
         (Ok(root), Ok(home)) => root == home,
-        _ => station_root == station_home,
+        _ => false,
     };
     if same {
         return None;
@@ -2031,5 +2031,19 @@ mod tests {
         assert!(admit_station_runtime_home_with_root(&home, &home, false).is_err());
         assert!(admit_station_runtime_home_for_root(&home, &home).is_err());
         assert!(admit_station_runtime_home_with_root(directory.path(), &home, true).is_err());
+    }
+}
+
+#[cfg(all(test, unix))] mod spawned_root_alias_tests {
+    use super::*;
+    #[test] fn a_parent_alias_does_not_turn_a_derived_root_into_an_explicit_root() {
+        let directory = tempfile::tempdir().unwrap();
+        let real = directory.path().join("real");
+        std::fs::create_dir_all(real.join("home")).unwrap();
+        let alias = directory.path().join("alias");
+        std::os::unix::fs::symlink(&real, &alias).unwrap();
+        let home = real.join("home").canonicalize().unwrap();
+        assert_eq!(spawned_station_root(&alias.join("home"), &home, None), None);
+        assert!(spawned_station_root(&alias.join("home"), &home, Some(alias.join("home").into_os_string())).is_some());
     }
 }
