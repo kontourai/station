@@ -1651,7 +1651,9 @@ export async function publishPeerPresence(
     await stage('leave', () => clickLiveCommand(peer, 'Leave room'));
     await stage('owner-absence', () =>
       owner
-        .locator(`[data-actor-id="${peerActorId}"]`)
+        .locator(
+          `[data-station-performance-surface="task-room-presence"] [data-actor-id="${peerActorId}"]`,
+        )
         .waitFor({ state: 'detached', timeout: 15_000 }),
     );
   }

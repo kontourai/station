@@ -6,6 +6,8 @@ import {
   foregroundAttributionForProductMark,
   installInteractiveWorkspacePerformanceBridge,
   measureInteractiveWorkspace,
+  observeFilePreviewFetches,
+  observeProductMarks,
   observeReconnectMark,
   productMarkFailureCode,
   reconnectDriverStage,
@@ -13,6 +15,8 @@ import {
 import {
   browserEpochMs,
   emitDiffCommitPerformanceMark,
+  emitFilePreviewCommitPerformanceMark,
+  emitFilePreviewScrollPerformanceMark,
   emitReconnectStrategyPerformanceMark,
   emitTaskCommitPerformanceMark,
   emitTaskDocumentApplyPerformanceMark,
@@ -194,6 +198,7 @@ test('rejects fabricated surface markup when product hooks did not attest commit
       data-station-working-revision="swsr-v1:${'a'.repeat(64)}">base</textarea>
     <button>Inspect worktree diff</button>
   `;
+  const originalFetch = window.fetch;
   const evidence = (await measureInteractiveWorkspace(
     {
       sampling: { warmups: 0, samples: 1 },
@@ -227,6 +232,7 @@ test('rejects fabricated surface markup when product hooks did not attest commit
       'PRODUCT_TASK_INPUT_TIMEOUT',
     ]),
   });
+  expect(window.fetch).toBe(originalFetch);
 });
 
 test('replays a persisted host restoration mark observed before the measure listener', async () => {
@@ -680,4 +686,122 @@ test('accepts an exact post-strategy revision commit without inspecting document
     apply: { taskId: 'task-1', workingRevision: revision },
     render: { taskId: 'task-1', workingRevision: revision },
   });
+});
+
+test('file refresh commits must match the requested nonce, path and time', async () => {
+  vi.useFakeTimers();
+  const marks = observeProductMarks();
+  const expected = {
+    path: 'file.txt',
+    refreshNonce: 'fp-0-cold',
+    afterEpochMs: 10,
+  };
+  const pending = marks.filePreviewCommit(expected);
+  let settled = false;
+  void pending.then(
+    () => {
+      settled = true;
+    },
+    () => {},
+  );
+  const base = {
+    projectSlug: 'project',
+    path: 'file.txt',
+    sizeBytes: 100,
+    lineCount: 20,
+    renderedLineCount: 20,
+    committedEpochMs: 11,
+    refreshNonce: 'fp-0-cold',
+  };
+  try {
+    emitFilePreviewCommitPerformanceMark({ ...base, path: 'other.txt' });
+    emitFilePreviewCommitPerformanceMark({ ...base, committedEpochMs: 9 });
+    emitFilePreviewCommitPerformanceMark({ ...base, refreshNonce: 'old-mark' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    emitFilePreviewCommitPerformanceMark(base);
+    expect(await pending).toEqual(base);
+  } finally {
+    marks.close();
+    vi.useRealTimers();
+  }
+});
+
+test.each([false, true])(
+  'a preview refresh requires a matching request started after arming (Request object: %s)',
+  async (requestObject) => {
+    let completeOld!: (response: Response) => void;
+    const old = new Promise<Response>((resolve) => {
+      completeOld = resolve;
+    });
+    const fetch = vi
+      .fn()
+      .mockImplementationOnce(() => old)
+      .mockImplementation(async () => new Response('{}'));
+    vi.stubGlobal('fetch', fetch);
+    const observer = observeFilePreviewFetches();
+    const url = 'http://localhost/api/projects/project/file-preview';
+    const init = (path: string) => ({
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    });
+    const send = (path: string) =>
+      requestObject
+        ? window.fetch(new Request(url, init(path)))
+        : window.fetch(url, init(path));
+    try {
+      const previous = send('file.txt');
+      const fresh = observer.next('file.txt');
+      let settled = false;
+      void fresh.then(
+        () => {
+          settled = true;
+        },
+        () => {},
+      );
+      completeOld(new Response('{}'));
+      await previous;
+      expect(settled).toBe(false);
+      await send('other.txt');
+      expect(settled).toBe(false);
+      await send('file.txt');
+      await fresh;
+      expect(settled).toBe(true);
+    } finally {
+      observer.close();
+    }
+  },
+);
+
+test('a late animation frame from an older scroll cannot satisfy the next scroll', async () => {
+  vi.useFakeTimers();
+  const marks = observeProductMarks();
+  const pending = marks.filePreviewScroll({
+    path: 'file.txt',
+    afterEpochMs: 10,
+  });
+  let settled = false;
+  void pending.then(
+    () => {
+      settled = true;
+    },
+    () => {},
+  );
+  const base = {
+    projectSlug: 'project',
+    path: 'file.txt',
+    scrollTop: 100,
+    scrolledEpochMs: 9,
+    committedEpochMs: 11,
+  };
+  try {
+    emitFilePreviewScrollPerformanceMark(base);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    emitFilePreviewScrollPerformanceMark({ ...base, scrolledEpochMs: 10 });
+    expect((await pending).scrolledEpochMs).toBe(10);
+  } finally {
+    marks.close();
+    vi.useRealTimers();
+  }
 });

@@ -38,6 +38,7 @@ export interface FilePreviewCommitMark {
 }
 
 export interface FilePreviewScrollMark {
+  readonly scrolledEpochMs: number;
   readonly projectSlug: string;
   readonly path: string;
   readonly scrollTop: number;

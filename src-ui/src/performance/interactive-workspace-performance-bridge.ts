@@ -485,8 +485,8 @@ export async function measureInteractiveWorkspace(
       }
     }
   } finally {
-    batches.close();
     filePreviewFetches.close();
+    batches.close();
     marks.close();
   }
   observations.sort(
@@ -1031,8 +1031,7 @@ async function measure100kFile(
             },
           }),
         );
-        await fetched;
-        const receipt = await commitMark;
+        const [, receipt] = await Promise.all([fetched, commitMark]);
         if (
           receipt.lineCount !== 100_000 ||
           receipt.sizeBytes < 100_000 ||
@@ -1369,7 +1368,7 @@ async function measureRemoteApply(
 }
 
 function observeBatchFetches(): BatchObserver {
-  const original = window.fetch.bind(window);
+  const original = window.fetch;
   const waiters: Array<{
     resolve(timing: BatchTiming): void;
     reject(error: Error): void;
@@ -1441,14 +1440,12 @@ function observeBatchFetches(): BatchObserver {
 }
 
 /** Records a real preview request. Cached query data never reaches this seam. */
-function observeFilePreviewFetches(): FilePreviewFetchObserver {
-  const original = window.fetch.bind(window);
-  const queued: string[] = [];
-  const waiters: Array<{
-    path: string;
-    resolve(): void;
-    reject(error: Error): void;
-  }> = [];
+export function observeFilePreviewFetches(): FilePreviewFetchObserver {
+  const original = window.fetch;
+  type Waiter = { path: string; resolve(): void; reject(error: Error): void };
+  const waiting: Waiter[] = [];
+  const pending = new Set<Waiter>();
+  let closed = false;
   window.fetch = async (input, init) => {
     const url =
       typeof input === 'string'
@@ -1456,47 +1453,68 @@ function observeFilePreviewFetches(): FilePreviewFetchObserver {
         : input instanceof URL
           ? input.href
           : input.url;
-    const isPreview = /\/api\/projects\/[^/]+\/file-preview(?:\?|$)/.test(url);
+    let waiter: Waiter | undefined;
+    // Bind against the waiters present at request start, including when a
+    // Request object's cloned body takes another microtask to decode.
+    const eligible = waiting.slice();
+    const method =
+      init?.method ?? (input instanceof Request ? input.method : undefined);
+    if (
+      /\/api\/projects\/[^/]+\/file-preview(?:\?|$)/.test(url) &&
+      method?.toUpperCase() === 'POST'
+    ) {
+      try {
+        const encoded =
+          typeof init?.body === 'string'
+            ? init.body
+            : init?.body === undefined && input instanceof Request
+              ? await input.clone().text()
+              : undefined;
+        const body = encoded === undefined ? undefined : JSON.parse(encoded);
+        const candidate = eligible.find((entry) => entry.path === body?.path);
+        const index = candidate ? waiting.indexOf(candidate) : -1;
+        if (index >= 0) [waiter] = waiting.splice(index, 1);
+      } catch {
+        /* An unrecognized body provides no refresh evidence. */
+      }
+    }
     try {
-      const response = await original(input, init);
-      if (isPreview && response.ok) {
-        // The exact product query key supplies the path; this observer's job
-        // is solely to reject a cache-only "refresh".
-        const waiter = waiters.shift();
-        if (waiter) waiter.resolve();
-        else queued.push(url);
+      const response = await original.call(window, input, init);
+      if (waiter) {
+        pending.delete(waiter);
+        if (response.ok) waiter.resolve();
+        else waiter.reject(new Error('File preview fetch failed'));
       }
       return response;
     } catch (error) {
-      if (isPreview) {
-        const waiter = waiters.shift();
-        if (waiter)
-          waiter.reject(
-            error instanceof Error
-              ? error
-              : new Error('File preview fetch failed'),
-          );
+      if (waiter) {
+        pending.delete(waiter);
+        waiter.reject(
+          error instanceof Error
+            ? error
+            : new Error('File preview fetch failed'),
+        );
       }
       throw error;
     }
   };
   return {
     next: (path) => {
-      if (!path)
-        return Promise.reject(new Error('File preview path is invalid'));
-      if (queued.length) {
-        queued.shift();
-        return Promise.resolve();
-      }
-      return new Promise<void>((resolve, reject) =>
-        waiters.push({ path, resolve, reject }),
-      );
+      if (!path || closed)
+        return Promise.reject(new Error('File preview observer unavailable'));
+      return new Promise<void>((resolve, reject) => {
+        const waiter = { path, resolve, reject };
+        waiting.push(waiter);
+        pending.add(waiter);
+      });
     },
     close: () => {
+      closed = true;
       window.fetch = original;
-      for (const waiter of waiters.splice(0))
+      for (const waiter of pending)
         waiter.reject(new Error('File preview observer closed'));
-      queued.splice(0);
+      pending.clear();
+      waiting.splice(0);
     },
   };
 }
@@ -1511,7 +1529,7 @@ function currentFilePreviewProjectSlug(): string {
   return projectSlug;
 }
 
-function observeProductMarks(
+export function observeProductMarks(
   journalForMark?: () => ForegroundWorkJournal | undefined,
 ): ProductMarkObserver {
   const taskInputs = markQueue<TaskInputHandlerMark>();
@@ -1644,6 +1662,8 @@ function observeProductMarks(
         filePreviewCommits.take(
           (mark) =>
             mark.path === input.path &&
+            (input.refreshNonce === undefined ||
+              mark.refreshNonce === input.refreshNonce) &&
             mark.committedEpochMs >= input.afterEpochMs,
         ),
         'file-preview-commit',
@@ -1653,6 +1673,7 @@ function observeProductMarks(
         filePreviewScrolls.take(
           (mark) =>
             mark.path === input.path &&
+            mark.scrolledEpochMs >= input.afterEpochMs &&
             mark.committedEpochMs >= input.afterEpochMs,
         ),
         'file-preview-scroll',

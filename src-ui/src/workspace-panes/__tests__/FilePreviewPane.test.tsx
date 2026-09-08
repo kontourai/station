@@ -1,6 +1,11 @@
 /** @vitest-environment jsdom */
 
 import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+} from '@tanstack/react-query';
+import {
   act,
   fireEvent,
   render,
@@ -40,7 +45,10 @@ vi.mock('../resolvedWorkspacePaneCatalog', () => ({
   useResolvedWorkspacePaneCatalog: () => ({ entries: [] }),
 }));
 
-import { subscribeInteractiveWorkspacePerformanceMarks } from '../../performance/interactive-workspace-performance-hooks';
+import {
+  INTERACTIVE_WORKSPACE_FILE_PREVIEW_REFRESH_EVENT,
+  subscribeInteractiveWorkspacePerformanceMarks,
+} from '../../performance/interactive-workspace-performance-hooks';
 import {
   FilePreviewPane,
   FilePreviewSourceLines,
@@ -128,6 +136,123 @@ describe('FilePreviewPane', () => {
     );
     expect(JSON.stringify(marks)).not.toContain('\nx\nx');
     unsubscribe();
+  });
+
+  test('a reference refresh performs one query read and commits its exact nonce', async () => {
+    vi.stubEnv('VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE', '1');
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const read = vi.fn(async () => ({
+      path: 'file.txt',
+      status: 'ready' as const,
+      renderKind: 'text' as const,
+      sizeBytes: 1,
+      lineCount: 1,
+      content: 'x',
+    }));
+    previewQuery.mockImplementation(function usePreviewQuery(
+      projectSlug: string,
+      request: object,
+    ) {
+      return useQuery({
+        queryKey: ['projects', projectSlug, 'file-preview', request],
+        queryFn: read,
+        staleTime: Infinity,
+      });
+    });
+    const marks: unknown[] = [];
+    const unsubscribe = subscribeInteractiveWorkspacePerformanceMarks((mark) =>
+      marks.push(mark),
+    );
+    const view = render(
+      <QueryClientProvider client={client}>
+        <FilePreviewPane
+          projectSlug="demo"
+          stateKey="refresh-test"
+          state={{
+            version: '1.0',
+            projectSlug: 'demo',
+            path: 'file.txt',
+            wrap: true,
+          }}
+        />
+      </QueryClientProvider>,
+    );
+    try {
+      await waitFor(() =>
+        expect(marks).toContainEqual(
+          expect.objectContaining({ kind: 'file-preview-commit' }),
+        ),
+      );
+      expect(read).toHaveBeenCalledTimes(1);
+      act(() =>
+        window.dispatchEvent(
+          new CustomEvent(INTERACTIVE_WORKSPACE_FILE_PREVIEW_REFRESH_EVENT, {
+            detail: {
+              projectSlug: 'demo',
+              path: 'file.txt',
+              nonce: 'fp-0-cold',
+            },
+          }),
+        ),
+      );
+      await waitFor(() =>
+        expect(marks).toContainEqual(
+          expect.objectContaining({
+            kind: 'file-preview-commit',
+            mark: expect.objectContaining({ refreshNonce: 'fp-0-cold' }),
+          }),
+        ),
+      );
+      expect(read).toHaveBeenCalledTimes(2);
+    } finally {
+      view.unmount();
+      unsubscribe();
+      client.clear();
+      previewQuery.mockReset();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test('a retired preview cannot publish a pending scroll frame', () => {
+    const marks: unknown[] = [];
+    const unsubscribe = subscribeInteractiveWorkspacePerformanceMarks((mark) =>
+      marks.push(mark),
+    );
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
+      frames.push(frame);
+      return 1;
+    });
+    previewQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        path: 'file.txt',
+        status: 'ready',
+        renderKind: 'text',
+        sizeBytes: 1,
+        lineCount: 1,
+        content: 'x',
+      },
+    });
+    try {
+      const view = renderPaneAt('file.txt');
+      const surface = document.querySelector(
+        '[data-station-performance-surface="workspace-file-preview"]',
+      )!;
+      fireEvent.scroll(surface, { target: { scrollTop: 100 } });
+      expect(frames.length).toBeGreaterThan(0);
+      view.unmount();
+      for (const frame of frames) frame(0);
+      expect(marks).not.toContainEqual(
+        expect.objectContaining({ kind: 'file-preview-scroll' }),
+      );
+    } finally {
+      unsubscribe();
+      vi.unstubAllGlobals();
+    }
   });
 
   test('removes the exact ranged attachment without removing other same-path context', () => {

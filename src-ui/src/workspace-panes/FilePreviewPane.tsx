@@ -116,10 +116,7 @@ function ReferenceFilePreviewRefresh({
       // Exact key only: a reference corpus rebuild must not refresh unrelated
       // files, and a cached response can never count as the sample.
       void queryClient
-        .invalidateQueries({ queryKey, exact: true })
-        .then(() =>
-          queryClient.refetchQueries({ queryKey, exact: true, type: 'active' }),
-        )
+        .refetchQueries({ queryKey, exact: true, type: 'active' })
         .then(() => completed(nonce));
     };
     window.addEventListener(
@@ -1056,12 +1053,20 @@ export function FilePreviewPane({
           )
             return;
           const surface = event.currentTarget;
+          const scrolledEpochMs = browserEpochMs();
           requestAnimationFrame(() => {
+            if (
+              !surface.isConnected ||
+              surface.dataset.stationFilePath !== state.path ||
+              surface.dataset.stationProjectSlug !== state.projectSlug
+            )
+              return;
             surface.getBoundingClientRect();
             emitFilePreviewScrollPerformanceMark({
               projectSlug: state.projectSlug,
               path: state.path,
               scrollTop: surface.scrollTop,
+              scrolledEpochMs,
               committedEpochMs: browserEpochMs(),
             });
           });

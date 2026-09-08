@@ -5740,7 +5740,7 @@ const pluginBundles = readRequiredSource(
   '../src-server/routes/plugins/plugin-bundles.ts',
 );
 for (const requiredHelper of [
-  'export function resolvePluginBundle',
+  'export async function readPluginBundle',
   'export async function buildPlugin',
   '@kontourai/station-shared/build',
 ]) {
