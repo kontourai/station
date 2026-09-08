@@ -628,6 +628,12 @@ test.describe('Default agent workflow', () => {
                 answerability: { answerable: true },
               },
               currentSessionId,
+              execution: {
+                sessionId: currentSessionId,
+                agentId: 'station',
+                provider: 'station-agent',
+                model: DEFAULT_AGENT.model,
+              },
               transcript: {
                 available: true,
                 owner: 'runtime',

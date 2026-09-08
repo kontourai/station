@@ -1,3 +1,6 @@
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { devices, expect, type Page } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import {
@@ -203,6 +206,54 @@ async function mockTaskFirstHome(
       );
       return;
     }
+    if (
+      path === '/api/conversations/task-first-home/open' &&
+      route.request().method() === 'GET'
+    ) {
+      const resolution: ConversationOpenResolution = {
+        status: 'resolved',
+        conversation: {
+          id: taskSession.threadId,
+          title: 'New chat',
+          agentSlug: agentId(taskSession.assignedAgentSlug),
+          source: 'runtime',
+          createdAt: taskSession.createdAt,
+          updatedAt: taskSession.updatedAt,
+          messageCount: 0,
+          mutable: false,
+          answerability: { answerable: true },
+        },
+        currentSessionId: taskSession.threadId,
+        execution: {
+          sessionId: taskSession.threadId,
+          agentId: agentId(taskSession.assignedAgentSlug),
+          provider: taskSession.provider,
+          engineConnectionId: 'codex',
+          model: taskSession.model,
+        },
+        transcript: { available: true, owner: 'runtime', messageCount: 0 },
+        canContinue: true,
+        answerability: { answerable: true },
+        recoveryActions: [],
+      };
+      await route.fulfill(json(resolution));
+      return;
+    }
+    if (
+      path === '/api/orchestration/pane-host/station/catalog' &&
+      route.request().method() === 'GET'
+    ) {
+      // This project has built-in panes and no installed package actions.
+      await route.fulfill(
+        json({
+          projectSlug: 'station',
+          support: 'supported',
+          complete: true,
+          contributions: [],
+        } satisfies WorkspacePaneHostActionCatalog),
+      );
+      return;
+    }
     if (path === '/api/orchestration/sessions/task-first-home') {
       await route.fulfill(
         json({ session: taskSession, events: options.sessionEvents ?? [] }),
@@ -339,7 +390,23 @@ async function mockTaskFirstHome(
       );
       return;
     }
-    if (path === '/api/connections/agents') {
+    if (
+      path === '/api/knowledge/status' &&
+      route.request().method() === 'GET'
+    ) {
+      await route.fulfill(
+        json({
+          vectorDb: null,
+          embedding: null,
+          stats: { totalDocuments: 0, totalChunks: 0, projectCount: 0 },
+        }),
+      );
+      return;
+    }
+    if (
+      path === '/api/connections/agents' ||
+      (path === '/api/connections' && route.request().method() === 'GET')
+    ) {
       await route.fulfill(
         json([
           agentConnectionFixture({
@@ -762,7 +829,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       page.locator('.chat-dock__active-identity').getByText('New chat'),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Hide dock region' }),
+      page.getByRole('button', { name: 'Hide Chat', exact: true }),
     ).toBeVisible();
     await page.locator('.chat-dock__header').hover();
     await page.getByRole('button', { name: 'Close chat' }).click();

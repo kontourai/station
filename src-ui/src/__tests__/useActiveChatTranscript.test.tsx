@@ -64,6 +64,95 @@ const event = (eventId: string, method: string, fields = {}) => ({
 });
 
 describe('useActiveChatTranscript', () => {
+  test('switching conversations never assigns the previous reader child to the new chat', async () => {
+    const parentId = 'reader-parent-tab';
+    const childId = 'reader-fork-tab';
+    for (const id of [parentId, childId])
+      activeChatsStore.initChat(id, {
+        agentSlug: 'claude',
+        agentName: 'Claude',
+        title: id,
+      });
+    activeChatsStore.updateChat(parentId, {
+      conversationId: 'parent-conversation',
+      currentSessionId: 'parent-execution',
+    });
+    activeChatsStore.updateChat(childId, {
+      conversationId: 'fork-conversation',
+      requestedModel: 'chosen-model',
+    });
+    let resolveFork!: (value: unknown) => void;
+    fetchWindow.mockImplementation((conversationId: string) =>
+      conversationId === 'parent-conversation'
+        ? Promise.resolve({
+            protocolVersion: 1,
+            currentSessionId: 'parent-execution',
+            watermark: 1,
+            hasMore: false,
+            events: [],
+          })
+        : new Promise((resolve) => {
+            resolveFork = resolve;
+          }),
+    );
+    const { result, rerender, unmount } = renderHook(
+      ({ session }) => useActiveChatTranscript('http://station.test', session),
+      {
+        initialProps: {
+          session: {
+            ...baseSession,
+            id: parentId,
+            conversationId: 'parent-conversation',
+            currentSessionId: 'parent-execution',
+          } as ChatSession,
+        },
+      },
+    );
+    try {
+      await waitFor(() =>
+        expect(result.current.currentSessionId).toBe('parent-execution'),
+      );
+      rerender({
+        session: {
+          ...baseSession,
+          id: childId,
+          conversationId: 'fork-conversation',
+          orchestrationSessionStarted: false,
+        } as ChatSession,
+      });
+      expect(
+        activeChatsStore.getSnapshot()[childId].currentSessionId,
+      ).toBeUndefined();
+      expect(activeChatsStore.getSnapshot()[childId].requestedModel).toBe(
+        'chosen-model',
+      );
+      rerender({
+        session: {
+          ...baseSession,
+          id: childId,
+          conversationId: 'fork-conversation',
+        } as ChatSession,
+      });
+      await waitFor(() => expect(resolveFork).toBeDefined());
+      await act(async () =>
+        resolveFork({
+          protocolVersion: 1,
+          currentSessionId: 'fork-execution',
+          watermark: 1,
+          hasMore: false,
+          events: [],
+        }),
+      );
+      expect(activeChatsStore.getSnapshot()[childId].currentSessionId).toBe(
+        'fork-execution',
+      );
+    } finally {
+      unmount();
+      activeChatsStore.removeChat(parentId);
+      activeChatsStore.removeChat(childId);
+    }
+  });
+
   test('observing a new child schedules authoritative open once without clearing the draft', async () => {
     const id = 'live-boundary-conversation';
     activeChatsStore.initChat(id, {

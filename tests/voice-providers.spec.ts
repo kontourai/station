@@ -20,6 +20,7 @@ import {
   seedActiveChats,
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
+import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 
 // Seed a connected server so the app skips onboarding
 const SEED_STORAGE = () => {
@@ -471,6 +472,16 @@ test.describe('Voice Providers — VoiceOrb in chat input', () => {
       },
     ]);
     await seedOrchestrationRoutes(page);
+    await mockRuntimeConversation(page, {
+      id: 'conv-1',
+      agentSlug: 'dev-agent',
+      title: 'Dev Agent Chat',
+      projectSlug: 'dev',
+      provider: 'station-agent',
+      model: 'claude-sonnet',
+      canContinue: true,
+      turns: () => [],
+    });
     await page.route('**/api/system/capabilities', (route) =>
       route.fulfill({
         status: 200,

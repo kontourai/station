@@ -2916,6 +2916,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   projectName,
                   model:
                     modelOverride ?? (sameAgent ? forkSource.model : undefined),
+                  requestedModel:
+                    modelOverride ?? (sameAgent ? forkSource.model : undefined),
                   modelSource:
                     modelSource ??
                     (sameAgent ? forkSource.modelSource : undefined),
@@ -2926,6 +2928,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     defaultModelSource ??
                     (sameAgent ? forkSource.defaultModelSource : undefined),
                   providerOptions:
+                    providerOptions ??
+                    (sameAgent ? forkSource.providerOptions : undefined),
+                  requestedProviderOptions:
                     providerOptions ??
                     (sameAgent ? forkSource.providerOptions : undefined),
                   providerId:

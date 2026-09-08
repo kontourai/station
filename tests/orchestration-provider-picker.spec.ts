@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import {
   dismissSetupLauncher,
@@ -6,6 +7,7 @@ import {
   seedActiveChats,
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
+import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 
 test.describe('Orchestration Execution Settings', () => {
   test.beforeEach(async ({ page }) => {
@@ -56,12 +58,18 @@ test.describe('Orchestration Execution Settings', () => {
     page,
   }) => {
     const executionRequests: Array<Record<string, unknown>> = [];
+    const model = 'gpt-5.3-codex';
+    const providerOptions = { reasoningEffort: 'xhigh', fastMode: true };
     await seedActiveChats(page, [
       {
         sessionId: 'session-1',
         conversationId: 'conv-1',
         agentSlug: 'dev-agent',
-        model: 'claude-sonnet',
+        model,
+        requestedModel: model,
+        requestedProviderOptions: providerOptions,
+        agentConnectionId: 'codex',
+        executionMode: 'external',
         provider: 'codex',
         projectSlug: 'dev',
         providerOptions: {
@@ -73,6 +81,61 @@ test.describe('Orchestration Execution Settings', () => {
         inputHistory: [],
       },
     ]);
+    await mockRuntimeConversation(page, {
+      id: 'conv-1',
+      agentSlug: 'dev-agent',
+      title: 'Dev Agent Chat',
+      projectSlug: 'dev',
+      provider: 'codex',
+      model,
+      canContinue: true,
+      turns: () => [],
+    });
+    const agent = {
+      slug: 'dev-agent',
+      name: 'Dev Agent',
+      execution: { agentConnectionId: 'codex' },
+    };
+    await page.route('**/api/agents', (route) =>
+      route.fulfill({ json: { success: true, data: [agent] } }),
+    );
+    await page.route('**/api/agents/dev-agent', (route) =>
+      route.fulfill({ json: { success: true, data: agent } }),
+    );
+    await page.route('**/api/connections/agents', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          data: [
+            agentConnectionFixture({
+              id: 'codex',
+              name: 'Codex',
+              type: 'codex',
+              kind: 'agent',
+              enabled: true,
+              status: 'ready',
+              config: { engineId: 'codex' },
+              runtimeCatalog: {
+                source: 'live',
+                models: [
+                  {
+                    id: model,
+                    name: model,
+                    originalId: model,
+                    capabilities: {
+                      supportsEffort: true,
+                      supportedEffortLevels: ['xhigh'],
+                      supportsFastMode: true,
+                    },
+                  },
+                ],
+                builtInModels: [],
+              },
+            }),
+          ],
+        },
+      }),
+    );
     await page.route('**/api/orchestration/chat', async (route) => {
       const request = route.request().postDataJSON() as Record<string, unknown>;
       executionRequests.push(request);
@@ -116,9 +179,9 @@ test.describe('Orchestration Execution Settings', () => {
         // here, is that the persisted selection reaches the dispatch at all.
         workspace: { kind: 'project', projectSlug: 'dev' },
         model: {
-          override: 'claude-sonnet',
+          override: model,
           options: {
-            reasoningEffort: 'xhigh',
+            effort: 'xhigh',
             fastMode: true,
           },
         },

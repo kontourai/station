@@ -7,7 +7,7 @@ import {
   CONVERSATION_HANDOFF_DISCLOSURE_LABELS,
   CONVERSATION_HANDOFF_RESET_FIELDS,
 } from '@kontourai/station-contracts/orchestration';
-import { expect, type Page, type TestInfo, test } from '@playwright/test';
+import { expect, type Page, type TestInfo } from '@playwright/test';
 import { createDailyDriverScenarioObservation } from '../scripts/lib/daily-driver-scenario-observation.mjs';
 import {
   completeDispatchedTurn,
@@ -17,6 +17,7 @@ import {
   transcriptLocator,
 } from './helpers/daily-driver-shell';
 import { foregroundMessageReceipt } from './helpers/execution-receipt';
+import { test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
   waitForMockOrchestrationSse,
@@ -181,6 +182,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       {
         conversationId: SWITCH_CONVERSATION,
         agentSlug: 'claude',
+        connectionId: 'claude',
         title: 'Model switch chat',
         model: MODEL_ALPHA,
       },
@@ -284,13 +286,12 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
   }) => {
     test.setTimeout(120_000);
     const childId = 'dd-fork-child-same-provider';
+    const conversations = [...SHELL_CONVERSATIONS];
     const forkBodies: Array<Record<string, unknown>> = [];
-    const childMessages: Record<string, Array<Record<string, unknown>>> = {};
     let attempt = 0;
     const shell = await seedDailyDriverShell(page, {
       agents: SHELL_AGENTS,
-      conversations: SHELL_CONVERSATIONS,
-      messagesByConversation: childMessages,
+      conversations,
       extraRoutes: async (path, route) => {
         if (
           path ===
@@ -299,22 +300,11 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
         ) {
           forkBodies.push(route.request().postDataJSON());
           attempt += 1;
-          childMessages[childId] = [
-            {
-              id: 'fork-child-user',
-              role: 'user',
-              parts: [{ type: 'text', text: 'Parent branch prompt.' }],
-            },
-            {
-              id: 'fork-child-answer',
-              role: 'assistant',
-              parts: [{ type: 'text', text: 'Parent branch answer.' }],
-              metadata: {
-                turnId: 'dd-fork-source-turn',
-                answerEligible: true,
-              },
-            },
-          ];
+          shell.recordFork(
+            FORK_CONVERSATION,
+            { id: childId, title: 'Same-provider child', agentSlug: 'claude' },
+            'dd-fork-source-turn',
+          );
           if (attempt === 1) {
             // The server committed the deterministic child, but the response
             // was lost. Retrying must reuse the same key and resolve that one
@@ -346,6 +336,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       {
         conversationId: FORK_CONVERSATION,
         agentSlug: 'claude',
+        connectionId: 'claude',
         title: 'Fork source chat',
         model: MODEL_BRAVO,
       },
@@ -413,33 +404,21 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
   }) => {
     test.setTimeout(120_000);
     const childId = 'dd-fork-child-alternate';
+    const conversations = [...SHELL_CONVERSATIONS];
     const forkBodies: Array<Record<string, unknown>> = [];
-    const childMessages: Record<string, Array<Record<string, unknown>>> = {};
     const shell = await seedDailyDriverShell(page, {
       agents: SHELL_AGENTS,
-      conversations: SHELL_CONVERSATIONS,
-      messagesByConversation: childMessages,
+      conversations,
       extraRoutes: async (path, route) => {
         if (
           path === `/api/agents/claude/conversations/${FORK_CONVERSATION}/fork`
         ) {
           forkBodies.push(route.request().postDataJSON());
-          childMessages[childId] = [
-            {
-              id: 'alternate-fork-user',
-              role: 'user',
-              parts: [{ type: 'text', text: 'Cross-engine parent.' }],
-            },
-            {
-              id: 'alternate-fork-answer',
-              role: 'assistant',
-              parts: [{ type: 'text', text: 'Cross-engine answer.' }],
-              metadata: {
-                turnId: 'dd-alternate-fork-turn',
-                answerEligible: true,
-              },
-            },
-          ];
+          shell.recordFork(
+            FORK_CONVERSATION,
+            { id: childId, title: 'Alternate-Agent child', agentSlug: 'codex' },
+            'dd-alternate-fork-turn',
+          );
           await route.fulfill({
             status: 200,
             contentType: 'application/json',
@@ -463,6 +442,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       {
         conversationId: FORK_CONVERSATION,
         agentSlug: 'claude',
+        connectionId: 'claude',
         title: 'Fork source chat',
         model: MODEL_ALPHA,
       },
@@ -608,6 +588,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       {
         conversationId: HANDOFF_CONVERSATION,
         agentSlug: 'claude',
+        connectionId: 'claude',
         title: 'Agent handoff chat',
         model: MODEL_ALPHA,
       },

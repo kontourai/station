@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
-import { expect, type Page, type TestInfo, test } from '@playwright/test';
+import { expect, type Page, type TestInfo } from '@playwright/test';
 import { createDailyDriverScenarioObservation } from '../scripts/lib/daily-driver-scenario-observation.mjs';
 import {
   buildLongSessionTurns,
@@ -20,6 +20,7 @@ import {
   seedDailyDriverShell,
   transcriptLocator,
 } from './helpers/daily-driver-shell';
+import { test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
   waitForMockOrchestrationSse,
@@ -306,18 +307,21 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
       const settleThread = SETTLE_THREADS[path.profile]!;
       const failureThread = FAILURE_THREADS[path.profile]!;
       const settledAnswer = `Settled answer for ${path.profile}.`;
-      // The serving Station's own session record: empty until the failure
-      // phase, then the failed session archive#3213's banner exists for.
+      // Use the ordinary declared Session records until the failure phase
+      // supplies the failed record archive#3213's banner exists for.
       // Typed against the SDK's own summary rather than a bag of fields: a
       // rename on the server's serializer then breaks typecheck here instead
       // of leaving this scenario green on a shape the product stopped
       // emitting. It does not pin field SEMANTICS — only the shape.
-      let sessionReadModel: OrchestrationSessionSummary[] = [];
+      let sessionReadModel: OrchestrationSessionSummary[] | undefined;
       const shell = await seedDailyDriverShell(page, {
         agents: SHELL_AGENTS,
         conversations: SHELL_CONVERSATIONS,
         extraRoutes: async (routePath, route) => {
-          if (routePath !== '/api/orchestration/sessions/read-model')
+          if (
+            routePath !== '/api/orchestration/sessions/read-model' ||
+            sessionReadModel === undefined
+          )
             return false;
           await route.fulfill({
             status: 200,
@@ -603,6 +607,7 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
         {
           conversationId: path.conversationId,
           agentSlug: path.agentSlug,
+          connectionId: path.connectionId,
           title: `${path.runtimeName} agreement`,
           model: path.model,
         },
@@ -890,12 +895,14 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
         {
           conversationId: threadId,
           agentSlug: path.agentSlug,
+          connectionId: path.connectionId,
           title: `${path.runtimeName} stress`,
           model: path.model,
         },
         {
           conversationId: STRESS_SIBLING_THREAD,
           agentSlug: 'claude',
+          connectionId: 'claude',
           title: 'Stress sibling',
         },
       ]);
@@ -905,11 +912,13 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
         turnCount: 1_000,
       });
       await page.route(
-        `**/api/orchestration/sessions/${threadId}/event-window**`,
+        `**/api/orchestration/conversations/${threadId}/event-window**`,
         createLongSessionEventWindowHandler({
           threadId,
+          conversationId: threadId,
           provider: path.provider,
           availableTurns: () => turns,
+          currentSessionId: () => shell.sessionIds(threadId).at(-1) ?? threadId,
         }),
       );
 

@@ -1,13 +1,20 @@
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { ConversationOpenExecution } from '@kontourai/station-contracts/orchestration';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { expect, type Page, type Route } from '@playwright/test';
 import { E2E_STATION_COMPATIBILITY } from './current-station-contract';
 import { foregroundMessageReceiptEnvelope } from './execution-receipt';
+import { rejectUnexpectedFixtureRequest } from './fixture-audit';
 import {
   emitMockOrchestrationEvent,
+  forkMockOrchestrationTranscript,
   installMockOrchestrationConversationEventWindow,
   installMockOrchestrationEventWindow,
   installMockOrchestrationSse,
 } from './orchestration';
+import { fulfillStationShellRead } from './station-shell-fixtures';
 
 /**
  * Shared browser shell for the daily-driver scenario and switching specs
@@ -71,6 +78,11 @@ export interface DailyDriverShellOptions {
 }
 
 export interface DailyDriverShell {
+  recordFork(
+    sourceConversationId: string,
+    target: ShellConversation,
+    branchPointTurnId: string,
+  ): void;
   executionRequests: ExecutionRequest[];
   historyByConversation: Map<string, string[]>;
   sessionIds(conversationId: string): string[];
@@ -118,7 +130,11 @@ export async function seedDailyDriverShell(
   const executionRequests: ExecutionRequest[] = [];
   const historyByConversation = new Map<string, string[]>();
   const sessionIdsByConversation = new Map<string, string[]>();
+  const executionBySession = new Map<string, ConversationOpenExecution>();
   const terminalSessions = new Set<string>();
+  const storedMessages = new Map<string, unknown[]>(
+    Object.entries(options.messagesByConversation ?? {}),
+  );
   const { agents, conversations } = options;
 
   const agentRecords = agents.map((path) => ({
@@ -241,6 +257,17 @@ export async function seedDailyDriverShell(
       );
     if (path === '/api/agents')
       return route.fulfill(json({ success: true, data: agentRecords }));
+    const agentDetail = /^\/api\/agents\/([^/]+)$/.exec(path);
+    if (agentDetail && route.request().method() === 'GET') {
+      const agent = agentRecords.find(
+        (candidate) => candidate.slug === decodeURIComponent(agentDetail[1]!),
+      );
+      return route.fulfill(
+        agent
+          ? json({ success: true, data: agent })
+          : json({ success: false, error: 'Agent not found' }, 404),
+      );
+    }
     if (path === '/api/connections/agents')
       return route.fulfill(json({ success: true, data: runtimeConnections }));
     if (path === '/api/connections/models')
@@ -275,32 +302,41 @@ export async function seedDailyDriverShell(
       return route.fulfill(
         json({
           success: true,
-          data: [...sessionIdsByConversation.entries()].flatMap(
-            ([conversationId, sessionIds]) => {
-              const agentSlug = conversations.find(
-                (conversation) => conversation.id === conversationId,
-              )?.agentSlug;
-              const provider =
-                agents.find((candidate) => candidate.agentSlug === agentSlug)
-                  ?.provider ?? 'claude';
-              return sessionIds.map((threadId) => {
-                const terminal = terminalSessions.has(threadId);
-                return {
-                  threadId,
-                  provider,
-                  lifecycleState: terminal ? 'completed' : 'running',
-                  status: terminal ? 'completed' : 'running',
-                  controlMode: 'station-owned',
-                  answerability: { answerable: !terminal },
-                  isLoaded: true,
-                  isPersisted: true,
-                  eventCount: 1,
-                  createdAt: '2026-08-18T12:00:00.000Z',
-                  updatedAt: '2026-08-18T12:00:01.000Z',
-                };
-              });
-            },
-          ),
+          data: conversations.flatMap((conversation) => {
+            const conversationId = conversation.id;
+            const sessionIds = sessionIdsByConversation.get(conversationId) ?? [
+              conversationId,
+            ];
+            const agentSlug = conversation.agentSlug;
+            const provider =
+              agents.find((candidate) => candidate.agentSlug === agentSlug)
+                ?.provider ?? 'claude';
+            return sessionIds.map((threadId) => {
+              const terminal = terminalSessions.has(threadId);
+              return {
+                threadId,
+                provider,
+                assignedAgentSlug: agentSlug,
+                lifecycleState: terminal
+                  ? 'completed'
+                  : sessionIdsByConversation.has(conversationId)
+                    ? 'running'
+                    : 'needs_input',
+                status: terminal
+                  ? 'completed'
+                  : sessionIdsByConversation.has(conversationId)
+                    ? 'running'
+                    : 'ready',
+                controlMode: 'station-owned',
+                answerability: { answerable: !terminal },
+                isLoaded: true,
+                isPersisted: true,
+                eventCount: 1,
+                createdAt: '2026-08-18T12:00:00.000Z',
+                updatedAt: '2026-08-18T12:00:01.000Z',
+              };
+            });
+          }),
         }),
       );
     if (path === '/api/orchestration/commands')
@@ -365,6 +401,15 @@ export async function seedDailyDriverShell(
         historyByConversation.set(conversationId, history);
       }
       const agent = request.target?.agent ?? agents[0]?.agentSlug ?? 'claude';
+      const path = agents.find((candidate) => candidate.agentSlug === agent);
+      if (!path) throw new Error(`Undeclared fixture Agent ${agent}`);
+      executionBySession.set(sessionId, {
+        sessionId,
+        agentId: agentId(agent),
+        provider: engineIdFor(path.provider),
+        engineConnectionId: path.connectionId,
+        model: request.target?.model?.override ?? path.defaultModel,
+      });
       return route.fulfill(
         json(
           foregroundMessageReceiptEnvelope({
@@ -402,6 +447,11 @@ export async function seedDailyDriverShell(
       // 10k-transcript scenarios do) is still its own first session.
       const currentSessionId =
         sessionIdsByConversation.get(conversationId)?.at(-1) ?? conversationId;
+      const agentPath = agents.find(
+        (candidate) => candidate.agentSlug === conversation.agentSlug,
+      );
+      if (!agentPath)
+        throw new Error(`Undeclared fixture Agent ${conversation.agentSlug}`);
       return route.fulfill(
         json({
           success: true,
@@ -413,13 +463,22 @@ export async function seedDailyDriverShell(
               agentSlug: conversation.agentSlug,
             },
             currentSessionId,
+            execution: executionBySession.get(currentSessionId) ?? {
+              sessionId: currentSessionId,
+              agentId: agentId(conversation.agentSlug),
+              provider: engineIdFor(agentPath.provider),
+              engineConnectionId: agentPath.connectionId,
+              model: agentPath.defaultModel,
+            },
             transcript: {
               available: true,
               owner: 'runtime',
               messageCount:
                 historyByConversation.get(conversationId)?.length ?? 0,
             },
-            canContinue: !terminalSessions.has(currentSessionId),
+            // A closed execution Session cannot be reused, but its Conversation
+            // can still create the next child through the continuation route.
+            canContinue: true,
             answerability: { answerable: true },
             recoveryActions: [],
           },
@@ -450,7 +509,7 @@ export async function seedDailyDriverShell(
       return route.fulfill(
         json({
           success: true,
-          data: options.messagesByConversation?.[id] ?? [],
+          data: storedMessages.get(id) ?? [],
         }),
       );
     }
@@ -478,9 +537,55 @@ export async function seedDailyDriverShell(
         headers: { 'content-type': 'text/event-stream' },
         body: 'data: {"event":"connected"}\n\n',
       });
-    return route.fulfill(
-      json({ success: false, error: `Unmocked ${path}` }, 404),
-    );
+    if (route.request().method() === 'GET') {
+      const ancillary =
+        /^\/api\/agents\/([^/]+)\/conversations\/([^/]+)\/(summary|stats)$/.exec(
+          path,
+        );
+      if (
+        ancillary &&
+        conversations.some(
+          (entry) =>
+            entry.id === decodeURIComponent(ancillary[2]!) &&
+            entry.agentSlug === decodeURIComponent(ancillary[1]!),
+        )
+      ) {
+        // These conversations have no generated summary or provider usage report.
+        return route.fulfill(
+          ancillary[3] === 'summary'
+            ? json({ success: true, data: null })
+            : json(
+                {
+                  success: false,
+                  error: 'Provider usage is unavailable in this fixture',
+                },
+                503,
+              ),
+        );
+      }
+      const checkpoints =
+        /^\/api\/orchestration\/sessions\/([^/]+)\/checkpoints$/.exec(path);
+      if (checkpoints) {
+        const id = decodeURIComponent(checkpoints[1]!);
+        if (
+          conversations.some((entry) => entry.id === id) ||
+          executionBySession.has(id)
+        )
+          return route.fulfill(json({ success: true, data: [] }));
+      }
+      if (path === '/api/starter-work/start-task')
+        return route.fulfill(
+          json(
+            {
+              success: false,
+              error: 'Starter Work is unavailable in this conversation fixture',
+            },
+            503,
+          ),
+        );
+    }
+    if (await fulfillStationShellRead(route)) return;
+    return rejectUnexpectedFixtureRequest(route);
   };
   await page.route('**/api/**', handle);
   await page.route('**/agents/**', handle);
@@ -492,10 +597,47 @@ export async function seedDailyDriverShell(
     await installMockOrchestrationConversationEventWindow(
       page,
       (conversationId) => [
-        ...(sessionIdsByConversation.get(conversationId) ?? []),
+        ...(sessionIdsByConversation.get(conversationId) ??
+          (conversations.some(
+            (conversation) => conversation.id === conversationId,
+          )
+            ? [conversationId]
+            : [])),
       ],
     );
   return {
+    recordFork(sourceConversationId, target, branchPointTurnId) {
+      if (conversations.some((conversation) => conversation.id === target.id))
+        return;
+      const sourceSessions = sessionIdsByConversation.get(sourceConversationId);
+      if (!sourceSessions)
+        throw new Error('Fork fixture has no source execution');
+      const events = forkMockOrchestrationTranscript(
+        page,
+        sourceSessions,
+        target.id,
+        branchPointTurnId,
+      );
+      storedMessages.set(
+        target.id,
+        projectRuntimeEventsToMessages(
+          events as unknown as CanonicalRuntimeEvent[],
+        ).map((message) => ({
+          ...message,
+          id: `fork:${target.id}:${message.id}`,
+          metadata: { ...message.metadata, forkSourceMessageId: message.id },
+        })),
+      );
+      conversations.push(target);
+      historyByConversation.set(
+        target.id,
+        events.flatMap((event) =>
+          event.method === 'turn.started' && typeof event.prompt === 'string'
+            ? [event.prompt]
+            : [],
+        ),
+      );
+    },
     executionRequests,
     historyByConversation,
     sessionIds: (conversationId) => [
@@ -598,6 +740,7 @@ export async function seedDailyDriverChats(
   chats: Array<{
     conversationId: string;
     agentSlug: string;
+    connectionId: string;
     title: string;
     model?: string;
     provider?: string;
@@ -611,10 +754,13 @@ export async function seedDailyDriverChats(
           sessionId: item.conversationId,
           conversationId: item.conversationId,
           agentSlug: item.agentSlug,
+          agentConnectionId: item.connectionId,
           title: item.title,
           executionMode: 'external',
           provider: item.provider ?? item.agentSlug,
-          ...(item.model ? { model: item.model } : {}),
+          ...(item.model
+            ? { model: item.model, requestedModel: item.model }
+            : {}),
           providerOptions: {},
           orchestrationSessionStarted: true,
           ephemeralMessages: [],

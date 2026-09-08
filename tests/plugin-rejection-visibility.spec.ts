@@ -1,5 +1,5 @@
 /** Server-backed browser proof for the rejected-manifest repair journey. */
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { expect, test } from './helpers/authenticated-request';
 
@@ -31,6 +31,7 @@ test('keeps a real rejected installed plugin visible and recovers after repair',
   page,
 }) => {
   const pluginDirectory = runnerOwnedPluginDirectory();
+  const repairedDirectory = join(pluginDirectory, '..', 'legacy-plugin');
   mkdirSync(pluginDirectory, { recursive: true });
   writeFileSync(
     join(pluginDirectory, 'plugin.json'),
@@ -60,6 +61,8 @@ test('keeps a real rejected installed plugin visible and recovers after repair',
         version: '2.0.0',
       }),
     );
+    // The installed root uses the same canonical identity as the repaired manifest.
+    renameSync(pluginDirectory, repairedDirectory);
     await page.getByRole('button', { name: 'Reload plugins' }).click();
 
     await expect(
@@ -69,6 +72,7 @@ test('keeps a real rejected installed plugin visible and recovers after repair',
     await expect(page.getByText('Rejected', { exact: true })).toHaveCount(0);
   } finally {
     rmSync(pluginDirectory, { recursive: true, force: true });
+    rmSync(repairedDirectory, { recursive: true, force: true });
     const response = await authenticatedRequest.post('/api/plugins/reload');
     expect(response.ok()).toBe(true);
   }

@@ -14,6 +14,7 @@ type SkillRecord = {
   origin?: 'user' | 'project' | 'registry';
   path?: string;
   installed?: boolean;
+  writable?: boolean;
   version?: string;
 };
 
@@ -29,6 +30,7 @@ async function seedSkillRoutes(page: Page) {
         tags: ['review'],
         global: true,
         source: 'local',
+        writable: true,
         origin: 'user',
         path: '/tmp/skills/review/SKILL.md',
         installed: true,
@@ -96,6 +98,7 @@ async function seedSkillRoutes(page: Page) {
       const skill = {
         ...body,
         source: 'local',
+        writable: true,
         origin: 'user',
         installed: true,
         path: `/tmp/skills/${body.name}/SKILL.md`,
@@ -231,6 +234,7 @@ async function seedCommandSkillRoutes(page: Page) {
         description: 'Ship a release',
         body: 'Ship {{ticket}}',
         source: 'local',
+        writable: true,
         origin: 'user',
         path: '/tmp/skills/release-check/SKILL.md',
         installed: true,
@@ -245,6 +249,7 @@ async function seedCommandSkillRoutes(page: Page) {
         description: 'Not a command',
         body: 'Just a skill',
         source: 'local',
+        writable: true,
         origin: 'user',
         path: '/tmp/skills/plain-skill/SKILL.md',
         installed: true,

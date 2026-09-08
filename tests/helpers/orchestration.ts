@@ -474,6 +474,10 @@ type StoredChat = {
   agentSlug: string;
   title?: string;
   model?: string;
+  requestedModel?: string;
+  requestedProviderOptions?: Record<string, unknown>;
+  agentConnectionId?: string;
+  executionMode?: 'external' | 'station';
   provider?: string;
   providerOptions?: Record<string, unknown>;
   projectSlug?: string;
@@ -626,6 +630,35 @@ export async function installMockOrchestrationEventWindow(
  * current clients may carry distinct Conversation and Session identities, so a
  * synthetic 404 cannot safely fall back to the Session route.
  */
+/** Capture the observed source prefix once; retries must not recopy later turns. */
+export function forkMockOrchestrationTranscript(
+  page: Page,
+  sourceSessionIds: readonly string[],
+  targetSessionId: string,
+  branchPointTurnId: string,
+): Record<string, unknown>[] {
+  const historical = historicalOrchestrationEvents.get(page);
+  if (!historical)
+    throw new Error('Orchestration history fixture is not installed');
+  if (historical[targetSessionId]) return historical[targetSessionId];
+  const sources = new Set(sourceSessionIds);
+  const events = [
+    ...sourceSessionIds.flatMap((id) => historical[id] ?? []),
+    ...(emittedOrchestrationEvents.get(page) ?? []).filter(
+      (event) =>
+        typeof event.threadId === 'string' && sources.has(event.threadId),
+    ),
+  ];
+  const end = events.findIndex(
+    (event) =>
+      event.turnId === branchPointTurnId && event.method === 'turn.completed',
+  );
+  if (end < 0) throw new Error('Fork fixture has no completed source turn');
+  const prefix = structuredClone(events.slice(0, end + 1));
+  historical[targetSessionId] = prefix;
+  return prefix;
+}
+
 export async function installMockOrchestrationConversationEventWindow(
   page: Page,
   readSessionIds: (conversationId: string) => string[],
