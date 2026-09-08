@@ -1,3 +1,8 @@
+import {
+  invertPathReadPins,
+  scanPathReadPins,
+} from './lib/path-read-pin-scan.mjs';
+
 /**
  * E2E contract seams that Vitest import analysis cannot safely infer. Keep
  * this list exact: an ordinary script still receives related-test selection,
@@ -1172,6 +1177,77 @@ export const ESCALATION_PATHS = Object.freeze([
   '.github/workflows/',
 ]);
 
+/**
+ * Reason recorded on every derived path-read pin edge.
+ *
+ * A test that reads a source file's TEXT
+ * (`readFileSync(join(__dirname, ...))`) asserts something about that file
+ * while having no import edge to it, so neither `vitest related` nor this
+ * manifest's graph fallback can schedule it. #1785 moved
+ * `useOutboundQueueSnapshot(...)` out of `ChatDock.tsx` and left its pin red
+ * on `main`.
+ */
+const PATH_READ_PIN_REASON =
+  'source is read as text by a test, outside the import graph (#1807)';
+
+/**
+ * The gate that re-derives the scan and fails when a pinned path no longer
+ * exists. Every derived edge selects it, so a rename of a pinned file reds a
+ * test that names the pin and the path rather than waiting for a broad
+ * selection on somebody else's pull request.
+ */
+export const PATH_READ_PIN_BOUNDARY_TEST =
+  'scripts/__tests__/path-read-pin-boundary.test.ts';
+
+const pathReadPinEdgeCache = new Map();
+
+/**
+ * Impact edges derived from the repository's path-read pins.
+ *
+ * Every edge is `supplemental`, which in `selectChangedVerification` means it
+ * contributes tests and nothing else: it does not set `hasExplicitBoundary`,
+ * does not satisfy the unknown-path check, and does not add a related path.
+ * That is what makes the derivation a strict addition. Naming `tests` on an
+ * ordinary edge would suppress the generic `related` edge for the same path —
+ * the way an explicit list silently DROPS the related suites (#1563, #1613) —
+ * and would also cancel the `ci-fast` escalation an escalation path is
+ * entitled to.
+ *
+ * Derived at gate time rather than hand-listed, because a hand-listed pin
+ * goes stale the moment somebody adds one. It deliberately does not feed
+ * `laneManifestDigest`, which must stay a pure function of the committed
+ * manifest rather than of the working tree.
+ */
+export function pathReadPinEdges({ root = process.cwd(), entries } = {}) {
+  const cacheable = entries === undefined;
+  const cached = cacheable ? pathReadPinEdgeCache.get(root) : undefined;
+  if (cached) return cached;
+  const scanned = entries ?? scanPathReadPins({ root });
+  const edges = Object.freeze(
+    invertPathReadPins(scanned).map(({ pin, tests }) =>
+      Object.freeze({
+        pattern: pin,
+        supplemental: true,
+        tests: Object.freeze(
+          [...new Set([...tests, PATH_READ_PIN_BOUNDARY_TEST])].sort(),
+        ),
+        reason: PATH_READ_PIN_REASON,
+      }),
+    ),
+  );
+  if (cacheable) pathReadPinEdgeCache.set(root, edges);
+  return edges;
+}
+
+/**
+ * The committed manifest plus the pin edges derived from the working tree.
+ * `runChangedVerification` selects against this; the exported constant stays
+ * static for the consumers that need a stable, tree-independent value.
+ */
+export function buildTestImpactManifest(options) {
+  return Object.freeze([...TEST_IMPACT_MANIFEST, ...pathReadPinEdges(options)]);
+}
+
 export function matches(pattern, path) {
   if (pattern.endsWith('/**')) return path.startsWith(pattern.slice(0, -2));
   return path === pattern;
@@ -1196,6 +1272,13 @@ export function validateTestImpactManifest(manifest = TEST_IMPACT_MANIFEST) {
       (!edge.related && !edge.tests?.length && !edge.lanes?.length)
     )
       errors.push(`invalid impact edge: ${JSON.stringify(edge)}`);
+    // A supplemental edge is excluded from the boundary, escalation, and
+    // related decisions, so `lanes` or `related` on one would be silently
+    // ignored — and a reader would believe the lane was scheduled.
+    if (edge?.supplemental && (edge.lanes?.length || edge.related))
+      errors.push(
+        `supplemental impact edge may only add tests: ${edge.pattern}`,
+      );
   }
   // These dynamic seams cannot be inferred from Vitest imports. Deleting one
   // is an unsafe silent narrowing, so validation is intentionally explicit.
