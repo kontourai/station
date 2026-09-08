@@ -72,6 +72,15 @@ Use this route for weak-test cleanup, fixture repairs, and performance work. The
 
 ### Authoring fixtures
 
+The E2E runner confines external-session observation to temporary history roots
+using `STATION_EXTERNAL_CODEX_SOURCE_ROOT` and
+`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`. The `smoke-live` server retains the host's
+CLI authentication configuration so installed-CLI journeys can execute real
+turns. Other suites also isolate the CLI configuration directories. Fixture
+writers always receive temporary provider directories; never seed test history
+into the host's authenticated CLI home or treat an empty auth directory as
+evidence that the host is logged out.
+
 Use the shared typed factory and assert the rendered engine/model/approval state before exercising that path. A chat titled “Claude” is not evidence that it runs in the external-engine mode. For restored chats, supply the authoritative conversation-open response and the conversation-scoped transcript endpoint; sessionStorage is only a client seed. In a mock API router, declare optional reads with their actual envelopes or a deliberate unavailable response. End an unknown branch with `rejectUnexpectedFixtureRequest` and use the audited `test` fixture so those failures cannot disappear at teardown.
 
 User journeys use normal `click`, `fill`, keyboard, and pointer actions. Do not use forced clicks, `dispatchEvent('click')`, DOM `.click()`, or remove a disabled/inert guard to get past an obstruction. Establish the right surface first, then assert its prerequisite. A test may deliberately inject provider protocol events or a clipboard payload when that is its named seam; this is not a substitute for a user's click.

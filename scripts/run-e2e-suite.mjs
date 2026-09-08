@@ -120,7 +120,7 @@ export function retainE2EBucketFailureEvidence({
   copyBoundedE2EEvidence(
     testResultsRoot,
     join(evidenceRoot, 'buckets', suite),
-    { allowMissing: true, ignoredBasenames: ['.last-run.json'] },
+    { allowMissing: true, ignoredBasenames: ['.last-run.json', '.DS_Store'] },
   );
   return true;
 }
@@ -1719,6 +1719,17 @@ export function establishedUserPlaywrightEnv(suite) {
     : { STATION_E2E_ESTABLISHED_USER: '1' };
 }
 
+/** Isolate imported history without removing authentication from live engines. */
+export function e2eProviderConfigEnv(suite, roots, inheritedEnv = process.env) {
+  return {
+    STATION_EXTERNAL_CLAUDE_SOURCE_ROOT: roots.claude,
+    STATION_EXTERNAL_CODEX_SOURCE_ROOT: roots.codex,
+    CLAUDE_CONFIG_DIR:
+      suite === 'smoke-live' ? inheritedEnv.CLAUDE_CONFIG_DIR : roots.claude,
+    CODEX_HOME: suite === 'smoke-live' ? inheritedEnv.CODEX_HOME : roots.codex,
+  };
+}
+
 /**
  * Reclaim build output left behind by interrupted runs.
  *
@@ -1877,8 +1888,8 @@ async function main() {
   // Keep startup diagnostics in the instance-owned Playwright artifact root so
   // hosted CI is secure and failures remain uploadable.
   const serverLog = join(testResultsRoot, 'station.log');
-  // External-session coverage reads only isolated provider config roots. This
-  // keeps every E2E instance away from a developer's real terminal history.
+  // Fixture writers and external-session readers share isolated history roots.
+  // The live server can retain CLI authentication without importing host history.
   const claudeConfigDir = mkdtempSync(join(tmpdir(), `${instance}-claude-`));
   const codexConfigDir = mkdtempSync(join(tmpdir(), `${instance}-codex-`));
   const suitePorts = E2E_SUITE_PORTS[suite];
@@ -1945,8 +1956,10 @@ async function main() {
               env: {
                 ...process.env,
                 ...stationE2EEnv,
-                CLAUDE_CONFIG_DIR: claudeConfigDir,
-                CODEX_HOME: codexConfigDir,
+                ...e2eProviderConfigEnv(suite, {
+                  claude: claudeConfigDir,
+                  codex: codexConfigDir,
+                }),
               },
               onSpawn: (child) => {
                 const launcher = processIdentity(child.pid);

@@ -23,6 +23,7 @@ import {
   cleanupE2ERun,
   discoverE2EDaemon,
   E2E_SUITE_PORTS,
+  e2eProviderConfigEnv,
   e2eTestResultsRoot,
   establishedUserPlaywrightEnv,
   extractE2EUiBootstrapToken,
@@ -202,6 +203,11 @@ describe('full-run failure evidence retention', () => {
     mkdirSync(join(resultRoot, 'shared-instance-exclusive'), {
       recursive: true,
     });
+    writeFileSync(join(resultRoot, '.DS_Store'), 'Finder metadata');
+    writeFileSync(
+      join(resultRoot, 'parallel-safe', '.DS_Store'),
+      'Finder metadata',
+    );
     writeFileSync(
       join(resultRoot, 'parallel-safe', '.last-run.json'),
       '{"status":"failed"}',
@@ -261,20 +267,35 @@ describe('full-run failure evidence retention', () => {
         'utf8',
       ),
     ).toBe('parallel trace');
+    expect(
+      existsSync(join(evidenceRoot, 'buckets', 'product', '.DS_Store')),
+    ).toBe(false);
+    expect(
+      existsSync(
+        join(evidenceRoot, 'buckets', 'product', 'parallel-safe', '.DS_Store'),
+      ),
+    ).toBe(false);
   });
 
-  test('does not hide a non-file that uses the Playwright bookkeeping name', () => {
-    cleanupRoot = mkdtempSync(join(tmpdir(), 'station-e2e-retain-'));
-    const resultRoot = join(cleanupRoot, 'test-results', 'e2e-product-fixture');
-    mkdirSync(join(resultRoot, '.last-run.json'), { recursive: true });
-    expect(() =>
-      retainE2EBucketFailureEvidence({
-        testResultsRoot: resultRoot,
-        evidenceRoot: join(cleanupRoot, 'evidence'),
-        suite: 'product',
-      }),
-    ).toThrow('ignored entry is not a regular file');
-  });
+  test.each(['.last-run.json', '.DS_Store'])(
+    'does not hide a non-file that uses bookkeeping name %s',
+    (name) => {
+      cleanupRoot = mkdtempSync(join(tmpdir(), 'station-e2e-retain-'));
+      const resultRoot = join(
+        cleanupRoot,
+        'test-results',
+        'e2e-product-fixture',
+      );
+      mkdirSync(join(resultRoot, name), { recursive: true });
+      expect(() =>
+        retainE2EBucketFailureEvidence({
+          testResultsRoot: resultRoot,
+          evidenceRoot: join(cleanupRoot, 'evidence'),
+          suite: 'product',
+        }),
+      ).toThrow('ignored entry is not a regular file');
+    },
+  );
 });
 
 describe('settleE2EExecution', () => {
@@ -1702,6 +1723,29 @@ describe('establishedUserPlaywrightEnv', () => {
 });
 
 describe('suiteStationE2EEnv', () => {
+  test.each(['smoke-live', 'product', 'first-run'])(
+    'keeps %s history isolated with the correct authentication boundary',
+    (suite) => {
+      const roots = { claude: '/fixture/claude', codex: '/fixture/codex' };
+      const inherited = {
+        CLAUDE_CONFIG_DIR: '/host/claude',
+        CODEX_HOME: '/host/codex',
+      };
+      const env = e2eProviderConfigEnv(suite, roots, inherited);
+      expect(env.STATION_EXTERNAL_CLAUDE_SOURCE_ROOT).toBe(roots.claude);
+      expect(env.STATION_EXTERNAL_CODEX_SOURCE_ROOT).toBe(roots.codex);
+      expect(env.CLAUDE_CONFIG_DIR).toBe(
+        suite === 'smoke-live' ? inherited.CLAUDE_CONFIG_DIR : roots.claude,
+      );
+      expect(env.CODEX_HOME).toBe(
+        suite === 'smoke-live' ? inherited.CODEX_HOME : roots.codex,
+      );
+      expect(e2eProviderConfigEnv('smoke-live', roots, {})).toMatchObject({
+        CLAUDE_CONFIG_DIR: undefined,
+        CODEX_HOME: undefined,
+      });
+    },
+  );
   test('gives the Starter clean-install journey a fresh first-run environment with telemetry disabled', () => {
     expect(suiteStationE2EEnv('starter-clean-install')).toEqual({
       STATION_E2E_FIRST_RUN: '1',
