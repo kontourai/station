@@ -205,3 +205,39 @@ test('redacts control sockets, forwards, worker payloads, agent sockets, and pro
     '<worker-payload>',
   ]);
 });
+
+/**
+ * `src-server/AGENTS.md`: "Every new process launch must set
+ * `windowsHide: true`" — a Windows child spawned without it flashes a console
+ * window at the user. Nothing in the repo scans for the rule, so the one
+ * process this module launches is pinned here through the real
+ * `createSystemOpenSshRunner`, not by reading the source.
+ */
+describe('createSystemOpenSshRunner process launch', () => {
+  test('hides the console window on Windows', async () => {
+    vi.resetModules();
+    const execFile = vi.fn(
+      (
+        _file: string,
+        _args: readonly string[],
+        _options: Record<string, unknown>,
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        callback(null, 'hostname example.internal\n', '');
+      },
+    );
+    vi.doMock('node:child_process', () => ({ execFile }));
+    try {
+      const { createSystemOpenSshRunner } = await import(
+        '../openssh-config.js'
+      );
+      await createSystemOpenSshRunner()(['-G', 'example']);
+
+      expect(execFile).toHaveBeenCalledTimes(1);
+      expect(execFile.mock.calls[0][2]).toMatchObject({ windowsHide: true });
+    } finally {
+      vi.doUnmock('node:child_process');
+      vi.resetModules();
+    }
+  });
+});

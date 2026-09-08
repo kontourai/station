@@ -53,8 +53,17 @@ import {
   readRegistryInstallAliases,
   writeRegistryInstallAliases,
 } from '../../providers/registries/registry-install-aliases.js';
+import { assertPluginBundleAssetsContained } from '../../routes/plugins/plugin-bundles.js';
+import { loadPluginProviders } from '../../routes/plugins/plugin-loader.js';
+import { errorMessage } from '../../routes/schemas/schemas.js';
 import { ContextSafetyError } from '../../services/orchestration/context-safety.js';
-import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
+import { pluginInstalls, pluginUninstalls } from '../../telemetry/metrics.js';
+import type { Logger } from '../../utils/logger.js';
+import {
+  assertExistingPathInside,
+  assertPathInside,
+} from '../../utils/path-containment.js';
+import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import {
   closePluginActivationSession,
   completePluginActivationComposition,
@@ -69,32 +78,32 @@ import {
   preparePluginActivationComposition,
   registerPluginActivation,
   retirePluginActivation,
-} from '../../services/plugins/plugin-activation-composition.js';
+} from './plugin-activation-composition.js';
 import {
   type PluginActivationPlan,
   pluginActivationDescriptorDigest,
-} from '../../services/plugins/plugin-activation-plan.js';
-import { captureLocalPluginArtifact } from '../../services/plugins/plugin-artifact-local.js';
-import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
+} from './plugin-activation-plan.js';
+import { captureLocalPluginArtifact } from './plugin-artifact-local.js';
+import { scanPluginPromptGeneration } from './plugin-command-skill-source.js';
 import {
   computePluginContentDigest,
   findPluginContentLockCycleError,
   forgetPluginContentDigest,
   PLUGIN_TREE_COPY,
   withPluginContentLock,
-} from '../../services/plugins/plugin-content-integrity.js';
+} from './plugin-content-integrity.js';
 import {
   PluginIncarnationError,
   resolveInstalledPluginRoot,
   resolvePluginMaterialization,
-} from '../../services/plugins/plugin-incarnation.js';
+} from './plugin-incarnation.js';
 import {
   assertPluginInstallConsent,
   assertPluginOperatorDecision,
   derivePluginConsentBasis,
   findPluginConsentRefusedError,
   type PluginInstallConsent,
-} from '../../services/plugins/plugin-install-consent.js';
+} from './plugin-install-consent.js';
 import {
   acquirePluginPublicationLease,
   assertPluginDependencyAcyclic,
@@ -103,22 +112,22 @@ import {
   publicationGrantRevisions,
   withPluginPublicationContext,
   withPluginRetirementScope,
-} from '../../services/plugins/plugin-install-publication.js';
+} from './plugin-install-publication.js';
 import {
   captureLocalPluginActivation,
   captureLocalPluginInstallation,
   createLocalPluginInstallationHost,
-} from '../../services/plugins/plugin-installation-local.js';
+} from './plugin-installation-local.js';
 import {
   type PluginInstallationHost,
   PluginInstallationPending,
   type PluginInstallationService,
-} from '../../services/plugins/plugin-installation-service.js';
+} from './plugin-installation-service.js';
 import {
   readPluginManifestFile,
   readPluginManifestFileSync,
   readPluginManifestFileWithFormat,
-} from '../../services/plugins/plugin-manifest-loader.js';
+} from './plugin-manifest-loader.js';
 import {
   type CapturedPluginPermissionArtifact,
   copyPluginDependencyOwnership,
@@ -142,17 +151,7 @@ import {
   requiredPermissionsForManifest,
   revokeAllGrants,
   snapshotPluginGrantEntry,
-} from '../../services/plugins/plugin-permissions.js';
-import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
-import { pluginInstalls, pluginUninstalls } from '../../telemetry/metrics.js';
-import type { Logger } from '../../utils/logger.js';
-import {
-  assertExistingPathInside,
-  assertPathInside,
-} from '../../utils/path-containment.js';
-import { errorMessage } from '../schemas/schemas.js';
-import { assertPluginBundleAssetsContained } from './plugin-bundles.js';
-import { loadPluginProviders } from './plugin-loader.js';
+} from './plugin-permissions.js';
 import {
   type PluginPublicServerQuiescence,
   quiescePluginPublicServerModule,
@@ -165,6 +164,7 @@ import {
   resolvePluginDependencies,
   resolvePluginDependencySource,
 } from './plugin-source.js';
+import { assertPluginIdentityAvailable } from './reserved-plugin-identities.js';
 
 const execFile = promisify(execFileCb);
 
@@ -370,7 +370,7 @@ export interface PluginLifecycleEventBus {
   emit: (event: ServerEventName, data?: Record<string, unknown>) => void;
 }
 
-export interface PluginInstallSharedDeps {
+export interface PluginInstallTransactionDeps {
   /** Explicit private installer owner, never request data or ambient state. */
   activationSession?: PluginActivationSession;
   installationHost?: PluginInstallationHost;
@@ -398,7 +398,7 @@ export interface PluginInstallSharedDeps {
 }
 
 export function installationHostFor(
-  deps: PluginInstallSharedDeps,
+  deps: PluginInstallTransactionDeps,
 ): PluginInstallationHost {
   if (deps.installationHost) return deps.installationHost;
   if (!deps.packageMcpJournal)
@@ -500,7 +500,7 @@ function commitRemovedDependencies(
 }
 
 function captureManagedPluginPermission(
-  deps: PluginInstallSharedDeps,
+  deps: PluginInstallTransactionDeps,
   id: string,
 ):
   | {
@@ -594,7 +594,7 @@ function captureManagedPluginPermission(
 }
 
 function registerInstalledPluginActivation(
-  deps: PluginInstallSharedDeps,
+  deps: PluginInstallTransactionDeps,
   pluginDir: string,
   manifest: PluginManifest,
   selectedRevision: PluginInstallationRevision,
@@ -1191,7 +1191,7 @@ function createDependencyLifecycle(options: {
 }
 
 async function removeOwnedDependencyLifecycles(options: {
-  managedDeps?: PluginInstallSharedDeps;
+  managedDeps?: PluginInstallTransactionDeps;
   dependencies: readonly PluginDependencyOwnershipEntry[];
   removedPluginName: string;
   pluginsDir: string;
@@ -1579,7 +1579,7 @@ async function restoreRemovedDependencyLifecycles(options: {
 }
 
 async function rebindCompensatedDependencyOwnership(
-  deps: PluginInstallSharedDeps,
+  deps: PluginInstallTransactionDeps,
   plugin: string,
   backups: readonly RemovedDependencyBackup[],
 ): Promise<void> {
@@ -2581,7 +2581,7 @@ const retainedRecoveryAuthorizations = new WeakMap<
 
 async function inspectRetainedPluginRecovery(
   name: string,
-  deps: PluginInstallSharedDeps,
+  deps: PluginInstallTransactionDeps,
 ) {
   assertPluginNameSegment(name);
   const journal = deps.packageMcpJournal;
@@ -2783,7 +2783,7 @@ async function inspectRetainedPluginRecovery(
 
 export async function previewInstalledPluginRecovery(
   name: string,
-  deps: PluginInstallSharedDeps,
+  deps: PluginInstallTransactionDeps,
 ) {
   return (await inspectRetainedPluginRecovery(name, deps)).view;
 }
@@ -2793,7 +2793,7 @@ export async function previewInstalledPluginRecovery(
  * fetched or silently adopted by this offline recovery operation. */
 export async function recoverInstalledPlugin(
   name: string,
-  deps: PluginInstallSharedDeps,
+  deps: PluginInstallTransactionDeps,
   decision: { recoveryRevision: string; consent: PluginInstallConsent },
 ) {
   const captured = await inspectRetainedPluginRecovery(name, deps);
@@ -2826,10 +2826,10 @@ export async function recoverInstalledPlugin(
 }
 
 async function runOwnedPluginMutation<T>(
-  deps: PluginInstallSharedDeps,
+  deps: PluginInstallTransactionDeps,
   provided: PluginActivationSession | undefined,
   operation: (
-    owned: PluginInstallSharedDeps,
+    owned: PluginInstallTransactionDeps,
     session: PluginActivationSession,
   ) => Promise<T>,
 ): Promise<T> {
@@ -2909,7 +2909,7 @@ export const installPluginFromSource: typeof installPluginFromSourceUnderContext
 async function installPluginFromSourceUnderContext(
   source: string,
   skip: string[] | undefined,
-  deps: PluginInstallSharedDeps,
+  deps: PluginInstallTransactionDeps,
   options?: {
     registryId?: string;
     registryKey?: string;
@@ -4263,7 +4263,7 @@ export const uninstallInstalledPlugin: typeof uninstallInstalledPluginUnderConte
 
 async function uninstallInstalledPluginUnderContext(
   name: string,
-  deps: PluginInstallSharedDeps,
+  deps: PluginInstallTransactionDeps,
   recovery?: PluginRemovalRecovery,
 ): Promise<{ success: true; lifecycle?: unknown }> {
   const requestGrants = publicationGrantRevisions(() =>
@@ -4295,7 +4295,7 @@ async function uninstallInstalledPluginUnderContext(
 
 async function uninstallPluginUnderPublication(
   name: string,
-  deps: PluginInstallSharedDeps,
+  deps: PluginInstallTransactionDeps,
   installedPluginName: string,
   recovery?: PluginRemovalRecovery,
   requestGrants?: PluginGrantRevisionSnapshot,

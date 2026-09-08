@@ -627,7 +627,7 @@ export function createSystemUpdateRoutes(
         });
         hasUpstream = true;
       } catch (e) {
-        console.debug('Failed to check upstream branch:', e);
+        logger.debug('Failed to check upstream branch', { error: e });
         try {
           await execGit(['remote', 'get-url', 'origin'], {
             cwd: gitRoot,
@@ -646,10 +646,9 @@ export function createSystemUpdateRoutes(
           );
           hasUpstream = true;
         } catch (autoConfigureError) {
-          console.debug(
-            'Failed to auto-configure upstream:',
-            autoConfigureError,
-          );
+          logger.debug('Failed to auto-configure upstream', {
+            error: autoConfigureError,
+          });
         }
       }
 

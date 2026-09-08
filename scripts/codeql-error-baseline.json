@@ -8,11 +8,6 @@
     },
     {
       "rule": "js/bad-code-sanitization",
-      "path": "src-server/routes/plugins/__tests__/plugin-public-server.test.ts",
-      "lineHash": "f80f92d5c25658d2:1"
-    },
-    {
-      "rule": "js/bad-code-sanitization",
       "path": "src-ui/src/components/plugins/PluginFrameHost.tsx",
       "lineHash": "5fe76efc0d552cb2:1"
     },

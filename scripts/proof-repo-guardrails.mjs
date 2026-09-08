@@ -5693,8 +5693,8 @@ for (const requiredHelper of [
   "app.get('/',",
   "app.post('/preview'",
   "app.post('/install'",
-  './plugin-install-shared.js',
-  './plugin-source.js',
+  '../../services/plugins/plugin-install-transaction.js',
+  '../../services/plugins/plugin-source.js',
   './plugin-bundles.js',
 ]) {
   if (!pluginInstallRoutes.includes(requiredHelper)) {
@@ -5705,7 +5705,9 @@ for (const requiredHelper of [
 const pluginPublicRoutes = readRequiredSource(
   '../src-server/routes/plugins/plugin-public-routes.ts',
 );
-if (!pluginPublicRoutes.includes('./plugin-public-server.js')) {
+if (
+  !pluginPublicRoutes.includes('../../services/plugins/plugin-public-server.js')
+) {
   errors.push(
     'plugin-public-routes.ts must delegate server module request/context helpers to plugin-public-server.ts.',
   );
@@ -5738,7 +5740,7 @@ for (const retiredPluginPublicSnippet of [
 }
 
 const pluginPublicServer = readRequiredSource(
-  '../src-server/routes/plugins/plugin-public-server.ts',
+  '../src-server/services/plugins/plugin-public-server.ts',
 );
 for (const requiredHelper of [
   'export function buildPluginRequestContext',

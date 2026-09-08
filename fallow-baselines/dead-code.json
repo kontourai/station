@@ -674,7 +674,7 @@
     "packages/cli/src/commands/lifecycle-doctor.ts->packages/cli/src/commands/lifecycle.ts",
     "packages/sdk/src/api-agent-runtime.ts->packages/sdk/src/api.ts->packages/sdk/src/telemetry.ts",
     "scripts/lib/release-artifacts.mjs->scripts/lib/release-sboms.mjs",
-    "src-server/routes/plugins/plugin-install-shared.ts->src-server/routes/plugins/plugin-public-server.ts",
+    "src-server/services/plugins/plugin-install-transaction.ts->src-server/services/plugins/plugin-public-server.ts",
     "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts->src-ui/src/hooks/orchestration/eventHandlers.ts->src-ui/src/hooks/orchestration/queueDrain.ts->src-ui/src/hooks/useOrchestration.ts",
     "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts->src-ui/src/hooks/orchestration/eventHandlers.ts->src-ui/src/hooks/orchestration/queueDrain.ts->src-ui/src/hooks/orchestration/turnHandlers.ts->src-ui/src/hooks/useOrchestration.ts",
     "src-ui/src/platform/native/haptics.ts->src-ui/src/platform/native/index.ts"

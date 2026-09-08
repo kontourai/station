@@ -135,6 +135,7 @@ import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { projectManifestBackfills } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { isRecord } from '../../utils/is-record.js';
+import { createLogger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
   type CheckoutRemoteReader,
@@ -144,6 +145,8 @@ import {
   applyHostAlias,
   ProjectBindingsStore,
 } from './project-binding-store.js';
+
+const logger = createLogger({ name: 'project-manifest-store' });
 
 export const PROJECT_MANIFEST_FILENAME = 'manifest.json';
 
@@ -523,8 +526,13 @@ export class ProjectManifestStore {
         adopted: divergent ? 'divergent' : 'identical',
       });
       if (divergent) {
-        console.warn(
-          `Project manifest backfill adopted an existing sidecar whose resources CONTRADICT this derivation: ${filePath}\n  adopted: ${adoptedFingerprints.join('; ') || '(none)'}\n  derived: ${derivedFingerprints.join('; ') || '(none)'}`,
+        logger.warn(
+          'Project manifest backfill adopted an existing sidecar whose resources CONTRADICT this derivation',
+          {
+            filePath,
+            adopted: adoptedFingerprints.join('; ') || '(none)',
+            derived: derivedFingerprints.join('; ') || '(none)',
+          },
         );
       }
       return { outcome: 'adopted-existing', record: winner };

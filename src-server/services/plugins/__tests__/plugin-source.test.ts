@@ -16,7 +16,7 @@ import {
   PluginContentLockCycleError,
   pluginContentDigest,
   withPluginContentLock,
-} from '../../../services/plugins/plugin-content-integrity.js';
+} from '../plugin-content-integrity.js';
 import { installPluginDependency } from '../plugin-source.js';
 
 const cleanupDirs: string[] = [];

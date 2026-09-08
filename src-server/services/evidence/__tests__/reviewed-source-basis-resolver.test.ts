@@ -13,7 +13,7 @@ const owner = vi.hoisted(() => ({
   descriptorResult: undefined as unknown,
 }));
 
-vi.mock('../../../routes/plugins/plugin-public-server.js', () => ({
+vi.mock('../../plugins/plugin-public-server.js', () => ({
   readPluginPublicManifest: async () => ({ serverModule: 'owner.mjs' }),
   acquirePluginReviewedSourcesModule: async () => {
     owner.acquisitions += 1;

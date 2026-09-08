@@ -25,9 +25,47 @@ import {
 } from '@kontourai/station-shared/redaction';
 import pino from 'pino';
 import pinoPretty from 'pino-pretty';
-import { getInstalledServerLogSink } from '../services/infra/server-log-store.js';
 
 export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+
+/**
+ * The durable line sink a `Logger` tees its unredacted lines into.
+ *
+ * Declared structurally here rather than imported from
+ * `services/infra/server-log-store.ts`: this seam is `utils/`, and naming
+ * that module's `ServerLogStore` would restore the `utils -> services` edge
+ * this interface exists to remove. `services/infra/server-log-store.ts`
+ * pushes its installed store in from `installServerLogSink`, so the store is
+ * now loaded only where something actually installs it, instead of being
+ * pulled into every module graph that imports a logger.
+ */
+export interface LoggerLineSink {
+  writeLine(line: string): void;
+}
+
+/**
+ * The sink every `Logger` write tees into once installed. Read at each write,
+ * not captured at logger construction, so a sink installed after a
+ * module-scope `createLogger()` still receives that logger's later lines --
+ * the ordering the previous pull-from-the-store wiring had, preserved
+ * exactly. Undefined before boot installs one: those lines are stdout-only
+ * and are not replayed when a sink arrives.
+ */
+let installedLineSink: LoggerLineSink | undefined;
+
+/**
+ * Points every subsequent `Logger` write at `sink`, or with `undefined` back
+ * at stdout only.
+ *
+ * `services/infra/server-log-store.ts` is the only caller in production: its
+ * `installServerLogSink` pushes the store it just constructed, and
+ * `resetServerLogSinkForTests` pushes `undefined`. Callers that want the
+ * durable NDJSON store go through `installServerLogSink`, not this function,
+ * so a single call keeps the store registry and the logger tee in step.
+ */
+export function installLoggerLineSink(sink: LoggerLineSink | undefined): void {
+  installedLineSink = sink;
+}
 
 /**
  * The settings-registry `logLevel` enum
@@ -244,7 +282,7 @@ function writeUnredactedStoreLine(
   context: Record<string, unknown>,
 ): void {
   try {
-    const sink = getInstalledServerLogSink();
+    const sink = installedLineSink;
     if (!sink) return;
     const bindings = pinoInstance.bindings() as Record<string, unknown>;
     const record: Record<string, unknown> = {

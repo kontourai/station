@@ -284,7 +284,6 @@ interface AgentConfigurationGeneration {
   activationEpoch?: number;
 }
 
-import { disposeAllPluginPublicServerModules } from '../../routes/plugins/plugin-public-server.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
 import {
@@ -296,6 +295,7 @@ import {
   createMCPToolProvenanceGeneration,
   type MCPToolProvenanceGeneration,
 } from '../../services/orchestration/mcp-tool-provenance.js';
+import { disposeAllPluginPublicServerModules } from '../../services/plugins/plugin-public-server.js';
 import {
   createRuntimeSearch,
   type RuntimeSearch,

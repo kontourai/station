@@ -108,7 +108,7 @@ loader into `SkillService` and `ConfigLoader`; the shared MCP transport consumes
 the projected cwd and headers. Directory/git install validates recognized
 packages through the same loader while the legacy parser remains an explicit
 #346 fallback. Behavioral and real-child-process evidence lives in
-`agent-plugin-loader.test.ts`, `plugin-install-shared.test.ts`, and
+`agent-plugin-loader.test.ts`, `plugin-install-transaction.test.ts`, and
 `mcp-v2.test.ts`. **Do not reintroduce:** recursive Agent Plugin Skill discovery,
 copied MCP snapshots, schema fetching, whole-plugin failure for an invalid
 Skill/server, or placeholder expansion in commands/URLs/headers.

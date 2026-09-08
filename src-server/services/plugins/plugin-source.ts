@@ -25,23 +25,23 @@ import {
   isCanonicalPluginId,
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
-import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
+import { errorMessage } from '../../routes/schemas/schemas.js';
+import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
+import { execGit } from '../../utils/git-exec.js';
+import type { Logger } from '../../utils/logger.js';
+import { DistributionProfileService } from './distribution-profile-service.js';
 import {
   computePluginContentDigest,
   PLUGIN_TREE_COPY,
   withPluginContentLock,
-} from '../../services/plugins/plugin-content-integrity.js';
-import { resolveInstalledPluginRoot } from '../../services/plugins/plugin-incarnation.js';
-import { derivePluginConsentBasis } from '../../services/plugins/plugin-install-consent.js';
+} from './plugin-content-integrity.js';
+import { resolveInstalledPluginRoot } from './plugin-incarnation.js';
+import { derivePluginConsentBasis } from './plugin-install-consent.js';
 import {
   readPluginManifestFileSync,
   readPluginManifestFileSyncWithFormat,
-} from '../../services/plugins/plugin-manifest-loader.js';
-import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
-import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
-import { execGit } from '../../utils/git-exec.js';
-import type { Logger } from '../../utils/logger.js';
-import { errorMessage } from '../schemas/schemas.js';
+} from './plugin-manifest-loader.js';
+import { assertPluginIdentityAvailable } from './reserved-plugin-identities.js';
 
 interface PluginRegistryInstaller {
   /**
@@ -1180,7 +1180,7 @@ export async function installPluginDependency(
         // the lock it needs. That says nothing about the caller's rollback,
         // which runs after this frame has released — see
         // `removeDependencyTreesCreatedByThisInstall` in
-        // plugin-install-shared.ts (archive#4309 follow-up review, HIGH 1).
+        // plugin-install-transaction.ts (archive#4309 follow-up review, HIGH 1).
         return await withPluginContentLock(
           pluginsDir,
           dependency.id,

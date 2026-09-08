@@ -4,11 +4,14 @@
 
 import { join } from 'node:path';
 import { feedbackOps } from '../../telemetry/metrics.js';
+import { createLogger } from '../../utils/logger.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import {
   runFullFeedbackAnalysis,
   runMiniFeedbackAnalysis,
 } from './feedback-analysis.js';
+
+const logger = createLogger({ name: 'feedback-service' });
 
 export type RatingValue = 'thumbs_up' | 'thumbs_down';
 
@@ -237,7 +240,7 @@ ${avoid || '(none identified yet)'}
         durationMs: String(Date.now() - analyzeStart),
       });
     } catch (error) {
-      console.debug('Failed to run feedback analysis pipeline:', error);
+      logger.debug('Failed to run feedback analysis pipeline', { error });
     } finally {
       this.isAnalyzing = false;
     }
@@ -297,7 +300,7 @@ ${avoid || '(none identified yet)'}
         this.foldAnalyzedRatings(analyzed.ratings, this.store.read()),
       );
     } catch (error) {
-      console.debug('Failed to run mini feedback analysis:', error);
+      logger.debug('Failed to run mini feedback analysis', { error });
     }
   }
 
@@ -318,7 +321,7 @@ ${avoid || '(none identified yet)'}
         this.store.write({ ...this.store.read(), summary });
       }
     } catch (error) {
-      console.debug('Failed to run full feedback analysis:', error);
+      logger.debug('Failed to run full feedback analysis', { error });
     }
   }
 

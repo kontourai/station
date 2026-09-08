@@ -7,7 +7,7 @@ import type {
   UnifiedSearchMessagePageOutcome,
   UnifiedSearchOpenResolution,
 } from '@kontourai/station-contracts/unified-search';
-import { publicAgentIdFromRuntimeKey } from '../../routes/agents/runtime-agent-identity.js';
+import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
 import type { IsolatedTranscriptReads } from '../search/isolated-transcript-search.js';
 import { boundedTaskText } from '../search/task-search-protocol.js';
 import type { TranscriptSearchMatch } from '../search/transcript-search-protocol.js';

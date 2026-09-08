@@ -94,7 +94,9 @@ describe('plugin-public-server helpers', () => {
     cleanupDirs.push(root);
     const pluginsDir = join(root, 'plugins');
     const pluginDir = join(pluginsDir, 'demo-plugin');
-    const disposedFile = join(root, 'disposed');
+    // The module writes this beside itself, so its source can name the path
+    // as a static literal instead of being built around one (see below).
+    const disposedFile = join(pluginDir, 'disposed');
     mkdirSync(pluginDir, { recursive: true });
     writeFileSync(
       join(pluginDir, 'plugin.json'),
@@ -104,12 +106,17 @@ describe('plugin-public-server helpers', () => {
         serverModule: 'server.mjs',
       }),
     );
+    // Every line is a static literal: nothing from this test is interpolated
+    // into the generated module's SOURCE. `JSON.stringify` is not a code
+    // escaper — embedding a value through it is what CodeQL's
+    // `js/bad-code-sanitization` flags — so the module resolves its own
+    // output path from `import.meta.url` instead of being handed one.
     writeFileSync(
       join(pluginDir, 'server.mjs'),
       [
         "import { writeFileSync } from 'node:fs';",
         'export function register() {}',
-        `export function dispose() { writeFileSync(${JSON.stringify(disposedFile)}, 'disposed'); }`,
+        "export function dispose() { writeFileSync(new URL('./disposed', import.meta.url), 'disposed'); }",
       ].join('\n'),
     );
     const manifest = {

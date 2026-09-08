@@ -27,12 +27,7 @@ import {
 } from '../../../providers/registries/registry.js';
 import { buildPlugin as buildInstalledPlugin } from '../../../routes/plugins/plugin-bundles.js';
 import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
-import {
-  installPluginFromSource,
-  uninstallInstalledPlugin,
-} from '../../../routes/plugins/plugin-install-shared.js';
 import { registerPluginLifecycleRoutes } from '../../../routes/plugins/plugin-lifecycle-routes.js';
-import { installPluginDependency } from '../../../routes/plugins/plugin-source.js';
 import * as gitExecution from '../../../utils/git-exec.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { AgentPluginLoader } from '../agent-plugin-loader.js';
@@ -45,6 +40,10 @@ import { computePluginContentDigest } from '../plugin-content-integrity.js';
 import { resolveInstalledPluginRoot } from '../plugin-incarnation.js';
 import { derivePluginConsentBasis } from '../plugin-install-consent.js';
 import {
+  installPluginFromSource,
+  uninstallInstalledPlugin,
+} from '../plugin-install-transaction.js';
+import {
   captureLocalPluginInstallation,
   createLocalPluginInstallationService,
   localPluginDataScopes,
@@ -56,6 +55,7 @@ import type { PluginInstallationHost } from '../plugin-installation-service.js';
 import { PluginInstallationService } from '../plugin-installation-service.js';
 import { readPluginManifestFile } from '../plugin-manifest-loader.js';
 import { grantPermissions } from '../plugin-permissions.js';
+import { installPluginDependency } from '../plugin-source.js';
 
 const homes: string[] = [],
   stores: EventStore[] = [],

@@ -45,13 +45,18 @@ import {
   writeSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { installLoggerLineSink } from '../../utils/logger.js';
 
-// The logger seam pulls this module into nearly every server module graph, so
-// a static import of telemetry/metrics.js here would force the OTel instrument
-// module ahead of vi.mock factory hoisting in every mock-heavy test file (seen
-// live: "Cannot access '<mock var>' before initialization"). Load the
-// instruments lazily at first use instead; counting is best-effort and must
-// never block or throw into the write path.
+// A static import of telemetry/metrics.js here forces the OTel instrument
+// module ahead of vi.mock factory hoisting in every mock-heavy test file that
+// reaches this module (seen live: "Cannot access '<mock var>' before
+// initialization"). That used to be nearly every server module graph, because
+// the logger seam imported this module; the seam is now inverted (this module
+// pushes into `installLoggerLineSink` and the logger imports nothing from
+// services), which narrows the graphs but does not empty them -- boot and the
+// log-store/logger/orchestration suites all still pull this in. The lazy load
+// stays. Counting is best-effort and must never block or throw into the write
+// path.
 type LogStoreInstruments = {
   serverLogStoreWriteErrors: { add(value: number): void };
   serverLogStoreRetentionRemovedFiles: { add(value: number): void };
@@ -322,8 +327,11 @@ export function createServerLogStore(
 
 let installedSink: ServerLogStore | undefined;
 
-/** Installs the process-wide server log sink. Idempotent per call — a later
- * call replaces the earlier sink (used by tests and by hot config reload).
+/** Installs the process-wide server log sink and points the logger seam's
+ * durable tee at it (`installLoggerLineSink`), so one call keeps this
+ * module's registry and `utils/logger.ts` in step — the logger no longer
+ * reaches back here to pull the sink. Idempotent per call — a later call
+ * replaces the earlier sink (used by tests and by hot config reload).
  * Closes the replaced instance's fd first, so a double-install can't orphan
  * an open descriptor. */
 export function installServerLogSink(
@@ -331,6 +339,7 @@ export function installServerLogSink(
 ): ServerLogStore {
   const previous = installedSink;
   installedSink = createServerLogStore(options);
+  installLoggerLineSink(installedSink);
   if (previous) {
     try {
       previous.close();
@@ -341,16 +350,22 @@ export function installServerLogSink(
   return installedSink;
 }
 
-/** The sink every `Logger` write tees into, once installed. Returns
- * `undefined` before boot has installed one — logger writes stay stdout-only. */
+/** The store this module most recently installed, for callers that need the
+ * instance itself (the fatal-crash `flushSync` path in `index.ts`). Returns
+ * `undefined` before boot has installed one — logger writes stay
+ * stdout-only. This is the store registry, not what the logger reads: the
+ * logger holds the sink pushed to it by `installServerLogSink`. */
 export function getInstalledServerLogSink(): ServerLogStore | undefined {
   return installedSink;
 }
 
-/** Test-only escape hatch to reset process-wide sink state between tests. */
+/** Test-only escape hatch to reset process-wide sink state between tests.
+ * Clears the logger seam's tee as well, so a later logger write does not
+ * reach the store this just closed. */
 export function resetServerLogSinkForTests(): void {
   installedSink?.close();
   installedSink = undefined;
+  installLoggerLineSink(undefined);
 }
 
 function readPositiveInteger(
