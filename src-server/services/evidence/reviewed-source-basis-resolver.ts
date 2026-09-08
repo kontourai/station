@@ -10,7 +10,6 @@ import {
   parseReviewedWebSourceCurrentness,
   parseReviewedWebSourceDescriptor,
 } from '@kontourai/fieldwork/reviewed-web-source-contract';
-import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import {
   buildReviewedExtractionSourceState,
@@ -22,13 +21,15 @@ import type {
   FieldworkReviewedSourceRef,
 } from '@kontourai/surface/basis';
 import { buildReviewedSourceBasisContribution } from '@kontourai/surface/basis';
-import {
-  acquirePluginReviewedSourcesModule,
-  readPluginPublicManifest,
-} from '../../routes/plugins/plugin-public-server.js';
+import { acquirePluginReviewedSourcesModule } from '../../routes/plugins/plugin-public-server.js';
 import type { Logger } from '../../utils/logger.js';
 import type { SessionAnswerBasisQueryOutcome } from '../orchestration/session-query-module.js';
-import { hasGrantOrThrow } from '../plugins/plugin-permissions.js';
+import type { PackageMcpAdmissionJournal } from '../plugins/package-mcp-admission.js';
+import { readPluginGrantState } from '../plugins/plugin-permissions.js';
+import {
+  capturePluginRuntimeArtifact,
+  type PluginRuntimeArtifact,
+} from '../plugins/plugin-runtime-artifact.js';
 import {
   type ExactAnswerAssessmentRead,
   type ReviewedSourceBasisFacts,
@@ -51,6 +52,7 @@ export class ReviewedSourceBasisResolver {
     private readonly input: {
       projectHomeDir: string;
       logger: Logger;
+      packageMcpJournal?: PackageMcpAdmissionJournal;
     },
   ) {}
 
@@ -72,27 +74,29 @@ export class ReviewedSourceBasisResolver {
       return undefined;
     if (facts.association.owner !== FIELDWORK_OWNER) return owner('corrupt');
 
-    let manifest: PluginManifest | null;
+    let artifact: PluginRuntimeArtifact | null;
     try {
-      manifest = await readPluginPublicManifest(
+      artifact = capturePluginRuntimeArtifact(
         join(this.input.projectHomeDir, 'plugins'),
         facts.association.pluginName,
+        this.input.packageMcpJournal,
       );
     } catch {
       return owner('corrupt');
     }
     if (!input.current() || !factsCurrent(input.current, facts))
       return undefined;
-    if (!manifest?.serverModule) return owner('unavailable');
+    if (!artifact?.manifest.serverModule) return owner('unavailable');
+    const manifest = artifact.manifest;
+    const authorized = () =>
+      !!artifact?.isCurrent() &&
+      readPluginGrantState(
+        this.input.projectHomeDir,
+        facts.association.pluginName,
+        artifact,
+      ).granted.includes('plugin.server');
     try {
-      if (
-        !hasGrantOrThrow(
-          this.input.projectHomeDir,
-          facts.association.pluginName,
-          'plugin.server',
-        )
-      )
-        return owner('restricted');
+      if (!authorized()) return owner('restricted');
     } catch {
       return owner('unavailable');
     }
@@ -105,6 +109,9 @@ export class ReviewedSourceBasisResolver {
         manifest,
         logger: this.input.logger,
         projectHomeDir: this.input.projectHomeDir,
+        journal: this.input.packageMcpJournal,
+        artifact,
+        authorize: authorized,
       });
     } catch {
       return owner('unavailable');
@@ -198,6 +205,7 @@ export class ReviewedSourceBasisResolver {
         });
         if (!input.current() || !factsCurrent(input.current, facts))
           return undefined;
+        if (!authorized()) return owner('restricted');
         return available([contribution]);
       } catch {
         return owner('corrupt');

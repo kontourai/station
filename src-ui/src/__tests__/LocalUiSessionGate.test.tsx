@@ -68,6 +68,11 @@ describe('LocalUiSessionGate (station#2093)', () => {
       {
         credentials: 'include',
         headers: { Accept: 'application/json' },
+        // #1661: the read carries the gate's own deadline. Still the whole init
+        // object rather than `objectContaining`, so a fourth key would fail here;
+        // what the deadline DOES is driven through the gate in
+        // `LocalUiSessionGate.proxyClassification.test.tsx`.
+        signal: expect.any(AbortSignal),
       },
     );
   });

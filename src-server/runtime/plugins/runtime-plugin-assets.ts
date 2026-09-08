@@ -1,3 +1,4 @@
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   loadRuntimePluginPrompts,
@@ -7,6 +8,7 @@ import {
 interface RuntimePluginAssetsContext {
   logger: Logger;
   projectHomeDir: string;
+  packageMcpJournal?: PackageMcpAdmissionJournal;
   loadPluginOverrides: () => Promise<any>;
 }
 
@@ -24,6 +26,7 @@ export async function loadRuntimePluginAssets(
   const loadPrompts = dependencies.loadPrompts ?? loadRuntimePluginPrompts;
 
   await loadProviders({
+    packageMcpJournal: context.packageMcpJournal,
     logger: context.logger,
     projectHomeDir: context.projectHomeDir,
     loadPluginOverrides: context.loadPluginOverrides,

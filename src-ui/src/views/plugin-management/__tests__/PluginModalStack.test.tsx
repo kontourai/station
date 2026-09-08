@@ -28,13 +28,16 @@ function renderFolderPicker(
   overrides: Partial<{
     onSelectFolder: (value: string) => void;
     onCloseFolderPicker: () => void;
+    removeConfirm: string;
+    removalRetainsData: boolean;
+    showFolderPicker: boolean;
   }> = {},
 ) {
   return render(
     <PluginModalStack
       apiBase="http://localhost:3000"
       showInstallModal={false}
-      showFolderPicker
+      showFolderPicker={overrides.showFolderPicker ?? true}
       previewData={null}
       previewSkips={new Set()}
       installPending={false}
@@ -42,7 +45,8 @@ function renderFolderPicker(
       installSource=""
       installMessage={null}
       message={null}
-      removeConfirm={null}
+      removeConfirm={overrides.removeConfirm ?? null}
+      removalRetainsData={overrides.removalRetainsData}
       layoutAssignment={null}
       projects={[]}
       quickProjectName=""
@@ -70,6 +74,18 @@ function renderFolderPicker(
 describe('PluginModalStack folder picker (plugin management)', () => {
   beforeEach(() => {
     browseMock.mockReset();
+  });
+
+  test('removal confirmation explains retained data instead of claiming irreversible deletion', () => {
+    renderFolderPicker({
+      removeConfirm: 'fixture',
+      removalRetainsData: true,
+      showFolderPicker: false,
+    });
+    expect(
+      screen.getByText(/stored data and code versions will be retained/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/This cannot be undone/)).toBeNull();
   });
 
   test('renders with the original plugin-management classnames', () => {

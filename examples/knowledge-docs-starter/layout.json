@@ -1,7 +1,7 @@
 {
   "name": "Knowledge Docs",
   "slug": "knowledge-docs",
-  "icon": "📚",
+  "icon": "\ud83d\udcda",
   "description": "A starter workspace for uploading documents, asking questions, and checking source coverage.",
   "tabs": [
     {
@@ -18,13 +18,6 @@
       "id": "sources",
       "label": "Sources",
       "component": "knowledge-sources"
-    }
-  ],
-  "actions": [
-    {
-      "type": "prompt",
-      "label": "Summarize selected documents",
-      "data": "Summarize the selected documents and cite the source names that support each claim."
     }
   ]
 }

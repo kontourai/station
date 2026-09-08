@@ -28,10 +28,15 @@ import {
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
 import {
   computePluginContentDigest,
+  PLUGIN_TREE_COPY,
   withPluginContentLock,
 } from '../../services/plugins/plugin-content-integrity.js';
+import { resolveInstalledPluginRoot } from '../../services/plugins/plugin-incarnation.js';
 import { derivePluginConsentBasis } from '../../services/plugins/plugin-install-consent.js';
-import { readPluginManifestFileSync } from '../../services/plugins/plugin-manifest-loader.js';
+import {
+  readPluginManifestFileSync,
+  readPluginManifestFileSyncWithFormat,
+} from '../../services/plugins/plugin-manifest-loader.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
 import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
 import { execGit } from '../../utils/git-exec.js';
@@ -84,6 +89,17 @@ export interface ResolvedPluginDependency {
 }
 
 export interface PluginDependencyLifecycle {
+  commit?(): void;
+  validatePortableInstalled?(dependency: {
+    id: string;
+    version?: string;
+  }): Promise<boolean>;
+  installPortable?(input: {
+    dependencyId: string;
+    source: string;
+    manifest: PluginManifest;
+  }): Promise<void>;
+
   validateInstalled?(input: {
     dependencyId: string;
     manifest: PluginManifest;
@@ -161,10 +177,10 @@ function assertSupportedPluginSource(source: string): void {
 }
 
 export function resolvePluginDependencySource(
-  dependency: { id: string; source?: string },
+  dependency: { id: string; source?: string; version?: string },
   parentSourceDir: string,
   allowedLocalRoot: string = dirname(resolve(parentSourceDir)),
-): { id: string; source?: string } {
+): { id: string; source?: string; version?: string } {
   if (!dependency.source || shouldPreserveDependencySource(dependency.source)) {
     return dependency;
   }
@@ -263,9 +279,19 @@ function readInstalledDependencyManifest(
   }
   const dependencyStat = lstatSync(dependencyDir);
   if (dependencyStat.isSymbolicLink()) {
-    throw new Error('Plugin dependency target escapes root');
-  }
-  if (!dependencyStat.isDirectory()) {
+    try {
+      if (
+        resolveInstalledPluginRoot(pluginsDir, dependencyId)?.kind !==
+        'incarnation'
+      )
+        throw new Error('Plugin dependency target escapes root');
+    } catch (error) {
+      throw new Error(
+        'Plugin dependency target escapes root or does not identify an owned materialization',
+        { cause: error },
+      );
+    }
+  } else if (!dependencyStat.isDirectory()) {
     throw new Error(
       `Plugin dependency '${dependencyId}' target is not a directory`,
     );
@@ -341,6 +367,11 @@ function unsupportedDependencyFeatures(
   manifest: PluginManifest,
   lifecycle: boolean,
 ): string[] {
+  if (
+    readPluginManifestFileSyncWithFormat(join(dependencyDir, 'plugin.json'))
+      .format === 'agent-plugin-1.0'
+  )
+    return [];
   const unsupported: string[] = [];
   if (manifest.agents?.length) unsupported.push('agents');
   if (manifest.layout) unsupported.push('layout');
@@ -502,7 +533,7 @@ export async function fetchPluginSource(
       rmSync(tempDir, { recursive: true });
       return { error: 'Not a valid plugin: plugin.json not found' };
     }
-    cpSync(source, tempDir, { recursive: true });
+    cpSync(source, tempDir, PLUGIN_TREE_COPY);
   }
 
   if (!existsSync(join(tempDir, 'plugin.json'))) {
@@ -605,11 +636,16 @@ export async function resolvePluginDependencies(
   seen: Set<string> = new Set(),
   parentSourceDir: string = pluginsDir,
   allowedLocalRoot: string = dirname(resolve(parentSourceDir)),
+  validation?: {
+    beforeResolve(id: string): void;
+    resolved(dependency: ResolvedPluginDependency): void | Promise<void>;
+  },
 ): Promise<ResolvedPluginDependency[]> {
   const dependencies: ResolvedPluginDependency[] = [];
   if (!manifest.dependencies?.length) return dependencies;
 
   for (const dependency of manifest.dependencies) {
+    validation?.beforeResolve(dependency.id);
     if (seen.has(dependency.id)) continue;
     seen.add(dependency.id);
 
@@ -699,8 +735,11 @@ export async function resolvePluginDependencies(
       }
     } else {
       try {
-        const available =
-          (await getPluginRegistryProvider().listAvailable?.()) ?? [];
+        const registry = getPluginRegistryProvider();
+        const resolvedSource = await registry.resolveSource?.(dependency.id);
+        const available = resolvedSource
+          ? [{ id: dependency.id, source: resolvedSource }]
+          : ((await registry.listAvailable?.()) ?? []);
         const match = available.find((entry) => entry.id === dependency.id);
         if (match) {
           status = 'will-install';
@@ -769,14 +808,19 @@ export async function resolvePluginDependencies(
       }
     }
 
-    dependencies.push({
+    const resolved: ResolvedPluginDependency = {
       id: dependency.id,
       source: dependency.source,
       status,
       components: components.length ? components : undefined,
       git: depGit,
       consent,
-    });
+    };
+    // An installation preflight validates this exact source before recursion
+    // can acquire anything named by its manifest. Ordinary preview is inert
+    // discovery and does not supply an installation decision.
+    await validation?.resolved(resolved);
+    dependencies.push(resolved);
 
     if (depManifest) {
       dependencies.push(
@@ -791,6 +835,7 @@ export async function resolvePluginDependencies(
             ? dependencySourceContext
             : dependencyDir,
           allowedLocalRoot,
+          validation,
         )),
       );
     }
@@ -838,6 +883,19 @@ async function validateAndBuildInstalledDependency(
 ): Promise<void> {
   await withPluginContentLock(pluginsDir, dependencyId, async () => {
     const manifest = readInstalledDependencyManifest(pluginsDir, dependencyId);
+    const format = readPluginManifestFileSyncWithFormat(
+      join(pluginsDir, dependencyId, 'plugin.json'),
+    ).format;
+    if (format === 'agent-plugin-1.0') {
+      if (
+        resolveInstalledPluginRoot(pluginsDir, dependencyId)?.kind !==
+        'incarnation'
+      )
+        throw new Error(
+          `Portable dependency '${dependencyId}' needs migration through its installation owner`,
+        );
+      return;
+    }
     assertDependencyLifecycleSupported(
       dependencyId,
       join(pluginsDir, dependencyId),
@@ -931,7 +989,7 @@ async function recordCreatedDependency(options: {
  * exercising other properties of this function.
  */
 export async function installPluginDependency(
-  dependency: { id: string; source?: string },
+  dependency: { id: string; source?: string; version?: string },
   pluginsDir: string,
   getPluginRegistryProvider: () => PluginRegistryInstaller,
   buildPlugin: (pluginDir: string, name: string) => Promise<void>,
@@ -983,8 +1041,26 @@ export async function installPluginDependency(
       error: `Plugin dependency cycle detected: ${dependency.id}`,
     };
   }
+  try {
+    if (await lifecycle?.validatePortableInstalled?.(dependency))
+      return { success: true };
+  } catch (error) {
+    return dependencyFailure(error);
+  }
   if (existsSync(targetDir)) {
     try {
+      const installedManifest = readInstalledDependencyManifest(
+        pluginsDir,
+        dependency.id,
+      );
+      if (
+        dependency.version &&
+        dependency.version !== '*' &&
+        dependency.version !== installedManifest.version
+      )
+        throw new Error(
+          `Plugin dependency '${dependency.id}' requires exact version '${dependency.version}', found '${installedManifest.version}'`,
+        );
       await validateAndBuildInstalledDependency(
         pluginsDir,
         dependency.id,
@@ -1017,10 +1093,33 @@ export async function installPluginDependency(
       );
       if ('error' in result) return { success: false, error: result.error };
       const { tempDir } = result;
-      const depManifest = readPluginManifestFileSync(
-        join(tempDir, 'plugin.json'),
-      ) as PluginManifest;
+      const { manifest: depManifest, format } =
+        readPluginManifestFileSyncWithFormat(join(tempDir, 'plugin.json'));
       try {
+        if (
+          dependency.version &&
+          dependency.version !== '*' &&
+          dependency.version !== depManifest.version
+        )
+          throw new Error(
+            `Plugin dependency '${dependency.id}' requires exact version '${dependency.version}', found '${depManifest.version}'`,
+          );
+        if (format === 'agent-plugin-1.0') {
+          if (!lifecycle?.installPortable)
+            throw new Error(
+              `Portable dependency '${dependency.id}' requires its canonical installation owner`,
+            );
+          if (depManifest.name !== dependency.id)
+            throw new Error(
+              `Plugin dependency '${dependency.id}' source manifest name does not match`,
+            );
+          await lifecycle.installPortable({
+            dependencyId: dependency.id,
+            source: dependencySource,
+            manifest: depManifest,
+          });
+          return { success: true };
+        }
         if ((depManifest.name || dependency.id) !== dependency.id) {
           throw new Error(
             `Plugin dependency '${dependency.id}' source manifest name does not match`,
