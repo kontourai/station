@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
 import { BASIS_MCP_APP_MANIFEST } from '../basis-mcp-app-manifest.mjs';
+import { inspectGeneratedBuildInputs } from '../check-dist-freshness.mjs';
 import { generateBuildInputs } from '../dependency-lifecycle.mjs';
 import {
   biomeFormatterInvocation,
@@ -134,6 +135,38 @@ describe('Basis MCP app output routing', () => {
     expect(absent).not.toHaveBeenCalled();
     expect(absentLog).toHaveBeenCalledWith(
       expect.stringContaining('NOT_APPLICABLE Basis MCP app generation'),
+    );
+  });
+
+  test('dist:freshness names a missing bundle and its remedy instead of a bare TS2307', () => {
+    const manifest = [
+      {
+        id: 'fixture',
+        entry: 'src/app.browser.ts',
+        output: 'src/app.generated.ts',
+      },
+    ];
+    const has = (...present: string[]) => ({
+      repoRoot: '/repo',
+      manifest,
+      exists: (path: string) => present.some((p) => path.endsWith(p)),
+    });
+    const missing = inspectGeneratedBuildInputs(has('src/app.browser.ts'));
+    expect(missing.failures).toHaveLength(1);
+    expect(missing.failures[0]).toContain('src/app.generated.ts is MISSING');
+    expect(missing.failures[0]).toContain('Fix: npm run basis:mcp:generate');
+    const present = inspectGeneratedBuildInputs(
+      has('src/app.browser.ts', 'src/app.generated.ts'),
+    );
+    expect(present.failures).toEqual([]);
+    expect(present.lines[0]).toContain('src/app.generated.ts is present');
+    // No entry in the tree: nothing to generate, and not a failure.
+    const absent = inspectGeneratedBuildInputs(has());
+    expect(absent.failures).toEqual([]);
+    expect(absent.lines[0]).toContain('nothing to generate');
+    // The real manifest, this real tree: the gate `npm run typecheck` chains.
+    expect(inspectGeneratedBuildInputs({ repoRoot: root }).failures).toEqual(
+      [],
     );
   });
 

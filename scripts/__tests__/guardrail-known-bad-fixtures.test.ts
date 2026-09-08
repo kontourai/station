@@ -820,7 +820,9 @@ describe('dist:freshness rejects a build output that no longer matches its sourc
 }, () => {
   const SCRIPT = 'check-dist-freshness.mjs';
   const LIBS = ['module-entry.mjs', 'package-dist-freshness.mjs'];
-  const EXTRA = ['write-dist-stamp.mjs'];
+  // The gate imports the Basis MCP app manifest for its generated-inputs
+  // check; the scratch tree has none of its entries, so that check is inert.
+  const EXTRA = ['write-dist-stamp.mjs', 'basis-mcp-app-manifest.mjs'];
 
   /**
    * A miniature workspace with the exact shape that produced station#1813: one
