@@ -332,6 +332,42 @@ describe('evidence-check execution gate', () => {
     expect(status).toBe(1);
   });
 
+  test('the _note never states a violation count the baseline does not have', () => {
+    // The note is unchecked prose as far as the gate is concerned — it
+    // validates only that `_note` is a non-empty string. It said
+    // repo-guardrails "currently passes with 104 baselined violations" for as
+    // long as it took station#2765 to burn the baseline down to zero and
+    // nobody to notice, which is a label nothing derived: the number was
+    // right when written and wrong ever after.
+    //
+    // So the count is reconciled against the list. Both directions matter —
+    // a stated count that disagrees with the baseline is stale, and a claim
+    // of tolerated violations while the baseline is empty is the exact
+    // regression that happened.
+    const note = realMapping._note as string;
+    const baselined = (
+      JSON.parse(
+        readFileSync(
+          join(repoRoot, 'scripts/proof-repo-guardrails-baseline.json'),
+          'utf8',
+        ),
+      ).knownViolations as string[]
+    ).length;
+
+    for (const [, count] of note.matchAll(/(\d+)\s+baselined violation/gi)) {
+      expect(
+        Number(count),
+        `_note states ${count} baselined violation(s); the baseline holds ${baselined}`,
+      ).toBe(baselined);
+    }
+    if (baselined === 0) {
+      expect(
+        note,
+        '_note claims a tolerated violation set while the baseline is empty',
+      ).not.toMatch(/passes with \d*[1-9]\d* baselined violation/i);
+    }
+  });
+
   test('an advisory check reachable from a lane root fails', () => {
     const root = createFixture(({ packageJson }) => {
       packageJson.scripts['verify:static:raw'] +=
