@@ -160,7 +160,7 @@ test('reply intent offers continuation in the normal composer without changing t
   ).toBeTruthy();
   expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
   expect(adoptOrchestrationSession).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(composer.value).toBe('Keep my draft');
   expect(screen.queryByRole('button', { name: 'Continue here' })).toBeNull();
   expect(screen.getByText('Sure.')).toBeTruthy();
