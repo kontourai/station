@@ -333,7 +333,10 @@ export function readPnpmLifecycleNodes(root) {
 export function isAllowlistPackagePath(path, importers) {
   if (typeof path !== 'string' || path.length === 0 || path.length > 512)
     return false;
-  if (path.includes('\\')) return false;
+  // SAFE_TOKEN excludes backslashes, whitespace, and control characters;
+  // the segment checks below then refuse `.`/`..`/empty, which also covers
+  // the root importer `.` as a prefix.
+  if (!SAFE_TOKEN.test(path)) return false;
   const segments = path.split('/');
   if (
     segments.some(
@@ -346,8 +349,7 @@ export function isAllowlistPackagePath(path, importers) {
   if (!NODE_MODULES_CHAIN.test(segments.slice(chainStart).join('/')))
     return false;
   if (chainStart === 0) return true;
-  const importer = segments.slice(0, chainStart).join('/');
-  return importer !== '.' && importers.has(importer);
+  return importers.has(segments.slice(0, chainStart).join('/'));
 }
 
 /**
@@ -362,12 +364,15 @@ export function readLifecycleImporters(root = process.cwd()) {
   if (!lstatOrNull(resolve(root, 'pnpm-lock.yaml'))) return new Set();
   const parsed = new Set(Object.keys(readPnpmLockfile(root).importers));
   const bootstrap = readPnpmLockfileImporters(root);
-  if (
-    parsed.size !== bootstrap.size ||
-    [...parsed].some((importer) => !bootstrap.has(importer))
-  )
+  const onlyParsed = [...parsed].filter((importer) => !bootstrap.has(importer));
+  const onlyBootstrap = [...bootstrap].filter(
+    (importer) => !parsed.has(importer),
+  );
+  if (onlyParsed.length || onlyBootstrap.length)
     throw new Error(
-      'pnpm lockfile importers differ between the bootstrap and full readers',
+      'pnpm lockfile importers differ between the bootstrap and full readers: ' +
+        `only in full parse [${onlyParsed.join(', ')}]; ` +
+        `only in bootstrap reader [${onlyBootstrap.join(', ')}]`,
     );
   return parsed;
 }

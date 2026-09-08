@@ -87,8 +87,16 @@ export function readPnpmLockfileImporters(root, readFile = readFileSync) {
   const importers = new Set();
   for (const line of lines.slice(start + 1)) {
     if (/^\S/.test(line)) break;
-    const match = /^ {2}(\S.*?):\s*$/.exec(line);
+    const match = /^ {2}(\S.*?):(.*)$/.exec(line);
     if (!match) continue;
+    // pnpm writes a dependency-less importer (including the root) inline as
+    // `<dir>: {}`; any other inline value is a shape this reader does not
+    // understand and must not silently drop.
+    const inlineValue = match[2].trim();
+    if (inlineValue !== '' && inlineValue !== '{}')
+      throw new Error(
+        `pnpm lockfile importer ${match[1]} has an unsupported inline value`,
+      );
     const key = match[1];
     importers.add(/^(['"]).*\1$/.test(key) ? key.slice(1, -1) : key);
   }

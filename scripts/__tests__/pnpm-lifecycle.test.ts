@@ -1,4 +1,5 @@
 import {
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -260,27 +261,16 @@ describe('pnpm lifecycle boundary', () => {
       join(root, 'config/dependency-lifecycle-allowlist.json'),
       JSON.stringify(allowlist),
     );
-    // Block-style YAML, exactly as pnpm writes it, so the cold-bootstrap
-    // importer reader and the parsed lock see the same importer keys.
-    writeFileSync(
+    // The lock is one pnpm 11.25.0 actually wrote for a workspace with this
+    // importer (esbuild dependency), a dependency-less `packages/empty`, and
+    // a dependency-less root, so the cold-bootstrap importer reader and the
+    // parsed lock are exercised against the real writer's shape.
+    copyFileSync(
+      resolve(
+        import.meta.dirname,
+        'fixtures/pnpm-lock/workspace-importers.pnpm-lock.yaml',
+      ),
       join(root, 'pnpm-lock.yaml'),
-      [
-        "lockfileVersion: '9.0'",
-        '',
-        'importers:',
-        '',
-        '  .:',
-        '    dependencies: {}',
-        '',
-        `  ${importer}:`,
-        '    dependencies: {}',
-        '',
-        'packages:',
-        '',
-        `  ${entry.name}@${entry.version}:`,
-        `    resolution: {integrity: ${entry.integrity}}`,
-        '',
-      ].join('\n'),
     );
     writeFileSync(
       join(root, 'pnpm-workspace.yaml'),
@@ -307,7 +297,7 @@ describe('pnpm lifecycle boundary', () => {
       'node_modules/esbuild',
     ]);
     const importers = readLifecycleImporters(root);
-    expect(importers).toEqual(new Set(['.', importer]));
+    expect(importers).toEqual(new Set(['.', importer, 'packages/empty']));
     expect(evaluateLifecyclePolicy({ allowlist, nodes, importers })).toEqual(
       [],
     );
