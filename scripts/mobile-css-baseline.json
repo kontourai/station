@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 102,
+  "pageLocalMediaQueryCeiling": 100,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
