@@ -59,7 +59,7 @@ describe('useOutboundQueueSnapshot', () => {
     // `shouldAdvanceTime` keeps the module loader's real I/O progressing.
     vi.useFakeTimers({ shouldAdvanceTime: true });
 
-    const view = renderHook(() => useOutboundQueueSnapshot(true));
+    const view = renderHook(() => useOutboundQueueSnapshot());
     await waitFor(() => expect(view.result.current.status).toBe('ready'));
     const afterFirstRead = calls.durableReads;
     // The initial subscription really did read once; without this the idle
@@ -82,7 +82,7 @@ describe('useOutboundQueueSnapshot', () => {
     const { storage } = countingStorage();
     _setOutboundQueueStorage(storage);
 
-    const view = renderHook(() => useOutboundQueueSnapshot(true));
+    const view = renderHook(() => useOutboundQueueSnapshot());
     await waitFor(() => expect(view.result.current.status).toBe('ready'));
     expect(view.result.current.turns).toHaveLength(0);
     const idleSnapshot = view.result.current;
@@ -108,21 +108,6 @@ describe('useOutboundQueueSnapshot', () => {
         (turn) => turn.conversationId === 'conversation-a',
       ),
     ).toHaveLength(1);
-
-    view.unmount();
-  });
-
-  it('keeps a disabled consumer pending and unsubscribed', async () => {
-    const { storage, calls } = countingStorage();
-    _setOutboundQueueStorage(storage);
-
-    const view = renderHook(() => useOutboundQueueSnapshot(false));
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    expect(view.result.current.status).toBe('pending');
-    expect(calls.durableReads).toBe(0);
 
     view.unmount();
   });

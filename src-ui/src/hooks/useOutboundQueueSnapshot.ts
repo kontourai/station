@@ -14,17 +14,15 @@
  *   side effects, so the read happens in the subscription listener and only
  *   its result is cached here.
  * - `getSnapshot` must return a referentially stable value between
- *   notifications or React re-renders forever. The cached object is replaced
- *   only when a refresh observes a queue whose consumer-visible identity
- *   actually differs, which also absorbs the one echo notification the
- *   reconcile inside `snapshot()` can emit.
+ *   notifications or React re-renders forever, so the cached object is
+ *   replaced only when a read settles — never minted per call.
  *
  * The module keeps `lib/outboundQueue` behind a dynamic import for the same
  * reason every other caller does: the eagerly mounted dock chrome must not
  * charge first paint for the IndexedDB dispatch machinery.
  */
 
-import { useCallback, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 import type { OutboundDispatchTurn } from '../lib/outboundQueue';
 
 export interface OutboundQueueSnapshot {
@@ -47,22 +45,6 @@ const listeners = new Set<() => void>();
 let detachUpstream: (() => void) | null = null;
 let refreshTail: Promise<void> = Promise.resolve();
 
-function sameTurns(
-  a: readonly OutboundDispatchTurn[],
-  b: readonly OutboundDispatchTurn[],
-): boolean {
-  if (a.length !== b.length) return false;
-  return a.every((entry, index) => {
-    const next = b[index];
-    return (
-      entry.clientTurnId === next.clientTurnId &&
-      entry.sessionId === next.sessionId &&
-      entry.conversationId === next.conversationId &&
-      entry.status === next.status
-    );
-  });
-}
-
 function publish(next: OutboundQueueSnapshot): void {
   cached = next;
   for (const listener of listeners) {
@@ -82,9 +64,7 @@ function refresh(): void {
   refreshTail = refreshTail.then(async () => {
     try {
       const { outboundDispatch } = await import('../lib/outboundQueue');
-      const turns = await outboundDispatch.snapshot();
-      if (cached.status === 'ready' && sameTurns(cached.turns, turns)) return;
-      publish({ status: 'ready', turns });
+      publish({ status: 'ready', turns: await outboundDispatch.snapshot() });
     } catch {
       if (cached.status === 'error') return;
       publish({ status: 'error', turns: cached.turns });
@@ -123,29 +103,12 @@ export function getOutboundQueueSnapshot(): OutboundQueueSnapshot {
   return cached;
 }
 
-function noopSubscribe(): () => void {
-  return () => {};
-}
-
-function getDisabledSnapshot(): OutboundQueueSnapshot {
-  return PENDING;
-}
-
-/**
- * `enabled: false` keeps the queue unread — the disabled projection stays
- * `pending`, which is the same thing a disabled React Query reported, so a
- * consumer that gates on "not yet known" behaves identically.
- */
-export function useOutboundQueueSnapshot(
-  enabled = true,
-): OutboundQueueSnapshot {
-  const subscribe = useCallback(
-    (onStoreChange: () => void) =>
-      enabled ? subscribeOutboundQueueSnapshot(onStoreChange) : noopSubscribe(),
-    [enabled],
+export function useOutboundQueueSnapshot(): OutboundQueueSnapshot {
+  return useSyncExternalStore(
+    subscribeOutboundQueueSnapshot,
+    getOutboundQueueSnapshot,
+    getOutboundQueueSnapshot,
   );
-  const getSnapshot = enabled ? getOutboundQueueSnapshot : getDisabledSnapshot;
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
 /** Test-only: drop the cache so one test's queue cannot leak into the next. */
