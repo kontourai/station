@@ -9,7 +9,6 @@ import {
   orchestrationQueries,
   telemetry,
   useAcknowledgeConversationMutation,
-  useConversationContextBoundaryStatusQuery,
   useConversationInventoryQuery,
   useEngineConnectionsQuery,
   useGenerateSessionSummaryMutation,
@@ -64,7 +63,6 @@ import {
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
-import { useOutboundQueueSnapshot } from '../../hooks/useOutboundQueueSnapshot';
 import {
   OPEN_PROJECT_CHATS_EVENT,
   type OpenProjectChatsDetail,
@@ -79,7 +77,6 @@ import {
   buildHomeTaskItems,
   chatTaskSessionId,
 } from '../../views/home/home-view-model';
-import { agentRunnability } from '../agent-runnability';
 import {
   selectChatReadyAgents,
   selectDirectNewChatAgent,
@@ -105,6 +102,7 @@ import {
   isChatPaneFileDropEnabled,
 } from './ChatPaneFileDropBoundary';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
+import { ConversationBoundaryDialogs } from './ConversationBoundaryDialogs';
 import {
   chatModelLabel,
   effectiveChatModelId,
@@ -121,15 +119,6 @@ import {
   shouldRouteScopedChatProject,
 } from './chat-dock-utils';
 import { submitCommandLauncherIntent } from './command-launcher-model';
-import {
-  readConversationContextBoundaryUiState,
-  writeConversationContextBoundaryUiState,
-} from './conversationContextBoundaryUiState';
-import {
-  acceptConversationHandoffUiState,
-  beginConversationHandoffUiState,
-  refuseConversationHandoffUiState,
-} from './conversationHandoffUiState';
 import type { ConversationOpenRecovery } from './conversationOpenController';
 import { commitForkOpenBoundary } from './forkOpenBoundary';
 import { isDockOwnedViewType, isMobileDockFullscreen } from './mobile-chrome';
@@ -142,6 +131,7 @@ import {
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
 import { useChatDockOverlays } from './useChatDockOverlays';
 import { useChatDockViewModel } from './useChatDockViewModel';
+import { useConversationBoundaryDialogs } from './useConversationBoundaryDialogs';
 import { useDockCopyActions } from './useDockCopyActions';
 
 /**
@@ -262,14 +252,6 @@ const loadChatDockModalStack = () =>
     default: module.ChatDockModalStack,
   }));
 
-const loadConversationHandoffDialog = () =>
-  import('./ConversationHandoffDialog').then((module) => ({
-    default: module.ConversationHandoffDialog,
-  }));
-const loadConversationContextResetDialog = () =>
-  import('./ConversationContextResetDialog').then((module) => ({
-    default: module.ConversationContextResetDialog,
-  }));
 const loadConversationOpenRecoveryNotice = () =>
   import('./ConversationOpenRecoveryNotice').then((module) => ({
     default: module.ConversationOpenRecoveryNotice,
@@ -377,7 +359,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // surface below restores focus here on close.
   const composerMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const composerAgentTriggerRef = useRef<HTMLButtonElement>(null);
-  const handoffReturnFocusRef = useRef<HTMLButtonElement | null>(null);
   const taskSwitcherTriggerRef = useRef<HTMLButtonElement>(null);
   // Get data from contexts
   const { apiBase } = useApiBase();
@@ -459,52 +440,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const [newChatProjectOverride, setNewChatProjectOverride] = useState<{
     slug: string;
     name: string;
-  } | null>(null);
-  const [handoffSource, setHandoffSource] = useState<{
-    id: string;
-    agentSlug: string;
-  } | null>(null);
-  const [forkSource, setForkSource] = useState<{
-    id: string;
-    agentSlug: string;
-    turnId: string;
-    projectSlug?: string;
-    projectName?: string;
-    model?: string;
-    modelSource?: EffectiveModelSource;
-    defaultModel?: string;
-    defaultModelSource?: EffectiveModelSource;
-    providerOptions?: Record<string, unknown>;
-    providerId?: string;
-    providerType?: string;
-    sourceSessionId?: string;
-    idempotencyKey: string;
-  } | null>(null);
-  const [forkOperation, setForkOperation] = useState<{
-    pending: boolean;
-    error: string | null;
-  }>({ pending: false, error: null });
-  const forkAbortRef = useRef<AbortController | null>(null);
-  const forkGenerationRef = useRef(0);
-  const cancelFork = useCallback(() => {
-    forkGenerationRef.current += 1;
-    forkAbortRef.current?.abort();
-    forkAbortRef.current = null;
-    setForkOperation({ pending: false, error: null });
-    setForkSource(null);
-  }, []);
-  const forkEligibleAgents = useMemo(() => {
-    if (!forkSource) return agents;
-    return agents
-      .filter((agent) => agentRunnability(agent).runnable)
-      .sort((left, right) => {
-        if (left.slug === forkSource.agentSlug) return -1;
-        if (right.slug === forkSource.agentSlug) return 1;
-        return 0;
-      });
-  }, [agents, forkSource]);
-  const [contextResetSource, setContextResetSource] = useState<{
-    id: string;
   } | null>(null);
   // Scope is a dock presentation filter over the active tabs, not a separate
   // inventory. Keep the unfiltered source for a new sidebar request: React
@@ -785,55 +720,27 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const inventoryProjectId = inventoryProjectSlug
     ? projects.find((project) => project.slug === inventoryProjectSlug)?.id
     : undefined;
-  const activeConversationId = activeSession?.conversationId ?? '';
-  const [contextBoundaryStored, setContextBoundaryStored] = useState(() =>
-    activeConversationId
-      ? readConversationContextBoundaryUiState(activeConversationId)
-      : null,
-  );
-  useEffect(() => {
-    setContextBoundaryStored(
-      activeConversationId
-        ? readConversationContextBoundaryUiState(activeConversationId)
-        : null,
-    );
-    const onStorage = () =>
-      setContextBoundaryStored(
-        activeConversationId
-          ? readConversationContextBoundaryUiState(activeConversationId)
-          : null,
-      );
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, [activeConversationId]);
-  // The SDK owns this read (`useConversationContextBoundaryStatusQuery`), and
-  // `ConversationContextResetDialog` — the dock's own overlay for the same
-  // conversation — already calls it. This used to be a second, hand-rolled
-  // query against the same endpoint under a different key, so a dock with the
-  // dialog open ran two caches and two two-second timers over one status.
-  // Same call shape as the dialog's, so both observe one cache entry.
-  const contextBoundaryStatusQuery = useConversationContextBoundaryStatusQuery(
-    activeConversationId,
-    contextBoundaryStored?.idempotencyKey ?? '',
+  const conversationBoundaryDialogs = useConversationBoundaryDialogs({
+    agents,
     apiBase,
-    { enabled: Boolean(contextBoundaryStored), refetchInterval: 2_000 },
-  );
-  useEffect(() => {
-    if (!contextBoundaryStored || !contextBoundaryStatusQuery.data) return;
-    if (
-      contextBoundaryStored.status === contextBoundaryStatusQuery.data.status &&
-      contextBoundaryStored.boundaryId ===
-        contextBoundaryStatusQuery.data.boundaryId &&
-      contextBoundaryStored.policy === contextBoundaryStatusQuery.data.policy
-    )
-      return;
-    setContextBoundaryStored(
-      writeConversationContextBoundaryUiState(
-        contextBoundaryStored.idempotencyKey,
-        contextBoundaryStatusQuery.data,
-      ),
-    );
-  }, [contextBoundaryStatusQuery.data, contextBoundaryStored]);
+    activeSession,
+    allSessions,
+  });
+  const {
+    setHandoffSource,
+    handoffDisabledReason,
+    openConversationHandoff,
+    forkSource,
+    setForkSource,
+    forkOperation,
+    setForkOperation,
+    forkAbortRef,
+    forkGenerationRef,
+    cancelFork,
+    forkEligibleAgents,
+    setContextResetSource,
+    contextBoundaryLabel,
+  } = conversationBoundaryDialogs;
   // station#4525: the dock header's project binding is DockShell-owned state
   // (`chrome.activeProjectSlug`), not a derivation of the active session's
   // own `projectSlug` — that derivation was the actual reset mechanism (see
@@ -1124,63 +1031,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
   const commandLauncherShortcut = isMac ? '⌘⇧L' : 'Ctrl+Shift+L';
 
-  // The queue publishes every durable transition through its own
-  // subscription, so this reads a cached projection and is told when it
-  // changed. It used to re-read IndexedDB once a second for a value that only
-  // moves when the user queues, sends, or discards a message.
-  const durableHandoffQueue = useOutboundQueueSnapshot(
-    Boolean(activeSession?.conversationId),
-  );
-  const durableHandoffQueueCount = durableHandoffQueue.turns.filter(
-    (turn) =>
-      turn.conversationId === activeSession?.conversationId ||
-      turn.sessionId === activeSession?.id,
-  ).length;
-  const contextBoundaryStatus =
-    contextBoundaryStatusQuery.data?.status ?? contextBoundaryStored?.status;
-  const contextBoundaryLabel =
-    contextBoundaryStatus === 'reserved'
-      ? `Next engine start: ${(contextBoundaryStatusQuery.data?.policy ?? contextBoundaryStored?.policy) === 'empty-next-cold-start' ? 'Empty' : 'Re-anchor'}`
-      : contextBoundaryStatus === 'claimed'
-        ? 'Engine start reconciling'
-        : contextBoundaryStatus === 'indeterminate'
-          ? 'Engine start needs inspection'
-          : contextBoundaryStatus === 'failed'
-            ? 'Start failed; retry available'
-            : undefined;
-  const hasLocalDeferredMessages = Boolean(
-    activeSession?.queuedMessages?.length ||
-      activeSession?.queuedMessageFailure ||
-      activeSession?.unsentMessages?.length,
-  );
-  const contextBoundarySessionId =
-    activeSession?.currentSessionId ?? activeSession?.id;
-  const handoffDisabledReason = !activeSession?.conversationId
-    ? 'Send a message before changing Agent.'
-    : isSessionExecutionActive(activeSession)
-      ? 'Wait for the current turn to finish before changing Agent.'
-      : hasLocalDeferredMessages
-        ? 'Resolve queued or offline messages before changing Agent.'
-        : durableHandoffQueue.status === 'pending'
-          ? 'Checking queued messages before changing Agent.'
-          : durableHandoffQueue.status === 'error'
-            ? 'Queued message state is unavailable. Try again.'
-            : durableHandoffQueueCount > 0
-              ? 'Resolve queued or offline messages before changing Agent.'
-              : undefined;
-
-  const openConversationHandoff = useCallback(
-    (returnFocusTarget: HTMLButtonElement | null) => {
-      if (!activeSession?.conversationId) return;
-      handoffReturnFocusRef.current = returnFocusTarget;
-      setHandoffSource({
-        id: activeSession.conversationId,
-        agentSlug: activeSession.agentSlug,
-      });
-    },
-    [activeSession],
-  );
-
   // Project actions remain project-scoped. Agent handoff is a conversation
   // action, so the same menu is also present for global conversations.
   const secondaryActions: ComposerActionsMenuProps | undefined =
@@ -1207,14 +1057,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           contextBoundaryStatus: contextBoundaryLabel,
         }
       : undefined;
-  const handoffSession = handoffSource
-    ? allSessions.find(
-        (session) =>
-          session.conversationId === handoffSource.id ||
-          session.id === handoffSource.id,
-      )
-    : undefined;
-
   const commandLauncherContext = useMemo(
     () => ({
       project: sessionProjectName,
@@ -2588,121 +2430,22 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         />
       )}
 
-      {handoffSource && handoffSession?.conversationId && (
-        <LazyBoundary
-          load={loadConversationHandoffDialog}
-          componentProps={{
-            apiBase,
-            conversationId: handoffSession.conversationId,
-            sessionId: handoffSession.id,
-            currentAgentId: handoffSession.agentSlug,
-            projectSlug: handoffSession.projectSlug,
-            agents,
-            projects,
-            initialMessage:
-              handoffSession.id === activeSession?.id ? chatInput.input : '',
-            attachments:
-              handoffSession.id === activeSession?.id
-                ? chatInput.attachments
-                : [],
-            blockedReason:
-              handoffSession.id === activeSession?.id
-                ? handoffDisabledReason
-                : undefined,
-            onDispatchStarted: ({ message, clientTurnId }) => {
-              const state = activeChatsStore.getSnapshot()[handoffSession.id];
-              updateChat(
-                handoffSession.id,
-                beginConversationHandoffUiState(state, {
-                  message,
-                  clientTurnId,
-                  now: Date.now(),
-                }),
-              );
-            },
-            onDefiniteFailure: (clientTurnId) => {
-              const state = activeChatsStore.getSnapshot()[handoffSession.id];
-              updateChat(
-                handoffSession.id,
-                refuseConversationHandoffUiState(state, clientTurnId),
-              );
-            },
-            onClose: () => {
-              setHandoffSource(null);
-              requestAnimationFrame(() =>
-                handoffReturnFocusRef.current?.focus(),
-              );
-            },
-            onAccepted: ({ receipt, target, targetId }) => {
-              const state = activeChatsStore.getSnapshot()[handoffSession.id];
-              updateChat(
-                handoffSession.id,
-                acceptConversationHandoffUiState(state, target, receipt),
-              );
-              if (handoffSession.id === activeSession?.id) {
-                chatInput.handleClearInput();
-                chatInput.handleClearAttachments();
-              } else {
-                focusSessionInPane(handoffSession.id);
-              }
-              invalidate(orchestrationQueries.sessions().queryKey);
-              invalidate(conversationQueries.inventory().queryKey);
-              setHandoffSource(null);
-              requestAnimationFrame(() =>
-                handoffReturnFocusRef.current?.focus(),
-              );
-              showToast(
-                `Continuing with ${target?.name ?? `deleted Agent “${targetId}”`}`,
-                'success',
-              );
-            },
-          }}
-          pending={null}
-        />
-      )}
-      {contextResetSource &&
-        activeSession?.conversationId === contextResetSource.id && (
-          <LazyBoundary
-            load={loadConversationContextResetDialog}
-            componentProps={{
-              apiBase,
-              conversationId: activeSession.conversationId,
-              sessionId: contextBoundarySessionId ?? activeSession.id,
-              session: activeSession,
-              sessionRead: activeOrchestrationSessionRead,
-              orchestrationSession: activeOrchestrationSession,
-              hasLocalDeferredMessages,
-              onStoppedSessionRefreshed: async () => {
-                const refreshed = await refetchOrchestrationSessions();
-                return (
-                  refreshed.data?.find(
-                    (session) =>
-                      session.threadId ===
-                      (contextBoundarySessionId ?? activeSession.id),
-                  ) ?? null
-                );
-              },
-              onClose: () => {
-                setContextResetSource(null);
-                requestAnimationFrame(() =>
-                  composerMenuTriggerRef.current?.focus(),
-                );
-              },
-              onReserved: (boundary, idempotencyKey) => {
-                setContextBoundaryStored(
-                  writeConversationContextBoundaryUiState(
-                    idempotencyKey,
-                    boundary,
-                  ),
-                );
-                invalidate(orchestrationQueries.sessions().queryKey);
-                if (boundary.status === 'reserved')
-                  showToast('Next engine context reserved', 'success');
-              },
-            }}
-            pending={null}
-          />
-        )}
+      <ConversationBoundaryDialogs
+        dialogs={conversationBoundaryDialogs}
+        apiBase={apiBase}
+        agents={agents}
+        projects={projects}
+        activeSession={activeSession}
+        activeOrchestrationSession={activeOrchestrationSession}
+        activeOrchestrationSessionRead={activeOrchestrationSessionRead}
+        chatInput={chatInput}
+        composerMenuTriggerRef={composerMenuTriggerRef}
+        updateChat={updateChat}
+        focusSessionInPane={focusSessionInPane}
+        invalidate={invalidate}
+        showToast={showToast}
+        refetchOrchestrationSessions={refetchOrchestrationSessions}
+      />
 
       <LazyBoundary
         load={loadChatDockModalStack}
