@@ -2173,6 +2173,7 @@ function resolveInstalledPluginName(
   pluginIdOrName: string,
 ): string | null {
   assertPluginNameSegment(pluginIdOrName);
+  if (!existsSync(pluginsDir)) return null;
   const directPath = join(pluginsDir, pluginIdOrName, 'plugin.json');
   assertPathInside(pluginsDir, directPath, 'Plugin lookup target');
   if (existsSync(directPath)) {

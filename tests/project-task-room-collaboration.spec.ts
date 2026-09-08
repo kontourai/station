@@ -168,7 +168,11 @@ test.describe
         name: 'What Station sends',
       });
       if (await telemetry.isVisible())
-        await telemetry.getByRole('button', { name: 'Not now' }).click();
+        await telemetry
+          .getByRole('button', {
+            name: /^(Turn it off|Keep usage telemetry off)$/,
+          })
+          .click();
       const repository = join(fixtureRoot, 'refusal-worktree');
       await createRepository(repository, 'room-refusal');
       await createProject(page, 'room-refusal', repository);
@@ -274,7 +278,11 @@ test.describe
         name: 'What Station sends',
       });
       if (await telemetryDialog.isVisible())
-        await telemetryDialog.getByRole('button', { name: 'Not now' }).click();
+        await telemetryDialog
+          .getByRole('button', {
+            name: /^(Turn it off|Keep usage telemetry off)$/,
+          })
+          .click();
 
       const repository = join(fixtureRoot, 'shared-worktree');
       await createRepository(repository, 'room-acceptance');

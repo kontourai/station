@@ -432,7 +432,11 @@ test.describe
       await composer.press('Enter');
       await waitForVisibleAnswerThroughCapacityRetry(page, answer);
 
-      const addToTask = page.getByRole('button', {
+      const moreAnswerActions = page.getByRole('button', {
+        name: 'More answer actions',
+      });
+      await moreAnswerActions.click();
+      const addToTask = page.getByRole('menuitem', {
         name: /Add this answer to a Task/,
       });
       await expect(addToTask).toBeVisible();
@@ -538,8 +542,9 @@ test.describe
       );
       await search.press('Escape');
       await expect(attachDialog).toHaveCount(0);
-      await expect(addToTask).toBeFocused();
+      await expect(moreAnswerActions).toBeFocused();
 
+      await moreAnswerActions.press('Enter');
       await addToTask.press('Enter');
       await expect(attachDialog).toBeVisible();
       await search.focus();

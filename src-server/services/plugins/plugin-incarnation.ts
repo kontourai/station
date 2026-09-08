@@ -80,7 +80,13 @@ export function resolveInstalledPluginRoot(
 ): InstalledPluginRoot | null {
   if (!isCanonicalPluginId(pluginId))
     throw new PluginIncarnationError('unsafe-pointer');
-  const parent = realpathSync(pluginsDir);
+  let parent: string;
+  try {
+    parent = realpathSync(pluginsDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
   const alias = selectionAlias(parent, pluginId);
   if (dirname(alias) !== parent && existsSync(dirname(alias)))
     directory(dirname(alias));
