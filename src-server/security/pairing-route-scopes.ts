@@ -2660,6 +2660,27 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/plugins/:name/settings' },
     { method: 'PUT', path: '/api/plugins/:name/settings' },
     { method: 'POST', path: '/api/plugins/:name/update' },
+    // station#1744 (routes added by station#1377): the retained-recovery
+    // leaves of `plugin-install-routes.ts`. `GET /:name/retained-generations`
+    // pages `packageMcpJournal.history()` — this Station's own generation
+    // records for one plugin (journal/plugin/incarnation ids, content digest,
+    // counts), no filesystem path; the family's `GET /api/plugins` listing
+    // already returns each plugin's `packageRoot` and digest to the same
+    // read-tier caller, so this discloses strictly less. `GET
+    // /:name/recovery-preview` returns `inspectRetainedPluginRecovery`'s
+    // `view` (manifest, expected installation revision, permission basis,
+    // dependency approvals, a recovery revision hash) and drops `source`;
+    // it only reads the journal, manifests and digests — same shape as the
+    // sibling `POST /preview`. `POST /:name/recover` re-materializes an
+    // already-selected, locally retained generation through the SAME
+    // `installPluginFromSource` seam `POST /install` and `POST /:name/update`
+    // call, with the same operator-decision consent gate and no remote
+    // fetch — a subset of `update`'s mutation surface, so the family's
+    // ordinary mutate tier is the consistent call. None returns another
+    // environment's or another Station's data.
+    { method: 'GET', path: '/api/plugins/:name/retained-generations' },
+    { method: 'GET', path: '/api/plugins/:name/recovery-preview' },
+    { method: 'POST', path: '/api/plugins/:name/recover' },
     { method: 'GET', path: '/api/plugins/check-updates' },
     // POST /api/plugins/:name/fetch is currently a stub that always 403s
     // ("Plugin fetch proxy is disabled until plugin execution identity is
