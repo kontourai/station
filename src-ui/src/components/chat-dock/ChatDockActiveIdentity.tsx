@@ -1,3 +1,4 @@
+import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
@@ -11,6 +12,7 @@ interface ChatDockActiveIdentityProps {
   session: Pick<ChatSession, 'id' | 'title'> &
     Partial<Pick<ChatSession, 'agentSlug' | 'agentName' | 'flowRun'>>;
   originLabel?: string;
+  originProvider?: string;
   onDetails?: () => void;
   agent?: AgentData;
   /**
@@ -49,6 +51,7 @@ export function ChatDockActiveIdentity({
   agent,
   modelLabel,
   originLabel,
+  originProvider,
   onDetails,
   onClose,
 }: ChatDockActiveIdentityProps) {
@@ -93,6 +96,7 @@ export function ChatDockActiveIdentity({
     name: agentName,
     slug: session.agentSlug,
     icon: agent?.icon,
+    engineId: parseEngineId(originProvider),
   };
   // One muted token, not a pill plus a span: `engineChipLabel` already joins an
   // engine with its own model ("OpenCode · GLM-4.7"), and the model this chat

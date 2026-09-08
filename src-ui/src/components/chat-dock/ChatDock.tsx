@@ -1992,13 +1992,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   <ChatDockActiveIdentity
                     session={{
                       id: importedSessionId,
-                      agentSlug: importedSession?.provider,
                       title: importedTitle,
                       agentName: importedSession
                         ? displayProvider(importedSession)
                         : 'Conversation',
                     }}
                     originLabel={importedOrigin}
+                    originProvider={importedSession?.provider}
                     onClose={() => setImportedSessionId(null)}
                     onDetails={() => {
                       collapseDockForNavigation();
