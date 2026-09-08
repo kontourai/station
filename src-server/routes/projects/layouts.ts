@@ -87,10 +87,15 @@ export function createWorkflowRoutes(layoutService: LayoutService) {
   // List workflow files for agent
   app.get('/:slug/workflows/files', async (c) => {
     const slug = param(c, 'slug');
-    // No mapping: listing answers an empty array for a missing agent
-    // directory, so every failure it can produce is a storage failure.
-    const workflows = await layoutService.listAgentWorkflows(slug);
-    return c.json({ success: true, data: workflows });
+    try {
+      // A missing agent directory lists as an empty array rather than
+      // failing, so the only refusal this can produce is the slug guard;
+      // everything else it throws is a storage failure.
+      const workflows = await layoutService.listAgentWorkflows(slug);
+      return c.json({ success: true, data: workflows });
+    } catch (error: unknown) {
+      rethrowMapped(error);
+    }
   });
 
   // Get workflow file content

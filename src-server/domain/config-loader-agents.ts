@@ -658,10 +658,38 @@ export async function listAgentConfigs(
   return agents.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
+/**
+ * A caller-supplied id is one path segment and nothing else.
+ *
+ * `join` treats `..` and a separator as navigation, so an id carrying either
+ * one addresses a file outside the directory the caller was given. Hono
+ * percent-decodes a path parameter before the handler sees it, so `%2F` and
+ * `%2e%2e` arrive here as `/` and `..`.
+ *
+ * `basename` alone is not the check: `basename('..')` is `'..'`. The explicit
+ * cases below are what reject it; the `basename` comparison stays for
+ * platform-specific forms it catches that a separator scan does not.
+ */
+function assertSingleSegment(value: string, message: string): void {
+  if (
+    value === '' ||
+    value === '.' ||
+    value === '..' ||
+    /[/\\]/.test(value) ||
+    basename(value) !== value
+  ) {
+    throw new WorkflowInvalidError(message);
+  }
+}
+
+const INVALID_AGENT_SLUG = 'Invalid agent slug';
+const INVALID_WORKFLOW_ID = 'Invalid workflow id';
+
 export async function listAgentWorkflowMetadata(
   projectHomeDir: string,
   slug: string,
 ): Promise<WorkflowMetadata[]> {
+  assertSingleSegment(slug, INVALID_AGENT_SLUG);
   const workflowsDir = join(projectHomeDir, 'agents', slug, 'workflows');
 
   if (!existsSync(workflowsDir)) {
@@ -743,6 +771,8 @@ export async function readAgentWorkflow(
   slug: string,
   workflowId: string,
 ): Promise<string> {
+  assertSingleSegment(slug, INVALID_AGENT_SLUG);
+  assertSingleSegment(workflowId, INVALID_WORKFLOW_ID);
   const path = join(projectHomeDir, 'agents', slug, 'workflows', workflowId);
 
   if (!existsSync(path)) {
@@ -836,9 +866,9 @@ async function mutateWorkflow(
   operation: 'create' | 'update' | 'delete',
   content?: string,
 ): Promise<void> {
+  assertSingleSegment(slug, INVALID_AGENT_SLUG);
   assertCustomAgentIdentity(slug);
-  if (basename(workflowId) !== workflowId)
-    throw new WorkflowInvalidError('Invalid workflow id');
+  assertSingleSegment(workflowId, INVALID_WORKFLOW_ID);
   const ext = extname(workflowId).toLowerCase();
   if (!WORKFLOW_EXTENSIONS.includes(ext)) {
     throw new WorkflowInvalidError(

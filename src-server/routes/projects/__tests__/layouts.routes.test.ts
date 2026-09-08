@@ -1,4 +1,7 @@
-import { describe, expect, test, vi } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { createRouteTestApp } from '../../../__test-utils__/route-test-app.js';
 import { ReservedAgentIdentityError } from '../../../domain/agent-registry.js';
@@ -7,6 +10,12 @@ import {
   WorkflowInvalidError,
   WorkflowNotFoundError,
 } from '../../../domain/agent-workflow-errors.js';
+import {
+  createAgentWorkflow,
+  listAgentWorkflowMetadata,
+  readAgentWorkflow,
+  updateAgentWorkflow,
+} from '../../../domain/config-loader-agents.js';
 import type { LayoutService } from '../../../services/projects/layout-service.js';
 import { createWorkflowRoutes } from '../layouts.js';
 
@@ -227,6 +236,101 @@ describe('Workflow Routes', () => {
       error: { code: 'internal_error', correlationId: expect.any(String) },
     });
     expect(JSON.stringify(body)).not.toContain('permission denied');
+  });
+
+  describe('against the real workflow store', () => {
+    const homes: string[] = [];
+
+    afterEach(() => {
+      for (const home of homes.splice(0)) {
+        rmSync(home, { recursive: true, force: true });
+      }
+    });
+
+    /**
+     * The mock service above proves the mapping; this proves the guard the
+     * mapping depends on actually runs. `LayoutService` is a pass-through to
+     * `config-loader-agents`, so binding the real store's functions to a
+     * temporary home exercises the production path end to end without the
+     * whole `ConfigLoader` graph.
+     */
+    function mountRealStore() {
+      const home = mkdtempSync(join(tmpdir(), 'station-layouts-route-'));
+      homes.push(home);
+      mkdirSync(join(home, 'agents', 'planner'), { recursive: true });
+      writeFileSync(join(home, 'app.json'), '{"secret":"HOME_APP_JSON"}');
+      writeFileSync(
+        join(home, 'agents', 'planner', 'agent.json'),
+        '{"secret":"AGENT_JSON"}',
+      );
+      return mount({
+        listAgentWorkflows: (slug: string) =>
+          listAgentWorkflowMetadata(home, slug),
+        getWorkflow: (slug: string, id: string) =>
+          readAgentWorkflow(home, slug, id),
+        createWorkflow: (slug: string, filename: string, content: string) =>
+          createAgentWorkflow(home, slug, filename, content),
+        updateWorkflow: (slug: string, id: string, content: string) =>
+          updateAgentWorkflow(home, slug, id, content),
+        deleteWorkflow: () => Promise.resolve(),
+      } as unknown as Service);
+    }
+
+    // The encoded forms are the point: Hono percent-decodes a path parameter
+    // before the handler sees it, so these arrive at the store as `/` and
+    // `..`. Without the guard the first row answered 200 with the contents
+    // of the Station home's app.json.
+    const traversals = [
+      {
+        path: '/agents/planner/workflows/..%2F..%2F..%2Fapp.json',
+        message: 'Invalid workflow id',
+        leak: 'HOME_APP_JSON',
+      },
+      {
+        path: '/agents/planner/workflows/%2e%2e%2Fagent.json',
+        message: 'Invalid workflow id',
+        leak: 'AGENT_JSON',
+      },
+      {
+        path: '/agents/a%2F..%2F..%2Fagents%2Fplanner/workflows/files',
+        message: 'Invalid agent slug',
+        leak: 'agent.json',
+      },
+    ];
+
+    for (const traversal of traversals) {
+      test(`refuses ${traversal.path} with 400 and discloses nothing`, async () => {
+        const app = mountRealStore();
+
+        const response = await app.request(traversal.path);
+        const rendered = await response.text();
+
+        expect(response.status).toBe(400);
+        expect(JSON.parse(rendered)).toEqual({
+          success: false,
+          error: traversal.message,
+          code: 'workflow_invalid',
+          correlationId: expect.any(String),
+        });
+        expect(rendered).not.toContain(traversal.leak);
+      });
+    }
+
+    test('a legitimate workflow still reads back through the same path', async () => {
+      const app = mountRealStore();
+      const created = await app.request('/agents/planner/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: 'build.ts', content: '// real' }),
+      });
+      expect(created.status).toBe(201);
+
+      const read = await app.request('/agents/planner/workflows/build.ts');
+      await expect(read.json()).resolves.toEqual({
+        success: true,
+        data: { content: '// real' },
+      });
+    });
   });
 
   test('an unmapped error from the list route is contained the same way', async () => {

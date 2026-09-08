@@ -21,6 +21,7 @@ import {
   createAgentWorkflow,
   deleteAgentWorkflow,
   listAgentConfigs,
+  listAgentWorkflowMetadata,
   loadAgentConfig,
   readAgentWorkflow,
   saveAgentConfig,
@@ -348,6 +349,73 @@ describe('config-loader-agents — project ownership (station#1004, unification 
     expect(
       await refusal(createAgentWorkflow(home, 'default', 'build.ts', 'body')),
     ).toBeInstanceOf(ReservedAgentIdentityError);
+  });
+
+  /**
+   * Every entry point that `join`s a caller-supplied id refuses one that is
+   * not a single path segment. `..` is listed explicitly because
+   * `basename('..')` is `'..'` — the guard `mutateWorkflow` had before this
+   * would have passed it, and only the extension check happened to stop it
+   * there. Read and list had no guard at all.
+   */
+  it('refuses an agent slug or workflow id that navigates out of its directory', async () => {
+    writeAgent('workflow-agent', {
+      name: 'Workflow Agent',
+      prompt: 'Runs workflows',
+    });
+    writeFileSync(join(home, 'app.json'), '{"secret":"HOME_APP_JSON"}');
+
+    async function refusalMessage(promise: Promise<unknown>): Promise<string> {
+      try {
+        await promise;
+      } catch (error) {
+        expect(error).toBeInstanceOf(WorkflowInvalidError);
+        return (error as Error).message;
+      }
+      throw new Error('expected the call to be refused, but it resolved');
+    }
+
+    // The exact ids the route receives after Hono percent-decodes
+    // `..%2F..%2F..%2Fapp.json` and `%2e%2e%2Fagent.json`.
+    for (const id of [
+      '../../../app.json',
+      '../agent.json',
+      '..',
+      '.',
+      '',
+      'nested/build.ts',
+    ]) {
+      expect(
+        await refusalMessage(readAgentWorkflow(home, 'workflow-agent', id)),
+      ).toBe('Invalid workflow id');
+      expect(
+        await refusalMessage(
+          updateAgentWorkflow(home, 'workflow-agent', id, 'body'),
+        ),
+      ).toBe('Invalid workflow id');
+      expect(
+        await refusalMessage(deleteAgentWorkflow(home, 'workflow-agent', id)),
+      ).toBe('Invalid workflow id');
+    }
+
+    for (const slug of ['../..', 'a/../../agents/workflow-agent', '..', '']) {
+      expect(
+        await refusalMessage(readAgentWorkflow(home, slug, 'build.ts')),
+      ).toBe('Invalid agent slug');
+      expect(await refusalMessage(listAgentWorkflowMetadata(home, slug))).toBe(
+        'Invalid agent slug',
+      );
+      expect(
+        await refusalMessage(
+          createAgentWorkflow(home, slug, 'build.ts', 'body'),
+        ),
+      ).toBe('Invalid agent slug');
+    }
+
+    // The file the traversal was reaching for is still there and unread.
+    expect(readFileSync(join(home, 'app.json'), 'utf8')).toContain(
+      'HOME_APP_JSON',
+    );
   });
 
   it('does not resurrect a workflow when update races delete', async () => {
