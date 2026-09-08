@@ -18,6 +18,7 @@ import {
   startStation,
   stopStation,
 } from './helpers/live-station-task';
+import { pairBrowser } from './live/helpers/station-instance.mjs';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -107,7 +108,6 @@ test.describe
     let fixtureRoot = '';
     let controlRoot = '';
     let taskRoomControlSocket = '';
-    let bootstrapToken = '';
 
     // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
     test.beforeAll(async ({}, testInfo) => {
@@ -121,7 +121,7 @@ test.describe
         'station-room-acceptance-home-',
         'room-acceptance',
       );
-      bootstrapToken = await startStation(live, true, {
+      await startStation(live, true, {
         taskRoomControlSocket,
       });
     });
@@ -155,7 +155,12 @@ test.describe
     test('shows an actual server refusal before an explicit successful Join', async ({
       page,
     }, testInfo) => {
-      await page.goto(`${live.ui}/#station-ui-bootstrap=${bootstrapToken}`);
+      await pairBrowser(page, {
+        root: process.cwd(),
+        instance: live.instance,
+        serverPort: live.serverPort,
+        uiOrigin: live.ui,
+      });
       await page.evaluate(() =>
         localStorage.setItem('station:onboarding-setup-dismissed', '1'),
       );
@@ -253,7 +258,12 @@ test.describe
       page: owner,
     }, testInfo) => {
       testInfo.setTimeout(180_000);
-      await owner.goto(`${live.ui}/#station-ui-bootstrap=${bootstrapToken}`);
+      await pairBrowser(owner, {
+        root: process.cwd(),
+        instance: live.instance,
+        serverPort: live.serverPort,
+        uiOrigin: live.ui,
+      });
       await expect(
         owner.getByRole('region', { name: 'Station access required' }),
       ).toHaveCount(0);

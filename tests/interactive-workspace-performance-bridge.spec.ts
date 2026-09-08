@@ -237,8 +237,15 @@ async function runFixtureTarget(input: {
     process.platform === 'win32'
       ? `\\\\.\\pipe\\station-performance-${randomUUID().replaceAll('-', '')}`
       : join(input.controlParent, `${fixtureName.slice(0, 4)}.sock`);
+  // A failed action can outlive its target home, which the next fixture
+  // replaces. Keep the server log beside the retained measurement evidence.
+  const referenceLogRoot = process.env.STATION_PERFORMANCE_REPORT_OUTPUT
+    ? dirname(process.env.STATION_PERFORMANCE_REPORT_OUTPUT)
+    : input.fixtureRoot;
+  mkdirSync(referenceLogRoot, { recursive: true, mode: 0o700 });
   const bootstrapToken = await startStation(live, true, {
     performanceReference: true,
+    logFile: join(referenceLogRoot, `${fixtureName}-station.log`),
     taskRoomControlSocket: controlSocket,
   });
   const context = await input.browser.newContext();

@@ -160,7 +160,7 @@ test.describe('Schedule run history', () => {
     ).toBeVisible();
   });
 
-  test('deep-links directly to schedule run output', async ({ page }) => {
+  test('deep-links to the exact run and opens its output', async ({ page }) => {
     await mockScheduleRunsApi(page);
     await page.goto(`/schedule?run=${encodeURIComponent(runId)}`);
 
@@ -170,6 +170,9 @@ test.describe('Schedule run history', () => {
     await expect(
       page.locator('.schedule__detail-header').getByText('Run History'),
     ).toBeVisible();
+    const focusedRun = page.locator(`[data-run-id="${runId}"]`);
+    await expect(focusedRun).toBeFocused();
+    await focusedRun.getByRole('button', { name: 'Output' }).click();
     await expect(
       page.getByText('Daily report output from opaque run ref'),
     ).toBeVisible();

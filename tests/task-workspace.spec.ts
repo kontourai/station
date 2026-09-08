@@ -20,6 +20,7 @@ import {
   closeFixtureServer,
   startOllamaFixture,
 } from './helpers/ollama-fixture';
+import { pairBrowser } from './live/helpers/station-instance.mjs';
 
 test.describe
   .serial('Durable Task experience live acceptance (#496, #495)', () => {
@@ -27,7 +28,6 @@ test.describe
 
     let live: LiveStation;
     let fixtureRoot: string;
-    let uiBootstrapToken: string;
     let ollamaServer: Server | null = null;
 
     // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
@@ -40,7 +40,7 @@ test.describe
       testInfo.setTimeout(240_000);
       fixtureRoot = mkdtempSync(join(tmpdir(), 'station-task-workspace-'));
       live = await allocateLiveStation('station-task-home-', 'task-workspace');
-      uiBootstrapToken = await startStation(live, true);
+      await startStation(live, true);
     });
 
     // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
@@ -73,7 +73,12 @@ test.describe
       page,
     }, testInfo) => {
       testInfo.setTimeout(180_000);
-      await page.goto(`${live.ui}/#station-ui-bootstrap=${uiBootstrapToken}`);
+      await pairBrowser(page, {
+        root: process.cwd(),
+        instance: live.instance,
+        serverPort: live.serverPort,
+        uiOrigin: live.ui,
+      });
       await expect(
         page.getByRole('region', { name: 'Station access required' }),
       ).toHaveCount(0);
@@ -328,7 +333,12 @@ test.describe
       const modelConnectionId = `answer-basis-ollama-${Date.now()}`;
       const repo = join(fixtureRoot, 'answer-basis-project');
 
-      await page.goto(`${live.ui}/#station-ui-bootstrap=${uiBootstrapToken}`);
+      await pairBrowser(page, {
+        root: process.cwd(),
+        instance: live.instance,
+        serverPort: live.serverPort,
+        uiOrigin: live.ui,
+      });
       await createRepository(repo, 'answer-basis');
       await createProject(page, projectSlug, repo);
       const taskId = await createTaskFromProject(
@@ -565,8 +575,13 @@ test.describe
       );
 
       await stopStation(live);
-      uiBootstrapToken = await startStation(live, false);
-      await page.goto(`${live.ui}/#station-ui-bootstrap=${uiBootstrapToken}`);
+      await startStation(live, false);
+      await pairBrowser(page, {
+        root: process.cwd(),
+        instance: live.instance,
+        serverPort: live.serverPort,
+        uiOrigin: live.ui,
+      });
       await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
       await expect(page.getByText(answer, { exact: true })).toBeVisible({
         timeout: 30_000,

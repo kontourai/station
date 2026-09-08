@@ -107,6 +107,7 @@ export async function startStation(
     performanceReference?: boolean;
     runtimeFramework?: 'voltagent' | 'strands';
     deterministicReadiness?: boolean;
+    logFile?: string;
   } = {},
 ): Promise<string> {
   const args = [
@@ -117,6 +118,7 @@ export async function startStation(
     `--port=${live.serverPort}`,
     `--ui-port=${live.uiPort}`,
   ];
+  if (options.logFile) args.push(`--log=${options.logFile}`);
   if (clean) args.splice(3, 0, '--clean');
   const startup = await runCommand(...stationCommand(args), {
     // The diagnostic production UI is intentionally a distinct tree-shaken
