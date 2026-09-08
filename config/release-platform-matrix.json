@@ -156,7 +156,7 @@
         "updateAuthority": "signed Tauri Nightly updater feed",
         "rollbackSource": "previous rolling prerelease asset retained by release history",
         "requiredForPromotion": true,
-        "availabilityPolicy": "atomic-native-cohort; fleet completion remains NOT_VERIFIED",
+        "availabilityPolicy": "per-platform-native-cohort; fleet completion remains NOT_VERIFIED",
         "evidence": { "kind": "deploy-ledger", "selector": "nightly-desktop" }
       },
       "windows": {
@@ -193,7 +193,7 @@
         "updateAuthority": "Google Play Internal testing track",
         "rollbackSource": "previous immutable Play version code",
         "requiredForPromotion": true,
-        "availabilityPolicy": "atomic-native-cohort; fleet completion remains NOT_VERIFIED",
+        "availabilityPolicy": "per-platform-native-cohort; fleet completion remains NOT_VERIFIED",
         "evidence": { "kind": "deploy-ledger", "selector": "nightly-android" }
       },
       "ios": {

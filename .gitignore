@@ -66,6 +66,11 @@ archive/
 !tests/screenshots.baseline/*.png
 !src-desktop/icons/nightly/*.png
 !src-desktop/icons/nightly/android/mipmap-*/*.png
+# Per-channel iOS asset-catalog sets (#1776): ios-channel-icons.mjs copies the
+# selected set over gen/apple's regenerated AppIcon.appiconset after every
+# `tauri ios init`, so a fresh CI clone must carry them or the IPA ships
+# Tauri's default icon.
+!src-desktop/icons/*/ios/*.png
 !src-ui/public/favicon.png
 # favicon-dev.png is what a dev build's is-dev-build rule actually displays.
 !src-ui/public/favicon-dev.png
