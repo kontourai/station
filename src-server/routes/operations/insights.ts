@@ -50,11 +50,23 @@ const EVENT_FILE_DAY_PATTERN = /^events-(\d{4})-(\d{2})-(\d{2})\.ndjson$/;
  * for, or `null` when the name carries no parseable calendar date.
  *
  * `RuntimeEventLog` picks the filename at APPEND time from
- * `new Date().toISOString()`, so the day in the name is a UTC day and can
- * never be EARLIER than the timestamp of any row inside it. A file whose day
- * has already ended at the cutoff therefore cannot hold a single row this
- * scan would keep, and opening and parsing it is pure cost — on a 14-day
- * window with the default 30-day retention that is more than half the corpus.
+ * `new Date().toISOString()`, so the day in the name is a UTC day taken from
+ * THIS Station's clock. For a row this Station stamped itself, that day can
+ * never be earlier than the row's own timestamp, so a file whose day has
+ * already ended at the cutoff cannot hold a single row this scan would keep,
+ * and opening and parsing it is pure cost — on a 14-day window with the
+ * default 30-day retention, more than half the corpus.
+ *
+ * The skip is therefore exact for Station-stamped rows and NOT exact for
+ * ingested ones. `monitoring/otlp-receiver.ts` writes the EXPORTER's own
+ * `timestamp` into the row while still appending to the file named for the
+ * receiver's current day, so an exporter whose clock runs ahead across UTC
+ * midnight can land a next-day-stamped row in today's file. Such a row is
+ * dropped by this skip once the cutoff passes that file's day end, where the
+ * old full scan would have kept it. Accepted: it needs a clock-skewed
+ * exporter and a midnight boundary, it costs at most an hourly bucket at the
+ * very edge of the window, and the alternative is reading every file on
+ * every request.
  *
  * Returns `null` rather than guessing for anything that is not a date
  * (`events-test.ndjson`, an operator's hand-placed export, a rolled-over
