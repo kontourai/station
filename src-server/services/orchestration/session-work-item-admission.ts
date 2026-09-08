@@ -26,7 +26,7 @@ export type SessionWorkItemAdmissionClaim = Readonly<{
   readonly [admissionClaimBrand]: true;
 }>;
 
-export type SessionWorkItemAdmissionStageOutcome =
+type SessionWorkItemAdmissionStageOutcome =
   | { kind: 'staged' }
   | {
       kind: 'refused';
@@ -39,7 +39,7 @@ export type SessionWorkItemAdmissionStageOutcome =
         | 'session-capacity';
     };
 
-export type SessionWorkItemAdmissionTakeOutcome =
+type SessionWorkItemAdmissionTakeOutcome =
   | {
       kind: 'taken';
       claim: SessionWorkItemAdmissionClaim;
@@ -64,7 +64,7 @@ export type SessionWorkItemAdmissionTakeOutcome =
         | 'authority-lost';
     };
 
-export type SessionWorkItemAdmissionClaimOutcome =
+type SessionWorkItemAdmissionClaimOutcome =
   | { kind: 'committed' }
   | { kind: 'rolled-back' }
   | { kind: 'refused'; reason: 'invalid-claim' };

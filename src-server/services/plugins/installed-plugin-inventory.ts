@@ -160,7 +160,7 @@ export function describePluginManifestRejection(
   );
 }
 
-export type InstalledPluginInventoryEntry =
+type InstalledPluginInventoryEntry =
   | {
       state: 'valid';
       directoryName: string;

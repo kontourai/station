@@ -79,7 +79,7 @@ export function injectConversationFeedbackContext(
  * token measurement there can never disagree about which part is
  * model-facing.
  */
-export interface AppliedChatContext {
+interface AppliedChatContext {
   input: string | ChatMessage[];
   applied: boolean;
 }

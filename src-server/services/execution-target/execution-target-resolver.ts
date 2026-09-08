@@ -82,7 +82,7 @@ export interface ExecutionTargetResolverDependencies {
   now?: () => Date;
 }
 
-export interface ResolvedExecutionTarget {
+interface ResolvedExecutionTarget {
   /** Private access authority. Never serialize this object. */
   access: EnvironmentAccess;
   agentId: AgentId;

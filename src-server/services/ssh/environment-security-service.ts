@@ -87,7 +87,7 @@ const STATION_COMPATIBILITY: StationCompatibility = {
   },
 };
 
-export interface EnvironmentSecurityServiceOptions {
+interface EnvironmentSecurityServiceOptions {
   homeDir: string;
   /** Endpoint inputs are intentionally ignored: identity is endpoint-neutral. */
   hostname?: string;

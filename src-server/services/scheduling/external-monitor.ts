@@ -14,11 +14,8 @@ export const GITHUB_PROBE_MAX_PAGES = 4;
 /** Refusal diagnostics are not source capture; inspect one bounded fragment. */
 export const GITHUB_403_DIAGNOSTIC_MAX_BYTES = 4 * 1024;
 const NAME = /^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,98}[A-Za-z0-9])?$/;
-export type MonitorFetch = (
-  input: string,
-  init: RequestInit,
-) => Promise<Response>;
-export type GitHubPullRequestTarget = Readonly<{
+type MonitorFetch = (input: string, init: RequestInit) => Promise<Response>;
+type GitHubPullRequestTarget = Readonly<{
   owner: string;
   repository: string;
   number: number;

@@ -58,7 +58,7 @@ const WINDOWS_RESERVED_ENV = new Set(['plugin_root', 'plugin_data']);
 const PLUGIN_DATA_PLACEHOLDER = '$' + '{PLUGIN_DATA}';
 const HTTP_HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 
-export type AgentPluginLoadReportCode =
+type AgentPluginLoadReportCode =
   | 'component-invalid'
   | 'duplicate-plugin-name'
   | 'manifest-invalid'
@@ -77,13 +77,13 @@ export interface AgentPluginLoadReport {
   message: string;
 }
 
-export interface LoadedAgentPluginSkill {
+interface LoadedAgentPluginSkill {
   name: string;
   directory: string;
   manifestPath: string;
 }
 
-export interface LoadedAgentPlugin {
+interface LoadedAgentPlugin {
   root: string;
   dataRoot: string;
   manifest: AgentPluginManifestV1;
@@ -100,7 +100,7 @@ import {
   pluginActivationCompositionPermit,
 } from './plugin-activation-composition.js';
 
-export interface AgentPluginLoaderOptions {
+interface AgentPluginLoaderOptions {
   /** Station's runtime home, which owns installed packages and persistent data. */
   projectHomeDir: string;
   /** Injectable for tests and packaged distributions; schemas are never fetched. */
@@ -113,7 +113,7 @@ export interface AgentPluginLoaderOptions {
   composition?: PluginActivationComposition;
 }
 
-export type AgentPluginLoadOutcome =
+type AgentPluginLoadOutcome =
   | { ok: true; plugin: LoadedAgentPlugin }
   | { ok: false; reports: AgentPluginLoadReport[] };
 
@@ -170,7 +170,7 @@ function validatorsFor(schemaRoot: string): AgentPluginValidators {
   return compiled;
 }
 
-export interface AgentPluginLoadOptions {
+interface AgentPluginLoadOptions {
   /** False for staged install validation; persistent data is never created pre-consent. */
   provisionData?: boolean;
   /** Already-read manifest bytes at a caller-owned containment boundary. */

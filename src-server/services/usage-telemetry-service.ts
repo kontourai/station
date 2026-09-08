@@ -27,7 +27,7 @@ type BufferedEvent = {
   properties: Record<string, string>;
 };
 
-export interface UsageTelemetryServiceOptions {
+interface UsageTelemetryServiceOptions {
   homeDir: string;
   appConfig: AppConfig;
   version: string;
@@ -53,7 +53,7 @@ function parseBoolean(value: string | undefined): boolean | undefined {
  * without being told. #1582 A3/L1: the distinction is what decides whether
  * keeping the current state has to WRITE it down.
  */
-export type UsageTelemetryEnabledSource = 'config' | 'env' | 'default';
+type UsageTelemetryEnabledSource = 'config' | 'env' | 'default';
 
 /**
  * The one precedence chain, resolved once and reported with its provenance so

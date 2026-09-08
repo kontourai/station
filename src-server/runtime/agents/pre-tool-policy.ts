@@ -58,7 +58,7 @@ export type StagedPreToolPolicyEvaluator = (
   },
 ) => Promise<PreToolPolicyDecision>;
 
-export interface StagedPreToolPolicyDeps {
+interface StagedPreToolPolicyDeps {
   spec: AgentSpec;
   agentPolicyService?: AgentPolicyService;
   approvalGuardian?: ApprovalGuardianService;

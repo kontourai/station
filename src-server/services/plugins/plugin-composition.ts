@@ -38,7 +38,7 @@ const INVALID_SCOPE: PluginCompositionScope = {
   projectId: 'invalid',
 };
 
-export type PluginCompositionJson =
+type PluginCompositionJson =
   | null
   | boolean
   | number
@@ -46,7 +46,7 @@ export type PluginCompositionJson =
   | PluginCompositionJson[]
   | { [key: string]: PluginCompositionJson };
 
-export interface PluginCompositionRequirement {
+interface PluginCompositionRequirement {
   readonly capability: string;
   /** Exact version for this first tracer; range negotiation is a later seam. */
   readonly version: string;
@@ -76,13 +76,13 @@ export interface PluginCompositionProfile {
   readonly selections?: Readonly<Record<string, string>>;
 }
 
-export type PluginCompositionInspectionStatus =
+type PluginCompositionInspectionStatus =
   | 'active'
   | 'pending'
   | 'failed'
   | 'shadowed';
 
-export type PluginCompositionInspectionReason =
+type PluginCompositionInspectionReason =
   | 'staging'
   | 'scope-capacity'
   | 'missing-dependency'
@@ -106,7 +106,7 @@ export type PluginCompositionInspectionReason =
   | 'disposer-failed'
   | 'disposer-timeout';
 
-export interface PluginCompositionInspectionEntry {
+interface PluginCompositionInspectionEntry {
   readonly instanceIdentity: string;
   readonly occurrenceIdentity?: string;
   readonly instanceId: string;
@@ -122,7 +122,7 @@ export interface PluginCompositionInspectionEntry {
   readonly generation?: number;
 }
 
-export interface PluginCompositionInspection {
+interface PluginCompositionInspection {
   readonly scope: PluginCompositionScope;
   readonly generation: number;
   readonly active: readonly PluginCompositionInspectionEntry[];
@@ -133,13 +133,13 @@ export interface PluginCompositionInspection {
   readonly scopeLifecycle?: readonly PluginCompositionScopeLifecycleEntry[];
 }
 
-export interface PluginCompositionScopeLifecycleEntry {
+interface PluginCompositionScopeLifecycleEntry {
   readonly generation: number;
   readonly status: 'pending' | 'failed';
   readonly reason: PluginCompositionInspectionReason;
 }
 
-export type PluginCompositionApplyResult =
+type PluginCompositionApplyResult =
   | {
       readonly kind: 'activated';
       readonly generation: number;
@@ -151,7 +151,7 @@ export type PluginCompositionApplyResult =
       readonly inspection: PluginCompositionInspection;
     };
 
-export interface PluginCompositionOccurrenceLease {
+interface PluginCompositionOccurrenceLease {
   readonly occurrenceIdentity: string;
   readonly instanceIdentity: string;
   readonly generation: number;
@@ -159,7 +159,7 @@ export interface PluginCompositionOccurrenceLease {
   isCurrent(): boolean;
 }
 
-export interface PluginCompositionInstalledContributionBinding {
+interface PluginCompositionInstalledContributionBinding {
   readonly instanceIdentity: string;
   readonly pluginId: string;
   readonly contributionId: string;
@@ -168,7 +168,7 @@ export interface PluginCompositionInstalledContributionBinding {
   readonly factory: PluginCompositionFactory;
 }
 
-export interface PluginCompositionAuthorizationLease {
+interface PluginCompositionAuthorizationLease {
   readonly bindings: readonly PluginCompositionInstalledContributionBinding[];
   /** Reads the exact whole-plan authorization/install snapshot held by this lease. */
   isCurrent(): boolean;
@@ -196,7 +196,7 @@ export interface PluginCompositionAuthorizer {
   }): PluginCompositionAuthorization | Promise<PluginCompositionAuthorization>;
 }
 
-export interface StagedPluginCompositionContribution {
+interface StagedPluginCompositionContribution {
   /** Must reverse every resource acquired by stage; called exactly once. */
   dispose(): void | Promise<void>;
 }

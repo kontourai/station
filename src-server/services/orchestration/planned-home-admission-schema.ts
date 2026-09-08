@@ -1,6 +1,6 @@
 import { plainDataObject } from './bounded-json.js';
 
-export interface PlannedHomeAdmissionDatabase {
+interface PlannedHomeAdmissionDatabase {
   prepare(sql: string): {
     all(...values: Array<string | number>): unknown[];
   };

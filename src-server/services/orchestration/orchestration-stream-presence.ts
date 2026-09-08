@@ -64,7 +64,7 @@ export const ORCHESTRATION_STREAM_PRESENCE_ROSTER_CAPACITY = 256;
 export const ORCHESTRATION_STREAM_PRESENCE_ROSTER_CONNECTIONS_PER_PRINCIPAL_CAPACITY = 32;
 
 /** One roster()-reported principal and its (possibly saturated) connection count. */
-export interface OrchestrationStreamPresenceRosterEntry {
+interface OrchestrationStreamPresenceRosterEntry {
   readonly principal: PrincipalRef;
   readonly connections: number;
 }
@@ -75,7 +75,7 @@ interface RosterRecord {
   refs: number;
 }
 
-export interface OrchestrationStreamPresenceOptions {
+interface OrchestrationStreamPresenceOptions {
   readonly rosterCapacity?: number;
   readonly rosterConnectionsPerPrincipalCapacity?: number;
   /** OTel hook — never required, matching `ClientConnectionPresenceOptions.record`'s posture. */

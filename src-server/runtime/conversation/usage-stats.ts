@@ -13,7 +13,7 @@ export interface UsageLike {
   cacheWriteTokens?: number;
 }
 
-export interface ConversationTokenBreakdown {
+interface ConversationTokenBreakdown {
   systemPromptTokens?: number;
   mcpServerTokens?: number;
   userMessageTokens?: number;
@@ -31,7 +31,7 @@ export interface ConversationStats {
   tokenBreakdown?: ConversationTokenBreakdown;
 }
 
-export interface StatsUpdateParams {
+interface StatsUpdateParams {
   existingStats?: ConversationStats | null;
   existingModelStats?: Record<string, ConversationStats | undefined>;
   usage: UsageLike;

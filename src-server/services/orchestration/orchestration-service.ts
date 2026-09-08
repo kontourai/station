@@ -711,7 +711,7 @@ interface OrchestrationServiceOptions {
   };
 }
 
-export interface PeerDelegationActivityDispatch {
+interface PeerDelegationActivityDispatch {
   taskId: string;
   conversationId: string;
   prompt: string;

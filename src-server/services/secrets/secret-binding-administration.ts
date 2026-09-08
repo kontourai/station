@@ -488,7 +488,7 @@ export interface IntegrationSecretResolution {
   };
 }
 
-export interface SecretBindingServiceOptions {
+interface SecretBindingServiceOptions {
   now?: () => Date;
   secretRunner?: SecretRunner;
   environment?: Record<string, string | undefined>;

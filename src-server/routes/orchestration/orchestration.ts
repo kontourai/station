@@ -768,7 +768,7 @@ export function resolveStreamResumePlan(
  * `env`/`req.raw`/`req.header` and more, which is fine — a wider object
  * satisfies a narrower structural type).
  */
-export interface PrincipalResolutionContext {
+interface PrincipalResolutionContext {
   env: unknown;
   req: {
     raw: Request;

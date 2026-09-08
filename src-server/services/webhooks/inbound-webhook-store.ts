@@ -214,7 +214,7 @@ export type InboundWebhookAuditReason =
  * unauthenticated-attempt budget trips (M2) — see
  * `InboundWebhookNoiseAggregator` in `inbound-webhooks.ts`.
  */
-export type InboundWebhookAuditOutcome =
+type InboundWebhookAuditOutcome =
   | InboundWebhookAuditReason
   | 'accepted'
   | 'unauthenticated_flood';

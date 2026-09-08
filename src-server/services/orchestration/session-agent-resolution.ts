@@ -56,7 +56,7 @@ import { isBuiltinStationControl } from '../../runtime/bootstrap/station-control
 import { SC_READ_ONLY_TOOLS } from '../../runtime/tools/runtime-control-tools.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 
-export interface SessionAgentResolverOptions {
+interface SessionAgentResolverOptions {
   /** Load an agent's spec by slug; `null` for an unknown/not-on-disk agent. */
   loadAgentSpec: (slug: string) => Promise<AgentSpec | null>;
   /** Resolve a Station tool-server id (`ToolDef.id`, kind 'mcp'); `null` when unknown. */
@@ -66,7 +66,7 @@ export interface SessionAgentResolverOptions {
   logger?: { warn?: (message: string, ...args: unknown[]) => void };
 }
 
-export type ResolveSessionAgent = (
+type ResolveSessionAgent = (
   input: ProviderSessionStartInput,
   captured?: { agentId: string; spec: AgentSpec },
 ) => Promise<ProviderSessionStartInput>;

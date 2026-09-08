@@ -218,7 +218,7 @@ function museProviderOverrideContained(env: NodeJS.ProcessEnv): boolean {
 }
 
 /** Why a named override did not become argv. */
-export interface MuseProviderOverrideRefusal {
+interface MuseProviderOverrideRefusal {
   /**
    * `uncontained-environment` — the runtime is not the disposable E2E one, so
    * the variable has no effect here whatever it says.

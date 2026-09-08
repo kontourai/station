@@ -78,7 +78,7 @@ export function canResolveConversationContinuation(
   );
 }
 
-export interface ConversationLineageDeps {
+interface ConversationLineageDeps {
   // Value-typed deps, captured once at service construction (slice-3
   // precedent). Safe only while nothing mutates the service options
   // post-construction — nothing does today.

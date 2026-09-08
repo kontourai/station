@@ -41,9 +41,7 @@ export interface TailscaleCliResult {
   readonly exitCode: number | null;
 }
 
-export type TailscaleCli = (
-  args: readonly string[],
-) => Promise<TailscaleCliResult>;
+type TailscaleCli = (args: readonly string[]) => Promise<TailscaleCliResult>;
 
 /**
  * Tailscale's signed macOS app-bundle command. This is a reviewed, constant
@@ -65,7 +63,7 @@ export function tailscaleCliExecutableCandidates(
     : ['tailscale'];
 }
 
-export type TailscaleCliExecutor = (
+type TailscaleCliExecutor = (
   executable: string,
   args: readonly string[],
 ) => Promise<TailscaleCliResult>;
@@ -217,7 +215,7 @@ export function parseServePublicOrigin(
   return parseServePublicOrigins(serveJson, magicDnsHost, localPorts)?.[0];
 }
 
-export interface PublicIngressOriginResolver {
+interface PublicIngressOriginResolver {
   /**
    * Daemon-validated origins in canonical order, or `undefined` whenever no
    * origin can be established. Never throws.

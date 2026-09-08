@@ -118,7 +118,7 @@ export const stubEmbedder = new StubCorpusEmbedder(DIM);
 
 // ── Multi-topic fixture corpus (5 topics x 10 records = 50 chunks) ─────────
 
-export interface CorpusRecord {
+interface CorpusRecord {
   id: string;
   topic: string;
   text: string;

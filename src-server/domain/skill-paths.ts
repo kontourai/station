@@ -259,7 +259,7 @@ export function isDirectoryPhysicallyWithin(
  * root, said "it resolves outside" — nothing resolved outside anything; the
  * walk could not read (delta review 4, M3).
  */
-export type DirectoryContainmentVerdict = 'within' | 'outside' | 'unanswerable';
+type DirectoryContainmentVerdict = 'within' | 'outside' | 'unanswerable';
 
 export function directoryContainmentVerdict(
   root: string,

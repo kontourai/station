@@ -32,12 +32,12 @@ export const SESSION_INVENTORY_APP_READ_MAX_PAGES = 128;
 const RATE_WINDOW_MS = 60_000;
 const MAX_CALLER_READS_PER_WINDOW = 64;
 
-export type SessionInventoryAppRouteFamily = 'orchestration' | 'task';
-export type SessionInventoryAppContinuation = {
+type SessionInventoryAppRouteFamily = 'orchestration' | 'task';
+type SessionInventoryAppContinuation = {
   groupId: SessionInventoryV2GroupId;
   continuationToken: string;
 };
-export type SessionInventoryAppReadOutcome =
+type SessionInventoryAppReadOutcome =
   | {
       status: 'available';
       occurrenceId: string;
@@ -67,7 +67,7 @@ export interface SessionInventoryAppReadModule {
   }): void;
 }
 
-export type SessionInventoryAppReadInput = {
+type SessionInventoryAppReadInput = {
   /** Omitted only for internal legacy callers; public MCP input is explicit. */
   version?:
     | typeof STATION_SESSION_INVENTORY_MCP_VERSION

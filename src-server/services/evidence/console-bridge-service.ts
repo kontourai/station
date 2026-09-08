@@ -73,7 +73,7 @@ const COALESCE_CONSUMER = 'console_bridge';
  */
 const DEFAULT_FLUSH_CONCURRENCY = 8;
 
-export interface ConsoleBridgeConfig {
+interface ConsoleBridgeConfig {
   /** Console hub base URL; enables the `POST /records` sink. */
   hubUrl?: string;
   /** Enables the workspace `.kontourai/console/events/**` JSONL sink. */
@@ -106,7 +106,7 @@ interface ConsoleBridgeLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
 }
 
-export interface ConsoleBridgeServiceOptions {
+interface ConsoleBridgeServiceOptions {
   eventBus: EventBus;
   eventStore: EventStore;
   logger: ConsoleBridgeLogger;
@@ -130,7 +130,7 @@ const CONSOLE_SESSION_STATUSES = new Set([
   'blocked',
 ]);
 
-export interface ConsoleBridgeFileSystem {
+interface ConsoleBridgeFileSystem {
   existsSync(path: string): boolean;
   mkdirSync(path: string, options: { recursive: true }): void;
   readFileSync(path: string, encoding: 'utf8'): string;

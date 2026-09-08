@@ -40,15 +40,15 @@ type WorkspaceBinding = {
   rootDirectories: GuardedDirectoryBinding[];
 };
 
-export type SessionOutputsReadOutcome =
+type SessionOutputsReadOutcome =
   | { status: 'found'; page: SessionOutputsPage }
   | { status: 'not-found' }
   | { status: 'unavailable' };
-export type SessionOutputInspectOutcome =
+type SessionOutputInspectOutcome =
   | { status: 'found'; inspection: SessionOutputInspection }
   | { status: 'not-found' }
   | { status: 'unavailable' };
-export type SessionOutputKeepOutcome =
+type SessionOutputKeepOutcome =
   | {
       status: 'kept';
       version: typeof TASK_DECLARED_OUTPUT_KEEP_V1;

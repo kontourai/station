@@ -10,11 +10,11 @@ import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore } from './event-store.js';
 
 /** Narrow structural logger: this module warns, never debugs. */
-export type InterruptedTurnRecoveryLogger = {
+type InterruptedTurnRecoveryLogger = {
   warn(message: string, meta?: Record<string, unknown>): void;
 };
 
-export interface InterruptedTurnRecoveryDeps {
+interface InterruptedTurnRecoveryDeps {
   /**
    * Called, not captured: the store is optional on the service options and a
    * swap after construction must be honoured. The handle crosses here

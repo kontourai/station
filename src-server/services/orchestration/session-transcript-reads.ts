@@ -38,7 +38,7 @@ const COVERAGE_CAP_REASON =
 const STALE_OBSERVATION_REASON =
   'provider observations are older than the 24-hour freshness threshold for this window';
 
-export interface SessionTranscriptReadsDeps {
+interface SessionTranscriptReadsDeps {
   canReadSession: (threadId: string, authority: SessionReadScope) => boolean;
   isEphemeralSession: (threadId: string) => boolean;
   sessionAttributionFor: (

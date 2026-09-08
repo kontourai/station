@@ -144,7 +144,7 @@ function capCodePoints(value: string, maxCodePoints: number): string {
  * The non-Station sources a denial may quote. A closed union, not a `string`:
  * the attribution names WHO spoke, so it must never itself be foreign text.
  */
-export type QuotedDenialSource = 'approval guardian' | 'config-protection hook';
+type QuotedDenialSource = 'approval guardian' | 'config-protection hook';
 
 export interface QuotedDenialText {
   source: QuotedDenialSource;
@@ -152,7 +152,7 @@ export interface QuotedDenialText {
   text: string;
 }
 
-export interface DenialReasonInput {
+interface DenialReasonInput {
   /** Untrusted. Sanitized here, never interpolated by the caller. */
   toolName: string;
   /**
@@ -216,7 +216,7 @@ export function denialReason(input: DenialReasonInput): string {
   return `${sentence} Quoted from the ${input.quoted.source} (not Station's wording): ${QUOTE_OPEN}${bounded}${QUOTE_CLOSE}`;
 }
 
-export interface StationDenialInput extends DenialReasonInput {
+interface StationDenialInput extends DenialReasonInput {
   /**
    * archive#3091 provenance: set only where the staged pre-tool policy
    * evaluator produced the denial. It drives the client's policy-denied badge

@@ -74,7 +74,7 @@ import {
 import { errorMessage } from '../schemas/schemas.js';
 import { projectKnowledgePersistenceError } from './knowledge-persistence-errors.js';
 
-export interface KnowledgeRecordRouteDeps {
+interface KnowledgeRecordRouteDeps {
   store: KnowledgeStoreProvider;
 }
 

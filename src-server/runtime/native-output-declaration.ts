@@ -31,7 +31,7 @@ export const NATIVE_OUTPUT_DECLARATION_MAX_PENDING = 256;
 export const NATIVE_OUTPUT_DECLARATION_TTL_MS = 60_000;
 export const NATIVE_OUTPUT_DECLARATION_MAX_FILE_BYTES = 5 * 1024 * 1024;
 
-export type NativeOutputDeclarationInput = {
+type NativeOutputDeclarationInput = {
   label?: unknown;
   file?: { path?: unknown; mediaType?: unknown };
   pullRequest?: {
@@ -44,12 +44,12 @@ export type NativeOutputDeclarationInput = {
   };
 };
 
-export type NativeOutputDeclarationToolResult = {
+type NativeOutputDeclarationToolResult = {
   declarationHandle: string;
 };
 
 /** The only declaration result that may cross back into an engine transcript. */
-export type NativeOutputDeclarationPublicResult = {
+type NativeOutputDeclarationPublicResult = {
   declared: true;
   kind: 'workspace-file' | 'pull-request';
   label?: string;
@@ -60,7 +60,7 @@ export type NativeOutputDeclarationPublicResult = {
  * deliberately distinct from a declaration failure: malformed engine input
  * must not reach the operation's authority, capacity, workspace, or PR seams.
  */
-export type NativeOutputDeclarationInputRefusal = {
+type NativeOutputDeclarationInputRefusal = {
   declared: false;
   reason: 'invalid-declaration-input';
 };

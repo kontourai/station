@@ -41,7 +41,7 @@ import type {
 import { errorMessage } from '../../utils/error-message.js';
 
 /** Every seam below reports failures through this shape; never required. */
-export type UIBlockProvenanceWarn = (
+type UIBlockProvenanceWarn = (
   message: string,
   meta: Record<string, unknown>,
 ) => void;

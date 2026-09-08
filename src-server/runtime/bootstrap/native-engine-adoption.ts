@@ -79,7 +79,7 @@ export function nativeEngineAdoptionDetection(
 /** Backoff between detection attempts; ~2.2 minutes total window. */
 const ADOPTION_ATTEMPT_DELAYS_MS = [0, 10_000, 30_000, 90_000] as const;
 
-export interface NativeEngineAdoptionDeps {
+interface NativeEngineAdoptionDeps {
   configLoader: ConfigLoader;
   logger: {
     info: (message: string, fields?: Record<string, unknown>) => void;
@@ -100,7 +100,7 @@ export interface NativeEngineAdoptionDeps {
   env?: NodeJS.ProcessEnv;
 }
 
-export interface NativeEngineAdoptionSummary {
+interface NativeEngineAdoptionSummary {
   outcomes: Record<string, NativeEngineAdoptionOutcome | 'absent' | 'error'>;
 }
 

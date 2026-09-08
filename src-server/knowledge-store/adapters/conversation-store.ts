@@ -130,7 +130,7 @@ export interface ConversationFileStoreReader {
   getMessages(userId: string, conversationId: string): Promise<unknown[]>;
 }
 
-export interface ConversationStoreAdapterDeps {
+interface ConversationStoreAdapterDeps {
   sessionReader: ConversationSessionReader;
   /** Keyed by agent slug, same map `station-runtime.ts` already owns as `this.memoryAdapters`. */
   fileStores: Map<string, ConversationFileStoreReader>;

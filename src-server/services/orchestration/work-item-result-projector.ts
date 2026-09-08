@@ -31,7 +31,7 @@ const githubOwner = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})?$/;
 const githubRepository = /^[A-Za-z0-9._-]{1,100}$/;
 
 /** Capability minted by the reviewed MCP loader seam. */
-export type WorkItemResultProjectorProvenance = {
+type WorkItemResultProjectorProvenance = {
   readonly serverId: 'github';
   readonly originalToolName: 'create_issue';
   /** The exact loader record remains current through projection. */
@@ -78,7 +78,7 @@ export type WorkItemResultProjectorInput = {
   content: unknown;
 };
 
-export type SessionWorkItemReadScope = {
+type SessionWorkItemReadScope = {
   sessionId: string;
   conversationId: string;
 };

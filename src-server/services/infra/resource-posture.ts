@@ -32,7 +32,7 @@ type RuntimeObservedPosture<TKind extends 'healthy' | 'degraded' | 'critical'> =
     busyPercent: number;
   };
 
-export type RuntimeResourcePosture =
+type RuntimeResourcePosture =
   | RuntimeObservedPosture<'healthy'>
   | RuntimeObservedPosture<'degraded'>
   | RuntimeObservedPosture<'critical'>
@@ -60,7 +60,7 @@ export interface RuntimeEngineStartLease {
   release(): void;
 }
 
-export interface RuntimeResourcePostureProbeOptions {
+interface RuntimeResourcePostureProbeOptions {
   /** Numeric diagnostic observation seam for deterministic tests. */
   sample?: () => Promise<HostPressureSample>;
   now?: () => number;

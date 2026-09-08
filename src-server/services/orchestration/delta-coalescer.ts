@@ -54,7 +54,7 @@ interface CoalescerLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
 }
 
-export interface DeltaCoalescerOptions {
+interface DeltaCoalescerOptions {
   /**
    * How long a delta may wait for a successor. Small enough to stay
    * imperceptible in the transcript, large enough that a fast stream collapses

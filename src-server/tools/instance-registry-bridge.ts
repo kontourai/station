@@ -133,7 +133,7 @@ function instanceConfig(value: unknown): Partial<InstanceConfig> {
   return config as Partial<InstanceConfig>;
 }
 
-export type ProcessProbe = (pid: number) => void;
+type ProcessProbe = (pid: number) => void;
 
 type ProcessLiveness = 'alive' | 'dead' | 'unavailable';
 

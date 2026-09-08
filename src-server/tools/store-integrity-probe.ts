@@ -32,7 +32,7 @@ import {
 } from '@kontourai/station-shared/sqlite-store-integrity';
 import { errorMessage } from '../utils/error-message.js';
 
-export interface StoreIntegrityProbeDeps {
+interface StoreIntegrityProbeDeps {
   verify?: typeof verifySqliteStore;
   now?: () => Date;
   write?: (line: string) => void;

@@ -37,7 +37,7 @@ export function extractStringField(
  * record_type, payload{kind, ...}}`; only `record_type` and the payload are
  * load-bearing for translation, so the rest is deliberately not modeled.
  */
-export interface MuseRecord {
+interface MuseRecord {
   recordType: string | null;
   payloadKind: string;
   payload: Record<string, unknown>;
@@ -63,7 +63,7 @@ export function parseMuseLine(line: string): MuseRecord | null {
   };
 }
 
-export type MuseTurnEffect =
+type MuseTurnEffect =
   | { kind: 'text-delta'; delta: string }
   | {
       kind: 'terminal';
