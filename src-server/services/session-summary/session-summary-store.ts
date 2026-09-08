@@ -5,6 +5,7 @@ import {
   type ConversationIntentSummaryV2,
 } from '@kontourai/station-contracts/conversation-intent-summary';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { redactDeep } from '@kontourai/station-shared/redaction';
 
 /** v1 shape is retained only so existing local sidecars remain readable. */
@@ -220,11 +221,37 @@ export class FileSessionSummaryStore {
       : null;
   }
 
+  /**
+   * Publishes a whole regenerated summary.
+   *
+   * Serialized on `${v2}.mutation`, the same capability `dismiss` and `show`
+   * take below. Regeneration itself is a whole-value publish that reads
+   * nothing, so it needs no lock to be internally consistent -- but it races
+   * the read-modify-write in `#mutateStored`, and without a shared capability
+   * a dismissal that read before this publish would overwrite it a moment
+   * after. `SessionSummaryCoordinator` does not close that: `invalidate()`
+   * bumps an epoch and `begin()` fences only the generation path, so nothing
+   * excluded a concurrent dismiss even in one process.
+   */
   async write(
     coordinate: SessionSummaryCoordinate,
     summary: StoredSessionSummary,
   ): Promise<void> {
     const path = this.v2Path(coordinate);
+    // Before the acquisition: `${path}.mutation` lives in this directory, so
+    // acquiring first fails ENOENT on a coordinate's first write.
+    await this.#ensureOwnerDirectory(coordinate);
+    const release = await acquireFileMutationLockAsync(`${path}.mutation`);
+    try {
+      await this.#publishUnderLock(coordinate, summary);
+    } finally {
+      await release();
+    }
+  }
+
+  async #ensureOwnerDirectory(
+    coordinate: SessionSummaryCoordinate,
+  ): Promise<void> {
     await mkdir(
       join(
         this.projectHomeDir,
@@ -234,6 +261,14 @@ export class FileSessionSummaryStore {
       ),
       { recursive: true },
     );
+  }
+
+  /** The publish half of a transaction whose caller already holds the lock. */
+  async #publishUnderLock(
+    coordinate: SessionSummaryCoordinate,
+    summary: StoredSessionSummary,
+  ): Promise<void> {
+    const path = this.v2Path(coordinate);
     const requestedBytes = Buffer.byteLength(JSON.stringify(summary), 'utf8');
     if (requestedBytes > MAX_SUMMARY_BYTES)
       throw new Error('Conversation intent summary exceeds the 32 KiB limit');
@@ -258,21 +293,56 @@ export class FileSessionSummaryStore {
     }
   }
 
+  /**
+   * Runs one read/derive/publish for this coordinate under `${v2}.mutation`.
+   *
+   * `mutateJsonFile`/`mutateJsonFileWithGuardedRead` are the seams for this
+   * shape, and neither fits: both publish whatever the updater returns, so
+   * "there is nothing here to dismiss" would have to be expressed as a value,
+   * and publishing the fallback would CREATE a sidecar that dismiss must
+   * never create. So this composes the same capability with the same
+   * publisher instead -- the documented purpose of
+   * `publishJsonFileWithOwnedLock` -- exactly as `SshEnvironmentProfileStore`
+   * and `NotificationService` do for their own conditional mutations. The
+   * updater is synchronous so no caller-controlled await can widen the
+   * verified read/write window while the capability is held.
+   */
+  async #mutateStored(
+    coordinate: SessionSummaryCoordinate,
+    update: (current: StoredSessionSummary) => StoredSessionSummary | null,
+  ): Promise<void> {
+    await this.#ensureOwnerDirectory(coordinate);
+    const release = await acquireFileMutationLockAsync(
+      `${this.v2Path(coordinate)}.mutation`,
+    );
+    try {
+      // Read INSIDE the capability. Hoisting it above the acquisition is what
+      // made these two paths lose each other's writes.
+      const current = await this.read(coordinate);
+      // A v1 record has no `version`, and dismissal is a v2-only preference.
+      if (!current || !('version' in current)) return;
+      const next = update(current);
+      if (!next) return;
+      await this.#publishUnderLock(coordinate, next);
+    } finally {
+      await release();
+    }
+  }
+
   /** Hide without deleting; Show can reverse this user preference. */
   async dismiss(coordinate: SessionSummaryCoordinate): Promise<void> {
-    const current = await this.read(coordinate);
-    if (!current || !('version' in current)) return;
-    await this.write(coordinate, {
+    await this.#mutateStored(coordinate, (current) => ({
       ...current,
       dismissedAt: new Date().toISOString(),
-    });
+    }));
   }
 
   async show(coordinate: SessionSummaryCoordinate): Promise<void> {
-    const current = await this.read(coordinate);
-    if (!current || !('version' in current) || !current.dismissedAt) return;
-    const { dismissedAt: _dismissedAt, ...summary } = current;
-    await this.write(coordinate, summary);
+    await this.#mutateStored(coordinate, (current) => {
+      if (!current.dismissedAt) return null;
+      const { dismissedAt: _dismissedAt, ...summary } = current;
+      return summary;
+    });
   }
 
   /** Remove both generations; no old agent-keyed sidecar can resurrect. */

@@ -384,4 +384,107 @@ describe('FileSessionSummaryStore', () => {
       ),
     ).toBe(JSON.stringify(summary, null, 2));
   });
+
+  // dismiss/show read the sidecar and publish a value derived from it, and
+  // they are reached from HTTP handlers that can race each other and the
+  // regeneration write. Before these paths shared a mutation capability, the
+  // read sat outside it: whichever publish landed second silently discarded
+  // the other's. `SessionSummaryCoordinator` does not close this -- it bumps
+  // an epoch and fences only the generation path.
+  test('a dismissal and a concurrent regeneration do not lose each other', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-session-summary-race-'));
+    roots.push(root);
+    const store = new FileSessionSummaryStore(root);
+    const coordinate = { ownerScope: 'user:alpha', conversationId: 'c-race' };
+    const base = {
+      version: 2 as const,
+      text: 'first',
+      overview: 'first',
+      goals: [],
+      constraints: [],
+      progress: [],
+      nextSteps: [],
+      reportedCompletion: [],
+      relatedEvidenceRefs: [],
+      verificationRefs: [],
+      model: 'structure-model',
+      generatedAt: '2026-08-16T12:00:00.000Z',
+      sourceRange: {
+        fromMessageId: 'm1',
+        throughMessageId: 'm2',
+        messageCount: 2,
+      },
+      sourceRevision: 'revision',
+      sourceRanges: [
+        { fromMessageId: 'm1', throughMessageId: 'm2', messageCount: 2 },
+      ],
+      sourceMessageCount: 2,
+      partialMessageIncluded: false,
+      contextBoundaryCount: 0,
+      contextBoundaries: [],
+      generationUsage: { state: 'unknown' as const },
+    };
+    await store.write(coordinate, base);
+
+    // Started together, settled together: whichever order the capability
+    // grants, the later transaction must have READ the earlier one's result.
+    await Promise.all([
+      store.dismiss(coordinate),
+      store.write(coordinate, { ...base, text: 'second', overview: 'second' }),
+    ]);
+
+    const after = await store.read(coordinate);
+    // Regeneration published second: its text wins and it clears the
+    // dismissal (a fresh summary is not dismissed). Dismissal published
+    // second: the dismissal is recorded ON the regenerated text, because it
+    // read inside the capability. The forbidden outcome is the third one --
+    // a dismissal stamped on the STALE text, which is what an unserialized
+    // read produces.
+    expect(after).toMatchObject({ text: 'second', overview: 'second' });
+  });
+
+  test('two dismissals do not resurrect a regenerated summary', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-session-summary-race2-'));
+    roots.push(root);
+    const store = new FileSessionSummaryStore(root);
+    const coordinate = { ownerScope: 'user:alpha', conversationId: 'c-race2' };
+    const base = {
+      version: 2 as const,
+      text: 'first',
+      overview: 'first',
+      goals: [],
+      constraints: [],
+      progress: [],
+      nextSteps: [],
+      reportedCompletion: [],
+      relatedEvidenceRefs: [],
+      verificationRefs: [],
+      model: 'structure-model',
+      generatedAt: '2026-08-16T12:00:00.000Z',
+      sourceRange: {
+        fromMessageId: 'm1',
+        throughMessageId: 'm2',
+        messageCount: 2,
+      },
+      sourceRevision: 'revision',
+      sourceRanges: [
+        { fromMessageId: 'm1', throughMessageId: 'm2', messageCount: 2 },
+      ],
+      sourceMessageCount: 2,
+      partialMessageIncluded: false,
+      contextBoundaryCount: 0,
+      contextBoundaries: [],
+      generationUsage: { state: 'unknown' as const },
+    };
+    await store.write(coordinate, base);
+
+    await Promise.all([
+      store.dismiss(coordinate),
+      store.write(coordinate, { ...base, text: 'second', overview: 'second' }),
+      store.dismiss(coordinate),
+    ]);
+
+    const after = await store.read(coordinate);
+    expect(after).toMatchObject({ text: 'second', overview: 'second' });
+  });
 });
