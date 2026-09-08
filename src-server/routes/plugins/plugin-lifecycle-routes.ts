@@ -66,13 +66,13 @@ import {
   resolvePluginRegistryInstall,
   synchronizePluginAgentDefinitions,
   uninstallInstalledPlugin,
-} from './plugin-install-shared.js';
+} from '../../services/plugins/plugin-install-transaction.js';
 import { loadPluginProviders } from './plugin-loader.js';
 import {
   type PluginPublicServerQuiescence,
   quiesceAllPluginPublicServerModules,
   quiescePluginPublicServerModule,
-} from './plugin-public-server.js';
+} from '../../services/plugins/plugin-public-server.js';
 
 interface PluginLifecycleRouteDeps {
   installationHost?: PluginInstallationHost;

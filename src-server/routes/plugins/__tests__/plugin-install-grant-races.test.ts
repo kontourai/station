@@ -9,8 +9,8 @@ import {
   readPluginGrantRevision,
   revokeGrants,
 } from '../../../services/plugins/plugin-permissions.js';
-import { installPluginFromSource } from '../plugin-install-shared.js';
-import { fetchPluginSource } from '../plugin-source.js';
+import { installPluginFromSource } from '../../../services/plugins/plugin-install-transaction.js';
+import { fetchPluginSource } from '../../../services/plugins/plugin-source.js';
 
 const roots: string[] = [];
 afterEach(() => {

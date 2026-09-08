@@ -30,9 +30,9 @@ import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-inst
 import {
   installPluginFromSource,
   uninstallInstalledPlugin,
-} from '../../../routes/plugins/plugin-install-shared.js';
+} from '../plugin-install-transaction.js';
 import { registerPluginLifecycleRoutes } from '../../../routes/plugins/plugin-lifecycle-routes.js';
-import { installPluginDependency } from '../../../routes/plugins/plugin-source.js';
+import { installPluginDependency } from '../plugin-source.js';
 import * as gitExecution from '../../../utils/git-exec.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { AgentPluginLoader } from '../agent-plugin-loader.js';

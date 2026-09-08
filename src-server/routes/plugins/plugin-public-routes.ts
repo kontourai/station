@@ -40,7 +40,7 @@ import {
   validate,
 } from '../schemas/schemas.js';
 import { readPluginBundle } from './plugin-bundles.js';
-import { assertPluginNameSegment } from './plugin-install-shared.js';
+import { assertPluginNameSegment } from '../../services/plugins/plugin-install-transaction.js';
 import {
   acquirePluginPublicServerModule,
   buildPluginRequestContext,
@@ -48,7 +48,7 @@ import {
   type LoadedPluginServerModule,
   type PluginServerModuleContext,
   readPluginServerSettings,
-} from './plugin-public-server.js';
+} from '../../services/plugins/plugin-public-server.js';
 
 interface PluginPublicRouteDeps {
   pluginsDir: string;

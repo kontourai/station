@@ -25,8 +25,8 @@ import {
 } from '../../../services/infra/__tests__/helpers/store-faults.js';
 import { ContextSafetyError } from '../../../services/orchestration/context-safety.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
-import { AgentPluginLoader } from '../../../services/plugins/agent-plugin-loader.js';
-import { DistributionProfileService } from '../../../services/plugins/distribution-profile-service.js';
+import { AgentPluginLoader } from '../agent-plugin-loader.js';
+import { DistributionProfileService } from '../distribution-profile-service.js';
 import {
   computePluginContentDigest,
   findPluginContentLockCycleError,
@@ -34,13 +34,13 @@ import {
   PluginContentLockCycleError,
   pluginContentLockCycleMessage,
   withPluginContentLock,
-} from '../../../services/plugins/plugin-content-integrity.js';
+} from '../plugin-content-integrity.js';
 import {
   derivePluginConsentBasis,
   isPluginConsentRefusedError,
   type PluginInstallConsent,
-} from '../../../services/plugins/plugin-install-consent.js';
-import { readPluginManifestFile } from '../../../services/plugins/plugin-manifest-loader.js';
+} from '../plugin-install-consent.js';
+import { readPluginManifestFile } from '../plugin-manifest-loader.js';
 import {
   copyPluginDependencyOwnership,
   getPluginGrants,
@@ -48,10 +48,10 @@ import {
   PluginGrantsUnavailableError,
   readPluginDependencyOwnership,
   readPluginGrantState,
-} from '../../../services/plugins/plugin-permissions.js';
+} from '../plugin-permissions.js';
 import { readCurrentWorkspacePaneCatalog } from '../../../services/projects/workspace-pane-catalog.js';
 import type { Logger } from '../../../utils/logger.js';
-import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
+import { registerPluginInstallRoutes } from '../../../routes/plugins/plugin-install-routes.js';
 import {
   backupPluginDurableState,
   capturePersistedAgentOwnership,
@@ -63,13 +63,13 @@ import {
   restorePluginDurableState,
   synchronizePluginAgentDefinitions,
   uninstallInstalledPlugin,
-} from '../plugin-install-shared.js';
-import { loadPluginProviders } from '../plugin-loader.js';
+} from '../plugin-install-transaction.js';
+import { loadPluginProviders } from '../../../routes/plugins/plugin-loader.js';
 import {
   fetchPluginSource,
   installPluginDependency,
 } from '../plugin-source.js';
-import { createRegistryRoutes } from '../registry.js';
+import { createRegistryRoutes } from '../../../routes/plugins/registry.js';
 
 function markPluginAgentOwner(agentDir: string, plugin: string): void {
   writeFileSync(
@@ -4579,7 +4579,7 @@ describe('plugin install consent gate (station#4288)', () => {
       );
       const { Hono } = await import('hono');
       const { registerPluginLifecycleRoutes } = await import(
-        '../plugin-lifecycle-routes.js'
+        '../../../routes/plugins/plugin-lifecycle-routes.js'
       );
       const app = new Hono();
       registerPluginLifecycleRoutes(app, deps(root));

@@ -59,7 +59,7 @@ import {
   readRegistryPluginAvailability,
   resolvePluginRegistryInstall,
   uninstallInstalledPlugin,
-} from './plugin-install-shared.js';
+} from '../../services/plugins/plugin-install-transaction.js';
 
 interface RegistryRouteDeps {
   installationHost?: PluginInstallationHost;

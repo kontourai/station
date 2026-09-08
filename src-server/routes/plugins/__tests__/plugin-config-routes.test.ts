@@ -21,7 +21,7 @@ import {
   emittedPluginSettings,
   registerPluginConfigRoutes,
 } from '../plugin-config-routes.js';
-import { installPluginFromSource } from '../plugin-install-shared.js';
+import { installPluginFromSource } from '../../../services/plugins/plugin-install-transaction.js';
 
 // archive#3576: `field.secret` is manifest-author-controlled, so a plugin
 // author who declares a genuinely sensitive setting and forgets

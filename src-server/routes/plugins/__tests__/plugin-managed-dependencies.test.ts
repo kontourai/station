@@ -29,8 +29,8 @@ import {
   installPluginFromSource,
   previewInstalledPluginRecovery,
   uninstallInstalledPlugin,
-} from '../plugin-install-shared.js';
-import { fetchPluginSource } from '../plugin-source.js';
+} from '../../../services/plugins/plugin-install-transaction.js';
+import { fetchPluginSource } from '../../../services/plugins/plugin-source.js';
 
 const cleanupDirs: string[] = [];
 const packageStores: EventStore[] = [];

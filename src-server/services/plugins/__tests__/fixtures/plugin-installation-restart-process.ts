@@ -9,7 +9,7 @@ import {
   installPluginFromSource,
   previewInstalledPluginRecovery,
   recoverInstalledPlugin,
-} from '../../../../routes/plugins/plugin-install-shared.js';
+} from '../../plugin-install-transaction.js';
 import { EventStore } from '../../../orchestration/event-store.js';
 import {
   derivePluginConsentBasis,

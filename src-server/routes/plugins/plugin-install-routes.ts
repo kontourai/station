@@ -52,11 +52,11 @@ import { buildPlugin } from './plugin-bundles.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 import {
   installPluginFromSource,
-  type PluginInstallSharedDeps,
+  type PluginInstallTransactionDeps,
   previewInstalledPluginRecovery,
   recoverInstalledPlugin,
   resolvePluginRegistrySource,
-} from './plugin-install-shared.js';
+} from '../../services/plugins/plugin-install-transaction.js';
 import {
   detectPluginConflicts,
   detectWorkspacePaneCatalogConflicts,
@@ -64,7 +64,7 @@ import {
   getPluginGitInfo,
   PluginPreviewUnsupportedDependencyError,
   resolvePluginDependencies,
-} from './plugin-source.js';
+} from '../../services/plugins/plugin-source.js';
 
 interface PluginInstallRouteDeps {
   installationHost?: PluginInstallationHost;
@@ -268,7 +268,7 @@ export function registerPluginInstallRoutes(
     }
   });
 
-  const recoveryDependencies: PluginInstallSharedDeps = {
+  const recoveryDependencies: PluginInstallTransactionDeps = {
     agentsDir,
     pluginsDir,
     projectHomeDir,

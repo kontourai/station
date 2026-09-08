@@ -84,7 +84,7 @@ async function withAgentPersistenceLock<T>(
  * async project-service call, so it guards every save path — routes,
  * `updateAgent` materialization, plugin installs — with zero dep
  * threading). Fail-closed by construction: a nonexistent project is the
- * only way this returns false. Exported so `plugin-install-shared.ts`'s
+ * only way this returns false. Exported so `plugin-install-transaction.ts`'s
  * plugin-agent sync reuses this exact check (archive#1004 review HIGH-1)
  * instead of duplicating it.
  */

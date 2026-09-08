@@ -30,7 +30,7 @@ import {
   pluginSettingsSchema,
   validate,
 } from '../schemas/schemas.js';
-import { assertPluginNameSegment } from './plugin-install-shared.js';
+import { assertPluginNameSegment } from '../../services/plugins/plugin-install-transaction.js';
 
 interface PluginConfigRouteDeps {
   packageMcpJournal?: PackageMcpAdmissionJournal;

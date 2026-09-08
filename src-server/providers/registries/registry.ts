@@ -939,7 +939,7 @@ export function registerPluginRegistryProvider(
   registerProvider('pluginRegistry', provider, { source });
 }
 
-// Accessed via dynamic import() namespace in plugin-install-shared.
+// Accessed via dynamic import() namespace in plugin-install-transaction.
 // fallow-ignore-next-line unused-export
 export function getPluginRegistryProviders(): {
   provider: IPluginRegistryProvider;

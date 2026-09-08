@@ -283,7 +283,7 @@ interface AgentConfigurationGeneration {
   activationEpoch?: number;
 }
 
-import { disposeAllPluginPublicServerModules } from '../../routes/plugins/plugin-public-server.js';
+import { disposeAllPluginPublicServerModules } from '../../services/plugins/plugin-public-server.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
 import {

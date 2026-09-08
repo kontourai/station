@@ -18,7 +18,7 @@ import { registerPluginPublicRoutes } from '../plugin-public-routes.js';
 import {
   acquirePluginPublicServerModule,
   quiescePluginPublicServerModule,
-} from '../plugin-public-server.js';
+} from '../../../services/plugins/plugin-public-server.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   pluginGrantsStoreCorruption: { add: vi.fn() },

@@ -55,7 +55,7 @@ import {
   type PluginRuntimeArtifact,
 } from '../../services/plugins/plugin-runtime-artifact.js';
 import { consentTransactionOps } from '../../telemetry/metrics.js';
-import { assertPluginNameSegment } from './plugin-install-shared.js';
+import { assertPluginNameSegment } from '../../services/plugins/plugin-install-transaction.js';
 
 const CONSENT_TARGET_KIND = 'plugin-trusted-permissions';
 

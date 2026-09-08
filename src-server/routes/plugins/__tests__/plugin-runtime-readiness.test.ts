@@ -31,8 +31,8 @@ import { registerPluginPublicRoutes } from '../plugin-public-routes.js';
 import {
   acquirePluginPublicServerModule,
   readPluginPublicManifest,
-} from '../plugin-public-server.js';
-import * as pluginSource from '../plugin-source.js';
+} from '../../../services/plugins/plugin-public-server.js';
+import * as pluginSource from '../../../services/plugins/plugin-source.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {

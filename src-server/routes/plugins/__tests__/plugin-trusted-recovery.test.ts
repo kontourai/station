@@ -28,7 +28,7 @@ import {
   getPluginGrants,
   revokeGrants,
 } from '../../../services/plugins/plugin-permissions.js';
-import { installPluginFromSource } from '../plugin-install-shared.js';
+import { installPluginFromSource } from '../../../services/plugins/plugin-install-transaction.js';
 import { createPluginRoutes } from '../plugins.js';
 
 test('retained recovery reaches separate trusted approval without exposing pending or ungranted modules', {

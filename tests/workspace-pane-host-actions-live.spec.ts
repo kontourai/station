@@ -16,7 +16,7 @@ import { basename, isAbsolute, join, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { getOrchestrationDatabasePath } from '../src-server/domain/migrations/003-orchestration-events.js';
 import { buildPlugin } from '../src-server/routes/plugins/plugin-bundles.js';
-import { installPluginFromSource } from '../src-server/routes/plugins/plugin-install-shared.js';
+import { installPluginFromSource } from '../src-server/services/plugins/plugin-install-transaction.js';
 import { EventStore } from '../src-server/services/orchestration/event-store.js';
 import {
   closePluginActivationSession,

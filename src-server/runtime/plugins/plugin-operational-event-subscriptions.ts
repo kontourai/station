@@ -10,7 +10,7 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   type AcquiredPluginPublicServerModule,
   acquirePluginPublicServerModule,
-} from '../../routes/plugins/plugin-public-server.js';
+} from '../../services/plugins/plugin-public-server.js';
 import type {
   OperationalEventSubscription,
   OperationalEventSubscriptionAuthorization,
