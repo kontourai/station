@@ -306,15 +306,28 @@ export class FileSessionSummaryStore {
    * and `NotificationService` do for their own conditional mutations. The
    * updater is synchronous so no caller-controlled await can widen the
    * verified read/write window while the capability is held.
+   *
+   * Creates nothing when there is nothing to change -- not the sidecar and
+   * not the owner directory. The existence check has to precede the
+   * acquisition rather than run under it, because `${path}.mutation` lives in
+   * that directory and acquiring first would create it for a coordinate that
+   * has no summary. That is safe without the capability: it is the same
+   * observation the unlocked read made before these paths shared one, and
+   * holding the lock could not improve the answer. A sidecar created after
+   * the check is a summary this request cannot have been about -- the user
+   * issued it against one that did not exist yet -- and dismissing a
+   * regeneration the user has never seen is the wrong outcome, not the
+   * missed one.
    */
   async #mutateStored(
     coordinate: SessionSummaryCoordinate,
     update: (current: StoredSessionSummary) => StoredSessionSummary | null,
   ): Promise<void> {
-    await this.#ensureOwnerDirectory(coordinate);
-    const release = await acquireFileMutationLockAsync(
-      `${this.v2Path(coordinate)}.mutation`,
-    );
+    const path = this.v2Path(coordinate);
+    if (!(await this.#exists(path))) return;
+    // The file exists, so its directory does, and `delete()` only unlinks the
+    // document -- the directory it needs for the lock cannot go away.
+    const release = await acquireFileMutationLockAsync(`${path}.mutation`);
     try {
       // Read INSIDE the capability. Hoisting it above the acquisition is what
       // made these two paths lose each other's writes.
@@ -345,21 +358,50 @@ export class FileSessionSummaryStore {
     });
   }
 
-  /** Remove both generations; no old agent-keyed sidecar can resurrect. */
+  async #exists(path: string): Promise<boolean> {
+    try {
+      await stat(path);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
+  }
+
+  /**
+   * Remove both generations; no old agent-keyed sidecar can resurrect.
+   *
+   * Under the same `${v2}.mutation` capability as the three publishers: an
+   * unlock-free delete landing between `dismiss`'s locked read and its
+   * publish would resurrect the sidecar with `dismissedAt` set, which is the
+   * one mutation the capability did not cover.
+   *
+   * When no v2 document exists there is no lock to take -- the lock file
+   * would live in a directory this call must not create -- so the v1 reap
+   * runs on its own. The residual window is a `write()` that creates the v2
+   * document after this check; that is a regeneration racing a conversation
+   * deletion, unfenced before this change too, and narrowed rather than
+   * closed here.
+   */
   async delete(coordinate: SessionSummaryCoordinate): Promise<void> {
-    const paths = [
-      this.v2Path(coordinate),
-      ...(coordinate.agentSlug
-        ? [this.v1Path(coordinate as Required<SessionSummaryCoordinate>)]
-        : []),
-    ];
-    await Promise.all(
-      paths.map((path) =>
-        unlink(path).catch((error: NodeJS.ErrnoException) => {
-          if (error.code !== 'ENOENT') throw error;
-        }),
-      ),
-    );
+    const path = this.v2Path(coordinate);
+    const legacy = coordinate.agentSlug
+      ? [this.v1Path(coordinate as Required<SessionSummaryCoordinate>)]
+      : [];
+    const reap = (target: string) =>
+      unlink(target).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') throw error;
+      });
+    if (!(await this.#exists(path))) {
+      await Promise.all(legacy.map(reap));
+      return;
+    }
+    const release = await acquireFileMutationLockAsync(`${path}.mutation`);
+    try {
+      await Promise.all([path, ...legacy].map(reap));
+    } finally {
+      await release();
+    }
   }
 }
 
