@@ -124,20 +124,20 @@ describe('useSessionEventStream frame coalescing', () => {
     });
     const publishedBeforeBurst = published.length;
 
-    await act(async () => {
-      BURST.forEach((next, index) => {
+    // Each frame is delivered and its queue turn drained on its own, so
+    // React cannot batch the burst into one render for free — that batching
+    // is what would otherwise make an uncoalesced stream look coalesced. The
+    // whole burst still lands well inside one animation frame.
+    for (const [index, next] of BURST.entries()) {
+      await act(async () => {
         streamOptions.onMessage?.({
           event: 'orchestration:event',
           id: String(index + 1),
           data: JSON.stringify({ event: next }),
         });
+        await Promise.resolve();
       });
-      // Drain the hook's own promise queue: every frame is applied through
-      // it, so without this the burst would still be in flight when the
-      // animation frame fires and the count would be about arrival timing
-      // rather than about coalescing.
-      await Promise.resolve();
-    });
+    }
 
     await waitFor(() =>
       expect(result.current.events).toHaveLength(BURST.length),
