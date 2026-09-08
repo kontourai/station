@@ -136,10 +136,7 @@ import {
   TurnIdempotencyStore,
 } from '../turn-idempotency.js';
 import {
-  AdoptionCommitFailure,
   type AdoptionLedger,
-  type AdoptionLedgerCoordinator,
-  type AdoptionReservation,
   createAdoptionLedger,
 } from './adoption-ledger.js';
 import {
@@ -224,6 +221,7 @@ import {
   type SessionWorkItemAdmissionRegistry,
 } from './session-work-item-admission.js';
 import type { SessionWorkItemCandidate } from './session-work-item-candidate.js';
+import { createSqliteAdoptionCoordinator } from './sqlite-adoption-persistence.js';
 import { createSqliteRevisionEvidencePersistence } from './sqlite-revision-evidence-persistence.js';
 import {
   chatTurnDedupKey,
@@ -7856,17 +7854,13 @@ export class EventStore {
 
   /** Deliberate composition seam; SQLite coordination remains private. */
   createAdoptionLedger(): AdoptionLedger {
-    const coordinator: AdoptionLedgerCoordinator = {
-      reserve: (reservation) => this.reserveAdoptionRecord(reservation),
-      replaceOwner: (input) => this.replaceAdoptionOwner(input),
-      updateOwned: (input) => this.updateOwnedAdoption(input),
-      commitOwned: (input) => this.commitOwnedAdoption(input),
-      completeCleanupOwned: (input) => this.completeOwnedAdoptionCleanup(input),
-      reservations: () => this.readAdoptionReservationRecords(),
-      reservesProviderCursor: (provider, providerResumeCursor) =>
-        this.adoptionReservesProviderCursor(provider, providerResumeCursor),
-    };
-    return createAdoptionLedger({ coordinator });
+    return createAdoptionLedger({
+      coordinator: createSqliteAdoptionCoordinator({
+        db: this.db,
+        upsertSession: (child) => this.upsertSession(child),
+        appendCommandReceipt: (receipt) => this.appendCommandReceipt(receipt),
+      }),
+    });
   }
 
   /** Same already-open home store; package callers never open another SQLite path. */
@@ -9134,282 +9128,6 @@ export class EventStore {
             .run(now, attemptId) as { changes: number | bigint },
         ),
     });
-  }
-
-  private reserveAdoptionRecord(reservation: AdoptionReservation): boolean {
-    const result = this.db
-      .prepare(
-        `INSERT OR IGNORE INTO provider_session_adoptions
-          (source_thread_id, target_thread_id, owner_id, owner_pid, owner_token, provider, source_session_id, source_kind, cwd, project_root, status, provider_resume_cursor, provider_cleanup_complete, flow_run_id, flow_run_resumed, flow_cleanup_complete, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        reservation.sourceThreadId,
-        reservation.targetThreadId,
-        reservation.ownerId,
-        reservation.ownerPid,
-        reservation.ownerToken,
-        reservation.provider,
-        reservation.sourceSessionId,
-        reservation.sourceKind,
-        reservation.cwd,
-        reservation.projectRoot,
-        reservation.status,
-        reservation.providerResumeCursor === undefined
-          ? null
-          : JSON.stringify(reservation.providerResumeCursor),
-        reservation.providerCleanupComplete ? 1 : 0,
-        reservation.flowRunId ?? null,
-        reservation.flowRunResumed === undefined
-          ? null
-          : reservation.flowRunResumed
-            ? 1
-            : 0,
-        reservation.flowCleanupComplete ? 1 : 0,
-        reservation.createdAt,
-        reservation.updatedAt,
-      ) as { changes: number };
-    return result.changes === 1;
-  }
-
-  private replaceAdoptionOwner(input: {
-    expected: {
-      sourceThreadId: string;
-      ownerId: string;
-      ownerPid: number;
-      ownerToken: string;
-    };
-    next: {
-      sourceThreadId: string;
-      ownerId: string;
-      ownerPid: number;
-      ownerToken: string;
-    };
-  }): AdoptionReservation | undefined {
-    this.db.exec('BEGIN IMMEDIATE');
-    try {
-      const result = this.db
-        .prepare(
-          `UPDATE provider_session_adoptions
-           SET owner_id = ?, owner_pid = ?, owner_token = ?, updated_at = ?
-           WHERE source_thread_id = ? AND owner_id = ? AND owner_pid = ? AND owner_token = ?`,
-        )
-        .run(
-          input.next.ownerId,
-          input.next.ownerPid,
-          input.next.ownerToken,
-          new Date().toISOString(),
-          input.expected.sourceThreadId,
-          input.expected.ownerId,
-          input.expected.ownerPid,
-          input.expected.ownerToken,
-        ) as { changes: number };
-      if (result.changes !== 1) {
-        this.db.exec('COMMIT');
-        return undefined;
-      }
-      const claimed = this.readAdoptionReservationRecord(
-        input.next.sourceThreadId,
-        input.next.ownerId,
-        input.next.ownerPid,
-        input.next.ownerToken,
-      );
-      this.db.exec('COMMIT');
-      return claimed;
-    } catch (error) {
-      this.rollbackAdoptionTransaction();
-      throw error;
-    }
-  }
-
-  private updateOwnedAdoption(input: {
-    claim: {
-      sourceThreadId: string;
-      ownerId: string;
-      ownerPid: number;
-      ownerToken: string;
-    };
-    next: AdoptionReservation;
-  }): AdoptionReservation | undefined {
-    this.db.exec('BEGIN IMMEDIATE');
-    try {
-      const result = this.db
-        .prepare(
-          `UPDATE provider_session_adoptions
-           SET status = ?, provider_resume_cursor = ?, provider_cleanup_complete = ?,
-               flow_run_id = ?, flow_run_resumed = ?, flow_cleanup_complete = ?, updated_at = ?
-           WHERE source_thread_id = ? AND owner_id = ? AND owner_pid = ? AND owner_token = ?`,
-        )
-        .run(
-          input.next.status,
-          input.next.providerResumeCursor === undefined
-            ? null
-            : JSON.stringify(input.next.providerResumeCursor),
-          input.next.providerCleanupComplete ? 1 : 0,
-          input.next.flowRunId ?? null,
-          input.next.flowRunResumed === undefined
-            ? null
-            : input.next.flowRunResumed
-              ? 1
-              : 0,
-          input.next.flowCleanupComplete ? 1 : 0,
-          new Date().toISOString(),
-          input.claim.sourceThreadId,
-          input.claim.ownerId,
-          input.claim.ownerPid,
-          input.claim.ownerToken,
-        ) as { changes: number };
-      if (result.changes !== 1) {
-        this.db.exec('COMMIT');
-        return undefined;
-      }
-      const updated = this.readAdoptionReservationRecord(
-        input.claim.sourceThreadId,
-        input.claim.ownerId,
-        input.claim.ownerPid,
-        input.claim.ownerToken,
-      );
-      this.db.exec('COMMIT');
-      return updated;
-    } catch (error) {
-      this.rollbackAdoptionTransaction();
-      throw error;
-    }
-  }
-
-  private rollbackAdoptionTransaction(): void {
-    try {
-      this.db.exec('ROLLBACK');
-    } catch {
-      // Preserve the durable/read failure that triggered cleanup.
-    }
-  }
-
-  private readAdoptionReservationRecords(): AdoptionReservation[] {
-    return this.db
-      .prepare(
-        `SELECT source_thread_id, target_thread_id, owner_id, owner_pid, owner_token, provider, source_session_id,
-                source_kind, cwd, project_root, status, provider_resume_cursor,
-                provider_cleanup_complete, flow_run_id, flow_run_resumed,
-                flow_cleanup_complete, created_at, updated_at
-         FROM provider_session_adoptions
-         ORDER BY created_at ASC`,
-      )
-      .all()
-      .map(mapAdoptionReservationRow);
-  }
-
-  private readAdoptionReservationRecord(
-    sourceThreadId: string,
-    ownerId: string,
-    ownerPid: number,
-    ownerToken: string,
-  ): AdoptionReservation | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT source_thread_id, target_thread_id, owner_id, owner_pid, owner_token, provider, source_session_id,
-                source_kind, cwd, project_root, status, provider_resume_cursor,
-                provider_cleanup_complete, flow_run_id, flow_run_resumed,
-                flow_cleanup_complete, created_at, updated_at
-         FROM provider_session_adoptions
-         WHERE source_thread_id = ? AND owner_id = ? AND owner_pid = ? AND owner_token = ?`,
-      )
-      .get(sourceThreadId, ownerId, ownerPid, ownerToken);
-    return row ? mapAdoptionReservationRow(row as any) : undefined;
-  }
-
-  private adoptionReservesProviderCursor(
-    provider: ProviderSession['provider'],
-    providerResumeCursor: unknown,
-  ): boolean {
-    if (providerResumeCursor === undefined) return false;
-    return Boolean(
-      this.db
-        .prepare(
-          `SELECT 1 FROM provider_session_adoptions
-           WHERE provider = ? AND provider_resume_cursor = ?
-           LIMIT 1`,
-        )
-        .get(provider, JSON.stringify(providerResumeCursor)),
-    );
-  }
-
-  private commitOwnedAdoption(input: {
-    claim: {
-      sourceThreadId: string;
-      ownerId: string;
-      ownerPid: number;
-      ownerToken: string;
-    };
-    child: ProviderSession;
-    receipt?: OrchestrationCommandReceipt;
-  }): boolean {
-    this.db.exec('BEGIN IMMEDIATE');
-    try {
-      if (
-        !this.readAdoptionReservationRecord(
-          input.claim.sourceThreadId,
-          input.claim.ownerId,
-          input.claim.ownerPid,
-          input.claim.ownerToken,
-        )
-      ) {
-        this.db.exec('COMMIT');
-        return false;
-      }
-      this.upsertSession(input.child);
-      if (input.receipt) this.appendCommandReceipt(input.receipt);
-      const deleted = this.db
-        .prepare(
-          `DELETE FROM provider_session_adoptions
-           WHERE source_thread_id = ? AND owner_id = ? AND owner_pid = ? AND owner_token = ?`,
-        )
-        .run(
-          input.claim.sourceThreadId,
-          input.claim.ownerId,
-          input.claim.ownerPid,
-          input.claim.ownerToken,
-        ) as {
-        changes: number;
-      };
-      if (deleted.changes !== 1) {
-        throw new Error('Adoption ownership changed inside its transaction.');
-      }
-      this.db.exec('COMMIT');
-      return true;
-    } catch (error) {
-      try {
-        this.db.exec('ROLLBACK');
-      } catch {
-        throw new AdoptionCommitFailure('unknown', error);
-      }
-      throw new AdoptionCommitFailure('rolled-back', error);
-    }
-  }
-
-  private completeOwnedAdoptionCleanup(input: {
-    claim: {
-      sourceThreadId: string;
-      ownerId: string;
-      ownerPid: number;
-      ownerToken: string;
-    };
-  }): boolean {
-    const deleted = this.db
-      .prepare(
-        `DELETE FROM provider_session_adoptions
-         WHERE source_thread_id = ? AND owner_id = ? AND owner_pid = ? AND owner_token = ?
-           AND flow_cleanup_complete = 1 AND provider_cleanup_complete = 1`,
-      )
-      .run(
-        input.claim.sourceThreadId,
-        input.claim.ownerId,
-        input.claim.ownerPid,
-        input.claim.ownerToken,
-      ) as {
-      changes: number;
-    };
-    return deleted.changes === 1;
   }
 
   appendCommandReceipt(receipt: OrchestrationCommandReceipt): void {
@@ -11011,33 +10729,6 @@ function parseHistoryEvent(
     // A malformed persisted event cannot establish history ownership.
   }
   return undefined;
-}
-
-function mapAdoptionReservationRow(row: any): AdoptionReservation {
-  return {
-    sourceThreadId: row.source_thread_id,
-    targetThreadId: row.target_thread_id,
-    ownerId: row.owner_id,
-    ownerPid: row.owner_pid,
-    ownerToken: row.owner_token,
-    provider: row.provider,
-    sourceSessionId: row.source_session_id,
-    sourceKind: row.source_kind,
-    cwd: row.cwd,
-    projectRoot: row.project_root,
-    status: row.status,
-    ...(row.provider_resume_cursor
-      ? { providerResumeCursor: JSON.parse(row.provider_resume_cursor) }
-      : {}),
-    providerCleanupComplete: row.provider_cleanup_complete === 1,
-    ...(row.flow_run_id ? { flowRunId: row.flow_run_id } : {}),
-    ...(row.flow_run_resumed === null
-      ? {}
-      : { flowRunResumed: row.flow_run_resumed === 1 }),
-    flowCleanupComplete: row.flow_cleanup_complete === 1,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
 }
 
 function mapPersistedSessionRow(row: any): ProviderSession {
