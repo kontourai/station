@@ -132,11 +132,16 @@ export function createRuntimeSearch(input: {
      * it while composing routes for a runtime whose search admission is
      * stopped — and retiring a thread is asynchronous. A stopped reader
      * therefore holds its two idle threads until `close()`, each capped at
-     * `maxOldGenerationSizeMb: 128` and doing nothing: `whenReady()` returns
-     * early once `closed`, so nothing re-spawns them, and every read is
-     * already refused by `current()`. The alternative — a fence that starts
-     * an async teardown — is how a `stop()` ends up racing the `close()` that
-     * follows it.
+     * `maxOldGenerationSizeMb: 128` and doing nothing.
+     *
+     * Nothing re-spawns them because `run()` refuses on `current()` — which
+     * reads THIS module's `closed` — before it awaits readiness, so no
+     * `whenReady()` (and therefore no `acquire()`) is reached after the
+     * fence. The owner's own early-return on close is a different flag, set
+     * only by the owner's `close()`, and is not what holds this line.
+     *
+     * The alternative — a fence that starts an async teardown — is how a
+     * `stop()` ends up racing the `close()` that follows it.
      */
     stop() {
       closed = true;

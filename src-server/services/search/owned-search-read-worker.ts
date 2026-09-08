@@ -18,13 +18,17 @@ export interface OwnedSearchReadWorker {
    * that never comes up.
    *
    * It exists so the SPAWN is not billed to a read budget. What that covers
-   * is exactly what the sentinel's position derives: thread creation, entry
-   * module transform and evaluation, and the database open. It is
-   * deliberately NOT `worker.on('online')`, which Node emits when the thread
-   * begins executing JS — measured on a dev host at load ~20, `online` lands
-   * at 16-20ms and the entry module's first signal at 56-78ms, so settling on
-   * `online` would leave the contended 40-60ms of transform/evaluate/open
-   * billed to the read (station#1707).
+   * is exactly what each worker's sentinel position derives — for both:
+   * thread creation, entry module transform and evaluation, and whatever
+   * that module does before its last statement. Concretely, the transcript
+   * worker opens its read-only database there; the Task worker validates its
+   * owner-bound store path, constructs its provider and registers its
+   * handler, and reads the TaskGraph per request instead. It is deliberately
+   * NOT `worker.on('online')`, which Node emits when the thread begins
+   * executing JS — measured on a dev host at load ~20, `online` lands at
+   * 16-20ms and the entry module's first signal at 56-78ms, so settling on
+   * `online` would leave that contended 40-60ms billed to the read
+   * (station#1707).
    */
   whenReady(): Promise<void>;
   /** No queue. Retiring/incomplete custody continues occupying the sole slot. */
@@ -219,17 +223,23 @@ export function createOwnedSearchReadWorker(
     } catch {
       return null;
     }
-    // AFTER `acquire()`, so the ordering says what it means: this budget
-    // bounds the READ, given a worker in hand.
+    // AFTER `acquire()`, which excludes exactly one thing: the synchronous
+    // `new Worker(...)` constructor call. It does NOT mean a ready worker —
+    // `acquire()` hands back a thread that may still be booting.
     //
-    // It does NOT wait for that worker here, deliberately. `execute` cannot
-    // know whether its worker implements the `ready` sentinel — the fault
-    // fixtures in `__tests__/fixtures` do not, by design — and awaiting it
+    // Waiting for that boot here would be wrong: `execute` cannot know
+    // whether its worker implements the `ready` sentinel — the fault fixtures
+    // in `__tests__/fixtures` do not, by design — and awaiting it
     // unconditionally costs every such worker a full deadline per read
     // (proven: three existing custody/termination tests reddened). Taking the
     // boot off the budget is the CALLER's job, via `whenReady()`, which
-    // `runtime-search`'s `run()` awaits ahead of every deadline. What remains
-    // here is the honest statement that a spawn is not a read.
+    // `runtime-search`'s `run()` awaits ahead of every deadline, and which
+    // every production caller reaches this module through.
+    //
+    // RESIDUAL, named rather than argued away: if the worker exits between
+    // that `whenReady()` and this `acquire()`, the `acquire()` above spawns a
+    // replacement and its boot does land on this read's budget. `run()` asks
+    // per read, which narrows the window to that gap; it does not close it.
     const deadline = performance.now() + deadlineMs;
     return new Promise((resolve) => {
       record.phase = 'running';

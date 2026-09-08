@@ -108,11 +108,12 @@ describe('owned search read worker readiness (station#1707)', () => {
   });
 
   test('an entry module that fails to load settles readiness at once, not at the bound', async () => {
-    // Node emits 'online' for this worker too — the thread did start
-    // executing JS before the module threw — so an owner keyed on 'online'
-    // cannot tell this apart from a healthy start. With worker-posted
-    // readiness this is the common failure path: every broken entry reaches
-    // it, and it must NOT cost a caller the full bound.
+    // NOT a discriminating case for the sentinel-vs-'online' choice: it
+    // passes either way, because Node emits 'online' for this worker too —
+    // the thread did start executing JS before the module threw. What it
+    // pins is the pre-existing error/exit settle, which worker-posted
+    // readiness makes load-bearing: every broken entry module now reaches
+    // this path, and it must not cost a caller the full bound.
     const deadlineMs = 3_000;
     const worker = readinessWorker({ mode: 'throw', deadlineMs });
 
