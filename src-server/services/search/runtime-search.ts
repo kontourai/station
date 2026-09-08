@@ -56,7 +56,10 @@ export function createRuntimeSearch(input: {
    * Started here, at composition, so the boot overlaps runtime startup
    * instead of a request; awaited again in `run` so that when a request does
    * arrive mid-boot it waits for the worker rather than billing the wait to
-   * the read. `whenReady` never rejects and is itself bounded, so this can
+   * the read. Readiness is the worker's own sentinel — its entry module's
+   * last top-level statement, after the transform, the evaluation and the
+   * database open — not `worker.on('online')`, which fires ~40-60ms before
+   * any of that under load. `whenReady` never rejects and is itself bounded, so this can
    * only delay a read by the worker's own deadline in the degenerate case
    * where the thread never comes up — which is what used to happen to every
    * cold first search.
@@ -75,10 +78,23 @@ export function createRuntimeSearch(input: {
       return false;
     }
   };
+  /**
+   * Only the readers an operation actually uses. `whenReady` is bounded by
+   * the worker's own deadline, so waiting for a reader the operation never
+   * touches would let one wedged thread delay every read of the other —
+   * a `session-message` open has nothing to do with the Task worker.
+   */
+  const readiness = {
+    transcripts: () => [transcripts.whenReady()],
+    tasks: () => [tasks.whenReady()],
+    both: () => [tasks.whenReady(), transcripts.whenReady()],
+  } as const;
+
   async function run<T>(
     context: SearchReadContext,
     unavailable: T,
     read: (context: SearchReadContext) => Promise<T>,
+    ready: keyof typeof readiness = 'both',
   ): Promise<T> {
     if (!current(context)) return unavailable;
     // Before the controller, and so before every downstream deadline. Asked
@@ -87,7 +103,7 @@ export function createRuntimeSearch(input: {
     // and a promise captured at composition would report that new thread as
     // already ready — putting the respawn back on the read budget, which is
     // the whole defect.
-    await Promise.all([tasks.whenReady(), transcripts.whenReady()]);
+    await Promise.all(readiness[ready]());
     if (!current(context)) return unavailable;
     const controller = new AbortController();
     active.add(controller);
@@ -108,7 +124,20 @@ export function createRuntimeSearch(input: {
     }
   }
   return {
-    /** Synchronous admission fence precedes every asynchronous shutdown drain. */
+    /**
+     * Synchronous admission fence precedes every asynchronous shutdown drain.
+     *
+     * Deliberately does NOT release the warmed workers (station#1707).
+     * `stop()` is a synchronous admission fence — `station-runtime.ts` calls
+     * it while composing routes for a runtime whose search admission is
+     * stopped — and retiring a thread is asynchronous. A stopped reader
+     * therefore holds its two idle threads until `close()`, each capped at
+     * `maxOldGenerationSizeMb: 128` and doing nothing: `whenReady()` returns
+     * early once `closed`, so nothing re-spawns them, and every read is
+     * already refused by `current()`. The alternative — a fence that starts
+     * an async teardown — is how a `stop()` ends up racing the `close()` that
+     * follows it.
+     */
     stop() {
       closed = true;
       for (const controller of active) controller.abort();
@@ -122,6 +151,7 @@ export function createRuntimeSearch(input: {
         context,
         { state: 'unavailable' },
         (bound) => transcripts.readMessagePage({ ...bound, ...request }),
+        'transcripts',
       );
     },
     /** Retain the same Task owner on pending cleanup. Transcript custody belongs to Orchestration. */
@@ -164,6 +194,7 @@ export function createRuntimeSearch(input: {
         results: [],
         sources: [],
       };
+      // Both: the unified response carries a source row for each provider.
       return run(context, unavailable, async (bound) => {
         const authority = bound.authority;
         if (authority.mode === 'hosted' && !authority.tenantExecutionContext)
@@ -237,6 +268,8 @@ export function createRuntimeSearch(input: {
             matchedEventId: locator.matchedEventId,
           });
         },
+        // The locator already says which reader this open reaches.
+        locator.kind === 'task' ? 'tasks' : 'transcripts',
       );
     },
   };

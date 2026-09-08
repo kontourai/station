@@ -10,17 +10,21 @@ export interface OwnedSearchReadWorker {
     signal?: AbortSignal,
   ): Promise<T | null>;
   /**
-   * Start the worker if it is not started, and resolve once it is running
-   * its entry module — or once it has failed, which is equally "no longer
-   * booting". Never rejects, and never resolves later than `deadlineMs`, so
-   * a caller can wait for readiness without inheriting an unbounded wait
-   * from a thread that never comes up.
+   * Start the worker if it is not started, and resolve once it has posted the
+   * `ready` sentinel its entry module sends as its last top-level statement —
+   * or once it has failed or exited, which is equally "no longer booting".
+   * Never rejects, and never resolves later than `deadlineMs`, so a caller
+   * can wait for readiness without inheriting an unbounded wait from a thread
+   * that never comes up.
    *
-   * It exists so the SPAWN is not billed to a read budget. Creating the
-   * thread, loading its entry module (under a test runner, transforming it
-   * first) and opening the database are startup costs; a caller that waits
-   * for them inside a deadline meant for the query converts an ordinary cold
-   * start into a timeout — see station#1707.
+   * It exists so the SPAWN is not billed to a read budget. What that covers
+   * is exactly what the sentinel's position derives: thread creation, entry
+   * module transform and evaluation, and the database open. It is
+   * deliberately NOT `worker.on('online')`, which Node emits when the thread
+   * begins executing JS — measured on a dev host at load ~20, `online` lands
+   * at 16-20ms and the entry module's first signal at 56-78ms, so settling on
+   * `online` would leave the contended 40-60ms of transform/evaluate/open
+   * billed to the read (station#1707).
    */
   whenReady(): Promise<void>;
   /** No queue. Retiring/incomplete custody continues occupying the sole slot. */
@@ -68,7 +72,7 @@ export function createOwnedSearchReadWorker(
   };
   type OwnedWorker = {
     worker: Worker;
-    /** Settles when the thread is online, or has failed/exited. Never rejects. */
+    /** Settles on the worker's `ready` sentinel, or on failure/exit. Never rejects. */
     ready: Promise<void>;
     phase: 'idle' | 'running' | 'retiring' | 'incomplete';
     flight?: Flight;
@@ -119,9 +123,9 @@ export function createOwnedSearchReadWorker(
     let settleReady: () => void = () => {};
     const record: OwnedWorker = {
       worker,
-      // Resolved by the 'online' listener below, and by the 'error'/'exit'
-      // listeners: a worker that died is not going to become ready, and a
-      // waiter must not hang for one.
+      // Resolved by the `ready` sentinel handled in the 'message' listener
+      // below, and by the 'error'/'exit' listeners: a worker that died is not
+      // going to become ready, and a waiter must not hang for one.
       ready: new Promise<void>((resolve) => {
         settleReady = resolve;
       }),
@@ -129,8 +133,22 @@ export function createOwnedSearchReadWorker(
       exited: false,
     };
     owned = record;
-    worker.on('online', settleReady);
     worker.on('message', (wire: unknown) => {
+      // Before every other check, including the flight guard: the readiness
+      // sentinel is posted by the entry module's last top-level statement and
+      // therefore arrives while the worker is idle, with no flight to match.
+      // It is the only non-string message the protocol has, so it can never
+      // be confused with a reply. `'online'` is deliberately NOT the signal —
+      // Node emits it when the thread starts executing JS, which is before
+      // the entry module is transformed, evaluated, and its database opened.
+      if (
+        wire !== null &&
+        typeof wire === 'object' &&
+        (wire as { type?: unknown }).type === 'ready'
+      ) {
+        if (owned === record) settleReady();
+        return;
+      }
       if (owned !== record || record.phase !== 'running' || !record.flight)
         return;
       const flight = record.flight;
@@ -195,13 +213,24 @@ export function createOwnedSearchReadWorker(
       return null;
     }
     if (wire === null || Buffer.byteLength(wire) > requestBytes) return null;
-    const deadline = performance.now() + deadlineMs;
     let record: OwnedWorker;
     try {
       record = acquire();
     } catch {
       return null;
     }
+    // AFTER `acquire()`, so the ordering says what it means: this budget
+    // bounds the READ, given a worker in hand.
+    //
+    // It does NOT wait for that worker here, deliberately. `execute` cannot
+    // know whether its worker implements the `ready` sentinel — the fault
+    // fixtures in `__tests__/fixtures` do not, by design — and awaiting it
+    // unconditionally costs every such worker a full deadline per read
+    // (proven: three existing custody/termination tests reddened). Taking the
+    // boot off the budget is the CALLER's job, via `whenReady()`, which
+    // `runtime-search`'s `run()` awaits ahead of every deadline. What remains
+    // here is the honest statement that a spawn is not a read.
+    const deadline = performance.now() + deadlineMs;
     return new Promise((resolve) => {
       record.phase = 'running';
       let settled = false;
@@ -241,14 +270,7 @@ export function createOwnedSearchReadWorker(
     });
   }
 
-  async function whenReady(): Promise<void> {
-    if (closed) return;
-    let record: OwnedWorker;
-    try {
-      record = acquire();
-    } catch {
-      return; // A worker that cannot be constructed is not going to be ready.
-    }
+  async function waitForReady(record: OwnedWorker): Promise<void> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     await Promise.race([
       record.ready,
@@ -257,6 +279,17 @@ export function createOwnedSearchReadWorker(
       }),
     ]);
     clearTimeout(timer);
+  }
+
+  async function whenReady(): Promise<void> {
+    if (closed) return;
+    let record: OwnedWorker;
+    try {
+      record = acquire();
+    } catch {
+      return; // A worker that cannot be constructed is not going to be ready.
+    }
+    await waitForReady(record);
   }
 
   return {

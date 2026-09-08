@@ -89,3 +89,11 @@ port.on('message', async (wire: unknown) => {
   port.postMessage(reply);
   busy = false;
 });
+
+// station#1707: the LAST top-level statement, so the owner learns this worker
+// is usable only once its entry module has been transformed and evaluated and
+// its database is open — not merely when the thread began executing JS, which
+// is all `worker.on('online')` reports and which lands ~40-60ms earlier under
+// load. The owner settles readiness on this sentinel; a read waiting for it is
+// waiting for a worker that can actually answer.
+port.postMessage({ type: 'ready' });
