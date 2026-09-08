@@ -73,6 +73,10 @@ describe('repo docs hygiene', () => {
         'SHA in a URL path',
         'See https://example.com/commit/fdbeef1234567890abcdef1234567890abcdef12/log',
       ],
+      [
+        'short SHA starting fe8 leading a commit subject',
+        'fe8abc1: fix the thing (the link-local branch, same shape)',
+      ],
     ] as const) {
       const byFile = findingsFor(
         ['docs/new.md'],
@@ -94,6 +98,15 @@ describe('repo docs hygiene', () => {
     expect(
       evaluate({ byFile: ula, grandfathered: [] }).failures.join('\n'),
     ).toContain('private-ip: fd12:3456::1');
+    const linkLocal = findingsFor(
+      ['docs/new.md'],
+      // `fe80:` itself is benign for the repo sweep (the guard in
+      // repo-docs-hygiene.mjs), so the control sits elsewhere in fe80::/10.
+      read({ 'docs/new.md': 'The bridge listens on fe9a:1234::1 for peers.' }),
+    );
+    expect(
+      evaluate({ byFile: linkLocal, grandfathered: [] }).failures.join('\n'),
+    ).toContain('private-ip: fe9a:1234::1');
   });
 
   it('a grandfathered file holds exactly its pinned findings without failing', () => {

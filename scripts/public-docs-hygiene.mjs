@@ -12,9 +12,11 @@ const PRIVATE_HOSTNAME =
 // `(?:fc|fd)[\da-f:]+` had neither bound, so any hex token starting `fd` read
 // as an address — a git SHA is exactly that shape, and the generated deploy
 // ledger's `fd2c04e…` ship SHA failed the repo sweep as a private address
-// (#1810). The link-local branch below already carried the colon requirement.
+// (#1810). The link-local branch beside it carried the colon requirement but no
+// bound on its first group, so `fe8abc1:` (a short SHA leading a commit
+// subject) read as link-local; that group is exactly `fe80`–`febf`, four hex.
 const PRIVATE_IP =
-  /(?:\b(?:127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2}|169\.254(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})\b|(?:^|[^\da-f])(?:::1|(?:fc|fd)[\da-f]{0,2}:[\da-f:]*|fe[89ab][\da-f]*:[\da-f:]*)(?=$|[^\da-f]))/gi;
+  /(?:\b(?:127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2}|169\.254(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})\b|(?:^|[^\da-f])(?:::1|(?:fc|fd)[\da-f]{0,2}:[\da-f:]*|fe[89ab][\da-f]:[\da-f:]*)(?=$|[^\da-f]))/gi;
 const INTERNAL_OPERATION =
   /\b(?:src-(?:server|ui)\/|scripts\/|config\/|node_modules|\.kontourai|dist-pages)\b/g;
 const SOURCE_PROVENANCE = /\b(?:derived|adapted|inspired)\s+(?:from|by)\b/gi;
