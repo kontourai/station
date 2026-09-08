@@ -1,5 +1,34 @@
 [
   {
+    "timestampUtc": "2026-09-08T17:13:07Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2442.34252063142",
+    "sha": "fd2c04e8632d40e6e9c53dd13a558a1764375800",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34252063142",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2442.34252063142 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "9ef6da41656621fb1c4b7b8fca1e528521df127e",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#1781](https://github.com/kontourai/station/pull/1781) fix(ios): ship the channel app icon and fail closed when the catalog is not derived from it (#1776)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-09-08T16:34:52Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2442.4",
