@@ -17,10 +17,6 @@ import {
   useOrchestrationSessionsQuery,
 } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import {
-  applyReturnFocus,
-  captureReturnFocus,
-} from '@kontourai/station-shared/return-focus';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { resolveViewFromPath } from '../../app-shell/routing';
 import {
@@ -36,10 +32,7 @@ import { useApiBase } from '../../contexts/ApiBaseContext';
 import { activeChatDurableId } from '../../contexts/active-chats-state';
 import { CONFIG_DEFAULTS, useConfig } from '../../contexts/ConfigContext';
 import { conversationCanMutate as canMutateConversation } from '../../contexts/conversation-open-policy';
-import {
-  useDeviceSettings,
-  useDeviceSettingsActions,
-} from '../../contexts/DeviceSettingsContext';
+import { useDeviceSettingsActions } from '../../contexts/DeviceSettingsContext';
 import {
   setShortcutContext,
   useKeyboardShortcuts,
@@ -70,7 +63,6 @@ import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
-import { useExitTransition } from '../../hooks/useExitTransition';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useOutboundQueueSnapshot } from '../../hooks/useOutboundQueueSnapshot';
 import {
@@ -114,7 +106,6 @@ import {
 } from './ChatPaneFileDropBoundary';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 import {
-  CHAT_DOCK_INBOX_EXIT_MS,
   chatModelLabel,
   effectiveChatModelId,
   inboxPanelMounts,
@@ -141,7 +132,6 @@ import {
 } from './conversationHandoffUiState';
 import type { ConversationOpenRecovery } from './conversationOpenController';
 import { commitForkOpenBoundary } from './forkOpenBoundary';
-import type { MobileTaskSwitcherMode } from './MobileTaskSwitcher';
 import { isDockOwnedViewType, isMobileDockFullscreen } from './mobile-chrome';
 import { NewChatUnavailableError } from './newChatErrors';
 import {
@@ -150,6 +140,7 @@ import {
   shouldClearProjectChatScope,
 } from './projectChatRequest';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
+import { useChatDockOverlays } from './useChatDockOverlays';
 import { useChatDockViewModel } from './useChatDockViewModel';
 import { useDockCopyActions } from './useDockCopyActions';
 
@@ -671,14 +662,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeSessionCount,
     onAutoCollapse: handleAutoCollapse,
   });
-  const [newChatRequestEpoch, setNewChatRequestEpoch] = useState(0);
-  const setShowNewChatModal = useCallback(
-    (open: boolean) => {
-      if (open) setNewChatRequestEpoch((epoch) => epoch + 1);
-      setShowNewChatModalState(open);
-    },
-    [setShowNewChatModalState],
-  );
 
   // A non-tab recovery is still committed UI state (not a toast). It is used
   // only when Station cannot safely hydrate an existing transcript into a
@@ -712,39 +695,40 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     if (!isFullscreenPlacement && isDockMaximized) restoreDockToDocked();
   }, [isDockMaximized, isFullscreenPlacement, restoreDockToDocked]);
 
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  // Persisted via the device-settings store (station#settings-revamp
-  // slice 2 — previously its own raw `station.inbox.open` localStorage key).
-  const { inboxOpen: isInboxOpen } = useDeviceSettings();
-  // station#3309: keep the panel mounted for its exit beat so collapsing gives
-  // its column back as it leaves, instead of deleting it between two frames.
-  // The hook, not the CSS, owns the reduced-motion case — that branch has to
-  // decline to keep the element mounted at all.
-  const inboxPresence = useExitTransition(isInboxOpen, CHAT_DOCK_INBOX_EXIT_MS);
   const { setDeviceSetting } = useDeviceSettingsActions();
-  const [isCommandLauncherOpen, setIsCommandLauncherOpen] = useState(false);
-  const [isDelegationLauncherOpen, setIsDelegationLauncherOpen] =
-    useState(false);
-  const [activeWorkPanel, setActiveWorkPanel] =
-    useState<ActiveWorkPanel | null>(null);
-  const [isTaskSwitcherOpen, setIsTaskSwitcherOpen] = useState(false);
-  // Which entry point opened the switcher — the chat-title chevron (full list)
-  // or the header's activity button (running / just-finished first).
-  const [taskSwitcherMode, setTaskSwitcherMode] =
-    useState<MobileTaskSwitcherMode>('tasks');
-  const activityTriggerRef = useRef<HTMLButtonElement>(null);
-  // station#1301 slice 1: one shared open/close boolean for the Background
-  // tasks sheet, opened from either entry point (desktop tab-bar button,
-  // mobile activity-switcher row, or the transcript banner tap target).
-  // `backgroundTasksTriggerRef` is the desktop anchor; on mobile it is never
-  // populated (the button that owns it doesn't render there), so
-  // `ResponsiveDialogSurface` falls back to its un-anchored bottom sheet.
-  const [isBackgroundTasksOpen, setIsBackgroundTasksOpen] = useState(false);
-  const backgroundTasksTriggerRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!isMobile) setIsTaskSwitcherOpen(false);
-  }, [isMobile]);
+  const {
+    newChatRequestEpoch,
+    setShowNewChatModal,
+    isHistoryOpen,
+    toggleHistory,
+    openInboxHistory,
+    closeHistory,
+    isInboxOpen,
+    inboxPresence,
+    toggleInbox,
+    isCommandLauncherOpen,
+    setIsCommandLauncherOpen,
+    openCommandLauncher,
+    isDelegationLauncherOpen,
+    setIsDelegationLauncherOpen,
+    openDelegationLauncher,
+    activeWorkPanel,
+    setActiveWorkPanel,
+    isTaskSwitcherOpen,
+    setIsTaskSwitcherOpen,
+    taskSwitcherMode,
+    setTaskSwitcherMode,
+    activityTriggerRef,
+    isBackgroundTasksOpen,
+    setIsBackgroundTasksOpen,
+    backgroundTasksTriggerRef,
+    restoreComposerMenuFocus,
+  } = useChatDockOverlays({
+    isMobile,
+    composerMenuTriggerRef,
+    setDeviceSetting,
+    setShowNewChatModalState,
+  });
 
   const rehydrateSessions = useRehydrateSessions(apiBase);
   const {
@@ -987,26 +971,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     effectiveModels,
   );
 
-  /**
-   * station#1259. `DelegationLauncher`'s `onClose` restores focus itself, but
-   * it is not the only way the launcher goes away: delegating successfully
-   * closes it, and so does switching task. Both left focus on `<body>`
-   * (station#1126). `CommandLauncher` restores on its own close path only, so
-   * the task-switch route past it had the same hole.
-   *
-   * The trigger is read live inside the frame rather than captured on open —
-   * the composer survives both of these, so a snapshot would be strictly worse
-   * (station#1259 assessment of the `onClose` restore). Routing through
-   * `applyReturnFocus` is what is new: it declines when the new session's own
-   * initial focus has already claimed the frame (station#1206 gap 1) and
-   * verifies the focus actually landed.
-   */
-  const restoreComposerMenuFocus = useCallback(() => {
-    requestAnimationFrame(() =>
-      applyReturnFocus(captureReturnFocus(composerMenuTriggerRef.current)),
-    );
-  }, []);
-
   // The panel belongs to one task. Close it instead of showing stale context
   // when the active session changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeSessionId is the reset signal
@@ -1019,32 +983,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setIsDelegationLauncherOpen(false);
   }, [activeSessionId]);
 
-  const openCommandLauncher = useCallback(() => {
-    setActiveWorkPanel(null);
-    setIsCommandLauncherOpen(true);
-  }, []);
-
-  const openDelegationLauncher = useCallback(() => {
-    setActiveWorkPanel(null);
-    setIsCommandLauncherOpen(false);
-    setIsDelegationLauncherOpen(true);
-  }, []);
-
-  // Stable callback identities for the memoized dock subtree (
-  // ChatDockProjectContext / ChatDockContentArea): the dock re-renders every
-  // rAF-coalesced frame while a resize drag is live, and inline arrow props
-  // would defeat React.memo by changing identity on every one of those
-  // renders even though the callbacks themselves never change behavior.
-  const toggleHistory = useCallback(() => setIsHistoryOpen((v) => !v), []);
-  const toggleInbox = useCallback(
-    () => setDeviceSetting('inboxOpen', !isInboxOpen),
-    [isInboxOpen, setDeviceSetting],
-  );
-  const openInboxHistory = useCallback(() => setIsHistoryOpen(true), []);
   // #1298: revealing Activity is a dock-owned navigation seam —
   // collapse a maximized dock first so the destination is actually visible.
-  // Same stabilization reason as the block comment above: this used to be
-  // an inline closure at the `ChatDockInboxPanel` call site.
+  // Same stabilization reason as the toggles in `useChatDockOverlays`: this
+  // used to be an inline closure at the `ChatDockInboxPanel` call site.
   const onOpenInboxSession = useCallback(
     (threadId: string) => {
       collapseDockForNavigation();
@@ -1056,7 +998,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     () => setShowChatSettings(true),
     [setShowChatSettings],
   );
-  const closeHistory = useCallback(() => setIsHistoryOpen(false), []);
   // #1298: the project-context badge is a dock-owned navigation seam —
   // collapse a maximized dock first so the destination project/layout is
   // actually visible.
@@ -1164,7 +1105,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const handleToggleActiveWorkPanel = useCallback(
     (panel: ActiveWorkPanel) =>
       setActiveWorkPanel((current) => (current === panel ? null : panel)),
-    [],
+    [setActiveWorkPanel],
   );
 
   const commandLauncherEnabled = Boolean(
@@ -1795,6 +1736,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     showInboxOpenFailure,
     agentsLoaded,
     showSurface,
+    setIsTaskSwitcherOpen,
+    setTaskSwitcherMode,
   ]);
 
   // Sync activeChat (conversationId) from URL to local state
