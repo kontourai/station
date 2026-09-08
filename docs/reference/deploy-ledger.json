@@ -1,5 +1,33 @@
 [
   {
+    "timestampUtc": "2026-09-08T16:34:52Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2442.4",
+    "sha": "9ef6da41656621fb1c4b7b8fca1e528521df127e",
+    "artifactBuiltAt": "2026-09-08T15:57:01.936Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34247229018",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt partial",
+    "notes": [
+      "ios: TestFlight delivery failure (run 34247229018)",
+      "macos: NOT_VERIFIED (macos provider outcome unknown: unresolved:run:34247229018:macos-state-absent:failure (the provider effect may already be live))"
+    ],
+    "changelog": {
+      "previousSha": "f1073fa4cefe4f46a58409e7cfd493f2d6d29228",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": "Changelog slice omitted: previous ship SHA f1073fa is not reachable in this repository's history, so no commit range exists to derive.",
+      "commitCount": 0
+    }
+  },
+  {
     "timestampUtc": "2026-09-08T16:28:03Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2442.34247229018",
