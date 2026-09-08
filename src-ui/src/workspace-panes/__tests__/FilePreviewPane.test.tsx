@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { useApiQuery } from '@kontourai/station-sdk';
 import {
   QueryClient,
   QueryClientProvider,
@@ -136,6 +137,166 @@ describe('FilePreviewPane', () => {
     );
     expect(JSON.stringify(marks)).not.toContain('\nx\nx');
     unsubscribe();
+  });
+
+  test('a failed refresh never attests retained preview data, including after recovery', async () => {
+    vi.stubEnv('VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE', '1');
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const data = {
+      path: 'file.txt',
+      status: 'ready' as const,
+      renderKind: 'text' as const,
+      sizeBytes: 1,
+      lineCount: 1,
+      content: 'x',
+    };
+    const read = vi.fn().mockRejectedValue(new Error('preview request failed'));
+    const key = ['projects', 'demo', 'file-preview', { path: 'file.txt' }];
+    client.setQueryData(key, data);
+    previewQuery.mockImplementation(function usePreviewQuery(
+      projectSlug: string,
+      request: object,
+    ) {
+      return useQuery({
+        queryKey: ['projects', projectSlug, 'file-preview', request],
+        queryFn: read,
+        staleTime: Infinity,
+      });
+    });
+    const marks: unknown[] = [];
+    const unsubscribe = subscribeInteractiveWorkspacePerformanceMarks((mark) =>
+      marks.push(mark),
+    );
+    const view = render(
+      <QueryClientProvider client={client}>
+        <FilePreviewPane
+          projectSlug="demo"
+          stateKey="failed-refresh-test"
+          state={{
+            version: '1.0',
+            projectSlug: 'demo',
+            path: 'file.txt',
+            wrap: true,
+          }}
+        />
+      </QueryClientProvider>,
+    );
+    const failedCommit = expect.objectContaining({
+      kind: 'file-preview-commit',
+      mark: expect.objectContaining({ refreshNonce: 'fp-failed-1' }),
+    });
+    try {
+      act(() =>
+        window.dispatchEvent(
+          new CustomEvent(INTERACTIVE_WORKSPACE_FILE_PREVIEW_REFRESH_EVENT, {
+            detail: {
+              projectSlug: 'demo',
+              path: 'file.txt',
+              nonce: 'fp-failed-1',
+            },
+          }),
+        ),
+      );
+      await screen.findByText('Unable to load this Project file preview.');
+      expect(marks).not.toContainEqual(failedCommit);
+      read.mockResolvedValue(data);
+      fireEvent.click(screen.getByRole('button', { name: 'Retry preview' }));
+      await waitFor(() =>
+        expect(
+          screen.queryByText('Unable to load this Project file preview.'),
+        ).toBeNull(),
+      );
+      expect(marks).not.toContainEqual(failedCommit);
+    } finally {
+      view.unmount();
+      unsubscribe();
+      client.clear();
+    }
+  });
+
+  test('reopening a cached preview cannot let its retired owner cancel the new refresh', async () => {
+    vi.stubEnv('VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE', '1');
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const data = {
+      path: 'file.txt',
+      status: 'ready' as const,
+      renderKind: 'text' as const,
+      sizeBytes: 1,
+      lineCount: 1,
+      content: 'x',
+    };
+    client.setQueryData(
+      ['projects', 'demo', 'file-preview', { path: 'file.txt' }],
+      data,
+    );
+    let signal: AbortSignal | undefined;
+    let finish: ((value: typeof data) => void) | undefined;
+    previewQuery.mockImplementation(function usePreviewQuery(
+      projectSlug: string,
+      request: object,
+    ) {
+      return useApiQuery(
+        ['projects', projectSlug, 'file-preview', request],
+        (inputSignal) => {
+          signal = inputSignal;
+          return new Promise<typeof data>((resolve) => {
+            finish = resolve;
+          });
+        },
+        { staleTime: Infinity, cancelWhenInactive: true },
+      );
+    });
+    let reopened = false;
+    let dispatched = false;
+    const unsubscribe = subscribeInteractiveWorkspacePerformanceMarks(
+      (mark) => {
+        if (!reopened || dispatched || mark.kind !== 'file-preview-commit')
+          return;
+        dispatched = true;
+        window.dispatchEvent(
+          new CustomEvent(INTERACTIVE_WORKSPACE_FILE_PREVIEW_REFRESH_EVENT, {
+            detail: {
+              projectSlug: 'demo',
+              path: 'file.txt',
+              nonce: 'fp-reopened',
+            },
+          }),
+        );
+      },
+    );
+    const pane = (key: string) => (
+      <QueryClientProvider client={client}>
+        <FilePreviewPane
+          key={key}
+          projectSlug="demo"
+          stateKey="reopen-test"
+          state={{
+            version: '1.0',
+            projectSlug: 'demo',
+            path: 'file.txt',
+            wrap: true,
+          }}
+        />
+      </QueryClientProvider>
+    );
+    const view = render(pane('first'));
+    try {
+      reopened = true;
+      view.rerender(pane('second'));
+      await waitFor(() => expect(signal).toBeDefined());
+      expect(signal!.aborted).toBe(false);
+      view.unmount();
+      expect(signal!.aborted).toBe(true);
+    } finally {
+      view.unmount();
+      finish?.(data);
+      unsubscribe();
+      client.clear();
+    }
   });
 
   test.each([false, true])(

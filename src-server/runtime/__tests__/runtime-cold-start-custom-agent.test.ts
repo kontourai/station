@@ -76,6 +76,7 @@ const routeMocks = vi.hoisted(() => {
     taskDispatches,
     deferServerFactory: false,
     kitLifecycleReady: Promise.resolve(),
+    configured: undefined as (() => void) | undefined,
     configureRuntimeRoutes: vi.fn((context: any) => {
       // This crosses the same Dispatcher Interface that task routes and
       // capability bindings receive while `initializeRuntime` is still
@@ -93,6 +94,7 @@ const routeMocks = vi.hoisted(() => {
         kitLifecycleReady: routeMocks.kitLifecycleReady,
       };
       servicePairs.push(services);
+      routeMocks.configured?.();
       return services;
     }),
   };
@@ -324,8 +326,11 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
 }, () => {
   let home: string;
   let runtime: InstanceType<typeof StationRuntime> | undefined;
+  let releaseKitDiscovery: (() => void) | undefined;
 
   afterEach(async () => {
+    releaseKitDiscovery?.();
+    releaseKitDiscovery = undefined;
     if (runtime) {
       await runtime.shutdown();
       runtime = undefined;
@@ -341,6 +346,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     routeMocks.taskDispatches.length = 0;
     routeMocks.deferServerFactory = false;
     routeMocks.kitLifecycleReady = Promise.resolve();
+    routeMocks.configured = undefined;
     if (originalHostedRegistryFile === undefined)
       delete process.env[hostedRegistryFileEnv];
     else process.env[hostedRegistryFileEnv] = originalHostedRegistryFile;
@@ -1171,6 +1177,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     routeMocks.kitLifecycleReady = new Promise<void>((resolve) => {
       releaseDiscovery = resolve;
     });
+    releaseKitDiscovery = () => releaseDiscovery();
     runtime = new StationRuntime({
       projectHomeDir: home,
       port: TEST_PORT,
@@ -1178,16 +1185,19 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     });
     replaceTerminalListener(runtime);
 
+    const configured = new Promise<void>((resolve) => {
+      routeMocks.configured = resolve;
+    });
     let settled = false;
     const initialization = runtime.initialize().finally(() => {
       settled = true;
     });
-    await vi.waitFor(
-      () => {
-        expect(routeMocks.configureRuntimeRoutes).toHaveBeenCalled();
-      },
-      { timeout: 10_000 },
-    );
+    await Promise.race([
+      configured,
+      initialization.then(() => {
+        throw new Error('Initialization settled before route setup');
+      }),
+    ]);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(settled).toBe(false);
     releaseDiscovery();
@@ -1200,6 +1210,8 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     routeMocks.kitLifecycleReady = new Promise<void>((_resolve, reject) => {
       rejectDiscovery = reject;
     });
+    releaseKitDiscovery = () =>
+      rejectDiscovery(new Error('Kit fixture cleanup'));
     // Observe the intentionally rejected fixture promise immediately. The
     // runtime must still receive the original promise and fail readiness, but
     // route registration can occur before runInitialize reaches its await.
@@ -1211,15 +1223,18 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     });
     replaceTerminalListener(runtime);
 
+    const configured = new Promise<void>((resolve) => {
+      routeMocks.configured = resolve;
+    });
     const initialization = runtime
       .initialize()
       .catch((error: unknown) => error);
-    await vi.waitFor(
-      () => {
-        expect(routeMocks.configureRuntimeRoutes).toHaveBeenCalled();
-      },
-      { timeout: 10_000 },
-    );
+    await Promise.race([
+      configured,
+      initialization.then((error) => {
+        throw error ?? new Error('Initialization settled before route setup');
+      }),
+    ]);
     rejectDiscovery(new Error('Kit lifecycle discovery failed'));
     const initializationError = await initialization;
     expect(initializationError).toBeInstanceOf(Error);

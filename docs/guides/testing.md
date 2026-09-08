@@ -47,6 +47,12 @@ For shared behavior changes, inspect dependent callers and tests, and exercise
 the production integration point rather than a retired helper or mock seam.
 Keep a known-bad catch case and a harmless-change control when repairing a gate.
 
+Fixtures that hold startup or shutdown gates must release them during teardown
+even when an assertion fails. Wait for the owned lifecycle signal within the
+test's existing overall budget instead of adding an unrelated polling deadline.
+Cached data alone does not prove that a refresh succeeded; cover failed refreshes
+and subsequent recovery when asserting readiness or performance marks.
+
 For read-cost regressions, assert file reads or payload construction through the
 real request/component owner, then change the backing data and re-read. A cache
 that is fast only because it returns stale or cross-user data is a regression.
