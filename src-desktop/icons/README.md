@@ -19,7 +19,15 @@ indigo for Beta, and violet for Nightly. Desktop overlays use the corresponding
 `icons/<channel>/` set. Android builds call
 `scripts/apply-android-channel-icons.mjs` after `tauri android init`, applying
 the selected `icons/<channel>/android` set to both `main` and `debug` so source
-set precedence cannot mask the release identity. Stable keeps the approved
+set precedence cannot mask the release identity. iOS builds call
+`scripts/ios-channel-icons.mjs apply <channel>` after every `tauri ios init`:
+init renders `gen/apple/Assets.xcassets/AppIcon.appiconset` from Tauri's
+template with Tauri's own default PNGs, so the committed
+`icons/<channel>/ios/AppIcon-*.png` set (stable, beta, nightly; from the square
+master, because iOS rejects alpha) is copied over it, and
+`ios-channel-icons.mjs verify` proves the built catalog and the IPA's icon are
+that set before the receipt is written. The committed `gen/apple` catalog is
+the stable set; local and simulator builds reuse it. Stable keeps the approved
 default artwork; `favicon-dev.png` is swapped into Dev by `is-dev-build` in
 `src-ui/src/index.css`.
 Generate icons only when deliberately changing the artwork:

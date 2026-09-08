@@ -2,6 +2,11 @@
 import { realpathSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+// `icon` is the desktop bundle master the overlay hands Tauri (bundle.icon);
+// it never reaches the iOS asset catalog. `iosIconSet` is the committed
+// AppIcon-*.png set (src-desktop-relative) that scripts/ios-channel-icons.mjs
+// copies over gen/apple's catalog after every `tauri ios init` and verifies
+// the IPA against — the only path by which a channel icon ships on iOS.
 export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
   stable: Object.freeze({
     bundleId: 'io.kontourai.station',
@@ -9,6 +14,7 @@ export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
     appStoreName: 'Station by Kontour AI',
     scheme: 'station-stable',
     icon: 'icons/icon.png',
+    iosIconSet: 'icons/stable/ios',
     environment: 'native-release',
     internalGroup: 'Internal Testers',
   }),
@@ -18,6 +24,7 @@ export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
     appStoreName: 'Station Beta by Kontour AI',
     scheme: 'station-beta',
     icon: 'icons/beta/icon.png',
+    iosIconSet: 'icons/beta/ios',
     environment: 'ios-beta',
     internalGroup: 'Station Beta Internal',
   }),
@@ -27,6 +34,7 @@ export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
     appStoreName: 'Station Nightly by Kontour AI',
     scheme: 'station-nightly',
     icon: 'icons/nightly/icon.png',
+    iosIconSet: 'icons/nightly/ios',
     environment: 'ios-nightly',
     internalGroup: 'Station Nightly Internal',
   }),
