@@ -205,7 +205,7 @@
         "updateAuthority": "TestFlight internal group",
         "rollbackSource": "previous processed TestFlight Nightly build",
         "requiredForPromotion": false,
-        "availabilityPolicy": "independent TestFlight delivery (#1774): a failed upload reddens Nightly and is disclosed as an ios: note on the nightly-android and nightly-desktop ledger rows, but never blocks Android/macOS finality or writes the recovery lock; fleet completion remains NOT_VERIFIED",
+        "availabilityPolicy": "independent TestFlight delivery (#1774): a failed upload reddens Nightly and is disclosed as an ios: note on the nightly-android and nightly-desktop ledger rows whenever the cohort records (an all-platform failure discloses it in the recovery receipt instead), but never blocks Android/macOS finality or writes the recovery lock; fleet completion remains NOT_VERIFIED",
         "evidence": {
           "kind": "not-verified",
           "owner": "#1016",

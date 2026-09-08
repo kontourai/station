@@ -28,6 +28,8 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-08T14:27:53Z | nightly-npm | 0.6.0-nightly.2442.34234368088 | `92b5e7b` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/34234368088) |
+| 2026-09-08T13:45:30Z | nightly-npm | 0.6.0-nightly.2442.34230188430 | `5dda86f` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/34230188430) |
 | 2026-09-08T10:24:53Z | nightly-npm | 0.6.0-nightly.2442.34211909749 | `370c33e` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/34211909749) |
 | 2026-08-30T19:57:10Z | nightly-desktop | 0.1.2-nightly.2433 | `f1073fa` | nightly test-gate success on f1073fa4cefe4f46a58409e7cfd493f2d6d29228 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33330909248) |
 | 2026-08-30T19:53:22Z | nightly-android | 0.1.2-nightly.2433 | `f1073fa` | nightly test-gate success on f1073fa4cefe4f46a58409e7cfd493f2d6d29228 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33330909248) |
@@ -53,6 +55,35 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-08T14:27:53Z · nightly-npm · 0.6.0-nightly.2442.34234368088
+
+- Ship SHA: `92b5e7b30978b0c40c4d5c1424662f6e7e8900b5`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2442.34234368088 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `5dda86f` ([full sha](https://github.com/kontourai/station/commit/5dda86fbc3e79535929a00097c35c7b25451d3a1)):
+
+_No user-visible changes recorded for this slice._
+
+## 2026-09-08T13:45:30Z · nightly-npm · 0.6.0-nightly.2442.34230188430
+
+- Ship SHA: `5dda86fbc3e79535929a00097c35c7b25451d3a1`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2442.34230188430 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `370c33e` ([full sha](https://github.com/kontourai/station/commit/370c33eed4b501243663ce13ac216832312feb78)):
+
+**Fixes**
+
+- [#1773](https://github.com/kontourai/station/pull/1773) fix(orchestration): bind session barriers to their runtime and take search worker boot off read budgets
+- [#1772](https://github.com/kontourai/station/pull/1772) fix(release): name the App Store Connect error when beta-group assignment fails
 
 ## 2026-09-08T10:24:53Z · nightly-npm · 0.6.0-nightly.2442.34211909749
 
