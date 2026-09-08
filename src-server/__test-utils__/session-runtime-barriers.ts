@@ -12,11 +12,11 @@
  * recovery, once per await. A suite with ten of them burns five minutes to
  * say nothing.
  *
- * These wrappers add the message, not the policy. The bound is orders of
- * magnitude above any real settle (tens of milliseconds, measured), so it
- * cannot fail a slow-but-working runtime the way the 2000ms receipt wait it
- * replaces did; it exists so the failure says which barrier never came and
- * for which runtime.
+ * These wrappers add a message, not a policy. The bound is a diagnostic
+ * clock orders of magnitude above any measured settle (tens of milliseconds)
+ * and a third of the runner timeout, chosen so a runtime that never settles
+ * fails saying which barrier never came instead of as a generic test timeout.
+ * It is still a clock: a settle slower than the bound fails this wait.
  *
  * A test whose SUBJECT is a barrier staying pending must await the accessor
  * directly — these throw by design.

@@ -30,7 +30,7 @@ describe('session runtime barrier waits (station#1707)', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  test('rejects at the deadline, naming attachment and the runtime', async () => {
+  test('rejects at the deadline, naming attachment', async () => {
     vi.useFakeTimers();
     const runtime = {
       // Never settles — the case the generic runner timeout reports as

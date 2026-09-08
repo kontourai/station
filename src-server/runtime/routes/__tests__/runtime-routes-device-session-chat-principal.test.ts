@@ -409,9 +409,13 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         mode === 'home' || mode === 'operator'
           ? 'legacy-owned'
           : `${mode}-owned`;
-      expect(body.data.results.map((row: any) => row.scope.sessionId)).toEqual(
-        mode === 'operator' ? [] : [expected],
-      );
+      // The source states ride in the failure message: a provider that timed
+      // out or a read the attachment gate refused answers 200 with an empty
+      // list, which reads exactly like a wrong owner filter (station#1707).
+      expect(
+        body.data.results.map((row: any) => row.scope.sessionId),
+        JSON.stringify(body.data.sources),
+      ).toEqual(mode === 'operator' ? [] : [expected]);
       const opened = await app.request(
         '/api/search/resolve-open',
         {
