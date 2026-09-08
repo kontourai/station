@@ -61,7 +61,7 @@ function row(message: ChatMessage, conversationId?: string) {
         id: 'replacement-session',
         ...(conversationId ? { conversationId } : {}),
         agentSlug: 'station',
-        messages: [message],
+        messageCount: 1,
       }}
       agents={[]}
       chatFontSize={14}

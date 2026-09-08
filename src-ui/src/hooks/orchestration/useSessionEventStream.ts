@@ -215,6 +215,38 @@ export interface SessionEventStream {
  * and tears the fetch-SSE stream down on unmount. This is the streaming
  * counterpart to the react-query session queries.
  */
+/**
+ * One publish per animation frame.
+ *
+ * A live SSE burst delivers frames far faster than the browser paints, and
+ * every frame used to run `mergeSessionEvents` over the whole retained window
+ * (a dedupe, a sort and a bounded trim) and then set React state — so a
+ * hundred frames in one tick cost a hundred full-window merges and a hundred
+ * renders to draw one picture. Buffering to the next frame collapses that to
+ * one merge and one render without changing what the merge sees: the batch is
+ * folded in arrival order, and `mergeSessionEvents` sorts by `createdAt`
+ * exactly as it did per frame.
+ *
+ * `setTimeout` is the fallback for environments with no `requestAnimationFrame`
+ * (jsdom without the timing shim, SSR) and, deliberately, for a hidden
+ * document: the point is a single deferred flush, not the paint clock
+ * specifically, and a browser suspends animation frames for a tab nobody is
+ * looking at. A live turn arriving into a background tab would otherwise hold
+ * every frame it received, with full payloads, until the tab was looked at
+ * again. Timers keep running there (throttled, which is fine — the publish is
+ * a repaint nobody can see), so the buffer still drains.
+ */
+function schedulePublishFrame(callback: () => void): () => void {
+  const painting =
+    typeof document === 'undefined' || document.visibilityState === 'visible';
+  if (painting && typeof requestAnimationFrame === 'function') {
+    const handle = requestAnimationFrame(callback);
+    return () => cancelAnimationFrame(handle);
+  }
+  const handle = setTimeout(callback, 0);
+  return () => clearTimeout(handle);
+}
+
 export function useSessionEventStream(
   apiBase: string,
   threadId: string | null,
@@ -249,6 +281,10 @@ export function useSessionEventStream(
   // how one consumer of this read disclosed the elision and the other stayed
   // silent about the same amputated turn.
   const elidedReasons = useRef(new Map<string, RuntimeEventElisionReason>());
+  /** Live frames awaiting the next publish frame, in arrival order. */
+  const pendingLiveEvents = useRef<OrchestrationEvent[]>([]);
+  const cancelPublishFrame = useRef<(() => void) | null>(null);
+
   const apply = useCallback((next: OrchestrationEvent[]) => {
     eventsRef.current = next;
     setEvents(next);
@@ -261,6 +297,55 @@ export function useSessionEventStream(
       ),
     );
   }, []);
+
+  /**
+   * Folds every buffered live frame into `eventsRef` WITHOUT publishing, so a
+   * caller that is about to build the next feed from `eventsRef.current`
+   * cannot read a window the buffer has already moved past. Every such caller
+   * publishes immediately afterwards, which is why this one does not.
+   */
+  const foldPendingLiveEvents = useCallback(() => {
+    cancelPublishFrame.current?.();
+    cancelPublishFrame.current = null;
+    const batch = pendingLiveEvents.current;
+    if (batch.length === 0) return;
+    pendingLiveEvents.current = [];
+    eventsRef.current = mergeSessionEvents(
+      eventsRef.current,
+      batch,
+      persistedKeys.current,
+    );
+  }, []);
+
+  /** Drops buffered frames a full replacement has superseded. */
+  const discardPendingLiveEvents = useCallback(() => {
+    pendingLiveEvents.current = [];
+    foldPendingLiveEvents();
+  }, [foldPendingLiveEvents]);
+
+  const queueLiveEvent = useCallback(
+    (event: OrchestrationEvent) => {
+      pendingLiveEvents.current.push(event);
+      // The buffer is bounded the way its pre-hydration sibling below is: a
+      // deferred publish can be deferred for a long time (a throttled timer in
+      // a background tab), and until it runs nothing else trims. Folding at
+      // the cap costs one merge per `MAX_FEED_EVENTS` frames and hands the
+      // window straight to `mergeSessionEvents`, which applies the same trim
+      // and the same `turn.started` boundary rescue the publish would have.
+      // The publish itself stays deferred: the fold cancels the scheduled
+      // frame, and the guard below schedules a fresh one.
+      if (pendingLiveEvents.current.length > MAX_FEED_EVENTS) {
+        foldPendingLiveEvents();
+      }
+      if (cancelPublishFrame.current) return;
+      cancelPublishFrame.current = schedulePublishFrame(() => {
+        cancelPublishFrame.current = null;
+        foldPendingLiveEvents();
+        apply(eventsRef.current);
+      });
+    },
+    [apply, foldPendingLiveEvents],
+  );
 
   /** Records the read's own budget report for the events on one page. */
   const rememberElidedReasons = useCallback(
@@ -302,6 +387,7 @@ export function useSessionEventStream(
           persistedKeys.current.add(eventKey(item.event));
         }
         rememberElidedReasons(page);
+        foldPendingLiveEvents();
         apply(
           prependOlderSessionEvents(
             page.events.map((item) => item.event),
@@ -315,10 +401,14 @@ export function useSessionEventStream(
     } catch (cause) {
       setError(cause instanceof Error ? cause : new Error(String(cause)));
     }
-  }, [apiBase, threadId, apply, rememberElidedReasons]);
+  }, [apiBase, threadId, apply, foldPendingLiveEvents, rememberElidedReasons]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: recoveryRevision intentionally restarts this effect after a successful capability recovery; the ref carries the recovery handoff.
   useEffect(() => {
+    discardPendingLiveEvents();
+    // The ref is the window every merge builds on, so clearing only the state
+    // left the NEXT thread's first merge folding this one's events back in.
+    eventsRef.current = [];
     setEvents([]);
     setConnected(false);
     setNextCursor(undefined);
@@ -475,6 +565,7 @@ export function useSessionEventStream(
               Number(buffered.id) || 0,
             );
           }
+          discardPendingLiveEvents();
           apply(restored);
           hydrated = true;
           historyRetryDelay = HISTORY_RETRY_BASE_MS;
@@ -814,6 +905,10 @@ export function useSessionEventStream(
               return;
             }
             queue.current = queue.current.then(() => {
+              // A frame admitted just before teardown resolves its queue turn
+              // after it. Without this it would buffer into — and schedule a
+              // publish for — whatever thread the hook moved on to.
+              if (!active) return;
               appliedWatermark.current = Math.max(
                 appliedWatermark.current,
                 Number(raw.id) || 0,
@@ -823,13 +918,7 @@ export function useSessionEventStream(
                 epoch.current += 1;
                 pendingOlder.current = undefined;
               }
-              apply(
-                mergeSessionEvents(
-                  eventsRef.current,
-                  [payload.event],
-                  persistedKeys.current,
-                ),
-              );
+              queueLiveEvent(payload.event);
               const pending = pendingOlder.current;
               if (pending && pending.watermark <= appliedWatermark.current) {
                 pendingOlder.current = undefined;
@@ -837,6 +926,7 @@ export function useSessionEventStream(
                   persistedKeys.current.add(eventKey(item.event));
                 }
                 rememberElidedReasons(pending);
+                foldPendingLiveEvents();
                 apply(
                   prependOlderSessionEvents(
                     pending.events.map((item) => item.event),
@@ -861,11 +951,24 @@ export function useSessionEventStream(
       reloadWindow.current = async () => {};
       retryCapabilityRecoveryRef.current = () => {};
       epoch.current += 1;
+      // The feed this buffer belongs to is gone; publishing it would either
+      // set state on an unmounted hook or resurrect frames the reset above
+      // has already cleared.
+      discardPendingLiveEvents();
       for (const recoveryTimer of recoveryTimers) clearTimeout(recoveryTimer);
       recoveryTimers.clear();
       authenticatedStream?.close();
     };
-  }, [apiBase, threadId, apply, rememberElidedReasons, recoveryRevision]);
+  }, [
+    apiBase,
+    threadId,
+    apply,
+    discardPendingLiveEvents,
+    foldPendingLiveEvents,
+    queueLiveEvent,
+    rememberElidedReasons,
+    recoveryRevision,
+  ]);
 
   const retryCapabilityRecovery = useCallback(
     () => retryCapabilityRecoveryRef.current(),

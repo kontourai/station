@@ -14,6 +14,7 @@
 
 import type { SavedConnection } from '@kontourai/station-connect';
 import type { SshEnvironmentView } from '@kontourai/station-sdk';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   fireEvent,
@@ -43,6 +44,10 @@ const peerCredentialsState: {
   data: PeerCredentialSummaryFixture[] | undefined;
 } = { isSuccess: false, data: undefined };
 let isMobile = false;
+
+const launcherStatus = vi.hoisted(() =>
+  vi.fn(async (_launchId: string) => ({ phase: 'running' as const })),
+);
 
 const mocks = vi.hoisted(() => ({
   connect: vi.fn(),
@@ -138,6 +143,13 @@ vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({ connections: connectionsState.data }),
 }));
 
+vi.mock('../platform/native/sshLauncher', () => ({
+  sshLauncher: {
+    status: (launchId: string) => launcherStatus(launchId),
+    cancel: () => Promise.resolve(),
+  },
+}));
+
 function makeConnection(
   overrides: Partial<SavedConnection> = {},
 ): SavedConnection {
@@ -223,6 +235,7 @@ describe('ComputersSection', () => {
     mocks.disconnect.mockReset().mockResolvedValue(undefined);
     mocks.remove.mockReset().mockResolvedValue(undefined);
     mocks.refetch.mockReset();
+    launcherStatus.mockClear();
   });
 
   test('renders the shared skeleton while the list is loading, not a text placeholder (CI-R21)', () => {
@@ -519,5 +532,53 @@ describe('ComputersSection', () => {
   test('renders nothing for peer credentials while the fetch has not succeeded', () => {
     render(<ComputersSection />);
     expect(screen.queryByText('Outbound peer credentials')).toBeNull();
+  });
+
+  /**
+   * The forwarded row's launcher phase is a remote read, so React Query owns
+   * its poll rather than a raw five-second `setInterval` writing two pieces of
+   * local state. A five-second timer alone proves nothing here — React Query
+   * registers one of its own for `refetchInterval` — so what is asserted is
+   * that the read went through the query cache under a key, with the interval
+   * on the query's own options.
+   */
+  test('polls the SSH launcher through a query, not a bespoke interval', async () => {
+    connectionsState.data = [
+      makeConnection({
+        sshForward: {
+          transport: 'ssh-forward',
+          launchId: 'launch-1',
+          provenance: {
+            status: 'observed',
+            sha: 'abcdef0123456789',
+            capturedAt: '2026-01-01T00:00:00.000Z',
+          },
+        },
+      }),
+    ];
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={client}>
+        <ComputersSection />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(launcherStatus).toHaveBeenCalledWith('launch-1'),
+    );
+
+    const launcherQueries = client
+      .getQueryCache()
+      .getAll()
+      .filter((query) => query.queryKey[0] === 'ssh-launcher-status');
+    expect(launcherQueries.map((query) => query.queryKey)).toEqual([
+      ['ssh-launcher-status', 'launch-1'],
+    ]);
+    expect(launcherQueries[0]?.observers[0]?.options.refetchInterval).toBe(
+      5_000,
+    );
   });
 });

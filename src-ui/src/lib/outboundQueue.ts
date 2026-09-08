@@ -132,6 +132,11 @@ export interface OutboundDispatchModule {
   open(): Promise<OutboundDispatchTurn[]>;
   snapshot(): Promise<OutboundDispatchTurn[]>;
   subscribe(listener: () => void): () => void;
+  /**
+   * Notified when ANOTHER tab in this browser profile changed the queue.
+   * Same-tab transitions arrive through `subscribe`; this never doubles them.
+   */
+  subscribeRemoteChange(listener: () => void): () => void;
   fenceConversationHandoff<T>(
     input: { conversationId: string; sessionId: string },
     effect: () => Promise<T>,
@@ -563,6 +568,58 @@ function prune(
   return retained.filter((entry) => !evicted.has(entry.clientTurnId));
 }
 
+/**
+ * Cross-tab change signal.
+ *
+ * `listeners` is a per-renderer in-memory Set, and this queue is explicitly
+ * multi-tab — its write lock is a `navigator.locks` lease precisely because
+ * another tab can be mutating the same durable rows. A tab that does not
+ * perform the mutation itself has no other way to learn that one happened, so
+ * every consumer of `subscribe` would otherwise hold a projection that goes
+ * stale the moment a sibling tab enqueues, discards or drains a turn.
+ *
+ * ONE channel object carries both directions on purpose: a `BroadcastChannel`
+ * does not deliver a message to the object that posted it, so this tab cannot
+ * hear its own echo and re-read the queue for a change it already applied.
+ */
+const CHANGE_CHANNEL_NAME = 'station-outbound-queue';
+let changeChannel: BroadcastChannel | null = null;
+let changeSubscribers = 0;
+
+function queueChangeChannel(): BroadcastChannel | null {
+  if (changeChannel) return changeChannel;
+  if (typeof BroadcastChannel !== 'function') return null;
+  changeChannel = new BroadcastChannel(CHANGE_CHANNEL_NAME);
+  return changeChannel;
+}
+
+function closeChangeChannel(): void {
+  changeChannel?.close();
+  changeChannel = null;
+}
+
+function subscribeRemoteChange(listener: () => void): () => void {
+  const channel = queueChangeChannel();
+  if (!channel) return () => {};
+  changeSubscribers += 1;
+  const handler = () => {
+    try {
+      listener();
+    } catch {
+      // A throwing observer must not break the channel for the others.
+    }
+  };
+  channel.addEventListener('message', handler);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    channel.removeEventListener('message', handler);
+    changeSubscribers -= 1;
+    if (changeSubscribers === 0) closeChangeChannel();
+  };
+}
+
 function notify(): void {
   // Subscription is observation, not a participant in the durable
   // transition. A throwing UI listener must not starve the others or turn an
@@ -573,6 +630,11 @@ function notify(): void {
     } catch {
       // Deliberately isolated.
     }
+  }
+  try {
+    queueChangeChannel()?.postMessage(CHANGE_CHANNEL_NAME);
+  } catch {
+    // A closed or unavailable channel is not a failed dispatch.
   }
 }
 
@@ -1356,6 +1418,7 @@ export const outboundDispatch: OutboundDispatchModule = {
     listeners.add(listener);
     return () => listeners.delete(listener);
   },
+  subscribeRemoteChange,
   flush,
   completeAcceptedTurn,
   discard,
@@ -1371,6 +1434,12 @@ export function _setOutboundQueueStorage(next: OutboundQueueStorage): void {
   storage = next;
   mutationTail = Promise.resolve();
   unavailableClaims.clear();
+}
+
+/** Test-only: drop the cross-tab channel so one test's stub cannot outlive it. */
+export function _resetOutboundQueueChangeChannel(): void {
+  closeChangeChannel();
+  changeSubscribers = 0;
 }
 
 /** Test-only reset to the production IndexedDB Adapter. */
