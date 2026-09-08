@@ -9,6 +9,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { WorkflowSidecarAttachMode } from '../evidence/orchestration-workflow-sidecar.js';
 import type { RuntimeEngineStartIntent } from '../infra/resource-posture.js';
 import type { ExecutionWorkspaceBinding } from './execution-workspace-binding.js';
@@ -313,9 +314,9 @@ export function createSessionCommandModule(
         receipt,
         receiptStatus: 'unavailable',
         session,
-        message: `Session started, but the accepted command receipt is unavailable: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        message: `Session started, but the accepted command receipt is unavailable: ${errorMessage(
+          error,
+        )}`,
       };
     };
     const fail = (error: unknown, rejected = false): SessionCommandOutcome => {
@@ -336,7 +337,7 @@ export function createSessionCommandModule(
         status: terminalReceipt.status,
         receipt: readback ?? terminalReceipt,
         receiptStatus: readback ? 'persisted' : 'unavailable',
-        message: error instanceof Error ? error.message : String(error),
+        message: errorMessage(error),
         ...(typeof error === 'object' &&
         error !== null &&
         typeof (error as { code?: unknown }).code === 'string'

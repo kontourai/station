@@ -68,6 +68,7 @@ import {
   agentCapabilityUndelivered,
   sessionCwdResolution,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import type {
   CanonicalRuntimeEvent,
@@ -542,7 +543,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     try {
       return await this.options.resolvePreToolPolicy(input);
     } catch (error) {
-      const reason = `Station pre-tool policy could not be prepared; tool execution was denied: ${error instanceof Error ? error.message : String(error)}`;
+      const reason = `Station pre-tool policy could not be prepared; tool execution was denied: ${errorMessage(error)}`;
       return async () => ({
         behavior: 'deny',
         denial: { allowed: false, reason },
@@ -1003,7 +1004,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         capabilityUndelivered.push({
           capability: 'toolServers',
           reason: 'delivery-failed',
-          detail: error instanceof Error ? error.message : String(error),
+          detail: errorMessage(error),
         });
       }
       for (const entry of capabilityUndelivered) {
@@ -1447,8 +1448,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         // must run before the ownsActiveTurn early return.
         record.quarantinedTurnIds?.delete(turnId);
         if (!this.ownsActiveTurn(input.threadId, record, turnId)) return;
-        const baseMessage =
-          error instanceof Error ? error.message : String(error);
+        const baseMessage = errorMessage(error);
         // archive#4084: a bare JSON-RPC error (e.g. -32603 "Internal error")
         // carries no actionable detail, but the engine may have already
         // sent a separate, evidenced extension notification earlier in this

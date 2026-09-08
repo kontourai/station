@@ -1,4 +1,12 @@
 #!/usr/bin/env node
+import { realpathSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  STORE_INTEGRITY_EXIT_CODE,
+  type StoreIntegrityReport,
+  storeIntegrityExitCode,
+  verifySqliteStore,
+} from '@kontourai/station-shared/sqlite-store-integrity';
 /**
  * store-integrity-probe — a short-lived child process that runs
  * `PRAGMA quick_check` against Station's SQLite stores and prints the verdict
@@ -22,14 +30,7 @@
  * The same entry point is what `station home verify` reports, so an operator
  * and the scheduler read one verdict rather than two that agree today.
  */
-import { realpathSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import {
-  STORE_INTEGRITY_EXIT_CODE,
-  type StoreIntegrityReport,
-  storeIntegrityExitCode,
-  verifySqliteStore,
-} from '@kontourai/station-shared/sqlite-store-integrity';
+import { errorMessage } from '../utils/error-message.js';
 
 export interface StoreIntegrityProbeDeps {
   verify?: typeof verifySqliteStore;
@@ -106,9 +107,7 @@ if (isEntrypoint) {
     // `unavailable`, never `corrupt`: the caller acts on `corrupt` by
     // recording a marker against the user's history, and a crash is no
     // evidence at all about the bytes.
-    process.stderr.write(
-      `store-integrity-probe: ${error instanceof Error ? error.message : String(error)}\n`,
-    );
+    process.stderr.write(`store-integrity-probe: ${errorMessage(error)}\n`);
     process.exitCode = STORE_INTEGRITY_EXIT_CODE.unavailable;
   }
 }

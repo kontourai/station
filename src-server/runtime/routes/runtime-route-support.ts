@@ -27,6 +27,7 @@ import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-sch
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { DevicePairingNotificationProvider } from '../../services/ssh/device-pairing-notifications.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
 import { runWithScheduledPrincipal } from '../agents/scheduled-principal-context.js';
 import { isHostedTenantExecutionRequired } from '../bootstrap/runtime-tenant-context.js';
@@ -295,7 +296,7 @@ export async function readStationSetupRequirement(
   } catch (error) {
     // A read that could not answer is not a claim that setup is incomplete.
     context.logger.warn('Station setup requirement probe failed', {
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     });
     return null;
   }
@@ -320,7 +321,7 @@ export function configureRuntimeSupportServices(
       onAsyncDispatchError: (operation, error) =>
         context.logger.warn('Notification async adapter failed', {
           operation,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         }),
     },
   );

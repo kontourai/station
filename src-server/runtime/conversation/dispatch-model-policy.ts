@@ -34,6 +34,7 @@ import {
   fleetRoutingReceiptsTotal,
   modelDispatchReceipts,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { isRecord } from '../../utils/is-record.js';
 import { createLogger, type Logger } from '../../utils/logger.js';
 import { createAiSdkManagedModel } from '../frameworks/framework-model-factory.js';
@@ -426,7 +427,7 @@ export async function fetchModelToolSurfaceList(
   } catch (error) {
     logger?.warn(
       `[dispatch] Model tool-surface lookup failed for agent '${agentName}'; no candidate will derive the 'structured-tools' capability for this turn.`,
-      { error: error instanceof Error ? error.message : String(error) },
+      { error: errorMessage(error) },
     );
     return undefined;
   }
@@ -474,7 +475,7 @@ export async function fetchReadinessEvidenceMap(
   } catch (error) {
     logger?.warn(
       `[dispatch] Connection readiness evidence lookup failed for agent '${agentName}'; every candidate will grade as 'unavailable' for this Dispatch model.`,
-      { error: error instanceof Error ? error.message : String(error) },
+      { error: errorMessage(error) },
     );
     return undefined;
   }
@@ -1117,7 +1118,7 @@ function createTtlCachedCandidateResolver(
         }
         return resolved;
       } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
+        const reason = errorMessage(error);
         config.logger?.warn(
           `[dispatch] Candidate evidence re-grade failed for agent '${spec.name}'; every candidate will grade as 'unavailable' for this turn.`,
           { error: reason },
@@ -1742,7 +1743,7 @@ export async function createConfiguredDispatchModel(
         fleetRoutingReceiptFailures.add(1, { reason: 'write-failed' });
         (config.logger ?? moduleLogger).error(
           `[dispatch] Fleet routing receipt could not be written for agent '${spec.name}'. The turn completed, but this routing decision is NOT receipted.`,
-          { error: error instanceof Error ? error.message : String(error) },
+          { error: errorMessage(error) },
         );
       } finally {
         // A correlated plan digest is unique to one authorized turn, so it

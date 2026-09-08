@@ -54,6 +54,7 @@ import {
   taskWorkspaceBindingTotal,
   taskWorkspaceOpenTotal,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { execGit } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
 import type {
@@ -1499,7 +1500,7 @@ export class TaskGraphService {
       this.logger?.warn('Could not read workflow sidecar for dispatch', {
         taskId: task.id,
         taskSlug: ref,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return undefined;
     }
@@ -3380,11 +3381,7 @@ export class TaskGraphService {
         artifactRoot: context.artifactRoot,
         subjectId: context.subjectId,
         actor: context.actor,
-        reason: `dispatch failed after claim: ${
-          originalError instanceof Error
-            ? originalError.message
-            : String(originalError)
-        }`,
+        reason: `dispatch failed after claim: ${errorMessage(originalError)}`,
       });
       taskAssignmentClaimTotal.add(1, {
         operation: 'release',
@@ -3404,10 +3401,7 @@ export class TaskGraphService {
       );
       return { kind: 'indeterminate', reason: result.reason };
     } catch (releaseError) {
-      const reason =
-        releaseError instanceof Error
-          ? releaseError.message
-          : String(releaseError);
+      const reason = errorMessage(releaseError);
       this.logger?.warn('compensateFailedDispatchClaim threw unexpectedly', {
         taskId: task.id,
         sessionId,
@@ -3537,7 +3531,7 @@ export class TaskGraphService {
     } catch (error) {
       this.logger?.warn('releaseClaimForSession failed unexpectedly', {
         sessionId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -3562,7 +3556,7 @@ export class TaskGraphService {
     } catch (error) {
       this.logger?.warn('releaseClaimForTask failed unexpectedly', {
         taskId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -3694,7 +3688,7 @@ export class TaskGraphService {
       }
     } catch (error) {
       this.logger?.warn('reconcileStaleAssignmentClaims failed unexpectedly', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
     return { releasedSubjects: released };

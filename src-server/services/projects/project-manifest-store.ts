@@ -133,6 +133,7 @@ import {
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { projectManifestBackfills } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { isRecord } from '../../utils/is-record.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
@@ -378,7 +379,7 @@ export class ProjectManifestStore {
       // downgrade the project to the legacy path and then attempt a backfill
       // that can never succeed.
       throw new ProjectManifestUnreadableError(filePath, [
-        `not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+        `not valid JSON: ${errorMessage(error)}`,
       ]);
     }
     return validateManifestRecord(raw, filePath);

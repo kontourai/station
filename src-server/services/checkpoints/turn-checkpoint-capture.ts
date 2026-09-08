@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { isSafeCheckpointRefSegment } from '@kontourai/station-shared/checkpoints';
+import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import { isDeferredRetriableTurnError } from '../orchestration/session-lifecycle-service.js';
 import type {
@@ -106,7 +107,7 @@ export class TurnCheckpointCaptureCoordinator {
           } catch (error) {
             this.deps.logger.warn('turn-checkpoint: retention sweep failed', {
               threadId,
-              error: error instanceof Error ? error.message : String(error),
+              error: errorMessage(error),
             });
           }
         }
@@ -160,7 +161,7 @@ export class TurnCheckpointCaptureCoordinator {
         'turn-checkpoint: working directory resolver threw',
         {
           threadId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         },
       );
     }
@@ -225,7 +226,7 @@ export class TurnCheckpointCaptureCoordinator {
         threadId,
         turnId,
         phase,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       // safeRecord, not a bare recordTurnPhase: this is the last line of
       // defence, and if the index write ALSO throws here (full disk,
@@ -234,7 +235,7 @@ export class TurnCheckpointCaptureCoordinator {
       this.safeRecord(threadId, turnId, phase, () =>
         withPhase(phase, {
           status: 'failed',
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
           recordedAt: nowIso(),
         }),
       );
@@ -262,7 +263,7 @@ export class TurnCheckpointCaptureCoordinator {
         threadId,
         turnId,
         phase,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -349,7 +350,7 @@ export function wireTurnCheckpointCapture(
       }
     } catch (error) {
       logger.warn('turn-checkpoint: listener failed to dispatch capture', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   });

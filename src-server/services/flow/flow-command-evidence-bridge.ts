@@ -18,6 +18,7 @@ import {
   flowToolEvidenceAttached,
   flowToolEvidenceSpooled,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type {
   CommandEvidenceRoute,
   CommandEvidenceRoutingPolicy,
@@ -127,7 +128,7 @@ export class FlowCommandEvidenceBridge {
           outcomes.push({
             attached: false,
             route,
-            reason: error instanceof Error ? error.message : String(error),
+            reason: errorMessage(error),
           });
         }
       }
@@ -136,7 +137,7 @@ export class FlowCommandEvidenceBridge {
       // through to clear the spool (a stale binding never wedges the spool).
       outcomes.push({
         attached: false,
-        reason: error instanceof Error ? error.message : String(error),
+        reason: errorMessage(error),
       });
     } finally {
       this.clear(threadId);

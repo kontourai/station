@@ -1,5 +1,6 @@
 // Type-only imports back into the service module: erased at runtime, so no
 // import cycle exists.
+
 import type { FlowEvidenceEntry } from '@kontourai/flow';
 import { isRetiredFlowDefinition } from '@kontourai/station-contracts';
 import type { OrchestrationSessionDetail } from '@kontourai/station-contracts/orchestration';
@@ -22,6 +23,7 @@ import {
   uiSessionBoardActions,
   workflowSidecarBindings,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   type AgentPolicyService,
   extractToolFilePath,
@@ -316,7 +318,7 @@ export class FlowPolicySidecar {
                 {
                   threadId,
                   taskSlug: binding.taskSlug,
-                  error: error instanceof Error ? error.message : String(error),
+                  error: errorMessage(error),
                 },
               );
             })
@@ -329,7 +331,7 @@ export class FlowPolicySidecar {
       this.deps.logger.warn('Failed to resolve session Builder run', {
         threadId,
         cwd,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return null;
     }
@@ -421,7 +423,7 @@ export class FlowPolicySidecar {
         threadId: input.threadId,
         cwd: input.cwd,
         definition,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -519,7 +521,7 @@ export class FlowPolicySidecar {
       logger.warn('Failed to bind workflow sidecar to session', {
         threadId: input.threadId,
         cwd: input.cwd,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -576,7 +578,7 @@ export class FlowPolicySidecar {
         threadId: options.threadId,
         taskSlug: binding.taskSlug,
         trigger: options.trigger,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -647,7 +649,7 @@ export class FlowPolicySidecar {
       logger.warn('Failed to bind policy hooks to session', {
         threadId: input.threadId,
         cwd: input.cwd,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -780,7 +782,7 @@ export class FlowPolicySidecar {
     } catch (error) {
       this.deps.logger.warn('Post-hoc policy check failed (fail-open)', {
         threadId: event.threadId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -863,7 +865,7 @@ export class FlowPolicySidecar {
     } catch (error) {
       this.deps.logger.warn('Command-evidence spool failed (fail-open)', {
         threadId: event.threadId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
