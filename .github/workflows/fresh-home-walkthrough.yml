@@ -146,6 +146,8 @@ jobs:
 
   src-ui-sweep:
     name: Full src-ui Vitest sweep
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: "0"
     # test:changed follows import-graph impact from changed importers, so it
     # cannot find an untouched consumer broken by a component's new context
     # requirement. This scheduled sweep exists for that broader harness check;

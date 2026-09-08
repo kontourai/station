@@ -206,8 +206,16 @@ export async function reviewScreens(
           signal: AbortSignal.timeout(180_000),
         },
       );
-      if (!response.ok)
-        throw new Error(`Image reviewer HTTP ${response.status}`);
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null);
+        const code =
+          typeof failure?.error?.code === 'string'
+            ? failure.error.code.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)
+            : '';
+        throw new Error(
+          `Image reviewer HTTP ${response.status}${code ? ` (${code})` : ''}`,
+        );
+      }
       const payload = await response.json();
       if (payload.status !== 'completed')
         throw new Error('Image review did not complete.');

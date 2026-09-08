@@ -827,7 +827,7 @@ describe('SessionsView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
     fireEvent.click(
-      screen.getByRole('button', { name: 'Load earlier events' }),
+      screen.getByRole('button', { name: 'Show older messages' }),
     );
 
     expect(loadOlder).toHaveBeenCalledOnce();
@@ -837,7 +837,7 @@ describe('SessionsView', () => {
     // browser chrome in a fully themed transcript (archive#3150). Pin the
     // shared treatment: a class name that matches no stylesheet is worse than
     // none, because it tells the next reader the styling is handled.
-    const more = screen.getByRole('button', { name: 'Load earlier events' });
+    const more = screen.getByRole('button', { name: 'Show older messages' });
     expect(more.className).toContain('button--secondary');
     expect(screen.getByRole('alert').textContent).toBe(
       'Update Station to view this session history.',
@@ -936,7 +936,7 @@ describe('SessionsView', () => {
     // It shares its row with the pagination button, which is what
     // `.session-history-controls`' wrap/gap exists for.
     expect(
-      screen.getByRole('button', { name: 'Load earlier events' }),
+      screen.getByRole('button', { name: 'Show older messages' }),
     ).toBeTruthy();
     expect(notice.parentElement?.className).toContain(
       'session-history-controls',
@@ -2258,7 +2258,7 @@ describe('SessionsView', () => {
 
     const detail = screen.getByTestId('session-detail');
     expect(
-      within(detail).getByText('Following terminal session · Read only'),
+      within(detail).getByText('External conversation · Read only'),
     ).toBeTruthy();
     expect(within(detail).getByText('Inspect the workspace')).toBeTruthy();
     expect(within(detail).getByText('The workspace is ready.')).toBeTruthy();
@@ -2596,7 +2596,7 @@ describe('SessionsView', () => {
       within(detail).queryByRole('button', { name: 'Continue in Station' }),
     ).toBeNull();
     expect(
-      within(detail).queryByText('Following terminal session · Read only'),
+      within(detail).queryByText('External conversation · Read only'),
     ).toBeNull();
   });
 
@@ -3498,6 +3498,7 @@ describe('SessionsView', () => {
         attachedSession({
           threadId: 'earlier-1',
           displayTitle: 'Long finished',
+          controlMode: 'station-owned',
           createdAt: new Date(Date.now() - 6 * 3_600_000).toISOString(),
           updatedAt: new Date(Date.now() - 6 * 3_600_000).toISOString(),
         }),
@@ -3512,6 +3513,7 @@ describe('SessionsView', () => {
         attachedSession({
           threadId: 'just-done-1',
           displayTitle: 'Finished a moment ago',
+          controlMode: 'station-owned',
           updatedAt: new Date(Date.now() - 90_000).toISOString(),
         }),
         attachedSession({
@@ -3599,12 +3601,14 @@ describe('SessionsView', () => {
         attachedSession({
           threadId: 'canceled',
           displayTitle: 'Canceled run',
+          controlMode: 'station-owned',
           lifecycleState: 'canceled',
           updatedAt: new Date(Date.now() - 70_000).toISOString(),
         }),
         attachedSession({
           threadId: 'long-failed',
           displayTitle: 'Failed yesterday',
+          controlMode: 'station-owned',
           lifecycleState: 'failed',
           createdAt: new Date(Date.now() - 6 * 3_600_000).toISOString(),
           updatedAt: new Date(Date.now() - 6 * 3_600_000).toISOString(),

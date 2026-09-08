@@ -79,7 +79,13 @@ describe('usability feedback coverage and reviewer failures', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
   test('provider failure retains a coverage gap', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue({ ok: false, status: 429 });
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue({
+        ok: false,
+        status: 429,
+        json: async () => ({ error: { code: 'insufficient_quota' } }),
+      });
     const result = await reviewScreens(
       [{ id: 'a', bytes: Buffer.from('png') }],
       { apiKey: 'test', model: 'test', fetchImpl },
