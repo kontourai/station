@@ -535,6 +535,11 @@ describe('POST /core-update git-pull restart (station#1903)', () => {
       };
     });
     const logger = {
+      // Only `warn` throws: this test is named for the WARNING sink, and the
+      // route's other levels must stay ordinary so a failure here can only be
+      // the warning path. `debug` is present because `createApp`'s stub now
+      // carries every level the route calls.
+      debug: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(() => {
         throw new Error('log sink unavailable');
