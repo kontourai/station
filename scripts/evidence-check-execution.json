@@ -1,5 +1,8 @@
 {
-  "_note": "repo-guardrails remains advisory: it currently passes with 104 baselined violations, but no Station lane consumes its exit status (station#2299). Promoting it to enforced is a separate decision that also depends on the station#2765 burn-down.",
+  "_note": "repo-guardrails remains advisory: it currently passes with 104 baselined violations, and no npm-run lane root or workflow run block invokes \"npm run proof:repo-guardrails\" (station#2299). It is not unreached, though: scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts runs the proof inside the PROCESS_HEAVY Vitest corpus -- under full:regression, the nightly and release gate -- and asserts its exit status, including a positive control that the unmutated proof passes. _corpusExecution records that execution so the advisory label cannot be read as \"nothing runs this\" (#1746). Promoting it to enforced is a separate decision that also depends on the station#2765 burn-down.",
+  "_corpusExecution": {
+    "repo-guardrails": "acknowledged"
+  },
   "repo-governance": "enforced",
   "verification-policy": "enforced",
   "repo-guardrails": "advisory",
