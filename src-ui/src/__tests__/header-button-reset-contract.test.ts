@@ -65,11 +65,15 @@ describe('header button visual resets', () => {
     expect(interactive).toContain('background: transparent;');
     // The visible-focus ring belongs to the focus-visible rule itself, not to
     // "somewhere in this sheet".
-    // Anchored on a preceding rule close: the multi-selector rule above ends
-    // its selector list with this same string, and an unanchored match picks
-    // that body (which carries no outline) instead of this rule's.
+    // Anchored on a rule boundary: the multi-selector rule above ends its
+    // selector list with this same string, and an unanchored match picks that
+    // body (which carries no outline) instead of this rule's. The boundary is
+    // a preceding `}` OR the start of the file, and an intervening CSS comment
+    // is tolerated -- `^` deliberately without the `m` flag, because a
+    // line-start anchor would match the selector-list line and reintroduce the
+    // wrong body.
     const focusVisible =
-      /\}\s*\n\s*\.page-breadcrumb__link:focus-visible\s*\{([^}]*)\}/.exec(
+      /(?:^|\})\s*(?:\/\*[\s\S]*?\*\/\s*)*\.page-breadcrumb__link:focus-visible\s*\{([^}]*)\}/.exec(
         breadcrumbStyles,
       )?.[1];
     expect(

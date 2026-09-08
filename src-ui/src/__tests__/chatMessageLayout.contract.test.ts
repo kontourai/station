@@ -119,6 +119,13 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     expect(actions).toContain('flex: 0 0 auto');
     // ...and the responsive half: at <=480px the footer is a column, so the
     // cluster moves to the reading edge rather than staying at the far one.
+    //
+    // `.some(...)` over the 480px blocks is order-blind on purpose, and that
+    // is safe only because a sibling case pins the COUNT: 'narrow screens keep
+    // the footer actions at the reading edge' asserts exactly one 480px block
+    // declares `.turn-footer__actions`. Without that pin, a second block
+    // declaring the same selector later -- which would win the cascade -- could
+    // contradict this one and `.some` would still be satisfied.
     expect(
       atRules(chatCss, '@media (max-width: 480px)').some((body) =>
         /\.turn-footer \.turn-footer__actions\s*\{[^}]*align-self:\s*flex-start;/s.test(
