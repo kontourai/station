@@ -85,10 +85,10 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 ]);
 
 // Direct `node:child_process` importers discovered from the root corpus, with
-// the reviewed shared-output and dogfood exceptions removed. One member is not
-// such an importer: `src-ui/src/contexts/__tests__/ApiBaseContext.test.tsx` is
-// timing-sensitive rather than process-heavy, and must stay in this bounded
-// pool for that reason alone.
+// the reviewed shared-output and dogfood exceptions removed, plus reviewed
+// timing-sensitive and other bounded-pool members that import no child_process
+// but must not contend in the ordinary pool. Each such admission is annotated
+// inline with its reason; do not infer membership from the import alone.
 //
 // ## The constraint on anything you add here (station#1804)
 //
