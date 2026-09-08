@@ -593,7 +593,14 @@ export function projectRuntimeEventsToMessages(
           carried ??
           superseded;
         if (existing) {
-          if (ev.toolName !== undefined) existing.toolName = ev.toolName;
+          // Imported result records may omit the name and normalize to "tool".
+          // Keep the actual invocation name instead of erasing its identity.
+          if (
+            ev.toolName !== undefined &&
+            (ev.toolName !== 'tool' || !existing.toolName)
+          ) {
+            existing.toolName = ev.toolName;
+          }
           existing.state = derivedState;
           existing.output = ev.output;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
