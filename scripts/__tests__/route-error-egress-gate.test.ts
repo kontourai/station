@@ -431,6 +431,96 @@ describe('route error egress gate', () => {
       ).toEqual([]);
     });
 
+    test('resolves a directory specifier to its index instead of reading the directory', () => {
+      // `existsSync` is true for a directory, so an earlier revision resolved
+      // `'../schemas'` to the directory and handed it to `readFileSync`:
+      // EISDIR, thrown out of the gate, failing the governance lane on an
+      // import style rather than on egress. `routes/schemas` already has a
+      // `schema-definitions.ts` beside a `schema-definitions/` directory, so
+      // one extensionless import was all it would have taken.
+      const route = ROUTE.replace("'../schemas/schemas.js'", "'../schemas'");
+      const root = fixture({
+        'src-server/utils/route-error.ts': ROUTE_ERROR_SOURCE,
+        'src-server/routes/schemas/index.ts':
+          "export { RouteError } from '../../utils/route-error.js';\n",
+        // The sibling module of the same name: the shape that made the bare
+        // path look resolvable.
+        'src-server/routes/schemas.ts': 'export const unrelated = 1;\n',
+        'src-server/routes/projects/example.ts': route,
+      });
+
+      expect(() =>
+        findDirectRouteMessageEgress(
+          route,
+          'src-server/routes/projects/example.ts',
+          { rootDir: root },
+        ),
+      ).not.toThrow();
+      // `schemas.ts` wins over `schemas/index.ts` -- the file a TypeScript
+      // resolver picks too -- and it does not provide the class, so this is
+      // the established negative rather than a flag.
+      expect(
+        findDirectRouteMessageEgress(
+          route,
+          'src-server/routes/projects/example.ts',
+          { rootDir: root },
+        ),
+      ).toEqual([]);
+    });
+
+    test('follows a directory specifier that only has an index', () => {
+      const route = ROUTE.replace("'../schemas/schemas.js'", "'../schemas'");
+      const root = fixture({
+        'src-server/utils/route-error.ts': ROUTE_ERROR_SOURCE,
+        'src-server/routes/schemas/index.ts':
+          "export { RouteError } from '../../utils/route-error.js';\n",
+        'src-server/routes/projects/example.ts': route,
+      });
+
+      expect(
+        findDirectRouteMessageEgress(
+          route,
+          'src-server/routes/projects/example.ts',
+          { rootDir: root },
+        ),
+      ).toEqual([
+        'src-server/routes/projects/example.ts :: route POST /review :: (error as Error).message :: 1',
+      ]);
+    });
+
+    test('reviews a directory specifier with no index rather than skipping it', () => {
+      const route = ROUTE.replace("'../schemas/schemas.js'", "'../schemas'");
+      const root = fixture({
+        'src-server/utils/route-error.ts': ROUTE_ERROR_SOURCE,
+        'src-server/routes/schemas/other.ts': 'export const other = 1;\n',
+        'src-server/routes/projects/example.ts': route,
+      });
+
+      // Nothing resolved, so the tie-break sends it to review.
+      expect(
+        findDirectRouteMessageEgress(
+          route,
+          'src-server/routes/projects/example.ts',
+          { rootDir: root },
+        ),
+      ).toEqual([
+        'src-server/routes/projects/example.ts :: route POST /review :: (error as Error).message :: 1',
+      ]);
+    });
+
+    test('survives a real tree full of extensionless relative star re-exports', () => {
+      // `packages/sdk/src` has several (`api.ts:8-10`, `index.ts`), each
+      // naming a `.ts` sibling. This is the corpus that reproduced the
+      // EISDIR; the assertion is that the scan RETURNS, not that it is
+      // empty -- what it finds there is not this gate's business.
+      expect(
+        findRouteErrorReexports({
+          rootDir: process.cwd(),
+          directories: ['packages/sdk/src'],
+        }),
+      ).toBeInstanceOf(Array);
+    });
+
     test('reports a second-level barrel instead of silently failing to follow it', () => {
       // The resolver stops at one level on purpose. This is what keeps that
       // from being a hole: the shape it cannot follow is reported here.

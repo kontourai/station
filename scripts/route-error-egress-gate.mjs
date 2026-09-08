@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import ts from 'typescript';
 import { toPosixPath } from './lib/posix-path.mjs';
@@ -126,6 +126,18 @@ const ROUTE_ERROR_CLASS = 'RouteError';
 const ROUTE_ERROR_MODULE = /(?:^|\/)utils\/route-error\.(?:js|ts)$/;
 const RELATIVE_SPECIFIER = /^\.\.?\//;
 
+/** The first candidate that is a readable FILE, not merely a path that exists. */
+function firstExistingFile(candidates) {
+  for (const candidate of candidates) {
+    try {
+      if (statSync(candidate).isFile()) return candidate;
+    } catch {
+      // Absent, or not stat-able: try the next shape.
+    }
+  }
+  return undefined;
+}
+
 /**
  * The file a relative specifier names, or undefined when it cannot be read.
  *
@@ -134,14 +146,30 @@ const RELATIVE_SPECIFIER = /^\.\.?\//;
  * (`hono`, `@kontourai/...`) is deliberately not resolved: package
  * resolution is a different problem, and the caller treats "not resolved"
  * as "review it" rather than "skip it".
+ *
+ * Order and the `isFile` test are both load-bearing. An extensionless
+ * specifier usually names a sibling MODULE (`./schema-definitions`) but can
+ * name a DIRECTORY of the same name -- `src-server/routes/schemas` has one
+ * of each today -- and an earlier revision tried the bare path first with
+ * only an existence check, so a directory resolved to itself and
+ * `readFileSync` threw `EISDIR` out of the whole gate. That fails the
+ * governance lane on an import style rather than on egress, and it fails
+ * identically for a barrel that provides the class and one that does not.
+ * So: the source extensions first, the bare path only if it is a file, and a
+ * directory resolved to its `index`. A directory with no index resolves to
+ * nothing, which means "reviewed on the spelling", not "skipped".
  */
 function resolveRelativeModule(rootDir, fromFile, specifier) {
   if (!rootDir || !RELATIVE_SPECIFIER.test(specifier)) return undefined;
   const base = join(rootDir, dirname(fromFile), specifier);
-  const candidates = base.endsWith('.js')
-    ? [base.replace(/\.js$/, '.ts'), base.replace(/\.js$/, '.tsx'), base]
-    : [base, `${base}.ts`, `${base}.tsx`];
-  return candidates.find((candidate) => existsSync(candidate));
+  const stem = base.endsWith('.js') ? base.slice(0, -'.js'.length) : base;
+  return firstExistingFile([
+    `${stem}.ts`,
+    `${stem}.tsx`,
+    base,
+    join(base, 'index.ts'),
+    join(base, 'index.tsx'),
+  ]);
 }
 
 function namesRouteErrorModule(rootDir, fromFile, specifier) {
@@ -275,6 +303,12 @@ function collectRouteErrorBindings(sourceFile, rootDir, file) {
  * becoming a silent hole: a barrel that re-exports the class through another
  * barrel appears here and fails a test, instead of appearing nowhere and
  * taking every importing route out of review.
+ *
+ * Precisely: it reports A HOP in every chain it cannot follow, not the outer
+ * barrel a route imports. For a three-deep star chain the reported file is
+ * the one whose own re-export target provides the class, which is not the
+ * file the route names. The gate goes red either way; a reader following the
+ * message lands one hop in from where they expected.
  */
 export function findRouteErrorReexports({
   rootDir,
