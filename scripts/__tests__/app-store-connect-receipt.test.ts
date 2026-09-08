@@ -812,7 +812,10 @@ describe('attachInternalGroup membership derivation (#1777)', () => {
           'relative path',
           '/v1/betaGroups/group-1/relationships/builds?cursor=p1',
         ],
-        ['the page itself', firstPage],
+        [
+          'non-default port',
+          'https://api.appstoreconnect.apple.com:8443/v1/betaGroups/group-1/relationships/builds?cursor=p1',
+        ],
         ['not a string', { href: pageUrl(1) }],
       ];
       for (const [label, next] of refused) {
@@ -835,21 +838,68 @@ describe('attachInternalGroup membership derivation (#1777)', () => {
           vi.unstubAllGlobals();
         }
       }
+      const visited = new Set([
+        '/v1/betaGroups/group-1/relationships/builds?limit=200',
+      ]);
       expect(
         selectMembershipNextPage(
           { links: { self: firstPage, next: pageUrl(1) } },
-          { groupId: 'group-1', currentUrl: firstPage },
+          { groupId: 'group-1', visited },
         ),
       ).toBe(pageUrl(1));
       expect(
         selectMembershipNextPage(
           { links: { self: firstPage } },
-          { groupId: 'group-1', currentUrl: firstPage },
+          { groupId: 'group-1', visited },
         ),
       ).toBeNull();
     });
 
-    test('a build listed twice on a later page fails closed without polling again', async () => {
+    test('a next-page link to a page this walk already read is a loop, refused with its own text', async () => {
+      const repeated =
+        'App Store Connect beta group group-1 links.next repeats a page already read; refusing to follow it';
+      const cases: Array<{
+        label: string;
+        nextFor: (index: number) => string;
+        requests: string[];
+      }> = [
+        {
+          // The same page under a fragment is the same page.
+          label: 'the page itself with a fragment',
+          nextFor: () => `${firstPage}#frag`,
+          requests: [`GET ${firstPage}`],
+        },
+        {
+          // p0 -> p1 -> p0 would otherwise run to the cap and be reported
+          // as a group larger than the reader walks.
+          label: 'alternating pages',
+          nextFor: (index) => (index === 0 ? pageUrl(1) : firstPage),
+          requests: [`GET ${firstPage}`, `GET ${pageUrl(1)}`],
+        },
+      ];
+      for (const { label, nextFor, requests } of cases) {
+        const output = receiptPath();
+        const provider = stubProvider({
+          group: groupPayload(true),
+          readback: pagedReadback(
+            [filler(200, 'a'), filler(200, 'b'), ['build-1']],
+            nextFor,
+          ),
+        });
+        try {
+          const failure = await run(output, provider.hooks).catch(
+            (error: Error) => error,
+          );
+          expect((failure as Error).message, label).toBe(repeated);
+          expect(readbacks(provider), label).toEqual(requests);
+          expect(() => readFileSync(output), label).toThrow();
+        } finally {
+          vi.unstubAllGlobals();
+        }
+      }
+    });
+
+    test('a build listed twice on one later page fails closed without polling again', async () => {
       const output = receiptPath();
       const provider = stubProvider({
         group: groupPayload(true),
@@ -888,6 +938,7 @@ describe('resolveAppStoreConnectUrl', () => {
       'https://evil.example/v1/apps',
       'http://api.appstoreconnect.apple.com/v1/apps',
       'https://user:pw@api.appstoreconnect.apple.com/v1/apps',
+      'https://api.appstoreconnect.apple.com:8443/v1/apps',
       '//evil.example/v1/apps',
     ]) {
       expect(() => resolveAppStoreConnectUrl(rejected)).toThrow(

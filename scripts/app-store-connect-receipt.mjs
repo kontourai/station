@@ -486,14 +486,21 @@ function membershipRelationshipPath(groupId) {
   return `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/builds`;
 }
 
+/** The identity of a page for loop detection: path and query, never the hash. */
+function membershipPageKey(url) {
+  return `${url.pathname}${url.search}`;
+}
+
 /**
  * The next page of a group's build relationship, or null on the last page.
  * A collection response carries `links: { self, next? }`; `next` is data
  * from the provider body, so it is followed only when it is an absolute URL
- * on the provider origin for this same group's relationship and is not the
- * page that returned it. Anything else fails closed (#1782).
+ * on the provider origin for this same group's relationship. A link to a
+ * page this walk has already read (compared without its fragment) is a
+ * loop, refused with its own text so it is never misread as a group larger
+ * than the cap. Anything else fails closed (#1782).
  */
-export function selectMembershipNextPage(payload, { groupId, currentUrl }) {
+export function selectMembershipNextPage(payload, { groupId, visited }) {
   const next = payload?.links?.next;
   if (next === undefined || next === null) return null;
   const expectedPath = membershipRelationshipPath(groupId);
@@ -510,11 +517,15 @@ export function selectMembershipNextPage(payload, { groupId, currentUrl }) {
     url.origin !== API_ORIGIN ||
     url.username ||
     url.password ||
-    url.pathname !== expectedPath ||
-    url.href === currentUrl
+    url.pathname !== expectedPath
   ) {
     throw new Error(
       `App Store Connect beta group ${groupId} returned a next-page link that is not ${API_ORIGIN}${expectedPath}; refusing to follow it`,
+    );
+  }
+  if (visited.has(membershipPageKey(url))) {
+    throw new Error(
+      `App Store Connect beta group ${groupId} links.next repeats a page already read; refusing to follow it`,
     );
   }
   return url.href;
@@ -526,9 +537,12 @@ export function selectMembershipNextPage(payload, { groupId, currentUrl }) {
  * first page that lists the build keeps a group larger than the cap working
  * whenever the build is inside the walked prefix; the cap fails closed with
  * its own text, since another poll cannot reveal pages this reader will not
- * read. The duplicate refusal counts every page walked, so a build listed
- * twice on any of them fails closed; a duplicate on a page after the one
- * that listed it is not observed.
+ * read. The cap assumes a build that has not yet propagated to a group of
+ * more than MEMBERSHIP_MAX_PAGES pages is absent from the walked prefix, so
+ * it trips the cap before its bounded wait; the provider's ordering is
+ * unspecified, and the failure is loud either way. The duplicate refusal can
+ * only observe a build listed twice on one page: the walk returns at the
+ * first page that lists the build, so no later page is read.
  */
 async function readGroupMembership(
   { appId, buildId, groupId, groupName },
@@ -536,10 +550,12 @@ async function readGroupMembership(
 ) {
   const credentials = credentialsFromEnvironment(env);
   let url = `${API_ORIGIN}${membershipRelationshipPath(groupId)}?limit=${MEMBERSHIP_PAGE_LIMIT}`;
+  const visited = new Set();
   let pagesRead = 0;
   let buildsListed = 0;
   let attached = 0;
   for (;;) {
+    visited.add(membershipPageKey(new URL(url)));
     const page = await appStoreConnectRequest(url, credentials);
     pagesRead += 1;
     const entries = Array.isArray(page?.data) ? page.data : [];
@@ -552,7 +568,7 @@ async function readGroupMembership(
         `App Store Connect beta group ${groupId} lists build ${buildId} ${attached} times`,
       );
     if (attached === 1) return { found: true, pagesRead, buildsListed };
-    const next = selectMembershipNextPage(page, { groupId, currentUrl: url });
+    const next = selectMembershipNextPage(page, { groupId, visited });
     if (next === null) return { found: false, pagesRead, buildsListed };
     if (pagesRead >= MEMBERSHIP_MAX_PAGES)
       throw new Error(
