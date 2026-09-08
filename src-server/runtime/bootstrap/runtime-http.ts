@@ -165,9 +165,19 @@ export function configureRuntimeHttp({
     // once it is over: nothing changed, nothing failed, and the connection is
     // closed. An idle desktop still produced ~70k of these a day, each one a
     // synchronous `writeSync` into the NDJSON store, and they buried the
-    // lines an operator opens the log FOR. `debug` keeps them a level away
-    // (`STATION_LOG_LEVEL=debug`, or the Developer Logs level filter) rather
-    // than dropping them.
+    // lines an operator opens the log FOR.
+    //
+    // Be exact about what demoting them to `debug` does. The logger seam
+    // gates on `isLevelEnabled` BEFORE it writes the durable store line
+    // (`utils/logger.ts`), and the resolved level defaults to `info`, so at
+    // the default these lines are not written anywhere — they are dropped,
+    // not filed one level down. The Developer Logs level filter is a
+    // READ-side floor over what the store already holds and cannot bring
+    // back a line that was never written. Retaining them is a WRITE-side
+    // setting chosen before the fact: `STATION_LOG_LEVEL=debug`, or
+    // `logLevel` in `app.json`. That is the trade — a successful read stops
+    // being free-standing history and becomes something an operator opts
+    // into while reproducing.
     //
     // Everything else stays at `info`: any non-2xx/304, every mutation
     // whether or not it succeeded, and every streaming response — an SSE
