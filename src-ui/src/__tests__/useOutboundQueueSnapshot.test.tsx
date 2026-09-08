@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useOutboundQueueSnapshot } from '../hooks/useOutboundQueueSnapshot';
@@ -112,6 +114,30 @@ describe('useOutboundQueueSnapshot', () => {
     ).toHaveLength(1);
 
     view.unmount();
+  });
+
+  /**
+   * The dock itself cannot be mounted in a test — `ChatWorkspacePane`'s graph
+   * needs an active session carrying a `conversationId`, seeded through
+   * `activeChatsStore` plus the conversation inventory query, and
+   * `DockShellControlParity`/`DockShellProjectBinding` both record that
+   * decision. The flag above is proven where it is implemented; this is what
+   * keeps the dock passing it.
+   */
+  it('is gated on a conversation at the dock call site', () => {
+    const dockSource = readFileSync(
+      join(__dirname, '..', 'components', 'chat-dock', 'ChatDock.tsx'),
+      'utf8',
+    );
+    const call = dockSource.match(
+      /useOutboundQueueSnapshot\(([\s\S]{0,120}?)\);/,
+    );
+    expect(call, 'ChatDock must read the queue through this hook').not.toBe(
+      null,
+    );
+    expect((call?.[1] ?? '').replace(/\s+/g, ' ')).toContain(
+      'Boolean(activeSession?.conversationId)',
+    );
   });
 
   it('opens nothing at all while the consumer is disabled', async () => {
