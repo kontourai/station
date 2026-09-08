@@ -428,6 +428,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // reason content-integrity-gate.test.ts does — every one of those guardrails
   // scopes itself with `git ls-files` or `git grep`.
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts',
+  // The same argument for the rest of them: every gate `verify:static:raw`
+  // composes that no test had ever executed now runs here as a real child
+  // process — against a known-bad fixture tree where one is affordable, and
+  // against this repository where it is not. Bounded single-shot spawns, no
+  // wall-clock assertions.
+  'scripts/__tests__/guardrail-process-boundary.test.ts',
   // station#1398 security review, M-5: the content-integrity gate's own test
   // builds throwaway git repos and drives `git grep` through `execFileSync`,
   // because the scan is `git grep` over TRACKED files and a fixture written
