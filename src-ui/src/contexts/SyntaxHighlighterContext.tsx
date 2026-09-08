@@ -15,13 +15,7 @@ import {
   useMemo,
   useState,
 } from 'react';
-import {
-  escapeHtml,
-  fnv1a,
-  HighlightCache,
-  PRELOAD_LANGS,
-  THEME,
-} from '../highlight/shared';
+import { escapeHtml, fnv1a, HighlightCache, THEME } from '../highlight/shared';
 
 // ── Interface ─────────────────────────────────────────────────────
 
@@ -34,7 +28,9 @@ export interface ISyntaxHighlighter {
 // ── Shiki singleton ───────────────────────────────────────────────
 
 type ShikiHighlighter = Awaited<
-  ReturnType<typeof import('shiki')['createHighlighter']>
+  ReturnType<
+    typeof import('../highlight/core-highlighter')['createChatHighlighter']
+  >
 >;
 
 let shikiPromise: Promise<ShikiHighlighter> | null = null;
@@ -43,12 +39,13 @@ let shikiPromise: Promise<ShikiHighlighter> | null = null;
  * archive#3354 — exported for the async highlight client's main-thread
  * fallback (jsdom / failed worker bootstrap); interactive callers keep using
  * the provider.
+ *
+ * The factory stays behind a dynamic import: this module is reachable from
+ * the entry chunk, and Shiki is not something a first paint should carry.
  */
 export function initShiki(): Promise<ShikiHighlighter> {
-  shikiPromise ??= import('shiki')
-    .then(({ createHighlighter }) =>
-      createHighlighter({ themes: [THEME], langs: [...PRELOAD_LANGS] }),
-    )
+  shikiPromise ??= import('../highlight/core-highlighter')
+    .then(({ createChatHighlighter }) => createChatHighlighter())
     .catch((error) => {
       shikiPromise = null;
       throw error;
