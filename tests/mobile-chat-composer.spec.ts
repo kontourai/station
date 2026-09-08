@@ -390,6 +390,7 @@ async function mockChatShell(
   for (const [id, reply] of [
     ['conv-running', 'Working through the current task.'],
     ['conv-review', 'Review needed before continuing.'],
+    ['delegated-review', 'Delegated review is ready.'],
   ]) {
     const turns = buildLongSessionTurns({
       threadId: id,
@@ -400,7 +401,10 @@ async function mockChatShell(
     await mockRuntimeConversation(page, {
       id,
       agentSlug: 'station',
-      title: 'Station Chat',
+      title:
+        id === 'delegated-review'
+          ? 'Worker task · delegated review'
+          : 'Station Chat',
       provider: 'codex',
       model: 'model-selected',
       projectSlug: 'default',
