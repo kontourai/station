@@ -64,7 +64,10 @@ import {
   type ProjectBinding,
   type ProjectBindingStore,
 } from '@kontourai/station-contracts/project-identity';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLockAsync,
+  type FileMutationLock,
+} from '@kontourai/station-shared/lifecycle-events';
 import { isRecord } from '../../utils/is-record.js';
 import { JsonFileStore } from '../infra/json-store.js';
 
@@ -108,16 +111,9 @@ export interface UpsertProjectBindingInput {
   state: ProjectBinding['state'];
 }
 
-// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
-// so a contended acquisition yields the event loop; sync test fakes remain
-// assignable (awaiting a non-promise is a no-op).
-type ProjectBindingMutationLock = (
-  lockPath: string,
-) => (() => void | Promise<void>) | Promise<() => void | Promise<void>>;
-
 export interface ProjectBindingsStoreOptions {
   /** Injectable only for deterministic store concurrency tests. */
-  acquireMutationLock?: ProjectBindingMutationLock;
+  acquireMutationLock?: FileMutationLock;
 }
 
 /**
@@ -301,7 +297,7 @@ function validateBindingStore(
 export class ProjectBindingsStore {
   private readonly filePath: string;
   private readonly store: JsonFileStore<ProjectBindingStore>;
-  private readonly acquireMutationLock: ProjectBindingMutationLock;
+  private readonly acquireMutationLock: FileMutationLock;
 
   constructor(homeDir: string, options: ProjectBindingsStoreOptions = {}) {
     this.filePath = projectBindingStorePath(homeDir);

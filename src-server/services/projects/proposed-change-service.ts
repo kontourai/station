@@ -15,7 +15,10 @@ import {
   canTransitionProposedChangeStatus,
   validateProposedChange,
 } from '@kontourai/station-contracts/proposed-change';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLockAsync,
+  type FileMutationLock,
+} from '@kontourai/station-shared/lifecycle-events';
 import {
   reviewDecisions,
   reviewProposals,
@@ -38,20 +41,13 @@ interface ProposedChangeDecisionOutcome {
   updated: ProposedChange;
 }
 
-// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
-// so a contended acquisition yields the event loop; sync test fakes remain
-// assignable (awaiting a non-promise is a no-op).
-type ProposedChangeMutationLock = (
-  lockPath: string,
-) => (() => void | Promise<void>) | Promise<() => void | Promise<void>>;
-
 /** Exact lowercase UUID-v4 spelling emitted for decisions by {@link randomUUID}. */
 const GENERATED_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export interface ProposedChangeServiceOptions {
   /** Injectable only for deterministic multi-process mutation tests. */
-  acquireMutationLock?: ProposedChangeMutationLock;
+  acquireMutationLock?: FileMutationLock;
   /** Test-only extension point; strict durable persistence remains required. */
   storeOptions?: JsonFileStoreOptions;
 }
@@ -370,7 +366,7 @@ function validatePersistedChange(value: unknown): ProposedChange {
 export class ProposedChangeService {
   private readonly filePath: string;
   private readonly store: JsonFileStore<ProposedChangeStoreData>;
-  private readonly acquireMutationLock: ProposedChangeMutationLock;
+  private readonly acquireMutationLock: FileMutationLock;
 
   constructor(dataDir: string, options: ProposedChangeServiceOptions = {}) {
     this.filePath = join(dataDir, 'proposed-changes.json');

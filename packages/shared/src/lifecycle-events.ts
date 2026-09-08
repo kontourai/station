@@ -992,6 +992,22 @@ export function acquireFileMutationLock(
  * prefer this variant; short-lived CLI and process-exit paths may keep the
  * sync form.
  */
+/**
+ * The seam a store injects its cross-process mutation lock through.
+ *
+ * Async-compatible (archive#2646): the default every store uses is
+ * {@link acquireFileMutationLockAsync}, so a contended acquisition yields the
+ * event loop — but the union also admits the SYNCHRONOUS shape, because a
+ * sync test fake stays assignable (awaiting a non-promise is a no-op) and
+ * {@link acquireFileMutationLock} still satisfies it.
+ *
+ * Ten stores under `src-server/services` had each declared this signature
+ * privately, byte-identically, under ten different names.
+ */
+export type FileMutationLock = (
+  lockPath: string,
+) => (() => void | Promise<void>) | Promise<() => void | Promise<void>>;
+
 export async function acquireFileMutationLockAsync(
   lock: string,
   options: FileMutationLockOptions = {},

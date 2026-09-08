@@ -16,7 +16,10 @@ import {
 import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLockAsync,
+  type FileMutationLock,
+} from '@kontourai/station-shared/lifecycle-events';
 import { requireOpenSshAlias } from './openssh-config.js';
 
 const PROFILE_SCHEMA_VERSION = 1;
@@ -53,13 +56,6 @@ interface SshEnvironmentProfileDocument {
   profiles: SshEnvironmentProfile[];
 }
 
-// Async-compatible seam (archive#2646): the default is the ASYNC cross-process lock
-// so a contended acquisition yields the event loop; sync test fakes remain
-// assignable (awaiting a non-promise is a no-op).
-type SshEnvironmentProfileMutationLock = (
-  lockPath: string,
-) => (() => void | Promise<void>) | Promise<() => void | Promise<void>>;
-
 type SshEnvironmentProfileWriteOperations = {
   closeSync: typeof closeSync;
   fsyncDirectorySync: typeof fsyncDirectorySync;
@@ -81,7 +77,7 @@ const sshEnvironmentProfileWriteOperations: SshEnvironmentProfileWriteOperations
 
 export interface SshEnvironmentProfileStoreOptions {
   /** Injectable only for deterministic cross-process mutation tests. */
-  acquireMutationLock?: SshEnvironmentProfileMutationLock;
+  acquireMutationLock?: FileMutationLock;
   /** Injectable only for durable-write fault-injection tests. */
   writeOperations?: Partial<SshEnvironmentProfileWriteOperations>;
 }
@@ -303,7 +299,7 @@ function validateDocument(value: unknown): SshEnvironmentProfileDocument {
 export class SshEnvironmentProfileStore {
   readonly #directory: string;
   readonly #file: string;
-  readonly #acquireMutationLock: SshEnvironmentProfileMutationLock;
+  readonly #acquireMutationLock: FileMutationLock;
   readonly #writeOperations: SshEnvironmentProfileWriteOperations;
 
   constructor(
