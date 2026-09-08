@@ -332,18 +332,70 @@ describe('evidence-check execution gate', () => {
     expect(status).toBe(1);
   });
 
-  test('the _note never states a violation count the baseline does not have', () => {
-    // The note is unchecked prose as far as the gate is concerned — it
-    // validates only that `_note` is a non-empty string. It said
-    // repo-guardrails "currently passes with 104 baselined violations" for as
-    // long as it took station#2765 to burn the baseline down to zero and
-    // nobody to notice, which is a label nothing derived: the number was
-    // right when written and wrong ever after.
-    //
-    // So the count is reconciled against the list. Both directions matter —
-    // a stated count that disagrees with the baseline is stale, and a claim
-    // of tolerated violations while the baseline is empty is the exact
-    // regression that happened.
+  // The note is unchecked prose as far as the gate is concerned — it
+  // validates only that `_note` is a non-empty string. It said
+  // repo-guardrails "currently passes with 104 baselined violations" for as
+  // long as it took station#2765 to burn the baseline down and nobody to
+  // notice: right when written, wrong ever after.
+  //
+  // The first version of this reconciliation only matched DIGITS, and the
+  // corrected note says "zero" and "EMPTY" — words. So it matched nothing,
+  // and the direction that actually matters from here (the baseline grows,
+  // the note still says empty) was not computed at all. It failed only on the
+  // historical shape, which no longer exists on the tree.
+  const WORD_COUNTS = new Map([
+    ['zero', 0],
+    ['no', 0],
+    ['none', 0],
+    ['one', 1],
+    ['two', 2],
+    ['three', 3],
+  ]);
+
+  /** Every violation count the note states, digits and words alike. */
+  function statedViolationCounts(note: string): number[] {
+    const counts: number[] = [];
+    for (const [, token] of note.matchAll(
+      /\b(\d+|zero|no|none|one|two|three)\s+baselined violation/gi,
+    )) {
+      const word = WORD_COUNTS.get(token.toLowerCase());
+      counts.push(word ?? Number(token));
+    }
+    return counts;
+  }
+
+  /**
+   * Reconcile the prose against the list, in both directions, and return the
+   * reasons it does not hold. A pure function of (note, length) so the cases
+   * below can drive it with a baseline the repository does not have — the
+   * regression to guard against is a baseline that GROWS, and there is no way
+   * to observe that against the real file, which is empty and pinned empty by
+   * `proof-repo-guardrails-fail-closed.test.ts`.
+   */
+  function reconcileNote(note: string, baselined: number): string[] {
+    const problems: string[] = [];
+    const stated = statedViolationCounts(note);
+    if (stated.length === 0) {
+      problems.push('states no violation count at all, in digits or words');
+    }
+    for (const count of stated) {
+      if (count !== baselined) {
+        problems.push(`states ${count}; the baseline holds ${baselined}`);
+      }
+    }
+    // The phrase and the fact, tied together. Without this a note could drop
+    // its count entirely and keep asserting an empty baseline.
+    const claimsEmpty = note.includes('is EMPTY');
+    if (claimsEmpty && baselined !== 0) {
+      problems.push(`says the baseline "is EMPTY" while it holds ${baselined}`);
+    }
+    if (!claimsEmpty && baselined === 0) {
+      problems.push('does not say the baseline "is EMPTY" while it is');
+    }
+    return problems;
+  }
+
+  test('the _note reconciles against the baseline the repository has', () => {
     const note = realMapping._note as string;
     const baselined = (
       JSON.parse(
@@ -354,18 +406,53 @@ describe('evidence-check execution gate', () => {
       ).knownViolations as string[]
     ).length;
 
-    for (const [, count] of note.matchAll(/(\d+)\s+baselined violation/gi)) {
-      expect(
-        Number(count),
-        `_note states ${count} baselined violation(s); the baseline holds ${baselined}`,
-      ).toBe(baselined);
-    }
-    if (baselined === 0) {
-      expect(
-        note,
-        '_note claims a tolerated violation set while the baseline is empty',
-      ).not.toMatch(/passes with \d*[1-9]\d* baselined violation/i);
-    }
+    expect(reconcileNote(note, baselined), note).toEqual([]);
+    // Pin the direction the real file cannot exercise: the same note against
+    // a baseline that has grown must fail. Without this the case above is
+    // green for a reconciliation that computes nothing.
+    expect(reconcileNote(note, 2)).not.toEqual([]);
+  });
+
+  test('the reconciliation fails on a stale note in either direction', () => {
+    const emptyBaselineNote =
+      'The baseline is EMPTY, so the proof passes with zero baselined violations.';
+    expect(reconcileNote(emptyBaselineNote, 0)).toEqual([]);
+
+    // Prose claims a tolerated set; the list is empty. The historical shape,
+    // in words rather than the digits the first version looked for.
+    expect(
+      reconcileNote('The proof passes with one baselined violation.', 0).join(
+        '; ',
+      ),
+    ).toContain('states 1; the baseline holds 0');
+
+    // The list grew; the prose did not. This is the live risk, and the one
+    // the digit-only version could not see.
+    expect(reconcileNote(emptyBaselineNote, 2).join('; ')).toContain(
+      'says the baseline "is EMPTY" while it holds 2',
+    );
+    expect(reconcileNote(emptyBaselineNote, 2).join('; ')).toContain(
+      'states 0; the baseline holds 2',
+    );
+
+    // A note that grew with its baseline is fine.
+    expect(
+      reconcileNote('The proof passes with 2 baselined violations.', 2),
+    ).toEqual([]);
+
+    // The case only the phrase check can see: the COUNT is right and the
+    // claim about the list is not. Without the iff, this reads as agreement.
+    expect(
+      reconcileNote(
+        'The baseline is EMPTY. The proof passes with 2 baselined violations.',
+        2,
+      ).join('; '),
+    ).toContain('says the baseline "is EMPTY" while it holds 2');
+
+    // Silence is not agreement.
+    expect(
+      reconcileNote('repo-guardrails remains advisory.', 0).join('; '),
+    ).toContain('states no violation count at all');
   });
 
   test('an advisory check reachable from a lane root fails', () => {
