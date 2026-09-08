@@ -2,21 +2,7 @@ import type {
   TurnIdempotencyPersistence,
   TurnIdempotencyRecord,
 } from '../turn-idempotency.js';
-
-/**
- * The `orchestration_turn_dedup` half of EventStore's SQLite ownership,
- * extracted verbatim so the store composes it rather than embedding it.
- * `EventStore` still opens and owns the connection; this module never opens
- * one and holds no lifecycle of its own.
- */
-interface SqliteDatabase {
-  exec(sql: string): void;
-  prepare(sql: string): {
-    run(...values: unknown[]): unknown;
-    get(...values: unknown[]): unknown;
-    all(...values: unknown[]): unknown[];
-  };
-}
+import type { SqliteDatabase } from './sqlite-database.js';
 
 /**
  * Bound on retained turn-dedup rows. Exported so the `/chat` facade and this

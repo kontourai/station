@@ -5,21 +5,7 @@ import {
   type AdoptionLedgerCoordinator,
   type AdoptionReservation,
 } from './adoption-ledger.js';
-
-/**
- * The `provider_session_adoptions` half of EventStore's SQLite ownership,
- * extracted verbatim so the store composes it rather than embedding it.
- * `EventStore` still opens and owns the connection; this module never opens
- * one and holds no lifecycle of its own.
- */
-interface SqliteDatabase {
-  exec(sql: string): void;
-  prepare(sql: string): {
-    run(...values: unknown[]): unknown;
-    get(...values: unknown[]): unknown;
-    all(...values: unknown[]): unknown[];
-  };
-}
+import type { SqliteDatabase } from './sqlite-database.js';
 
 /**
  * `commitOwnedAdoption` writes the child session and its command receipt
