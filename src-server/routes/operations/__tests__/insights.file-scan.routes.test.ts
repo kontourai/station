@@ -104,7 +104,9 @@ describe('Insights monitoring-file scan', () => {
   });
 
   test('a day that ended before the cutoff is never opened; the cutoff day and an undated file still are', async () => {
-    const body = await json(await createInsightsRoutes(dir).request('/?days=2'));
+    const body = await json(
+      await createInsightsRoutes(dir).request('/?days=2'),
+    );
 
     expect(openedFiles).toContain(CUTOFF_DAY_FILE);
     expect(openedFiles).toContain(TODAY_FILE);
@@ -120,7 +122,9 @@ describe('Insights monitoring-file scan', () => {
   });
 
   test('a wider window opens the older day again — the skip follows the cutoff, not the file', async () => {
-    const body = await json(await createInsightsRoutes(dir).request('/?days=7'));
+    const body = await json(
+      await createInsightsRoutes(dir).request('/?days=7'),
+    );
 
     expect(openedFiles).toContain(OLDER_FILE);
     // All five rows are inside a 7-day window, including the cutoff day's

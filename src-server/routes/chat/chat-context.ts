@@ -134,9 +134,7 @@ interface UserTextPartLocation {
   readonly text: string | undefined;
 }
 
-function locateUserTextPart(
-  input: ChatMessage[],
-): UserTextPartLocation | null {
+function locateUserTextPart(input: ChatMessage[]): UserTextPartLocation | null {
   const messageIndex = input.findIndex((message) => message.role === 'user');
   if (messageIndex === -1) return null;
   const parts = input[messageIndex]?.parts;

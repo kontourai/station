@@ -3046,7 +3046,7 @@ describe('Orchestration Routes', () => {
     expect(refreshDelegatedTaskActivity).toHaveBeenCalledTimes(2);
   });
 
-  test('one caller\'s outstanding refresh does not suppress another caller\'s (#847)', async () => {
+  test("one caller's outstanding refresh does not suppress another caller's (#847)", async () => {
     // The single flight is keyed by principal. A global latch would let the
     // first poller on a shared Station hold every other user's peer
     // reconciliation for as long as its own peers stay slow — their

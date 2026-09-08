@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
-  createElicitationCallback,
   CHAT_STREAM_KEEPALIVE_INTERVAL_MS,
+  createElicitationCallback,
   startSSEKeepalive,
   writeSSEChunk,
   writeSSEError,

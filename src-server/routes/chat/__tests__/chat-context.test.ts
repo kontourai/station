@@ -243,9 +243,12 @@ describe('applyCombinedContextToInput', () => {
         role: 'assistant',
         parts: [{ type: 'text', text: 'earlier' }],
       };
+      // Bound separately so the assertions below name the exact object they
+      // mean, rather than indexing a heterogeneous parts array.
+      const captionPart = { type: 'text', text: 'caption' };
       const userTurn = {
         role: 'user',
-        parts: [{ type: 'text', text: 'caption' }, filePart],
+        parts: [captionPart, filePart],
       };
       const input = [earlierTurn, userTurn];
 
@@ -261,7 +264,7 @@ describe('applyCombinedContextToInput', () => {
       expect(output).not.toBe(input);
       expect(output[1]).not.toBe(userTurn);
       expect(output[1]?.parts).not.toBe(userTurn.parts);
-      expect(output[1]?.parts?.[0]).not.toBe(userTurn.parts[0]);
+      expect(output[1]?.parts?.[0]).not.toBe(captionPart);
 
       // Everything else is the SAME object, not a copy of it.
       expect(output[0]).toBe(earlierTurn);
@@ -270,7 +273,7 @@ describe('applyCombinedContextToInput', () => {
 
       // And the caller's input is still never mutated — the persistence
       // seams keep passing the original while the model gets this.
-      expect(userTurn.parts[0].text).toBe('caption');
+      expect(captionPart.text).toBe('caption');
       expect(input[1]).toBe(userTurn);
     });
   });
