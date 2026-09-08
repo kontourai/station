@@ -9,6 +9,7 @@ import {
   withPluginProviderGrantSnapshot,
   withPluginProviderGrantsPublication,
 } from '../services/plugins/plugin-permissions.js';
+import { errorMessage } from '../utils/error-message.js';
 import type { Logger } from '../utils/logger.js';
 import { assertExistingPathInside } from '../utils/path-containment.js';
 import { isProviderAdapterShape } from './adapter-shape.js';
@@ -23,10 +24,6 @@ import {
 } from './registries/registry.js';
 
 let pluginProviderImportRevision = 0;
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 export async function loadPluginProviders(
   pluginsDir: string,

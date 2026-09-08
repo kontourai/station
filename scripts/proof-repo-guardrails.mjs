@@ -5660,13 +5660,22 @@ for (const legacyHelper of [
 const pluginConfigRoutes = readRequiredSource(
   '../src-server/routes/plugins/plugin-config-routes.ts',
 );
+// A route pin names a registration, not its line layout: once a handler
+// gains a middleware argument the formatter wraps `app.put(` onto its own
+// line, and a byte-literal `includes` reads that as the route being gone.
+// Compare with the whitespace after `(` and `,` collapsed on both sides so
+// the pin still fails when the registration is removed or renamed.
+const collapseCallLayout = (text) => text.replace(/([(,])\s+/g, '$1');
+const pluginConfigRoutesLayoutFree = collapseCallLayout(pluginConfigRoutes);
 for (const requiredHelper of [
   'export function registerPluginConfigRoutes',
   'pluginSettingsUpdates.add',
   "app.get('/:name/changelog'",
   "'/:name/overrides',",
 ]) {
-  if (!pluginConfigRoutes.includes(requiredHelper)) {
+  if (
+    !pluginConfigRoutesLayoutFree.includes(collapseCallLayout(requiredHelper))
+  ) {
     errors.push(`plugin-config-routes.ts must include ${requiredHelper}.`);
   }
 }

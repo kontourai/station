@@ -31,6 +31,7 @@
  * claude-skills-materialization.ts's containment machinery must for a
  * real workspace cwd.
  */
+
 import {
   readdir as nodeReaddir,
   rm as nodeRm,
@@ -38,6 +39,7 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
+import { errorMessage } from '../../utils/error-message.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 
 const SKILL_OVERLAYS_DIRNAME = 'claude-skill-overlays';
@@ -118,7 +120,7 @@ export async function removeSkillOverlayDir(
     dir = skillOverlayDirFor(sessionId, homeDir);
   } catch (error) {
     logger.warn?.(
-      `Claude skills overlay cleanup: refusing to remove anything (${error instanceof Error ? error.message : String(error)}).`,
+      `Claude skills overlay cleanup: refusing to remove anything (${errorMessage(error)}).`,
     );
     return;
   }
@@ -126,7 +128,7 @@ export async function removeSkillOverlayDir(
     await fs.rmRecursive(dir);
   } catch (error) {
     logger.warn?.(
-      `Claude skills overlay cleanup: failed to remove '${dir}': ${error instanceof Error ? error.message : String(error)}`,
+      `Claude skills overlay cleanup: failed to remove '${dir}': ${errorMessage(error)}`,
     );
   }
 }
@@ -212,7 +214,7 @@ export async function sweepStaleSkillOverlays(
       swept.push(entry);
     } catch (error) {
       logger.warn?.(
-        `Claude skills overlay sweep: failed to remove '${dir}': ${error instanceof Error ? error.message : String(error)}`,
+        `Claude skills overlay sweep: failed to remove '${dir}': ${errorMessage(error)}`,
       );
     }
   }

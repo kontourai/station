@@ -8,6 +8,7 @@ import {
 } from '../../services/plugins/plugin-activation-composition.js';
 import { createLocalPluginInstallationHost } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { errorMessage } from '../../utils/error-message.js';
 /**
  * VoltAgent runtime integration for Station
  * Handles dynamic agent loading, switching, and MCP tool management
@@ -622,7 +623,7 @@ export class StationRuntime {
           );
         }
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-          `App home profile: failed to resolve the claude app-home env; continuing with the global Claude Code config: ${error instanceof Error ? error.message : String(error)}`,
+          `App home profile: failed to resolve the claude app-home env; continuing with the global Claude Code config: ${errorMessage(error)}`,
         );
         return undefined;
       }
@@ -684,7 +685,7 @@ export class StationRuntime {
           );
         }
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-          `App home profile: failed to resolve the codex app-home env; continuing with the global Codex config: ${error instanceof Error ? error.message : String(error)}`,
+          `App home profile: failed to resolve the codex app-home env; continuing with the global Codex config: ${errorMessage(error)}`,
         );
         return undefined;
       }
@@ -1180,7 +1181,7 @@ export class StationRuntime {
               'Failed to release assignment claim on session exit',
               {
                 sessionId: event.sessionId,
-                error: error instanceof Error ? error.message : String(error),
+                error: errorMessage(error),
               },
             );
           });
@@ -1231,7 +1232,7 @@ export class StationRuntime {
           .catch((error) => {
             this.logger.warn('Failed to finalize worktree on session exit', {
               sessionId,
-              error: error instanceof Error ? error.message : String(error),
+              error: errorMessage(error),
             });
           });
       });
@@ -1258,7 +1259,7 @@ export class StationRuntime {
         })
         .catch((error) => {
           this.logger.warn('Startup assignment-claim reconciliation failed', {
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           });
         });
 

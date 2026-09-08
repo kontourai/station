@@ -17,8 +17,8 @@ import {
   engineControlPlaneCapability,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
-import type { SessionLifecycleState } from '../../../packages/contracts/src/session-lifecycle.js';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import {
   builtinStationControlServerPath,
@@ -35,7 +35,7 @@ const GENUINE_STATION_CONTROL_TOOLSERVER = {
   args: [builtinStationControlServerPath()],
 };
 
-import { validateSessionLifecycleTransition } from '../../../packages/contracts/src/session-lifecycle.js';
+import { validateSessionLifecycleTransition } from '@kontourai/station-contracts/session-lifecycle';
 import {
   ACPProcess,
   type ACPProcessOptions,

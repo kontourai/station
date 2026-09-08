@@ -49,6 +49,7 @@ import type {
 } from '@kontourai/station-contracts/workflow';
 import { WORKFLOW_NEXT_ACTION_STATUSES } from '@kontourai/station-contracts/workflow';
 import { workflowSidecarTransitions } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   flowAgentsRoot,
   legacyFlowAgentsRoot,
@@ -376,7 +377,7 @@ export class WorkflowSidecarService {
     } catch (error) {
       this.logger?.warn('Skipping invalid workflow sidecar', {
         taskSlug,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return null;
     }
@@ -388,14 +389,14 @@ export class WorkflowSidecarService {
       raw = fs.readFileSync(file, 'utf-8');
     } catch (error) {
       throw new WorkflowSidecarNotFoundError(
-        `Cannot read ${file}: ${error instanceof Error ? error.message : String(error)}`,
+        `Cannot read ${file}: ${errorMessage(error)}`,
       );
     }
     try {
       return JSON.parse(raw);
     } catch (error) {
       throw new WorkflowSidecarInvalidError(
-        `Invalid JSON in ${file}: ${error instanceof Error ? error.message : String(error)}`,
+        `Invalid JSON in ${file}: ${errorMessage(error)}`,
       );
     }
   }
@@ -526,7 +527,7 @@ export class WorkflowSidecarService {
         this.logger?.warn('Failed to load Flow Agents sidecar schema', {
           kind,
           schemaDir: this.schemaDir,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       }
     }

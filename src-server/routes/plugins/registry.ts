@@ -6,6 +6,7 @@ import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import { observePluginGrantRevisions } from '../../services/plugins/plugin-permissions.js';
+import { isRecord } from '../../utils/is-record.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 /**
  * Registry Routes — browse, install, and uninstall agents and tools
@@ -922,8 +923,4 @@ export function createRegistryRoutes(
   });
 
   return app;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }

@@ -4,6 +4,7 @@
  */
 
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
+import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 
 const logger = createLogger({ name: 'event-bus' });
@@ -102,7 +103,7 @@ export class EventBus {
     event: ServerEventName,
     error: unknown,
   ): void {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     const now = Date.now();
     const state = this.listenerFailures.get(listener);
     const sinceLastWarning = state

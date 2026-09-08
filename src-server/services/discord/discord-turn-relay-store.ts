@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { isNonEmptyString } from '../../utils/non-empty-string.js';
 
 export interface DiscordTurnRelay {
   turnId: string;
@@ -18,10 +19,6 @@ export interface DiscordTurnRelay {
 }
 
 const FILE_NAME = 'discord-turn-relays.json';
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
-}
 
 function isRelay(value: unknown): value is DiscordTurnRelay {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;

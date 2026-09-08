@@ -55,6 +55,7 @@ import {
   childProcessEnvironment,
   scrubBootInternalSecrets,
 } from '../../utils/child-process-environment.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type {
   ProviderAdapterShape,
   ProviderAdoptionHooks,
@@ -841,7 +842,7 @@ async function evaluateClaudePreToolPolicy(
     ]);
     return preToolPolicyHookOutput(decision);
   } catch (error) {
-    const reason = `Station pre-tool policy failed; tool execution was denied: ${error instanceof Error ? error.message : String(error)}`;
+    const reason = `Station pre-tool policy failed; tool execution was denied: ${errorMessage(error)}`;
     return preToolPolicyHookOutput({
       behavior: 'deny',
       denial: { allowed: false, reason },
@@ -1018,7 +1019,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // failure. Profile GC is a wave-2 follow-up, not implemented here.
       await deleteSession(cursor, { dir: cwd }).catch((error) => {
         (this.options.logger ?? console).warn?.(
-          `Claude discardSession: deleteSession failed for cursor '${cursor}' (possibly an app-home-profile session whose transcript lives under a different config root): ${error instanceof Error ? error.message : String(error)}`,
+          `Claude discardSession: deleteSession failed for cursor '${cursor}' (possibly an app-home-profile session whose transcript lives under a different config root): ${errorMessage(error)}`,
         );
       });
     }
@@ -1031,7 +1032,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     try {
       return await this.options.resolvePreToolPolicy(input);
     } catch (error) {
-      const reason = `Station pre-tool policy could not be prepared; tool execution was denied: ${error instanceof Error ? error.message : String(error)}`;
+      const reason = `Station pre-tool policy could not be prepared; tool execution was denied: ${errorMessage(error)}`;
       return async () => ({
         behavior: 'deny',
         denial: { allowed: false, reason },
@@ -1617,7 +1618,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       })
         .catch((error) => {
           (this.options.logger ?? console).warn?.(
-            `Claude skills overlay cleanup failed for '${overlayDir}': ${error instanceof Error ? error.message : String(error)}`,
+            `Claude skills overlay cleanup failed for '${overlayDir}': ${errorMessage(error)}`,
           );
         })
         .finally(() =>
@@ -1641,7 +1642,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         logger: this.options.logger,
       }).catch((error) => {
         (this.options.logger ?? console).warn?.(
-          `Claude skills materialization cleanup failed for '${record.session.cwd}': ${error instanceof Error ? error.message : String(error)}`,
+          `Claude skills materialization cleanup failed for '${record.session.cwd}': ${errorMessage(error)}`,
         );
       });
     }
@@ -2318,7 +2319,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           record.terminalResultObserved === 'binding-dead' ? 'dead' : 'error';
         return;
       }
-      const detail = error instanceof Error ? error.message : String(error);
+      const detail = errorMessage(error);
       const message = record.session.model
         ? `Claude model "${record.session.model}" failed: ${detail}`
         : detail;
@@ -2378,7 +2379,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         );
       }
       (this.options.logger ?? console).warn?.(
-        `Claude app-home profile lookup failed; continuing with the global Claude Code config: ${error instanceof Error ? error.message : String(error)}`,
+        `Claude app-home profile lookup failed; continuing with the global Claude Code config: ${errorMessage(error)}`,
       );
       return undefined;
     }
@@ -2406,7 +2407,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       return await augmentedSpawnEnv();
     } catch (error) {
       (this.options.logger ?? console).warn?.(
-        `Claude login-PATH augmentation failed; continuing with the unaugmented process env: ${error instanceof Error ? error.message : String(error)}`,
+        `Claude login-PATH augmentation failed; continuing with the unaugmented process env: ${errorMessage(error)}`,
       );
       return undefined;
     }
@@ -2513,7 +2514,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       };
     } catch (error) {
       (this.options.logger ?? console).warn?.(
-        `Claude executable resolution failed; continuing with the Claude Code CLI bundled with the Agent SDK: ${error instanceof Error ? error.message : String(error)}`,
+        `Claude executable resolution failed; continuing with the Claude Code CLI bundled with the Agent SDK: ${errorMessage(error)}`,
       );
       return {
         resolved: null,
@@ -2669,7 +2670,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         logger,
       }).catch((error) => {
         logger.warn?.(
-          `Claude skills overlay: stale-overlay sweep failed: ${error instanceof Error ? error.message : String(error)}`,
+          `Claude skills overlay: stale-overlay sweep failed: ${errorMessage(error)}`,
         );
       });
     } else if (cwd) {
@@ -2686,7 +2687,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         logger,
       }).catch((error) => {
         logger.warn?.(
-          `Claude skills materialization: stale-manifest sweep failed for '${cwd}': ${error instanceof Error ? error.message : String(error)}`,
+          `Claude skills materialization: stale-manifest sweep failed for '${cwd}': ${errorMessage(error)}`,
         );
       });
     }
@@ -2710,12 +2711,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         // "no materialized skills" for the session, but that outcome is
         // still receipted (delivery-failed), not dropped.
         logger.warn?.(
-          `Claude skills materialization failed${cwd ? ` for '${cwd}'` : ''}; continuing without materialized skills: ${error instanceof Error ? error.message : String(error)}`,
+          `Claude skills materialization failed${cwd ? ` for '${cwd}'` : ''}; continuing without materialized skills: ${errorMessage(error)}`,
         );
         const entry: CapabilityUndelivered = {
           capability: 'skills',
           reason: 'delivery-failed',
-          detail: error instanceof Error ? error.message : String(error),
+          detail: errorMessage(error),
         };
         agentCapabilityUndelivered.add(1, {
           provider: this.provider,
@@ -2830,12 +2831,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       };
     } catch (error) {
       logger.warn?.(
-        `Claude skills materialization failed for '${targetCwd}'; continuing without materialized skills: ${error instanceof Error ? error.message : String(error)}`,
+        `Claude skills materialization failed for '${targetCwd}'; continuing without materialized skills: ${errorMessage(error)}`,
       );
       const entry: CapabilityUndelivered = {
         capability: 'skills',
         reason: 'delivery-failed',
-        detail: error instanceof Error ? error.message : String(error),
+        detail: errorMessage(error),
       };
       agentCapabilityUndelivered.add(1, {
         provider: this.provider,

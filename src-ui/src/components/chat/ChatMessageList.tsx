@@ -27,7 +27,7 @@ import {
 } from './chatScrollAnchor';
 import type { ForkTurnSource } from './fork-turn-source';
 import { formatFormSubmission } from './formSubmission';
-import { MessageBubble } from './MessageBubble';
+import { MessageBubble, type MessageBubbleSession } from './MessageBubble';
 import { ReasoningSection } from './ReasoningSection';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { SessionSummaryCard } from './SessionSummaryCard';
@@ -393,12 +393,40 @@ function ChatMessageListComponent({
     return `${originSessionId}:message:${msg.timestamp ?? 'untimed'}:${msg.role}:${msg.content}`;
   };
 
+  // `useDerivedSessions` mints a new `ChatSession` per streamed token by
+  // design, so handing the whole object to a memoised row made every mounted
+  // bubble re-render on every token. These are the only fields a row reads
+  // (`MessageBubbleSession`); keyed on their values, the object is stable
+  // across the tokens that do not move any of them.
+  const bubbleSession: MessageBubbleSession = useMemo(
+    () => ({
+      id: activeSession.id,
+      agentSlug: activeSession.agentSlug,
+      agentName: activeSession.agentName,
+      projectSlug: activeSession.projectSlug,
+      conversationId: activeSession.conversationId,
+      messageCount: messages.length,
+      isThinking: activeSession.isThinking,
+      pendingApprovalCount: activeSession.pendingApprovals?.length,
+    }),
+    [
+      activeSession.id,
+      activeSession.agentSlug,
+      activeSession.agentName,
+      activeSession.projectSlug,
+      activeSession.conversationId,
+      activeSession.isThinking,
+      activeSession.pendingApprovals?.length,
+      messages.length,
+    ],
+  );
+
   const renderDefaultMessage = (msg: ChatMessage, idx: number) => (
     <MessageBubble
       key={`${activeSession.id}-msg-${messageAnchorKey(msg)}`}
       msg={msg as any}
       idx={idx}
-      activeSession={activeSession as any}
+      activeSession={bubbleSession}
       agents={agents as any}
       chatFontSize={fontSize}
       showReasoning={showReasoning}

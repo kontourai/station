@@ -4,6 +4,7 @@ import type {
   ProviderSendTurnInput,
 } from '../../providers/adapter-shape.js';
 import { composeAmbientTurnText } from '../../utils/ambient-context.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
@@ -281,7 +282,7 @@ export class CredentialProfileRecovery {
           {
             provider: adapter.provider,
             threadId,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           },
         );
       }

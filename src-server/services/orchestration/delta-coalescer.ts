@@ -1,4 +1,5 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 
 const logger = createLogger({ name: 'delta-coalescer' });
@@ -405,7 +406,7 @@ export class DeltaCoalescer {
       this.logger.warn('Content delta could not be published', {
         method: event.method,
         threadId: event.threadId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
         ...(suppressed > 0
           ? { suppressedSincePreviousWarning: suppressed }
           : {}),

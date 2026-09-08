@@ -520,22 +520,6 @@ function registerPreparedInto(
   targetStore.set(registration.type, byWorkspace);
 }
 
-export async function registerPreparedPluginProviders(
-  registrations: PreparedPluginProviderRegistration[],
-): Promise<void> {
-  const sources = new Set(
-    registrations.map((registration) => registration.source),
-  );
-  if (sources.size > 1) {
-    throw new Error(
-      'Incremental plugin provider registration requires one source generation.',
-    );
-  }
-  const source = sources.values().next().value;
-  if (!source) return;
-  await replacePluginProvidersForSource(source, registrations);
-}
-
 async function replacePluginProvidersForSourceInsideMutation(
   source: string,
   registrations: PreparedPluginProviderRegistration[],
@@ -834,19 +818,11 @@ export function createProviderAdapterRegistry(
 
 // ── Auth ───────────────────────────────────────────────
 
-export function registerAuthProvider(provider: IAuthProvider) {
-  registerProvider('auth', provider);
-}
-
 export function getAuthProvider(): IAuthProvider {
   return getProvider<IAuthProvider>('auth') ?? new DefaultAuthProvider();
 }
 
 // ── User Identity ──────────────────────────────────────
-
-export function registerUserIdentityProvider(provider: IUserIdentityProvider) {
-  registerProvider('userIdentity', provider);
-}
 
 export function getUserIdentityProvider(): IUserIdentityProvider {
   return (
@@ -856,12 +832,6 @@ export function getUserIdentityProvider(): IUserIdentityProvider {
 }
 
 // ── User Directory ─────────────────────────────────────
-
-export function registerUserDirectoryProvider(
-  provider: IUserDirectoryProvider,
-) {
-  registerProvider('userDirectory', provider);
-}
 
 export function getUserDirectoryProvider(): IUserDirectoryProvider {
   return (

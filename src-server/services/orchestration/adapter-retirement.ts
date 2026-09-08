@@ -2,6 +2,7 @@ import type {
   ProviderAdapterShape,
   ProviderSession,
 } from '../../providers/adapter-shape.js';
+import { errorMessage } from '../../utils/error-message.js';
 
 /** Narrow structural logger: the module warns, never debugs. */
 export type AdapterRetirementLogger = {
@@ -105,7 +106,7 @@ export class AdapterRetirement {
     ).catch((error) => {
       this.deps.logger.warn('Replaced provider adapter cleanup failed', {
         provider: adapter.provider,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     });
   }
@@ -172,7 +173,7 @@ export class AdapterRetirement {
       this.deps.logger.warn('Obsolete provider session cleanup failed', {
         provider: adapter.provider,
         threadId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       const currentRetirement = this.adapterRetirementByAdapter.get(adapter);
       if (currentRetirement) {

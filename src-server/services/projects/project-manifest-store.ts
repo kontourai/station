@@ -133,6 +133,8 @@ import {
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { projectManifestBackfills } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
+import { isRecord } from '../../utils/is-record.js';
 import { createLogger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
@@ -228,15 +230,11 @@ export interface ProjectManifestStoreOptions {
   readRemotes?: CheckoutRemoteReader;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function validateManifestRecord(
   value: unknown,
   filePath: string,
 ): ProjectManifestRecord {
-  if (!isPlainObject(value)) {
+  if (!isRecord(value)) {
     throw new ProjectManifestUnreadableError(filePath, ['must be an object']);
   }
   // Gate FIRST: a version this Station does not know is refused by name, never
@@ -384,7 +382,7 @@ export class ProjectManifestStore {
       // downgrade the project to the legacy path and then attempt a backfill
       // that can never succeed.
       throw new ProjectManifestUnreadableError(filePath, [
-        `not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+        `not valid JSON: ${errorMessage(error)}`,
       ]);
     }
     return validateManifestRecord(raw, filePath);

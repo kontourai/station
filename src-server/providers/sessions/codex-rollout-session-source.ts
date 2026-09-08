@@ -3,6 +3,7 @@ import { existsSync, lstatSync, opendirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { isRecord } from '../../utils/is-record.js';
 import { projectCodexToolOutput } from '../adapters/codex-tool-output.js';
 import type {
   AttachedSessionCursor,
@@ -1349,10 +1350,6 @@ function boundedPathText(value: unknown): string | undefined {
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isOffset(value: unknown): value is number {
