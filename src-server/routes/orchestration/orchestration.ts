@@ -1014,9 +1014,13 @@ export function createOrchestrationRoutes(
       try {
         await refresh({ userId });
       } catch (error) {
-        // Never rethrown: this is a background reconciliation, and an
-        // unhandled rejection here would take down the process for a peer
-        // that happened to be unreachable.
+        // Never rethrown, and not because a rejection would crash anything:
+        // `crash-handlers.ts`'s `unhandledRejection` listener logs and
+        // deliberately does NOT exit. Swallowing it here keeps a peer's
+        // failure out of two places it does not belong — the response, which
+        // the poll already answered from the local store, and that
+        // process-level listener, which logs at `error` and would file an
+        // ordinary 1.5s peer timeout as a server error.
         (deps.logger.warn ?? deps.logger.debug)(
           'Peer delegation activity refresh failed',
           { error: error instanceof Error ? error.message : String(error) },
