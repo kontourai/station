@@ -3537,8 +3537,11 @@ button:hover {
 }
 
 .chat-dock__active-identity-origin {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   flex: 0 1 auto;
-  min-width: min(145px, 30%);
+  min-width: min(165px, 35%);
 }
 
 /* #1552 D3: quiet until the row is engaged.

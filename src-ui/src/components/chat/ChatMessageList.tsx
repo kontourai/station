@@ -509,11 +509,11 @@ function ChatMessageListComponent({
   );
 
   const renderToolCall = useCallback(
-    (part: ChatContentPart, i: number) => (
+    (part: ChatContentPart, i: number, expanded = false) => (
       <ToolCallDisplay
         key={i}
         toolCall={part}
-        showDetails={showToolDetails}
+        showDetails={expanded || showToolDetails}
         onApprove={
           part.needsApproval && part.approvalId
             ? (action) =>

@@ -3,7 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useSendMessage } from '../../hooks/useActiveChatSessionMessaging';
+import { displayProvider } from '../../utils/sessionDisplay';
 import { Button } from '../Button';
+import { AgentIcon } from '../icons/AgentIcon';
 import { SessionDetail } from '../session-detail/SessionDetail';
 import { SkeletonBlock } from '../state';
 import './ImportedConversationPane.css';
@@ -99,7 +101,18 @@ export default function ImportedConversationPane({
     <section className="imported-conversation-pane" aria-label="Conversation">
       {showOrigin && (
         <div className="imported-conversation-pane__origin">
-          <span>{originLabel}</span>
+          <span className="imported-conversation-pane__origin-label">
+            {source.data && (
+              <AgentIcon
+                agent={{
+                  name: displayProvider(source.data.session),
+                  slug: source.data.session.provider,
+                }}
+                size={18}
+              />
+            )}
+            {originLabel}
+          </span>
           {onDetails && (
             <Button size="sm" variant="secondary" onClick={onDetails}>
               Details

@@ -19,3 +19,9 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
+
+.imported-conversation-pane__origin-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

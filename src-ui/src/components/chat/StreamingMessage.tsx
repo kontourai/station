@@ -22,7 +22,11 @@ export type StreamingMessageProps = {
   agentIconStyle: React.CSSProperties;
   fontSize: number;
   showReasoning?: boolean;
-  renderToolCall?: (part: ChatContentPart, index: number) => React.ReactNode;
+  renderToolCall?: (
+    part: ChatContentPart,
+    index: number,
+    expanded?: boolean,
+  ) => React.ReactNode;
   renderReasoning?: (
     content: string,
     index: number,

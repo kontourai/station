@@ -104,11 +104,13 @@ export function ChatDockActiveIdentity({
 
   return (
     <div className="chat-dock__active-identity">
-      <AgentIcon
-        agent={iconSubject}
-        size={20}
-        className="chat-dock__active-identity-avatar"
-      />
+      {!originLabel && (
+        <AgentIcon
+          agent={iconSubject}
+          size={20}
+          className="chat-dock__active-identity-avatar"
+        />
+      )}
       <div className="chat-dock__active-identity-text">
         {agentName && !originLabel && (
           <strong className="chat-dock__active-identity-agent">
@@ -129,6 +131,7 @@ export function ChatDockActiveIdentity({
             className={`chat-dock__active-identity-engine${originLabel ? ' chat-dock__active-identity-origin' : ''}`}
             title={engineTrail}
           >
+            {originLabel && <AgentIcon agent={iconSubject} size={18} />}
             {engineTrail}
           </span>
         )}
