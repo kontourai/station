@@ -189,31 +189,43 @@ export function useNavigation<T>(
 
   // Read the latest selector/isEqual through refs rather than as
   // useSyncExternalStore dependencies, so callers can pass inline functions
-  // without memoizing them (mirrors React's own selector shim, and
-  // `useActiveChatSelector`).
+  // without memoizing them and `subscribe` never churns. The selection is
+  // cached against the snapshot AND the selector identity, so a selector that
+  // closes over a prop re-selects when that prop changes, with no store write
+  // — the property React's own `useSyncExternalStoreWithSelector` gets by
+  // memoizing on `[getSnapshot, selector, isEqual]`. An inline selector
+  // therefore re-runs on every render of its consumer; an equal result keeps
+  // the previous reference, so that costs a selector call and no re-render.
+  // A selector that returns a fresh, never-equal value on every call (a
+  // mapped array of objects, say) must supply its own `isEqual` or be
+  // memoized, exactly as React's shim requires.
   const selectorRef = useRef(selector);
   selectorRef.current = selector;
   const isEqualRef = useRef(isEqual);
   isEqualRef.current = isEqual;
 
-  const cacheRef = useRef<{ raw: NavigationState; selected: T } | null>(null);
+  const cacheRef = useRef<{
+    raw: NavigationState;
+    selector: (state: NavigationState) => T;
+    selected: T;
+  } | null>(null);
 
   const getSnapshot = useCallback((): NavigationState | T => {
     const raw = navigationStore.getSnapshot();
     const select = selectorRef.current;
     if (!select) return raw;
     const cached = cacheRef.current;
-    if (cached && cached.raw === raw) {
+    if (cached && cached.raw === raw && cached.selector === select) {
       return cached.selected;
     }
     const nextSelected = select(raw);
     if (cached && isEqualRef.current(cached.selected, nextSelected)) {
       // Equal by value — keep the old reference so useSyncExternalStore (and
       // any memoized consumer downstream) sees no change.
-      cacheRef.current = { raw, selected: cached.selected };
+      cacheRef.current = { raw, selector: select, selected: cached.selected };
       return cached.selected;
     }
-    cacheRef.current = { raw, selected: nextSelected };
+    cacheRef.current = { raw, selector: select, selected: nextSelected };
     return nextSelected;
   }, []);
 

@@ -2,8 +2,8 @@
  * @vitest-environment jsdom
  */
 
-import { act, render } from '@testing-library/react';
-import { Profiler } from 'react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { Profiler, useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
@@ -119,6 +119,7 @@ import {
   NavigationProvider,
   navigationStore,
   useNavigation,
+  useNavigationActions,
 } from '../NavigationContext';
 import type { ProjectMetadata } from '../ProjectsContext';
 
@@ -173,6 +174,10 @@ function renderRowWithProbe(): {
 describe('navigation store fan-out to a per-project sidebar row', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/');
+    // `navigate` commits the parsed URL; `setDockState` alone early-returns
+    // when the search string is already what it would write, which would let
+    // a previous test's `selectedProject` survive into this one.
+    navigationStore.navigate('/');
     navigationStore.setDockState(false);
   });
 
@@ -290,6 +295,93 @@ describe('navigation store fan-out to a per-project sidebar row', () => {
     });
     expect(navigationStore.getSnapshot().selectedProject).toBe('demo');
     expect(selectorRenders).toBeGreaterThan(selectorRendersAfterMount);
+  });
+
+  test('the actions object is identical across a store write and a provider re-render', () => {
+    // The whole reason `useNavigationActions` can skip the subscription is
+    // that the provider publishes ONE actions object for its lifetime
+    // (archive#3796). Every consumer destructures it, so nothing else in the
+    // suite would notice this hook handing back a fresh object per render —
+    // and a fresh one puts every consumer's `useEffect`/`useCallback`
+    // dependency on it back in play.
+    const seen: unknown[] = [];
+    let forceHostRender: () => void = () => {};
+
+    function ActionsProbe() {
+      seen.push(useNavigationActions());
+      return null;
+    }
+
+    function Host() {
+      const [tick, setTick] = useState(0);
+      forceHostRender = () => setTick(tick + 1);
+      return (
+        <NavigationProvider>
+          <ActionsProbe />
+          <span>{tick}</span>
+        </NavigationProvider>
+      );
+    }
+
+    render(<Host />);
+    expect(seen).toHaveLength(1);
+
+    act(() => {
+      navigationStore.setDockState(true);
+    });
+    // A store write does not reach an actions-only consumer at all.
+    expect(navigationStore.getSnapshot().isDockOpen).toBe(true);
+    expect(seen).toHaveLength(1);
+
+    // Re-render the provider itself; the actions must survive it by identity.
+    act(() => {
+      forceHostRender();
+    });
+    expect(seen).toHaveLength(2);
+    expect(seen[1]).toBe(seen[0]);
+  });
+
+  test('a selector that closes over a prop re-selects when the prop changes', () => {
+    // No store write happens here at all. Caching the selection on snapshot
+    // identity alone made the consumer read a value built from the previous
+    // prop until the next unrelated navigation write.
+    const seen: string[] = [];
+
+    function Child({ label }: { label: string }) {
+      const value = useNavigation(
+        (state) => `${label}:${state.selectedProject ?? 'none'}`,
+      );
+      seen.push(value);
+      return <div>{value}</div>;
+    }
+
+    function Parent() {
+      const [label, setLabel] = useState('a');
+      return (
+        <>
+          <button type="button" onClick={() => setLabel('b')}>
+            flip
+          </button>
+          <Child label={label} />
+        </>
+      );
+    }
+
+    render(
+      <NavigationProvider>
+        <Parent />
+      </NavigationProvider>,
+    );
+    const before = seen[seen.length - 1];
+    expect(before.startsWith('a:')).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'flip' }));
+
+    // Same store value, new prop: the selected half is unchanged and the
+    // closed-over half moved, which is only true if the selection re-ran.
+    const after = `b:${before.slice('a:'.length)}`;
+    expect(seen[seen.length - 1]).toBe(after);
+    expect(screen.getByText(after)).toBeTruthy();
   });
 
   test('a sidebar row still re-renders when the route it reads changes', () => {
