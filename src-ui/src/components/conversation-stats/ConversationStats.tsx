@@ -4,6 +4,17 @@ import { LazyBoundary } from '../LazyBoundary';
 
 // The stats panel is opened from a toolbar toggle and closed most of the time,
 // so its body loads on first open rather than riding the first-paint bundle.
+/**
+ * The server writes conversation stats from a turn-end hook, several awaits
+ * after the transcript row the client counts, so the two are unordered: a
+ * refresh driven by message count alone can land before the write and leave
+ * the previous turn's tokens on screen until the next message. The query owns
+ * this poll, which is why it is not a second `setInterval` beside it — it is
+ * inert while the panel is closed (`enabled: isVisible`) and paused while the
+ * tab is hidden (React Query's `refetchIntervalInBackground` default).
+ */
+const STATS_REFRESH_MS = 2_000;
+
 const loadConversationStatsModal = () =>
   import('./ConversationStatsModal').then((m) => ({
     default: m.ConversationStatsModal,
@@ -35,12 +46,11 @@ export function ConversationStats({
     error,
     refetch,
     loading: isLoading,
-  } = useStats(agentSlug, conversationId, apiBase, isVisible);
+  } = useStats(agentSlug, conversationId, apiBase, isVisible, STATS_REFRESH_MS);
 
-  // One refresh trigger, not two. The transcript's message count is what
-  // actually moves these numbers, and it already drives a refetch; the
-  // two-second interval that sat beside it re-read the same endpoint on a
-  // schedule nothing in the conversation was tied to.
+  // The message count is the trigger that reflects the conversation; the poll
+  // above is what covers the window in which the server has not written the
+  // turn's stats yet. Both are refreshes of one query, not two caches.
   useEffect(() => {
     if (messageCount !== undefined && messageCount > 0) {
       refetch();
