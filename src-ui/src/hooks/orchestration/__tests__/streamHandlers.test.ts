@@ -1,14 +1,68 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+// `vi.doMock` is NOT hoisted, so this static import is evaluated before any
+// mock is registered and always yields the REAL module.
+import * as actualActiveChatsStoreModule from '../../../contexts/active-chats-store';
+
+/**
+ * ONE store object for this whole file, handed out by every mock generation.
+ *
+ * station#1045: each `beforeEach` used to build a NEW store inside the mock
+ * factory, so the instance a handler module captured at ITS evaluation was
+ * only the instance this file reads while both came from the same generation.
+ * `handleRuntimeErrorEvent` reaches the store through `turnHandlers`' own
+ * module-level binding; when the handler module and this file's
+ * `activeChatsStore` came from different generations the handler's
+ * `updateChat` found no chat and returned silently (see `updateChat`'s
+ * `if (!current) return`), which surfaced as a missing marker in whichever
+ * test happened to call `failTurnA`. That is scheduling-dependent, so it
+ * passed alone and failed inside the corpus.
+ *
+ * Returning this same object from every generation removes the possibility
+ * rather than narrowing the window: a handler module from ANY generation and
+ * this file necessarily write to and read from the same store.
+ *
+ * Per-test isolation no longer comes from a new instance. It comes from the
+ * no-op storage below (so nothing is read from or written to `sessionStorage`
+ * at all) plus `resetSharedTestStore`, which drops every chat between tests.
+ */
+const sharedTestStore = new actualActiveChatsStoreModule.ActiveChatsStore({
+  storage: { getItem: () => null, setItem: () => {} },
+});
+
+/** Drop every chat so each test starts from an empty store. */
+function resetSharedTestStore() {
+  for (const sessionId of Object.keys(sharedTestStore.getSnapshot())) {
+    sharedTestStore.removeChat(sessionId);
+  }
+  // Sharing one instance is only safe while every test still starts empty, so
+  // a leak must say so here rather than surface as a puzzling assertion in
+  // whichever later test happens to read the leftover state.
+  const remaining = Object.keys(sharedTestStore.getSnapshot());
+  if (remaining.length > 0) {
+    throw new Error(
+      `sharedTestStore still holds [${remaining.join(', ')}] after reset, so ` +
+        `the previous test's state would leak into this one. Check that the ` +
+        `chat was created through the store (initChat/updateChat) rather ` +
+        `than written into its internals.`,
+    );
+  }
+}
+
+/** The store module as every mocked generation sees it. */
+function mockedActiveChatsStoreModule() {
+  return { ...actualActiveChatsStoreModule, activeChatsStore: sharedTestStore };
+}
 
 // archive#3117: `handleToolCompletedEvent` is the LIVE tool-outcome path —
 // reached from `handleOrchestrationEvent` for every foreground chat — unlike
 // the dead `ToolLifecycleHandler`/`handleStreamEvent` these tests replaced
 // (archive#3168 finished removing both: `ToolLifecycleHandler.ts` and its
 // test file are deleted, and `useStreamingMessage.ts` no longer exposes
-// `handleStreamEvent`). A fresh, isolated store instance per test avoids
-// sessionStorage bleed between tests and sessions.
+// `handleStreamEvent`). Isolation between tests comes from the shared store's
+// no-op storage and `resetSharedTestStore`, not from a per-test instance —
+// see `sharedTestStore` above for why the instance must not change.
 let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChatsStore;
 let handleToolStartedEvent: typeof import('../streamHandlers').handleToolStartedEvent;
 let handleToolCompletedEvent: typeof import('../streamHandlers').handleToolCompletedEvent;
@@ -44,20 +98,18 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
       setItem: () => {},
     });
     vi.resetModules();
+    resetSharedTestStore();
 
-    vi.doMock('../../../contexts/active-chats-store', async () => {
-      const actual = await vi.importActual<
-        typeof import('../../../contexts/active-chats-store')
-      >('../../../contexts/active-chats-store');
-      const store = new actual.ActiveChatsStore({
-        storage: { getItem: () => null, setItem: () => {} },
-      });
-      return { ...actual, activeChatsStore: store };
-    });
+    vi.doMock(
+      '../../../contexts/active-chats-store',
+      mockedActiveChatsStoreModule,
+    );
 
-    ({ activeChatsStore } = await import(
-      '../../../contexts/active-chats-store'
-    ));
+    // Read the shared instance directly rather than through the import: the
+    // handlers reach it through the mock, so if a future change ever hands a
+    // generation a different object these reads and their writes diverge and
+    // this file fails, instead of silently agreeing.
+    activeChatsStore = sharedTestStore;
     ({
       handleToolStartedEvent,
       handleToolCompletedEvent,
@@ -841,14 +893,13 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
         // the helper reads, so `threadId` is always a key here and only
         // "chat present" is reachable.
         //
-        // Present-with-0-messages is the interesting one, and it has exactly
-        // one cause. `getChatKeyForExecutionSession` returns immediately when
-        // `chats[sessionId]` exists, and it does exist here, so a lookup miss
-        // in THIS store is impossible — the handler must be holding a
-        // different module instance (the station#1045 class). The silent
-        // `updateChat` no-op is not a competing explanation but how that looks
-        // from the other side: the handler's store never saw `initChat`, so
-        // its own lookup finds nothing and returns.
+        // Present-with-0-messages used to mean the handler held a different
+        // store instance than this file (the station#1045 class): its own
+        // lookup found nothing and `updateChat` returned silently. Every
+        // mocked generation now returns `sharedTestStore`, so that is no
+        // longer reachable — reaching it means something handed a generation a
+        // different object, and the invariant at the top of this file is the
+        // thing to check first.
         //
         // One cause the investigation ruled out: `handleRuntimeErrorEvent` is
         // synchronous end to end, so a not-yet-settled dispatch is not among
@@ -862,9 +913,11 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
               `${chat?.messages?.length ?? 0} message(s).\n` +
               `- Present, 0 messages: the write never reached THIS store. A ` +
               `key miss here is impossible (the chat exists, so the lookup ` +
-              `returns its key directly), so the handler is holding a ` +
-              `different module instance and its own updateChat found no ` +
-              `chat and returned silently — the station#1045 class.\n` +
+              `returns its key directly), so the handler wrote to a ` +
+              `different store object and its own updateChat found no chat ` +
+              `and returned silently — the station#1045 class, which ` +
+              `sharedTestStore exists to make unreachable. Check that every ` +
+              `doMock of the store module still returns sharedTestStore.\n` +
               `- Present, >=1 messages: the write landed here and the ` +
               `marker's turnId or role changed.\n` +
               `- ABSENT: beforeEach's initChat did not take on the instance ` +
@@ -1242,16 +1295,12 @@ describe('handleTextDeltaEvent — per-token plan derivation (station#3351)', ()
       setItem: () => {},
     });
     vi.resetModules();
+    resetSharedTestStore();
 
-    vi.doMock('../../../contexts/active-chats-store', async () => {
-      const actual = await vi.importActual<
-        typeof import('../../../contexts/active-chats-store')
-      >('../../../contexts/active-chats-store');
-      const store = new actual.ActiveChatsStore({
-        storage: { getItem: () => null, setItem: () => {} },
-      });
-      return { ...actual, activeChatsStore: store };
-    });
+    vi.doMock(
+      '../../../contexts/active-chats-store',
+      mockedActiveChatsStoreModule,
+    );
 
     upsertTextPartCalls = 0;
     vi.doMock('../messageParts', async () => {
@@ -1268,9 +1317,7 @@ describe('handleTextDeltaEvent — per-token plan derivation (station#3351)', ()
       };
     });
 
-    ({ activeChatsStore } = await import(
-      '../../../contexts/active-chats-store'
-    ));
+    activeChatsStore = sharedTestStore;
     ({ handleTextDeltaEvent } = await import('../streamHandlers'));
 
     activeChatsStore.initChat(threadId, {
