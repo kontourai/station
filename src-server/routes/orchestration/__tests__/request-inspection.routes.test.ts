@@ -15,6 +15,7 @@ import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness';
+import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { EventBus } from '../../../services/orchestration/event-bus';
 import { EventStore } from '../../../services/orchestration/event-store';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service';
@@ -83,7 +84,7 @@ async function fixture(hosted = false) {
       : {}),
   });
   service.initialize();
-  await service.whenSessionAttachmentSettled();
+  await awaitSessionAttachmentSettled(service);
   store.upsertSession({
     provider: 'claude',
     threadId: 'session-a',

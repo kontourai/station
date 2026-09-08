@@ -14,6 +14,7 @@ import {
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { createSearchRoutes } from '../../../routes/search.js';
 import { requiredPairingScope } from '../../../security/pairing-route-scopes.js';
 import { EventBus } from '../../orchestration/event-bus.js';
@@ -49,7 +50,7 @@ async function fixture(hosted = false) {
     message('hidden', 'alpha', 'beta');
   }
   orchestration.initialize();
-  await orchestration.whenSessionAttachmentSettled();
+  await awaitSessionAttachmentSettled(orchestration);
   const createTasks = vi.spyOn(graph, 'createPersonalSearchReader');
   const createTranscripts = vi.spyOn(
     orchestration,

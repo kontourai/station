@@ -53,6 +53,7 @@ import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
@@ -321,7 +322,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         await orchestration.shutdown();
         await expect.poll(() => store.close().kind).toBe('closed');
       });
-      await orchestration.whenSessionAttachmentSettled();
+      await awaitSessionAttachmentSettled(orchestration);
       runtimeSearch = createRuntimeSearch({
         stationId: '22222222-2222-4222-8222-222222222222',
         tasks: new TaskGraphService(roomHomeDir, {

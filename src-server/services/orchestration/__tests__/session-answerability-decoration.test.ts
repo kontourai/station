@@ -49,6 +49,7 @@ import type { RequestAnswerability } from '@kontourai/station-contracts/orchestr
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
@@ -239,7 +240,7 @@ describe('session-summary answerability decoration (station#1778)', () => {
       logger,
     });
     service.initialize();
-    await service.whenSessionAttachmentSettled();
+    await awaitSessionAttachmentSettled(service);
     return service;
   }
 

@@ -4,9 +4,9 @@
  * `session.attachment.settled` is a milestone receipt and carries no
  * publisher: production has one process and one boot, so there was never a
  * second runtime to distinguish. A test suite that builds a runtime per test
- * does not have that shape, and the barrier every such suite used —
- * `waitForReceipt(r => r.kind === 'session.attachment.settled')` — resolves
- * on whichever runtime settles first.
+ * does not have that shape, and the barrier every such suite used — a receipt
+ * wait keyed on that `kind` alone — resolves on whichever runtime settles
+ * first.
  *
  * The observed failure that shape produces: under corpus load one test's wait
  * exceeds `waitForReceipt`'s timeout and is abandoned; its runtime settles a
@@ -17,6 +17,10 @@
  * as `expected [] to deeply equal [ '<thread>-owned' ]`, with the thread
  * varying by whichever test lost — which is why it read as a load flake
  * rather than a barrier defect.
+ *
+ * These tests await the accessors directly rather than through
+ * `__test-utils__/session-runtime-barriers.ts`: their subject IS a barrier
+ * staying pending, and those wrappers throw on exactly that.
  *
  * WHAT THIS FILE PINS, and it is one property: a runtime whose own recovery
  * is still in flight does not become settled because a DIFFERENT runtime
@@ -188,6 +192,61 @@ describe('session attachment barrier (station#1707)', () => {
 
     await held.shutdown();
     await other.shutdown();
+  });
+
+  /**
+   * `session.recovery.completed` has the same publisher-less shape, and it
+   * fires EARLIER in the same chain, so a stale one is worse than a red: the
+   * next test proceeds against a read model recovery has not populated and
+   * passes vacuously. Its `threadIds` are not a substitute for a publisher —
+   * they are the threads the pass RESTORED, and the receipt below names a
+   * thread the held runtime's store has never heard of.
+   */
+  test('a runtime still recovering is not completed by another runtime completing', async () => {
+    let releaseRecovery: () => void = () => {};
+    const recoveryHeld = new Promise<void>((resolve) => {
+      releaseRecovery = resolve;
+    });
+    const held = new OrchestrationService({
+      adapterRegistry: createRegistry([new BarrierAdapter(recoveryHeld)]),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+    });
+    held.initialize();
+    const heldBarrier = held.whenSessionRecoveryCompleted();
+
+    // A separate store, so the other runtime's receipt carries a thread id
+    // this one has never seen — the "stale receipt from a prior runtime"
+    // case, at its most obviously foreign.
+    const otherTmp = mkdtempSync(join(tmpdir(), 'attachment-barrier-other-'));
+    const otherStore = new EventStore(join(otherTmp, 'orchestration.sqlite'));
+    otherStore.upsertSession({
+      provider: 'claude',
+      threadId: 'thread-belonging-to-the-other-runtime',
+      status: 'ready',
+      createdAt: '2026-09-07T00:00:00.000Z',
+      updatedAt: '2026-09-07T00:00:01.000Z',
+    });
+    const other = new OrchestrationService({
+      adapterRegistry: createRegistry([new BarrierAdapter()]),
+      eventBus: new EventBus(),
+      eventStore: otherStore,
+      logger,
+    });
+    other.initialize();
+    await other.whenSessionRecoveryCompleted();
+
+    expect(await stateOf(heldBarrier)).toBe('pending');
+
+    releaseRecovery();
+    await heldBarrier;
+    expect(await stateOf(heldBarrier)).toBe('settled');
+
+    await held.shutdown();
+    await other.shutdown();
+    otherStore.close();
+    rmSync(otherTmp, { recursive: true, force: true });
   });
 
   test('a runtime that never initializes never settles', async () => {

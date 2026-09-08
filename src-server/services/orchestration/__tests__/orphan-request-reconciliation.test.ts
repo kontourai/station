@@ -65,6 +65,10 @@ import type { SessionLifecycleState } from '@kontourai/station-contracts/session
 import { SESSION_LIFECYCLE_STATES } from '@kontourai/station-contracts/session-lifecycle';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import {
+  awaitSessionAttachmentSettled,
+  awaitSessionRecoveryCompleted,
+} from '../../../__test-utils__/session-runtime-barriers.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
@@ -593,7 +597,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     ).toBe(false);
 
     service.initialize();
-    await service.whenSessionAttachmentSettled();
+    await awaitSessionAttachmentSettled(service);
     wireApprovalInboxNotifications(
       eventBus,
       provider,
@@ -637,7 +641,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
       logger,
     });
     restarted.initialize();
-    await restarted.whenSessionAttachmentSettled();
+    await awaitSessionAttachmentSettled(restarted);
     expect(eventStore.listEvents(threadId).length).toBe(eventsBefore);
   });
 
@@ -703,7 +707,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     );
 
     service.initialize();
-    await service.whenSessionAttachmentSettled();
+    await awaitSessionAttachmentSettled(service);
 
     const beforeRegistration = await projection.list();
     expect(
@@ -762,8 +766,8 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     });
 
     service.initialize();
-    await service.whenSessionRecoveryCompleted();
-    await service.whenSessionAttachmentSettled();
+    await awaitSessionRecoveryCompleted(service);
+    await awaitSessionAttachmentSettled(service);
 
     expect(
       eventStore
@@ -852,8 +856,8 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     });
 
     service.initialize();
-    await service.whenSessionRecoveryCompleted();
-    await service.whenSessionAttachmentSettled();
+    await awaitSessionRecoveryCompleted(service);
+    await awaitSessionAttachmentSettled(service);
 
     // Fixture sanity, both halves — without these the test could pass for
     // reasons that have nothing to do with the guard under test.
@@ -918,7 +922,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     });
 
     service.initialize();
-    await service.whenSessionAttachmentSettled();
+    await awaitSessionAttachmentSettled(service);
     // archive#3476: the resume this session cannot survive is now attempted
     // when the conversation is next used rather than at boot. The shape it
     // leaves behind — `status: 'error'`, retryable, still projecting — is
@@ -1005,7 +1009,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     });
 
     service.initialize();
-    await service.whenSessionAttachmentSettled();
+    await awaitSessionAttachmentSettled(service);
 
     // Fixture sanity: the states really folded the way the pin depends on.
     expect(
@@ -1105,7 +1109,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     expect(early?.session.answerability).toEqual({ answerable: true });
 
     releaseRecovery();
-    await service.whenSessionAttachmentSettled();
+    await awaitSessionAttachmentSettled(service);
 
     const settled = await service.readSession(
       threadId,
@@ -1183,7 +1187,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
       logger,
     });
     service.initialize();
-    await service.whenSessionAttachmentSettled();
+    await awaitSessionAttachmentSettled(service);
     await settleBeyondOneMacrotask();
 
     for (const state of SESSION_LIFECYCLE_STATES) {
@@ -1240,7 +1244,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
       logger,
     });
     service.initialize();
-    await service.whenSessionAttachmentSettled();
+    await awaitSessionAttachmentSettled(service);
 
     expect(
       eventStore
@@ -1302,7 +1306,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
       logger,
     });
     service.initialize();
-    await service.whenSessionAttachmentSettled();
+    await awaitSessionAttachmentSettled(service);
 
     const runs = await service.listAgentRuns(INTERNAL_SESSION_READ_SCOPE);
     const run = runs.find((candidate) => candidate.runId === threadId);
@@ -1390,7 +1394,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
       logger,
     });
     service.initialize();
-    await service.whenSessionAttachmentSettled();
+    await awaitSessionAttachmentSettled(service);
     await settleBeyondOneMacrotask();
 
     eventStore.createRecoveryLedger = original;
@@ -1468,7 +1472,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     service.initialize();
     // The receipt firing at all IS the assertion: before the fix this await
     // would never resolve.
-    await service.whenSessionAttachmentSettled();
+    await awaitSessionAttachmentSettled(service);
     await settleBeyondOneMacrotask();
 
     eventStore.readSessions = originalReadSessions;
