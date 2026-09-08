@@ -1,3 +1,4 @@
+import type { ACPConnectionRegistryEntry } from '@kontourai/station-contracts/acp';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
 import {
@@ -5,6 +6,8 @@ import {
   type QueryConfig,
   useApiQuery,
 } from '../query-core';
+
+export type { ACPConnectionRegistryEntry };
 
 export interface FileSystemBrowseEntry {
   name: string;
@@ -57,26 +60,6 @@ export interface ACPConnectionInfo {
    * instead of "this provider needs more setup" (CI-R8).
    */
   lastError?: { message: string; phase: string };
-}
-
-export interface ACPConnectionRegistryEntry {
-  id: string;
-  name: string;
-  command: string;
-  args?: string[];
-  icon?: string;
-  cwd?: string;
-  description?: string;
-  tags?: string[];
-  source?: 'core' | 'plugin';
-  sourceName?: string;
-  /** The command was found on this Station host; it is not configured yet. */
-  detected?: boolean;
-  installed?: boolean;
-  installedSource?: 'user' | 'plugin';
-  interactive?: {
-    args: string[];
-  };
 }
 
 export interface AcpSlashCommandDescriptor {

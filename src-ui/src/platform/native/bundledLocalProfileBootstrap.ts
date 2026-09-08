@@ -1,4 +1,4 @@
-import { attemptLocalSelfProvisionOnceWithOutcome } from '../../../../packages/connect/src/core/localSelfProvision';
+import { attemptLocalSelfProvisionOnceWithOutcome } from '@kontourai/station-connect/local-self-provision';
 import { readNativeCommandError } from './nativeCommandError';
 import type { NativeStationProfileRepository } from './stationProfileStorage';
 import type { NativePlatformAdapter } from './types';

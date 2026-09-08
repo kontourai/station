@@ -137,6 +137,47 @@ describe('probeServerConnection', () => {
       ).resolves.toEqual({ ok: false, reason: 'host-unavailable' });
     });
 
+    it('recognizes Station own UI proxy 504 upstream timeout as the same recovering host (#1654)', async () => {
+      // The behaviour change this consumer inherits from #1654, stated here
+      // because it is a change and not only a fix: a gateway timeout carrying the
+      // proxy's envelope used to fall through to `unexpected-response`, whose copy
+      // tells the user something else may be answering at this address — when the
+      // Station's own proxy had answered, about its own host. For a saved address
+      // that is NOT a Station but does emit these bytes, the trade runs the other
+      // way, and the derivation's own documentation now names both directions.
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        Response.json({ ready: false, status: 'unavailable' }, { status: 504 }),
+      );
+      await expect(
+        probeServerConnection(
+          'https://station.example.test',
+          'fixture-credential',
+          'environment-1',
+          new AbortController().signal,
+        ),
+      ).resolves.toEqual({ ok: false, reason: 'host-unavailable' });
+    });
+
+    it('keeps a bare 504 in the foreign or unusable responder bucket (#1654)', async () => {
+      // The strictness that makes the case above safe for this consumer too: the
+      // status alone decides nothing, so an intermediary's own gateway timeout is
+      // still an unknown responder rather than a claim about this host.
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response('Gateway Timeout', {
+          status: 504,
+          headers: { 'Content-Type': 'text/plain' },
+        }),
+      );
+      await expect(
+        probeServerConnection(
+          'https://station.example.test',
+          'fixture-credential',
+          'environment-1',
+          new AbortController().signal,
+        ),
+      ).resolves.toEqual({ ok: false, reason: 'unexpected-response' });
+    });
+
     it('keeps an unknown 503 in the foreign or unusable responder bucket', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
         Response.json({ status: 'maintenance' }, { status: 503 }),

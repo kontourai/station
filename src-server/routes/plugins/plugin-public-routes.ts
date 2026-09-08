@@ -1,17 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import {
   type PluginGrantReconciliationService,
   pluginPermissionsNeedRuntimeReconciliation,
 } from '../../services/plugins/plugin-grant-reconciliation.js';
-import { readPluginManifestFile } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   assertGrantablePermissions,
   getPermissionTier,
@@ -24,6 +21,10 @@ import {
   requiredPermissionsForManifest,
   revokeGrants,
 } from '../../services/plugins/plugin-permissions.js';
+import {
+  capturePluginRuntimeArtifact,
+  type PluginRuntimeArtifact,
+} from '../../services/plugins/plugin-runtime-artifact.js';
 import {
   pluginServerRequestDuration,
   pluginServerRequests,
@@ -38,7 +39,7 @@ import {
   pluginGrantSchema,
   validate,
 } from '../schemas/schemas.js';
-import { resolvePluginBundle } from './plugin-bundles.js';
+import { readPluginBundle } from './plugin-bundles.js';
 import { assertPluginNameSegment } from './plugin-install-shared.js';
 import {
   acquirePluginPublicServerModule,
@@ -46,12 +47,12 @@ import {
   createScopedPluginRequest,
   type LoadedPluginServerModule,
   type PluginServerModuleContext,
-  readPluginPublicManifest,
   readPluginServerSettings,
 } from './plugin-public-server.js';
 
 interface PluginPublicRouteDeps {
   pluginsDir: string;
+  packageMcpJournal?: PackageMcpAdmissionJournal;
   projectHomeDir: string;
   logger: Logger;
   eventBus?: EventBus;
@@ -88,16 +89,16 @@ export function registerPluginPublicRoutes(
     } catch (error) {
       return c.text(errorMessage(error), 400);
     }
-    const bundlePath = resolvePluginBundle(
+    const bundle = await readPluginBundle(
       pluginsDir,
       name,
       'bundle.js',
-      logger,
+      deps.packageMcpJournal,
     );
-    if (!bundlePath) return c.text('Bundle not found', 404);
+    if (bundle === null) return c.text('Bundle not found', 404);
     c.header('Content-Type', 'application/javascript');
     c.header('Cache-Control', 'no-cache');
-    return c.text(await readFile(bundlePath, 'utf-8'));
+    return c.text(bundle);
   });
 
   app.get('/:name/bundle.css', async (c) => {
@@ -107,12 +108,17 @@ export function registerPluginPublicRoutes(
     } catch (error) {
       return c.text(errorMessage(error), 400);
     }
-    const cssPath = resolvePluginBundle(pluginsDir, name, 'bundle.css', logger);
-    if (!cssPath) return c.text('', 200);
+    const css = await readPluginBundle(
+      pluginsDir,
+      name,
+      'bundle.css',
+      deps.packageMcpJournal,
+    );
+    if (css === null) return c.text('', 200);
     c.header('Content-Type', 'text/css');
     c.header('Cache-Control', 'no-cache');
     c.header('Access-Control-Allow-Origin', '*');
-    return c.text(await readFile(cssPath, 'utf-8'));
+    return c.text(css);
   });
 
   app.get('/:name/permissions', async (c) => {
@@ -122,18 +128,21 @@ export function registerPluginPublicRoutes(
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
-    const manifestPath = join(pluginsDir, name, 'plugin.json');
-    if (!existsSync(manifestPath)) {
-      return c.json({ success: false, error: 'Plugin not found' }, 404);
-    }
     try {
-      const manifest = await readPluginManifestFile(manifestPath);
+      const artifact = capturePluginRuntimeArtifact(
+        pluginsDir,
+        name,
+        deps.packageMcpJournal,
+      );
+      if (!artifact)
+        return c.json({ success: false, error: 'Plugin unavailable' }, 404);
+      const manifest = artifact.manifest;
       const declared = requiredPermissionsForManifest(manifest);
       // archive#4288: `granted` is the EFFECTIVE set. When the installed tree
       // no longer matches the one consent was given against, the withheld
       // names and the binding state travel with it, so the panel can say what
       // was taken away and why instead of a permission just disappearing.
-      const state = readPluginGrantState(projectHomeDir, name);
+      const state = readPluginGrantState(projectHomeDir, name, artifact);
       return c.json({
         declared,
         granted: state.granted,
@@ -174,12 +183,15 @@ export function registerPluginPublicRoutes(
         400,
       );
     }
-    const manifestPath = join(pluginsDir, name, 'plugin.json');
-    if (!existsSync(manifestPath)) {
-      return c.json({ success: false, error: 'Plugin not found' }, 404);
-    }
     try {
-      const manifest = await readPluginManifestFile(manifestPath);
+      const artifact = capturePluginRuntimeArtifact(
+        pluginsDir,
+        name,
+        deps.packageMcpJournal,
+      );
+      if (!artifact)
+        return c.json({ success: false, error: 'Plugin unavailable' }, 404);
+      const manifest = artifact.manifest;
       assertGrantablePermissions(manifest, permissions);
       const trusted = permissions.filter(
         (permission) => getPermissionTier(permission) === 'trusted',
@@ -194,7 +206,12 @@ export function registerPluginPublicRoutes(
           403,
         );
       }
-      const outcome = await grantPermissions(projectHomeDir, name, permissions);
+      const outcome = await grantPermissions(
+        projectHomeDir,
+        name,
+        permissions,
+        artifact,
+      );
       deps.eventBus?.emit(SERVER_EVENTS.PLUGINS_GRANTS_CHANGED, {
         name,
       });
@@ -398,8 +415,14 @@ export function registerPluginPublicRoutes(
     }
     const requestContext = buildPluginRequestContext(c, name);
     let manifest: PluginManifest | null;
+    let artifact: PluginRuntimeArtifact | null;
     try {
-      manifest = await readPluginPublicManifest(pluginsDir, name);
+      artifact = capturePluginRuntimeArtifact(
+        pluginsDir,
+        name,
+        deps.packageMcpJournal,
+      );
+      manifest = artifact?.manifest ?? null;
     } catch (error: unknown) {
       if (isContextSafetyError(error)) {
         return c.json(
@@ -426,7 +449,12 @@ export function registerPluginPublicRoutes(
       return c.json({ success: false, error: 'Plugin route not found' }, 404);
     }
     try {
-      if (!hasGrantOrThrow(projectHomeDir, name, 'plugin.server')) {
+      if (
+        !artifact ||
+        !readPluginGrantState(projectHomeDir, name, artifact).granted.includes(
+          'plugin.server',
+        )
+      ) {
         return c.json(
           {
             success: false,
@@ -461,6 +489,17 @@ export function registerPluginPublicRoutes(
         name,
         manifest,
         logger,
+        {
+          journal: deps.packageMcpJournal,
+          artifact: artifact ?? undefined,
+          authorize: () =>
+            !!artifact &&
+            readPluginGrantState(
+              projectHomeDir,
+              name,
+              artifact,
+            ).granted.includes('plugin.server'),
+        },
       );
       loaded = acquired?.loaded ?? null;
       if (!loaded) {
@@ -488,20 +527,38 @@ export function registerPluginPublicRoutes(
         },
       };
 
+      const assertCurrent = () => {
+        if (
+          !acquired?.isCurrent() ||
+          !artifact ||
+          !readPluginGrantState(
+            projectHomeDir,
+            name,
+            artifact,
+          ).granted.includes('plugin.server')
+        ) {
+          throw new Error('Plugin execution is unavailable.');
+        }
+      };
       routeApp.onError((error) => {
         throw error;
       });
 
       routeApp.use('*', async (subc, next) => {
+        assertCurrent();
         await loaded?.hooks?.onRequest?.(requestContext);
+        assertCurrent();
         await next();
+        assertCurrent();
         await loaded?.hooks?.onResponse?.({
           ...requestContext,
           status: subc.res.status,
         });
       });
 
+      assertCurrent();
       await loaded.register(routeApp, moduleContext);
+      assertCurrent();
       const routed = await routeApp.fetch(createScopedPluginRequest(c, name));
       const headers = new Headers(routed.headers);
       headers.set('x-station-correlation-id', requestContext.correlationId);
@@ -524,7 +581,8 @@ export function registerPluginPublicRoutes(
       });
     } catch (error: unknown) {
       try {
-        await loaded?.hooks?.onError?.({ ...requestContext, error });
+        if (acquired?.isCurrent())
+          await loaded?.hooks?.onError?.({ ...requestContext, error });
       } catch (hookError) {
         logger.error('Plugin server error hook failed', {
           correlationId: requestContext.correlationId,

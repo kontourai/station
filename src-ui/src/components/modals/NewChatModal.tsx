@@ -692,6 +692,7 @@ export function NewChatModal({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       ariaLabel={mode?.kind === 'fork' ? 'Fork from here' : 'New Chat'}
       overlayClassName="new-chat-modal__overlay"
       panelClassName="new-chat-modal"

@@ -12,6 +12,7 @@ import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { resolveBedrockRegion } from '../../providers/llm/bedrock-region.js';
 import { resolveExactModelSelector } from '../../providers/llm/model-catalog.js';
 import type { ProviderService } from '../../services/connections/provider-service.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import type { DispatchEvidenceSource, IAgentFramework } from '../types.js';
 
@@ -169,9 +170,7 @@ export async function resolveManagedModelBinding(
     });
   } catch (error) {
     if (error instanceof ManagedModelUnavailableError) throw error;
-    throw new ManagedModelUnavailableError(
-      error instanceof Error ? error.message : String(error),
-    );
+    throw new ManagedModelUnavailableError(errorMessage(error));
   }
 
   return {

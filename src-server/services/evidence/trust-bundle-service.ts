@@ -28,6 +28,7 @@ import {
   validateTrustBundle,
 } from '@kontourai/surface';
 import { trustBundleLists, trustBundleReads } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 
 // ── Errors ────────────────────────────────────────────────────────────────
 
@@ -106,10 +107,6 @@ interface BundleFile {
   path: string;
   source: TrustBundleSource;
   plugin?: string;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export class TrustBundleService {

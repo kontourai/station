@@ -26,6 +26,7 @@ interface ConsentRequest {
    * the tree is final.
    */
   decisionOnly: boolean;
+  recovery?: boolean;
   resolve: (granted: boolean) => void;
 }
 
@@ -46,6 +47,7 @@ interface PermissionContextType {
     pluginName: string,
     displayName: string,
     permissions: PluginPermissionPrompt[],
+    options?: { action: 'recover' },
   ) => Promise<boolean>;
   /** Grant permissions on the server */
   grantPermissions: (
@@ -95,6 +97,7 @@ export function PermissionManager({ children }: { children: ReactNode }) {
       pluginName: string,
       displayName: string,
       permissions: PluginPermissionPrompt[],
+      options?: { action: 'recover' },
     ): Promise<boolean> => {
       return new Promise((resolve) => {
         setPending({
@@ -102,6 +105,7 @@ export function PermissionManager({ children }: { children: ReactNode }) {
           displayName,
           permissions,
           decisionOnly: true,
+          recovery: options?.action === 'recover',
           resolve,
         });
       });

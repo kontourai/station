@@ -13,6 +13,7 @@ import type {
   InboundWebhookStartGrant,
   InboundWebhookToken,
 } from '@kontourai/station-contracts/inbound-webhook';
+import { isNonEmptyString } from '../../utils/non-empty-string.js';
 
 const CONFIG_FILE = 'inbound-webhooks.json';
 const REPLAY_FILE = 'inbound-webhook-replays.json';
@@ -35,10 +36,6 @@ export class InboundWebhookConfigurationError extends Error {
     super(message);
     this.name = 'InboundWebhookConfigurationError';
   }
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function isStartGrant(value: unknown): value is InboundWebhookStartGrant {

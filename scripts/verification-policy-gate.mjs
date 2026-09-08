@@ -66,8 +66,6 @@ const ciFastDeadlineDocs = CI_FAST_DEADLINE_GUIDANCE.map((entry) => ({
 export const DIRECT_OPT_IN = Object.freeze({
   'test:load-reliability':
     'host-local pressure experiment; no completion receipt',
-  'test:timing-reliability':
-    'host-local timing experiment; no completion receipt',
   'test:prepush:repeat':
     'bounded reliability measurement; no completion receipt',
 });
@@ -85,9 +83,11 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   Object.freeze(['npm', Object.freeze(['run', 'content:integrity'])]),
+  // Generates the git-ignored Basis MCP app bundles the typecheck lanes
+  // resolve; a precondition of the aggregate below, like `build:connect`.
   Object.freeze([
     process.execPath,
-    Object.freeze(['scripts/check-basis-mcp-apps.mjs']),
+    Object.freeze(['scripts/generate-basis-mcp-apps.mjs']),
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'verification:policy:gate'])]),
   // station#4273: the typecheck invariant and its stated precondition. This

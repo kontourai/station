@@ -1270,6 +1270,7 @@ describe('executeForegroundMessage', () => {
       deps.readSessionBinding = vi.fn(async () => ({
         environmentId: 'environment-kontour',
         agentId: 'station',
+        projectSlug: 'station',
         cwd: repoPath,
         workspaceIsolation: { mode: 'worktree' as const },
         worktree: worktree!,
@@ -1299,6 +1300,7 @@ describe('executeForegroundMessage', () => {
       deps.readSessionBinding = vi.fn(async () => ({
         environmentId: 'environment-kontour',
         agentId: 'station',
+        projectSlug: 'station',
         cwd: worktree!.path,
         workspaceIsolation: { mode: 'worktree' as const },
         worktree: worktree!,
@@ -1542,6 +1544,7 @@ describe('executeForegroundMessage', () => {
       deps.readSessionBinding = vi.fn(async () => ({
         environmentId: 'environment-kontour',
         agentId: 'station',
+        projectSlug: 'station',
         ...partialBinding,
       }));
       deps.getProject = vi.fn(async (_access, slug) => ({
@@ -1574,6 +1577,7 @@ describe('executeForegroundMessage', () => {
     deps.readSessionBinding = vi.fn(async () => ({
       environmentId: 'environment-kontour',
       agentId: 'station',
+      projectSlug: 'station',
       cwd: process.cwd(),
       workspaceIsolation: { mode: 'worktree' as const },
       worktree: {
@@ -1617,6 +1621,7 @@ describe('executeForegroundMessage', () => {
     deps.readSessionBinding = vi.fn(async () => ({
       environmentId: 'environment-kontour',
       agentId: 'station',
+      projectSlug: 'station',
       cwd: `${process.cwd()}/.`,
       workspaceIsolation: { mode: 'worktree' as const },
       worktree: {

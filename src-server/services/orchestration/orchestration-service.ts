@@ -7,6 +7,7 @@ import {
   type AgentSpec,
   isSupportedAgentIconToken,
 } from '@kontourai/station-contracts/agent';
+import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type {
   AttentionRequestInspection,
   AttentionRequestReference,
@@ -64,12 +65,19 @@ import {
   stripReservedOrchestrationMetadata,
   unsupportedModelOptionError,
   unsupportedModelOptionKeys,
+  WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type {
   CanonicalRuntimeEvent,
   FlowRunFreshness,
 } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
+import {
+  foldedSessionLifecycleState,
+  SESSION_ENDED_REJECTION_CODE,
+  SESSION_LIFECYCLE_TRANSITIONS,
+} from '@kontourai/station-contracts/session-lifecycle';
 import type { DeclaredOutputDescriptor } from '@kontourai/station-contracts/session-output-declaration';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -82,12 +90,6 @@ import type { SessionBuilderRunView } from '@kontourai/station-contracts/workflo
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
-import type { SessionLifecycleState } from '../../../packages/contracts/src/session-lifecycle.js';
-import {
-  foldedSessionLifecycleState,
-  SESSION_ENDED_REJECTION_CODE,
-  SESSION_LIFECYCLE_TRANSITIONS,
-} from '../../../packages/contracts/src/session-lifecycle.js';
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
 import type { UsagePricingSnapshotCapture } from '../../analytics/usage-pricing-snapshot-capture.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
@@ -106,6 +108,10 @@ import {
   createAuthorizedTurnCorrelation,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
+import {
+  createNativeForegroundRelay,
+  runWithNativeForegroundRelay,
+} from '../../runtime/conversation/native-foreground-invocation.js';
 import {
   createNativeMemoryHistoryCompanion,
   type NativeMemoryHistoryCompanion,
@@ -146,6 +152,7 @@ import {
 } from '../../telemetry/metrics.js';
 import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
 import { type AgentPolicyService } from '../agents/agent-policy-service.js';
@@ -211,6 +218,10 @@ import type {
   EventStore,
   PersistedRuntimeEvent,
 } from './event-store.js';
+import {
+  type ExecutionWorkspaceBinding,
+  readExecutionWorkspaceBinding,
+} from './execution-workspace-binding.js';
 import { FlowPolicySidecar } from './flow-policy-sidecar.js';
 import {
   type ForegroundInvocationAdmission,
@@ -337,6 +348,7 @@ interface OrchestrationDispatchInternalOptions {
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
+  executionWorkspace?: ExecutionWorkspaceBinding;
   /** Skip the modelOptions per-provider support check for this one command. */
   skipModelOptionSupportCheck?: boolean;
   /**
@@ -906,6 +918,7 @@ function resolveStartSessionCwd(
   input: ProviderSessionStartInput,
   listProjects?: () => AttachedProjectRoot[],
   observeShadow?: (sample: CwdShadowSample) => void,
+  admittedWorkspace?: ForegroundInvocationAdmission['provisionedWorkspace'],
 ): ProviderSessionStartInput {
   const rawProjectSlug = input.metadata?.projectSlug;
   const projectSlug =
@@ -913,6 +926,15 @@ function resolveStartSessionCwd(
       ? rawProjectSlug
       : undefined;
   const suppliedCwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
+  if (
+    admittedWorkspace &&
+    (admittedWorkspace.threadId !== input.threadId ||
+      admittedWorkspace.projectSlug !== projectSlug ||
+      admittedWorkspace.cwd !== suppliedCwd)
+  )
+    throw new Error(
+      'The owned conversation worktree binding does not match this Session.',
+    );
 
   // `listProjects` is optional on the service options, so an installation
   // that never wired it cannot resolve project bindings at all. Keep the
@@ -993,7 +1015,12 @@ function resolveStartSessionCwd(
   if (
     projectCwd &&
     suppliedCwd &&
-    !isWithinDirectory(projectCwd, suppliedCwd)
+    !isWithinDirectory(projectCwd, suppliedCwd) &&
+    !(
+      admittedWorkspace?.threadId === input.threadId &&
+      admittedWorkspace.projectSlug === projectSlug &&
+      admittedWorkspace.cwd === suppliedCwd
+    )
   ) {
     sessionCwdResolution.add(1, {
       provider: input.provider,
@@ -1594,7 +1621,7 @@ export class OrchestrationService {
         this.options.logger.warn('Session conversation query is unavailable', {
           intent: query.type,
           threadId: query.threadId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       },
     });
@@ -1670,7 +1697,31 @@ export class OrchestrationService {
             authority,
           );
         if (!detail) return null;
+        const session = detail.session;
+        const recordedConnection = this.readLatestSessionStartMetadata(
+          session.threadId,
+          detail.events,
+        )?.connectionId;
+        const connection = parseEngineConnectionId(recordedConnection);
+        const model = session.reportedModel ?? session.model;
         return {
+          sessionId: session.threadId,
+          ...(session.assignedAgentSlug
+            ? {
+                execution: {
+                  sessionId: session.threadId,
+                  agentId: publicAgentIdFromRuntimeKey(
+                    session.assignedAgentSlug,
+                  ),
+                  provider: session.provider,
+                  ...(connection ? { engineConnectionId: connection } : {}),
+                  ...(model ? { model } : {}),
+                  ...(session.appliedModel
+                    ? { acceptedModel: session.appliedModel }
+                    : {}),
+                },
+              }
+            : {}),
           messages: this.readSessionMessages(
             detail.session.threadId,
             authority,
@@ -1686,7 +1737,7 @@ export class OrchestrationService {
       },
       reportUnavailable: (error) =>
         options.logger.warn('Conversation open resolution is unavailable', {
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         }),
     });
     this.flowPolicy = new FlowPolicySidecar({
@@ -1927,7 +1978,7 @@ export class OrchestrationService {
         // the `finally` below always runs.
         this.options.logger.warn(
           'Session recovery did not complete; attachment settles on whatever this process reached',
-          { error: error instanceof Error ? error.message : String(error) },
+          { error: errorMessage(error) },
         );
       })
       .finally(() => {
@@ -1973,7 +2024,7 @@ export class OrchestrationService {
           // rejection after attachment state has already settled.
           this.options.logger.warn(
             'Recovery-intent reconciliation did not complete after session attachment settled',
-            { error: error instanceof Error ? error.message : String(error) },
+            { error: errorMessage(error) },
           );
         }
         // archive#4080: after recovered sessions are tracked, so a
@@ -1985,7 +2036,7 @@ export class OrchestrationService {
         void this.interruptedTurns.consume().catch((error) => {
           this.options.logger.warn(
             'Interrupted-turn boundary consumption did not complete',
-            { error: error instanceof Error ? error.message : String(error) },
+            { error: errorMessage(error) },
           );
         });
       });
@@ -2265,8 +2316,12 @@ export class OrchestrationService {
     if (
       admission &&
       (agentSlug !== admission.agentId ||
-        !sessionDeliveryChannels(input.provider) ||
-        !this.options.resolveSessionAgent)
+        (input.provider === 'station-agent') !==
+          !admission.agentSpec.execution?.agentConnectionId ||
+        (input.provider === 'station-agent'
+          ? Boolean(admission.agentSpec.execution?.agentConnectionId)
+          : !sessionDeliveryChannels(input.provider) ||
+            !this.options.resolveSessionAgent))
     )
       throw new ForegroundInvocationUnavailableError();
     const captured = admission
@@ -2303,6 +2358,13 @@ export class OrchestrationService {
         ...resolved,
         metadata: {
           ...resolved.metadata,
+          ...(admission?.source
+            ? {
+                [WORKSPACE_PANE_HOST_ACTION_METADATA_KEY]: {
+                  ...admission.source,
+                },
+              }
+            : {}),
           [SESSION_AGENT_DISPLAY_NAME_METADATA_KEY]: captured.spec.name.slice(
             0,
             SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
@@ -2366,7 +2428,7 @@ export class OrchestrationService {
         {
           threadId: input.threadId,
           agentSlug,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         },
       );
       return input;
@@ -2433,7 +2495,7 @@ export class OrchestrationService {
       // agent store is rare and loud, while a turn on the wrong account is
       // silent and unrecoverable.
       (this.options.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-        `Credential profile: could not read the agent's execution config, so the account it runs on is unknown: ${error instanceof Error ? error.message : String(error)}`,
+        `Credential profile: could not read the agent's execution config, so the account it runs on is unknown: ${errorMessage(error)}`,
       );
       throw new Error(
         "The agent's execution configuration could not be read, so Station cannot tell which account this session should use.",
@@ -2497,7 +2559,7 @@ export class OrchestrationService {
       this.deltaCoalescer.flushAll();
     } catch (error) {
       this.options.logger.warn('Final content delta flush failed at shutdown', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
     // archive#2959: never leave a watchdog timer outliving this service.
@@ -3674,7 +3736,11 @@ export class OrchestrationService {
         ? { environmentId: query.conversation.environmentId }
         : {}),
     };
-    return this.conversationOpenResolver.resolve({ conversation, authority });
+    return this.conversationOpenResolver.resolve({
+      conversation,
+      authority,
+      expectedSessionId: currentSessionId,
+    });
   }
 
   appendConversationFork(event: CanonicalRuntimeEvent): void {
@@ -3741,7 +3807,7 @@ export class OrchestrationService {
             phase,
             commandId: receipt.commandId,
             threadId: receipt.threadId,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           }),
       },
       sessionState: {
@@ -3916,6 +3982,8 @@ export class OrchestrationService {
             ),
             this.options.listProjects,
             this.options.observeCwdShadow,
+            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
+              readExecutionWorkspaceBinding(internal?.executionWorkspace),
           );
           if (internal?.reviewIsolation) {
             startInput = {
@@ -4014,6 +4082,7 @@ export class OrchestrationService {
                   'start',
                   {
                     threadId: input.threadId,
+                    cwd: input.cwd,
                     agentId: input.metadata?.agentSlug,
                     projectSlug: input.metadata?.projectSlug,
                   },
@@ -4681,7 +4750,16 @@ export class OrchestrationService {
                         context.userId.trim() !== ''
                       ) {
                         const nativeTurnId = nativeTurn.turnId;
+                        const nativeWorkspaceIsolation =
+                          this.readLatestSessionStartMetadata(
+                            turnInput.threadId,
+                          )?.workspaceIsolation;
                         nativeOutputRelay = createNativeOutputRelayCompanion({
+                          workspaceRequired:
+                            !!nativeWorkspaceIsolation &&
+                            typeof nativeWorkspaceIsolation === 'object' &&
+                            'mode' in nativeWorkspaceIsolation &&
+                            nativeWorkspaceIsolation.mode === 'worktree',
                           authority: this.nativeOutputGrants,
                           facts: {
                             threadId: turnInput.threadId,
@@ -4736,6 +4814,34 @@ export class OrchestrationService {
                           );
                         }
                       }
+                      const nativeForeground =
+                        adapter.provider === 'station-agent' &&
+                        internal?.foregroundInvocationAdmission
+                          ? createNativeForegroundRelay(
+                              internal.foregroundInvocationAdmission,
+                              {
+                                threadId: turnInput.threadId,
+                                workspaceRoot:
+                                  this.sessionReadModel.get(turnInput.threadId)
+                                    ?.cwd ??
+                                  this.options.eventStore?.readSessionByThread(
+                                    turnInput.threadId,
+                                  )?.cwd,
+                                userId: accountId!,
+                                modelId: turnInput.modelId,
+                                clientTurnId: turnInput.clientTurnId,
+                                ambientContext: turnInput.ambientContext,
+                              },
+                            )
+                          : undefined;
+                      if (nativeForeground && !turnCorrelation)
+                        throw new ForegroundInvocationUnavailableError();
+                      const sendAdapter = () =>
+                        nativeForeground
+                          ? runWithNativeForegroundRelay(nativeForeground, () =>
+                              adapter.sendTurn(turnInput),
+                            )
+                          : adapter.sendTurn(turnInput);
                       if (
                         nativeTurn &&
                         internal?.nativeMemoryReadAuthority &&
@@ -4767,12 +4873,12 @@ export class OrchestrationService {
                                   nativeOutputRelay
                                     ? runWithNativeOutputRelayCompanion(
                                         nativeOutputRelay,
-                                        () => adapter.sendTurn(turnInput),
+                                        sendAdapter,
                                       )
-                                    : adapter.sendTurn(turnInput),
+                                    : sendAdapter(),
                                 nativeMemory,
                               )
-                            : adapter.sendTurn(turnInput),
+                            : sendAdapter(),
                       );
                       providerAccepted = true;
                       // The provider has now named the exact turn. Publish a
@@ -4831,7 +4937,9 @@ export class OrchestrationService {
                   };
                   return internal?.foregroundInvocationAdmission
                     ? internal.foregroundInvocationAdmission.invoke(
-                        'turn',
+                        adapter.provider === 'station-agent'
+                          ? 'native-relay'
+                          : 'turn',
                         {
                           threadId: turnInput.threadId,
                           // `sendTurn` carries no Agent/Project fields. The
@@ -4884,8 +4992,7 @@ export class OrchestrationService {
                     provider: adapter.provider,
                     threadId: turnInput.threadId,
                     turnId: result.turnId,
-                    error:
-                      error instanceof Error ? error.message : String(error),
+                    error: errorMessage(error),
                   },
                 );
               }
@@ -4905,7 +5012,7 @@ export class OrchestrationService {
                   provider: adapter.provider,
                   threadId: turnInput.threadId,
                   turnId: result.turnId,
-                  error: error instanceof Error ? error.message : String(error),
+                  error: errorMessage(error),
                 },
               );
             }
@@ -4933,7 +5040,7 @@ export class OrchestrationService {
                 provider: adapter.provider,
                 threadId: turnInput.threadId,
                 turnId: result.turnId,
-                error: error instanceof Error ? error.message : String(error),
+                error: errorMessage(error),
               });
             }
             try {
@@ -5415,7 +5522,7 @@ export class OrchestrationService {
       };
       this.persistReceipt(failedReceipt);
       throw new OrchestrationCommandDispatchError(
-        error instanceof Error ? error.message : String(error),
+        errorMessage(error),
         failedReceipt,
         undefined,
         'persisted',
@@ -5787,7 +5894,7 @@ export class OrchestrationService {
         }
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorMessage(error);
       if (controller.signal.aborted || !this.isAdapterCurrent(adapter)) return;
       restart = true;
       // A SQLITE_BUSY from the loop's own event-store work is not an agent
@@ -5851,10 +5958,7 @@ export class OrchestrationService {
             {
               provider: adapter.provider,
               threadId,
-              error:
-                surfacingError instanceof Error
-                  ? surfacingError.message
-                  : String(surfacingError),
+              error: errorMessage(surfacingError),
             },
           );
         }
@@ -5894,7 +5998,7 @@ export class OrchestrationService {
       this.options.logger.warn('Usage pricing snapshot capture failed', {
         provider: event.provider,
         model,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return event;
     }
@@ -6043,7 +6147,7 @@ export class OrchestrationService {
     } catch (error) {
       this.options.logger.warn('Failed to read adapter prerequisites', {
         provider: adapter.provider,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return [];
     }
@@ -6170,7 +6274,7 @@ export class OrchestrationService {
     this.options.logger.warn(`Failed to discard abandoned ${resource}`, {
       provider: reservation.provider,
       threadId: reservation.targetThreadId,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     });
   }
 

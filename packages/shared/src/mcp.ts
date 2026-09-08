@@ -1,5 +1,6 @@
 export * from './mcp-connection.js';
 export {
+  bindMCPDefinitionAdmission,
   type MCPLocalClaim,
   type MCPLocalCleanup,
   MCPLocalConnectionCustody,

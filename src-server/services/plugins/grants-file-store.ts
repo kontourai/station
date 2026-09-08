@@ -71,8 +71,10 @@
 
 import { lstatSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { pluginGrantsStoreCorruption } from '../../telemetry/metrics.js';
+import { isRecord } from '../../utils/is-record.js';
 import { createLogger } from '../../utils/logger.js';
 import {
   isReservedObjectKey,
@@ -123,12 +125,6 @@ export interface GrantsFileStoreOptions<T extends Record<string, unknown>> {
     cause: unknown,
   ) => GrantsStoreUnavailableError;
   emptyValue: T;
-}
-
-export function isPlainObject(
-  value: unknown,
-): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -207,7 +203,7 @@ export class GrantsFileStore<T extends Record<string, unknown>> {
     } catch (error) {
       throw this.reportCorruption('corrupt JSON', error);
     }
-    if (isPlainObject(value)) {
+    if (isRecord(value)) {
       const reserved = Object.keys(value).filter((key) =>
         isReservedObjectKey(key),
       );
@@ -234,8 +230,14 @@ export class GrantsFileStore<T extends Record<string, unknown>> {
    * refused if it would drop any OTHER entry that was present in the read
    * (decision 4). A read failure propagates out with no write, and every
    * infrastructure failure surfaces as the typed unavailable error.
+   * skipUnchanged keeps a refused CAS/read-only outcome from rewriting the file;
+   * ordinary mutation behavior remains unchanged unless explicitly requested.
    */
-  async mutate(mutatedKey: string, update: (current: T) => T): Promise<T> {
+  async mutate(
+    mutatedKey: string,
+    update: (current: T) => T,
+    options?: { skipUnchanged?: boolean },
+  ): Promise<T> {
     if (isReservedObjectKey(mutatedKey)) {
       throw new GrantsStoreReservedKeyError(mutatedKey);
     }
@@ -266,6 +268,8 @@ export class GrantsFileStore<T extends Record<string, unknown>> {
           `Refusing to write the ${this.options.storeLabel} store: the write for '${mutatedKey}' would drop unrelated entries [${dropped.join(', ')}]`,
         );
       }
+      if (options?.skipUnchanged && isDeepStrictEqual(next, current))
+        return current;
       try {
         this.writer.write(next);
       } catch (error) {

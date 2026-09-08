@@ -45,6 +45,7 @@ import type {
   PolicyHookProfile,
 } from '@kontourai/station-contracts/runtime-events';
 import { policyChecks } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   flowAgentsRoot,
   legacyFlowAgentsRoot,
@@ -610,7 +611,7 @@ export class AgentPolicyService {
       });
       this.logger?.warn('Platform-mutation policy errored — failing open', {
         toolName,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return { decision: 'allow', engine: 'station', profile };
     }
@@ -751,7 +752,7 @@ export class AgentPolicyService {
         this.logger?.warn('Flow Agents policy hook failed to load', {
           policy,
           scriptPath,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       }
     }
@@ -831,7 +832,7 @@ export class AgentPolicyService {
     });
     this.logger?.warn('Flow Agents policy hook errored — failing open', {
       policy,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     });
   }
 

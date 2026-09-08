@@ -9,6 +9,7 @@ import type {
   EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
+import { errorMessage } from '../../utils/error-message.js';
 import type {
   SessionStartBoundaryClaim,
   TaskDispatchBoundaryClaim,
@@ -518,10 +519,6 @@ async function awaitDispatchPhase<T>(
       },
     );
   });
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export function createTaskDispatcher(

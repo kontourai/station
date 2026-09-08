@@ -16,6 +16,7 @@ import type {
   DiscordIdentityMapping,
 } from '@kontourai/station-contracts/discord';
 import { DISCORD_CAPABILITIES } from '@kontourai/station-contracts/discord';
+import { isNonEmptyString } from '../../utils/non-empty-string.js';
 
 const FILE_NAME = 'discord-gateway.json';
 const CAPABILITIES = new Set<string>(DISCORD_CAPABILITIES);
@@ -29,10 +30,6 @@ export class DiscordGatewayConfigurationError extends Error {
 
 export function discordGatewayConfigurationPath(homeDir: string): string {
   return join(homeDir, 'security', FILE_NAME);
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function isStringList(value: unknown): value is string[] {

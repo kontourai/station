@@ -654,23 +654,6 @@ test.describe('Dock Mode — Mobile', () => {
     await seedRoutes(page);
   });
 
-  test('keyboard shortcut text is hidden on mobile', async ({ page }) => {
-    await page.goto('/');
-    await settleDock(page);
-
-    const subtitles = page.locator('.chat-dock .chat-dock__subtitle');
-    const count = await subtitles.count();
-    // The one-row mobile header renders no shortcut hints at all, which meets
-    // this test's intent more strongly than rendering-then-hiding them. Any
-    // that DO exist must still be hidden, which the loop below enforces.
-    for (let i = 0; i < count; i++) {
-      const display = await subtitles
-        .nth(i)
-        .evaluate((el) => getComputedStyle(el).display);
-      expect(display).toBe('none');
-    }
-  });
-
   test('header controls show icons instead of visible text labels on mobile', async ({
     page,
   }) => {

@@ -125,6 +125,7 @@ export function ConversationStatsModal({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       onClose={onToggle}
       ariaLabelledBy="conversation-statistics-title"
       overlayStyle={{

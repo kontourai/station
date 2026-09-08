@@ -40,6 +40,7 @@ export function PermissionRequestModal({
     displayName?: string;
     permissions: PluginPermissionPrompt[];
     decisionOnly?: boolean;
+    recovery?: boolean;
   };
   onApprove: () => void | Promise<void>;
   onDeny: () => void;
@@ -47,7 +48,11 @@ export function PermissionRequestModal({
   return (
     <Dialog
       title={
-        request.decisionOnly ? 'Install this plugin?' : 'Permission Request'
+        request.recovery
+          ? 'Recover this plugin?'
+          : request.decisionOnly
+            ? 'Install this plugin?'
+            : 'Permission Request'
       }
       onClose={onDeny}
       closeLabel="Close permission request"
@@ -59,7 +64,9 @@ export function PermissionRequestModal({
           </Button>
           <Button onClick={onApprove}>
             {request.decisionOnly
-              ? 'Install'
+              ? request.recovery
+                ? 'Recover plugin'
+                : 'Install'
               : request.permissions.some((p) => p.tier === 'trusted')
                 ? 'Review trusted access'
                 : 'Approve'}
@@ -76,7 +83,9 @@ export function PermissionRequestModal({
       >
         <strong>{request.displayName || request.pluginName}</strong>
         {request.decisionOnly
-          ? ' has not been installed yet. Installing it requires:'
+          ? request.recovery
+            ? ' has retained files awaiting activation. Recovery requires:'
+            : ' has not been installed yet. Installing it requires:'
           : ' is requesting the following permissions:'}
       </p>
 
@@ -146,7 +155,9 @@ export function PermissionRequestModal({
           Trusted permissions can run server-side code or modify Station
           behavior.{' '}
           {request.decisionOnly
-            ? 'They are not granted by installing: after the install, a separate host-owned review page — which plugin code cannot submit for you — decides them.'
+            ? request.recovery
+              ? 'They are not granted by this decision. A separate host-owned review page decides trusted access.'
+              : 'They are not granted by installing: after the install, a separate host-owned review page — which plugin code cannot submit for you — decides them.'
             : 'Approval opens a separate, host-owned review page that plugin code cannot submit for you.'}
         </div>
       )}

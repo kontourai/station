@@ -5,7 +5,7 @@
   "description": "Knowledge and documentation starter layout for document intake, source review, and question answering.",
   "entrypoint": "src/index.tsx",
   "capabilities": ["chat", "navigation", "knowledge"],
-  "permissions": ["navigation.dock"],
+  "permissions": ["navigation.dock", "agents.invoke"],
   "layout": {
     "slug": "knowledge-docs",
     "source": "./layout.json"
@@ -19,5 +19,37 @@
         "description": "Documents uploaded or synced for this starter workspace."
       }
     ]
+  },
+  "agents": [
+    {
+      "slug": "knowledge-docs-starter-assistant",
+      "source": "./agents/knowledge-docs-starter-assistant/agent.json"
+    }
+  ],
+  "workspacePaneHost": {
+    "version": "station.workspace-pane-host-contribution/v1",
+    "actions": [
+      {
+        "id": "summarize-documents",
+        "label": "Summarize selected documents",
+        "presentation": "action",
+        "intent": {
+          "kind": "prompt",
+          "prompt": "Summarize the selected documents and cite the source names that support each claim."
+        }
+      }
+    ],
+    "agentSelection": {
+      "availableAgents": [
+        {
+          "kind": "own-plugin-agent",
+          "agentId": "knowledge-docs-starter-assistant"
+        }
+      ],
+      "defaultAgent": {
+        "kind": "own-plugin-agent",
+        "agentId": "knowledge-docs-starter-assistant"
+      }
+    }
   }
 }

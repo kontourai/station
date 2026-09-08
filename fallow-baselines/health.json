@@ -3904,14 +3904,6 @@
         "count": 1
       }
     },
-    "src-server/runtime/tools/tool-execution-usage.ts": {
-      "complexity_critical": {
-        "count": 1
-      },
-      "crap_critical": {
-        "count": 1
-      }
-    },
     "src-server/runtime/tools/vended-tool-compat.ts": {
       "complexity_critical": {
         "count": 1
@@ -3928,7 +3920,7 @@
         "count": 2
       }
     },
-    "src-server/security/pairing-route-leaf-scan.ts": {
+    "src-server/security/__tests__/pairing-route-leaf-scan.ts": {
       "complexity_critical": {
         "count": 1
       },
@@ -3953,21 +3945,8 @@
         "count": 3
       }
     },
-    "src-server/services/acp/__tests__/acp-outbound-extension-channel.test.ts": {
-      "complexity_high": {
-        "count": 1
-      },
-      "crap_high": {
-        "count": 1
-      }
-    },
     "src-server/services/acp/acp-manager-view.ts": {
       "crap_high": {
-        "count": 1
-      }
-    },
-    "src-server/services/acp/acp-outbound-extension-channel.ts": {
-      "complexity_moderate": {
         "count": 1
       }
     },
@@ -8299,7 +8278,6 @@
     "src-ui/src/components/chat-dock/ChatDock.tsx:complexity",
     "packages/connect/src/core/ConnectionHealthCoordinator.ts:complexity",
     "src-server/routes/operations/insights.ts:complexity",
-    "src-server/runtime/tools/tool-execution-usage.ts:complexity",
     "packages/cli/src/commands/active-local-station.ts:high impact",
     "src-server/services/orchestration/bounded-json.ts:high impact",
     "packages/contracts/src/workspace-pane-host.ts:complexity",
@@ -8517,7 +8495,7 @@
     "tests/connections-crud.spec.ts:complexity",
     "tests/interactive-workspace-performance-bridge.spec.ts:complexity",
     "scripts/claim-fixture-ratchet.mjs:complexity",
-    "src-server/security/pairing-route-leaf-scan.ts:complexity",
+    "src-server/security/__tests__/pairing-route-leaf-scan.ts:complexity",
     "scripts/__tests__/station-dogfood-reconcile/cutover-matrix.behavior.ts:complexity",
     "tests/credential-recovery-groups.spec.ts:complexity",
     "packages/cli/src/__tests__/delegate.test.ts:complexity",

@@ -23,6 +23,7 @@ import {
 } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { detectCliOnPath } from '../../utils/cli-detection.js';
+import { errorMessage } from '../../utils/error-message.js';
 
 export const NATIVE_ENGINE_CANDIDATES = [
   { id: 'claude', cli: 'claude' },
@@ -131,7 +132,7 @@ export async function adoptDetectedNativeEngines(
       outcomes[candidate.id] = 'error';
       deps.logger.warn('Native engine adoption failed', {
         engine: candidate.id,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
     return { outcomes };
@@ -153,7 +154,7 @@ export async function adoptDetectedNativeEngines(
   } catch (error) {
     deps.logger.warn(
       "The Station Agent's stale 'station' engine binding could not be rewritten; it is ignored at read time, but the on-disk record stays stale until this home is writable",
-      { error: error instanceof Error ? error.message : String(error) },
+      { error: errorMessage(error) },
     );
   }
   // #875: a screenshot runtime must not persist whatever native CLIs happen
@@ -231,7 +232,7 @@ export async function adoptDetectedNativeEngines(
         unresolved.delete(candidate.id);
         deps.logger.warn('Native engine adoption failed', {
           engine: candidate.id,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       }
     }

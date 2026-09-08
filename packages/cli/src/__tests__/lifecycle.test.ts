@@ -3940,6 +3940,9 @@ describe('upgrade', () => {
       'git rev-parse --abbrev-ref main@{u}',
       'git pull',
       'npm install',
+      // The pull deletes nothing tracked any more, but it can bring a new
+      // browser entry, and the raw install above runs no generation.
+      'npm run basis:mcp:generate',
       'npm run build:server',
       'npm run build:ui',
       'git rev-parse HEAD',
@@ -5070,6 +5073,18 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     try {
       const res = await fetch(`http://127.0.0.1:${port}/api/system/status`);
       expect(res.status).toBe(504);
+      // station#1654: the browser has to be able to tell THIS proxy's timeout
+      // from any intermediary's 504, and the only thing that can tell it is
+      // this envelope — the same one the 503 error path sends. These are the
+      // exact bytes `src-ui/src/lib/station-ui-proxy.ts` recognises and the
+      // exact bytes its fixture is built from, so this is the producer half of
+      // a contract that cannot be shared as a constant (the handler is
+      // serialized into the spawned UI process, where an import is undefined).
+      expect(res.headers.get('content-type')).toBe('application/json');
+      await expect(res.json()).resolves.toEqual({
+        ready: false,
+        status: 'unavailable',
+      });
     } finally {
       server.close();
     }
@@ -5202,6 +5217,17 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         res.end(JSON.stringify({ ready: true }));
         return;
       }
+      // station#1654: refuse this one by dropping the connection, so the
+      // readiness envelope is answered by the SERIALIZED handler in the spawned
+      // process rather than only by the in-process one. That envelope is now a
+      // signal a browser derives from (`src-ui/src/lib/station-ui-proxy.ts`), and
+      // it is built from a same-function local — the one construct that survives
+      // `Function.prototype.toString` into this child. An imported constant would
+      // be `undefined` here, and every other test in this file would still pass.
+      if (req.url === '/api/system/identity') {
+        req.socket.destroy();
+        return;
+      }
       res.writeHead(404);
       res.end();
     });
@@ -5278,6 +5304,16 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
       const proxiedBody = JSON.parse(proxiedRes.body);
       expect(proxiedBody).toEqual({ ready: true });
       expect(upstreamTenant).toBe('alpha');
+      expect(stderr).toBe('');
+
+      // The envelope, out of the real spawned process: an upstream that dropped
+      // the connection. Same bytes the browser's derivation reads.
+      const unavailableRes = await request('/api/system/identity');
+      expect(unavailableRes.status).toBe(503);
+      expect(JSON.parse(unavailableRes.body)).toEqual({
+        ready: false,
+        status: 'unavailable',
+      });
       expect(stderr).toBe('');
     } finally {
       child.kill('SIGKILL');
@@ -6893,8 +6929,8 @@ describe('lifecycle build + restart ergonomics', () => {
   // station#1867 review round: the test above proves the prune FUNCTION works,
   // but nothing proved `buildApplication` actually calls it — deleting the call
   // site left the whole lifecycle suite green. This pins the WIRING. The build
-  // is made to fail immediately (`execSync` throws on the first `npm run
-  // build:server`), which is enough: the prune runs before the build starts, so
+  // is made to fail immediately (`execSync` throws on the first build step,
+  // `npm run basis:mcp:generate`), which is enough: the prune runs before the build starts, so
   // a swept orphan proves the call site is present without running a real build.
   it('buildApplication prunes stale candidates before the build runs (station#1867)', async () => {
     ensureDir(TEST_CWD);
@@ -6927,7 +6963,8 @@ describe('lifecycle build + restart ergonomics', () => {
         (error: unknown) => error as Error,
       );
     expect(thrown).toBeInstanceOf(Error);
-    expect(thrown?.message).toContain('Server build failed');
+    // The first build step is the Basis MCP app generation.
+    expect(thrown?.message).toContain('Basis MCP apps build failed');
     expect(thrown?.message).toContain('build stopped for this test');
     expect(thrown?.cause).toBe(buildFailed);
 

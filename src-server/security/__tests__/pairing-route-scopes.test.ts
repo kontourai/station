@@ -11,10 +11,6 @@ import {
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import {
-  type DiscoveredLeafRoute,
-  scanRegisteredLeafRoutes,
-} from '../pairing-route-leaf-scan.js';
-import {
   assertRuntimeHttpRouteCoverage,
   credentialAuthorizedForScope,
   EXTERNAL_SURFACE_CAPABILITY_TABLE,
@@ -27,6 +23,10 @@ import {
   requiredExternalSurfaceCapability,
   requiredPairingScope,
 } from '../pairing-route-scopes.js';
+import {
+  type DiscoveredLeafRoute,
+  scanRegisteredLeafRoutes,
+} from './pairing-route-leaf-scan.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const RUNTIME_ROUTES_PATH = join(

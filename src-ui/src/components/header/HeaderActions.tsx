@@ -398,8 +398,33 @@ export function HeaderActions({
               weight a single decision rather than three. */}
           <BellGlyph />
           {notificationBadge && (
+            /* #1132: capped at "9+", because this badge is an in-flow flex
+               child of a `flex-shrink: 0` row (`.app-toolbar__actions`), so
+               its content width is row width. `min-width: 18px; padding: 0 5px`
+               (chat.css) is a FLOOR, not a ceiling: measured in a real
+               Chromium page with the real stylesheets, the badge renders 18px
+               at one digit, 23.91px at "99", 28.59px at three digits and
+               35.58px at four — and every pixel past 18 pushes `Open settings`
+               closer to the viewport edge, which is the whole subject of
+               #1132. Capping bounds it at the two-character worst case
+               ("9+" measures 23.80px, just inside "99"), which is what makes
+               the breakpoint in chat.css a derived bound rather than an
+               assumption about how many notifications a person has.
+
+               The exact count is not lost: it is in this button's accessible
+               name (`${notificationLabel} (${notificationBadge.label})` above,
+               "N need attention"), and the panel the button opens lists them.
+               What the cap does cost: above nine, the visible "9+" is no
+               longer a substring of that name, where the uncapped count was.
+               The NAME — "Notifications" — still is, and the badge reads as a
+               status indicator rather than as the control's label, so the
+               speech-input pairing WCAG 2.5.3 asks for still holds on the
+               label itself.
+               Capped HERE rather than in `destination-registry.ts` because it
+               is this ROW that has no room — `DestinationBadge.count` stays
+               the true count for any surface that can afford to print it. */
             <span className="app-toolbar__notification-badge">
-              {notificationBadge.count}
+              {notificationBadge.count > 9 ? '9+' : notificationBadge.count}
             </span>
           )}
         </button>

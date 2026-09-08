@@ -8,6 +8,83 @@ import { dismissSetupLauncher } from '../helpers/orchestration';
 import { MIN_TOUCH_TARGET_PX } from '../helpers/touch-target';
 
 test.describe('Android — Mobile Layout', () => {
+  /**
+   * Two boot-time guards restored here when `tests/android/app-load.spec.ts`,
+   * `navigation.spec.ts` and `webview-compat.spec.ts` were deleted for having
+   * no power. Most of what those files asserted was tautological
+   * (`title.length > 0`, `fontFamily.length > 0`, touch support under
+   * Playwright's own touch emulation), guarded behind `if (count > 0)`, or
+   * duplicated by this file's broader sweeps. These two were not, and the
+   * `android` bucket had no other copy of either, so they move rather than go.
+   *
+   * Both wait on the shell instead of a fixed sleep, and neither swallows its
+   * readiness wait: the deleted overflow test ended its
+   * `waitForFunction(...).catch(() => {})` with a 500ms sleep, so a page that
+   * never finished loading measured as an empty, non-overflowing document.
+   */
+  test('boots at the Pixel viewport with no page or console error', async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+    // Registered BEFORE the navigation: a listener attached afterwards misses
+    // exactly the startup failures this is here to catch.
+    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error') errors.push(message.text());
+    });
+
+    await page.goto('/');
+    await expect(page.locator('.app-toolbar')).toBeVisible({ timeout: 15_000 });
+
+    // The union of the two deleted filters. Each exclusion is a condition of
+    // the harness rather than of the app: ResizeObserver's benign loop notice,
+    // Vite's import_debug, a missing favicon, and the backend the Android
+    // matrix does not run (connection refused / failed fetch / failed
+    // resource / 404). Anything else is a real startup failure.
+    expect(
+      errors.filter(
+        (message) =>
+          !message.includes('ResizeObserver') &&
+          !message.includes('import_debug') &&
+          !message.includes('favicon') &&
+          !message.includes('404') &&
+          !message.includes('ERR_CONNECTION_REFUSED') &&
+          !message.includes('Failed to load resource') &&
+          !message.includes('Failed to fetch'),
+      ),
+    ).toHaveLength(0);
+  });
+
+  test('no element extends past the right edge of the Pixel viewport', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(page.locator('.app-toolbar')).toBeVisible({ timeout: 15_000 });
+    await dismissSetupLauncher(page);
+
+    // Per-ELEMENT, not `documentElement.scrollWidth > clientWidth`. The two
+    // measure different things: a row that clips its overflowing child leaves
+    // the document itself un-scrollable, which is the whole class of toolbar
+    // defect `tests/toolbar-reachability.spec.ts` exists for. The
+    // `documentElement` check the other cases in this file make does not
+    // subsume this one.
+    const offenders = await page.evaluate(() => {
+      const viewportWidth = window.innerWidth;
+      return Array.from(document.querySelectorAll('*'))
+        .filter(
+          (element) =>
+            element.getBoundingClientRect().right > viewportWidth + 1,
+        )
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          return `${element.tagName}.${element.className.toString().slice(0, 50)} right=${rect.right.toFixed(0)} vw=${viewportWidth}`;
+        })
+        .slice(0, 5);
+    });
+
+    expect(offenders).toHaveLength(0);
+  });
+
   test('optional knowledge setup does not overlay or intercept the mobile app shell', async ({
     page,
   }) => {

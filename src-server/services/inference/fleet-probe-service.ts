@@ -66,6 +66,7 @@ import {
   fleetProbeFailures,
   fleetProbeObservations,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { createLogger, type Logger } from '../../utils/logger.js';
 
 /**
@@ -423,7 +424,7 @@ export class FleetProbeService {
       .catch((error: unknown) => {
         this.#logger.warn(
           `[fleet-probe] Probe of ${target.environmentLabel ?? target.environmentId} for ${target.displayName} could not be recorded.`,
-          { error: error instanceof Error ? error.message : String(error) },
+          { error: errorMessage(error) },
         );
       })
       .finally(() => {

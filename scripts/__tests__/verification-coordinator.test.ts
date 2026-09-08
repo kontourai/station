@@ -334,7 +334,6 @@ function completionCoordinatorChild({
   laneId,
   binDirectory,
   mode,
-  countPath,
   releasePath,
   descendantPath,
 }: {
@@ -344,7 +343,6 @@ function completionCoordinatorChild({
   laneId: 'ci-fast' | 'full-regression';
   binDirectory: string;
   mode: 'fast' | 'hold-repo-governance' | 'hold-test-full-ordinary';
-  countPath: string;
   releasePath: string;
   descendantPath: string;
 }) {
@@ -370,7 +368,6 @@ function completionCoordinatorChild({
         ...process.env,
         PATH: `${binDirectory}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH ?? ''}`,
         STATION_FIXTURE_MODE: mode,
-        STATION_FIXTURE_COUNT: countPath,
         STATION_FIXTURE_RELEASE: releasePath,
         STATION_FIXTURE_DESCENDANT: descendantPath,
         STATION_FIXTURE_NPM: join(binDirectory, 'npm'),
@@ -2103,15 +2100,16 @@ describe('verification coordinator', () => {
         fakeNpm,
         `#!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 
 const mode = process.env.STATION_FIXTURE_MODE;
-const countPath = process.env.STATION_FIXTURE_COUNT;
-const count = existsSync(countPath) ? Number(readFileSync(countPath, 'utf8')) + 1 : 1;
-writeFileSync(countPath, String(count));
+// The coordinator invokes \`npm run <privateScript>\`; hold on the phase's
+// own script so the fixture is bound to the phase identity, not to its
+// position in FULL_REGRESSION_PHASES.
+const script = process.argv[2] === 'run' ? process.argv[3] : undefined;
 const holds =
-  (mode === 'hold-test-full-ordinary' && count === ${FULL_PHASE_IDS.indexOf(ORDINARY_FULL_PHASE_IDS[0]) + 1}) ||
-  (mode === 'hold-repo-governance' && count === ${FULL_PHASE_IDS.indexOf('repo-governance') + 1});
+  (mode === 'hold-test-full-ordinary' && script === 'test:full:ordinary:1:raw') ||
+  (mode === 'hold-repo-governance' && script === 'proof:repo-governance');
 if (!holds) process.exit(0);
 if (mode === 'hold-test-full-ordinary') {
   const descendant = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1_000)'], {
@@ -2134,7 +2132,6 @@ setInterval(() => {
         laneId: 'full-regression',
         binDirectory,
         mode: 'hold-test-full-ordinary',
-        countPath: join(temp.root, 'first-count'),
         releasePath: join(temp.root, 'never-release-first'),
         descendantPath,
       });
@@ -2170,7 +2167,6 @@ setInterval(() => {
         laneId: 'full-regression',
         binDirectory,
         mode: 'hold-repo-governance',
-        countPath: join(temp.root, 'second-count'),
         releasePath: secondRelease,
         descendantPath: join(temp.root, 'second-descendant.json'),
       });
@@ -2193,7 +2189,6 @@ setInterval(() => {
         laneId: 'full-regression',
         binDirectory,
         mode: 'fast',
-        countPath: join(temp.root, 'third-count'),
         releasePath: join(temp.root, 'unused-third-release'),
         descendantPath: join(temp.root, 'third-descendant.json'),
       });
@@ -2215,7 +2210,6 @@ setInterval(() => {
         laneId: 'ci-fast',
         binDirectory,
         mode: 'fast',
-        countPath: join(temp.root, 'fast-count'),
         releasePath: join(temp.root, 'unused-fast-release'),
         descendantPath: join(temp.root, 'fast-descendant.json'),
       });
@@ -2358,6 +2352,7 @@ setInterval(() => {
       expect(stderr).toBeDefined();
       const text = readFileSync(join(worktree, stderr!.path), 'utf8');
       for (const id of [
+        'browser-prerequisite',
         'repo-governance',
         'sdk-builds',
         'verify-static',

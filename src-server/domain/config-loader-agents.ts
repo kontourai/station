@@ -596,6 +596,8 @@ export async function listAgentConfigs(
 
 export async function readAgentCatalog(
   projectHomeDir: string,
+  readSpec: (slug: string) => Promise<AgentSpec | null> = (slug) =>
+    loadAgentConfig(projectHomeDir, slug),
 ): Promise<Array<{ metadata: AgentMetadata; spec: AgentSpec }>> {
   const agentsDir = join(projectHomeDir, 'agents');
 
@@ -613,7 +615,8 @@ export async function readAgentCatalog(
     if (!existsSync(agentPath)) continue;
 
     try {
-      const spec = await loadAgentConfig(projectHomeDir, entry.name);
+      const spec = await readSpec(entry.name);
+      if (!spec) continue;
       const stats = await stat(agentPath);
       const workflowWarnings = await validateWorkflowShortcuts(
         projectHomeDir,

@@ -32,6 +32,7 @@ import {
   validateAllowlist,
   verifyArtifact,
 } from './lib/dependency-lifecycle-policy.mjs';
+import { resolveNpmCli } from './lib/npm-cli.mjs';
 import { readPnpmWorkspace } from './lib/pnpm-lockfile.mjs';
 import { assertWorkspaceDependencySatisfaction } from './lib/workspace-dependency-satisfaction.mjs';
 
@@ -83,22 +84,11 @@ function checkedFile(path, description) {
   return path;
 }
 
-export function resolveNpmCli(env = process.env, node = process.execPath) {
-  const fromNpm = env.npm_execpath;
-  if (fromNpm) {
-    if (!isAbsolute(fromNpm) || !/npm-cli\.js$/.test(fromNpm))
-      throw new Error('npm_execpath must name an absolute npm-cli.js file');
-    return checkedFile(fromNpm, 'npm CLI');
-  }
-  // Node distributions ship npm beside their node binary. Windows keeps it in
-  // `node_modules` next to node.exe; Unix distributions conventionally use
-  // the sibling `lib/node_modules`. Both are explicit JS entries, never .cmd.
-  const candidates = [
-    resolve(dirname(node), 'node_modules/npm/bin/npm-cli.js'),
-    resolve(dirname(node), '../lib/node_modules/npm/bin/npm-cli.js'),
-  ];
-  return checkedFile(candidates.find(existsSync), 'npm CLI');
-}
+// Re-exported so this module's existing importers and tests keep their entry
+// point while the implementation lives in one shared place (#1093). It was
+// the only correct npm resolution in the repo; four other call sites spawned
+// a bare `npm` and broke on Windows.
+export { resolveNpmCli };
 
 function command(command, args, options = {}) {
   return execFileSync(command, args, {
@@ -532,6 +522,8 @@ export function verify({ cwd = root } = {}) {
   return { allowlist, purls: expectedLifecyclePurls(allowlist) };
 }
 
+const BASIS_MCP_APP_GENERATOR = 'scripts/generate-basis-mcp-apps.mjs';
+
 function stationOwnedHooks() {
   command(process.execPath, ['scripts/node-runtime-contract.mjs']);
   if (existsSync(resolve(root, '.git')))
@@ -539,6 +531,29 @@ function stationOwnedHooks() {
   else
     console.log(
       '[dependency-lifecycle] NOT_APPLICABLE git hooks outside a checkout',
+    );
+}
+
+/**
+ * The Basis MCP app bundles are git-ignored build output that typecheck,
+ * vitest, and every bundler resolve as ordinary modules, so a checkout has
+ * them from the moment its dependencies exist. Runs AFTER the install guard
+ * has released: a bundle that fails to build is a source defect, not an
+ * incomplete node_modules, and must not leave the guard armed so that the
+ * next `dependencies:ci` refuses a complete tree. Outside a checkout (the
+ * container's manifest-only dependencies stage) there is nothing to build;
+ * `station build` generates there. Inject only execution.
+ */
+export function generateBuildInputs({
+  run = command,
+  exists = existsSync,
+  log = console.log,
+} = {}) {
+  if (exists(resolve(root, '.git')))
+    run(process.execPath, [BASIS_MCP_APP_GENERATOR]);
+  else
+    log(
+      '[dependency-lifecycle] NOT_APPLICABLE Basis MCP app generation outside a checkout',
     );
 }
 
@@ -587,6 +602,7 @@ export function install(
     runApprovedHooks,
     stationOwnedHooks,
     verify,
+    generateBuildInputs,
   },
 ) {
   const nodeDriver = prepareDependencyInstallDrivers({
@@ -619,7 +635,7 @@ export function install(
       : [...invocation.args],
   };
   const allowlist = execution.check({ cwd: execution.root, bootstrap: true });
-  return withDependencyInstallGuard({
+  const verified = withDependencyInstallGuard({
     root: execution.root,
     clean: false,
     retireLegacy: true,
@@ -636,6 +652,9 @@ export function install(
       return execution.verify({ cwd: execution.root });
     },
   });
+  // Outside the guard on purpose — see generateBuildInputs.
+  execution.generateBuildInputs();
+  return verified;
 }
 
 export function propose({ cwd = root } = {}) {

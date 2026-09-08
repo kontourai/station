@@ -1,3 +1,14 @@
+import {
+  closePluginActivationSession,
+  completePluginActivationComposition,
+  deliverPluginActivationNotifications,
+  type PluginActivationComposition,
+  pluginActivationCompositionPermit,
+  preparePluginActivationComposition,
+} from '../../services/plugins/plugin-activation-composition.js';
+import { createLocalPluginInstallationHost } from '../../services/plugins/plugin-installation-local.js';
+import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { errorMessage } from '../../utils/error-message.js';
 /**
  * VoltAgent runtime integration for Station
  * Handles dynamic agent loading, switching, and MCP tool management
@@ -5,7 +16,7 @@
 
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
   type EngineConnectionId,
@@ -104,6 +115,7 @@ import { OrchestrationStreamPresence } from '../../services/orchestration/orches
 import type { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
+import { AgentPluginLoader } from '../../services/plugins/agent-plugin-loader.js';
 import type { MCPService } from '../../services/plugins/mcp-service.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import type { LayoutService } from '../../services/projects/layout-service.js';
@@ -267,6 +279,7 @@ const AGENT_CONFIGURATION_SHUTDOWN_DRAIN_GRACE_MS = 5_000;
 interface AgentConfigurationGeneration {
   provider: number;
   appConfig: number;
+  selectedPackageFingerprint?: string;
   persistence?: number;
   activationEpoch?: number;
 }
@@ -338,7 +351,10 @@ import { createRuntimeInitializationDeps } from './runtime-initialize-deps.js';
 import { rebuildOrClearRuntimeProjections } from './runtime-projection-recovery.js';
 import { createRuntimeServiceBundle } from './runtime-service-bootstrap.js';
 import { shutdownRuntimeServices } from './runtime-shutdown.js';
-import { checkOllamaAvailability } from './runtime-startup.js';
+import {
+  checkOllamaAvailability,
+  getActiveRuntimeProjectSlug,
+} from './runtime-startup.js';
 import {
   BUILTIN_STATION_DOCS_TOOL_SERVER_ID,
   stationControlRuntimeIdentity,
@@ -363,6 +379,7 @@ type PersistedAgentReloadTarget =
   | { kind: 'managed'; metadata: any; spec: AgentSpec };
 
 export interface StationRuntimeOptions {
+  pluginInstallationHost?: PluginInstallationHost;
   projectHomeDir?: string;
   port?: number;
   host?: string;
@@ -380,6 +397,7 @@ export interface StationRuntimeOptions {
  * Manages VoltAgent instances with dynamic agent loading
  */
 export class StationRuntime {
+  private readonly pluginInstallationHost: PluginInstallationHost;
   private configLoader: ConfigLoader;
   private appConfig!: AppConfig;
   private logger: Logger;
@@ -437,6 +455,9 @@ export class StationRuntime {
   private agentConfigurationMutationQueue: Promise<void> = Promise.resolve();
   private agentConfigurationPersistenceQueue: Promise<void> = Promise.resolve();
   private agentConfigurationPersistenceRevision = 0;
+  /** Installed-plugin Skill source generation requested versus loaded. */
+  private pluginSkillSourceRevision = 0;
+  private loadedPluginSkillSourceRevision = 0;
   /**
    * Bumped every time an activation is abandoned at its deadline
    * (archive#3622). It is part of the generation snapshot every reload
@@ -455,6 +476,7 @@ export class StationRuntime {
   private agentConfigurationMutationsClosed = false;
   private loadedProviderLaunchabilityRevision: number | null = null;
   private loadedAppConfigLaunchabilityRevision: number | null = null;
+  private loadedSelectedPackageFingerprint: string | null = null;
   private shutdownPromise: Promise<void> | null = null;
   private initializeInFlight: Promise<void> | null = null;
   private configurationReconciliationScheduled = false;
@@ -601,7 +623,7 @@ export class StationRuntime {
           );
         }
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-          `App home profile: failed to resolve the claude app-home env; continuing with the global Claude Code config: ${error instanceof Error ? error.message : String(error)}`,
+          `App home profile: failed to resolve the claude app-home env; continuing with the global Claude Code config: ${errorMessage(error)}`,
         );
         return undefined;
       }
@@ -663,7 +685,7 @@ export class StationRuntime {
           );
         }
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-          `App home profile: failed to resolve the codex app-home env; continuing with the global Codex config: ${error instanceof Error ? error.message : String(error)}`,
+          `App home profile: failed to resolve the codex app-home env; continuing with the global Codex config: ${errorMessage(error)}`,
         );
         return undefined;
       }
@@ -901,10 +923,24 @@ export class StationRuntime {
         homeDir: projectHomeDir,
       });
 
+      const agentPluginLoader = new AgentPluginLoader({
+        projectHomeDir,
+        journal: () =>
+          this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
+        report: (report) =>
+          this.logger?.warn('Agent Plugin component was not loaded', report),
+      });
       this.configLoader = openedConfigLoader = new ConfigLoader({
         projectHomeDir,
         watchFiles: true,
         enforceHomeSchema: true,
+        integrationSources: [agentPluginLoader],
+        pluginAgentAdmission: (pluginId, generation, composition) =>
+          agentPluginLoader.admitsPluginAgent(
+            pluginId,
+            generation,
+            composition,
+          ),
       });
       // archive#3063: the built-in tool servers' spawn identity (dist path,
       // STATION_API_BASE/STATION_PORT) is THIS instance's property, resolved
@@ -976,8 +1012,19 @@ export class StationRuntime {
         this.logger,
       );
       this.bindFleetConsumerProbesPreview();
+      // Journal consumers wire after the quarantine notice: the runtime must
+      // report a recorded corruption before anything asks the store for more
+      // than its publisher.
+      this.pluginInstallationHost =
+        options.pluginInstallationHost ??
+        createLocalPluginInstallationHost(
+          join(projectHomeDir, 'plugins'),
+          this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
+        );
       this.pluginOperationalEventSubscriptions =
         createPluginOperationalEventSubscriptionService({
+          packageMcpJournal:
+            this.orchestrationEventStore.createPackageMcpAdmissionJournal(),
           eventBus: this.eventBus,
           eventStore: this.orchestrationEventStore,
           logger: this.logger,
@@ -1041,6 +1088,7 @@ export class StationRuntime {
         host: this.host,
         logger: this.logger,
         configLoader: this.configLoader,
+        agentPluginLoader,
         approvalRegistry: this.approvalRegistry,
         eventBus: this.eventBus,
         orchestrationEventStore: this.orchestrationEventStore,
@@ -1133,7 +1181,7 @@ export class StationRuntime {
               'Failed to release assignment claim on session exit',
               {
                 sessionId: event.sessionId,
-                error: error instanceof Error ? error.message : String(error),
+                error: errorMessage(error),
               },
             );
           });
@@ -1184,7 +1232,7 @@ export class StationRuntime {
           .catch((error) => {
             this.logger.warn('Failed to finalize worktree on session exit', {
               sessionId,
-              error: error instanceof Error ? error.message : String(error),
+              error: errorMessage(error),
             });
           });
       });
@@ -1211,7 +1259,7 @@ export class StationRuntime {
         })
         .catch((error) => {
           this.logger.warn('Startup assignment-claim reconciliation failed', {
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           });
         });
 
@@ -1252,7 +1300,9 @@ export class StationRuntime {
    * Reload agents from disk
    */
   async reloadAgents(): Promise<void> {
-    await this.mutateAgentConfiguration(() => this.reloadAgentsFromDisk());
+    await this.mutateAgentConfiguration(() =>
+      this.reloadConfigurationFromDisk(),
+    );
   }
 
   private async recoverRuntimeProjections(
@@ -1262,7 +1312,7 @@ export class StationRuntime {
       rebuildOrClearRuntimeProjections(
         () => {
           resetIntegrationState();
-          return this.reloadAgentsFromDisk();
+          return this.reloadConfigurationFromDisk();
         },
         () => {
           resetIntegrationState();
@@ -1368,6 +1418,10 @@ export class StationRuntime {
     operation: import('../types.js').AgentConfigurationMutationOperation<T>,
     options?: import('../types.js').AgentConfigurationMutationOptions<T>,
   ): Promise<T> {
+    if (options?.activationMode === 'defer' && options.pluginActivation)
+      throw new Error(
+        'Plugin activation requires the owned runtime composition boundary',
+      );
     if (options?.activationMode === 'defer') {
       return this.serializeAgentConfigurationPersistence(async () => {
         let mutationBegan = false;
@@ -1377,6 +1431,10 @@ export class StationRuntime {
         const beginMutation = () => {
           if (mutationBegan) return;
           mutationBegan = true;
+          if (options?.rediscoverSkills) {
+            this.pluginSkillSourceRevision =
+              (this.pluginSkillSourceRevision ?? 0) + 1;
+          }
           this.agentConfigurationPersistenceRevision =
             (this.agentConfigurationPersistenceRevision ?? 0) + 1;
           this.loadedProviderLaunchabilityRevision = null;
@@ -1435,6 +1493,10 @@ export class StationRuntime {
         const beginMutation = () => {
           if (mutationBegan) return;
           mutationBegan = true;
+          if (options?.rediscoverSkills) {
+            this.pluginSkillSourceRevision =
+              (this.pluginSkillSourceRevision ?? 0) + 1;
+          }
           this.agentConfigurationRevision += 1;
         };
         let result: T | undefined;
@@ -1458,14 +1520,26 @@ export class StationRuntime {
                 : undefined;
             const activating = this.trackAgentActivation(
               agentSlug,
-              agentSlug
-                ? this.reloadPersistedAgentFromDisk(agentSlug)
-                : this.reloadAgentsFromDisk(),
+              (async () => {
+                const composition = options?.pluginActivation
+                  ? await preparePluginActivationComposition(
+                      options.pluginActivation,
+                      operationError === undefined ? 'install' : 'compensation',
+                    )
+                  : undefined;
+                if (agentSlug && !composition)
+                  await this.reloadPersistedAgentFromDisk(agentSlug);
+                else await this.reloadConfigurationFromDisk(composition);
+                if (composition)
+                  await completePluginActivationComposition(composition);
+              })(),
             );
             const outcome =
               await this.awaitActivationWithinDeadline(activating);
             if (outcome.status === 'abandoned') {
               activationAbandoned = true;
+              if (options?.pluginActivation)
+                closePluginActivationSession(options.pluginActivation);
               this.abandonStalledActivation(agentSlug, activating);
             } else if (outcome.error !== undefined) {
               throw outcome.error;
@@ -1478,6 +1552,8 @@ export class StationRuntime {
             this.loadedProviderLaunchabilityRevision = null;
             this.loadedAppConfigLaunchabilityRevision = null;
           } finally {
+            if (options?.pluginActivation)
+              closePluginActivationSession(options.pluginActivation);
             this.agentConfigurationRevision += 1;
           }
         }
@@ -1510,7 +1586,17 @@ export class StationRuntime {
         }
         return result as T;
       }),
-    );
+    ).then((result) => {
+      if (options?.pluginActivation)
+        deliverPluginActivationNotifications(
+          options.pluginActivation,
+          (error) =>
+            this.logger?.warn?.('Plugin readiness notification failed', {
+              error,
+            }),
+        );
+      return result;
+    });
   }
 
   /**
@@ -1843,13 +1929,15 @@ export class StationRuntime {
       // claim there is nothing to do.
       if (
         this.runtimeConfigurationSourcesAreLoaded() &&
+        (this.loadedPluginSkillSourceRevision ?? 0) ===
+          (this.pluginSkillSourceRevision ?? 0) &&
         !this.agentsAwaitingReconciliation?.size
       ) {
         return false;
       }
       this.agentConfigurationRevision += 1;
       try {
-        await this.reloadAgentsFromDisk();
+        await this.reloadConfigurationFromDisk();
       } finally {
         this.agentConfigurationRevision += 1;
       }
@@ -1861,10 +1949,13 @@ export class StationRuntime {
     return (
       this.loadedProviderLaunchabilityRevision !== null &&
       this.loadedAppConfigLaunchabilityRevision !== null &&
+      typeof this.loadedSelectedPackageFingerprint === 'string' &&
       this.providerService.getLaunchabilityRevision() ===
         this.loadedProviderLaunchabilityRevision &&
       this.configLoader.getLaunchabilityRevision() ===
-        this.loadedAppConfigLaunchabilityRevision
+        this.loadedAppConfigLaunchabilityRevision &&
+      this.captureSelectedPackageFingerprint() ===
+        this.loadedSelectedPackageFingerprint
     );
   }
 
@@ -2008,8 +2099,11 @@ export class StationRuntime {
     }
   }
 
-  private async reloadAgentsFromDisk(): Promise<void> {
-    const configurationBefore = this.captureAgentConfigurationRevisions();
+  private async reloadAgentsFromDisk(
+    composition?: PluginActivationComposition,
+  ): Promise<void> {
+    const configurationBefore =
+      this.captureAgentConfigurationRevisions(composition);
     this.loadedProviderLaunchabilityRevision = null;
     this.loadedAppConfigLaunchabilityRevision = null;
     const preparationState: RuntimeAgentPreparationState = {
@@ -2041,7 +2135,9 @@ export class StationRuntime {
     }
     let stagedAppConfig: AppConfig | null = null;
     const appConfig = await reloadRuntimeAgents({
-      configLoader: this.configLoader,
+      configLoader: composition
+        ? this.configLoader.forPluginActivationComposition(composition)
+        : this.configLoader,
       activeAgents: this.activeAgents,
       agentMetadataMap: this.agentMetadataMap,
       agentSpecs: this.agentSpecs,
@@ -2061,7 +2157,7 @@ export class StationRuntime {
       eventBus: this.eventBus,
       prepareVoltAgentInstance: (slug, nextAppConfig) =>
         prepareRuntimeAgentInstance(
-          this.runtimeAgentBuilderContext(slug, nextAppConfig),
+          this.runtimeAgentBuilderContext(slug, nextAppConfig, composition),
           preparationState,
         ),
       activateVoltAgentInstance: (prepared) =>
@@ -2069,6 +2165,7 @@ export class StationRuntime {
           ...this.runtimeAgentBuilderContext(
             prepared.slug,
             stagedAppConfig ?? this.appConfig,
+            composition,
           ),
           ...preparationState,
         }),
@@ -2122,7 +2219,10 @@ export class StationRuntime {
         }
       },
       assertConfigurationCurrent: () =>
-        this.assertAgentConfigurationRevisions(configurationBefore),
+        this.assertAgentConfigurationRevisions(
+          configurationBefore,
+          composition,
+        ),
       retainRetiredResource: (_key, config) => {
         this.retiredMcpConfigs.add(config);
       },
@@ -2134,13 +2234,36 @@ export class StationRuntime {
         return stagedAppConfig;
       },
     });
-    await this.reloadDefaultAgentFromConfig(appConfig);
+    await this.reloadDefaultAgentFromConfig(appConfig, composition);
     this.rebuildGlobalToolRegistry();
-    this.assertAgentConfigurationRevisions(configurationBefore);
+    this.assertAgentConfigurationRevisions(configurationBefore, composition);
     this.appConfig = appConfig;
     this.usageTelemetry?.reconfigure(appConfig);
     applyConfiguredLogLevel(appConfig.logLevel, this.logger);
     this.recordLoadedConfigurationRevisions(configurationBefore);
+  }
+
+  /**
+   * Full configuration activation plus any retained installed-plugin Skill
+   * discovery obligation. The revision comparison makes a failed activation
+   * retry discovery and prevents an older abandoned pass from clearing a newer
+   * plugin mutation's obligation.
+   */
+  private async reloadConfigurationFromDisk(
+    composition?: PluginActivationComposition,
+  ): Promise<void> {
+    const requestedSkillRevision = this.pluginSkillSourceRevision ?? 0;
+    if (
+      (this.loadedPluginSkillSourceRevision ?? 0) !== requestedSkillRevision
+    ) {
+      await this.skillService.discoverSkills(
+        this.configLoader.getProjectHomeDir(),
+        getActiveRuntimeProjectSlug(this.storageAdapter),
+        ...(composition ? ([composition] as const) : []),
+      );
+    }
+    await this.reloadAgentsFromDisk(composition);
+    this.loadedPluginSkillSourceRevision = requestedSkillRevision;
   }
 
   /**
@@ -2153,7 +2276,7 @@ export class StationRuntime {
     const configurationBefore = this.captureAgentConfigurationRevisions();
     const target = await this.resolvePersistedAgentReloadTarget(slug);
     if (target.kind === 'reload-all') {
-      await this.reloadAgentsFromDisk();
+      await this.reloadConfigurationFromDisk();
       return;
     }
     const transaction = this.beginPersistedAgentActivationTransaction(slug);
@@ -2492,16 +2615,114 @@ export class StationRuntime {
     }
   }
 
-  private assertAgentConfigurationRevisions(expected: {
-    provider: number;
-    appConfig: number;
-    persistence?: number;
-    activationEpoch?: number;
-  }): void {
-    const current = this.captureAgentConfigurationRevisions();
+  /** Canonical selected-generation identity, including activation-pending generations.
+   * Claims, PIDs and history are not configuration authority. Optional selection
+   * metadata participates as opaque identity, never filesystem/path admission.
+   * Ordinary reads include actual admission readiness. An explicit composition
+   * may project only its exact journal-verified pending permits as ready. */
+  private captureSelectedPackageFingerprint(
+    composition?: PluginActivationComposition,
+  ): string | null {
+    // No store, or a store without the admission journal, cannot say what is
+    // selected; that is the same unverifiable set as a corrupt journal, so it
+    // fails closed rather than manufacturing an empty fingerprint.
+    if (
+      typeof this.orchestrationEventStore?.createPackageMcpAdmissionJournal !==
+      'function'
+    )
+      return null;
+    try {
+      const journal =
+        this.orchestrationEventStore.createPackageMcpAdmissionJournal();
+      const selected = journal?.selectedInstallations();
+      if (
+        selected?.state !== 'observed' ||
+        !Array.isArray(selected.installations)
+      )
+        return null;
+      const ids = new Set<string>();
+      const identities: string[] = [];
+      for (const item of selected.installations) {
+        if (
+          !item ||
+          [
+            item.journalId,
+            item.pluginId,
+            item.incarnation,
+            item.contentDigest,
+          ].some((value) => typeof value !== 'string' || value.length === 0) ||
+          ids.has(item.pluginId) ||
+          [item.materialization, item.dataScope, item.origin].some(
+            (value) => value !== undefined && typeof value !== 'string',
+          )
+        )
+          return null;
+        ids.add(item.pluginId);
+        let admissionOpen = journal!.admissionOpen(item);
+        if (!admissionOpen && composition) {
+          const permit = pluginActivationCompositionPermit(
+            composition,
+            journal!,
+            item.pluginId,
+          );
+          if (permit) {
+            const permitted = journal!.activationInstallation(permit);
+            if (
+              [
+                'journalId',
+                'pluginId',
+                'incarnation',
+                'contentDigest',
+                'materialization',
+                'dataScope',
+                'origin',
+              ].some(
+                (key) =>
+                  permitted[key as keyof typeof permitted] !==
+                  item[key as keyof typeof item],
+              )
+            )
+              return null;
+            admissionOpen = true;
+          }
+        }
+        identities.push(
+          JSON.stringify([
+            item.journalId,
+            item.pluginId,
+            item.incarnation,
+            item.contentDigest,
+            item.materialization ?? null,
+            item.dataScope ?? null,
+            item.origin ?? null,
+            admissionOpen,
+          ]),
+        );
+      }
+      return createHash('sha256')
+        .update(JSON.stringify(identities.sort()))
+        .digest('hex');
+    } catch {
+      return null;
+    }
+  }
+
+  private assertAgentConfigurationRevisions(
+    expected: {
+      provider: number;
+      appConfig: number;
+      selectedPackageFingerprint?: string;
+      persistence?: number;
+      activationEpoch?: number;
+    },
+    composition?: PluginActivationComposition,
+  ): void {
+    const current = this.captureAgentConfigurationRevisions(composition);
     if (
       expected.provider !== current.provider ||
       expected.appConfig !== current.appConfig ||
+      expected.selectedPackageFingerprint !==
+        current.selectedPackageFingerprint ||
       (expected.persistence !== undefined &&
         expected.persistence !== current.persistence) ||
       (expected.activationEpoch !== undefined &&
@@ -2513,13 +2734,22 @@ export class StationRuntime {
     }
   }
 
-  private captureAgentConfigurationRevisions(): {
+  private captureAgentConfigurationRevisions(
+    composition?: PluginActivationComposition,
+  ): {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint: string;
     persistence: number;
     activationEpoch: number;
   } {
+    const selectedPackageFingerprint =
+      this.captureSelectedPackageFingerprint(composition);
+    if (selectedPackageFingerprint === null) {
+      throw new Error('Selected package generations could not be verified.');
+    }
     return {
+      selectedPackageFingerprint,
       provider: this.providerService.getLaunchabilityRevision(),
       appConfig: this.configLoader.getLaunchabilityRevision(),
       persistence: this.agentConfigurationPersistenceRevision ?? 0,
@@ -2530,25 +2760,27 @@ export class StationRuntime {
   private recordLoadedConfigurationRevisions(revisions: {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint?: string;
     persistence?: number;
   }): void {
     this.loadedProviderLaunchabilityRevision = revisions.provider;
     this.loadedAppConfigLaunchabilityRevision = revisions.appConfig;
+    // Record the selection used by construction, never a new read that could
+    // relabel already-built agents after another runtime selected a generation.
+    this.loadedSelectedPackageFingerprint =
+      typeof revisions.selectedPackageFingerprint === 'string' &&
+      revisions.selectedPackageFingerprint.length > 0
+        ? revisions.selectedPackageFingerprint
+        : null;
   }
 
   private getStableAgentConfigurationRevision(): number | null {
     if (
       this.agentConfigurationMutationsClosed ||
       this.agentConfigurationRevision % 2 !== 0 ||
-      this.loadedProviderLaunchabilityRevision === null ||
-      this.loadedAppConfigLaunchabilityRevision === null ||
-      this.providerService.getLaunchabilityRevision() !==
-        this.loadedProviderLaunchabilityRevision ||
-      this.configLoader.getLaunchabilityRevision() !==
-        this.loadedAppConfigLaunchabilityRevision
-    ) {
+      !this.runtimeConfigurationSourcesAreLoaded()
+    )
       return null;
-    }
     return this.agentConfigurationRevision;
   }
 
@@ -2573,13 +2805,16 @@ export class StationRuntime {
 
   private async reloadDefaultAgentFromConfig(
     appConfig: AppConfig,
+    composition?: PluginActivationComposition,
   ): Promise<void> {
     const builtinEngineBinding =
       await this.resolveBuiltinEngineBinding(appConfig);
     await bootstrapRuntimeDefaultAgent({
       appConfig,
       builtinEngineBinding,
-      configLoader: this.configLoader,
+      configLoader: composition
+        ? this.configLoader.forPluginActivationComposition(composition)
+        : this.configLoader,
       framework: this.framework,
       logger: this.logger,
       usageAggregator: this.usageAggregator,
@@ -2720,6 +2955,8 @@ export class StationRuntime {
         createVoltAgentInstance: async (slug) =>
           this.createVoltAgentInstance(slug),
       });
+      this.loadedPluginSkillSourceRevision =
+        this.pluginSkillSourceRevision ?? 0;
     });
   }
 
@@ -2753,6 +2990,11 @@ export class StationRuntime {
     // state prevents any listener from being configured.
     const identity = await this.environmentSecurityService.initialize();
     this.stationEnvironmentId = identity.environmentId;
+    const packageProjections = await this.pluginInstallationHost.reconcile();
+    if (packageProjections.status === 'pending')
+      this.logger.warn('Plugin catalog projection remains pending', {
+        plugins: packageProjections.pending,
+      });
     await this.sshEnvironmentService.initialize();
     // Terminal sessions are process-global and have no durable tenant
     // binding. A hosted tenant-isolated runtime must not bind the separate
@@ -3350,6 +3592,7 @@ export class StationRuntime {
       orchestrationService: this.orchestrationService,
       resourcePosture: this.resourcePosture,
       orchestrationEventStore: this.orchestrationEventStore,
+      pluginInstallationHost: this.pluginInstallationHost,
       pluginOperationalEventSubscriptions:
         this.pluginOperationalEventSubscriptions,
       orchestrationStreamPresence: this.orchestrationStreamPresence,
@@ -3520,11 +3763,17 @@ export class StationRuntime {
     );
   }
 
-  private runtimeAgentBuilderContext(agentSlug: string, appConfig: AppConfig) {
+  private runtimeAgentBuilderContext(
+    agentSlug: string,
+    appConfig: AppConfig,
+    composition?: PluginActivationComposition,
+  ) {
     return {
       agentSlug,
       appConfig,
-      configLoader: this.configLoader,
+      configLoader: composition
+        ? this.configLoader.forPluginActivationComposition(composition)
+        : this.configLoader,
       framework: this.framework,
       skillService: this.skillService,
       logger: this.logger,

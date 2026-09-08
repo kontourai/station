@@ -108,7 +108,7 @@ function corpusDescriptors(groupName, shard) {
   return [selected];
 }
 
-function groupFiles(groups, name) {
+export function groupFiles(groups, name) {
   const keys = {
     ordinary: 'ordinary',
     'process-heavy': 'processHeavy',

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, readdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   isCanonicalPluginId,
   type PluginManifest,
@@ -21,11 +21,16 @@ import type {
 } from '../../services/operational-events/operational-event-subscriptions.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
-import { readPluginManifestFileSync } from '../../services/plugins/plugin-manifest-loader.js';
+import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import {
   getPluginGrants,
   PluginGrantsUnavailableError,
+  readPluginGrantState,
 } from '../../services/plugins/plugin-permissions.js';
+import {
+  capturePluginRuntimeArtifact,
+  type PluginRuntimeArtifact,
+} from '../../services/plugins/plugin-runtime-artifact.js';
 import { pluginEventSubscriptionOperations } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 
@@ -37,7 +42,7 @@ interface DesiredSubscription {
   declaration: OperationalEventSubscriptionDeclaration;
   entry: PluginOperationalEventSubscriptionEntry;
   fingerprint: string;
-  manifestPath: string;
+  artifact: PluginRuntimeArtifact;
   pluginName: string;
 }
 
@@ -73,7 +78,7 @@ interface PluginOperationalEventSubscriptionServiceOptions {
   logger: Pick<Logger, 'debug' | 'info' | 'warn' | 'error'>;
   projectHomeDir: string;
   acquireModule?: typeof acquirePluginPublicServerModule;
-  readManifest?: typeof readPluginManifestFileSync;
+  packageMcpJournal?: PackageMcpAdmissionJournal;
   readGrants?: typeof getPluginGrants;
 }
 
@@ -135,22 +140,6 @@ function dispatchDelay(
   }
 }
 
-function manifestRemainsRegularFile(manifestPath: string): boolean {
-  const pluginRoot = dirname(manifestPath);
-  try {
-    const rootStat = lstatSync(pluginRoot);
-    const manifestStat = lstatSync(manifestPath);
-    return (
-      rootStat.isDirectory() &&
-      !rootStat.isSymbolicLink() &&
-      manifestStat.isFile() &&
-      !manifestStat.isSymbolicLink()
-    );
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Runtime composition for trusted plugin observers. The service owns only
  * manifest discovery, grant-derived authorization, module acquisition, and
@@ -162,8 +151,10 @@ export function createPluginOperationalEventSubscriptionService(
   const pluginsDir = join(options.projectHomeDir, 'plugins');
   const acquireModule =
     options.acquireModule ?? acquirePluginPublicServerModule;
-  const readManifest = options.readManifest ?? readPluginManifestFileSync;
-  const readGrants = options.readGrants ?? getPluginGrants;
+  const readGrants = (plugin: string, artifact: PluginRuntimeArtifact) =>
+    options.readGrants
+      ? options.readGrants(options.projectHomeDir, plugin)
+      : readPluginGrantState(options.projectHomeDir, plugin, artifact).granted;
   const desired = new Map<string, DesiredSubscription>();
   const active = new Map<string, ActiveSubscription>();
   let closing = false;
@@ -208,9 +199,8 @@ export function createPluginOperationalEventSubscriptionService(
     const current = desired.get(declaration.subscriber.id);
     if (!current || !sameDeclaration(current.declaration, declaration))
       return { kind: 'denied' };
-    if (!manifestRemainsRegularFile(current.manifestPath))
-      return { kind: 'denied' };
-    const manifest = readManifest(current.manifestPath);
+    if (!current.artifact.isCurrent()) return { kind: 'denied' };
+    const manifest = current.artifact.manifest;
     if (
       manifest.name !== current.pluginName ||
       typeof manifest.serverModule !== 'string'
@@ -221,9 +211,7 @@ export function createPluginOperationalEventSubscriptionService(
     );
     if (!currentEntry || !sameEntry(current.entry, currentEntry))
       return { kind: 'denied' };
-    const grants = new Set(
-      readGrants(options.projectHomeDir, current.pluginName),
-    );
+    const grants = new Set(readGrants(current.pluginName, current.artifact));
     if (!grants.has('plugin.server') || !grants.has('events.subscribe'))
       return { kind: 'denied' };
     const projection = current.entry.projection ?? 'metadata';
@@ -244,24 +232,27 @@ export function createPluginOperationalEventSubscriptionService(
   const discover = (): Map<string, DesiredSubscription> => {
     const found = new Map<string, DesiredSubscription>();
     if (!existsSync(pluginsDir)) return found;
-    const entries = readdirSync(pluginsDir, { withFileTypes: true }).sort(
-      (left, right) => left.name.localeCompare(right.name),
+    const names = new Set(
+      readdirSync(pluginsDir, { withFileTypes: true })
+        .filter(
+          (entry) => entry.isDirectory() && isCanonicalPluginId(entry.name),
+        )
+        .map((entry) => entry.name),
     );
-    for (const directory of entries) {
-      if (!directory.isDirectory() || !isCanonicalPluginId(directory.name))
-        continue;
+    const selected = options.packageMcpJournal?.selectedInstallations();
+    if (selected?.state === 'unavailable')
+      throw new Error('Plugin installation inventory unavailable.');
+    for (const installed of selected?.installations ?? [])
+      names.add(installed.pluginId);
+    for (const name of [...names].sort()) {
       try {
-        const manifestPath = join(pluginsDir, directory.name, 'plugin.json');
-        if (!existsSync(manifestPath)) continue;
-        const stat = lstatSync(manifestPath);
-        if (!stat.isFile() || stat.isSymbolicLink()) {
-          throw new Error('Plugin event subscription manifest is unsafe.');
-        }
-        const manifest = readManifest(manifestPath);
-        if (manifest.name !== directory.name)
-          throw new Error(
-            'Plugin event subscription identity is inconsistent.',
-          );
+        const artifact = capturePluginRuntimeArtifact(
+          pluginsDir,
+          name,
+          options.packageMcpJournal,
+        );
+        if (!artifact) continue;
+        const manifest = artifact.manifest;
         for (const entry of manifest.operationalEventSubscriptions ?? []) {
           const subscriberId = `${manifest.name}.${entry.id}`;
           if (found.has(subscriberId))
@@ -280,17 +271,17 @@ export function createPluginOperationalEventSubscriptionService(
               requiredScopes: structuredClone(entry.requiredScopes ?? []),
             },
             entry: structuredClone(entry),
-            fingerprint: desiredFingerprint(manifest, entry),
-            manifestPath,
+            fingerprint: `${artifact.generation ?? 'legacy'}:${artifact.digest}:${desiredFingerprint(manifest, entry)}`,
+            artifact,
             pluginName: manifest.name,
           });
         }
       } catch (error) {
         log('warn', 'Skipped invalid plugin event subscription manifest', {
           error: error instanceof Error ? error.message : 'unknown',
-          plugin: directory.name,
+          plugin: name,
         });
-        observe('discover', 'invalid', directory.name);
+        observe('discover', 'invalid', name);
       }
     }
     return found;
@@ -421,12 +412,17 @@ export function createPluginOperationalEventSubscriptionService(
       }
       let acquired: AcquiredPluginPublicServerModule | null = null;
       try {
-        const manifest = readManifest(next.manifestPath);
+        const manifest = next.artifact.manifest;
         acquired = await acquireModule(
           pluginsDir,
           next.pluginName,
           manifest,
           options.logger as Logger,
+          {
+            journal: options.packageMcpJournal,
+            artifact: next.artifact,
+            authorize: () => authorization(next.declaration).kind === 'granted',
+          },
         );
         if (
           !acquired?.loaded.operationalEvents ||
@@ -444,14 +440,24 @@ export function createPluginOperationalEventSubscriptionService(
         const opened = registry.open({
           declaration: next.declaration,
           adapter: {
-            observe: (input) =>
-              observer.observe({
+            observe: (input) => {
+              if (
+                !acquired?.isCurrent() ||
+                !next.artifact.isCurrent() ||
+                authorization(next.declaration).kind !== 'granted'
+              )
+                return Promise.resolve({
+                  kind: 'rejected' as const,
+                  failureCode: 'plugin-unavailable',
+                });
+              return observer.observe({
                 subscriptionId: next.entry.id,
                 projection: input.projection,
                 idempotencyKey: input.idempotencyKey,
                 attempt: input.attempt,
                 signal: input.signal,
-              }),
+              });
+            },
           },
         });
         if (opened.kind !== 'opened') {

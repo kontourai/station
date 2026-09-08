@@ -245,22 +245,34 @@
 }
 
 @media (max-width: 480px) {
-  .app-toolbar__actions {
-    gap: var(--space-1);
-  }
-  .app-toolbar__icon-btn {
-    padding: 4px 6px;
-    font-size: var(--text-md);
-  }
-  .app-toolbar__workspace-btn {
-    display: none;
-  }
-  .app-toolbar__conn-name,
-  .app-toolbar__conn-note {
-    display: none;
-  }
-  /* A finger needs the same 44px floor the composer controls get; the glyph
-     does not grow. */
+  /* station#1630: two declarations lived here that never applied — an
+     `.app-toolbar__icon-btn` padding/font-size pair and an
+     `.app-toolbar__workspace-btn { display: none }` — because the base rules
+     redeclare the same properties LATER at equal specificity, and source
+     order decides a tie. They stated an intent that computed nothing.
+
+     `.app-toolbar__workspace-btn` had no consumer anywhere in the app, so
+     hiding it was never a change anyone could see and its whole rule set went
+     with it.
+
+     The icon-button pair was deleted rather than moved after the base, and
+     the two halves are not alike. `font-size` only shrinks the glyph, which
+     renders at `1em`. `padding` is NOT inert: the 768px block's 44px is a
+     min-width FLOOR, and two controls in this row are content-sized past it —
+     the connection chip and the notifications button when it carries a badge.
+     Trimming 8px to 6px gives each of those back 4px, so 8px of a
+     `flex-shrink: 0` row.
+
+     station#1401 has since TAKEN that padding half — the trim lives in the
+     mobile touch block below, where it applies, and it moved the label
+     breakpoint from 382 to 374. The font-size half stayed deleted: it only
+     shrinks the glyph, which is a visible cost with nothing to show for it.
+     So this block's two declarations are still correctly gone, and the row
+     they described is 8px narrower than when they were written.
+
+     This rule is the block's live one: its base sits EARLIER in this sheet,
+     so it wins the tie. A finger needs the same 44px floor the composer
+     controls get; the glyph does not grow. */
   .app-toolbar__region-btn {
     width: 44px;
     height: 44px;
@@ -351,34 +363,6 @@
 }
 
 /* ── Header Buttons ── */
-.app-toolbar__workspace-btn {
-  font-family: var(--font-sans);
-  font-size: var(--text-md);
-  font-weight: 600;
-  padding: 4px 10px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  border: 1px solid var(--border-secondary);
-  border-radius: 8px;
-  color: var(--text-primary);
-  cursor: pointer;
-  transition:
-    background-color var(--motion-fast) var(--ease-standard),
-    border-color var(--motion-fast) var(--ease-standard),
-    opacity var(--motion-fast) var(--ease-standard);
-}
-
-.app-toolbar__workspace-btn:hover:not(:disabled) {
-  border-color: var(--accent-primary);
-  background: var(--bg-tertiary);
-}
-
-.app-toolbar__workspace-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
 
 .app-toolbar__icon-btn {
   font-family: var(--font-sans);
@@ -1924,6 +1908,16 @@
   .app-toolbar__icon-btn {
     min-width: 44px;
     min-height: 44px;
+    /* station#1401: the 44px above is a FLOOR, so every glyph-only control
+       carrying this class is 44 whatever its padding — trimming theirs changes
+       nothing, in this row or in the chat dock's mobile header, which uses the
+       same class for three glyph buttons. The two content-sized members are
+       what this reclaims from: the toolbar's labelled connection chip and its
+       notifications button when it carries a badge. Measured below, both give
+       back 4px each. The vertical 6px -> 4px is inert for the same reason
+       `min-height` floors it, and the dock's own connection chip overrides
+       padding entirely (`index.css`, `.chat-dock__mobile-conn`). */
+    padding: 4px 6px;
   }
   .app-toolbar__conn-name,
   .app-toolbar__conn-note {
@@ -2032,18 +2026,12 @@
     font-size: var(--text-xl); /* prevents iOS zoom on focus */
   }
 
-  .app-toolbar__icon-btn {
-    min-height: 44px;
-    min-width: 44px;
-  }
-
+  /* The row's only gap declaration at this breakpoint — the `--space-1` copy
+     that used to sit in the 480px block above never applied, because this
+     block always matches when that one does and declares the same property
+     later in the same file. */
   .app-toolbar__actions {
     gap: var(--space-2);
-  }
-
-  .app-toolbar__conn-name,
-  .app-toolbar__conn-note {
-    display: none;
   }
 
   .message__rating-btn {
@@ -2256,6 +2244,83 @@
   .turn-footer .share-answer__button {
     min-height: 44px;
     min-width: 44px;
+  }
+}
+
+/* #1132 defect 2: below this width the toolbar's action cluster no longer fits,
+   and the connection chip's label is what it can give up.
+
+   MEASURED, on a running app in the `error` state ("Can't connect"), which is
+   the state in which reaching Settings matters most. `.app-toolbar__actions` is
+   `flex-shrink: 0` and `.app-toolbar__brand` bottoms out, so the row's left
+   side ends at x=126 and the cluster's own width is viewport-independent: with
+   this chip labelled it measures 259px, putting `Open settings` at x=340..384
+   at EVERY viewport up to 402 (266px and x=348..392 before station#1401's
+   padding trim, in the same `error` state). #1401 released this chip's 116px `min-width`
+   reservation, and that is what keeps 390, 402 and 412 reachable today; what it
+   left behind is the arithmetic below.
+
+   THE BOUND. The widest the cluster can get: 126 (left side at its floor) +
+   112 (this chip — an 85px `max-width` label plus 27px of measured furniture:
+   button padding, the 7px dot, its gap) + 4 + 58 (notifications carrying its
+   widest badge: 34px of button plus a 23.91px badge — that is "99"'s width,
+   which the `9+` cap makes unrenderable (the cap's own string is 23.80px), so
+   the budget is ~1px conservative rather than exact. These figures are macOS
+   measurements and glyph metrics differ by platform — the same capped badge is
+   25.34px on a Linux runner, where "+" is wider than a digit rather than
+   narrower — so treat them as this platform's arithmetic. What holds
+   everywhere is that the badge stops growing at the cap (pinned in
+   `HeaderActions.connection-reflow.test.tsx`, in the COUNT rather than in
+   pixels). Its pixel size against this 23.91 allowance is enforced by
+   nothing: the e2e never renders a badge, and at its 360px case the label is
+   suppressed anyway, so the row there sits nowhere near this bound. That gap
+   is station#1721. The two-character worst
+   case that HeaderActions.tsx's "9+" cap creates — uncapped this member is
+   unbounded and so is this paragraph) + 4 + 44 (More actions) + 4 + 44 (Open
+   settings) = 396px, of which the last control's own CENTRE sits at 374. At
+   374px and below that centre is outside the viewport and
+   `document.elementFromPoint` returns null — unreachable rather than merely
+   clipped, which is the defect.
+
+   station#1401: this bound was 404/382 until the mobile touch block trimmed
+   `.app-toolbar__icon-btn` padding from 8px to 6px. The 44px floor means that
+   trim changes nothing for the glyph-only controls; the two content-sized
+   members each give back 4px, measured in this fixture as chip 105 -> 101 and
+   badged notifications 62 -> 58, cluster content 267 -> 259. So the label now
+   survives eight more pixels of viewport, and 375-382 keeps a state the row
+   used to hide. It does not close #1401's own band — that still needs a
+   control to leave the row — it moves where it starts.
+
+   382 is ARITHMETIC, not a swept width: it is where the worst case lands, and
+   the worst case is a label at the 85px ceiling beside a two-character badge.
+   What was swept live, in the `error` state whose label is 79px and whose
+   badge was one digit, is narrower: that sweep read the `Open settings` centre
+   at x=370 at 360px, resolving to `null`, and station#1401's padding trim
+   moves it 8px left — DERIVED from the trim, not re-swept. What is measured
+   rather than computed is the 375px case in
+   `tests/toolbar-reachability.spec.ts`, which drives the real app at the
+   first width this breakpoint admits. So this breakpoint engages a little above where the swept state
+   alone would need it, which is what a bound is for.
+
+   Dropping the label reclaims 66px (the chip falls to its 44px touch floor) and
+   puts Open settings at x=282..326 — inside every viewport down to 326px. The
+   dot still carries the state by SHAPE (archive#3297, which is the channel
+   transient reachability was deliberately given when it stopped bannering), and
+   the accessible name is untouched: `connAccessibleName` is the BUTTON's
+   `aria-label` (HeaderActions.tsx), not this span's text, so a screen reader
+   still reads the full "Manage Stations — Can't connect · Dev Server".
+   `flex-shrink: 0` stays — archive#3766's cluster that clipped ITSELF away
+   while staying in the accessibility tree is not coming back.
+
+   Between 375 and 395px the row is still clipped at its right edge while every
+   control keeps its centre (383-403 before station#1401's padding trim): the over-subscription #1401 describes, which needs
+   a control to leave the row rather than a width tweak. Two classes, not one:
+   this block cascades after the breakpoint above and would win a tie on order
+   alone, and a tie decided by order is how the last owner of this cluster's
+   flex behaviour was lost (archive#3766). */
+@media (max-width: 374px) {
+  .app-toolbar__conn .app-toolbar__conn-state {
+    display: none;
   }
 }
 

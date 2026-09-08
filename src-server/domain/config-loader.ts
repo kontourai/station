@@ -1,3 +1,9 @@
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { PluginActivationComposition } from '../services/plugins/plugin-activation-composition.js';
+import {
+  PLUGIN_AGENT_OWNER_FILE,
+  pluginAgentInstallationBinding,
+} from './plugin-agent-ownership.js';
 /**
  * Configuration loader for reading and watching .station/ files
  */
@@ -62,7 +68,7 @@ import {
 } from './config-loader-app.js';
 import {
   deleteIntegrationConfig,
-  deleteSkillConfig,
+  deleteSkillPackageAt,
   integrationConfigExists,
   listIntegrationMetadata,
   listSkillConfigs,
@@ -72,7 +78,7 @@ import {
   type SkillConfigRecord,
   saveACPConfigFile,
   saveIntegrationConfig,
-  saveSkillConfig,
+  saveSkillConfigIn,
   skillConfigExists,
   updateIntegrationConfig,
 } from './config-loader-storage.js';
@@ -198,6 +204,27 @@ export interface ConfigLoaderOptions {
    * Direct domain callers keep the historic opt-in behaviour for now.
    */
   enforceHomeSchema?: boolean;
+  integrationSources?: IntegrationDefinitionSource[];
+  pluginAgentAdmission?: (
+    pluginId: string,
+    generation: string | undefined,
+    composition?: PluginActivationComposition,
+  ) => boolean;
+}
+
+/** Read-only live ToolDef source; Station-owned integration files still win. */
+export interface IntegrationDefinitionSource {
+  loadIntegration(
+    id: string,
+    composition?: PluginActivationComposition,
+  ): ToolDef | undefined;
+  listIntegrations(composition?: PluginActivationComposition): ToolMetadata[];
+}
+
+export interface LoadedIntegrationDefinition {
+  definition: ToolDef;
+  /** True only when the returned definition came from a live read-only source. */
+  contributed: boolean;
 }
 
 export interface SkillConfig extends SkillConfigRecord {}
@@ -256,11 +283,15 @@ export class ConfigLoader {
     string,
     () => Pick<ToolDef, 'command' | 'args' | 'env'>
   >();
+  private readonly integrationSources: IntegrationDefinitionSource[];
+  private readonly pluginAgentAdmission?: ConfigLoaderOptions['pluginAgentAdmission'];
 
   constructor(options: ConfigLoaderOptions = {}) {
     this.projectHomeDir = resolve(options.projectHomeDir || resolveHomeDir());
     this.listeners = new Map();
     this.enforceHomeSchema = options.enforceHomeSchema === true;
+    this.integrationSources = [...(options.integrationSources ?? [])];
+    this.pluginAgentAdmission = options.pluginAgentAdmission;
     this.homeSchemaReady = this.enforceHomeSchema
       ? ensureStationHomeSchema(this.projectHomeDir)
       : Promise.resolve();
@@ -443,9 +474,30 @@ export class ConfigLoader {
   /**
    * Load agent specification
    */
-  async loadAgent(slug: string) {
+  private admittedPluginAgentBinding(
+    slug: string,
+    composition?: PluginActivationComposition,
+  ): string | null {
+    if (!this.pluginAgentAdmission) return 'unfiltered-domain-caller';
+    const directory = join(this.projectHomeDir, 'agents', agentId(slug));
+    if (!existsSync(join(directory, PLUGIN_AGENT_OWNER_FILE)))
+      return 'station-owned';
+    const binding = pluginAgentInstallationBinding(directory);
+    return binding &&
+      this.pluginAgentAdmission(binding.plugin, binding.generation, composition)
+      ? JSON.stringify(binding)
+      : null;
+  }
+
+  async loadAgent(slug: string, composition?: PluginActivationComposition) {
     await this.ensureHomeSchema();
-    return loadAgentConfig(this.projectHomeDir, slug);
+    const binding = this.admittedPluginAgentBinding(slug, composition);
+    if (binding === null)
+      throw new Error(`Agent '${slug}' plugin installation is not ready`);
+    const spec = await loadAgentConfig(this.projectHomeDir, slug);
+    if (this.admittedPluginAgentBinding(slug, composition) !== binding)
+      throw new Error(`Agent '${slug}' plugin ownership changed while loading`);
+    return spec;
   }
 
   /**
@@ -564,14 +616,26 @@ export class ConfigLoader {
   /**
    * List all agents
    */
-  async readAgentCatalog() {
+  async readAgentCatalog(composition?: PluginActivationComposition) {
     await this.ensureHomeSchema();
-    return readAgentCatalog(this.projectHomeDir);
+    const entries = await readAgentCatalog(this.projectHomeDir, async (slug) =>
+      this.admittedPluginAgentBinding(slug, composition) === null
+        ? null
+        : this.loadAgent(slug, composition),
+    );
+    return entries.filter(
+      ({ metadata }) =>
+        this.admittedPluginAgentBinding(metadata.slug, composition) !== null,
+    );
   }
 
-  async listAgents() {
+  async listAgents(composition?: PluginActivationComposition) {
     await this.ensureHomeSchema();
-    return listAgentConfigs(this.projectHomeDir);
+    const agents = await listAgentConfigs(this.projectHomeDir);
+    return agents.filter(
+      (agent) =>
+        this.admittedPluginAgentBinding(agent.slug, composition) !== null,
+    );
   }
 
   async listAgentWorkflows(slug: string) {
@@ -728,12 +792,82 @@ export class ConfigLoader {
   }
 
   /**
+   * Whether `id` is currently owned by a live read-only definition source.
+   * A Station file always wins; source ownership applies only while no local
+   * definition shadows the id.
+   */
+  isLiveContributedIntegration(id: string): boolean {
+    if (integrationConfigExists(this.projectHomeDir, id)) return false;
+    return this.integrationSources.some((source) => source.loadIntegration(id));
+  }
+
+  private assertIntegrationDefinitionWritable(id: string): void {
+    if (this.isLiveContributedIntegration(id)) {
+      throw new Error(
+        `Integration '${id}' is supplied by an installed package and its definition is read-only; uninstall or update the owning package instead`,
+      );
+    }
+  }
+
+  /** A temporary read view of this same configuration owner. Only package
+   * definition reads receive the explicit composition capability; ordinary
+   * callers and all persistence methods retain their existing authority. */
+  forPluginActivationComposition(
+    composition: PluginActivationComposition,
+  ): ConfigLoader {
+    return new Proxy(this, {
+      get: (owner, property) => {
+        if (property === 'loadAgent')
+          return (slug: string) => owner.loadAgent(slug, composition);
+        if (property === 'listAgents')
+          return () => owner.listAgents(composition);
+        if (property === 'readAgentCatalog')
+          return () => owner.readAgentCatalog(composition);
+        if (property === 'loadIntegration')
+          return (id: string) => owner.loadIntegration(id, composition);
+        if (property === 'loadIntegrationWithOwnership')
+          return (id: string) =>
+            owner.loadIntegrationWithOwnership(id, composition);
+        if (property === 'listIntegrations')
+          return () => owner.listIntegrations(composition);
+        const value = Reflect.get(owner, property, owner);
+        return typeof value === 'function' ? value.bind(owner) : value;
+      },
+    });
+  }
+
+  /**
    * Load tool definition
    */
-  async loadIntegration(id: string): Promise<ToolDef> {
+  async loadIntegration(
+    id: string,
+    composition?: PluginActivationComposition,
+  ): Promise<ToolDef> {
+    return (await this.loadIntegrationWithOwnership(id, composition))
+      .definition;
+  }
+
+  /**
+   * Resolves definition and ownership in one read. Callers must retain this
+   * provenance instead of re-reading live ownership after using the value: a
+   * package can disappear between those operations.
+   */
+  async loadIntegrationWithOwnership(
+    id: string,
+    composition?: PluginActivationComposition,
+  ): Promise<LoadedIntegrationDefinition> {
     await this.ensureHomeSchema();
+    if (!integrationConfigExists(this.projectHomeDir, id)) {
+      for (const source of this.integrationSources) {
+        const projected = source.loadIntegration(id, composition);
+        if (projected) return { definition: projected, contributed: true };
+      }
+    }
     const def = await loadIntegrationConfig(this.projectHomeDir, id);
-    return this.withBuiltinIntegrationRuntimeIdentity(id, def);
+    return {
+      definition: this.withBuiltinIntegrationRuntimeIdentity(id, def),
+      contributed: false,
+    };
   }
 
   async captureIntegrationPolicySnapshot(
@@ -799,6 +933,7 @@ export class ConfigLoader {
    * churn). A genuine content change still writes and still activates.
    */
   async saveIntegration(id: string, def: ToolDef): Promise<void> {
+    this.assertIntegrationDefinitionWritable(id);
     // archive#3063: a registered built-in's spawn identity never reaches
     // disk — projected out BEFORE the byte comparison so the compare runs
     // against the bytes that would actually be written. Credential writes
@@ -835,6 +970,7 @@ export class ConfigLoader {
     update: (current: ToolDef) => ToolDef,
   ): Promise<ToolDef> {
     await this.ensureHomeSchema();
+    this.assertIntegrationDefinitionWritable(id);
     return updateIntegrationConfig(this.projectHomeDir, id, (current) => {
       const updated = update(current);
       this.assertBuiltinIntegrationCredentialFree(id, updated);
@@ -845,13 +981,16 @@ export class ConfigLoader {
   }
 
   async deleteIntegration(id: string): Promise<void> {
+    this.assertIntegrationDefinitionWritable(id);
     await deleteIntegrationConfig(this.projectHomeDir, id);
   }
 
   /**
    * List all tools in catalog
    */
-  async listIntegrations(): Promise<ToolMetadata[]> {
+  async listIntegrations(
+    composition?: PluginActivationComposition,
+  ): Promise<ToolMetadata[]> {
     await this.ensureHomeSchema();
     const metadata = await listIntegrationMetadata(this.projectHomeDir, logger);
     // archive#3063: the persisted built-in files no longer carry
@@ -860,7 +999,7 @@ export class ConfigLoader {
     // truth `loadIntegration` serves. Without this, station-control would
     // list as secret-free and the ACP tool-server picker would stop flagging
     // it, even though its loaded shape still declares env.
-    return metadata.map((entry) => {
+    const local = metadata.map((entry) => {
       const resolveIdentity = this.builtinIntegrationRuntimeIdentities.get(
         entry.id,
       );
@@ -874,6 +1013,13 @@ export class ConfigLoader {
         ),
       };
     });
+    const localIds = new Set(local.map((entry) => entry.id));
+    const contributed = this.integrationSources.flatMap((source) =>
+      source
+        .listIntegrations(composition)
+        .filter((entry) => !localIds.has(entry.id)),
+    );
+    return [...local, ...contributed];
   }
 
   /**
@@ -900,7 +1046,8 @@ export class ConfigLoader {
       id,
       'integration.json',
     );
-    return existsSync(path);
+    if (existsSync(path)) return true;
+    return this.integrationSources.some((source) => source.loadIntegration(id));
   }
 
   /**
@@ -1423,15 +1570,18 @@ export class ConfigLoader {
   /**
    * Save a skill config
    */
-  async saveSkill(name: string, config: SkillConfig): Promise<void> {
-    await saveSkillConfig(this.projectHomeDir, name, config);
+  /**
+   * Write a package's record into the package's own directory, for a caller
+   * that has already resolved it (`SkillService`, which resolves it from where
+   * discovery found the package rather than from a name and a slug — #1619).
+   */
+  async saveSkillIn(directory: string, config: SkillConfig): Promise<void> {
+    await saveSkillConfigIn(this.projectHomeDir, directory, config);
   }
 
-  /**
-   * Delete a skill directory
-   */
-  async deleteSkill(name: string): Promise<void> {
-    await deleteSkillConfig(this.projectHomeDir, name);
+  /** Remove a package by its own directory. See `saveSkillIn`. */
+  async deleteSkillAt(name: string, directory: string): Promise<void> {
+    await deleteSkillPackageAt(this.projectHomeDir, name, directory);
   }
 
   /**

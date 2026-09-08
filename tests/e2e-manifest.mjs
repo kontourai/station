@@ -320,6 +320,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/accessibility-core.spec.ts',
     'tests/status-token-contrast.spec.ts',
     'tests/text-ramp-contrast.spec.ts',
+    'tests/overlay-elevation-tokens.spec.ts',
     'tests/builtin-runtime-workflow.spec.ts',
     'tests/pending-message-queue.spec.ts',
     'tests/skills.spec.ts',
@@ -744,6 +745,26 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/workspace-pane-host-actions.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves one host action bar across direct and placed real Project Pane routes, keyboard Agent selection and 390px reflow. Provider transport is intercepted; server integration separately proves actual captured invocation.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/workspace-pane-host-actions-live.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real browser host action through SDK, HTTP and captured permission/Agent admission into the external Muse echo provider, with exact turn completion read from EventStore and displayed in conversation. Requires ready Muse; no paid model or route interception.',
+    exceptions: [],
+  },
+  {
     path: 'tests/default-agent-workflow.spec.ts',
     bucket: 'product',
     surface: 'Agents',
@@ -774,9 +795,11 @@ export const e2eManifest = [
       'rather than living in tests/android/, whose lane a src-ui change never ' +
       'triggers (build-android.yml is path-filtered to src-desktop and six ' +
       'named scripts), so the guard would never have run where it is needed.',
-    // The 390/360 cases are skipped with #1401 named as the reason, not
-    // deleted: un-skipping them is the check that proves that fix.
-    exceptions: ['test.skip'],
+    // No exception any more: the 390 and 360 cases were skipped with the fix
+    // that would un-skip each named in its own reason, and both have landed
+    // (#1401/#1424 for 390, #1132 for 360). All four widths are enforced, so
+    // the file carries no `test.skip` for this to exempt.
+    exceptions: [],
   },
   {
     path: 'tests/mobile-dock-clearance.spec.ts',
@@ -816,6 +839,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Composited two-theme contrast for the neutral text ramp (primary/secondary/tertiary) and the two shared chrome rules that carry it — .engine-chip__pill, which failed 1.4.3 at 10px in both themes (station#3140), and .button--link, pinned while passing because its 0.17 light-theme margin rests on a vendor brand token this repo does not own. Each probe mounts the real shipped class against a sentinel host colour, so a rule that stops matching fails instead of passing by inheriting body copy.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/overlay-elevation-tokens.spec.ts',
+    bucket: 'product',
+    surface: 'Core accessibility',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Resolves --radius-overlay / --elevation-overlay on the real data-theme="dark" document main.tsx stamps before first render, and mounts the three entry-stylesheet rules that read them and have live surfaces. #1637 declared both inside [data-theme="light"] under a comment saying no per-theme override was needed, so a dark root matched no declaration at all, both resolved to the empty string, and every Dialog panel, the command palette, .modal-dialog, .agent-selector__menu and the ACP add dialog rendered square and flat. Light and the unstamped pre-script frame are covered too, and they are what catches the other half of the class: the fix lives in a `:root, [data-theme="dark"]` block, and dropping the `:root` half (measured live) leaves dark correct while returning the empty string under light — the same defect mirrored into the theme fewer people develop in. One assertion pins that the app really does stamp the attribute, so the primary case cannot drift into testing a state no user occupies. Each alias is compared against the kit token as resolved in the same document — every write and read in one round-trip, so nothing can re-stamp the attribute between them — so the kit stays free to retune the value while an alias that resolves to nothing still fails; each probe carries a painted-surface guard so a renamed class cannot pass by reporting the same 0px/none the defect produced.',
     exceptions: [],
   },
   {
@@ -1683,15 +1716,6 @@ export const e2eManifest = [
     exceptions: ['waitForTimeout'],
   },
   {
-    path: 'tests/android/app-load.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale: 'Android app-load coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
-  {
     path: 'tests/android/desktop-regression.spec.ts',
     bucket: 'android',
     surface: 'Android',
@@ -1699,7 +1723,7 @@ export const e2eManifest = [
     primary: false,
     rationale:
       'Android desktop-regression coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
+    exceptions: [],
   },
   {
     path: 'tests/android/landscape-chrome.spec.ts',
@@ -1720,31 +1744,12 @@ export const e2eManifest = [
     exceptions: ['waitForTimeout'],
   },
   {
-    path: 'tests/android/navigation.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale: 'Android navigation coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
-  {
     path: 'tests/android/split-pane-mobile.spec.ts',
     bucket: 'android',
     surface: 'Android',
     tierTarget: 'partial',
     primary: false,
     rationale: 'Android split-pane coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
-  {
-    path: 'tests/android/webview-compat.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale:
-      'Android webview compatibility coverage runs in the Android matrix.',
     exceptions: ['waitForTimeout'],
   },
 ];

@@ -107,6 +107,7 @@ export function Dialog({
 
   return (
     <ResponsiveDialogSurface
+      layer="dialog"
       role={role}
       onClose={onClose}
       ariaLabelledBy={titleId}

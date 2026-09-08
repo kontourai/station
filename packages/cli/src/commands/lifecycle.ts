@@ -70,6 +70,7 @@ import {
   type StationHomeBackupResult,
   type StationHomeRestoreResult,
 } from '@kontourai/station-shared/station-home-archive';
+import { inspectStationHomeRecovery } from '@kontourai/station-shared/station-home-recovery-preflight';
 import {
   ensureStationHomeSchemaSync,
   stationHomeSchemaNeedsReset,
@@ -486,14 +487,34 @@ export function uiRequestHandler(deps: UiServerDeps) {
   // where esbuild's own `__name` runtime helper does not exist. Do not
   // remove that shim under the assumption that avoiding named bindings here
   // is sufficient on its own — it is not.
+  // The readiness envelope this proxy answers with whenever it is up and its
+  // sibling host is not: 503 when the upstream request errored or no internal
+  // token exists yet, 504 when the upstream request timed out (station#1654 —
+  // that path used to answer `text/plain` "Gateway Timeout", which no client
+  // could tell from any intermediary's 504).
+  //
+  // A same-function local, which is what makes it possible at all: an IMPORTED or
+  // module-scope binding would be `undefined` in the spawned `node -e` UI process
+  // this handler is serialized into, but a local of `uiRequestHandler` is carried
+  // with it — the same empirically verified property `HOP_BY_HOP_HEADERS` and
+  // `PROXY_UPSTREAM_TIMEOUT_MS` above rely on. So the bytes cannot come from
+  // `@kontourai/station-contracts`, but they need not be repeated per call site.
+  // `src-ui/src/lib/station-ui-proxy.ts` is the consumer, and
+  // `lifecycle.test.ts` pins these exact bytes on both statuses.
+  const answerHostUnavailable = (
+    res: import('node:http').ServerResponse,
+    status: number,
+  ) => {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ready: false, status: 'unavailable' }));
+  };
   const proxyToBackend = (
     req: import('node:http').IncomingMessage,
     res: import('node:http').ServerResponse,
     tenantId?: string,
   ) => {
     if (!internalApiToken) {
-      res.writeHead(503, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ready: false, status: 'unavailable' }));
+      answerHostUnavailable(res, 503);
       return;
     }
     const tailscaleIngress = trustedTailscaleIdentity(req);
@@ -604,12 +625,22 @@ export function uiRequestHandler(deps: UiServerDeps) {
         return;
       }
       if (timedOut) {
-        res.writeHead(504, { 'Content-Type': 'text/plain' });
-        res.end('Gateway Timeout');
+        // station#1654: this used to answer `text/plain` "Gateway Timeout",
+        // which is byte-identical to what any intermediary between the browser
+        // and this proxy emits — so no client could tell THIS proxy's timeout
+        // from a stranger's, and `src-ui/src/lib/station-ui-proxy.ts` had
+        // nothing to recognise. It declined the answer, the browser's session
+        // gate read a non-OK response as "this browser has no access", and a
+        // slow host was reported as a browser that needed to pair.
+        //
+        // The signal is the ENVELOPE, deliberately the same one the error path
+        // below has always sent: both statuses mean "this proxy is up, its
+        // sibling host could not answer", and the status is what separates the
+        // causes. Nothing derives a `reason` field, so there is none.
+        answerHostUnavailable(res, 504);
         return;
       }
-      res.writeHead(503, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ready: false, status: 'unavailable' }));
+      answerHostUnavailable(res, 503);
     });
     // Propagate a client-initiated disconnect upstream. `stream.pipe()`
     // only forwards data one direction — it never tears down the *source*
@@ -2896,6 +2927,12 @@ export async function buildApplication(
   };
 
   try {
+    // The Basis MCP app bundles are git-ignored build output that both
+    // bundles below resolve as ordinary modules. Generating here makes
+    // `station build` self-sufficient for every caller — `upgrade()`'s
+    // `git pull` + raw `npm install` runs no install-time generation, and the
+    // container's build stage never installed with the generator present.
+    runBuildStep('Basis MCP apps', 'npm run basis:mcp:generate');
     runBuildStep('Server', 'npm run build:server');
     runBuildStep('UI', 'npm run build:ui');
 
@@ -4399,6 +4436,11 @@ export function homeVerify(options: CleanOptions = {}): HomeVerifyResult {
     results,
     exitCode: storeIntegrityExitCode(results),
   };
+}
+
+/** Explicit target only: no default-home resolution, announcement or bootstrap. */
+export function homeRecoveryPlan(projectHome: string) {
+  return inspectStationHomeRecovery({ homeDir: projectHome });
 }
 
 export function homeBackup(

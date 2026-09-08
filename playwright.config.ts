@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import { buildE2EBrowserStorageState } from './tests/helpers/e2e-browser-storage-state';
+import { PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS } from './tests/helpers/playwright-test-timeout';
 
 const baseURL = process.env.PW_BASE_URL || 'http://localhost:3000';
 const runnerOwned = process.env.STATION_E2E_RUNNER === '1';
@@ -16,7 +17,7 @@ export default defineConfig({
   // Each run-e2e-suite invocation supplies an instance-scoped root. The
   // default root preserves direct local Playwright usage.
   outputDir: process.env.STATION_E2E_OUTPUT_DIR || 'test-results',
-  timeout: 30_000,
+  timeout: PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS,
   use: {
     baseURL,
     // Missing controls should fail independently of a live-provider test's
