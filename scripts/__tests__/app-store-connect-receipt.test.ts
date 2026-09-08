@@ -407,6 +407,7 @@ describe('attachInternalGroup membership derivation (#1777)', () => {
   function run(
     output: string,
     hooks: { now: () => number; sleep: (ms: number) => Promise<void> },
+    extraArgv: string[] = [],
   ) {
     return attachInternalGroup(
       [
@@ -420,6 +421,7 @@ describe('attachInternalGroup membership derivation (#1777)', () => {
         'Station Nightly Internal',
         '--output',
         output,
+        ...extraArgv,
       ],
       env,
       hooks,
@@ -545,6 +547,60 @@ describe('attachInternalGroup membership derivation (#1777)', () => {
         membership: 'assigned',
         assignmentResponseStatus: 409,
       });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('--deadline-seconds must be an integer from 10 to 600', async () => {
+    const message = '--deadline-seconds must be an integer from 10 to 600';
+    for (const rejected of ['9', '601', 'abc', '10.5']) {
+      const output = receiptPath();
+      const provider = stubProvider({
+        group: groupPayload(true),
+        readback: () => jsonResponse(members(['build-1'])),
+      });
+      try {
+        await expect(
+          run(output, provider.hooks, ['--deadline-seconds', rejected]),
+        ).rejects.toThrow(message);
+        // Validation precedes every provider request and the receipt.
+        expect(provider.calls).toEqual([]);
+        expect(() => readFileSync(output)).toThrow();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    }
+    for (const accepted of ['10', '600']) {
+      const output = receiptPath();
+      const provider = stubProvider({
+        group: groupPayload(true),
+        readback: () => jsonResponse(members(['build-1'])),
+      });
+      try {
+        await run(output, provider.hooks, ['--deadline-seconds', accepted]);
+        expect(readReceipt(output).membership).toBe('automatic');
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    }
+  });
+
+  test('a readback listing the build more than once fails closed without polling again', async () => {
+    const output = receiptPath();
+    const provider = stubProvider({
+      group: groupPayload(true),
+      readback: () => jsonResponse(members(['build-1', 'build-0', 'build-1'])),
+    });
+    try {
+      await expect(run(output, provider.hooks)).rejects.toThrow(
+        'App Store Connect beta group group-1 lists build build-1 2 times',
+      );
+      expect(provider.calls).toEqual([
+        'GET /v1/betaGroups',
+        'GET /v1/betaGroups/group-1/relationships/builds',
+      ]);
+      expect(() => readFileSync(output)).toThrow();
     } finally {
       vi.unstubAllGlobals();
     }
