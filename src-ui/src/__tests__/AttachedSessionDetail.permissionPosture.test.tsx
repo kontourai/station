@@ -148,6 +148,7 @@ test('external chat presentation uses ordinary messages with a disabled composer
     ).disabled,
   ).toBe(true);
   expect(screen.getByText('Sure.')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
   expect(
     screen.getAllByRole('button', { name: 'Continue in Station' }),
   ).toHaveLength(1);

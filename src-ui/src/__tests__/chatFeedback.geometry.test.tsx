@@ -273,7 +273,7 @@ describe('September 8 visual feedback regressions', () => {
         content: '.onboarding-setup-launcher { z-index: var(--layer-notice); }',
       });
       expect(await hit()).toBe(false);
-      await oldLayer.evaluate((node) => node.remove());
+      await oldLayer.evaluate((node) => node.parentNode?.removeChild(node));
       expect(await hit()).toBe(true);
     } finally {
       await page.close();

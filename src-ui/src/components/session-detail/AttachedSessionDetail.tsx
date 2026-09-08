@@ -498,7 +498,10 @@ export function AttachedSessionDetail({
                     key={message.id}
                     msg={{
                       role: message.role,
-                      content: '',
+                      content: message.parts
+                        .filter((part) => part.type === 'text')
+                        .map((part) => part.text ?? '')
+                        .join('\n\n'),
                       contentParts: contentParts as ChatMessage['contentParts'],
                     }}
                     idx={index}
