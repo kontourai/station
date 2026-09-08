@@ -20,9 +20,15 @@ import {
 } from '@kontourai/station-shared/workspace-package';
 import { afterEach, expect, test, vi } from 'vitest';
 
-// Only this helper is faked, and only for one directory: every other
-// fsyncDirectorySync in the import path (workspace extraction, the seam's own
-// swallowed call) runs for real.
+// The helper is faked process-wide (the export map points at the same source
+// file the seam imports relatively, so one module id covers both), but it
+// throws only for the directories in this set and delegates to the real
+// helper otherwise. Two calls target `destination`: the seam's own, which
+// throws and is SWALLOWED -- that is what leaves the caller-side call as the
+// only observable -- and the caller's, which throws and propagates. Workspace
+// extraction fsyncs only `destination/workspace` and below, so it never
+// reaches the set and the injection cannot fire before the record is
+// written.
 const failingDirectories = vi.hoisted(() => new Set<string>());
 vi.mock('@kontourai/station-shared/fs-windows-compat', async (original) => {
   const actual =
