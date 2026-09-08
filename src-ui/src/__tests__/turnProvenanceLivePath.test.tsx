@@ -154,7 +154,7 @@ function renderCommittedRow() {
     <MessageBubble
       msg={msg}
       idx={0}
-      activeSession={{ id: THREAD_ID, agentSlug: 'claude', messages: [msg] }}
+      activeSession={{ id: THREAD_ID, agentSlug: 'claude', messageCount: 1 }}
       agents={[]}
       chatFontSize={14}
       showReasoning={false}

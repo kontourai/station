@@ -366,6 +366,7 @@ Useful focused commands:
 ```bash
 npm run build:sdk
 npm run build:connect
+npm run basis:mcp:generate   # git-ignored Basis MCP app bundles; dependencies:ci and station build also run it
 npm run build:server
 npm run build:ui
 npm run test:connected-agents

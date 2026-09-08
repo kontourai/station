@@ -2927,6 +2927,16 @@ export async function buildApplication(
   };
 
   try {
+    // The Basis MCP app bundles are git-ignored build output that both
+    // bundles below resolve as ordinary modules. Generating here makes
+    // `station build` self-sufficient for every caller: most reach it without
+    // having installed at all, and the container's build stage never
+    // installed with the generator present. `upgrade()` is the exception —
+    // #1747 routed it through `npm run dependencies:install`, whose
+    // `generateBuildInputs` already wrote these bundles minutes earlier — so
+    // that one path regenerates them. The generator is deterministic and
+    // cheap, and a build step that depends on who called it would be worse.
+    runBuildStep('Basis MCP apps', 'npm run basis:mcp:generate');
     runBuildStep('Server', 'npm run build:server');
     runBuildStep('UI', 'npm run build:ui');
 
