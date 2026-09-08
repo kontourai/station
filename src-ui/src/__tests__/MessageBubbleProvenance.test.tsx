@@ -101,7 +101,7 @@ function renderRow(
         activeSession={{
           id: 'thread-1',
           agentSlug: 'agent',
-          messages: [msg],
+          messageCount: 1,
           isThinking,
         }}
         agents={[]}
