@@ -1,16 +1,10 @@
-import {
-  mkdir,
-  readFile,
-  rename,
-  stat,
-  unlink,
-  writeFile,
-} from 'node:fs/promises';
+import { mkdir, readFile, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   CONVERSATION_INTENT_SUMMARY_MAX_ITEMS,
   type ConversationIntentSummaryV2,
 } from '@kontourai/station-contracts/conversation-intent-summary';
+import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import { redactDeep } from '@kontourai/station-shared/redaction';
 
 /** v1 shape is retained only so existing local sidecars remain readable. */
@@ -240,7 +234,6 @@ export class FileSessionSummaryStore {
       ),
       { recursive: true },
     );
-    // A process/time nonce avoids one process's concurrent temp write overwriting another.
     const requestedBytes = Buffer.byteLength(JSON.stringify(summary), 'utf8');
     if (requestedBytes > MAX_SUMMARY_BYTES)
       throw new Error('Conversation intent summary exceeds the 32 KiB limit');
@@ -250,9 +243,10 @@ export class FileSessionSummaryStore {
     // bloat must not turn a re-entry aid into an unbounded local data sink.
     if (Buffer.byteLength(serialized, 'utf8') > MAX_SUMMARY_BYTES)
       throw new Error('Conversation intent summary exceeds the 32 KiB limit');
-    const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
-    await writeFile(temporary, serialized, 'utf8');
-    await rename(temporary, path);
+    // The shared publisher owns the uniquely-named temp, the data fsync, the
+    // rename and the directory fsync, and emits the same two-space document
+    // `serialized` was measured from above.
+    await publishJsonFileWithOwnedLock(path, safe);
     // Regeneration is the migration boundary. Once v2 is durable, its v1
     // predecessor under the active agent coordinate cannot become visible.
     if (coordinate.agentSlug) {

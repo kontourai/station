@@ -311,8 +311,13 @@ vi.mock('node:fs', async (importOriginal) => {
     rmSync: vi.fn(),
     cpSync: vi.fn(),
     writeFileSync: vi.fn(),
-    // Alias removal now uses the canonical atomic writer. This unit fixture
-    // mocks its staging write too, so publishing must not touch real /tmp.
+    // Alias removal now uses the canonical atomic writer
+    // (`writeJsonDurably`), which stages through a descriptor rather than a
+    // path: stub the whole open/fsync/close/rename sequence, not just the
+    // rename, or the commit escapes this fixture and writes to real /tmp.
+    openSync: vi.fn(() => 3),
+    fsyncSync: vi.fn(),
+    closeSync: vi.fn(),
     renameSync: vi.fn(),
   };
 });

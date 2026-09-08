@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -325,5 +331,57 @@ describe('FileSessionSummaryStore', () => {
         verificationRefs: [...verification, verification[0]!],
       }),
     ).toBe(false);
+  });
+
+  // The sidecar's on-disk contract is two-space JSON with no trailing newline.
+  // Pinned so that changing the publication mechanism has to preserve the
+  // format, not merely keep the document parseable.
+  test('publishes two-space JSON with no trailing newline', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-session-summary-bytes-'));
+    roots.push(root);
+    const coordinate = { ownerScope: 'user:alpha', conversationId: 'c-bytes' };
+    const summary = {
+      version: 2 as const,
+      text: 'Derived output',
+      overview: 'Derived output',
+      goals: [],
+      constraints: [],
+      progress: [],
+      nextSteps: [],
+      reportedCompletion: [],
+      relatedEvidenceRefs: [],
+      verificationRefs: [],
+      model: 'structure-model',
+      generatedAt: '2026-08-16T12:00:00.000Z',
+      sourceRange: {
+        fromMessageId: 'm1',
+        throughMessageId: 'm2',
+        messageCount: 2,
+      },
+      sourceRevision: 'revision',
+      sourceRanges: [
+        { fromMessageId: 'm1', throughMessageId: 'm2', messageCount: 2 },
+      ],
+      sourceMessageCount: 2,
+      partialMessageIncluded: false,
+      contextBoundaryCount: 0,
+      contextBoundaries: [],
+      generationUsage: { state: 'unknown' as const },
+    };
+
+    await new FileSessionSummaryStore(root).write(coordinate, summary);
+
+    expect(
+      readFileSync(
+        join(
+          root,
+          'conversation-intent-summaries',
+          'v2',
+          encodeURIComponent(coordinate.ownerScope),
+          `${coordinate.conversationId}.json`,
+        ),
+        'utf8',
+      ),
+    ).toBe(JSON.stringify(summary, null, 2));
   });
 });

@@ -1,12 +1,7 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 
 export const AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL =
   'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json' as const;
@@ -63,10 +58,12 @@ export function writeRegistryInstallAliases(
   aliases: RegistryInstallAliases,
 ): void {
   const target = aliasesPath(projectHomeDir);
+  // Created here rather than left to the shared writer so an existing config
+  // directory keeps whatever mode it already has.
   mkdirSync(dirname(target), { recursive: true });
-  const temporary = `${target}.tmp-${process.pid}`;
-  writeFileSync(temporary, `${JSON.stringify(aliases, null, 2)}\n`);
-  renameSync(temporary, target);
+  // Same two-space-plus-newline document; the shared writer additionally
+  // fsyncs the data and the directory entry.
+  writeJsonDurably(target, aliases);
 }
 
 export function readRegistryInstallAliases(
