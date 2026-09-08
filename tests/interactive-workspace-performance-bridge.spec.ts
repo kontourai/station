@@ -441,6 +441,18 @@ async function runFixtureTarget(input: {
           { mode: 0o600 },
         );
     }
+    if (retainedReport) {
+      for (const extension of ['png', 'txt']) {
+        const name = `${input.fixture.id}-failure.${extension}`;
+        const diagnostic = join(dirname(rawBridgePath), name);
+        if (existsSync(diagnostic))
+          writeFileSync(
+            join(dirname(retainedReport), name),
+            readFileSync(diagnostic),
+            { mode: 0o600 },
+          );
+      }
+    }
     const receipt = performanceReportReceipt(report);
     // Artifact storage can be unavailable independently of the product run.
     // Emit a bounded, closed receipt before the platform-specific assertion so

@@ -615,6 +615,31 @@ async function measureIsolatedFixture({
       });
     }
     const evidence = await bridgeEvidence(page, config);
+    // This context owns the actual measurement page; the outer test's trace
+    // only sees provisioning. Retain its failed state before closing it.
+    if (
+      env.STATION_PERFORMANCE_RAW_BRIDGE_OUTPUT &&
+      evidence?.observations?.some((entry) => entry.status === 'NOT_VERIFIED')
+    ) {
+      const diagnosticRoot = dirname(
+        resolve(env.STATION_PERFORMANCE_RAW_BRIDGE_OUTPUT),
+      );
+      await Promise.allSettled([
+        page.screenshot({
+          path: resolve(diagnosticRoot, `${fixture.id}-failure.png`),
+        }),
+        page
+          .locator('body')
+          .innerText({ timeout: 2_000 })
+          .then((body) =>
+            writeFileSync(
+              resolve(diagnosticRoot, `${fixture.id}-failure.txt`),
+              body.slice(0, 16_384),
+            ),
+          ),
+      ]);
+    }
+
     if (!evidence) {
       refreshedAuth = await refreshedStorageAuth(context, auth);
       refreshedPeerAuth = peerContext
