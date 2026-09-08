@@ -1271,6 +1271,27 @@ export class OrchestrationService {
     return { promise, settle };
   })();
 
+  /**
+   * The instance-bound half of the `session.recovery.completed` milestone.
+   * Same defect, same shape as {@link sessionAttachmentSettledSignal}: that
+   * receipt names no publisher either, so a wait keyed on its `kind` is
+   * satisfied by whichever runtime finishes a recovery pass first.
+   *
+   * Its `threadIds` cannot substitute for a publisher. They are the threads
+   * the pass RESTORED — `recoverOrchestrationSessions` skips quarantined,
+   * read-only-attached, already-closed/dead and no-adapter sessions and
+   * never lists them — so binding a wait to "my thread is in there" holds
+   * forever for exactly the populations several recovery tests seed on
+   * purpose, and would change what the wait asserts on the rest.
+   */
+  private readonly sessionRecoveryCompletedSignal = (() => {
+    let settle: () => void = () => {};
+    const promise = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    return { promise, settle };
+  })();
+
   constructor(private readonly options: OrchestrationServiceOptions) {
     this.nativeOutputDeclarations = createNativeOutputDeclarationOperation({
       authority: this.nativeOutputGrants,
@@ -2568,17 +2589,20 @@ export class OrchestrationService {
    * "the threads this process holds" rather than "the threads recovery has
    * reached so far".
    *
-   * Prefer it over `waitForReceipt(r => r.kind === 'session.attachment.settled')`
-   * whenever a caller means ITS OWN runtime. The receipt carries no publisher,
-   * so a wait keyed on the kind resolves on whichever runtime settles first;
-   * with more than one runtime in a process — every suite that builds a
-   * service per test — a receipt published late by an abandoned earlier wait
-   * satisfies the next one, which then reads through an attachment window
-   * that has not closed (station#1707).
+   * Prefer it over a wait keyed on that receipt's `kind` whenever a caller
+   * means ITS OWN runtime. The receipt carries no publisher, so such a wait
+   * resolves on whichever runtime settles first; with more than one runtime
+   * in a process — every suite that builds a service per test — a receipt
+   * published late by an abandoned earlier wait satisfies the next one,
+   * which then reads through an attachment window that has not closed
+   * (station#1707).
    *
-   * Never resolves unless `initialize()` is called, and never rejects:
-   * attachment settles even when recovery threw (see the `finally` in
-   * `initialize()`). A caller that needs a deadline owns one; the test
+   * Resolves only from the `finally` in `initialize()`, and never rejects:
+   * attachment settles there even when recovery threw. So it stays pending
+   * forever if `initialize()` is never called, and equally if `initialize()`
+   * throws in its synchronous prologue before that chain is armed — the
+   * receipt this replaces was unpublished in exactly the same two cases, so
+   * neither is new. A caller that needs a deadline owns one; the test
    * runner's own timeout is the deadline for every current caller.
    *
    * No production caller today — the runtime's own ordering is expressed by
@@ -2587,6 +2611,22 @@ export class OrchestrationService {
    */
   whenSessionAttachmentSettled(): Promise<void> {
     return this.sessionAttachmentSettledSignal.promise;
+  }
+
+  /**
+   * Resolves once THIS runtime's boot recovery pass has finished — the
+   * milestone `session.recovery.completed` reports, bound to the runtime
+   * that reached it. Recovery runs once, from `initialize()`, so a second
+   * `initialize()` (which returns early) leaves an already-resolved promise
+   * rather than arming a new one.
+   *
+   * Same reasoning as {@link whenSessionAttachmentSettled}, and the same two
+   * pending-forever cases: `initialize()` never called, or the recovery
+   * chain rejected before the pass returned. Both leave the receipt
+   * unpublished too.
+   */
+  whenSessionRecoveryCompleted(): Promise<void> {
+    return this.sessionRecoveryCompletedSignal.promise;
   }
 
   async shutdown(): Promise<void> {
@@ -6793,6 +6833,10 @@ export class OrchestrationService {
       },
       logger: this.options.logger,
     });
+    // At or after the milestone `recoverOrchestrationSessions` publishes on
+    // its way out — never before it, and never at all if the pass threw,
+    // which is exactly when that receipt is not published either.
+    this.sessionRecoveryCompletedSignal.settle();
     this.evictCollidingAttachedAliases();
   }
 

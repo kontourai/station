@@ -310,6 +310,17 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         legacyPersonalOwner: getCachedUser().alias,
       });
       orchestration.initialize();
+      // Registered BEFORE the barrier is awaited. The barrier resolves only
+      // from the `finally` in `initialize()`; if that never runs, an `await`
+      // placed ahead of this push leaves `afterEach` with nothing to close,
+      // so the runtime and its SQLite handle leak into every later test in
+      // the file. `runtimeSearch` is deliberately optional here — it does not
+      // exist yet, and a barrier that never resolved means it never will.
+      searchCleanup.push(async () => {
+        await runtimeSearch?.close();
+        await orchestration.shutdown();
+        await expect.poll(() => store.close().kind).toBe('closed');
+      });
       await orchestration.whenSessionAttachmentSettled();
       runtimeSearch = createRuntimeSearch({
         stationId: '22222222-2222-4222-8222-222222222222',
@@ -317,11 +328,6 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           resolveProjectWorkspace: async () => '',
         }),
         transcripts: orchestration,
-      });
-      searchCleanup.push(async () => {
-        await runtimeSearch!.close();
-        await orchestration.shutdown();
-        await expect.poll(() => store.close().kind).toBe('closed');
       });
     }
     const app = new Hono();

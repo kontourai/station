@@ -80,7 +80,7 @@ import {
   wireApprovalInboxNotifications,
 } from '../../approvals/approval-inbox.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
-import { receiptBus, waitForReceipt } from '../../infra/receipt-bus.js';
+import { receiptBus } from '../../infra/receipt-bus.js';
 import { NotificationService } from '../../notifications/notification-service.js';
 import { AttentionProjectionService } from '../../projects/attention-projection.js';
 import { EventBus } from '../event-bus.js';
@@ -762,9 +762,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     });
 
     service.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await service.whenSessionRecoveryCompleted();
     await service.whenSessionAttachmentSettled();
 
     expect(
@@ -854,9 +852,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
     });
 
     service.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await service.whenSessionRecoveryCompleted();
     await service.whenSessionAttachmentSettled();
 
     // Fixture sanity, both halves — without these the test could pass for

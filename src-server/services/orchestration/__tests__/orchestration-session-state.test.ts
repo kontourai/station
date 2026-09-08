@@ -292,6 +292,12 @@ describe('orchestration-session-state', () => {
       startSession: vi.fn(),
       hasSession: vi.fn().mockResolvedValue(false),
     } as unknown as ProviderAdapterShape;
+    // Deliberately still keyed on the `kind` (station#1707): this test's
+    // SUBJECT is the receipt, and it calls `recoverOrchestrationSessions`
+    // directly, so there is no runtime to bind to and no
+    // `whenSessionRecoveryCompleted()` to await. What stops a stale receipt
+    // from satisfying it vacuously is the payload assertion below, which
+    // pins `attemptedCount` and the exact `threadIds` this pass restored.
     const completed = waitForReceipt(
       (receipt) => receipt.kind === 'session.recovery.completed',
     );

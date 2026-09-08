@@ -81,7 +81,7 @@ import { buildSyntheticTrustBundle } from '../../evidence/trust-bundle.js';
 import { VeritasReadinessService } from '../../evidence/veritas-readiness-service.js';
 import { WorkflowSidecarService } from '../../evidence/workflow-sidecar-service.js';
 import { FlowRunService } from '../../flow/flow-run-service.js';
-import { receiptBus, waitForReceipt } from '../../infra/receipt-bus.js';
+import { receiptBus } from '../../infra/receipt-bus.js';
 import { createRuntimeResourcePostureController } from '../../infra/resource-posture.js';
 import { createServerLogReader } from '../../infra/server-log-reader.js';
 import {
@@ -6103,9 +6103,7 @@ describe('OrchestrationService', () => {
       updatedAt: '2026-03-28T00:00:05.000Z',
     });
     service.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await service.whenSessionRecoveryCompleted();
     // The precondition this fix exists for: restored, so no adapter is bound.
     expect(claude.startSession).not.toHaveBeenCalled();
 
@@ -6236,9 +6234,7 @@ describe('OrchestrationService', () => {
       updatedAt: '2026-03-28T00:00:05.000Z',
     });
     service.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await service.whenSessionRecoveryCompleted();
 
     await (
       service as unknown as {
@@ -7876,9 +7872,7 @@ describe('OrchestrationService', () => {
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     recoveryService.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await recoveryService.whenSessionRecoveryCompleted();
     // archive#3476: the forged-receipt strip is proved on the lazy start.
     await materializeBySendingATurn(recoveryService, threadId);
     await waitFor(
@@ -8462,9 +8456,7 @@ describe('OrchestrationService', () => {
     // the metrics mock is shared and never globally cleared.
     vi.mocked(modelLaunchResolutionTotal.add).mockClear();
     recoveryService.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await recoveryService.whenSessionRecoveryCompleted();
     await materializeBySendingATurn(
       recoveryService,
       'station-agent-adapter-retained-resume',
@@ -9628,9 +9620,7 @@ describe('OrchestrationService', () => {
     // `afterEach` (`eventStore.close()`), which the archive#1101 fix elsewhere in
     // this file documents the same way.
     service.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await service.whenSessionRecoveryCompleted();
 
     const totalSessions = 300;
     for (let i = 0; i < totalSessions; i++) {
@@ -9729,9 +9719,7 @@ describe('OrchestrationService', () => {
       // would race the seeding loop and contaminate this test's query count
       // with its own (unrelated, one-time) per-session reads.
       perfService.initialize();
-      await waitForReceipt(
-        (receipt) => receipt.kind === 'session.recovery.completed',
-      );
+      await perfService.whenSessionRecoveryCompleted();
 
       const totalSessions = 400;
       for (let i = 0; i < totalSessions; i++) {
@@ -11924,9 +11912,7 @@ describe('OrchestrationService', () => {
         logger: { debug: vi.fn(), warn: vi.fn() },
       });
       recoveryService.initialize();
-      await waitForReceipt(
-        (receipt) => receipt.kind === 'session.recovery.completed',
-      );
+      await recoveryService.whenSessionRecoveryCompleted();
       // archive#3476: the cwd re-settlement moved with the rest of the start
       // pipeline to first use, so drive it the way a user does.
       await materializeBySendingATurn(
@@ -16136,9 +16122,7 @@ describe('OrchestrationService', () => {
     });
 
     service.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await service.whenSessionRecoveryCompleted();
     await service.whenSessionAttachmentSettled();
 
     expect(claude.startSession).not.toHaveBeenCalled();
@@ -16182,9 +16166,7 @@ describe('OrchestrationService', () => {
       updatedAt: '2026-03-28T00:00:05.000Z',
     });
     service.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await service.whenSessionRecoveryCompleted();
 
     // Hold the start open so both turns are genuinely in flight across it.
     const defaultStart = claude.startSession.getMockImplementation()!;
@@ -16234,9 +16216,7 @@ describe('OrchestrationService', () => {
         updatedAt: '2026-03-28T00:00:05.000Z',
       });
       service.initialize();
-      await waitForReceipt(
-        (receipt) => receipt.kind === 'session.recovery.completed',
-      );
+      await service.whenSessionRecoveryCompleted();
     };
 
     test('stopSession closes it out as resumable without spawning an engine to kill', async () => {
@@ -16278,9 +16258,7 @@ describe('OrchestrationService', () => {
         updatedAt: '2026-03-28T00:00:05.000Z',
       });
       service.initialize();
-      await waitForReceipt(
-        (receipt) => receipt.kind === 'session.recovery.completed',
-      );
+      await service.whenSessionRecoveryCompleted();
 
       await expect(
         service.dispatch({ type: 'stopSession', threadId }),
@@ -16612,9 +16590,7 @@ describe('OrchestrationService', () => {
         updatedAt: '2026-03-28T00:00:05.000Z',
       });
       service.initialize();
-      await waitForReceipt(
-        (receipt) => receipt.kind === 'session.recovery.completed',
-      );
+      await service.whenSessionRecoveryCompleted();
 
       await service.dispatch({ type: 'stopSession', threadId });
 
@@ -16677,9 +16653,7 @@ describe('OrchestrationService', () => {
     // settle. Under load a single tick is not guaranteed to be enough
     // (archive#1045), and it's provably not a signal of anything in particular
     // when it IS enough. Await the actual milestone instead.
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await service.whenSessionRecoveryCompleted();
 
     // archive#3476: restoring state starts no engine...
     expect(claude.startSession).not.toHaveBeenCalled();
@@ -16780,9 +16754,7 @@ describe('OrchestrationService', () => {
     recoveryService.initialize();
     // archive#1101: was a fixed setTimeout(0) tick — see the first
     // recovery-milestone conversion above for the rationale.
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await recoveryService.whenSessionRecoveryCompleted();
     // archive#3476: the metadata replay + agent resolution now run when the
     // conversation is first used, not at boot.
     await materializeBySendingATurn(recoveryService, 'thread-recovery-agent');
@@ -16850,9 +16822,7 @@ describe('OrchestrationService', () => {
     });
 
     recoveryService.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await recoveryService.whenSessionRecoveryCompleted();
     await materializeBySendingATurn(
       recoveryService,
       'thread-recovery-latest-metadata',
@@ -16893,9 +16863,7 @@ describe('OrchestrationService', () => {
     });
 
     recoveryService.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await recoveryService.whenSessionRecoveryCompleted();
     await materializeBySendingATurn(
       recoveryService,
       'thread-recovery-resolver-throws',
@@ -19109,9 +19077,7 @@ describe('OrchestrationService', () => {
     // pass finishes regardless of per-session outcome, so it's the correct
     // signal here too — this test exercises the FAILURE path (startSession
     // rejects) rather than the happy path the other two conversions cover.
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await service.whenSessionRecoveryCompleted();
     // archive#3476: the refused resume now happens on first use. The turn
     // fails loudly rather than reporting success into nothing, and the
     // durable archive#1090 evidence below is unchanged.
@@ -19179,9 +19145,7 @@ describe('OrchestrationService', () => {
     } as any);
 
     service.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
+    await service.whenSessionRecoveryCompleted();
     await materializeBySendingATurn(service, 'thread-recovered-cwd');
 
     expect(claude.startSession).toHaveBeenCalledWith(
