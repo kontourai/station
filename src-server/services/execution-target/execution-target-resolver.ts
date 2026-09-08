@@ -106,7 +106,7 @@ export interface ResolvedExecutionTarget {
   receipt: ExecutionResolutionReceipt;
 }
 
-function assertConnectionReady(connection: ConnectionConfig): void {
+export function assertConnectionReady(connection: ConnectionConfig): void {
   if (connection.kind !== 'agent') {
     throw new Error(
       `Agent binding '${connection.id}' does not resolve to an engine connection`,

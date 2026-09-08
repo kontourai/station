@@ -1,10 +1,23 @@
 #!/usr/bin/env node
 
+import { writeFileSync } from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { z } from 'zod';
 
 const RESOURCE_URI = 'ui://station-modern-fixture/panel';
+
+if (process.env.STATION_MCP_TEST_RECEIPT) {
+  writeFileSync(
+    process.env.STATION_MCP_TEST_RECEIPT,
+    JSON.stringify({
+      cwd: process.cwd(),
+      root: process.env.PLUGIN_ROOT,
+      data: process.env.PLUGIN_DATA,
+      literal: process.env.STATION_MCP_TEST_LITERAL,
+    }),
+  );
+}
 
 function createServer() {
   const server = new McpServer(

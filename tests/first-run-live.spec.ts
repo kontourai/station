@@ -210,12 +210,35 @@ test('phone first run recovers from no provider to a real streamed reply', async
   // before the two waits below were widened to this file's 20 s (readiness
   // +10 s, the chat dock +15 s). 62 + 30 + 25 ≈ 117 s, rounded up.
   //
-  // That arithmetic was derived when the readiness wait's own budget was 20 s.
-  // It is now LOCAL_UI_ACCESS_READINESS_TIMEOUT_MS = 33.4 s (#1639 gave the gate
-  // a bounded retry, so its worst case covers a full ladder, the reload, and one
-  // more answer), which adds 13.4 s to the readiness step's worst case. 150 s
-  // still covers the measured path plus its last step; the sentence below is why
-  // the sum of the declared budgets is not what this number bounds.
+  // That arithmetic was derived when the readiness wait's own budget was 20 s, so
+  // every later move of that budget is a term added to it. Carried forward as
+  // arithmetic rather than as a new number, because the next person to move a step
+  // budget has to recompute this and cannot do that from a total:
+  //
+  //   117 s  measured path (62.3) + last step's own budget (30) + the widening of
+  //          this file's two waits to 20 s (readiness +10, chat dock +15)
+  //   +13.4  readiness 20 -> 33.4 s (#1639: the gate got a bounded retry, so its
+  //          worst case became a full ladder, the reload, and one more answer)
+  //   +19.6  readiness 33.4 -> 53.0 s (#1661: each identity read now has the
+  //          gate's own deadline instead of the proxy's 30 s, and the budget
+  //          derives from those deadlines rather than scaling one 6.6 s sample)
+  //   = 150 s of estimate, under a 170 s ceiling: 20 s of margin.
+  //
+  // ALL of the growth is the readiness step; no other step's budget has moved
+  // since the 117 s figure was measured. The ceiling rose from 150 s for the last
+  // term alone, and what that restores is the ABSOLUTE margin, not the fraction:
+  // 19.6 s (13.1%) before, 20.0 s (11.8%) after. It buys back the seconds that
+  // change consumes; it does not buy headroom.
+  //
+  // TWO INDEPENDENT INPUTS DECIDE THIS NUMBER, and recomputing from either one
+  // alone lands somewhere else — worth saying because they arrived in the same
+  // week from opposite directions and were resolved together here. #1642 settled
+  // the SHAPE (the two paragraphs below): this is sized against the measured path,
+  // not against the sum of declared budgets. #1661 moved one TERM: the readiness
+  // step's own budget, the +19.6 above. Take the shape without the term and 150 s
+  // still looks sufficient; take the term without the shape and a 330 s budget sum
+  // reads as an argument for something far larger than 170 s. The ladder above is
+  // what the two produce together, and neither half is redundant.
   //
   // This covers the measured path plus its last step. It is NOT a bound on the
   // sum of the steps: their declared budgets now total over 330 s (#1642 gave
@@ -231,7 +254,14 @@ test('phone first run recovers from no provider to a real streamed reply', async
   // than at the end of an allowance. A run that spends several of them in full is
   // a host in trouble, and the measured path — 62.3 s to the last step — is what
   // this timeout is sized against.
-  test.setTimeout(150_000);
+  //
+  // Raising it to 170 s costs the same 20 s on a genuinely hung journey and
+  // nothing else — and it cannot delay a real failure report, because the
+  // readiness wait throws ITS own sentence when its own 53 s budget expires. That
+  // wait is NOT the first step (server setup and navigation precede it), so the
+  // slack between its sentence and this ceiling is whatever the journey has
+  // already spent by then, not the difference between the two numbers.
+  test.setTimeout(170_000);
 
   let ollamaServer: Server | null = null;
   const chatRequests: unknown[] = [];
