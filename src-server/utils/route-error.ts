@@ -15,13 +15,36 @@
  *   through `sanitizeFreeText` at the boundary. That is not redundant with
  *   the reviewed-text claim above: the claim covers the literal a route
  *   writes, and a message is routinely built by interpolating a filename, a
- *   slug, or a service's own text into that literal. The sanitizer is what
- *   keeps a URL, an absolute path, or a secret out of the response when the
- *   interpolated half turns out to carry one.
+ *   slug, or a service's own text into that literal.
+ *
+ *   Be exact about what that sanitizer is and is not. It removes every URL
+ *   and absolute path, and the credential shapes `redactSecrets` knows: AWS
+ *   access-key ids, GitHub tokens, `Bearer`/`Basic` values, `sk-` keys,
+ *   `user:pass@` in a connection string, and a `key=value` / `key: value`
+ *   pair whose key names a credential. It does NOT remove a high-entropy
+ *   value under a key it does not recognize, and — executed — a credential
+ *   pair is skipped entirely when an unrecognized `key: value` pair precedes
+ *   it on the same line, because that earlier pair's value matches to the
+ *   end of the line and the later one is never examined. `redactSecrets`'s
+ *   own docblock says to describe it as "known credential shapes are
+ *   redacted", never as "secrets are removed"; this docblock used to say the
+ *   second thing.
+ *
+ *   So the sanitizer is a backstop, not a licence. Build `clientMessage`
+ *   from literals and ids, not from caught engine or CLI text.
  * - `code` — copied to a **top-level** `code` on the envelope when present,
- *   which is where every existing reader already looks for one.
+ *   which is where every existing reader already looks for one. Vocabulary:
+ *   a code a domain class already publishes is passed through verbatim
+ *   (`AGENT_ID_RESERVED`, `STATION_ENGINE_IS_APP_SETTING`); a code minted for
+ *   this contract is snake_case, like the boundary's own `internal_error`
+ *   and `missing_param`. Two styles are already on the wire — do not add a
+ *   third.
  * - `details` — copied to a top-level `details` when present, matching the
- *   shape `validate()` already sends for field errors.
+ *   shape `validate()` already sends for field errors. The boundary runs it
+ *   through `redactDeep`, but that is the same backstop with the same limits:
+ *   `details` is for route-authored structure (field names, ids), never
+ *   error-derived data. `scripts/route-error-egress-gate.mjs` reviews both
+ *   this and `clientMessage` at every `new RouteError(...)`.
  * - `cause` — never sent. It is what the boundary hands `sanitizeError` for
  *   the server-side log on a 5xx, so the operator keeps the underlying
  *   failure while the caller gets only the reviewed text.
