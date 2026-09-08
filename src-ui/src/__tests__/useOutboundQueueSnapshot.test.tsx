@@ -2,10 +2,7 @@
 
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  _resetOutboundQueueSnapshotCache,
-  useOutboundQueueSnapshot,
-} from '../hooks/useOutboundQueueSnapshot';
+import { useOutboundQueueSnapshot } from '../hooks/useOutboundQueueSnapshot';
 import {
   _resetOutboundQueueStorage,
   _setOutboundQueueStorage,
@@ -13,6 +10,7 @@ import {
   outboundDispatch,
   type QueuedOutboundTurn,
 } from '../lib/outboundQueue';
+import { _resetOutboundQueueSource } from '../lib/outboundQueueSnapshotSource';
 
 /**
  * Counts every durable read the queue performs. `updateItem` is the
@@ -41,11 +39,11 @@ function countingStorage(initial?: QueuedOutboundTurn[]) {
 
 describe('useOutboundQueueSnapshot', () => {
   beforeEach(() => {
-    _resetOutboundQueueSnapshotCache();
+    _resetOutboundQueueSource();
   });
 
   afterEach(() => {
-    _resetOutboundQueueSnapshotCache();
+    _resetOutboundQueueSource();
     _resetOutboundQueueStorage();
     vi.useRealTimers();
   });

@@ -17,23 +17,21 @@
  * cosmetic loss; a rejected `loadLanguage` is a code block rendered as plain
  * text, and a rejected `createHighlighterCore` is every code block on the page.
  *
- * The preload list is enumerated literally rather than built from
- * `PRELOAD_LANGS` with a template-literal import: a dynamic import whose
- * specifier is not a literal makes the bundler emit every module the pattern
- * could match, which for `@shikijs/langs` is 722 of them.
+ * The preload list is the loader map below, enumerated literally: a dynamic
+ * import whose specifier is not a literal makes the bundler emit every module
+ * the pattern could match, which for `@shikijs/langs` is 722 of them. It is
+ * also the list itself, so a language cannot be preloaded without a loader or
+ * carry a loader nothing preloads.
  */
 
 import type { LanguageInput } from '@shikijs/types';
 import { createHighlighterCore, type HighlighterCore } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
-import { PRELOAD_LANGS, THEME } from './shared';
+import { THEME } from './shared';
 
 export type { HighlighterCore };
 
-const PRELOAD_LANG_LOADERS: Record<
-  (typeof PRELOAD_LANGS)[number],
-  LanguageInput
-> = {
+const PRELOAD_LANG_LOADERS: Record<string, LanguageInput> = {
   typescript: () => import('@shikijs/langs/typescript'),
   javascript: () => import('@shikijs/langs/javascript'),
   tsx: () => import('@shikijs/langs/tsx'),
@@ -54,16 +52,11 @@ const PRELOAD_LANG_LOADERS: Record<
   dockerfile: () => import('@shikijs/langs/dockerfile'),
 };
 
-/**
- * Every preload entry must have a loader. `PRELOAD_LANG_LOADERS` is typed by
- * `PRELOAD_LANGS`, so adding a language to the shared list without a loader
- * here is a compile error rather than a language that silently stops loading.
- */
 export function createChatHighlighter(): Promise<HighlighterCore> {
   return createHighlighterCore({
     engine: createJavaScriptRegexEngine({ forgiving: true }),
     themes: [import('@shikijs/themes/github-dark')],
-    langs: PRELOAD_LANGS.map((lang) => PRELOAD_LANG_LOADERS[lang]),
+    langs: Object.values(PRELOAD_LANG_LOADERS),
   });
 }
 

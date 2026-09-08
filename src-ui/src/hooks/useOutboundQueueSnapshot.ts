@@ -4,22 +4,17 @@
  * `outboundDispatch` already publishes every durable transition through
  * `subscribe`, so a consumer that wants the current queue does not need to
  * poll IndexedDB — it needs to read a cached projection and be told when that
- * projection changed. This module is that cache.
+ * projection changed. This module is the cache and nothing else.
  *
- * Two constraints shape it:
+ * It is reachable from the entry chunk (the dock chrome that consumes it is
+ * eagerly mounted), so it holds only what `useSyncExternalStore` needs
+ * synchronously. The reading half — the subscription, the IndexedDB read and
+ * its serialization — is `lib/outboundQueueSnapshotSource`, loaded on the
+ * first subscription.
  *
- * - `outboundDispatch.snapshot()` is asynchronous AND it reconciles accepted
- *   terminals before it reads, so it is a durable mutation, not a pure read.
- *   `useSyncExternalStore`'s `getSnapshot` must be synchronous and free of
- *   side effects, so the read happens in the subscription listener and only
- *   its result is cached here.
- * - `getSnapshot` must return a referentially stable value between
- *   notifications or React re-renders forever, so the cached object is
- *   replaced only when a read settles — never minted per call.
- *
- * The module keeps `lib/outboundQueue` behind a dynamic import for the same
- * reason every other caller does: the eagerly mounted dock chrome must not
- * charge first paint for the IndexedDB dispatch machinery.
+ * `getSnapshot` must return a referentially stable value between
+ * notifications or React re-renders forever, so the cached object is replaced
+ * only when a read settles, never minted per call.
  */
 
 import { useSyncExternalStore } from 'react';
@@ -35,72 +30,38 @@ export interface OutboundQueueSnapshot {
   turns: readonly OutboundDispatchTurn[];
 }
 
-const PENDING: OutboundQueueSnapshot = Object.freeze({
-  status: 'pending' as const,
-  turns: Object.freeze([]) as readonly OutboundDispatchTurn[],
-});
+const PENDING: OutboundQueueSnapshot = { status: 'pending', turns: [] };
 
 let cached: OutboundQueueSnapshot = PENDING;
 const listeners = new Set<() => void>();
-let detachUpstream: (() => void) | null = null;
-let refreshTail: Promise<void> = Promise.resolve();
 
-function publish(next: OutboundQueueSnapshot): void {
+const source = () => import('../lib/outboundQueueSnapshotSource');
+
+/** Called by the source once a read settles. */
+export function publishOutboundQueueSnapshot(
+  next: OutboundQueueSnapshot,
+): void {
   cached = next;
-  for (const listener of listeners) {
-    try {
-      listener();
-    } catch {
-      // A throwing consumer must not starve the others.
-    }
-  }
+  for (const listener of listeners) listener();
 }
 
-/**
- * Serialized so overlapping notifications cannot interleave two reads and
- * publish the older one last.
- */
-function refresh(): void {
-  refreshTail = refreshTail.then(async () => {
-    try {
-      const { outboundDispatch } = await import('../lib/outboundQueue');
-      publish({ status: 'ready', turns: await outboundDispatch.snapshot() });
-    } catch {
-      if (cached.status === 'error') return;
-      publish({ status: 'error', turns: cached.turns });
-    }
-  });
+export function getOutboundQueueSnapshot(): OutboundQueueSnapshot {
+  return cached;
 }
 
 export function subscribeOutboundQueueSnapshot(
   listener: () => void,
 ): () => void {
   listeners.add(listener);
-  if (!detachUpstream) {
-    let disposed = false;
-    let inner: (() => void) | null = null;
-    void import('../lib/outboundQueue').then(({ outboundDispatch }) => {
-      if (disposed) return;
-      inner = outboundDispatch.subscribe(refresh);
-    });
-    detachUpstream = () => {
-      disposed = true;
-      inner?.();
-      inner = null;
-    };
-    refresh();
+  if (listeners.size === 1) {
+    void source().then((module) => module.attachOutboundQueueSource());
   }
   return () => {
     listeners.delete(listener);
     if (listeners.size === 0) {
-      detachUpstream?.();
-      detachUpstream = null;
+      void source().then((module) => module.detachOutboundQueueSource());
     }
   };
-}
-
-export function getOutboundQueueSnapshot(): OutboundQueueSnapshot {
-  return cached;
 }
 
 export function useOutboundQueueSnapshot(): OutboundQueueSnapshot {
@@ -109,13 +70,4 @@ export function useOutboundQueueSnapshot(): OutboundQueueSnapshot {
     getOutboundQueueSnapshot,
     getOutboundQueueSnapshot,
   );
-}
-
-/** Test-only: drop the cache so one test's queue cannot leak into the next. */
-export function _resetOutboundQueueSnapshotCache(): void {
-  cached = PENDING;
-  listeners.clear();
-  detachUpstream?.();
-  detachUpstream = null;
-  refreshTail = Promise.resolve();
 }

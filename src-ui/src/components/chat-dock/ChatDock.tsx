@@ -1188,15 +1188,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // changed. It used to re-read IndexedDB once a second for a value that only
   // moves when the user queues, sends, or discards a message.
   const durableHandoffQueue = useOutboundQueueSnapshot();
-  const durableHandoffQueueCount = useMemo(
-    () =>
-      durableHandoffQueue.turns.filter(
-        (turn) =>
-          turn.conversationId === activeSession?.conversationId ||
-          turn.sessionId === activeSession?.id,
-      ).length,
-    [durableHandoffQueue, activeSession?.conversationId, activeSession?.id],
-  );
+  const durableHandoffQueueCount = durableHandoffQueue.turns.filter(
+    (turn) =>
+      turn.conversationId === activeSession?.conversationId ||
+      turn.sessionId === activeSession?.id,
+  ).length;
   const contextBoundaryStatus =
     contextBoundaryStatusQuery.data?.status ?? contextBoundaryStored?.status;
   const contextBoundaryLabel =

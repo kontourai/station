@@ -232,11 +232,8 @@ export interface SessionEventStream {
  * not the paint clock specifically.
  */
 function schedulePublishFrame(callback: () => void): () => void {
-  if (
-    typeof requestAnimationFrame === 'function' &&
-    typeof cancelAnimationFrame === 'function'
-  ) {
-    const handle = requestAnimationFrame(() => callback());
+  if (typeof requestAnimationFrame === 'function') {
+    const handle = requestAnimationFrame(callback);
     return () => cancelAnimationFrame(handle);
   }
   const handle = setTimeout(callback, 0);
@@ -315,10 +312,9 @@ export function useSessionEventStream(
 
   /** Drops buffered frames a full replacement has superseded. */
   const discardPendingLiveEvents = useCallback(() => {
-    cancelPublishFrame.current?.();
-    cancelPublishFrame.current = null;
     pendingLiveEvents.current = [];
-  }, []);
+    foldPendingLiveEvents();
+  }, [foldPendingLiveEvents]);
 
   const queueLiveEvent = useCallback(
     (event: OrchestrationEvent) => {
