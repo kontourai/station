@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { type Browser, expect, type Page, test } from '@playwright/test';
 import {
@@ -240,7 +240,7 @@ async function runFixtureTarget(input: {
   // A failed action can outlive its target home, which the next fixture
   // replaces. Keep the server log beside the retained measurement evidence.
   const referenceLogRoot = process.env.STATION_PERFORMANCE_REPORT_OUTPUT
-    ? dirname(process.env.STATION_PERFORMANCE_REPORT_OUTPUT)
+    ? dirname(resolve(process.env.STATION_PERFORMANCE_REPORT_OUTPUT))
     : input.fixtureRoot;
   mkdirSync(referenceLogRoot, { recursive: true, mode: 0o700 });
   const bootstrapToken = await startStation(live, true, {

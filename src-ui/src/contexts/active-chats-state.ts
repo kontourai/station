@@ -441,6 +441,7 @@ export type ActiveChatMetadata = {
   title: string;
   conversationId?: string;
   currentSessionId?: string;
+  conversationOpenPending?: boolean;
   projectSlug?: string;
   projectName?: string;
   executionMode?: ExecutionMode;

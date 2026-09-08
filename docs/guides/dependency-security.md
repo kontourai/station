@@ -22,8 +22,14 @@ on filesystems without copy-on-write clones, copying trades disk savings for
 that isolation.
 
 The runner verifies native artifacts, Station's Node contract, and Git hooks.
-The VoltAgent patch is applied by pnpm from `patchedDependencies`; its content
-hash is bound to the lockfile. The lifecycle allowlist still owns the stronger
+The VoltAgent patches are applied by pnpm from `patchedDependencies`; their content
+hashes are bound to the lockfile. The Core 2.10.0 patch awaits ordinary input
+persistence before starting the model, preventing a fast reply from preceding
+its user's message in durable history. The real-framework regression in
+`src-server/runtime/frameworks/__tests__/voltagent-memory-order.test.ts` holds
+the first storage read and verifies model admission and persisted ordering.
+Remove the patch only when that test passes against an upstream fix.
+The lifecycle allowlist still owns the stronger
 exact-hook and artifact proofs; a successful raw pnpm install is not their
 receipt.
 
