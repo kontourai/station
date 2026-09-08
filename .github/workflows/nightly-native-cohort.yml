@@ -7,7 +7,7 @@ name: Nightly native cohort
 # staged bytes, creates the promotion fence, promotes Android before macOS,
 # and lets the protected verifier grant finality. iOS delivery runs beside
 # that chain from the same admission (#1774): its TestFlight outcome is
-# disclosed in every ledger row but never gates Android/macOS finality,
+# disclosed on both cohort ledger rows but never gates Android/macOS finality,
 # recording, or recovery.
 on:
   workflow_call:
