@@ -1,5 +1,35 @@
 [
   {
+    "timestampUtc": "2026-09-08T13:45:30Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2442.34230188430",
+    "sha": "5dda86fbc3e79535929a00097c35c7b25451d3a1",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34230188430",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2442.34230188430 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "370c33eed4b501243663ce13ac216832312feb78",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#1773](https://github.com/kontourai/station/pull/1773) fix(orchestration): bind session barriers to their runtime and take search worker boot off read budgets",
+          "[#1772](https://github.com/kontourai/station/pull/1772) fix(release): name the App Store Connect error when beta-group assignment fails"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-09-08T10:24:53Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2442.34211909749",
