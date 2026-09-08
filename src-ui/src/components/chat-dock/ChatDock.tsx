@@ -1873,7 +1873,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // from the same session-committed slug — artwork only when the
               // catalog resolved this agent, identicon from the slug otherwise.
               agentIdentity={
-                activeSession
+                !importedSessionId && activeSession
                   ? {
                       name: activeChatAgent?.name ?? activeSession.agentName,
                       slug: activeSession.agentSlug,
@@ -1887,8 +1887,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // value and stays reachable via the same trigger, rather than
               // losing the affordance entirely.
               projectSwitcher={{
-                projectSlug: dockProjectSlug ?? '',
-                projectName: dockBadgeProjectName ?? 'No project',
+                projectSlug: importedSessionId
+                  ? (importedSession?.projectSlug ?? '')
+                  : (dockProjectSlug ?? ''),
+                projectName: importedSessionId
+                  ? (projects.find(
+                      (project) =>
+                        project.slug === importedSession?.projectSlug,
+                    )?.name ??
+                    importedSession?.projectSlug ??
+                    'No project')
+                  : (dockBadgeProjectName ?? 'No project'),
                 projects,
                 onOpenProject: handleSelectProject,
                 onSwitchProject: handleSwitchProject,

@@ -1035,6 +1035,10 @@
   gap: 0;
 }
 
+.external-chat-composer .button {
+  padding: 0.625rem 1rem;
+}
+
 .external-chat-composer .button--primary {
   background: var(--accent-primary);
   color: var(--text-on-accent);
