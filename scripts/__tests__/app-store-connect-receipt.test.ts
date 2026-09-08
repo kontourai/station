@@ -1,6 +1,9 @@
 import { generateKeyPairSync, verify } from 'node:crypto';
-import { describe, expect, test } from 'vitest';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, test, vi } from 'vitest';
 import {
+  appStoreConnectErrorDetail,
   appStoreConnectRequest,
   assertCanonicalArtifactBuiltAt,
   createAppStoreConnectJwt,
@@ -201,5 +204,99 @@ describe('App Store Connect receipt authority', () => {
         },
       ),
     ).toThrow(/exact internal group/);
+  });
+});
+
+describe('appStoreConnectErrorDetail', () => {
+  test('names the provider errors from a body or its text, bounded and in order', () => {
+    const body = {
+      errors: [
+        { code: 'STATE_ERROR', detail: 'Export compliance is missing.' },
+        { title: 'Build not eligible' },
+        { code: 'ENTITY_ERROR' },
+        { detail: 'a fourth error that is dropped' },
+      ],
+    };
+    expect(appStoreConnectErrorDetail(body)).toBe(
+      'Export compliance is missing.; Build not eligible; ENTITY_ERROR',
+    );
+    expect(appStoreConnectErrorDetail(JSON.stringify(body))).toBe(
+      'Export compliance is missing.; Build not eligible; ENTITY_ERROR',
+    );
+    expect(
+      appStoreConnectErrorDetail({ errors: [{ detail: 'x'.repeat(400) }] }),
+    ).toHaveLength(300);
+  });
+  test('is empty for non-JSON, non-error, and malformed payloads', () => {
+    expect(appStoreConnectErrorDetail('<html>')).toBe('');
+    expect(appStoreConnectErrorDetail({ data: [] })).toBe('');
+    expect(appStoreConnectErrorDetail({ errors: [{ detail: 7 }, null] })).toBe(
+      '',
+    );
+    expect(appStoreConnectErrorDetail(undefined)).toBe('');
+  });
+  test('the beta-group assignment failure carries the provider detail (HTTP 422)', async () => {
+    const { attachInternalGroup } = await import(
+      '../app-store-connect-receipt.mjs'
+    );
+    const group = {
+      data: [
+        {
+          type: 'betaGroups',
+          id: 'group-1',
+          attributes: {
+            name: 'Station Nightly Internal',
+            isInternalGroup: true,
+          },
+          relationships: { app: { data: { type: 'apps', id: 'app-1' } } },
+        },
+      ],
+    };
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', async (input: URL | string, init?: RequestInit) => {
+      const url = String(input);
+      calls.push(`${init?.method ?? 'GET'} ${new URL(url).pathname}`);
+      if (url.includes('/v1/betaGroups?'))
+        return new Response(JSON.stringify(group), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          errors: [
+            { code: 'STATE_ERROR', detail: 'Export compliance is missing.' },
+          ],
+        }),
+        { status: 422 },
+      );
+    });
+    try {
+      await expect(
+        attachInternalGroup(
+          [
+            '--app-id',
+            'app-1',
+            '--build-id',
+            'build-1',
+            '--group-id',
+            'group-1',
+            '--group-name',
+            'Station Nightly Internal',
+            '--output',
+            join(tmpdir(), 'unused.json'),
+          ],
+          {
+            APPLE_API_ISSUER_ID: 'issuer',
+            APPLE_API_KEY_ID: 'key',
+            APPLE_API_PRIVATE_KEY: privateKey,
+          },
+        ),
+      ).rejects.toThrow(
+        'beta-group assignment returned HTTP 422: Export compliance is missing.',
+      );
+      expect(calls).toEqual([
+        'GET /v1/betaGroups',
+        'POST /v1/betaGroups/group-1/relationships/builds',
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

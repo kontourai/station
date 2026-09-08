@@ -42,6 +42,25 @@ export function createAppStoreConnectJwt({
   return `${signingInput}.${base64url(signature)}`;
 }
 
+/** The first few provider error details, never the request or a credential. */
+export function appStoreConnectErrorDetail(payload) {
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
+      return '';
+    }
+  }
+  return Array.isArray(payload?.errors)
+    ? payload.errors
+        .slice(0, 3)
+        .map((entry) => entry?.detail || entry?.title || entry?.code)
+        .filter((entry) => typeof entry === 'string' && entry.length > 0)
+        .map((entry) => entry.slice(0, 300))
+        .join('; ')
+    : '';
+}
+
 export async function appStoreConnectRequest(
   path,
   credentials,
@@ -68,13 +87,7 @@ export async function appStoreConnectRequest(
     );
   }
   if (!response.ok) {
-    const detail = Array.isArray(payload?.errors)
-      ? payload.errors
-          .slice(0, 3)
-          .map((entry) => entry?.detail || entry?.title || entry?.code)
-          .filter(Boolean)
-          .join('; ')
-      : '';
+    const detail = appStoreConnectErrorDetail(payload);
     throw new Error(
       `App Store Connect returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
     );
@@ -437,7 +450,7 @@ export function selectInternalGroup(payload, { appId, groupId, groupName }) {
   return group;
 }
 
-async function attachInternalGroup(argv, env) {
+export async function attachInternalGroup(argv, env) {
   const appId = requiredOption(argv, '--app-id');
   const buildId = requiredOption(argv, '--build-id');
   const groupId = requiredOption(argv, '--group-id');
@@ -473,10 +486,17 @@ async function attachInternalGroup(argv, env) {
     },
   );
   const text = await response.text();
-  if (!response.ok && response.status !== 409)
-    throw new Error(
-      `App Store Connect beta-group assignment returned HTTP ${response.status}`,
+  if (!response.ok && response.status !== 409) {
+    // 409 is the idempotent "already a member" answer. Anything else names
+    // its cause from the provider body (export compliance, build state, a
+    // group that is not this app's), which the log otherwise never shows.
+    const detail = appStoreConnectErrorDetail(
+      Buffer.byteLength(text) > MAX_RESPONSE_BYTES ? '' : text,
     );
+    throw new Error(
+      `App Store Connect beta-group assignment returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
+    );
+  }
   if (Buffer.byteLength(text) > MAX_RESPONSE_BYTES)
     throw new Error(
       'App Store Connect beta-group response exceeded the 1 MiB limit',
