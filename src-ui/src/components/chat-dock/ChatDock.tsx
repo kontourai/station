@@ -1,4 +1,8 @@
-import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
+import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  type ConnectionConfig,
+  EXECUTION_MODE,
+} from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import {
   conversationQueries,
@@ -759,6 +763,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     modelSupportsAttachments,
     modelProviderLabel,
     modelProviders,
+    modelConnections,
     modelsLoading,
     modelsStale,
     sessionCodingLayout,
@@ -1509,6 +1514,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         | 'providerType'
         | 'hydrateMessages'
         | 'signal'
+        | 'beforeFocus'
       >,
     ) => {
       // #3724 review (BLOCKING): classify BEFORE navigating. Routing first
@@ -1516,7 +1522,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       // 'catalog-pending' whose "nothing was navigated" claim was false —
       // the user had already been teleported to the other project. An
       // unanswered catalog refuses here, before any navigation.
-      if (!agentsLoaded || execution?.signal?.aborted) return false;
+      if (
+        !agentsLoaded ||
+        execution?.signal?.aborted ||
+        execution?.beforeFocus?.() === false
+      )
+        return false;
       // station#3687 seam 2: routing to the row's project used to RETURN
       // here (`undefined`), so a cross-project click navigated the whole app
       // and then opened nothing — and `undefined` also skipped the #801
@@ -1554,7 +1565,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [openConversationInScopedPane, setActiveProjectSlug],
   );
   const openConversationForDock = useCallback(
-    async (conversation: ConversationOpenRecovery['conversation']) => {
+    async (
+      conversation: ConversationOpenRecovery['conversation'] | string,
+      isCurrent?: () => boolean,
+    ) => {
       const controller = await loadConversationOpenController();
       return controller.openConversationForDock(conversation, {
         apiBase,
@@ -1566,10 +1580,19 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             ([, chat]) => chat.conversationId === conversationId,
           )?.[0],
         updateChat,
+        readChat: (tabId) => activeChatsStore.getSnapshot()[tabId],
+        agentName: (id) => agents.find((agent) => agent.slug === id)?.name,
         setRecovery: setConversationOpenRecovery,
+        isCurrent,
       });
     },
-    [apiBase, openUserSelectedConversationInScopedPane, projects, updateChat],
+    [
+      apiBase,
+      openUserSelectedConversationInScopedPane,
+      projects,
+      updateChat,
+      agents,
+    ],
   );
   const retryActiveConversationOpen = useCallback(async () => {
     if (!activeSession?.conversationId) return;
@@ -1580,6 +1603,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       apiBase,
       updateChat,
       () => showToast('Conversation resolution is unavailable. Try again.'),
+      (tabId) => activeChatsStore.getSnapshot()[tabId],
     );
   }, [activeSession, apiBase, showToast, updateChat]);
   const retryConversationOpenRecovery = useCallback(async () => {
@@ -1731,6 +1755,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     };
     const unregisterOpenChatsNavigation = openChatsStore.registerNavigation({
       focus: focusChat,
+      openConversation: openConversationForDock,
       // Remote transcript rendering has no safe cross-Station reader in this
       // slice. Route selection to its named connection instead of treating an
       // opaque remote conversation ID as a local one.
@@ -1775,6 +1800,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     focusSessionInPane,
     navigate,
     openWorkItemConversationInScopedPane,
+    openConversationForDock,
     allSessions,
     routeToScopedChatProject,
     scopedProjectSlug,
@@ -2991,6 +3017,23 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             conversationId: activeSession.conversationId,
             apiBase,
             updateChat,
+            availableModels: effectiveModels,
+            modelConnections,
+            modelsLoading,
+            modelsStale,
+            canModelSelect: chatInput.canModelSelect,
+            catalogConnectionId:
+              activeSession.executionMode === EXECUTION_MODE.STATION
+                ? undefined
+                : chatEngineConnection?.id,
+            catalogProvider:
+              activeSession.executionMode === EXECUTION_MODE.STATION
+                ? 'station-agent'
+                : resolveEngineCapabilityMatrix(
+                    chatEngineConnection?.id,
+                    chatEngineConnection,
+                  ).engineId,
+            agents,
           }}
           pending={null}
         />

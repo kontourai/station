@@ -32,6 +32,13 @@ updates:
         patterns:
           - "@aws-sdk/*"
           - "@smithy/*"
+    # esbuild is exact-pinned by @kontourai/flow-agents (station#1719), so a
+    # root-only bump splits the shared node_modules/esbuild copy into
+    # separate, unhoisted nested copies and cannot pass the
+    # dependency-lifecycle allowlist gate without a human review anyway.
+    # Ignored until #1719 resolves upstream; re-enable there.
+    ignore:
+      - dependency-name: "esbuild"
   - package-ecosystem: cargo
     directory: /src-desktop
     schedule:

@@ -1,12 +1,31 @@
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { SKILL_COMMAND_NAME_RULE } from '@kontourai/station-contracts/skill-command';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 
+// The real service reads more counters than the route does; the route-level
+// integration test at the bottom of this file constructs one.
 vi.mock('../../../telemetry/metrics.js', () => ({
   skillOps: { add: vi.fn() },
+  skillDiscoveries: { add: vi.fn() },
+  skillActivations: { add: vi.fn() },
+  skillActivationDuration: { record: vi.fn() },
+  skillDiscoveryDuration: { record: vi.fn() },
+  canonicalSkillsDiscovered: { add: vi.fn() },
 }));
 
 const { createSkillRoutes } = await import('../skills.js');
+const { SkillService } = await import(
+  '../../../services/agents/skill-service.js'
+);
 const { SkillUsageUnreadableError } = await import(
   '../../../services/agents/skill-usage-service.js'
 );
@@ -691,5 +710,68 @@ describe('Skill Routes', () => {
       expect(res.status, name).toBe(400);
     }
     expect(skillService.installSkill).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The 409 a user actually reads, produced by the real service.
+ *
+ * What this adds is the STATUS-AND-BODY wiring: that the refusal reaches the
+ * client as a 409 whose `error` is the explanation. Every other DELETE
+ * assertion in this file takes `message` from a mock, so none of them can see
+ * what the service actually puts there.
+ *
+ * It is NOT what should have caught the `[object Object]` defect, and the
+ * earlier draft of this comment claimed it was. Two tests in
+ * `skill-service.test.ts` drive the real `removeSkill` and assert the fragment
+ * prose; both were RED at the published head `da33ad2a4`
+ * (`2 failed | 86 passed`, `Received: "Cannot remove 'served': [object
+ * Object]."`). The defect did not survive because no test could see it. It
+ * survived because that suite was not run, or its red was not read.
+ *
+ * The distinction matters more than the fix: a comment claiming the service
+ * suite has no power here is the prose that gets a covering test deleted.
+ *
+ * Power of THIS test: against the `${refusal}` form it fails on the `[object
+ * Object]` assertion. Verified by injection, not by reasoning.
+ */
+describe('DELETE /:name refusal body, through the real service', () => {
+  test('the 409 explains the refusal rather than stringifying it', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'skill-route-refusal-'));
+    try {
+      const served = join(home, 'plugins', 'acme', 'skills', 'served');
+      mkdirSync(served, { recursive: true });
+      writeFileSync(
+        join(served, 'SKILL.md'),
+        '---\nname: served\ndescription: From a plugin\n---\nBody',
+        'utf-8',
+      );
+
+      const service = new SkillService(
+        {
+          getProjectHomeDir: () => home,
+          loadSkill: vi.fn(),
+          saveSkillIn: vi.fn(),
+          deleteSkillAt: vi.fn(),
+          listSkills: vi.fn().mockResolvedValue([]),
+          skillExists: vi.fn().mockResolvedValue(false),
+        } as never,
+        { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+      );
+      await service.discoverSkills(home);
+
+      const app = createSkillRoutes(service as never, () => home);
+      const res = await app.request('/served', { method: 'DELETE' });
+      const body = await json(res);
+
+      expect(res.status).toBe(409);
+      // The defect this test exists for: an object interpolated into prose.
+      expect(body.error).not.toContain('[object Object]');
+      // …and the explanation the reader needs is the one that is there.
+      expect(body.error).toContain('is not a skills root Station writes');
+      expect(existsSync(served), "a plugin's package was deleted").toBe(true);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

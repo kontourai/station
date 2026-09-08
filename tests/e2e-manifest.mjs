@@ -734,6 +734,26 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/workspace-pane-host-actions.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves one host action bar across direct and placed real Project Pane routes, keyboard Agent selection and 390px reflow. Provider transport is intercepted; server integration separately proves actual captured invocation.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/workspace-pane-host-actions-live.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real browser host action through SDK, HTTP and captured permission/Agent admission into the external Muse echo provider, with exact turn completion read from EventStore and displayed in conversation. Requires ready Muse; no paid model or route interception.',
+    exceptions: [],
+  },
+  {
     path: 'tests/default-agent-workflow.spec.ts',
     bucket: 'product',
     surface: 'Agents',
@@ -1685,15 +1705,6 @@ export const e2eManifest = [
     exceptions: ['waitForTimeout'],
   },
   {
-    path: 'tests/android/app-load.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale: 'Android app-load coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
-  {
     path: 'tests/android/desktop-regression.spec.ts',
     bucket: 'android',
     surface: 'Android',
@@ -1701,7 +1712,7 @@ export const e2eManifest = [
     primary: false,
     rationale:
       'Android desktop-regression coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
+    exceptions: [],
   },
   {
     path: 'tests/android/landscape-chrome.spec.ts',
@@ -1722,31 +1733,12 @@ export const e2eManifest = [
     exceptions: ['waitForTimeout'],
   },
   {
-    path: 'tests/android/navigation.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale: 'Android navigation coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
-  {
     path: 'tests/android/split-pane-mobile.spec.ts',
     bucket: 'android',
     surface: 'Android',
     tierTarget: 'partial',
     primary: false,
     rationale: 'Android split-pane coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
-  {
-    path: 'tests/android/webview-compat.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale:
-      'Android webview compatibility coverage runs in the Android matrix.',
     exceptions: ['waitForTimeout'],
   },
 ];

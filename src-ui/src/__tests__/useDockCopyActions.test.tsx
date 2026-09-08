@@ -101,6 +101,12 @@ describe('useDockCopyActions', () => {
     );
   });
 
+  // ONE failure case here, not the primitive's matrix. Which clipboard states
+  // resolve `false` (absent, no `writeText`, rejected, throwing) is
+  // `copyToClipboard`'s own contract, pinned in
+  // `src-ui/src/lib/__tests__/clipboard.test.ts` -- 'resolves false when the
+  // origin has no clipboard API at all'. What is this hook's to prove is that
+  // it derives its affordance from that boolean rather than from the call.
   test('a refused write never claims a copy and never buzzes', async () => {
     clipboardRefuses();
     render(<Probe conversationId="station-thread-from-route" />);
@@ -113,20 +119,6 @@ describe('useDockCopyActions', () => {
       ),
     );
     expect(showToastMock).not.toHaveBeenCalledWith('Copied to clipboard');
-    expect(triggerHapticMock).not.toHaveBeenCalled();
-  });
-
-  test('an insecure origin with no clipboard API never claims a copy', async () => {
-    clipboardAbsent();
-    render(<Probe conversationId="station-thread-from-route" />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Copy thread ID' }));
-
-    await waitFor(() =>
-      expect(showToastMock).toHaveBeenCalledWith(
-        "Couldn't copy — this browser refused clipboard access",
-      ),
-    );
     expect(triggerHapticMock).not.toHaveBeenCalled();
   });
 

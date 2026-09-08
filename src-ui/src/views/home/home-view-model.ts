@@ -853,6 +853,9 @@ export function buildActiveChatTaskItems({
   resolveModelLabel?: ResolveModelLabel;
 }): HomeWorkItem[] {
   const turnByThread = new Map<string, ChatSessionCorrelation>();
+  const sessionByThread = new Map(
+    sessions.map((session) => [session.threadId, session]),
+  );
   for (const session of sessions) {
     const entry: ChatSessionCorrelation = {
       hasActiveTurn: session.hasActiveTurn === true,
@@ -881,6 +884,14 @@ export function buildActiveChatTaskItems({
           chat.agentName ||
           agents.find((agent) => agent.slug === chat.agentSlug)?.name,
       });
+      const currentExecution = sessionByThread.get(
+        chat.currentSessionId ?? chat.conversationId ?? id,
+      );
+      const observedModel =
+        currentExecution?.reportedModel ??
+        currentExecution?.model ??
+        currentExecution?.appliedModel;
+      const model = observedModel ?? chat.orchestrationModel ?? chat.model;
       return {
         id: chat.conversationId || id,
         ...(chat.conversationId ? { conversationId: chat.conversationId } : {}),
@@ -894,11 +905,11 @@ export function buildActiveChatTaskItems({
           chat.title?.trim() || (agentLabel ? `${agentLabel} Chat` : 'Task'),
         projectLabel: chat.projectName || chat.projectSlug || 'No project',
         agentLabel,
-        modelLabel: resolveModelLabel(chat.orchestrationModel || chat.model),
+        modelLabel: resolveModelLabel(model),
         // archive#3391: the id itself, not only its label — the label is a
         // derivation of this, and a consumer that needs the model (reopen)
         // must not have to parse a display string back into one.
-        model: chat.orchestrationModel || chat.model,
+        model,
         updatedAt: latestChatTimestamp(chat),
         lifecycleLabel: chatLifecycleLabel(chat, id, turnByThread),
         // Bound to the label in both directions, like unanswerableNotice: a

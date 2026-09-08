@@ -85,9 +85,11 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 ]);
 
 // Direct `node:child_process` importers discovered from the root corpus, with
-// the reviewed shared-output and dogfood exceptions removed.  The final entry
-// is the responsive UI member of TIMING_RELIABILITY_TEST_FILES; it has no
-// child_process import, but must remain in the bounded timing-sensitive pool.
+// the reviewed shared-output and dogfood exceptions removed, plus reviewed
+// timing-sensitive and other bounded-pool members that import no child_process
+// but must not contend in the ordinary pool. Such admissions should be
+// annotated inline with their reason; do not infer membership from the import
+// alone.
 //
 // ## The constraint on anything you add here (station#1804)
 //
@@ -113,6 +115,12 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // The shared observer fixture also creates real POSIX FIFOs and runs two
+  // bounded Node children to prove the exact open-boundary blocking race.
+  'packages/shared/src/__tests__/station-home-recovery-preflight.test.ts',
+  // The CLI fixture imports child_process only to forbid every launch while
+  // patching builtin exports around the real read-only dispatch seam.
+  'packages/cli/src/__tests__/home-recovery-plan.test.ts',
   // Owns Chromium and esbuild children for the real exposed-binding artifact seam.
   'scripts/__tests__/interactive-workspace-driver-artifact.test.ts',
   // Real runtime identity probes and SQLite workers for source-absent recovery.
@@ -131,6 +139,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/run-connected-agent-tests.test.ts',
   // Real peer EventStores share one disposable SQLite home and survive owner death.
   'src-server/services/plugins/__tests__/package-mcp-admission.test.ts',
+  'src-server/services/plugins/__tests__/plugin-tree-v2-compatibility.test.ts',
+  'src-server/services/plugins/__tests__/plugin-installation-restart.test.ts',
+  // Real child-process installation transport, MCP custody, and Git fixtures.
+  'src-server/services/plugins/__tests__/plugin-installation.integration.test.ts',
+  // Admission fixtures execute real Git worktree operations and native cleanup.
+  'src-server/services/plugins/__tests__/workspace-pane-host-admission.test.ts',
+  // Two real SQLite EventStores share durable selected-generation fixtures.
+  'src-server/runtime/bootstrap/__tests__/station-runtime-package-selection.test.ts',
   // fsync-backed AgentRegistry fixtures compose the runtime bootstrap path;
   // they own durable state but can share the bounded two-worker pool.
   'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts',
@@ -637,6 +653,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts',
   'src-server/services/ssh/__tests__/openssh-worker-probe.test.ts',
   'src-server/services/terminal/__tests__/terminal-subprocess-state.test.ts',
+  // Timing-sensitive responsive-UI suites: no child_process import, kept out
+  // of the ordinary pool so a loaded host cannot turn their waits into flakes.
   'src-ui/src/contexts/__tests__/ApiBaseContext.test.tsx',
   'src-ui/src/contexts/__tests__/ApiBaseContext.no-duplicate-connection.test.tsx',
   // Builds a production Vite artifact in a disposable directory to prove the
@@ -688,6 +706,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // identity/project-context geometry (unclipped overflow and wrapped
   // one-line labels) at a squeezed and a comfortable width.
   'src-ui/src/__tests__/ChatDockHeader.identityGeometry.test.tsx',
+  // #1642 (review round): same shape again — launches a real Chromium via
+  // `@playwright/test` to prove the readiness adapters classify a real page
+  // into the outcome they report, with the stylesheet resolved so the
+  // presence-not-visibility guardrail is exercised rather than assumed.
+  'src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx',
   // #1536 B2: same shape again — launches a real Chromium via
   // `@playwright/test` to prove the Task picker's dialog is not trapped by the
   // animating message row it opens from (containing block and stacking

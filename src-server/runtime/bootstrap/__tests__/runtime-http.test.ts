@@ -160,9 +160,13 @@ describe('resolveRuntimeCorsOrigin', () => {
     await app.request('http://station.test/stream');
     await app.request('http://station.test/plain');
 
-    const lines = vi
-      .mocked(logger.info)
-      .mock.calls.map(([message]) => String(message));
+    // `/stream` opens a long-lived connection, so it stays at `info`;
+    // `/plain` is a completed successful read and is now `debug`. Both lines
+    // keep the identical shape, which is what this test is about.
+    const lines = [
+      ...vi.mocked(logger.info).mock.calls,
+      ...vi.mocked(logger.debug).mock.calls,
+    ].map(([message]) => String(message));
     const streamLine = lines.find((line) => line.includes('/stream')) ?? '';
     const plainLine = lines.find((line) => line.includes('/plain')) ?? '';
 
@@ -172,6 +176,74 @@ describe('resolveRuntimeCorsOrigin', () => {
     expect(streamLine).not.toMatch(/ 200 \d+ms /);
     expect(plainLine).toMatch(/ 200 \d+ms /);
     expect(plainLine).not.toContain('stream-open-after=');
+  });
+
+  test('a completed successful read logs at debug; everything else stays at info', async () => {
+    const logger: Logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      trace: vi.fn(),
+      fatal: vi.fn(),
+      child: vi.fn().mockReturnThis(),
+      setLevel: vi.fn(),
+      getLevel: vi.fn(() => 'info' as const),
+    };
+    const app = new Hono();
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit: vi.fn() } as unknown as EventBus,
+    } as Parameters<typeof configureRuntimeHttp>[0]);
+    app.get('/read', (c) => c.json({ ok: true }));
+    app.get('/cached', (c) => c.body(null, 304));
+    app.get('/gone', (c) => c.json({ ok: false }, 404));
+    app.post('/write', (c) => c.json({ ok: true }));
+    app.delete('/remove', (c) => c.body(null, 204));
+    app.get('/events', (c) => {
+      c.header('Content-Type', 'text/event-stream');
+      return c.body(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(': open\n\n'));
+          },
+        }),
+      );
+    });
+
+    await app.request('http://station.test/read');
+    await app.request('http://station.test/cached');
+    await app.request('http://station.test/gone');
+    await app.request('http://station.test/write', { method: 'POST' });
+    await app.request('http://station.test/remove', { method: 'DELETE' });
+    await app.request('http://station.test/events');
+
+    // Only the access-log lines; `configureRuntimeHttp` is free to say other
+    // things at either level without this test caring.
+    const requestLines = (level: 'info' | 'debug') =>
+      vi
+        .mocked(level === 'info' ? logger.info : logger.debug)
+        .mock.calls.map(([message]) => String(message))
+        .filter((line) => /^[A-Z]+ \/\S* \d{3} /.test(line))
+        // The elapsed figure is real wall time; the shape around it is what
+        // this test pins.
+        .map((line) => line.replace(/\d+ms/, '<ms>'));
+
+    // The ~70k/day an idle desktop wrote, and nothing else.
+    expect(requestLines('debug').sort()).toEqual([
+      'GET /cached 304 <ms> origin=none',
+      'GET /read 200 <ms> origin=none',
+    ]);
+    // A failed read, both mutations (a 204 is still a write), and an SSE
+    // connection opening — which is the START of something long-lived, not a
+    // completed read.
+    expect(requestLines('info').sort()).toEqual([
+      'DELETE /remove 204 <ms> origin=none',
+      'GET /events 200 stream-open-after=<ms> origin=none',
+      'GET /gone 404 <ms> origin=none',
+      'POST /write 200 <ms> origin=none',
+    ]);
   });
 
   test('contains an unexpected external error behind a generic correlated envelope', async () => {

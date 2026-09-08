@@ -1665,6 +1665,10 @@ describe('CollaborativeEditorPaneController', () => {
     expect(h.controller.snapshot().roomConnection).toBe('stale');
     expect(h.controller.snapshot().participants).toEqual([]);
 
+    // The ceiling as shipped, as a literal. The oversize case below is
+    // `MAX + 1`, which is oversize at any value -- so widening how many
+    // participants one room may carry should be a visible decision.
+    expect(MAX_COLLABORATIVE_PARTICIPANTS).toBe(64);
     let examined = false;
     const huge = new Array(MAX_COLLABORATIVE_PARTICIPANTS + 1);
     Object.defineProperty(huge, '0', {

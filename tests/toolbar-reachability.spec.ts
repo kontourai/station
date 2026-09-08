@@ -12,8 +12,8 @@
  *   - `tests/android/mobile-layout.spec.ts:11` hit-tests only the Settings
  *     action — the far-right control, never the covered one.
  *   - its touch-target floor: an overlapped 44px button still measures 44px.
- *   - `tests/android/app-load.spec.ts`'s
- *     `documentElement.scrollWidth > clientWidth` measures DOCUMENT overflow,
+ *   - the suite's usual overflow assertion,
+ *     `documentElement.scrollWidth > clientWidth`, measures DOCUMENT overflow,
  *     which is false in every one of these cases — the toolbar row clips, it
  *     does not scroll the document.
  *
@@ -204,7 +204,12 @@ const REQUIRED_CONTROL_KEYS = [
  * band is exactly what either of those two fixes leaves behind if it stops
  * applying.
  */
-const TOOLBAR_WIDTHS: readonly number[] = [412, 402, 390, 360];
+const TOOLBAR_WIDTHS: readonly number[] = [412, 402, 390, 375, 360];
+// 375 is station#1401's own width: the first that keeps the connection label
+// after the padding trim moved the breakpoint to 374. Every other width here
+// behaved identically before and after that change — 390 and up already kept
+// the label, 360 already dropped it — so without this case the entire
+// user-visible effect of that change has no browser-level proof.
 
 /**
  * The news-carrying connection states this guard drives, each through the real

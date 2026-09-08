@@ -60,12 +60,15 @@ registerCommand(
       const sessionAutoApprove = chatState.sessionAutoApprove || [];
 
       // Build HTML table
-      const byServer = tools.reduce((acc: any, tool: any) => {
-        const server = tool.server || 'unknown';
-        if (!acc[server]) acc[server] = [];
-        acc[server].push(tool);
-        return acc;
-      }, {});
+      const byServer = tools.reduce<Record<string, unknown[]>>(
+        (acc, tool: any) => {
+          const server = tool.server || 'unknown';
+          if (!acc[server]) acc[server] = [];
+          acc[server].push(tool);
+          return acc;
+        },
+        {},
+      );
 
       let html = `<div><strong>Available Tools (${tools.length}):</strong><br/><br/>`;
 

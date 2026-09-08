@@ -10,6 +10,7 @@ import {
   DEPENDENCY_SCOPE_ROOTS,
 } from './classify-ci-change.mjs';
 import { createAuditAttemptDiagnostics } from './lib/dependency-audit-diagnostics.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 import { collectPnpmAudits, runPnpmAudit } from './lib/pnpm-advisory.mjs';
 
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
@@ -743,13 +744,14 @@ export function runAuditAttempt(
     timeoutMs: AUDIT_TIMEOUT_MS,
   });
   args.push(...diagnostics.args);
+  const npm = npmInvocation(args);
   return new Promise((resolveAudit, rejectAudit) => {
     diagnostics.startChild();
     let child;
     try {
       child = execute(
-        'npm',
-        args,
+        npm.command,
+        npm.args,
         {
           cwd,
           encoding: 'utf8',

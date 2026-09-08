@@ -1205,6 +1205,12 @@ describe('MuseAdapter', () => {
 
     // A child writing without newlines. stderr was already bounded; stdout
     // was not, so this grew for the life of the turn.
+    //
+    // The bound as shipped, as a literal: every other assertion here is
+    // `MAX + 1`, which stays green at any value, so raising the ceiling on
+    // how much child-controlled memory one unterminated line may hold should
+    // be a visible decision in a diff.
+    expect(MUSE_STDOUT_BUFFER_MAX_CHARS).toBe(1_048_576);
     harness.processes[0].stdout.write(
       'x'.repeat(MUSE_STDOUT_BUFFER_MAX_CHARS + 1),
     );
