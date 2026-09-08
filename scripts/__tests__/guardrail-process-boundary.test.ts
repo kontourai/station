@@ -74,7 +74,11 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, symlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { runGuardrail, scratchRepo } from './helpers/guardrail-scratch.js';
+import {
+  importGuardrail,
+  runGuardrail,
+  scratchRepo,
+} from './helpers/guardrail-scratch.js';
 
 /** A single-shot child; the slowest below (a11y, which runs biome) takes ~2s. */
 const CASE_TIMEOUT = 30_000;
@@ -108,8 +112,21 @@ const PRODUCTION_ACCEPT_GATES: ReadonlyArray<{
   readonly brokenTree?: {
     readonly deps?: readonly string[];
     readonly libs?: readonly string[];
+    /**
+     * Real repository files the gate must have to get past its own
+     * preconditions and reach the check under test. Copied byte-equal.
+     */
+    readonly productionFiles?: readonly string[];
     /** A path the gate itself reads, as it appears in the failure. */
     readonly ownInput: string;
+    /**
+     * Where `ownInput` is read, and where the entry guard that gates it sits.
+     * `guard: null` means the script has no entry guard at all — its module
+     * body IS the gate — so the import-mode control below cannot apply and is
+     * skipped with this reason on the record.
+     */
+    readonly readSite: string;
+    readonly guard: string | null;
   };
 }> = [
   {
@@ -119,6 +136,14 @@ const PRODUCTION_ACCEPT_GATES: ReadonlyArray<{
     brokenTree: {
       deps: ['generate-agent-plugin-validators.mjs'],
       ownInput: 'schemas/agent-plugins/1.0.0/plugin.schema.json',
+      // Read by generate-agent-plugin-validators.mjs's schema load, reached
+      // from this gate's three-line module body.
+      readSite: 'generate-agent-plugin-validators.mjs schema load',
+      // agent-plugin-validators-gate.mjs is a bare top-level
+      // `await generateAgentPluginValidators({ check: true })` — there is no
+      // entry guard to be behind, so the import-mode control is inapplicable
+      // rather than passed.
+      guard: null,
     },
   },
   {
@@ -126,7 +151,17 @@ const PRODUCTION_ACCEPT_GATES: ReadonlyArray<{
     args: ['--check'],
     reason:
       'reads the repo-wide channel port assignment; a synthetic tree proves nothing the real assignment does not',
-    brokenTree: { ownInput: 'config/channel-ports.json' },
+    brokenTree: {
+      // The config read is at module TOP LEVEL (channel-ports.mjs:4-7),
+      // ahead of the guard — so an empty dir fails at import and proves
+      // nothing. Giving the scratch dir the real config gets the process past
+      // that, and `--check` then reaches checkGeneratedChannelPorts, whose
+      // first read is behind the guard.
+      productionFiles: ['config/channel-ports.json'],
+      ownInput: 'packages/shared/src/channel-ports.generated.ts',
+      readSite: 'channel-ports.mjs:136-143 (checkGeneratedChannelPorts)',
+      guard: 'channel-ports.mjs:146',
+    },
   },
   {
     script: 'coding-composition-inventory-gate.mjs',
@@ -137,7 +172,12 @@ const PRODUCTION_ACCEPT_GATES: ReadonlyArray<{
     script: 'dependency-lifecycle-workflow-gate.mjs',
     reason:
       'scans every workflow file for the install contract; the production workflow set is the subject',
-    brokenTree: { libs: ['pnpm-lockfile.mjs'], ownInput: '.github/workflows' },
+    brokenTree: {
+      libs: ['pnpm-lockfile.mjs'],
+      ownInput: '.github/workflows',
+      readSite: 'dependency-lifecycle-workflow-gate.mjs (readdirSync in main)',
+      guard: 'dependency-lifecycle-workflow-gate.mjs:235',
+    },
   },
   {
     script: 'examples-conformance.mjs',
@@ -152,6 +192,11 @@ const PRODUCTION_ACCEPT_GATES: ReadonlyArray<{
     brokenTree: {
       deps: ['issue-lifecycle-reducer.mjs'],
       ownInput: 'docs/reference/issue-lifecycle.md',
+      // Only under `--check`. Without it the generate branch runs and
+      // WRITES this path instead — a different mode from the one the chain
+      // composes, which is why the probe passes the declared args.
+      readSite: 'generate-issue-lifecycle-reference.mjs:31 (check branch)',
+      guard: 'generate-issue-lifecycle-reference.mjs:39',
     },
   },
   {
@@ -175,7 +220,11 @@ const PRODUCTION_ACCEPT_GATES: ReadonlyArray<{
   {
     script: 'node-runtime-contract.mjs',
     reason: 'asserts the repo’s own .nvmrc/engines agreement',
-    brokenTree: { ownInput: 'package.json' },
+    brokenTree: {
+      ownInput: 'package.json',
+      readSite: 'node-runtime-contract.mjs:25 (assertManifestContract)',
+      guard: 'node-runtime-contract.mjs:33',
+    },
   },
   {
     script: 'product-version.mjs',
@@ -246,17 +295,56 @@ describe('every unexecuted guardrail reaches a verdict on this repo', () => {
         script,
         libs: [...(brokenTree.libs ?? [])],
         extraScripts: [...(brokenTree.deps ?? [])],
+        productionFiles: [...(brokenTree.productionFiles ?? [])],
         files: {},
         git: false,
       });
       linkNodeModules(dir);
-      const result = runGuardrail(dir, script);
+      // The declared args, not none: every one of these gates branches on
+      // `process.argv`, so a no-arg probe can exercise a mode the chain never
+      // composes and report it as proof of the mode it does.
+      const result = runGuardrail(dir, script, {}, args);
       expect(result.status, result.output).not.toBe(0);
       // Naming the gate's own input is what separates "the gate ran and could
       // not find its data" from "node could not load a module", which is also
       // a non-zero exit and proves nothing about whether the gate executed.
       expect(result.output).toContain(brokenTree.ownInput);
       expect(result.output).not.toContain('ERR_MODULE_NOT_FOUND');
+    });
+
+    it(`${script} reaches ${brokenTree.ownInput} only behind its entry guard`, {
+      timeout: CASE_TIMEOUT,
+    }, () => {
+      // The claim the probe above rests on — that the failure came from
+      // behind the entry guard — was prose until here. Importing the same
+      // script as an ordinary module makes `process.argv[1]` something other
+      // than the script, so the guard is false; a diagnostic that survives
+      // that was produced at import time and is not evidence `main()` ran.
+      //
+      // channel-ports.mjs is the reason this exists: its config read IS at
+      // module top level, and the first version of this probe reported that
+      // import-time ENOENT as proof the gate had executed.
+      if (brokenTree.guard === null) {
+        // Recorded, not skipped silently: the gate has no entry guard to be
+        // behind, so there is nothing here to compute. The type forbids
+        // omitting the field, so this disposition is always stated.
+        expect(brokenTree.readSite.length).toBeGreaterThan(0);
+        return;
+      }
+      const dir = scratchRepo({
+        script,
+        libs: [...(brokenTree.libs ?? [])],
+        extraScripts: [...(brokenTree.deps ?? [])],
+        productionFiles: [...(brokenTree.productionFiles ?? [])],
+        files: {},
+        git: false,
+      });
+      linkNodeModules(dir);
+      const imported = importGuardrail(dir, script);
+      expect(
+        imported.output,
+        `${script}: ${brokenTree.ownInput} is reported at import time, so the probe cannot tell a working gate from one whose guard (${brokenTree.guard}) never fires`,
+      ).not.toContain(brokenTree.ownInput);
     });
   }
 });

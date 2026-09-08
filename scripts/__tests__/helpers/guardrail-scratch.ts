@@ -39,6 +39,15 @@ export interface ScratchOptions {
    * against a hand-written stand-in for production data.
    */
   extraScripts?: string[];
+  /**
+   * Production files copied in VERBATIM by their repo-relative path, under
+   * the same byte-equality assertion as `script`. Use this when a gate needs
+   * real repository data to get past its own preconditions and reach the
+   * check under test — `channel-ports.mjs` reads `config/channel-ports.json`
+   * at module top level, so without it the process dies at import and the
+   * gate's actual check never runs.
+   */
+  productionFiles?: readonly string[];
   /** Repo-relative path -> content, materialised and committed. */
   files: Record<string, string | Buffer>;
   /**
@@ -68,6 +77,7 @@ export function scratchRepo({
   script,
   libs = [],
   extraScripts = [],
+  productionFiles = [],
   files,
   git: useGit = true,
 }: ScratchOptions): string {
@@ -94,6 +104,13 @@ export function scratchRepo({
     expect(readFileSync(join(dir, 'scripts', extra), 'utf8')).toBe(
       readFileSync(join('scripts', extra), 'utf8'),
     );
+  }
+
+  for (const production of productionFiles) {
+    const target = join(dir, production);
+    mkdirSync(dirname(target), { recursive: true });
+    copyFileSync(production, target);
+    expect(readFileSync(target, 'utf8')).toBe(readFileSync(production, 'utf8'));
   }
 
   for (const [name, content] of Object.entries(files)) {
@@ -125,13 +142,61 @@ export function runGuardrail(
   dir: string,
   script: string,
   env: Record<string, string> = {},
+  /**
+   * Arguments the production lane passes. Dropping them is not neutral: every
+   * one of these gates branches on `process.argv`, so a no-arg run can
+   * exercise a DIFFERENT mode than the one the chain composes — for
+   * `generate-issue-lifecycle-reference.mjs` the difference is check versus
+   * generate, i.e. reading a file versus writing one.
+   */
+  args: readonly string[] = [],
 ): GuardrailResult {
-  const result = spawnSync(process.execPath, [join('scripts', script)], {
-    cwd: dir,
-    encoding: 'utf8',
-    windowsHide: true,
-    env: { ...process.env, ...env },
-  });
+  const result = spawnSync(
+    process.execPath,
+    [join('scripts', script), ...args],
+    {
+      cwd: dir,
+      encoding: 'utf8',
+      windowsHide: true,
+      env: { ...process.env, ...env },
+    },
+  );
+  const stdout = result.stdout ?? '';
+  const stderr = result.stderr ?? '';
+  return {
+    status: result.status,
+    stdout,
+    stderr,
+    output: `${stdout}${stderr}`,
+  };
+}
+
+/**
+ * Import the guardrail as an ordinary module rather than running it as the
+ * entry point, so `process.argv[1]` is not the script and every one of these
+ * gates' `import.meta.url === file://${process.argv[1]}`-style guards is
+ * false.
+ *
+ * This is what makes "the failure came from behind the entry guard" a
+ * computed claim instead of a comment: a diagnostic that appears here as well
+ * as under `runGuardrail` was produced at import time and says nothing about
+ * whether `main()` ran.
+ */
+export function importGuardrail(
+  dir: string,
+  script: string,
+  env: Record<string, string> = {},
+): GuardrailResult {
+  const result = spawnSync(
+    process.execPath,
+    ['--input-type=module', '-e', `await import('./scripts/${script}');`],
+    {
+      cwd: dir,
+      encoding: 'utf8',
+      windowsHide: true,
+      env: { ...process.env, ...env },
+    },
+  );
   const stdout = result.stdout ?? '';
   const stderr = result.stderr ?? '';
   return {
