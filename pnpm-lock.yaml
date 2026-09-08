@@ -83,7 +83,7 @@ importers:
         version: 3.1125.0
       '@hono/node-server':
         specifier: ^2.1.1
-        version: 2.1.1(hono@4.13.1)
+        version: 2.1.1(hono@4.13.7)
       '@kontourai/bearing':
         specifier: ^0.2.0
         version: 0.2.0(playwright@1.62.1)
@@ -271,8 +271,8 @@ importers:
         specifier: ^10.9.1
         version: 10.9.1(supports-color@7.2.0)
       hono:
-        specifier: ^4.12.34
-        version: 4.13.1
+        specifier: ^4.13.5
+        version: 4.13.7
       idb-keyval:
         specifier: ^6.3.0
         version: 6.3.0
@@ -4926,8 +4926,8 @@ packages:
   help-me@5.0.0:
     resolution: {integrity: sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==}
 
-  hono@4.13.1:
-    resolution: {integrity: sha512-kdJoFVv2xmayw6cY09H7AbMJMt8Jn5jdlEdXsP7AGBdF2DIptVlKlOLKXP41yPip4/a3yQPv9gVcJYI8YY04dw==}
+  hono@4.13.7:
+    resolution: {integrity: sha512-c8/gF9ac8Y78/agExVocyLevgR+JlpNB444Py0FSX8pJoPdYUfUzRcXtYEYGwt6l19qIlVZPN5Mfsw9jFShmQQ==}
     engines: {node: '>=16.9.0'}
 
   hosted-git-info@9.0.3:
@@ -8410,17 +8410,17 @@ snapshots:
     dependencies:
       '@hapi/hoek': 11.0.7
 
-  '@hono/node-server@1.19.15(hono@4.13.1)':
+  '@hono/node-server@1.19.15(hono@4.13.7)':
     dependencies:
-      hono: 4.13.1
+      hono: 4.13.7
 
-  '@hono/node-server@2.1.1(hono@4.13.1)':
+  '@hono/node-server@2.1.1(hono@4.13.7)':
     dependencies:
-      hono: 4.13.1
+      hono: 4.13.7
 
-  '@hono/swagger-ui@0.5.3(hono@4.13.1)':
+  '@hono/swagger-ui@0.5.3(hono@4.13.7)':
     dependencies:
-      hono: 4.13.1
+      hono: 4.13.7
 
   '@inquirer/external-editor@1.0.3(@types/node@26.2.0)':
     dependencies:
@@ -8866,7 +8866,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.30.0(supports-color@7.2.0)(zod@4.4.3)':
     dependencies:
-      '@hono/node-server': 2.1.1(hono@4.13.1)
+      '@hono/node-server': 2.1.1(hono@4.13.7)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -8876,7 +8876,7 @@ snapshots:
       eventsource-parser: 3.1.0
       express: 5.2.1(supports-color@7.2.0)
       express-rate-limit: 8.6.0(express@5.2.1(supports-color@7.2.0))(supports-color@7.2.0)
-      hono: 4.13.1
+      hono: 4.13.7
       jose: 6.2.4
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -10604,8 +10604,8 @@ snapshots:
 
   '@voltagent/server-hono@2.0.14(patch_hash=1ed9acb7ad00289d710ebe5f24822fef3f189794d80d8ec34469405808622ce5)(@voltagent/core@2.10.0(@ai-sdk/provider-utils@4.0.50(zod@4.4.3))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.4.3))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3))(ai@6.0.235(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3)':
     dependencies:
-      '@hono/node-server': 1.19.15(hono@4.13.1)
-      '@hono/swagger-ui': 0.5.3(hono@4.13.1)
+      '@hono/node-server': 1.19.15(hono@4.13.7)
+      '@hono/swagger-ui': 0.5.3(hono@4.13.7)
       '@voltagent/a2a-server': 2.0.3(@voltagent/core@2.10.0(@ai-sdk/provider-utils@4.0.50(zod@4.4.3))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.4.3))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3))(supports-color@7.2.0)
       '@voltagent/core': 2.10.0(@ai-sdk/provider-utils@4.0.50(zod@4.4.3))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.4.3))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
       '@voltagent/internal': 1.0.3
@@ -10613,7 +10613,7 @@ snapshots:
       '@voltagent/resumable-streams': 2.0.2(@voltagent/core@2.10.0(@ai-sdk/provider-utils@4.0.50(zod@4.4.3))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.4.3))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3))(ai@6.0.235(zod@4.4.3))
       '@voltagent/server-core': 2.1.20(@voltagent/core@2.10.0(@ai-sdk/provider-utils@4.0.50(zod@4.4.3))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.4.3))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3))(supports-color@7.2.0)(zod@4.4.3)
       fetch-to-node: 2.1.0
-      hono: 4.13.1
+      hono: 4.13.7
       openapi3-ts: 4.6.0
       zod: 4.4.3
     transitivePeerDependencies:
@@ -11970,7 +11970,7 @@ snapshots:
 
   help-me@5.0.0: {}
 
-  hono@4.13.1: {}
+  hono@4.13.7: {}
 
   hosted-git-info@9.0.3:
     dependencies:
