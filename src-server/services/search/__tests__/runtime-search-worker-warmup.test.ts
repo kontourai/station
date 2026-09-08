@@ -36,7 +36,6 @@ import {
   type UnifiedSearchOutcome,
 } from '@kontourai/station-contracts/unified-search';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { TaskGraphService } from '../../projects/task-graph-service.js';
 import { createRuntimeSearch } from '../runtime-search.js';
 
 const directories: string[] = [];

@@ -18,7 +18,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
 import { createOwnedSearchReadWorker } from '../owned-search-read-worker.js';
 
