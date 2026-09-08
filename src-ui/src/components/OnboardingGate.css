@@ -228,7 +228,7 @@
     var(--safe-bottom) +
     var(--space-4)
   );
-  z-index: var(--layer-notice);
+  z-index: var(--layer-floating-action);
   width: min(420px, calc(100vw - var(--space-8)));
   pointer-events: none;
 }

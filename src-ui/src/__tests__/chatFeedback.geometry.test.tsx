@@ -35,6 +35,7 @@ vi.mock('../contexts/DeviceSettingsContext', () => ({
 
 const css = [
   '../index.css',
+  '../components/OnboardingGate.css',
   '../components/SplitPaneLayout.css',
   '../components/chat/chat.css',
   '../components/project-sidebar/ProjectSidebar.css',
@@ -250,4 +251,32 @@ describe('September 8 visual feedback regressions', () => {
       }
     },
   );
+  test('the floating setup reminder stays reachable above a dock', async () => {
+    const page = await browser.newPage({
+      viewport: { width: 1200, height: 800 },
+    });
+    try {
+      await page.setContent(
+        `<style>${css}</style><div style="position:fixed;inset:0;z-index:var(--layer-dock)">Dock</div><aside class="onboarding-setup-launcher"><div class="onboarding-setup-launcher__panel"><button type="button">Review setup</button></div></aside>`,
+      );
+      const target = page.getByRole('button', { name: 'Review setup' });
+      const hit = () =>
+        target.evaluate((node) => {
+          const r = node.getBoundingClientRect();
+          return node.contains(
+            document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2),
+          );
+        });
+      expect(await hit()).toBe(true);
+      // Negative control: the previous notice layer is below the dock.
+      const oldLayer = await page.addStyleTag({
+        content: '.onboarding-setup-launcher { z-index: var(--layer-notice); }',
+      });
+      expect(await hit()).toBe(false);
+      await oldLayer.evaluate((node) => node.remove());
+      expect(await hit()).toBe(true);
+    } finally {
+      await page.close();
+    }
+  });
 });
