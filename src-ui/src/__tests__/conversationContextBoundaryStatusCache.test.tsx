@@ -37,10 +37,25 @@ const API_BASE = 'http://station.test';
 const CONVERSATION_ID = 'conversation-under-reset';
 const IDEMPOTENCY_KEY = 'idem-1';
 
-const dockSource = readFileSync(
+/**
+ * The dock's own source. `ChatWorkspacePane` holds the surface; its
+ * conversation-boundary state (including this query) lives in
+ * `useConversationBoundaryDialogs`. Both are read so the "no hand-rolled
+ * query is left in the dock" assertions keep covering the whole surface
+ * wherever the call currently sits.
+ */
+const dockSource = [
   join(__dirname, '..', 'components', 'chat-dock', 'ChatDock.tsx'),
-  'utf8',
-);
+  join(
+    __dirname,
+    '..',
+    'components',
+    'chat-dock',
+    'useConversationBoundaryDialogs.ts',
+  ),
+]
+  .map((path) => readFileSync(path, 'utf8'))
+  .join('\n');
 
 function seedStoredBoundary(): void {
   window.localStorage.setItem(
@@ -57,7 +72,7 @@ function seedStoredBoundary(): void {
 }
 
 /**
- * `ChatDock.tsx`'s call, verbatim. The second test is what keeps it verbatim.
+ * The dock's call, verbatim. The second test is what keeps it verbatim.
  */
 function DockBoundaryStatusProbe({
   apiBase,
@@ -145,7 +160,7 @@ describe('conversation context-boundary status cache', () => {
     const call = dockSource.match(
       /useConversationContextBoundaryStatusQuery\(([\s\S]{0,300}?)\);/,
     );
-    expect(call, 'ChatDock must call the SDK boundary-status query').not.toBe(
+    expect(call, 'the dock must call the SDK boundary-status query').not.toBe(
       null,
     );
     const args = (call?.[1] ?? '').replace(/\s+/g, ' ');
