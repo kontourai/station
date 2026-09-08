@@ -9871,6 +9871,17 @@ If a stable instance is running, this launch will focus its window and exit.",
             }
             #[cfg(not(mobile))]
             if let tauri::RunEvent::WindowEvent { label, event, .. } = &event {
+                if label == "main" {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        if let Some(state) = app.try_state::<DesktopServerState>() {
+                            if !state.supervisor.shutting_down.load(Ordering::SeqCst) {
+                                api.prevent_close();
+                                if let Some(window) = app.get_webview_window("main") { let _ = window.hide(); }
+                                tray::kick(app);
+                            }
+                        }
+                    }
+                }
                 if label == "main" && matches!(event, WindowEvent::Destroyed) {
                     tray::invalidate_pending_navigation(app, "main-window destruction");
                     let kick_app = app.clone();

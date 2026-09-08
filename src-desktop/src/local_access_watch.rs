@@ -156,7 +156,8 @@ pub(crate) fn refresh(app: AppHandle, target: Option<Target>) {
                 notification.app_id(&handle.config().identifier);
                 if let Ok(shown) = notification.show() {
                     shown.wait_for_action(|action| {
-                        if action == "default" {
+                        // macOS reports the action label; other backends use its ID.
+                        if action == "default" || action == "Review" {
                             review(handle, target, id);
                         }
                     });
