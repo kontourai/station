@@ -4,7 +4,10 @@ import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-s
 import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { KNOWLEDGE_ROOT_IDENTITY_HEADER } from '@kontourai/station-shared/knowledge-root-identity';
-import { sanitizeError } from '@kontourai/station-shared/redaction';
+import {
+  sanitizeError,
+  sanitizeFreeText,
+} from '@kontourai/station-shared/redaction';
 import { type HonoServerConfig } from '@voltagent/server-hono';
 import { cors } from 'hono/cors';
 import {
@@ -49,6 +52,7 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../utils/internal-api-token.js';
 import type { Logger } from '../../utils/logger.js';
+import { isRouteError, type RouteError } from '../../utils/route-error.js';
 import {
   buildRuntimeRouteVocabulary,
   labelRuntimeRoutePath,
@@ -77,6 +81,10 @@ function allowlistedAuthClientMessage(error: unknown): string | undefined {
 
 type RuntimeErrorResponseContext = {
   json: (body: unknown, status: 500) => Response;
+};
+
+type RouteErrorResponseContext = {
+  json: (body: unknown, status: RouteError['status']) => Response;
 };
 
 function unexpectedRuntimeErrorResponse(
@@ -110,6 +118,66 @@ function unexpectedRuntimeErrorResponse(
   );
 }
 
+/**
+ * Answers a route's own typed refusal.
+ *
+ * `RouteError` is the reviewed exception to the generic envelope
+ * {@link unexpectedRuntimeErrorResponse} answers with: the
+ * route has said this text is safe to show the caller and named the status it
+ * deserves. The message is still run through `sanitizeFreeText` here, because
+ * a reviewed literal is routinely built by interpolating a filename, a slug,
+ * or a service's own text — the sanitizer covers the interpolated half.
+ *
+ * `error` stays a **string** and `code`/`details`/`correlationId` stay
+ * top-level: that is exactly where every existing client reader already
+ * looks, so a route moving onto this contract changes no reader.
+ *
+ * A 4xx is the caller's fault and logs at `warn` with no payload beyond what
+ * the caller was already told. A 5xx is ours: it logs at `error` with the
+ * sanitized `cause`, so the operator keeps the underlying failure the caller
+ * never sees.
+ */
+function routeErrorResponse(
+  c: RouteErrorResponseContext,
+  logger: Logger,
+  error: RouteError,
+): Response {
+  const correlationId = randomUUID();
+  const clientMessage = sanitizeFreeText(error.clientMessage);
+  const context = {
+    correlationId,
+    status: error.status,
+    ...(error.code === undefined ? {} : { code: error.code }),
+    clientMessage,
+  };
+  if (error.status >= 500) {
+    const cause = error.cause;
+    try {
+      logger.error('Route error', {
+        ...context,
+        error: sanitizeError(cause instanceof Error ? cause : error),
+      });
+    } catch {
+      // Mirrors the generic path below: a cause whose shape the sanitizer
+      // rejects must not turn a chosen status into an unhandled throw out of
+      // `onError`, which is where the response would be lost.
+      logger.fatal('Route error sanitizer rejected an error shape', context);
+    }
+  } else {
+    logger.warn('Route error', context);
+  }
+  return c.json(
+    {
+      success: false,
+      error: clientMessage,
+      ...(error.code === undefined ? {} : { code: error.code }),
+      ...(error.details === undefined ? {} : { details: error.details }),
+      correlationId,
+    },
+    error.status,
+  );
+}
+
 interface RuntimeHttpContext {
   app: RuntimeApp;
   logger: Logger;
@@ -124,6 +192,15 @@ export function configureRuntimeHttp({
   security,
 }: RuntimeHttpContext): void {
   app.onError((err, c) => {
+    // Before the auth allow-list, deliberately. The allow-list matches on
+    // message text (`isAuthError` substring-matches "unauthorized", "401",
+    // "authentication failed"), so a route that threw a typed 403 whose
+    // reviewed message happens to contain one of those words would otherwise
+    // be rewritten into a 401 that discards its code, details, and status.
+    // A route that named its own answer outranks a text match on ours.
+    if (isRouteError(err)) {
+      return routeErrorResponse(c, logger, err);
+    }
     const authMessage = allowlistedAuthClientMessage(err);
     if (authMessage) {
       return c.json({ success: false, error: authMessage }, 401);
