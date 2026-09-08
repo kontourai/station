@@ -42,6 +42,7 @@ function baseScripts() {
     'verify:static': pass,
     'proof:repo-governance': pass,
     'verification:policy:gate': pass,
+    'proof:repo-guardrails': pass,
     'proof:architecture-boundaries': fail,
     'proof:ui-data-access': fail,
     'proof:runtime-contracts': fail,

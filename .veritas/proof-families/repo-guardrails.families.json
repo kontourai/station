@@ -1,6 +1,7 @@
 {
   "version": 2,
   "sourceEvidenceCheckId": "repo-guardrails",
+  "generatedFrom": "scripts/proof-repo-guardrails.mjs",
   "migrationStage": "veritas-0.5",
   "reviewPolicy": {
     "unknownCatchEvidenceDefault": "candidate",

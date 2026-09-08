@@ -14,8 +14,8 @@ describe('required repo-guardrail sources', () => {
       readSource: (sourceUrl) => sourceUrl.pathname,
     });
 
-    expect(readRequiredSource('../proof-family-lane.mjs')).toContain(
-      'proof-family-lane.mjs',
+    expect(readRequiredSource('../proof-repo-guardrails.mjs')).toContain(
+      'proof-repo-guardrails.mjs',
     );
     expect(reportMissing).not.toHaveBeenCalled();
   });

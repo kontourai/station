@@ -1,0 +1,5 @@
+{
+  "//": "All violations discovered when station#2299 restored this fail-closed proof were reviewed and burned down in station#2765. This list is intentionally empty and must never grow.",
+  "issue": "https://github.com/kontourai/station/issues/2765",
+  "knownViolations": []
+}

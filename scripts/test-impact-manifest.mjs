@@ -70,11 +70,19 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     pattern: 'src-server/runtime/frameworks/strands-message-sync.ts',
     related: true,
     tests: [
+      'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
       'src-server/runtime/frameworks/__tests__/strands-message-sync.test.ts',
       'src-server/runtime/frameworks/__tests__/strands-native-history.test.ts',
     ],
     reason:
       'source-reading helper boundary plus actual native history persistence',
+  },
+  {
+    pattern: 'scripts/proof-repo-guardrails.mjs',
+    related: true,
+    tests: ['scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts'],
+    reason:
+      'the proof runner is executed as a child, outside Vitest import analysis',
   },
   {
     pattern: 'src-ui/src/index.css',

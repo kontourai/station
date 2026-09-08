@@ -392,6 +392,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Executes the release compensation shell transaction in isolated fixture
   // directories to verify its real exit codes and rollback behavior.
   'scripts/__tests__/publish-mobile-feed-transaction.test.ts',
+  // station#2299: runs the repo-guardrail proof itself as a real child
+  // process against a mutated copy, because the defect was that the proof
+  // died before producing any verdict — only a real exit status can prove it
+  // now reaches one. No wall-clock assertions; each case is a bounded
+  // single-shot spawn.
+  'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
   'scripts/__tests__/release-workflow.test.ts',
   // Runs the pinned Cargo producer against the patched native workspace and
   // owns its deterministic output file; never make release:static host-bound.
