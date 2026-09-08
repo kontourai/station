@@ -3906,7 +3906,14 @@ describe('upgrade', () => {
 
   it('rebuilds through buildApplication so the promoted manifest sha matches the built tree (station#2671)', async () => {
     ensureDir(join(TEST_CWD, '.git'));
-    writeOwnedDependencyLifecycle(TEST_CWD);
+    // The git root is deliberately NOT `CWD`: `station upgrade` run from a
+    // subdirectory pulls and installs at the repository root while the build
+    // resolves against the process cwd. Holding them apart is what gives the
+    // `cwd` assertion below any power — with one directory serving both, an
+    // installer spawned in the wrong one is indistinguishable.
+    const upgradeGitRoot = join(TEST_ROOT, 'upgrade-git-root');
+    ensureDir(join(upgradeGitRoot, '.git'));
+    writeOwnedDependencyLifecycle(upgradeGitRoot);
     // Pin the home to the mocked default so the rebuild resolves the DEFAULT
     // instance (dist-server/dist-ui) — the deployment shape from #2671.
     // vitest.setup.ts otherwise points STATION_HOME at an isolated home,
@@ -3940,6 +3947,7 @@ describe('upgrade', () => {
     );
     const execFileSync = vi.fn();
     const { lifecycle } = await loadLifecycleModule({
+      gitRoot: upgradeGitRoot,
       childProcessMock: { execFileSync, execSync },
     });
 
@@ -3984,7 +3992,7 @@ describe('upgrade', () => {
     expect(execSync).toHaveBeenNthCalledWith(
       3,
       'npm run dependencies:install',
-      expect.objectContaining({ cwd: TEST_CWD }),
+      expect.objectContaining({ cwd: upgradeGitRoot }),
     );
     expect(execFileSync).not.toHaveBeenCalled();
   });
