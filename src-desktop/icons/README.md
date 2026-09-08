@@ -28,7 +28,8 @@ committed `icons/<channel>/ios/AppIcon-*.png` set (stable, beta, nightly; from
 the square master, because iOS rejects alpha and the generator refuses any
 translucent pixel) over it, and `ios-channel-icons.mjs verify` proves the built
 catalog and the IPA's icon are that set, amending the channel-icon receipt the
-overlay step created. Every other iOS build (`build-ios.yml`, the release
+overlay step created (its `desktopBundleIcon*` fields name the desktop master
+from `bundle.icon`, not the shipped icon). Every other iOS build (`build-ios.yml`, the release
 simulator job, local builds) runs init with `gen/apple` present and consumes
 the committed catalog, which is the stable set. Stable keeps the approved
 default artwork; `favicon-dev.png` is swapped into Dev by `is-dev-build` in
