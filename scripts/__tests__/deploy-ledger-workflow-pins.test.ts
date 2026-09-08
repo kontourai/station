@@ -73,7 +73,10 @@ function stepBlock(workflow: string, stepName: string): string {
   expect(start, `step must exist: ${stepName}`).toBeGreaterThanOrEqual(0);
   const nameLineStart = workflow.lastIndexOf('\n', start) + 1;
   const rest = workflow.slice(start + stepName.length);
-  const nextIndex = rest.match(/\n\s+- (?:name:|uses:|run:)/)?.index;
+  // A step may start with `- id:` (the cohort's ledger and marker steps do);
+  // without that marker the block ran through the next step and a pin could
+  // be satisfied by a neighbour's `if:` by accident.
+  const nextIndex = rest.match(/\n\s+- (?:name:|uses:|run:|id:)/)?.index;
   const end =
     nextIndex === undefined ? undefined : start + stepName.length + nextIndex;
   const block = workflow.slice(nameLineStart, end);
@@ -229,6 +232,37 @@ describe('the desktop nightly workflow records what it ships (station#575)', () 
     // The push credential is the release app's token — the require-green
     // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
     expect(step).toContain('steps.ledger_token.outputs.token');
+  });
+
+  it('records each platform only when the verified final receipt says it published (#1774)', () => {
+    // A partial night writes a row for the platform that shipped and none
+    // for the one that did not; the gate column carries the receipt state
+    // rather than a hand-written `complete`, and the Android marker moves
+    // only behind Android's own row.
+    const step = stepBlock(nightly, NIGHTLY_ANDROID_LEDGER_STEP);
+    expect(step).toContain('if [ "$android_state" = complete ]; then');
+    expect(step).toContain('if [ "$macos_state" = complete ]; then');
+    expect(step).toContain(
+      '--gate-result "native cohort final receipt $final_state"',
+    );
+    expect(step).not.toContain("'native cohort final receipt complete'");
+    // The ledger block ends at the marker's `- id:`; the marker's own block
+    // carries its gate, so a revert of either guard fails its own pin.
+    expect(step).not.toContain('git/refs/tags/nightly');
+    const marker = stepBlock(
+      nightly,
+      'Advance final Android marker with exact REST readback',
+    );
+    expect(marker).toContain(
+      'if: $' + "{{ steps.durable_ledger.outputs.android == 'complete' }}",
+    );
+    expect(marker).toContain('git/refs/tags/nightly');
+    expect(step.indexOf('if [ "$android_state" = complete ]')).toBeLessThan(
+      step.indexOf('--channel nightly-android'),
+    );
+    expect(step.indexOf('if [ "$macos_state" = complete ]')).toBeLessThan(
+      step.indexOf('--channel nightly-desktop'),
+    );
   });
 
   it('lets a ledger failure redden the job without blocking any ship', () => {
