@@ -9,7 +9,7 @@ const FRAGMENT_KEY = 'station-ui-bootstrap';
 let captured = false;
 let sessionResolution: Promise<LocalUiSessionResolution> | undefined;
 
-export type LocalUiSessionResolution =
+type LocalUiSessionResolution =
   | { kind: 'authenticated' }
   | { kind: 'host-unavailable' }
   | { kind: 'access-required'; message?: string };

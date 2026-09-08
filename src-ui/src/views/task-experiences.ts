@@ -1,8 +1,8 @@
 export type TaskExperienceId = 'direct' | 'deliver' | 'learn' | 'operate';
 
-export type TaskExperienceAvailability = 'available' | 'unavailable';
+type TaskExperienceAvailability = 'available' | 'unavailable';
 
-export interface TaskExperienceDefinition {
+interface TaskExperienceDefinition {
   id: TaskExperienceId;
   label: string;
   authority: string;
@@ -82,7 +82,7 @@ export function taskExperienceCapabilityId(id: TaskExperienceId): string {
  * NOT a claim that the contract has been verified, and nothing in the rendered
  * experience may say otherwise.
  */
-export interface TaskExperienceAvailabilityObservation {
+interface TaskExperienceAvailabilityObservation {
   attachedExperiences?: readonly TaskExperienceId[];
 }
 

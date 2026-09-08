@@ -47,7 +47,7 @@ export interface WorkspacePaneAvailabilityCatalogEntry {
   rendererResolution?: 'pending';
 }
 
-export interface WorkspacePaneAvailabilityPresentation {
+interface WorkspacePaneAvailabilityPresentation {
   state: WorkspacePaneAvailabilityState;
   stateLabel: string;
   reasonCode: WorkspacePaneAvailabilityReasonCode;

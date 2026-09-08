@@ -36,7 +36,7 @@ const SEGMENT_REGION_ORDER = [
 ] as const satisfies readonly RegionId[];
 
 /** One row of the folded region menu, wherever that menu is hosted. */
-export interface RegionSurfaceMenuItem {
+interface RegionSurfaceMenuItem {
   key: string;
   label: string;
   /**
@@ -64,7 +64,7 @@ export interface RegionSurfaceMenuItem {
  * when the surface occupies that region and the region is showing it. Exactly
  * one segment of a row is checked, `Hidden` being the else.
  */
-export interface RegionPlacementSegment {
+interface RegionPlacementSegment {
   key: string;
   /** `regionLabel(region)` — "Main", "Left", "Right", "Bottom" — or "Hidden". */
   label: string;
@@ -93,7 +93,7 @@ export interface RegionPlacementRow {
   segments: RegionPlacementSegment[];
 }
 
-export interface RegionSurfaceMenu {
+interface RegionSurfaceMenu {
   /** The dock edges this device can use, read once for every consumer. */
   available: readonly DockMode[];
   /** Coarse pointer or narrow viewport: the bottom edge is the only dock. */

@@ -24,7 +24,7 @@ export function boundTailFragment(value: string): string {
     : value;
 }
 
-export interface BoundedToolResultText {
+interface BoundedToolResultText {
   head: string;
   tail: string;
   withheldBytes: number;

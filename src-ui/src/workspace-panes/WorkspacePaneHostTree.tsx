@@ -44,7 +44,7 @@ import type {
 import './WorkspacePaneHost.css';
 import { paneCloseConfirmationProps } from './workspacePaneCloseConfirmation';
 
-export type WorkspacePaneHostPresentation = 'tabbed' | 'chromeless';
+type WorkspacePaneHostPresentation = 'tabbed' | 'chromeless';
 
 export interface WorkspacePaneHostTreeProps {
   document: WorkspacePaneHostDocumentV1;

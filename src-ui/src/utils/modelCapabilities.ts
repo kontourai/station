@@ -276,7 +276,7 @@ export function sanitizeRuntimeOptionsForModel(
  * A route the picker can offer, or several routes the reviewed map says are the
  * same model.
  */
-export type ModelPickerSection =
+type ModelPickerSection =
   | { kind: 'route'; model: SelectableModel }
   | {
       kind: 'model';

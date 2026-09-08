@@ -18,7 +18,7 @@ import {
 } from '../contexts/banner-store';
 import { checkServerHealth, probeServerConnection } from '../lib/serverHealth';
 
-export interface DeferredCapabilityCopy {
+interface DeferredCapabilityCopy {
   failureTitle: string;
   failure: string;
 }

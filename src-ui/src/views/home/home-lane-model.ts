@@ -143,7 +143,7 @@ export function withStableIds(
  * bare `HomeWorkItem`s and must get the SAME object references back, while
  * desktop callers keep their `stableId`-carrying lane items.
  */
-export interface LaneInputs<T extends HomeWorkItem = HomeLaneItem> {
+interface LaneInputs<T extends HomeWorkItem = HomeLaneItem> {
   items: readonly T[];
   now: number;
   /** item id -> epoch ms at which a live snooze lapses. */
@@ -152,7 +152,7 @@ export interface LaneInputs<T extends HomeWorkItem = HomeLaneItem> {
   terminalSince: ReadonlyMap<string, number>;
 }
 
-export interface LanePartition<T extends HomeWorkItem = HomeLaneItem> {
+interface LanePartition<T extends HomeWorkItem = HomeLaneItem> {
   active: T[];
   recentlyFinished: T[];
   snoozed: T[];

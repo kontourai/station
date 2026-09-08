@@ -219,7 +219,7 @@ function safeAgentLabel({
  * sessions, as returned by the server's `/api/environments/ssh/sessions`
  * aggregation endpoint (`useRemoteSessionsQuery`, `@kontourai/station-sdk`).
  */
-export interface RemoteHomeEnvironmentSessions {
+interface RemoteHomeEnvironmentSessions {
   environmentId: string;
   environmentName: string;
   sessions: OrchestrationSessionSummary[];

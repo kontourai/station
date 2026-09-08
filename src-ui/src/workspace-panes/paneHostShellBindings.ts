@@ -25,7 +25,7 @@ import { BANNER_PRIORITY, bannerStore } from '../contexts/banner-store';
  */
 
 /** A contract target resolved onto the shell's own path grammar. */
-export interface PaneNavigationRoute {
+interface PaneNavigationRoute {
   pathname: string;
   /**
    * Query fields to write with the navigation. `null` CLEARS a field, which

@@ -2,7 +2,7 @@ export type RegistryLayoutAction = 'install' | 'remove' | 'enable' | 'disable';
 
 import { Button } from '../Button';
 
-export interface RegistryLayoutItemLike {
+interface RegistryLayoutItemLike {
   name?: string;
   enabled?: boolean;
   installable?: boolean;

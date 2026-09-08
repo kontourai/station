@@ -24,11 +24,7 @@ import { resolveGuidanceTab } from '../views/guidance-tab';
  * - `unshaped` — the route has no frame, so nothing has told the user which
  *   page they are arriving at and there is no declared shape to hold.
  */
-export type RoutePendingShape =
-  | 'split-pane'
-  | 'detail-sheet'
-  | 'region'
-  | 'unshaped';
+type RoutePendingShape = 'split-pane' | 'detail-sheet' | 'region' | 'unshaped';
 
 /**
  * The frame's own layout fields decide the base shape.

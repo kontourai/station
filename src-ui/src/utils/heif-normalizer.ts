@@ -33,7 +33,7 @@ export type HeifFailure =
   | 'timed-out'
   | 'cancelled';
 
-export type HeifInspection = {
+type HeifInspection = {
   width: number;
   height: number;
   primaryItemId: number;
@@ -46,7 +46,7 @@ export type TransformationReceipt = {
   output: { name: string; mimeType: string; bytes: number; sha256: string };
 };
 
-export type HeifNormalizationResult =
+type HeifNormalizationResult =
   | {
       ok: true;
       file: File;
@@ -406,7 +406,7 @@ export type HeifWorker = {
   postMessage(message: unknown): void;
 };
 
-export type HeifNormalizerOptions = {
+type HeifNormalizerOptions = {
   acceptMagic?: boolean;
   createWorker?: () => HeifWorker;
   timeoutMs?: number;

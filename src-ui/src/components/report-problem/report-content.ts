@@ -83,7 +83,7 @@ export function renderReportBundleText(context: ReportContext): string {
   return `# Station problem report\n\n${reportBody(context, 0)}`;
 }
 
-export interface IssueUrlResult {
+interface IssueUrlResult {
   url: string;
   /** Console entries dropped (oldest first) to fit the URL limit. */
   omittedEntryCount: number;

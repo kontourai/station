@@ -43,7 +43,7 @@ export function schedulerMissingAgentReason(slug: string): string {
   return `No Agent named '${slug}'.`;
 }
 
-export type SchedulerEligibleAgent = Pick<AgentData, 'execution'>;
+type SchedulerEligibleAgent = Pick<AgentData, 'execution'>;
 
 /**
  * The runner's resolvability rule: no external engine binding. An ABSENT
@@ -53,7 +53,7 @@ export function isSchedulerEligibleAgent(agent: SchedulerEligibleAgent) {
   return !agent.execution?.agentConnectionId;
 }
 
-export type SchedulerAgentOptions = {
+type SchedulerAgentOptions = {
   /** Every Agent the runner can resolve, whether or not it can run now. */
   eligible: AgentData[];
   /** Agents withheld because they run on an external engine. */

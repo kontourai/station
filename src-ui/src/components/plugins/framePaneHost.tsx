@@ -96,12 +96,12 @@ export type FramePaneHostOutboundMessage = {
 };
 
 /** The shell's navigation seam, as much of it as a pane host needs. */
-export type PaneHostNavigate = (
+type PaneHostNavigate = (
   pathname: string,
   params: Record<string, string | null>,
 ) => void;
 
-export interface FramePaneHostOptions {
+interface FramePaneHostOptions {
   /**
    * Increments when the plugin frame's document is replaced. An outstanding
    * confirm belongs to the document that asked for it; see
