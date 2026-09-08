@@ -87,7 +87,6 @@ function listFor(messages: typeof MESSAGES) {
           messages,
           isThinking: true,
           pendingApprovals: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
-          // biome-ignore lint/suspicious/noExplicitAny: the list's prop type is the full ChatSession
         } as any
       }
       fontSize={14}
