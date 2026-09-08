@@ -165,11 +165,22 @@ expired, duplicate, or unused record.
 
 Within 14 days of an `expires` date the policy prints a `WARN:` line naming
 the record and the days remaining, and raises it as a GitHub warning
-annotation on any Actions run that scans — the daily scheduled run in
+annotation on any Actions run that scans — the six-hourly scheduled run in
 `.github/workflows/dependency-advisory.yml`, and any pull request or merge
 group whose diff touches a dependency input. The reminder never changes the
 exit code, so renew or remediate before the date rather than after the floor
 starts failing.
+
+That schedule is also the repository's own detector for a floor break nothing
+in the repository caused. A newly disclosed advisory, or an affected range
+narrowing until a residual record is unused, reds the floor for every pull
+request from the moment the registry publishes it — with no commit to
+attribute it to, and outside what the expiry warning above can see. The
+scheduled run scans on its own cadence, and a failure files or updates one
+tracking issue through `.github/workflows/main-health.yml`, titled
+`Main pipeline red: Scheduled dependency advisory floor`. The next green
+scheduled run closes it. Renew or remediate the ledger against that tracker
+rather than against whichever pull request happened to gate next.
 
 Critical/high exception entries contain only:
 
