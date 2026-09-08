@@ -419,6 +419,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // single-shot spawn.
   'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
   'scripts/__tests__/release-workflow.test.ts',
+  // #1776: runs the pinned tauri-cli `icon` fan-out twice as a real child
+  // process to prove the committed iOS channel sets are byte-reproducible.
+  'scripts/__tests__/generate-app-icons.test.ts',
+  // #1776: on macOS, runs xcrun pngcrush + sips to prove the shipped-icon
+  // pixel comparison catches a wrong channel through Apple's CgBI re-encode.
+  'scripts/__tests__/ios-channel-icons.test.ts',
   // Runs the pinned Cargo producer against the patched native workspace and
   // owns its deterministic output file; never make release:static host-bound.
   'scripts/__tests__/release-cargo-producer.test.ts',

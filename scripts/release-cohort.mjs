@@ -7,9 +7,14 @@ import { fileURLToPath } from 'node:url';
 const SHA1 = /^[a-f0-9]{40}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 const PLATFORMS = Object.freeze(['android', 'macos']);
-const ORDER = Object.freeze(['android', 'macos']);
+/**
+ * Nightly publishes per platform (#1774): each required platform carries its
+ * own provider claim, a provider-side failure on one never withholds the
+ * others, and the verification candidate discloses every platform's outcome
+ * so the protected verifier can grant finality to the shipped subset.
+ */
 const POLICY = Object.freeze({
-  releaseMode: 'atomic',
+  releaseMode: 'per-platform',
   requiredReceipt: 'provider-backed',
   externalEvidenceAuthority: 'github-artifact-attestation',
 });
@@ -134,7 +139,7 @@ function facts(input = {}) {
     canonicalJson(input.availabilityPolicy) !== canonicalJson(POLICY)
   )
     fail(
-      'availabilityPolicy must exactly be the atomic provider-backed policy',
+      'availabilityPolicy must exactly be the per-platform provider-backed policy',
     );
   return {
     channel,
@@ -143,7 +148,6 @@ function facts(input = {}) {
     versionIdentities,
     availabilityPolicy: { ...POLICY },
     requiredPlatforms,
-    promotionOrder: [...ORDER],
   };
 }
 function planFor(input) {
@@ -344,7 +348,7 @@ function receipt(a, value) {
   if (!plain(value)) fail('promotion receipt must be an object');
   const platform = text(value.platform, 'promotion platform');
   const outcome = text(value.outcome, 'promotion outcome');
-  if (!a.plan.promotionOrder.includes(platform))
+  if (!a.plan.requiredPlatforms.includes(platform))
     fail('promotion platform is invalid');
   const expectedProvider =
     platform === 'android' ? 'google-play' : 'github-releases';
@@ -396,7 +400,11 @@ function receipt(a, value) {
       providerEvidenceClaim,
       recoveryAction: text(value.recoveryAction, 'recoveryAction'),
     };
-  if (outcome === 'unknown')
+  // `unknown`: the platform's job ran and its outcome is unresolved (the
+  // provider effect may already have happened). `not_attempted`: the job
+  // never ran, so no provider effect was attempted. They are distinct claims
+  // because the verifier discloses them differently (#1774).
+  if (outcome === 'unknown' || outcome === 'not_attempted')
     return {
       platform,
       outcome,
@@ -405,17 +413,32 @@ function receipt(a, value) {
     };
   fail('promotion outcome is invalid');
 }
-function receipts(a, values) {
-  if (!Array.isArray(values) || values.length > 2)
-    fail('promotionReceipts are invalid');
-  return values.map((v, i) => {
+/**
+ * Validates provider claims and their platform coverage. A per-platform
+ * promotion state carries at most one claim (`coverage: 'one'`); a
+ * verification candidate carries exactly one claim per required platform
+ * (`coverage: 'all'`), whatever each claim's outcome.
+ */
+function receipts(a, values, coverage) {
+  if (!Array.isArray(values)) fail('promotionReceipts are invalid');
+  const seen = new Set();
+  const rs = values.map((v) => {
     const r = receipt(a, v);
-    if (r.platform !== a.plan.promotionOrder[i])
-      fail(
-        `promotion must be serialized; expected ${a.plan.promotionOrder[i]}`,
-      );
+    if (seen.has(r.platform))
+      fail(`promotion receipts carry ${r.platform} more than once`);
+    seen.add(r.platform);
     return r;
   });
+  if (coverage === 'one' && rs.length > 1)
+    fail('a per-platform promotion state carries at most one provider claim');
+  if (
+    coverage === 'all' &&
+    canonicalJson([...seen].sort()) !== canonicalJson(a.plan.requiredPlatforms)
+  )
+    fail(
+      'verification candidate must carry exactly one provider claim per required platform',
+    );
+  return rs;
 }
 function stateFor({
   admission: a,
@@ -423,8 +446,6 @@ function stateFor({
   attempt,
   previousStateDigest,
   promotionReceipts,
-  reason,
-  recoveryAction,
 }) {
   const base = {
     kind: 'station.release-cohort-state/v1',
@@ -434,15 +455,13 @@ function stateFor({
     attempt,
     previousStateDigest,
     promotionReceipts,
-    ...(reason ? { reason } : {}),
-    ...(recoveryAction ? { recoveryAction } : {}),
   };
   return { ...base, stateContentDigest: hash(base) };
 }
-function state(value, allowed) {
+function state(value) {
   if (
     value?.kind !== 'station.release-cohort-state/v1' ||
-    !allowed.includes(value.state)
+    value.state !== 'promotion_started'
   )
     fail(`transition does not accept state ${String(value?.state)}`);
   const a = admission(value.admission);
@@ -457,32 +476,9 @@ function state(value, allowed) {
     (value.attempt > 1 && !SHA256.test(value.previousStateDigest ?? ''))
   )
     fail('state lineage is invalid');
-  const rs = receipts(a, value.promotionReceipts);
-  const outcomes = rs.map((r) => r.outcome);
-  let reason;
-  let recoveryAction;
-  if (value.state === 'promotion_started') {
-    if (
-      Object.hasOwn(value, 'reason') ||
-      Object.hasOwn(value, 'recoveryAction')
-    )
-      fail('promotion_started carries stale fields');
-  } else if (value.state === 'staged') {
-    fail('staged retry claims are not authoritative');
-    reason = text(value.reason, 'reason');
-    recoveryAction = text(value.recoveryAction, 'recoveryAction');
-  } else {
-    if (
-      !outcomes.includes('unknown') &&
-      !(
-        outcomes.includes('reported_success') &&
-        outcomes.includes('reported_absent')
-      )
-    )
-      fail('partial recovery outcome is invalid');
-    reason = text(value.reason, 'reason');
-    recoveryAction = text(value.recoveryAction, 'recoveryAction');
-  }
+  const rs = receipts(a, value.promotionReceipts, 'one');
+  if (Object.hasOwn(value, 'reason') || Object.hasOwn(value, 'recoveryAction'))
+    fail('promotion_started carries stale fields');
   return exact(
     value,
     stateFor({
@@ -491,8 +487,6 @@ function state(value, allowed) {
       attempt: value.attempt,
       previousStateDigest: value.previousStateDigest,
       promotionReceipts: rs,
-      reason,
-      recoveryAction,
     }),
     'state',
   );
@@ -510,59 +504,64 @@ export function beginPromotion(input) {
   }
   fail('only a fresh staged admission may begin structural promotion claims');
 }
+/**
+ * Records one platform's provider claim on a fresh per-platform state. Each
+ * platform's publishing job begins its own state from the admission, so a
+ * state never carries another platform's claim and no platform's outcome can
+ * withhold another's (#1774).
+ */
 export function recordProviderPromotion(input, raw) {
-  const s = state(input, ['promotion_started']);
-  if (s.promotionReceipts.some((r) => r.outcome !== 'reported_success'))
-    fail('cannot continue after absent or unknown outcome');
+  const s = state(input);
+  if (s.promotionReceipts.length)
+    fail('a per-platform promotion state already carries its provider claim');
   const r = receipt(s.admission, raw);
-  if (
-    r.platform !== s.admission.plan.promotionOrder[s.promotionReceipts.length]
-  )
-    fail(
-      `promotion must be serialized; expected ${s.admission.plan.promotionOrder[s.promotionReceipts.length]}`,
-    );
-  return stateFor({ ...s, promotionReceipts: [...s.promotionReceipts, r] });
+  return stateFor({ ...s, promotionReceipts: [r] });
 }
-export function finalizeCohort(input) {
-  const s = state(input, ['promotion_started']);
-  const unknown = s.promotionReceipts.find((r) => r.outcome === 'unknown');
-  if (unknown)
-    return stateFor({
-      ...s,
-      state: 'partial_recovery_required',
-      reason: `${unknown.platform} outcome is unknown.`,
-      recoveryAction: unknown.recoveryAction,
-    });
-  const absent = s.promotionReceipts.find(
-    (r) => r.outcome === 'reported_absent',
-  );
-  if (absent) {
-    const partial = s.promotionReceipts.some(
-      (r) => r.outcome === 'reported_success',
-    );
-    return stateFor({
-      ...s,
-      state: 'partial_recovery_required',
-      reason: partial
-        ? `${absent.platform} was reported absent after another provider effect was reported successful.`
-        : `${absent.platform} was reported absent and remains unverified.`,
-      recoveryAction: absent.recoveryAction,
-    });
-  }
-  if (s.promotionReceipts.length === 2)
-    return verificationCandidateFor(s.admission, s.promotionReceipts);
-  return stateFor(s);
+/**
+ * Joins one promotion state per required platform into the verification
+ * candidate. Every platform's claim is carried whatever its outcome; the
+ * candidate exists only when at least one platform reported success, so the
+ * protected verifier has a provider effect to observe.
+ */
+/**
+ * The disclosed state of a platform that did not report success, derived
+ * from what its job left behind rather than from a name (#1774):
+ * NOT_PUBLISHED only when no provider effect was attempted (the job never
+ * ran); NOT_VERIFIED whenever the job ran and its outcome is unresolved,
+ * because the effect precedes the claim step and may already be served.
+ * Structural: it names what is not known, never what was verified.
+ */
+export function unshippedState(claimOutcome, jobResult) {
+  if (claimOutcome === 'not_attempted') return 'NOT_PUBLISHED';
+  if (claimOutcome === 'absent' && jobResult === 'skipped')
+    return 'NOT_PUBLISHED';
+  return 'NOT_VERIFIED';
+}
+export function finalizeCohort(inputs) {
+  const values = Array.isArray(inputs) ? inputs : [inputs];
+  if (!values.length)
+    fail('finalize requires one promotion state per required platform');
+  const states = values.map((value) => state(value));
+  const a = states[0].admission;
+  const claims = states.map((s) => {
+    if (s.admissionContentDigest !== a.admissionContentDigest)
+      fail('promotion states do not bind one admission');
+    if (s.promotionReceipts.length !== 1)
+      fail('every promotion state must carry exactly one provider claim');
+    return s.promotionReceipts[0];
+  });
+  return verificationCandidateFor(a, claims);
 }
 function verificationCandidateFor(a, providerClaims) {
-  const claims = receipts(a, providerClaims);
-  if (
-    claims.length !== a.plan.requiredPlatforms.length ||
-    claims.some((claim) => claim.outcome !== 'reported_success')
-  ) {
+  // Platform order is canonical so the joined candidate's digest does not
+  // depend on which platform's state was listed first.
+  const claims = receipts(a, providerClaims, 'all').sort((x, y) =>
+    x.platform < y.platform ? -1 : x.platform > y.platform ? 1 : 0,
+  );
+  if (!claims.some((claim) => claim.outcome === 'reported_success'))
     fail(
-      'verification candidate requires successful claims for every platform',
+      'verification candidate requires at least one reported-success provider claim',
     );
-  }
   const base = {
     kind: 'station.release-cohort-verification-candidate/v1',
     state: 'ready_for_verification',
@@ -644,8 +643,8 @@ export function main(argv = process.argv.slice(2)) {
     result = beginPromotion(json(paths[0]));
   else if (cmd === 'promotion-receipt' && paths.length === 2)
     result = recordProviderPromotion(json(paths[0]), json(paths[1]));
-  else if (cmd === 'finalize' && paths.length === 1)
-    result = finalizeCohort(json(paths[0]));
+  else if (cmd === 'finalize' && paths.length >= 1)
+    result = finalizeCohort(paths.map(json));
   else
     fail(
       'usage: release-cohort.mjs <plan|stage-receipt|admit|begin-promotion|promotion-receipt|finalize> ...',
