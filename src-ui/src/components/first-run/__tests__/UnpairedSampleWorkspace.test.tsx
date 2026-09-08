@@ -29,7 +29,7 @@ describe('UnpairedSampleWorkspace', () => {
 
     expect(screen.getByTestId('unpaired-sample-workspace')).toBeTruthy();
     expect(
-      screen.getByText(/Sample workspace for Getting started/),
+      screen.getByText(/Explore Getting started with sample data/),
     ).toBeTruthy();
     expect(
       screen.getByTestId(
@@ -81,4 +81,24 @@ describe('UnpairedSampleWorkspace', () => {
     );
     expect(onConnect).toHaveBeenCalledTimes(1);
   });
+});
+
+test('sample shows chat and tool history, and a local review action', async () => {
+  const fetchSpy = vi.spyOn(globalThis, 'fetch');
+  render(<UnpairedSampleWorkspace onConnect={vi.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Skip the tour' }));
+  expect(
+    screen.getByRole('main', { name: 'Sample conversation' }),
+  ).toBeTruthy();
+  fireEvent.click(await screen.findByRole('button', { name: 'Read 4 files' }));
+  expect(await screen.findByText('Read monday.md')).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Close tool call details' }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Approve sample draft' }));
+  expect(
+    screen.getByText('Sample decision recorded. Nothing was shared.'),
+  ).toBeTruthy();
+  expect(fetchSpy).not.toHaveBeenCalled();
+  fetchSpy.mockRestore();
 });

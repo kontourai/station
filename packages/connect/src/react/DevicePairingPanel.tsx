@@ -1,3 +1,4 @@
+import './DevicePairingPanel.css';
 import {
   DEFAULT_PAIRING_SCOPE_PRESET,
   type DevicePairingOffer,
@@ -250,6 +251,13 @@ export function JoinDevicePairingPanel({
       ? loadPendingExchange(restorableEndpoint, 'direct')
       : null,
   );
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!pending) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [pending]);
   const [error, setError] = useState<string | null>(null);
   // Set while the exchange is retrying something worth waiting out, so the
   // panel says why nothing is happening instead of sitting mute.
@@ -553,8 +561,8 @@ export function JoinDevicePairingPanel({
     const target = directLabel || 'this Station';
     const approveCommand = `station environment access approve ${pending.requestId}`;
     return (
-      <div role="status" style={{ display: 'grid', gap: 12 }}>
-        <strong>
+      <div className="pairing-wait">
+        <strong className="pairing-wait__status" role="status">
           {waitingOnConnection
             ? `Waiting to reach ${target}…`
             : pairingStateCopy(
@@ -577,8 +585,12 @@ export function JoinDevicePairingPanel({
          * security design, not something the person reading it could act
          * on — deleted from this screen.
          */}
-        <span>
-          Approve “{deviceName}” on {target} to finish.
+        <p className="pairing-wait__instruction">
+          On <strong>{target}</strong>, approve <strong>“{deviceName}”</strong>{' '}
+          to connect this browser.
+        </p>
+        <span className="pairing-wait__timer" aria-live="off">
+          {requestExpiryLabel(pending.expiresAt, now)}
         </span>
         {pending.requestKind === 'direct' && (
           // Closed by default: this is available when no other
@@ -586,7 +598,7 @@ export function JoinDevicePairingPanel({
           // itself gets a Copy button — the wrapped monospace text beneath
           // it used to be the only way to grab it, which is unselectable on
           // a phone (station#1711).
-          <details>
+          <details className="pairing-wait__terminal">
             <summary
               style={{
                 color: 'var(--text-secondary, #999)',
@@ -597,7 +609,10 @@ export function JoinDevicePairingPanel({
                 alignItems: 'center',
               }}
             >
-              Approve from the Station instead
+              <span className="pairing-wait__chevron" aria-hidden="true">
+                ›
+              </span>
+              Approve using a terminal
             </summary>
             <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
               <div
@@ -613,9 +628,8 @@ export function JoinDevicePairingPanel({
                     minWidth: 0,
                     display: 'block',
                     padding: '6px 8px',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
+                    overflowWrap: 'anywhere',
+                    whiteSpace: 'pre-wrap',
                     border: '1px solid var(--border-primary, #333)',
                     borderRadius: 4,
                   }}
@@ -633,7 +647,7 @@ export function JoinDevicePairingPanel({
           </details>
         )}
         {pending.browserSession && (
-          <span style={{ color: 'var(--text-secondary, #999)', fontSize: 13 }}>
+          <span className="pairing-wait__help">
             After approval, this browser stays paired until you revoke it or
             clear its site data.
           </span>

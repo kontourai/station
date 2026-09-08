@@ -12,7 +12,8 @@ vi.mock('../lib/serverHealth', () => ({
   checkServerHealthDetailed: vi.fn(),
 }));
 
-vi.mock('@kontourai/station-connect', () => ({
+vi.mock('@kontourai/station-connect', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
   ConnectionManagerModal: () => null,
 }));
 

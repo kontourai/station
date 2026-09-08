@@ -551,7 +551,7 @@ describe('device pairing panels', () => {
     // The CLI fallback is closed by default — it is the fallback, not the
     // instruction.
     const disclosure = screen
-      .getByText('Approve from the Station instead')
+      .getByText('Approve using a terminal')
       .closest('details');
     expect(disclosure).not.toBeNull();
     expect((disclosure as HTMLDetailsElement).open).toBe(false);
@@ -2198,4 +2198,36 @@ describe('device pairing panels', () => {
       expect(document.body.textContent).not.toContain('not-json');
     },
   );
+});
+
+test('pending approval counts down from its saved expiry without announcing every tick', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-09-08T20:00:00Z'));
+  vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise(() => {}));
+  savePendingExchange({
+    endpoint: window.location.origin,
+    offerId: 'timer-offer',
+    proof: 'timer-proof',
+    requestId: 'timer-request',
+    expiresAt: Date.now() + 300_000,
+    expectedEnvironmentId: 'timer-environment',
+    browserSession: true,
+    requestKind: 'direct',
+  });
+  const view = render(
+    <JoinDevicePairingPanel
+      initialMode="direct"
+      onPaired={vi.fn()}
+      onCancel={vi.fn()}
+    />,
+  );
+  expect(screen.getByText('Expires in 5m 00s').getAttribute('aria-live')).toBe(
+    'off',
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(screen.getByText('Expires in 4m 59s')).toBeTruthy();
+  view.unmount();
+  vi.useRealTimers();
 });
