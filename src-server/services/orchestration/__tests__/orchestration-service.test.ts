@@ -7824,12 +7824,6 @@ describe('OrchestrationService', () => {
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     const threadId = 'forged-model-selection-receipt';
-    let attachmentSettlements = 0;
-    const bothAttachmentsSettled = waitForReceipt(
-      (receipt) =>
-        receipt.kind === 'session.attachment.settled' &&
-        ++attachmentSettlements === 2,
-    );
 
     await acpService.dispatch({
       type: 'startSession',
@@ -7898,7 +7892,13 @@ describe('OrchestrationService', () => {
         }),
       }),
     );
-    await bothAttachmentsSettled;
+    // Both runtimes, each awaited on its own barrier: a count of receipts on
+    // the shared bus cannot say WHICH runtime settled twice (station#1707).
+    // `acpService` is initialized by its own `dispatch` above.
+    await Promise.all([
+      acpService.whenSessionAttachmentSettled(),
+      recoveryService.whenSessionAttachmentSettled(),
+    ]);
     await recoveryService.shutdown();
     await acpService.shutdown();
   });
@@ -16139,9 +16139,7 @@ describe('OrchestrationService', () => {
     await waitForReceipt(
       (receipt) => receipt.kind === 'session.recovery.completed',
     );
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.attachment.settled',
-    );
+    await service.whenSessionAttachmentSettled();
 
     expect(claude.startSession).not.toHaveBeenCalled();
 

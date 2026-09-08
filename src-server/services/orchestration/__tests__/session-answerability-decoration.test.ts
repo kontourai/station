@@ -59,7 +59,7 @@ import type {
 } from '../../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
-import { receiptBus, waitForReceipt } from '../../infra/receipt-bus.js';
+import { receiptBus } from '../../infra/receipt-bus.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -239,9 +239,7 @@ describe('session-summary answerability decoration (station#1778)', () => {
       logger,
     });
     service.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.attachment.settled',
-    );
+    await service.whenSessionAttachmentSettled();
     return service;
   }
 

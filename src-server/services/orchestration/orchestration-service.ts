@@ -1253,6 +1253,24 @@ export class OrchestrationService {
    */
   private sessionAttachmentSettled = false;
 
+  /**
+   * The instance-bound half of {@link sessionAttachmentSettled}: resolved in
+   * the same `finally` that sets the flag, so awaiting it means "THIS
+   * runtime's attachment has settled" and can mean nothing else.
+   *
+   * Deliberately not a receipt wait. `session.attachment.settled` names a
+   * milestone and not a publisher, so a wait keyed on its `kind` is
+   * satisfied by whichever runtime in the process settles first — see
+   * {@link whenSessionAttachmentSettled}.
+   */
+  private readonly sessionAttachmentSettledSignal = (() => {
+    let settle: () => void = () => {};
+    const promise = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    return { promise, settle };
+  })();
+
   constructor(private readonly options: OrchestrationServiceOptions) {
     this.nativeOutputDeclarations = createNativeOutputDeclarationOperation({
       authority: this.nativeOutputGrants,
@@ -2014,6 +2032,7 @@ export class OrchestrationService {
         // plugin asset loading as a side effect of guarding a fact it does
         // not read.
         this.sessionAttachmentSettled = true;
+        this.sessionAttachmentSettledSignal.settle();
         receiptBus.publish({ kind: 'session.attachment.settled' });
         try {
           this.recoveryCoordinator?.reconcile();
@@ -2540,6 +2559,34 @@ export class OrchestrationService {
    */
   async settleProviderAdapterRetirements(): Promise<void> {
     return this.adapterRetirement.settleRetirements();
+  }
+
+  /**
+   * Resolves once THIS runtime's `initialize()` has settled session
+   * attachment — the same moment, and for the same reason, that
+   * `session.attachment.settled` is published: `sessionAdapters` now means
+   * "the threads this process holds" rather than "the threads recovery has
+   * reached so far".
+   *
+   * Prefer it over `waitForReceipt(r => r.kind === 'session.attachment.settled')`
+   * whenever a caller means ITS OWN runtime. The receipt carries no publisher,
+   * so a wait keyed on the kind resolves on whichever runtime settles first;
+   * with more than one runtime in a process — every suite that builds a
+   * service per test — a receipt published late by an abandoned earlier wait
+   * satisfies the next one, which then reads through an attachment window
+   * that has not closed (station#1707).
+   *
+   * Never resolves unless `initialize()` is called, and never rejects:
+   * attachment settles even when recovery threw (see the `finally` in
+   * `initialize()`). A caller that needs a deadline owns one; the test
+   * runner's own timeout is the deadline for every current caller.
+   *
+   * No production caller today — the runtime's own ordering is expressed by
+   * the `finally` chain itself. It exists so a test can bind to the runtime
+   * it constructed instead of to a process-wide milestone.
+   */
+  whenSessionAttachmentSettled(): Promise<void> {
+    return this.sessionAttachmentSettledSignal.promise;
   }
 
   async shutdown(): Promise<void> {

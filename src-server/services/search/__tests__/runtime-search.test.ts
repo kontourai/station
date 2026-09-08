@@ -16,7 +16,6 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { createSearchRoutes } from '../../../routes/search.js';
 import { requiredPairingScope } from '../../../security/pairing-route-scopes.js';
-import { waitForReceipt } from '../../infra/receipt-bus.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
@@ -49,11 +48,8 @@ async function fixture(hosted = false) {
     message('allowed', 'alpha', 'alpha');
     message('hidden', 'alpha', 'beta');
   }
-  const settled = waitForReceipt(
-    (receipt) => receipt.kind === 'session.attachment.settled',
-  );
   orchestration.initialize();
-  await settled;
+  await orchestration.whenSessionAttachmentSettled();
   const createTasks = vi.spyOn(graph, 'createPersonalSearchReader');
   const createTranscripts = vi.spyOn(
     orchestration,

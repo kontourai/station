@@ -55,7 +55,6 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
-import { waitForReceipt } from '../../../services/infra/receipt-bus.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -310,11 +309,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         logger: { debug() {}, warn() {} },
         legacyPersonalOwner: getCachedUser().alias,
       });
-      const settled = waitForReceipt(
-        (receipt) => receipt.kind === 'session.attachment.settled',
-      );
       orchestration.initialize();
-      await settled;
+      await orchestration.whenSessionAttachmentSettled();
       runtimeSearch = createRuntimeSearch({
         stationId: '22222222-2222-4222-8222-222222222222',
         tasks: new TaskGraphService(roomHomeDir, {

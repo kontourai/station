@@ -15,7 +15,6 @@ import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness';
-import { waitForReceipt } from '../../../services/infra/receipt-bus';
 import { EventBus } from '../../../services/orchestration/event-bus';
 import { EventStore } from '../../../services/orchestration/event-store';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service';
@@ -83,11 +82,8 @@ async function fixture(hosted = false) {
         }
       : {}),
   });
-  const settled = waitForReceipt(
-    (receipt) => receipt.kind === 'session.attachment.settled',
-  );
   service.initialize();
-  await settled;
+  await service.whenSessionAttachmentSettled();
   store.upsertSession({
     provider: 'claude',
     threadId: 'session-a',
