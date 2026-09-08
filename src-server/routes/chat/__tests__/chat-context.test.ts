@@ -201,6 +201,83 @@ describe('applyCombinedContextToInput', () => {
     ]);
   });
 
+  // These composers used to `JSON.parse(JSON.stringify(input))` the whole
+  // history to edit one string, and a turn's history routinely carries `file`
+  // parts whose `url` is a base64 data URL. Both appliers run in sequence on
+  // the same turn, so an image attachment was re-serialised and re-parsed
+  // twice per turn for an edit that never reads it.
+  describe('copies only the path it edits', () => {
+    /**
+     * A file part that COUNTS reads of its data URL. `JSON.stringify` invokes
+     * this getter; a structural copy that carries the part by reference never
+     * does. This is the assertion that measures the cost rather than
+     * describing it.
+     */
+    const countingFilePart = () => {
+      const reads = { url: 0 };
+      const part = {
+        type: 'file',
+        mediaType: 'image/png',
+        get url() {
+          reads.url += 1;
+          return 'data:image/png;base64,AAAA';
+        },
+      };
+      return { part, reads };
+    };
+
+    test.each([
+      [
+        'applyCombinedContextToInput',
+        (input: unknown) =>
+          applyCombinedContextToInput(input as never, 'inject', 'rag'),
+      ],
+      [
+        'applyAmbientContextToInput',
+        (input: unknown) =>
+          applyAmbientContextToInput(input as never, '[Timezone: Iceland]'),
+      ],
+    ] as const)('%s', (_name, apply) => {
+      const { part: filePart, reads } = countingFilePart();
+      const earlierTurn = {
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'earlier' }],
+      };
+      // Bound separately so the assertions below name the exact object they
+      // mean, rather than indexing a heterogeneous parts array.
+      const captionPart = { type: 'text', text: 'caption' };
+      const userTurn = {
+        role: 'user',
+        parts: [captionPart, filePart],
+      };
+      const input = [earlierTurn, userTurn];
+
+      const result = apply(input);
+      const output = result.input as typeof input;
+
+      expect(result.applied).toBe(true);
+      // The data URL was never read, so it was never re-serialised.
+      expect(reads.url).toBe(0);
+
+      // New objects along the edited path only: the array, the user message,
+      // its parts array, and the text part.
+      expect(output).not.toBe(input);
+      expect(output[1]).not.toBe(userTurn);
+      expect(output[1]?.parts).not.toBe(userTurn.parts);
+      expect(output[1]?.parts?.[0]).not.toBe(captionPart);
+
+      // Everything else is the SAME object, not a copy of it.
+      expect(output[0]).toBe(earlierTurn);
+      expect(output[0]?.parts).toBe(earlierTurn.parts);
+      expect(output[1]?.parts?.[1]).toBe(filePart);
+
+      // And the caller's input is still never mutated — the persistence
+      // seams keep passing the original while the model gets this.
+      expect(captionPart.text).toBe('caption');
+      expect(input[1]).toBe(userTurn);
+    });
+  });
+
   // archive#2649 review fix (HIGH-1). This is the shape an uncaptioned
   // attachment produces (`buildOutgoingUserMessage` pushes a text part only
   // `if (content)`): both appliers silently drop their whole block, and
