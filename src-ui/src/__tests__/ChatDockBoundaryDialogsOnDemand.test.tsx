@@ -2,15 +2,18 @@
 
 /**
  * The Agent-handoff and context-reset dialogs are ONE on-demand chunk
- * (`ConversationBoundaryDialogs`), and `ChatWorkspacePane` mounts it only once
- * a boundary source is set — a fork, a handoff or a context reset in progress.
- * A dock that has none of those must not have that subtree in its tree at all,
- * which is what keeps the chunk out of the cold-load path.
+ * (`ConversationBoundaryDialogs`), and `ChatWorkspacePane` mounts it only
+ * while `handoffSource` or `contextResetSource` is set. A dock with neither
+ * — including one in the middle of a fork, which renders nothing here — must
+ * not have that subtree in its tree at all.
  *
- * What this proves and what it does not: it asserts the ABSENCE direction only
- * — no boundary source, no wrapper — after a full flush of any lazy import and
- * its Suspense resolution, so "not yet loaded" cannot pass for "not mounted".
- * The present direction (a source set renders the dialog) is unchanged JSX and
+ * What this proves and what it does not. It asserts the ABSENCE direction
+ * only, after a full flush of the lazy import and its Suspense resolution, so
+ * "not yet loaded" cannot pass for "not mounted". It says nothing about which
+ * chunk the code lands in: it would pass just as well against a static import
+ * of the wrapper, and it is the entry-bundle ceiling
+ * (`scripts/check-prepush-ui-bundle.mjs`) that proves the chunking. The
+ * present direction — a set source renders its dialog — is unchanged JSX and
  * is not exercised here; no test in this repo drives the dock that far.
  */
 
@@ -32,6 +35,43 @@ const BOUNDARY_MARKER = 'boundary-dialogs-chunk';
 vi.mock('../components/chat-dock/ConversationBoundaryDialogs', () => ({
   ConversationBoundaryDialogs: () => <div data-testid={BOUNDARY_MARKER} />,
 }));
+
+/**
+ * A fork in progress, injected over the REAL hook's result so every hook in
+ * the pane still runs in its real order and only the one field under test is
+ * forced. `null` leaves the hook untouched.
+ */
+const forkOverride = vi.hoisted(() => ({
+  value: null as { id: string; agentSlug: string } | null,
+}));
+
+vi.mock(
+  '../components/chat-dock/useConversationBoundaryDialogs',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('../components/chat-dock/useConversationBoundaryDialogs')
+      >();
+    return {
+      ...actual,
+      useConversationBoundaryDialogs: (
+        args: Parameters<typeof actual.useConversationBoundaryDialogs>[0],
+      ) => {
+        const real = actual.useConversationBoundaryDialogs(args);
+        return forkOverride.value
+          ? {
+              ...real,
+              forkSource: {
+                turnId: 'turn-1',
+                idempotencyKey: 'fork-idem-1',
+                ...forkOverride.value,
+              },
+            }
+          : real;
+      },
+    };
+  },
+);
 
 // --- Everything NOT under test: mocked to the lightest shape that lets the
 // real ChatWorkspacePane mount without crashing. Navigation, device settings
@@ -236,6 +276,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  forkOverride.value = null;
   cleanup();
   window.localStorage.clear();
   window.history.replaceState({}, '', '/');
@@ -263,6 +304,34 @@ describe('conversation-boundary dialogs are on demand', () => {
     // Resolve the chunk and flush: a wrapper mounted at dock mount would have
     // finished its lazy import and painted by now, so absence after this is
     // absence of the mount, not of the load.
+    await act(async () => {
+      await import('../components/chat-dock/ConversationBoundaryDialogs');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId(BOUNDARY_MARKER)).toBeNull();
+  });
+
+  test('a fork in progress does not mount them either', async () => {
+    forkOverride.value = { id: 'conversation-under-fork', agentSlug: 'codex' };
+
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <KeyboardShortcutsProvider>
+          <NavigationProvider>
+            <DockedChat />
+          </NavigationProvider>
+        </KeyboardShortcutsProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(document.querySelector('.chat-dock')).not.toBeNull();
+
     await act(async () => {
       await import('../components/chat-dock/ConversationBoundaryDialogs');
       await Promise.resolve();

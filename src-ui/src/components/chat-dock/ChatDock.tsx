@@ -253,9 +253,17 @@ const loadChatDockModalStack = () =>
 
 /**
  * The Agent-handoff and context-reset dialogs, and the props that drive them,
- * as ONE chunk. It is mounted only once a boundary source is set, so this
- * import runs on the first open of either dialog — where the two dialogs'
- * own imports used to run — and never at dock mount.
+ * as ONE chunk. It is mounted only while `handoffSource` or
+ * `contextResetSource` is set — the two states that actually render
+ * something — so this import runs on the first open of either dialog, where
+ * the two dialogs' own imports used to run, and never at dock mount.
+ *
+ * A fork is deliberately NOT a trigger. It renders nothing here, so mounting
+ * on it would buy a prefetch at the price of a failure mode the dock did not
+ * have: a rejected chunk import puts `LazyBoundary`'s inline `role="alert"`
+ * retry notice in the dock — announced by screen readers — for a surface the
+ * user never opened, and it would stay until the fork settles or is
+ * cancelled.
  */
 const loadConversationBoundaryDialogs = () =>
   import('./ConversationBoundaryDialogs').then((module) => ({
@@ -2442,7 +2450,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         />
       )}
 
-      {(forkSource || handoffSource || contextResetSource) && (
+      {(handoffSource || contextResetSource) && (
         <LazyBoundary
           load={loadConversationBoundaryDialogs}
           componentProps={{
