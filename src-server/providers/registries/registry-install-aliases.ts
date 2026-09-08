@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 
@@ -57,16 +57,19 @@ export function writeRegistryInstallAliases(
   projectHomeDir: string,
   aliases: RegistryInstallAliases,
 ): void {
-  const target = aliasesPath(projectHomeDir);
-  // Created here rather than left to the shared writer because it decides
-  // the mode of a NEW directory: recursive mkdir never touches an existing
-  // directory's mode, so ordering is irrelevant once `config/` exists, but
-  // the seam would create a missing one 0o700 while the rest of Station
-  // creates this directory with the umask default.
-  mkdirSync(dirname(target), { recursive: true });
+  // No pre-mkdir: the shared writer creates a missing `config/` 0o700, which
+  // is where this directory ends up anyway. Station is split on how it
+  // creates `config/` -- `config-loader-app`, `persisted-random-identifier`
+  // and `usage-telemetry-service` each mkdir it 0o700 AND chmod it 0o700 on
+  // every write, while `config-loader-storage`, `config-loader` and
+  // `distribution-profile-service` take the umask default -- so a caller-side
+  // mkdir here would preserve the default only until the next telemetry
+  // acknowledgement or app-config save chmods it back. An earlier version of
+  // this comment claimed the opposite; it was wrong twice.
+  //
   // Same two-space-plus-newline document; the shared writer additionally
   // fsyncs the data and the directory entry.
-  writeJsonDurably(target, aliases);
+  writeJsonDurably(aliasesPath(projectHomeDir), aliases);
 }
 
 export function readRegistryInstallAliases(
