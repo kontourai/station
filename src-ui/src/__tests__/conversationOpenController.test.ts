@@ -503,7 +503,7 @@ test.each(['completed', 'aborted', 'error'] as const)(
   },
 );
 
-test('binding-change queue review blocks automatic and delayed dispatch', () => {
+test('binding-change queue review blocks automatic and delayed dispatch', async () => {
   vi.useFakeTimers();
   const id = 'reviewed-queue';
   activeChatsStore.initChat(id, {
@@ -543,7 +543,8 @@ test('binding-change queue review blocks automatic and delayed dispatch', () => 
   expect(
     activeChatsStore.getSnapshot()[id].queuedMessageFailure,
   ).toBeUndefined();
-  vi.runAllTimers();
+  await vi.runAllTimersAsync();
+  await vi.dynamicImportSettled();
   expect(activeChatsStore.getSnapshot()[id].queuedMessages).toEqual([
     'keep this exact prompt',
   ]);
