@@ -432,7 +432,6 @@ function buildFixtureHtml(shape: Shape): string {
           <BannerHost connectionSlot={false} />
           {shape.docks.map((dock, index) => (
             <section
-              // biome-ignore lint/suspicious/noArrayIndexKey: fixture order is the identity
               key={index}
               className={dock.className}
               data-region="bottom"
