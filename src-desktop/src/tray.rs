@@ -43,6 +43,7 @@ struct TrayState {
     backend: MenuItem<Wry>,
     connections: MenuItem<Wry>,
     connected_clients: MenuItem<Wry>,
+    access_requests: MenuItem<Wry>,
     updates: MenuItem<Wry>,
     open_ui: MenuItem<Wry>,
     service_action: MenuItem<Wry>,
@@ -235,6 +236,8 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         false,
         None::<&str>,
     )?;
+    let access_requests = MenuItem::with_id(app, "tray-access-requests", "Pending access requests: 0", false, None::<&str>)?;
+    app.manage(crate::local_access_watch::LocalAccessWatch::default());
     let updates = update_settings_menu_item(app)?;
     let service_action = MenuItem::with_id(
         app,
@@ -261,6 +264,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         .separator()
         .item(&connections)
         .item(&connected_clients)
+        .item(&access_requests)
         .item(&updates)
         // A paired-devices tray command needs a native-to-webview route with a
         // fixed `initialPanel=devices`. The existing station:// association is
@@ -281,6 +285,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
             "tray-open-api-docs" => open_station_api_docs(app),
             "tray-connections" => open_station_connections(app),
             "tray-connected-clients" => open_paired_devices(app),
+            "tray-access-requests" => crate::local_access_watch::review_next(app),
             "tray-updates" => open_core_update_settings(app),
             "tray-service-action" => run_contextual_service_action(app),
             "tray-quit" => {
@@ -301,6 +306,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         backend,
         connections,
         connected_clients,
+        access_requests,
         updates,
         open_ui,
         service_action,
@@ -332,6 +338,12 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         .worker
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(worker);
+    {
+        use tauri_plugin_deep_link::DeepLinkExt;
+        if let Ok(Some(urls)) = app.deep_link().get_current() {
+            for url in urls { handle_browser_open_link(app, url.as_str()); }
+        }
+    }
     log::info!("Station tray initialized");
     Ok(())
 }
@@ -1614,6 +1626,17 @@ fn run_service_action(app: &AppHandle, action: ServiceAction, service: ResolvedL
 fn update_once(app: &AppHandle) -> ServiceHealth {
     let state = app.state::<TrayState>().inner().clone();
     let context = tray_context(app);
+    let access_target = context.snapshot.api_origin.clone().map(|origin| crate::local_access_watch::Target {
+        origin,
+        home: context.service.as_ref().map(|service| service.base_dir.clone()).unwrap_or_else(|| station_home(app)),
+    });
+    crate::local_access_watch::refresh(app.clone(), access_target);
+    let access_count = crate::local_access_watch::pending_count(app);
+    let access_item = state.access_requests.clone();
+    let _ = app.run_on_main_thread(move || {
+        let _ = access_item.set_text(format!("Pending access requests: {access_count}"));
+        let _ = access_item.set_enabled(access_count > 0);
+    });
     let health = context.snapshot.health;
     let snapshot = context.snapshot.clone();
     let main_window_available = app.get_webview_window("main").is_some();
@@ -2788,4 +2811,33 @@ mod tests {
             "native opener rejected http://127.0.0.1:3000: OS opener unavailable"
         );
     }
+}
+
+static BROWSER_HANDOFF_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// A protocol request may arrive before the owned backend finishes starting.
+pub(crate) fn handle_browser_open_link(app: &AppHandle, raw: &str) -> bool {
+    if url::Url::parse(raw).ok().and_then(|url| url.host_str().map(str::to_owned)).as_deref() != Some("open-browser") { return false; }
+    if BROWSER_HANDOFF_ACTIVE.swap(true, Ordering::SeqCst) { return true; }
+    let handle = app.clone(); let raw = raw.to_string();
+    thread::spawn(move || {
+      use tauri_plugin_dialog::DialogExt;
+      let started = Instant::now();
+      let outcome = loop {
+        if handle.try_state::<TrayState>().is_some() {
+          let context = tray_context(&handle);
+          if let Some(api_origin) = context.snapshot.api_origin {
+            let home = context.service.as_ref().map(|service| service.base_dir.clone()).unwrap_or_else(|| station_home(&handle));
+            let ui_origin = context.service.as_ref().and_then(|service| station_ui_url(&service.manifest).ok()).unwrap_or_else(|| api_origin.clone());
+            let channel = crate::channel_ports_generated::desktop_channel_from_identifier(&handle.config().identifier).unwrap_or("dev");
+            let scheme = crate::pairing_deep_link_channels_generated::native_pairing_deep_link_scheme(&handle.config().identifier, cfg!(debug_assertions), channel);
+            break crate::local_access_watch::browser_origin(&raw, &scheme, &ui_origin).and_then(|origin| crate::local_access_watch::open_browser(&handle, &crate::local_access_watch::Target {origin: api_origin, home}, &origin));
+          }
+        }
+        if started.elapsed() > Duration::from_secs(30) { break Err("Station is still starting. Try Connect with Station again shortly.".to_string()); }
+        thread::sleep(Duration::from_millis(500));
+      };
+      if let Err(error) = outcome { handle.dialog().message(error).title("Connect browser to Station").blocking_show(); }
+      BROWSER_HANDOFF_ACTIVE.store(false, Ordering::SeqCst);
+    });
+    true
 }

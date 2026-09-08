@@ -65,13 +65,9 @@ export function UnpairedSampleWorkspace({
           Explore {UNPAIRED_SAMPLE_PROJECT} with sample data. Nothing here runs
           agents or changes your files.
         </p>
-        <button
-          type="button"
-          className="unpaired-sample__connect"
-          onClick={onConnect}
-        >
+        <Button variant="primary" onClick={onConnect}>
           Connect your Station
-        </button>
+        </Button>
       </header>
 
       <div className="unpaired-sample__workspace">
@@ -274,13 +270,9 @@ export function UnpairedSampleWorkspace({
       ) : (
         <div className="unpaired-sample__done">
           <p>The tour is the same one a paired Station shows after setup.</p>
-          <button
-            type="button"
-            className="unpaired-sample__connect"
-            onClick={onConnect}
-          >
+          <Button variant="primary" onClick={onConnect}>
             Connect your Station
-          </button>
+          </Button>
         </div>
       )}
     </div>

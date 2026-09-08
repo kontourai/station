@@ -157,3 +157,7 @@ project-switcher journey in `tests/cross-runtime-chat-switching.spec.ts`.
 Changing or removing these primary actions requires an explicit product-contract
 change; a fixed button count is not the acceptance criterion. The required
 pre-merge browser smoke must exercise the journey rather than wait for Nightly.
+
+An indeterminate wait may show elapsed observation time, clearly identified as time waiting in this view. It must not invent a completion estimate. Access requests with a persisted expiry show a countdown from that expiry; the clock itself is not a live-region announcement.
+
+Discovered Codex rollouts continue through app-server `thread/fork`, returning a distinct native child ID. Cleanup archives the confirmed child. This is separate from resuming an existing Station-owned Codex session, which uses `thread/resume`.

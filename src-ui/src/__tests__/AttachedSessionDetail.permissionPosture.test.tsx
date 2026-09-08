@@ -194,7 +194,7 @@ test('Enter confirms the exact draft only after consent; Shift+Enter and IME do 
 });
 
 describe('AttachedSessionDetail permission-posture row badge (station#1424)', () => {
-  test.each(['codex', 'future-engine'])(
+  test.each(['acp', 'future-engine'])(
     'keeps unsupported or unknown %s continuation visible and disabled',
     (provider) => {
       adoptOrchestrationSession.mockClear();

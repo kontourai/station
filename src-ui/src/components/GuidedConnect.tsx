@@ -8,6 +8,10 @@
  */
 
 import { ConnectionManagerModal } from '@kontourai/station-connect';
+import {
+  type PairingDeepLinkChannel,
+  pairingDeepLinkScheme,
+} from '@kontourai/station-connect/pairing-deep-link';
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { checkHostCompatibility } from '../lib/compatibilityLoader';
@@ -38,6 +42,13 @@ export function GuidedConnect({
     window.location.hostname,
   );
   const destination = window.location.host;
+  const [nativeChannel, setNativeChannel] = useState<PairingDeepLinkChannel>(
+    () => {
+      const channel = import.meta.env.VITE_NATIVE_APP_UPDATE_CHANNEL;
+      return channel === 'beta' || channel === 'nightly' ? channel : 'stable';
+    },
+  );
+  const browserHandoff = `${pairingDeepLinkScheme(nativeChannel)}://open-browser?${new URLSearchParams({ origin: window.location.origin })}`;
 
   return (
     <div className="guided-connect">
@@ -59,9 +70,41 @@ export function GuidedConnect({
                 ? 'Open Station from its tray menu or use the start link printed by its launcher. That connects this browser without a pairing code.'
                 : 'Ask this Station to approve access for your browser. Confirm the request on the computer running it.'}
             </p>
+            {isLocal && (
+              <>
+                <label className="guided-connect__app-choice">
+                  Installed app
+                  <select
+                    value={nativeChannel}
+                    onChange={(event) =>
+                      setNativeChannel(
+                        event.target.value as PairingDeepLinkChannel,
+                      )
+                    }
+                  >
+                    <option value="stable">Station</option>
+                    <option value="beta">Station Beta</option>
+                    <option value="nightly">Station Nightly</option>
+                  </select>
+                </label>
+                <a
+                  className="guided-connect__action guided-connect__action--primary"
+                  href={browserHandoff}
+                >
+                  Connect with Station app
+                </a>
+                <small>
+                  If the app does not open, use Request access below.
+                </small>
+              </>
+            )}
             <button
               type="button"
-              className="guided-connect__action guided-connect__action--primary"
+              className={
+                isLocal
+                  ? 'guided-connect__action'
+                  : 'guided-connect__action guided-connect__action--primary'
+              }
               onClick={() => setOpenPanel('request-access')}
             >
               Request access

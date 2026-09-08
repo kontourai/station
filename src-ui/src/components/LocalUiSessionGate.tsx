@@ -14,6 +14,7 @@ import {
   subscribeLocalUiSessionAttempt,
 } from '../lib/local-ui-bootstrap';
 import { LOCAL_UI_SESSION_ATTEMPT_LIMIT } from '../lib/local-ui-session-retry';
+import { ElapsedWait } from './ElapsedWait';
 import { GuidedConnect } from './GuidedConnect';
 import { LazyBoundary } from './LazyBoundary';
 import { SkeletonBlock } from './state';
@@ -64,6 +65,7 @@ export function LocalUiSessionGate({
     Awaited<ReturnType<typeof resolveLocalUiSession>>
   > | null>(null);
   const [sampleOpen, setSampleOpen] = useState(false);
+  const [accessStartedAt] = useState(Date.now);
   // Deliberately NOT passed as `useDegradedQueryState`'s `resetKey`: the
   // degraded window measures how long this browser has been waiting for ONE
   // answer, and a retry does not restart that wait — it is part of it. Bumping
@@ -111,6 +113,7 @@ export function LocalUiSessionGate({
             browser&rsquo;s access check.
           </p>
           <RetryAttempt attempt={identityAttempt} />
+          <ElapsedWait startedAt={accessStartedAt} />
           <button type="button" onClick={() => window.location.reload()}>
             Try again
           </button>
@@ -121,6 +124,7 @@ export function LocalUiSessionGate({
       <main aria-live="polite">
         <p>Checking this browser's Station access…</p>
         <RetryAttempt attempt={identityAttempt} />
+        <ElapsedWait startedAt={accessStartedAt} />
       </main>
     );
   }

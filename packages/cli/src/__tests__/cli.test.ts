@@ -65,7 +65,7 @@ describe('bundled client admission', () => {
     expect(lazyStart).not.toHaveBeenCalled();
   });
 
-  test('denies spaced host pairing actions but admits remote SSH show commands', async () => {
+  test('admits packaged access approval and remote SSH show commands', async () => {
     const environment = vi.fn();
     vi.doMock('../commands/environment.js', async (importOriginal) => ({
       ...(await importOriginal<typeof import('../commands/environment.js')>()),
@@ -82,19 +82,16 @@ describe('bundled client admission', () => {
     const { runCli } = await import('../cli.js');
     const configureProfileCredentialStore = vi.fn();
 
-    await expect(
-      runCli(
-        [
-          'environment',
-          '--api-base',
-          'http://127.0.0.1:1',
-          'access',
-          'approve',
-        ],
-        { configureProfileCredentialStore },
-      ),
-    ).rejects.toThrow('Environment security commands require');
-    expect(configureProfileCredentialStore).not.toHaveBeenCalled();
+    await runCli(
+      ['environment', '--api-base', 'http://127.0.0.1:1', 'access', 'approve'],
+      { configureProfileCredentialStore },
+    );
+    expect(environment).toHaveBeenCalledWith(
+      ['--api-base', 'http://127.0.0.1:1', 'access', 'approve'],
+      expect.any(Object),
+    );
+    configureProfileCredentialStore.mockClear();
+    environment.mockClear();
 
     await runCli(['environment', 'show', 'ssh-environment-id'], {
       configureProfileCredentialStore,
@@ -421,32 +418,38 @@ describe('runCli', () => {
       runServiceCommand: vi.fn(),
     }));
     const { parseLifecycleArgs } = await import('../cli.js');
+    const flagHome = mkdtempSync(join(tmpdir(), 'station-origin-flags-'));
+    try {
+      expect(
+        parseLifecycleArgs([
+          '--base=/tmp/station-service',
+          '--allowed-origin=https://kontour.example.ts.net',
+          '--allowed-origin=https://second.example.ts.net',
+        ]),
+      ).toMatchObject({
+        allowedOrigins: [
+          'https://kontour.example.ts.net',
+          'https://second.example.ts.net',
+        ],
+        clearAllowedOrigins: false,
+      });
+      expect(
+        parseLifecycleArgs([`--base=${flagHome}`, '--clear-allowed-origins']),
+      ).toMatchObject({ allowedOrigins: undefined, clearAllowedOrigins: true });
 
-    expect(
-      parseLifecycleArgs([
-        '--base=/tmp/station-service',
-        '--allowed-origin=https://kontour.example.ts.net',
-        '--allowed-origin=https://second.example.ts.net',
-      ]),
-    ).toMatchObject({
-      allowedOrigins: [
-        'https://kontour.example.ts.net',
-        'https://second.example.ts.net',
-      ],
-      clearAllowedOrigins: false,
-    });
-    expect(
-      parseLifecycleArgs(['--base=/tmp/x', '--clear-allowed-origins']),
-    ).toMatchObject({ allowedOrigins: undefined, clearAllowedOrigins: true });
-
-    for (const [flag, reason] of [
-      ['--allowed-origin=not-a-url', /not a URL/],
-      ['--allowed-origin=ftp://host.example', /http\/https/],
-      ['--allowed-origin=https://host.example/path', /bare origin/],
-      ['--allowed-origin=https://host.example/', /bare origin/],
-      ['--allowed-origin=https://user:pw@host.example', /bare origin/],
-    ] as const) {
-      expect(() => parseLifecycleArgs(['--base=/tmp/x', flag])).toThrow(reason);
+      for (const [flag, reason] of [
+        ['--allowed-origin=not-a-url', /not a URL/],
+        ['--allowed-origin=ftp://host.example', /http\/https/],
+        ['--allowed-origin=https://host.example/path', /bare origin/],
+        ['--allowed-origin=https://host.example/', /bare origin/],
+        ['--allowed-origin=https://user:pw@host.example', /bare origin/],
+      ] as const) {
+        expect(() => parseLifecycleArgs([`--base=${flagHome}`, flag])).toThrow(
+          reason,
+        );
+      }
+    } finally {
+      rmSync(flagHome, { recursive: true, force: true });
     }
   });
 

@@ -8,6 +8,8 @@ mod android_dns;
 mod bundled_server_state;
 mod channel_ports_generated;
 mod notification_watch;
+#[cfg(not(mobile))]
+mod local_access_watch;
 mod pairing_deep_link_channels_generated;
 mod service_state;
 #[cfg(not(mobile))]
@@ -9666,7 +9668,8 @@ If a stable instance is running, this launch will focus its window and exit.",
                     // this activation bypass the main-window authority. The
                     // handler may run before setup manages readiness, so
                     // retain its activation until that authority exists.
-                    let urls = event.urls().into_iter().map(|url| url.to_string()).collect::<Vec<_>>();
+                    let urls = event.urls().into_iter().filter(|url| !tray::handle_browser_open_link(&activation_app, url.as_str())).map(|url| url.to_string()).collect::<Vec<_>>();
+                    if urls.is_empty() { return; }
                     let _ = activation_app.emit("station://pairing-deep-link", urls);
                     request_or_defer_main_window_activation(
                         &activation_app,

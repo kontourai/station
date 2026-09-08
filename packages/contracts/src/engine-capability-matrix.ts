@@ -651,11 +651,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   codex: {
     engineId: toEngineId('codex'),
-    externalSessionContinuation: {
-      state: 'unsupported',
-      reason:
-        'Station can read this Codex transcript, but independent continuation is not available yet.',
-    },
+    externalSessionContinuation: { state: 'native', basis: 'declared' },
     // Evidence gate (docs/design/agent-engine-unification.md
     // §4.1/§6.1): `codex app-server generate-json-schema` against the
     // installed codex-cli 0.145.0 CONFIRMS `developerInstructions` as a

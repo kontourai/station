@@ -27,17 +27,6 @@
   color: var(--text-secondary);
 }
 
-.unpaired-sample__connect {
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: none;
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-  font-size: 14px;
-  font-weight: 550;
-  cursor: pointer;
-}
-
 .unpaired-sample__eyebrow {
   margin: 0 0 8px;
   font-size: 12px;

@@ -39,8 +39,8 @@ describe('engine capability matrix', () => {
       basis: 'declared',
     });
     expect(externalSessionContinuationSupport('codex')).toMatchObject({
-      state: 'unsupported',
-      reason: expect.any(String),
+      state: 'native',
+      basis: 'declared',
     });
     expect(externalSessionContinuationSupport('future-engine')).toMatchObject({
       state: 'unknown',

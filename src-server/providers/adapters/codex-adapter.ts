@@ -42,8 +42,11 @@ import type { Logger } from '../../utils/logger.js';
 import type {
   ProviderAdapterModelCatalog,
   ProviderAdapterShape,
+  ProviderAdoptionHooks,
+  ProviderDiscardSessionRecovery,
   ProviderSendTurnInput,
   ProviderSession,
+  ProviderSessionAdoptInput,
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '../adapter-shape.js';
@@ -1049,6 +1052,27 @@ export class CodexAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
+    return this.startWithReservation(input);
+  }
+
+  async adoptSession(
+    input: ProviderSessionAdoptInput,
+    hooks?: ProviderAdoptionHooks,
+  ): Promise<ProviderSession> {
+    if (input.sourceKind !== 'codex-rollout')
+      throw new Error('Codex can only continue a discovered Codex rollout.');
+    // Discovered rollouts belong to the global Codex configuration. Do not
+    // silently point their thread IDs at an unrelated credential profile.
+    return this.startWithReservation(
+      { ...input, credentialProfileRef: undefined },
+      { sourceId: input.sourceSessionId, hooks },
+    );
+  }
+
+  private async startWithReservation(
+    input: ProviderSessionStartInput,
+    adoption?: { sourceId: string; hooks?: ProviderAdoptionHooks },
+  ): Promise<ProviderSession> {
     if (
       this.transport.hasSession(input.threadId) ||
       this.startingSessionThreads.has(input.threadId)
@@ -1057,7 +1081,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
     this.startingSessionThreads.add(input.threadId);
     try {
-      return await this.startReservedSession(input);
+      return await this.startReservedSession(input, adoption);
     } finally {
       this.startingSessionThreads.delete(input.threadId);
     }
@@ -1065,9 +1089,12 @@ export class CodexAdapter implements ProviderAdapterShape {
 
   private async startReservedSession(
     input: ProviderSessionStartInput,
+    adoption?: { sourceId: string; hooks?: ProviderAdoptionHooks },
   ): Promise<ProviderSession> {
     const startedAt = Date.now();
-    const appHomeEnv = await this.resolveAppHomeEnv(input.credentialProfileRef);
+    const appHomeEnv = adoption
+      ? undefined
+      : await this.resolveAppHomeEnv(input.credentialProfileRef);
     const appHome: 'profile' | 'global' = appHomeEnv ? 'profile' : 'global';
     const quotaConnectionId = string(input.metadata?.connectionId);
     const toolServers = this.resolveAgentToolServers(input);
@@ -1123,28 +1150,46 @@ export class CodexAdapter implements ProviderAdapterShape {
         input.modelOptions,
         input.reviewIsolation,
       );
-      const result = isResumeCursor(input.resumeCursor)
-        ? await this.transport.sendRequest(record, 'thread/resume', {
-            threadId: input.resumeCursor.codexThreadId,
+      const result = adoption
+        ? await this.transport.sendRequest(record, 'thread/fork', {
+            threadId: adoption.sourceId,
             cwd: input.cwd,
             model: input.modelId,
             approvalPolicy: approvalKnobs.approvalPolicy,
             sandbox: approvalKnobs.sandbox,
             serviceTier: modelOptions.fastMode ? 'fast' : null,
-            persistExtendedHistory: false,
+            ephemeral: false,
           })
-        : await this.transport.sendRequest(record, 'thread/start', {
-            cwd: input.cwd,
-            model: input.modelId,
-            approvalPolicy: approvalKnobs.approvalPolicy,
-            sandbox: approvalKnobs.sandbox,
-            experimentalRawEvents: false,
-            persistExtendedHistory: false,
-            serviceTier: modelOptions.fastMode ? 'fast' : null,
-          });
+        : isResumeCursor(input.resumeCursor)
+          ? await this.transport.sendRequest(record, 'thread/resume', {
+              threadId: input.resumeCursor.codexThreadId,
+              cwd: input.cwd,
+              model: input.modelId,
+              approvalPolicy: approvalKnobs.approvalPolicy,
+              sandbox: approvalKnobs.sandbox,
+              serviceTier: modelOptions.fastMode ? 'fast' : null,
+              persistExtendedHistory: false,
+            })
+          : await this.transport.sendRequest(record, 'thread/start', {
+              cwd: input.cwd,
+              model: input.modelId,
+              approvalPolicy: approvalKnobs.approvalPolicy,
+              sandbox: approvalKnobs.sandbox,
+              experimentalRawEvents: false,
+              persistExtendedHistory: false,
+              serviceTier: modelOptions.fastMode ? 'fast' : null,
+            });
 
       const codexThread = extractThread(result);
+      if (adoption && codexThread.id === adoption.sourceId)
+        throw new Error('Codex did not return an independent continuation.');
       this.transport.setCodexThreadId(record, codexThread.id);
+      if (adoption) {
+        record.session.resumeCursor = { codexThreadId: codexThread.id };
+        await adoption.hooks?.onProviderChildCreated(
+          record.session.resumeCursor,
+        );
+      }
       // archive#1182: the app-server's own `thread/start`/`thread/resume`
       // response — genuinely reported by Codex, not merely Station's
       // request echoed back. Proof this can diverge from what was
@@ -1598,6 +1643,56 @@ export class CodexAdapter implements ProviderAdapterShape {
       method: 'request.resolved',
       status: mapApprovalResolutionStatus(outcome.decision),
     });
+  }
+
+  async discardSession(
+    threadId: string,
+    recovery?: ProviderDiscardSessionRecovery,
+  ): Promise<void> {
+    const current = this.transport.hasSession(threadId)
+      ? this.transport.requireSession(threadId)
+      : undefined;
+    const cursor = current?.session.resumeCursor ?? recovery?.resumeCursor;
+    if (!isResumeCursor(cursor))
+      throw new Error(
+        'Codex continuation cleanup requires the confirmed child identity.',
+      );
+    if (current) {
+      try {
+        await this.transport.sendRequest(current, 'thread/archive', {
+          threadId: cursor.codexThreadId,
+        });
+      } finally {
+        await this.stopSession(threadId);
+      }
+      return;
+    }
+    const processHandle = this.processFactory(undefined, []);
+    const temporaryId = `cleanup:${threadId}`;
+    const record = createCodexSessionRecord({
+      externalThreadId: temporaryId,
+      process: processHandle,
+      provider: this.provider,
+      threadId: temporaryId,
+      model: '',
+      nowIso: () => this.now().toISOString(),
+    });
+    this.transport.registerSession(record);
+    this.transport.handleProcess(record);
+    try {
+      await this.transport.sendRequest(record, 'initialize', {
+        clientInfo: { name: 'station', title: 'Station', version: '0.1.0' },
+        capabilities: { experimentalApi: false },
+      });
+      this.transport.sendNotification(record, 'initialized');
+      await this.transport.sendRequest(record, 'thread/archive', {
+        threadId: cursor.codexThreadId,
+      });
+    } finally {
+      await this.transport.stopSession(temporaryId, () =>
+        this.now().toISOString(),
+      );
+    }
   }
 
   async stopSession(threadId: string): Promise<void> {
