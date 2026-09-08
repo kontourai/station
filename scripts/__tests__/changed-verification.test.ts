@@ -858,7 +858,15 @@ describe('changed verification selection', () => {
     // actually references the script, and the selector must reach it. An edge
     // naming a test that never mentions the script would be a coverage claim
     // nothing computes.
-    expect(SPAWNED_SCRIPT_EDGES.length).toBeGreaterThanOrEqual(18);
+    //
+    // What this does NOT prove is that the reference is an execution or a
+    // source read rather than a command-text pin. A call-argument scan cannot
+    // decide it: nine of these eleven tests build the path through a const or
+    // a join() before spawning it, and one splits it across join arguments,
+    // so the literal never appears inside a spawn call. That judgement stays
+    // with the reviewer of the edge; the pin-only candidates were rejected by
+    // hand and the docblock on SPAWNED_SCRIPT_EDGES records the rule.
+    expect(SPAWNED_SCRIPT_EDGES.length).toBe(11);
     for (const edge of SPAWNED_SCRIPT_EDGES) {
       expect(existsSync(edge.pattern), edge.pattern).toBe(true);
       expect(edge.related, edge.pattern).toBe(true);

@@ -297,7 +297,6 @@ describe('evidence-check execution gate', () => {
   test('an acknowledgement on a non-advisory classification fails', () => {
     const root = createFixture(({ mapping, packageJson }) => {
       mapping['repo-guardrails'] = 'enforced';
-      void packageJson;
       packageJson.scripts['verify:static:raw'] +=
         ' && npm run proof:repo-guardrails';
     });

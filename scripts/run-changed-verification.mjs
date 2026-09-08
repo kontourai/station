@@ -924,8 +924,9 @@ function cleanupFor(result) {
  * Name the obligation an empty related selection leaves behind. Exit 3 must
  * name the next lane (docs/guides/testing.md) and the test-changed lane
  * declares that "empty selections escalate to named deferred lanes"
- * (scripts/verification-lanes.mjs), so an empty plan that named nothing was a
- * silent pass for every script the corpus spawns but no test imports.
+ * (scripts/verification-lanes.mjs), so an empty plan that named nothing left
+ * a provisional exit 3 with no lane, no next command and escalated: false --
+ * an unnamed obligation, which run-ci-fast then passes over.
  */
 function escalateEmptyRelatedSelection(selection, relatedPaths) {
   const laneReasons = new Map(
