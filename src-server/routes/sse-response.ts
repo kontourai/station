@@ -18,8 +18,17 @@ export const streamSSE: typeof honoStreamSSE = (c, callback, onError) => {
  * `orchestration/events.ts` and `orchestration/project-task-rooms.ts` (both
  * keeping their own loops, for the reasons on `sseKeepalive`). One definition
  * so a fifth event-style stream cannot quietly invent `keepalive` or
- * `heartbeat`; `packages/sdk/src/client/project-task-rooms.ts` reads
- * `message.event === 'ping'` off the wire.
+ * `heartbeat`.
+ *
+ * BOTH fields are load-bearing on the wire, and each has a different consumer:
+ * `packages/sdk/src/client/project-task-rooms.ts` is the only code that reads
+ * the event NAME (`message.event === 'ping'`), so renaming it breaks that
+ * stream live. The CLI never reads the name at all — `consumeSseFrames`
+ * (`packages/cli/src/commands/session-client.ts`) pulls only the `data: `
+ * line and skips the frame because that payload is EMPTY, so it is merely
+ * tolerant: give the frame a non-empty `data` and it reaches the CLI's
+ * `JSON.parse` and is handed to `onFrame` as though it were a chat event.
+ * `scheduler.routes.test.ts` asserts the emitted bytes for both fields.
  *
  * NOT every Station SSE stream. The chat stream keeps a separate, deliberate
  * wire shape: `runtime/conversation/stream-orchestrator.ts`
