@@ -228,11 +228,18 @@ export interface SessionEventStream {
  * exactly as it did per frame.
  *
  * `setTimeout` is the fallback for environments with no `requestAnimationFrame`
- * (jsdom without the timing shim, SSR): the point is a single deferred flush,
- * not the paint clock specifically.
+ * (jsdom without the timing shim, SSR) and, deliberately, for a hidden
+ * document: the point is a single deferred flush, not the paint clock
+ * specifically, and a browser suspends animation frames for a tab nobody is
+ * looking at. A live turn arriving into a background tab would otherwise hold
+ * every frame it received, with full payloads, until the tab was looked at
+ * again. Timers keep running there (throttled, which is fine — the publish is
+ * a repaint nobody can see), so the buffer still drains.
  */
 function schedulePublishFrame(callback: () => void): () => void {
-  if (typeof requestAnimationFrame === 'function') {
+  const painting =
+    typeof document === 'undefined' || document.visibilityState === 'visible';
+  if (painting && typeof requestAnimationFrame === 'function') {
     const handle = requestAnimationFrame(callback);
     return () => cancelAnimationFrame(handle);
   }
@@ -319,6 +326,17 @@ export function useSessionEventStream(
   const queueLiveEvent = useCallback(
     (event: OrchestrationEvent) => {
       pendingLiveEvents.current.push(event);
+      // The buffer is bounded the way its pre-hydration sibling below is: a
+      // deferred publish can be deferred for a long time (a throttled timer in
+      // a background tab), and until it runs nothing else trims. Folding at
+      // the cap costs one merge per `MAX_FEED_EVENTS` frames and hands the
+      // window straight to `mergeSessionEvents`, which applies the same trim
+      // and the same `turn.started` boundary rescue the publish would have.
+      // The publish itself stays deferred: the fold cancels the scheduled
+      // frame, and the guard below schedules a fresh one.
+      if (pendingLiveEvents.current.length > MAX_FEED_EVENTS) {
+        foldPendingLiveEvents();
+      }
       if (cancelPublishFrame.current) return;
       cancelPublishFrame.current = schedulePublishFrame(() => {
         cancelPublishFrame.current = null;
