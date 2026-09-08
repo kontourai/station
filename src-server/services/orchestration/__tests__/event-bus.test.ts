@@ -1,7 +1,15 @@
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { describe, expect, test, vi } from 'vitest';
-import { captureLoggerLines } from '../../../__test-utils__/logger-capture.js';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  captureLoggerLines,
+  stopLoggerCaptures,
+} from '../../../__test-utils__/logger-capture.js';
 import { EventBus } from '../event-bus.js';
+
+// A capture is process-wide, and every use in this file asserts BEFORE its own
+// `stop()`. Without this, one failing assertion leaks the sink — and any raised
+// debug level — into every test after it.
+afterEach(stopLoggerCaptures);
 
 describe('EventBus', () => {
   test('subscribe receives emitted events', () => {

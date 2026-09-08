@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { captureLoggerLines } from '../../__test-utils__/logger-capture.js';
+import {
+  captureLoggerLines,
+  stopLoggerCaptures,
+} from '../../__test-utils__/logger-capture.js';
 import { AnthropicLLMProvider } from '../llm/anthropic-llm-provider.js';
 import { GoogleLLMProvider } from '../llm/google-llm-provider.js';
+
+// A capture is process-wide, and every use in this file asserts BEFORE its own
+// `stop()`. Without this, one failing assertion leaks the sink — and any raised
+// debug level — into every test after it.
+afterEach(stopLoggerCaptures);
 
 const originalFetch = global.fetch;
 

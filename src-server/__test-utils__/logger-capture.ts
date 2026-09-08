@@ -8,6 +8,7 @@
  * logging — which is what the console spies it replaces were for.
  */
 
+import { getInstalledServerLogSink } from '../services/infra/server-log-store.js';
 import {
   type ConfigurableLogLevel,
   installLoggerLineSink,
@@ -25,7 +26,8 @@ export interface LoggerCapture {
   lines(): CapturedLogLine[];
   /** Only the lines at one level. */
   at(level: string): CapturedLogLine[];
-  /** Stops capturing. Safe to call more than once. */
+  /** Stops capturing and restores the tee to the installed store (see
+   * `captureLoggerLines`). Safe to call more than once. */
   stop(): void;
 }
 
@@ -48,6 +50,16 @@ export function stopLoggerCaptures(): void {
  * restores the seam default (`info`), NOT each logger's own prior level, so
  * only pass `level` from a file whose loggers are all default-level. Omit it
  * (the default) for `warn`/`error` call sites, which need no level change.
+ *
+ * `stop()` puts the tee back on `getInstalledServerLogSink()` rather than
+ * clearing it. `installServerLogSink` is documented as the one call that
+ * keeps the store registry and the logger tee in step
+ * (`services/infra/server-log-store.ts`), and clearing the tee to `undefined`
+ * would break exactly that invariant for a file that installs a real store
+ * AND captures: the registry would still name the store while the logger
+ * wrote nowhere. Restoring from the registry re-establishes the invariant
+ * instead of inventing a second one, and reduces to today's behaviour
+ * (`undefined`) when no store is installed.
  */
 export function captureLoggerLines(
   level?: ConfigurableLogLevel,
@@ -68,7 +80,7 @@ export function captureLoggerLines(
       if (stopped) return;
       stopped = true;
       if (active === capture) active = undefined;
-      installLoggerLineSink(undefined);
+      installLoggerLineSink(getInstalledServerLogSink());
       if (level) setGlobalLogLevel('info');
     },
   };

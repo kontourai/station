@@ -21,7 +21,10 @@ vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
   projectManifestBackfills: backfillCounter,
 }));
 
-import { captureLoggerLines } from '../../../__test-utils__/logger-capture.js';
+import {
+  captureLoggerLines,
+  stopLoggerCaptures,
+} from '../../../__test-utils__/logger-capture.js';
 import { putProject } from '../../../domain/__tests__/file-storage-test-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { execGitSync } from '../../../utils/git-exec.js';
@@ -34,6 +37,11 @@ import {
   ProjectManifestUnreadableError,
   projectManifestPath,
 } from '../project-manifest-store.js';
+
+// A capture is process-wide, and every use in this file asserts BEFORE its own
+// `stop()`. Without this, one failing assertion leaks the sink — and any raised
+// debug level — into every test after it.
+afterEach(stopLoggerCaptures);
 
 const tmpRoots: string[] = [];
 
