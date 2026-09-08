@@ -12,10 +12,12 @@ conversations discovered in another coding app. A quiet "Started in Claude Code"
 (or the observed app name) identifies origin. Discovery is not evidence of running
 work; history uses source-event time and remains separate from active work.
 
-Opening a conversation does not migrate it. Focusing the reply box offers
-"Continue here" inline. An accepted continuation opens through the normal dock
-controller after the server resolves it; the original conversation remains
-available in its original app. A failed opening retains the reader and offers a
+Opening a conversation or typing does not migrate it. The composer accepts a
+normal draft. Send (or Enter, except during IME composition) opens a one-time
+"Continue here?" confirmation; Cancel preserves the draft and Shift+Enter adds a
+line. Confirmation opens the continuation through the normal dock controller
+and hands the exact draft to the normal sender once. The original conversation
+remains available in its original app. A failed opening retains the reader and offers a
 retry that does not create another continuation. Metadata is available through
 an explicit Details action.
 

@@ -7,6 +7,21 @@ import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
 import ImportedConversationPane from '../components/chat-dock/ImportedConversationPane';
 
 const query = vi.hoisted(() => vi.fn());
+const sendMessage = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const updateChat = vi.hoisted(() => vi.fn());
+vi.mock('../hooks/useActiveChatSessionMessaging', () => ({
+  useSendMessage: () => sendMessage,
+}));
+vi.mock('../contexts/ActiveChatsContext', () => ({
+  useActiveChatActions: () => ({ updateChat }),
+}));
+vi.mock('../contexts/active-chats-store', () => ({
+  activeChatsStore: {
+    getSnapshot: () => ({
+      tab: { conversationId: 'conversation-1', agentSlug: 'claude' },
+    }),
+  },
+}));
 vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionQuery: query,
 }));
@@ -14,13 +29,19 @@ vi.mock('../components/session-detail/SessionDetail', () => ({
   SessionDetail: ({
     onAdopted,
   }: {
-    onAdopted: (child: { threadId: string }) => void;
+    onAdopted: (
+      child: { threadId: string },
+      intent: number,
+      message: string,
+    ) => void;
   }) => (
     <div>
       <p>Original conversation</p>
       <button
         type="button"
-        onClick={() => onAdopted({ threadId: 'continued' })}
+        onClick={() =>
+          onAdopted({ threadId: 'continued' }, 0, 'My exact message')
+        }
       >
         Confirm continuation
       </button>
@@ -28,6 +49,8 @@ vi.mock('../components/session-detail/SessionDetail', () => ({
   ),
 }));
 function setup(onContinueInDock = vi.fn().mockResolvedValue(true)) {
+  sendMessage.mockClear();
+  updateChat.mockClear();
   query.mockImplementation((id: string) => ({
     data:
       id === 'source'
@@ -58,6 +81,7 @@ describe('imported conversation in the dock', () => {
     expect(screen.getByRole('region', { name: 'Conversation' })).toBeTruthy();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByText('Original conversation')).toBeTruthy();
+    expect(sendMessage).not.toHaveBeenCalled();
     expect(onContinueInDock).not.toHaveBeenCalled();
   });
   test('opens the confirmed durable conversation through the normal dock controller', async () => {
@@ -70,6 +94,15 @@ describe('imported conversation in the dock', () => {
         'conversation-1',
         expect.any(Function),
       ),
+    );
+    expect(updateChat).toHaveBeenCalledWith('tab', {
+      input: 'My exact message',
+    });
+    expect(sendMessage).toHaveBeenCalledExactlyOnceWith(
+      'tab',
+      'claude',
+      'conversation-1',
+      'My exact message',
     );
     const isCurrent = view.onContinueInDock.mock.calls[0][1];
     expect(isCurrent()).toBe(true);
@@ -84,8 +117,11 @@ describe('imported conversation in the dock', () => {
     );
     const retry = await screen.findByRole('button', { name: 'Retry opening' });
     expect(screen.getByText('Original conversation')).toBeTruthy();
+    expect(sendMessage).not.toHaveBeenCalled();
+    onContinue.mockResolvedValue(true);
     fireEvent.click(retry);
     await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
   });
   test('uses the dock-sized box, not a fixed viewport overlay', async () => {
     setup();

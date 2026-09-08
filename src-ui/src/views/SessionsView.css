@@ -1026,21 +1026,14 @@
   padding: 0;
   border: 0;
 }
-.external-chat-composer .sessions-detail__adoption {
-  margin-bottom: 12px;
-}
 .sessions-detail--chat .sessions-detail__transcript {
   display: flex;
   flex-direction: column;
   gap: 0;
 }
 
-.external-chat-composer .button {
-  padding: 0.625rem 1rem;
-}
-
-.external-chat-composer .button--primary {
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-  border-color: var(--accent-primary);
+.imported-conversation-send-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 12px 12px;
 }

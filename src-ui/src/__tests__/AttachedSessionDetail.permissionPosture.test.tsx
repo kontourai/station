@@ -71,6 +71,7 @@ const ev = (
 
 function renderAttached({
   presentation = 'inspector',
+  onAdopted = vi.fn(),
   connected = true,
   upgradeRequired,
   streamError,
@@ -81,6 +82,7 @@ function renderAttached({
   session: sessionOverrides,
 }: {
   presentation?: 'inspector' | 'chat';
+  onAdopted?: (...args: any[]) => void;
   connected?: boolean;
   upgradeRequired?: boolean;
   streamError?: Error;
@@ -112,7 +114,7 @@ function renderAttached({
               ...sessionOverrides,
             } as any
           }
-          onAdopted={vi.fn()}
+          onAdopted={onAdopted}
           getSelectionIntent={() => 0}
           events={[
             ev({ method: 'turn.started', turnId: 'r1', prompt: 'list files' }),
@@ -144,18 +146,51 @@ test('reply intent offers continuation in the normal composer without changing t
     name: 'Message',
   }) as HTMLTextAreaElement;
   expect(composer.disabled).toBe(false);
-  expect(composer.readOnly).toBe(true);
+  expect(composer.readOnly).toBe(false);
   expect(screen.getByText('Sure.')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Continue here' })).toBeNull();
   fireEvent.focus(composer);
-  expect(screen.getByRole('button', { name: 'Continue here' })).toBeTruthy();
-  expect(screen.getByText('Continue this conversation here?')).toBeTruthy();
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.change(composer, { target: { value: 'Keep my draft' } });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  expect(
+    screen.getByRole('button', { name: 'Continue and send' }),
+  ).toBeTruthy();
+  expect(screen.getByRole('dialog', { name: 'Continue here?' })).toBeTruthy();
   expect(adoptOrchestrationSession).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel', exact: true }));
+  expect(composer.value).toBe('Keep my draft');
   expect(screen.queryByRole('button', { name: 'Continue here' })).toBeNull();
   expect(screen.getByText('Sure.')).toBeTruthy();
   expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+});
+
+test('Enter confirms the exact draft only after consent; Shift+Enter and IME do not', async () => {
+  adoptOrchestrationSession.mockClear();
+  const child = { threadId: 'continued' };
+  adoptOrchestrationSession.mockResolvedValue(child);
+  const onAdopted = vi.fn();
+  renderAttached({ presentation: 'chat', onAdopted });
+  const composer = screen.getByRole('textbox', { name: 'Message' });
+  fireEvent.keyDown(composer, { key: 'Enter' });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.change(composer, { target: { value: 'My exact\nmessage' } });
+  fireEvent.keyDown(composer, { key: 'Enter', shiftKey: true });
+  fireEvent.keyDown(composer, { key: 'Enter', isComposing: true });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.keyDown(composer, { key: 'Enter' });
+  expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+  await waitFor(() =>
+    expect(onAdopted).toHaveBeenCalledWith(
+      child,
+      expect.any(Number),
+      'My exact\nmessage',
+    ),
+  );
+  expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
 });
 
 describe('AttachedSessionDetail permission-posture row badge (station#1424)', () => {

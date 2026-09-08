@@ -31,7 +31,11 @@ export function SessionDetail({
   chatFontSize?: number;
   session: OrchestrationSessionSummary;
   onTaskChanged: () => void;
-  onAdopted: (session: AdoptedSessionResult, intent: number) => void;
+  onAdopted: (
+    session: AdoptedSessionResult,
+    intent: number,
+    message?: string,
+  ) => void;
   getSelectionIntent: () => number;
   evidenceReveal?: SessionEvidenceReveal | null;
 }) {

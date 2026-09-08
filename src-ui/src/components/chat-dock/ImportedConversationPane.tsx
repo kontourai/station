@@ -1,5 +1,8 @@
 import { useOrchestrationSessionQuery } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useActiveChatActions } from '../../contexts/ActiveChatsContext';
+import { activeChatsStore } from '../../contexts/active-chats-store';
+import { useSendMessage } from '../../hooks/useActiveChatSessionMessaging';
 import { Button } from '../Button';
 import { SessionDetail } from '../session-detail/SessionDetail';
 import { SkeletonBlock } from '../state';
@@ -26,6 +29,10 @@ export default function ImportedConversationPane({
     isCurrent: () => boolean,
   ) => Promise<boolean>;
 }) {
+  const sendMessage = useSendMessage(apiBase);
+  const { updateChat } = useActiveChatActions();
+  const confirmedMessage = useRef('');
+  const dispatched = useRef(false);
   const source = useOrchestrationSessionQuery(threadId, {
     retry: false,
     cancelWhenInactive: true,
@@ -60,8 +67,29 @@ export default function ImportedConversationPane({
     } catch {
       /* The original reader remains available for retry. */
     }
+    if (opened && confirmedMessage.current.trim() && !dispatched.current) {
+      const conversationId = session.conversationId ?? session.threadId;
+      const target = Object.entries(activeChatsStore.getSnapshot()).find(
+        ([, chat]) => chat.conversationId === conversationId,
+      );
+      if (target) {
+        dispatched.current = true;
+        const [tabId, chat] = target;
+        const message = confirmedMessage.current;
+        // The normal sender owns optimistic UI, rejection recovery and retry.
+        updateChat(tabId, { input: message });
+        if (chat.agentSlug) {
+          void sendMessage(tabId, chat.agentSlug, conversationId, message);
+        } else {
+          updateChat(tabId, {
+            error:
+              'Your message is saved. Resolve this conversation before sending.',
+          });
+        }
+      }
+    }
     if (mounted.current && !opened) setOpenFailed(true);
-  }, [continued.data, onContinueInDock]);
+  }, [continued.data, onContinueInDock, sendMessage, updateChat]);
   useEffect(() => {
     if (!continued.data || attempted.current === continuedThreadId) return;
     attempted.current = continuedThreadId;
@@ -113,7 +141,10 @@ export default function ImportedConversationPane({
           }
           onTaskChanged={() => void source.refetch()}
           getSelectionIntent={() => 0}
-          onAdopted={(child) => setContinuedThreadId(child.threadId)}
+          onAdopted={(child, _intent, message) => {
+            confirmedMessage.current = message ?? '';
+            setContinuedThreadId(child.threadId);
+          }}
         />
       )}
     </section>

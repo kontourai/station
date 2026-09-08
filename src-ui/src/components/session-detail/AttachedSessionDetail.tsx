@@ -29,6 +29,7 @@ import { Button } from '../Button';
 import { PermissionPostureBadge } from '../badges/PermissionPostureBadge';
 import { MessageBubble } from '../chat/MessageBubble';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
+import { Dialog } from '../Dialog';
 
 function hasCanonicalEventId(
   event: OrchestrationEvent,
@@ -85,7 +86,11 @@ export function AttachedSessionDetail({
   apiBase: string;
   chatFontSize?: number;
   session: OrchestrationSessionSummary;
-  onAdopted: (session: AdoptedSessionResult, intent: number) => void;
+  onAdopted: (
+    session: AdoptedSessionResult,
+    intent: number,
+    message?: string,
+  ) => void;
   getSelectionIntent: () => number;
   events: OrchestrationEvent[];
   connected: boolean;
@@ -131,6 +136,9 @@ export function AttachedSessionDetail({
   );
   const [replyRequested, setReplyRequested] = useState(false);
   const continuationDescriptionId = useId();
+  const [draft, setDraft] = useState('');
+  const confirmedDraft = useRef('');
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
   const transcriptBodyRef = useRef<HTMLDivElement>(null);
@@ -258,7 +266,12 @@ export function AttachedSessionDetail({
         });
       }
     },
-    onSuccess: (child, intent) => onAdopted(child, intent),
+    onSuccess: (child, intent) =>
+      onAdopted(
+        child,
+        intent,
+        presentation === 'chat' ? confirmedDraft.current : undefined,
+      ),
     onError: (error) => {
       // Keep the diagnostic available to native/browser developer consoles;
       // the screen deliberately presents a plain-language recovery state.
@@ -312,55 +325,30 @@ export function AttachedSessionDetail({
   // "Worker task · <id>" in the list it was opened from.
   const title = sessionTitle(session);
 
-  const continuationControls = (
-    <div className="sessions-detail__adoption">
-      <div>
-        <strong>
-          {presentation === 'chat'
-            ? 'Continue this conversation here?'
-            : 'Continue independently'}
-        </strong>
-        <p id={continuationDescriptionId}>
-          {continuationSupport.state === 'native'
-            ? `Continue from this history. The original conversation in ${displayProvider(session)} stays available.`
-            : continuationSupport.reason}
-        </p>
-      </div>
-      {/* The stream's SSE state says nothing about whether this REST
-            action would succeed (sol review of #2630, finding 1) — the
-            button stays enabled and failures are classified below. */}
-      <Button
-        variant="primary"
-        disabled={adoptionDisabled}
-        onClick={() => {
-          if (
-            !continuationSupported ||
-            adoption.isPending ||
-            serverRejectedRetryRef.current
-          )
-            return;
-          adoption.mutate(getSelectionIntent());
-        }}
-      >
-        {adoption.isPending || openingContinuation
-          ? 'Continuing…'
-          : presentation === 'chat'
-            ? 'Continue here'
-            : 'Continue in Station'}
-      </Button>
-      {presentation === 'chat' &&
-        !adoption.isPending &&
-        !openingContinuation && (
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setReplyRequested(false);
-              transcriptScrollRef.current?.focus({ preventScroll: true });
-            }}
-          >
-            Not now
-          </Button>
-        )}
+  const continuationAction = (
+    <Button
+      variant="primary"
+      disabled={adoptionDisabled}
+      onClick={() => {
+        if (
+          !continuationSupported ||
+          adoption.isPending ||
+          serverRejectedRetryRef.current
+        )
+          return;
+        if (presentation === 'chat') confirmedDraft.current = draft;
+        adoption.mutate(getSelectionIntent());
+      }}
+    >
+      {adoption.isPending || openingContinuation
+        ? 'Continuing…'
+        : presentation === 'chat'
+          ? 'Continue and send'
+          : 'Continue in Station'}
+    </Button>
+  );
+  const continuationFeedback = (
+    <>
       {adoption.error && (
         <p className="sessions-detail__adoption-reason" role="alert">
           {serverRejectedRetry
@@ -379,8 +367,26 @@ export function AttachedSessionDetail({
           Retry safely — Station will not duplicate the continuation.
         </p>
       )}
+    </>
+  );
+  const continuationControls = (
+    <div className="sessions-detail__adoption">
+      <div>
+        <strong>Continue independently</strong>
+        <p id={continuationDescriptionId}>
+          {continuationSupported
+            ? `Continue from this history. The original conversation in ${displayProvider(session)} stays available.`
+            : continuationSupport.reason}
+        </p>
+      </div>
+      {continuationAction}
+      {continuationFeedback}
     </div>
   );
+  const requestSend = () => {
+    if (draft.trim() && !adoption.isPending && !continuationCreated)
+      setReplyRequested(true);
+  };
 
   return (
     <section
@@ -605,30 +611,83 @@ export function AttachedSessionDetail({
           className="external-chat-composer chat-input"
           aria-label="Message composer"
         >
-          {(replyRequested || openingContinuation) &&
-            (!continuationCreated || openingContinuation) &&
-            continuationControls}
           <div className="chat-input__capsule">
             <div className="chat-input__textarea-wrapper">
               <textarea
-                readOnly
+                ref={composerRef}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                disabled={adoption.isPending || continuationCreated}
                 aria-label="Message"
                 placeholder="Type a message…"
                 rows={2}
-                aria-describedby={
-                  replyRequested ? continuationDescriptionId : undefined
-                }
-                onFocus={() => setReplyRequested(true)}
                 onKeyDown={(event) => {
-                  if (event.key === 'Escape') {
-                    setReplyRequested(false);
-                    transcriptScrollRef.current?.focus({ preventScroll: true });
+                  if (
+                    event.key === 'Enter' &&
+                    !event.shiftKey &&
+                    !event.nativeEvent.isComposing
+                  ) {
+                    event.preventDefault();
+                    requestSend();
                   }
                 }}
               />
             </div>
+            <div className="imported-conversation-send-row">
+              <button
+                type="button"
+                aria-label="Send message"
+                className={`chat-input__send-btn ${draft.trim() ? 'chat-input__send-btn--active' : 'chat-input__send-btn--inactive'}`}
+                disabled={
+                  !draft.trim() || adoption.isPending || continuationCreated
+                }
+                onClick={requestSend}
+              >
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden="true"
+                >
+                  <path d="M12 19V5m-7 7 7-7 7 7" />
+                </svg>
+              </button>
+            </div>
           </div>
         </fieldset>
+      )}
+      {presentation === 'chat' && replyRequested && !continuationCreated && (
+        <Dialog
+          title="Continue here?"
+          closeLabel="Cancel continuation"
+          size="sm"
+          dismissible={!adoption.isPending}
+          returnFocusTarget={composerRef.current}
+          onClose={() => {
+            if (!adoption.isPending) setReplyRequested(false);
+          }}
+          footer={
+            <>
+              <Button
+                disabled={adoption.isPending}
+                onClick={() => setReplyRequested(false)}
+              >
+                Cancel
+              </Button>
+              {continuationAction}
+            </>
+          }
+        >
+          <p>
+            {continuationSupported
+              ? `This conversation started in ${displayProvider(session)}. Station will continue from this history and send your message. The original conversation stays available.`
+              : continuationSupport.reason}
+          </p>
+          {continuationFeedback}
+        </Dialog>
       )}
     </section>
   );
