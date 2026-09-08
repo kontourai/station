@@ -218,7 +218,6 @@
     "src-server/monitoring/monitoring-session-identity.ts:MONITORING_SESSION_ID_KEYS",
     "src-server/providers/adapters/acp-adapter.ts:isAcpResumeCursor",
     "src-server/providers/adapters/codex-approval-mode.ts:CODEX_READ_ONLY_REVIEW_KNOBS",
-    "src-server/providers/adapters/muse-adapter-events.ts:isRecord",
     "src-server/providers/adapters/muse-adapter-events.ts:extractString",
     "src-server/providers/adapters/muse-adapter-events.ts:extractStringField",
     "src-server/providers/adapters/muse-adapter.ts:MUSE_DEFAULT_TURN_TIMEOUT_MS",
@@ -910,9 +909,7 @@
   "duplicate_exports": [],
   "type_only_dependencies": [],
   "test_only_dependencies": [],
-  "dev_dependencies_in_production": [
-    "package.json:react"
-  ],
+  "dev_dependencies_in_production": ["package.json:react"],
   "boundary_violations": [],
   "boundary_coverage_violations": [],
   "boundary_call_violations": [],

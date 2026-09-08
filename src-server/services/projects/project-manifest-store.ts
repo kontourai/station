@@ -133,6 +133,7 @@ import {
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { projectManifestBackfills } from '../../telemetry/metrics.js';
+import { isRecord } from '../../utils/is-record.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
   type CheckoutRemoteReader,
@@ -225,15 +226,11 @@ export interface ProjectManifestStoreOptions {
   readRemotes?: CheckoutRemoteReader;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function validateManifestRecord(
   value: unknown,
   filePath: string,
 ): ProjectManifestRecord {
-  if (!isPlainObject(value)) {
+  if (!isRecord(value)) {
     throw new ProjectManifestUnreadableError(filePath, ['must be an object']);
   }
   // Gate FIRST: a version this Station does not know is refused by name, never

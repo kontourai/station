@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { canonicalizeForDigest } from '@kontourai/station-contracts/fleet-routing-receipt';
 import { sharedWorkingStateOperations } from '../telemetry/metrics.js';
+import { isRecord } from '../utils/is-record.js';
 
 /** Station-owned semantics. A transport never supplies a library wire format. */
 export const SHARED_WORKING_STATE_SCHEMA_VERSION = 1 as const;
@@ -187,10 +188,6 @@ function digest(value: unknown): string {
   return createHash('sha256')
     .update(JSON.stringify(canonicalizeForDigest(value)) ?? 'null')
     .digest('hex');
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isWellFormedUnicode(value: string): boolean {

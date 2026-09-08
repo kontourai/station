@@ -22,6 +22,7 @@ import {
   reviewQueueDepthSamples,
   reviewTimeToDecision,
 } from '../../telemetry/metrics.js';
+import { isRecord } from '../../utils/is-record.js';
 import {
   JsonFileStore,
   type JsonFileStoreOptions,
@@ -255,10 +256,6 @@ function validateDocumentRelationships(changes: ProposedChange[]): void {
       current = byId.get(current.supersededById!);
     }
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function hasExactKeys(

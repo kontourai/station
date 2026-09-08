@@ -34,6 +34,7 @@ import {
   fleetRoutingReceiptsTotal,
   modelDispatchReceipts,
 } from '../../telemetry/metrics.js';
+import { isRecord } from '../../utils/is-record.js';
 import { createLogger, type Logger } from '../../utils/logger.js';
 import { createAiSdkManagedModel } from '../frameworks/framework-model-factory.js';
 import {
@@ -2079,8 +2080,4 @@ async function persistDispatchReceipt(
     outcome: receipt.outcome,
     attempts: receipt.attempts.length,
   });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

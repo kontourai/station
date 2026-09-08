@@ -3,6 +3,7 @@ import { existsSync, lstatSync, opendirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { isRecord } from '../../utils/is-record.js';
 import type {
   AttachedSessionCursor,
   AttachedSessionDescriptor,
@@ -761,10 +762,6 @@ function mapToolResult(
       output: raw.content,
     },
   ];
-}
-
-function isRecord(value: unknown): value is Record<string, any> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function text(value: unknown): string | undefined {

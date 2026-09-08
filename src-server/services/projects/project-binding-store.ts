@@ -65,6 +65,7 @@ import {
   type ProjectBindingStore,
 } from '@kontourai/station-contracts/project-identity';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { isRecord } from '../../utils/is-record.js';
 import { JsonFileStore } from '../infra/json-store.js';
 
 /** Reserved until archive#1392 introduces real membership (§3.5). */
@@ -176,10 +177,6 @@ export function canonicalizeCheckoutRemotes(
   return canonical;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function requireNonEmptyString(
   value: unknown,
   field: string,
@@ -198,7 +195,7 @@ function validateBindingStore(
   filePath: string,
 ): ProjectBindingStore {
   const problems: string[] = [];
-  if (!isPlainObject(value)) {
+  if (!isRecord(value)) {
     throw new ProjectBindingStoreShapeError(filePath, ['must be an object']);
   }
   // schemaVersion gates everything else and is never cast (§2.5).
@@ -209,7 +206,7 @@ function validateBindingStore(
   }
   requireNonEmptyString(value.memberId, 'memberId', problems);
 
-  if (!isPlainObject(value.hostAliases)) {
+  if (!isRecord(value.hostAliases)) {
     problems.push('hostAliases: must be an object');
   } else {
     for (const [alias, host] of Object.entries(value.hostAliases)) {
@@ -227,7 +224,7 @@ function validateBindingStore(
   } else {
     value.bindings.forEach((binding, index) => {
       const at = `bindings[${index}]`;
-      if (!isPlainObject(binding)) {
+      if (!isRecord(binding)) {
         problems.push(`${at}: must be an object`);
         return;
       }
@@ -271,7 +268,7 @@ function validateBindingStore(
   } else {
     value.credentialBindings.forEach((credential, index) => {
       const at = `credentialBindings[${index}]`;
-      if (!isPlainObject(credential)) {
+      if (!isRecord(credential)) {
         problems.push(`${at}: must be an object`);
         return;
       }

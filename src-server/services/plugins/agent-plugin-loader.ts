@@ -41,6 +41,7 @@ import {
   validateSkillContent,
 } from 'agent-skills-ts-sdk';
 import Ajv2020, { type ValidateFunction } from 'ajv/dist/2020.js';
+import { isRecord } from '../../utils/is-record.js';
 import type { CanonicalSkillSource } from '../flow/flow-agents-skills-source.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
@@ -174,10 +175,6 @@ export interface AgentPluginLoadOptions {
   provisionData?: boolean;
   /** Already-read manifest bytes at a caller-owned containment boundary. */
   manifestDocument?: unknown;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isInside(parent: string, child: string): boolean {
