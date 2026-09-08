@@ -174,8 +174,12 @@ export function createMemoryConversationStore(options: {
     conversation: Conversation,
   ): Promise<void> {
     const conversationDir = paths.getConversationsDir(conversation.resourceId);
-    // Kept ahead of the publish so an existing conversations directory keeps
-    // whatever mode it already has.
+    // Kept ahead of the publish because it decides the mode of a NEW
+    // directory, and this adapter owns the modes in this tree: recursive
+    // mkdir never touches an existing directory's mode, so ordering is
+    // irrelevant once the directory exists, but the seam would create a
+    // missing one 0o700 while every sibling directory the adapter creates
+    // takes the umask default.
     await mkdir(conversationDir, { recursive: true });
     const conversationPath = paths.getConversationPath(
       conversation.resourceId,

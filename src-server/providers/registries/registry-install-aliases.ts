@@ -58,8 +58,11 @@ export function writeRegistryInstallAliases(
   aliases: RegistryInstallAliases,
 ): void {
   const target = aliasesPath(projectHomeDir);
-  // Created here rather than left to the shared writer so an existing config
-  // directory keeps whatever mode it already has.
+  // Created here rather than left to the shared writer because it decides
+  // the mode of a NEW directory: recursive mkdir never touches an existing
+  // directory's mode, so ordering is irrelevant once `config/` exists, but
+  // the seam would create a missing one 0o700 while the rest of Station
+  // creates this directory with the umask default.
   mkdirSync(dirname(target), { recursive: true });
   // Same two-space-plus-newline document; the shared writer additionally
   // fsyncs the data and the directory entry.
