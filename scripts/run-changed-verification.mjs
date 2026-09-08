@@ -920,6 +920,32 @@ function cleanupFor(result) {
   return { status: 'not_required', survivingOwnedChildren: 0 };
 }
 
+/**
+ * Name the obligation an empty related selection leaves behind. Exit 3 must
+ * name the next lane (docs/guides/testing.md) and the test-changed lane
+ * declares that "empty selections escalate to named deferred lanes"
+ * (scripts/verification-lanes.mjs), so an empty plan that named nothing was a
+ * silent pass for every script the corpus spawns but no test imports.
+ */
+function escalateEmptyRelatedSelection(selection, relatedPaths) {
+  const laneReasons = new Map(
+    selection.lanes.map(({ id, reasons }) => [id, new Set(reasons)]),
+  );
+  for (const path of relatedPaths)
+    addReason(
+      laneReasons,
+      'test-full',
+      `no related suites for ${path}; ${EMPTY_RELATED_SELECTION_REMEDY}`,
+    );
+  return {
+    ...selection,
+    lanes: [...laneReasons.keys()]
+      .sort()
+      .map((id) => ({ id, reasons: [...laneReasons.get(id)].sort() })),
+    escalated: true,
+  };
+}
+
 function escalateEmptyReports(selection, executions) {
   const empty = executions.filter((entry) => entry.empty);
   if (!empty.length) return selection;
@@ -1291,7 +1317,6 @@ export async function runChangedVerification(
                 )
               : [],
         };
-  let emptyRelatedSelection = false;
   if (
     !explain &&
     (executionSelection.tests.length || executionSelection.relatedPaths.length)
@@ -1335,13 +1360,16 @@ export async function runChangedVerification(
     // Related discovery ran and named no suite. Record the fact durably in
     // the selection artifact so a reader sees a selection decision rather
     // than a silent zero-execution run.
-    emptyRelatedSelection =
-      vitestOutcome.emptySelection === true && !vitestOutcome.preparation;
-    if (emptyRelatedSelection)
+    if (vitestOutcome.emptySelection === true && !vitestOutcome.preparation) {
       result.emptyRelatedSelection = {
         relatedPaths: [...executionSelection.relatedPaths].sort(),
         remedy: EMPTY_RELATED_SELECTION_REMEDY,
       };
+      selection = escalateEmptyRelatedSelection(
+        selection,
+        executionSelection.relatedPaths,
+      );
+    }
     selection = escalateEmptyReports(selection, result.executed);
     result.selection = selection;
     result.nextCommands = nextCommands(selection);
@@ -1351,12 +1379,11 @@ export async function runChangedVerification(
   // An empty related selection is deferred, not complete and not broken: no
   // suite was executed, so the receipt layer cannot call it a pass
   // (isPassingCounts requires executed > 0), and nothing here justifies
-  // loosening that. `provisional` is the honest terminal status, and
-  // run-ci-fast already reads its exit 3 as a deferred selection and carries
-  // on -- so a data-only diff neither fails fast-checks nor escalates to the
-  // full corpus (#1757).
-  const deferred =
-    explain || selection.lanes.length > 0 || emptyRelatedSelection;
+  // loosening that. The escalation above names test-full, which makes this
+  // `provisional` -- and run-ci-fast reads its exit 3 as a deferred selection
+  // and carries on, so a data-only diff does not red fast-checks while its
+  // receipt still names the obligation (#1757).
+  const deferred = explain || selection.lanes.length > 0;
   const failed = counts.failed > 0;
   const childFailed = result.executed.some(
     (execution) => execution.exitCode !== 0 && !execution.infrastructureError,

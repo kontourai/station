@@ -261,6 +261,145 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
 ]);
 
 /** Deterministic, reviewable edges the runtime dependency graph cannot see. */
+/**
+ * Scripts no test imports, whose only coverage runs or reads them from a test
+ * that Vitest's import graph therefore cannot reach. Before these edges a diff
+ * touching one of them produced an empty related selection, and #1757's empty
+ * plan would have let it pass fast-checks with its test never run. `related`
+ * stays true so a future importing test still supplements the edge rather than
+ * replacing it (selectChangedVerification treats tests + related as a
+ * supplement). Each named test is verified to reference its script by
+ * scripts/__tests__/changed-verification.test.ts, not asserted here.
+ */
+const SPAWNED_SCRIPT_EDGE_REASON =
+  'script is executed or read by its test rather than imported, so the ' +
+  'import graph has no edge to it (#1757)';
+
+export const SPAWNED_SCRIPT_EDGES = Object.freeze([
+  Object.freeze({
+    pattern: 'scripts/build-desktop.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/desktop-build-manifest.test.ts']),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/build-desktop-resources.mjs',
+    related: true,
+    tests: Object.freeze([
+      'scripts/__tests__/server-build-portability.test.ts',
+    ]),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/check-basis-mcp-apps.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/basis-mcp-apps.test.ts']),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/check-dist-freshness.mjs',
+    related: true,
+    tests: Object.freeze([
+      'scripts/__tests__/guardrail-known-bad-fixtures.test.ts',
+    ]),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/check-mobile-compile.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/verification-lanes.test.ts']),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/check-prepush-sdk-barrel.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/gate-for.test.ts']),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/ecosystem-manifest.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/ecosystem-manifest.test.ts']),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/evidence-check-execution-gate.mjs',
+    related: true,
+    tests: Object.freeze([
+      'scripts/__tests__/evidence-check-execution-gate.test.ts',
+    ]),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/generate-issue-lifecycle-reference.mjs',
+    related: true,
+    tests: Object.freeze([
+      'scripts/__tests__/guardrail-known-bad-fixtures.test.ts',
+    ]),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/literal-swap-gate.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/literal-swap-gate.test.ts']),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/merge-ui-bundle-budget.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/ui-bundle-budget.test.ts']),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/release-cohort-workflow.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/release-cohort.test.ts']),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/stage-desktop-server-runtime.mjs',
+    related: true,
+    tests: Object.freeze([
+      'scripts/__tests__/server-build-portability.test.ts',
+    ]),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/voice-realtime-live-smoke.mjs',
+    related: true,
+    tests: Object.freeze([
+      'scripts/__tests__/voice-realtime-live-smoke.test.ts',
+    ]),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/write-android-build-manifest.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/android-build-manifest.test.ts']),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/write-desktop-build-manifest.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/desktop-build-manifest.test.ts']),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/write-dist-stamp.mjs',
+    related: true,
+    tests: Object.freeze([
+      'scripts/__tests__/guardrail-known-bad-fixtures.test.ts',
+    ]),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/write-ios-build-manifest.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/release-workflow.test.ts']),
+    reason: SPAWNED_SCRIPT_EDGE_REASON,
+  }),
+]);
+
 export const TEST_IMPACT_MANIFEST = Object.freeze([
   {
     pattern: 'src-desktop/Cargo.toml',
@@ -1000,6 +1139,7 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     related: true,
     reason: 'script boundary',
   },
+  ...SPAWNED_SCRIPT_EDGES,
   {
     pattern: 'scripts/prepush-test-manifest.mjs',
     tests: [

@@ -29,6 +29,7 @@ import {
 import { SELECTOR_DEFERRED_EXIT_CODE } from '../run-ci-fast.mjs';
 import {
   E2E_CONTRACT_BOUNDARIES,
+  SPAWNED_SCRIPT_EDGES,
   TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
@@ -746,6 +747,19 @@ describe('changed verification selection', () => {
     });
     expect(result.receipt.terminal.status).toBe('provisional');
     expect(result.receipt.terminal.passed).toBe(false);
+    // Exit 3 must name the next lane (docs/guides/testing.md) and the
+    // test-changed lane declares that empty selections escalate to named
+    // deferred lanes (scripts/verification-lanes.mjs).
+    expect(result.selection.lanes).toEqual([
+      {
+        id: 'test-full',
+        reasons: [
+          `no related suites for ${scenarios.sourceEdges.server}; declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file`,
+        ],
+      },
+    ]);
+    expect(result.selection.escalated).toBe(true);
+    expect(result.nextCommands.map(({ id }) => id)).toEqual(['test-full']);
     // Pinned to the constant run-ci-fast reads, and to its literal value:
     // the whole point of this status is that ci:fast passes over it.
     expect(SELECTOR_DEFERRED_EXIT_CODE).toBe(3);
@@ -756,6 +770,7 @@ describe('changed verification selection', () => {
         'declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file',
     });
     const summary = renderChangedVerificationSummary(result);
+    expect(summary).toContain('[test:changed] lanes: test-full');
     expect(summary).toContain(
       `[test:changed] no related suites for: ${scenarios.sourceEdges.server}`,
     );
@@ -837,6 +852,30 @@ describe('changed verification selection', () => {
     [{ status: 1, stderr: 'discovery failed' }, 'discovery failed'],
   ])('fails closed on malformed related discovery: %s', (result, message) => {
     expect(() => parseRelatedTestDiscovery(result)).toThrow(message);
+  });
+  test('routes every spawned-not-imported script to a test that references it', () => {
+    // Derived, not asserted: each edge must name a test file that exists and
+    // actually references the script, and the selector must reach it. An edge
+    // naming a test that never mentions the script would be a coverage claim
+    // nothing computes.
+    expect(SPAWNED_SCRIPT_EDGES.length).toBeGreaterThanOrEqual(18);
+    for (const edge of SPAWNED_SCRIPT_EDGES) {
+      expect(existsSync(edge.pattern), edge.pattern).toBe(true);
+      expect(edge.related, edge.pattern).toBe(true);
+      const scriptName = edge.pattern.slice('scripts/'.length);
+      for (const testPath of edge.tests) {
+        expect(existsSync(testPath), testPath).toBe(true);
+        expect(readFileSync(testPath, 'utf8'), testPath).toContain(scriptName);
+      }
+      const selection = selectChangedVerification([edge.pattern]);
+      expect(
+        selection.tests.map(({ path }) => path),
+        edge.pattern,
+      ).toEqual([...edge.tests]);
+      // The explicit tests supplement the import graph rather than replacing
+      // it, so a future importing test still selects.
+      expect(selection.relatedPaths, edge.pattern).toEqual([edge.pattern]);
+    }
   });
   test('reads an empty related discovery array as an empty selection', () => {
     expect(parseRelatedTestDiscovery({ status: 0, stdout: '[]' })).toEqual([]);
