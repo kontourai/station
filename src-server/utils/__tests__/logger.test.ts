@@ -11,6 +11,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  captureLoggerLines,
+  stopLoggerCaptures,
+} from '../../__test-utils__/logger-capture.js';
+import {
   createServerLogStore,
   installServerLogSink,
   resetServerLogSinkForTests,
@@ -53,6 +57,7 @@ function readTodayLines(directory: string): any[] {
 const originalEnvLevel = process.env.STATION_LOG_LEVEL;
 
 afterEach(() => {
+  stopLoggerCaptures();
   resetServerLogSinkForTests();
   for (const dir of dirs.splice(0))
     rmSync(dir, { recursive: true, force: true });
@@ -633,6 +638,38 @@ describe('the durable-line sink is injected into the logger seam', () => {
     expect(messages).not.toContain(
       'a line logged before any sink was installed',
     );
+  });
+
+  /**
+   * `installServerLogSink` is documented as the one call that keeps the store
+   * registry and the logger tee in step. A test helper that installs its own
+   * tee therefore has to hand the tee BACK to the installed store when it
+   * stops, or the registry keeps naming a store the logger no longer writes
+   * to — silently, for the rest of the file.
+   */
+  it('a stopped capture puts the tee back on the installed store', async () => {
+    const directory = createTempDir();
+    installServerLogSink({ directory });
+    const logger = createLogger({
+      name: 'capture-restore-logger',
+      level: 'info',
+    });
+
+    const capture = captureLoggerLines();
+    logger.info('written while the capture held the tee');
+    capture.stop();
+    logger.info('written after the capture stopped');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(capture.lines().map((line) => line.msg)).toContain(
+      'written while the capture held the tee',
+    );
+    const messages = readTodayLines(directory).map((line) => line.msg);
+    // The store must be receiving again: this is the assertion that fails if
+    // `stop()` clears the tee instead of restoring it.
+    expect(messages).toContain('written after the capture stopped');
+    // And the captured line went to the capture, not the store.
+    expect(messages).not.toContain('written while the capture held the tee');
   });
 
   it('accepts any structural line sink, with no server-log store involved', () => {
