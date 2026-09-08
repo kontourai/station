@@ -6896,8 +6896,8 @@ describe('lifecycle build + restart ergonomics', () => {
   // station#1867 review round: the test above proves the prune FUNCTION works,
   // but nothing proved `buildApplication` actually calls it — deleting the call
   // site left the whole lifecycle suite green. This pins the WIRING. The build
-  // is made to fail immediately (`execSync` throws on the first `npm run
-  // build:server`), which is enough: the prune runs before the build starts, so
+  // is made to fail immediately (`execSync` throws on the first build step,
+  // `npm run basis:mcp:generate`), which is enough: the prune runs before the build starts, so
   // a swept orphan proves the call site is present without running a real build.
   it('buildApplication prunes stale candidates before the build runs (station#1867)', async () => {
     ensureDir(TEST_CWD);

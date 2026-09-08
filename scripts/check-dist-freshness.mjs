@@ -61,7 +61,7 @@ export function inspectGeneratedBuildInputs({
       [
         `FAIL: ${app.output} is MISSING; it is generated from ${app.entry}.`,
         '      Every typecheck project that imports it would report TS2307 in the',
-        '      importing file rather than here. This is not a source defect.',
+        '      importing file rather than here. This is not a defect in the importing file.',
         '      Fix: npm run basis:mcp:generate',
         '      (dependencies:ci and station build run it too)',
       ].join('\n'),

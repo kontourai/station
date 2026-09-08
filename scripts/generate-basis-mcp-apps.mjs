@@ -47,9 +47,13 @@ async function buildOnce(app) {
 
 const STALE_CONTEXT_BYTES = 48;
 
-/** A reader never sees a half-written 480 KB module: temp file, then rename. */
+/**
+ * A reader never sees a half-written 480 KB module: temp file, then rename.
+ * The temp name carries the pid so two generators in one tree (an install
+ * beside a ci:fast run) cannot interleave writes into the same file.
+ */
 async function writeAtomically(path, text) {
-  const temporary = `${path}.tmp`;
+  const temporary = `${path}.${process.pid}.tmp`;
   await writeFile(temporary, text);
   await rename(temporary, path);
 }
