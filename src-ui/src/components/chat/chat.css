@@ -2365,9 +2365,9 @@
   pointer-events: auto;
 }
 
-.message-details__body > .message__copy-btn,
-.message-details__body > .message__rating,
-.message-details__body > .message__trace {
+.message-details__body .message__copy-btn,
+.message-details__body .message__rating,
+.message-details__body .message__trace {
   position: static;
   opacity: 1;
 }

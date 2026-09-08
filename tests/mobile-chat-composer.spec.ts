@@ -1,6 +1,7 @@
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
+import { expectNoBlockingAccessibilityViolations } from './helpers/accessibility';
 import { backgroundPaint, contrastRatio } from './helpers/color-contrast';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { E2E_STATION_COMPATIBILITY } from './helpers/current-station-contract';
@@ -1782,6 +1783,17 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
     const box = await control.boundingBox();
     expect(box?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  }
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate(
+      (value) => document.documentElement.setAttribute('data-theme', value),
+      theme,
+    );
+    await expectNoBlockingAccessibilityViolations(
+      page,
+      `mobile-answer-details-${theme}`,
+      '[role="dialog"][aria-label="Answer details and actions"]',
+    );
   }
   await page.getByRole('button', { name: 'Close message details' }).click();
   await header
