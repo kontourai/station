@@ -317,29 +317,40 @@ describe('TaskRoomEditorPane', () => {
     },
   );
 
-  test('does not submit an in-flight edit plan after document authority becomes a gap', async () => {
-    let finishPlan!: (value: ReturnType<typeof planned>) => void;
-    mocks.plan.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finishPlan = resolve;
-        }),
-    );
-    const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
-    changeDraft('pending gap draft');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
-    await waitFor(() => expect(mocks.plan).toHaveBeenCalledOnce());
-    mocks.document.data = { kind: 'gap', floor: 'floor' } as never;
-    rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
-    await act(async () => {
-      finishPlan(planned());
-    });
-    expect(mocks.batch).not.toHaveBeenCalled();
-    expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
-    expect((editor() as HTMLTextAreaElement).value).toBe('pending gap draft');
-  });
+  test.each([false, true])(
+    'does not submit an in-flight plan after a document gap (recovered=%s)',
+    async (recovered) => {
+      let finishPlan!: (value: ReturnType<typeof planned>) => void;
+      mocks.plan.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishPlan = resolve;
+          }),
+      );
+      const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
+      changeDraft('pending gap draft');
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Save shared document' }),
+      );
+      await waitFor(() => expect(mocks.plan).toHaveBeenCalledOnce());
+      mocks.document.data = { kind: 'gap', floor: 'floor' } as never;
+      rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+      if (recovered) {
+        mocks.document.data = {
+          kind: 'snapshot',
+          revision: 'new',
+          text: 'new truth',
+        };
+        rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+      }
+      await act(async () => {
+        finishPlan(planned());
+      });
+      expect(mocks.batch).not.toHaveBeenCalled();
+      expect((editor() as HTMLTextAreaElement).readOnly).toBe(!recovered);
+      expect((editor() as HTMLTextAreaElement).value).toBe('pending gap draft');
+    },
+  );
 
   test('guards browser Back and keeps the draft on cancel before replaying on confirm', async () => {
     navigationStore.navigate('/guard-back-origin');
@@ -761,6 +772,52 @@ describe('TaskRoomEditorPane', () => {
       intentId: 'server-intent-1',
       intentDigest: 'a'.repeat(64),
     });
+  });
+
+  test('reconciles an identical retry when document recovery begins during submission', async () => {
+    let finishRetry!: (value: unknown) => void;
+    mocks.plan.mockResolvedValue(planned());
+    mocks.batch
+      .mockResolvedValueOnce({ kind: 'unavailable' })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishRetry = resolve;
+          }),
+      );
+    mocks.refetchAuthoritative.mockResolvedValue({
+      kind: 'snapshot',
+      revision: 'converged',
+      text: 'concurrent truth',
+    });
+    const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
+    changeDraft('possibly committed');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save shared document' }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Retry identical batch' }),
+    );
+    await waitFor(() => expect(mocks.batch).toHaveBeenCalledTimes(2));
+    mocks.document.data = { kind: 'unavailable' } as never;
+    rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+    await act(async () =>
+      finishRetry({
+        kind: 'duplicate',
+        revision: 'older',
+        text: 'older receipt text',
+      }),
+    );
+    expect(mocks.refetchAuthoritative).toHaveBeenCalledWith(
+      mocks.queryClient,
+      'task-1',
+    );
+    expect((editor() as HTMLTextAreaElement).value).toBe('concurrent truth');
+    expect(
+      screen.queryByRole('button', { name: 'Retry identical batch' }),
+    ).toBeNull();
+    // A readable response does not itself restore query/stream write authority.
+    expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
   });
 
   test('does not submit a plan that resolves after authorization becomes terminal', async () => {

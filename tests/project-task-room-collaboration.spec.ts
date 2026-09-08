@@ -3,6 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, type Page, type Route } from '@playwright/test';
 import {
+  seedE2EFirstRunDecision,
+  seedE2EUsageTelemetryDisclosure,
+} from '../scripts/run-e2e-suite.mjs';
+import {
   e2eOperatorAuthorizationHeaders,
   readE2EOperatorCredential,
 } from './helpers/e2e-operator-credential';
@@ -123,7 +127,11 @@ test.describe
       );
       await startStation(live, true, {
         taskRoomControlSocket,
+        logFile: testInfo.outputPath(`${live.instance}.log`),
       });
+      const credential = readE2EOperatorCredential(live.home);
+      await seedE2EFirstRunDecision(live.api, credential);
+      await seedE2EUsageTelemetryDisclosure(live.api, credential);
     });
 
     // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
@@ -161,18 +169,6 @@ test.describe
         serverPort: live.serverPort,
         uiOrigin: live.ui,
       });
-      await page.evaluate(() =>
-        localStorage.setItem('station:onboarding-setup-dismissed', '1'),
-      );
-      const telemetry = page.getByRole('dialog', {
-        name: 'What Station sends',
-      });
-      if (await telemetry.isVisible())
-        await telemetry
-          .getByRole('button', {
-            name: /^(Turn it off|Keep usage telemetry off)$/,
-          })
-          .click();
       const repository = join(fixtureRoot, 'refusal-worktree');
       await createRepository(repository, 'room-refusal');
       await createProject(page, 'room-refusal', repository);
@@ -271,18 +267,6 @@ test.describe
       await expect(
         owner.getByRole('region', { name: 'Station access required' }),
       ).toHaveCount(0);
-      await owner.evaluate(() =>
-        localStorage.setItem('station:onboarding-setup-dismissed', '1'),
-      );
-      const telemetryDialog = owner.getByRole('dialog', {
-        name: 'What Station sends',
-      });
-      if (await telemetryDialog.isVisible())
-        await telemetryDialog
-          .getByRole('button', {
-            name: /^(Turn it off|Keep usage telemetry off)$/,
-          })
-          .click();
 
       const repository = join(fixtureRoot, 'shared-worktree');
       await createRepository(repository, 'room-acceptance');

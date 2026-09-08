@@ -69,6 +69,7 @@ export function TaskRoomEditorPane({
   >();
   const id = useId().replaceAll(':', '');
   const operationGeneration = useRef(0);
+  const documentAuthorityGeneration = useRef(0);
   const authorizationRef = useRef(true);
   const documentAuthorityRef = useRef(true);
   const displayedTaskId = useRef(taskId);
@@ -210,7 +211,9 @@ export function TaskRoomEditorPane({
     document.data?.kind !== 'unavailable';
   if (documentAuthorityRef.current !== documentAuthorityCurrent) {
     documentAuthorityRef.current = documentAuthorityCurrent;
-    operationGeneration.current += 1;
+    // A gap invalidates unsent plans. Submitted exact receipts can still be
+    // reconciled through a fresh read while task/authorization stay current.
+    documentAuthorityGeneration.current += 1;
   }
   useLayoutEffect(() => {
     if (
@@ -448,6 +451,7 @@ export function TaskRoomEditorPane({
     }
     const saveTaskId = taskId;
     const generation = operationGeneration.current;
+    const plannedDocumentGeneration = documentAuthorityGeneration.current;
     if (!isCurrentOperation(generation)) return;
     setRejection(undefined);
     setSettlement(undefined);
@@ -465,7 +469,11 @@ export function TaskRoomEditorPane({
         desiredText: text,
         selection,
       });
-      if (!isCurrentOperation(generation)) return;
+      if (
+        !isCurrentOperation(generation) ||
+        documentAuthorityGeneration.current !== plannedDocumentGeneration
+      )
+        return;
       if (planned.kind === 'unchanged') {
         setPossibleEffect(undefined);
         authoritativeTextRef.current = text;
