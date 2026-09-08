@@ -55,6 +55,7 @@ overrides:
   "@strands-agents/sdk>@opentelemetry/exporter-trace-otlp-http": ^0.221.0
   "@strands-agents/sdk>@opentelemetry/exporter-metrics-otlp-http": ^0.221.0
   "@ai-sdk/provider-utils>undici": ^6.28.0
+  "@kontourai/bearing>csv-parse": ^7.0.2
 patchedDependencies:
   "@voltagent/server-hono@2.0.14": patches/voltagent-server-hono-2.0.14.patch
 strictPeerDependencies: true
