@@ -987,6 +987,68 @@ export function createOrchestrationRoutes(
       getTenantRequestContext(c.req.raw),
       deps.hostedTenantRegistry,
     );
+  /**
+   * One in-flight peer-delegation reconciliation per caller.
+   *
+   * `refreshDelegatedTaskActivity` builds its own read model, takes the last
+   * 20 live peer delegations and `Promise.allSettled`s a remote HTTP read per
+   * delegation, each with a 1.5s timeout
+   * (`station-control-delegation.ts`'s `refreshPeerDelegationActivity`).
+   * `GET /sessions/read-model` is polled, so awaiting that in the response
+   * path put up to 1.5s of peer network latency plus a second full read-model
+   * build in front of data the local store already had, and a slow peer
+   * stalled every subsequent poll behind its own predecessor.
+   *
+   * Keyed by userId, never shared: a poll from one caller must not suppress
+   * another caller's reconciliation, whose peer set and authority are
+   * different. The entry is cleared once the refresh settles, so a completed
+   * (or failed) refresh does not stop the next poll from starting a fresh one.
+   */
+  const delegationActivityRefreshes = new Map<string, Promise<void>>();
+  const startDelegatedTaskActivityRefresh = (userId: string): void => {
+    const refresh = deps.refreshDelegatedTaskActivity;
+    if (!refresh) return;
+    if (delegationActivityRefreshes.has(userId)) return;
+    const settled = (async () => {
+      try {
+        await refresh({ userId });
+      } catch (error) {
+        // Never rethrown, and not because a rejection would crash anything:
+        // `crash-handlers.ts`'s `unhandledRejection` listener logs and
+        // deliberately does NOT exit. Swallowing it here keeps a peer's
+        // failure out of two places it does not belong — the response, which
+        // the poll already answered from the local store, and that
+        // process-level listener, which logs at `error` and would file an
+        // ordinary 1.5s peer timeout as a server error.
+        (deps.logger.warn ?? deps.logger.debug)(
+          'Peer delegation activity refresh failed',
+          { error: error instanceof Error ? error.message : String(error) },
+        );
+      }
+    })();
+    // Install BEFORE arranging the cleanup. `refresh` can throw
+    // SYNCHRONOUSLY — the production binding at `runtime-routes.ts` resolves
+    // `readAuthorityForExecution(input.userId)` before its async body — and a
+    // synchronous throw runs the whole try/catch to completion before the
+    // async IIFE even returns. Clearing the entry from inside that body
+    // therefore deleted a key that had not been written yet, and the `set`
+    // below then installed an already-settled promise nothing would ever
+    // remove: peer reconciliation silently off for that user for the life of
+    // the process.
+    delegationActivityRefreshes.set(userId, settled);
+    const clearEntry = () => {
+      // Identity-checked so an older refresh settling can never evict the
+      // newer entry that replaced it.
+      if (delegationActivityRefreshes.get(userId) === settled) {
+        delegationActivityRefreshes.delete(userId);
+      }
+    };
+    // `then(clear, clear)` rather than `finally`: the returned promise
+    // fulfills on both paths, so even a logger double that throws inside the
+    // catch above cannot produce a second unhandled rejection here.
+    void settled.then(clearEntry, clearEntry);
+  };
+
   const toolResultUnavailable = (c: Context, status: 404 | 503 = 404) => {
     c.header('Cache-Control', 'private, no-store');
     return c.json({ success: false, error: 'Tool result unavailable' }, status);
@@ -1062,11 +1124,12 @@ export function createOrchestrationRoutes(
 
   app.get('/sessions/read-model', async (c) => {
     const authority = readAuthorityFor(c);
-    if (deps.refreshDelegatedTaskActivity) {
-      await deps.refreshDelegatedTaskActivity({
-        userId: resolveActorPrincipal(deps, c).userId,
-      });
-    }
+    // Started under the caller's own principal, exactly as before, but no
+    // longer awaited: what the refresh learns is written to the local store
+    // and published by the NEXT read rather than this one. archive#847 asked
+    // that peer evidence reach Activity, not that a poll block on a peer's
+    // network round trip to do it.
+    startDelegatedTaskActivityRefresh(resolveActorPrincipal(deps, c).userId);
     const data = await orchestrationService.listSessionReadModel(authority);
     return c.json({ success: true, data });
   });

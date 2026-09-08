@@ -479,11 +479,21 @@ describe('ProviderService', () => {
     ).rejects.toThrow('is not launchable for this provider');
   });
 
-  test('checkHealth returns provider health', async () => {
+  test('checkHealth reports a provider with no healthCheck as unhealthy', async () => {
     const adapter = createMockStorageAdapter();
     const svc = new ProviderService(adapter as any, async () => ({}) as any);
-    const provider = { healthCheck: vi.fn().mockResolvedValue(true) };
-    expect(await svc.checkHealth(provider as any, 'test')).toBe(true);
+
+    // The discriminating case. `checkHealth` is
+    // `(await provider.healthCheck?.()) ?? false`, and a provider that
+    // implements no probe has observed nothing -- reporting it healthy would
+    // be a health claim nothing derives. This case is what separates `?? false`
+    // from `?? true`; the assertion below only re-read a mock's own return
+    // value, which held whichever default the implementation chose.
+    expect(await svc.checkHealth({} as any, 'test')).toBe(false);
+
+    const probed = { healthCheck: vi.fn().mockResolvedValue(true) };
+    expect(await svc.checkHealth(probed as any, 'test')).toBe(true);
+    expect(probed.healthCheck).toHaveBeenCalledTimes(1);
   });
 
   describe('findDuplicateConnection (#191 R5)', () => {

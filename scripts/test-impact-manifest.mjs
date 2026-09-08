@@ -240,6 +240,17 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     reason: 'Veritas claims are governed as repository data',
   }),
   Object.freeze({
+    pattern: 'scripts/dependency-advisory-exceptions.json',
+    tests: Object.freeze([
+      'scripts/__tests__/dependency-advisory-policy.test.ts',
+    ]),
+    reason:
+      'the advisory residual ledger is read via readFileSync by the policy ' +
+      'script and its test, not imported, so a ledger-only change has no ' +
+      'related-file edge and the selector reported an infrastructure error ' +
+      'instead of running the policy test (station#1753)',
+  }),
+  Object.freeze({
     pattern: 'scripts/mobile-css-baseline.json',
     tests: Object.freeze(['scripts/__tests__/mobile-css-ratchet.test.ts']),
     reason:

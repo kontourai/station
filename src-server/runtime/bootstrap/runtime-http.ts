@@ -159,11 +159,44 @@ export function configureRuntimeHttp({
     const streaming = (c.res.headers.get('content-type') ?? '').startsWith(
       'text/event-stream',
     );
-    logger.info(
-      `${c.req.method} ${c.req.path} ${c.res.status} ${
-        streaming ? `stream-open-after=${elapsedMs}ms` : `${elapsedMs}ms`
-      } origin=${c.req.header('origin') ? 'present' : 'none'}`,
-    );
+    const method = c.req.method;
+    const status = c.res.status;
+    // A successful read is the one request shape that carries no information
+    // once it is over: nothing changed, nothing failed, and the connection is
+    // closed. An idle desktop still produced ~70k of these a day, each one a
+    // synchronous `writeSync` into the NDJSON store, and they buried the
+    // lines an operator opens the log FOR.
+    //
+    // Be exact about what demoting them to `debug` does. The logger seam
+    // gates on `isLevelEnabled` BEFORE it writes the durable store line
+    // (`utils/logger.ts`), and the resolved level defaults to `info`, so at
+    // the default these lines are not written anywhere — they are dropped,
+    // not filed one level down. The Developer Logs level filter is a
+    // READ-side floor over what the store already holds and cannot bring
+    // back a line that was never written. Retaining them is a WRITE-side
+    // setting chosen before the fact: `STATION_LOG_LEVEL=debug`, or
+    // `logLevel` in `app.json`. That is the trade — a successful read stops
+    // being free-standing history and becomes something an operator opts
+    // into while reproducing.
+    //
+    // Everything else stays at `info`: any non-2xx/304, every mutation
+    // whether or not it succeeded, and every streaming response — an SSE
+    // connection opening is the start of something long-lived, not a
+    // completed read.
+    const routineRead =
+      !streaming &&
+      (method === 'GET' || method === 'HEAD') &&
+      (status === 304 || (status >= 200 && status < 300));
+    // One line, one shape, whichever level carries it: a reader filtering by
+    // level must never also have to parse two formats.
+    const line = `${method} ${c.req.path} ${status} ${
+      streaming ? `stream-open-after=${elapsedMs}ms` : `${elapsedMs}ms`
+    } origin=${c.req.header('origin') ? 'present' : 'none'}`;
+    if (routineRead) {
+      logger.debug(line);
+    } else {
+      logger.info(line);
+    }
   });
 
   if (security) {
