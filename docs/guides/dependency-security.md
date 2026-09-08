@@ -173,8 +173,8 @@ starts failing.
 
 That schedule is also the repository's own detector for a floor break nothing
 in the repository caused. A newly disclosed advisory, or an affected range
-narrowing until a residual record is unused, reds the floor for every pull
-request from the moment the registry publishes it — with no commit to
+narrowing until a residual record is unused, reds the floor for every
+dependency-touching pull request from the moment the registry publishes it — with no commit to
 attribute it to, and outside what the expiry warning above can see. The
 scheduled run scans on its own cadence, and a failure files or updates one
 tracking issue through `.github/workflows/main-health.yml`, titled

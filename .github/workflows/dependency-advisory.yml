@@ -3,11 +3,11 @@ name: Scheduled dependency advisory floor
 # PRs scan changed dependency inputs; this independent scan detects newly
 # disclosed advisories even when all committed dependency inputs are unchanged.
 #
-# Four slots a day rather than one (#1753). A registry-side change reds the
-# floor for every PR from the moment it publishes, with no commit to attribute
-# it to: a newly disclosed advisory, or an existing advisory's affected range
+# Four slots a day rather than one (tracked on #1753). A registry-side change
+# reds the floor for every dependency-touching PR from the moment it publishes,
+# with no commit to attribute it to: a newly disclosed advisory, or an existing advisory's affected range
 # narrowing until a ledger residual is unused (the policy fails on an unused
-# record by design). On 2026-09-08 three such changes landed after that day's
+# record by design). On 2026-09-08 four such changes landed after that day's
 # scan had already run green at 12:55Z, and each was found by whichever pull
 # request gated next. The ledger's approaching-expiry warning cannot see
 # either shape — it reads `expires` dates, not what the registry reports.

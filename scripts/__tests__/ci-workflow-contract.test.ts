@@ -340,11 +340,12 @@ describe('CI verification workflow contracts', () => {
     // that workflow's own comments, so a substring check over the source
     // would stay green if the key itself changed while the prose survived.
     //
-    // A registry-side break reds the floor for every pull request with no
+    // A registry-side break reds the floor for every pull request whose diff
+    // touches a dependency input (the policy narrows by range), with no
     // commit to attribute it to — a newly disclosed advisory, or an affected
     // range narrowing until a ledger residual is unused. Four slots a day
     // bound how long that goes unattributed; one slot leaves it to whichever
-    // pull request gates next, which is how three such breaks were found on
+    // pull request gates next, which is how four such breaks were found on
     // 2026-09-08.
     expect(document?.on?.schedule).toEqual([{ cron: '23 2,8,14,20 * * *' }]);
     expect(document?.on).toHaveProperty('workflow_dispatch');
