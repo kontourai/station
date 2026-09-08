@@ -88,7 +88,9 @@ function fixture(whenReady: () => Promise<void>) {
   return search;
 }
 
-function messagesSource(outcome: UnifiedSearchOutcome) {
+function messagesSource(
+  outcome: Exclude<UnifiedSearchOutcome, { state: 'invalid' }>,
+) {
   return outcome.sources?.find(
     (source) => source.providerId === 'station.messages',
   );
@@ -122,6 +124,11 @@ describe('transcript worker warm-up (station#1707)', () => {
     start();
 
     const resolved = await outcome;
+    // `invalid` is the other arm of the union, and it carries neither
+    // `sources` nor `results` — reaching it would make every assertion below
+    // unreachable rather than failing, so it is refused here by name.
+    if (resolved.state === 'invalid')
+      throw new Error(`search was refused as invalid: ${resolved.reason}`);
     expect(messagesSource(resolved)?.state).toBe('available');
     // An `available` source that returned nothing would satisfy the state
     // assertion alone, so the match has to arrive with it.
