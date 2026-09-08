@@ -7,7 +7,7 @@ import { displayProvider } from '../../utils/sessionDisplay';
 import { Button } from '../Button';
 import { AgentIcon } from '../icons/AgentIcon';
 import { SessionDetail } from '../session-detail/SessionDetail';
-import { SkeletonBlock } from '../state';
+import { ErrorState, SkeletonBlock } from '../state';
 import './ImportedConversationPane.css';
 
 /** A conversation reader in the dock, not a separate inspector or dialog. */
@@ -124,23 +124,49 @@ export default function ImportedConversationPane({
         <SkeletonBlock count={1} label="Opening conversation" />
       )}
       {source.isError && (
-        <div role="alert">
-          <p>Could not open this conversation.</p>
-          <Button onClick={() => void source.refetch()}>Retry</Button>
-        </div>
+        <ErrorState
+          className="imported-conversation-pane__error"
+          variant="compact"
+          title={
+            source.data
+              ? 'Could not refresh this conversation'
+              : 'Could not load this conversation'
+          }
+          description={
+            source.data
+              ? 'Showing the history already loaded. New messages may be missing until Station reconnects.'
+              : 'Station could not retrieve the history. Try again when the connection is available.'
+          }
+          action={
+            <Button
+              pending={source.isFetching}
+              pendingLabel="Retrying…"
+              onClick={() => void source.refetch()}
+            >
+              Retry
+            </Button>
+          }
+        />
       )}
       {(continued.isError || openFailed) && (
-        <div role="alert" className="imported-conversation-pane__error">
-          <p>The continuation was created, but could not be opened yet.</p>
-          <Button
-            onClick={() => {
-              if (continued.isError) void continued.refetch();
-              else void openContinued();
-            }}
-          >
-            Retry opening
-          </Button>
-        </div>
+        <ErrorState
+          className="imported-conversation-pane__error"
+          variant="compact"
+          title="Could not open the continuation"
+          description="The continuation was created. Your original history and message are still here; retry opening to continue."
+          action={
+            <Button
+              pending={continued.isFetching}
+              pendingLabel="Opening…"
+              onClick={() => {
+                if (continued.isError) void continued.refetch();
+                else void openContinued();
+              }}
+            >
+              Retry opening
+            </Button>
+          }
+        />
       )}
       {source.data && (
         <SessionDetail

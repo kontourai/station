@@ -152,3 +152,27 @@ describe('imported conversation in the dock', () => {
     }
   });
 });
+
+test('a failed refresh preserves history and explains that updates are unavailable', () => {
+  const view = setup();
+  query.mockImplementation((id: string) => ({
+    data:
+      id === 'source'
+        ? { session: { threadId: 'source', controlMode: 'read-only-attached' } }
+        : undefined,
+    isError: id === 'source',
+    refetch: vi.fn(),
+  }));
+  view.rerender(
+    <ImportedConversationPane
+      threadId="source"
+      apiBase=""
+      onContinueInDock={view.onContinueInDock}
+    />,
+  );
+  expect(screen.getByRole('alert').textContent).toContain(
+    'Could not refresh this conversation',
+  );
+  expect(screen.getByText('Original conversation')).toBeTruthy();
+  expect(screen.queryByText('Could not load this conversation')).toBeNull();
+});

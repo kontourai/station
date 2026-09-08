@@ -1,7 +1,5 @@
 import {
-  lazy,
   type ReactNode,
-  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -17,12 +15,13 @@ import {
 } from '../lib/local-ui-bootstrap';
 import { LOCAL_UI_SESSION_ATTEMPT_LIMIT } from '../lib/local-ui-session-retry';
 import { GuidedConnect } from './GuidedConnect';
+import { LazyBoundary } from './LazyBoundary';
 import { SkeletonBlock } from './state';
 
-const UnpairedSampleWorkspace = lazy(async () => {
+const loadUnpairedSampleWorkspace = async () => {
   const module = await import('./first-run/UnpairedSampleWorkspace');
   return { default: module.UnpairedSampleWorkspace };
-});
+};
 
 interface LocalUiSessionGateProps {
   apiBase: string;
@@ -129,17 +128,13 @@ export function LocalUiSessionGate({
     if (sampleOpen) {
       return (
         <section aria-label="Station sample workspace">
-          <Suspense
-            fallback={
-              // SHELL-13: not a twelfth wait sentence. The wait names itself
-              // in the skeleton's `label`; only the pre-auth access check
-              // above still renders a full-screen sentence, and it is the one
-              // recorded exception to the vocabulary.
+          <LazyBoundary
+            load={loadUnpairedSampleWorkspace}
+            componentProps={{ onConnect: () => setSampleOpen(false) }}
+            pending={
               <SkeletonBlock count={2} label="Opening the sample workspace" />
             }
-          >
-            <UnpairedSampleWorkspace onConnect={() => setSampleOpen(false)} />
-          </Suspense>
+          />
         </section>
       );
     }

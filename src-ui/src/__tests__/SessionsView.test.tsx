@@ -4388,11 +4388,8 @@ describe('Activity presentation (sessions moved under Home)', () => {
     expect(screen.queryByTestId('session-detail')).toBeNull();
   });
 
-  test('groups by the current paired-device name, relabels on rename, and keeps an empty device', () => {
-    pairedDevices = [
-      { id: 'phone-1', name: 'Brian’s Pixel' },
-      { id: 'tablet-1', name: 'Travel tablet' },
-    ];
+  test('groups by recorded client without reading the operator-only device registry', () => {
+    usePairedDevicesQuery.mockClear();
     sessions = [
       activitySession({
         displayTitle: 'Phone-started review',
@@ -4406,57 +4403,12 @@ describe('Activity presentation (sessions moved under Home)', () => {
         },
       }),
     ];
-    const rendered = renderView();
-    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
-
-    expect(screen.getByText('Brian’s Pixel')).toBeTruthy();
-    expect(screen.getByText('Travel tablet')).toBeTruthy();
-    expect(
-      screen
-        .getByText('Travel tablet')
-        .classList.contains('split-pane__section-header--empty'),
-    ).toBe(true);
-
-    pairedDevices = [
-      { id: 'phone-1', name: 'Renamed phone' },
-      { id: 'tablet-1', name: 'Travel tablet' },
-    ];
-    rendered.rerenderSession();
-    expect(screen.getByText('Renamed phone')).toBeTruthy();
-    expect(screen.queryByText('Brian’s Pixel')).toBeNull();
-  });
-
-  test('reads the operator-only device inventory only while the origin axis is shown', () => {
-    // /api/pairing/devices answers 401 to a paired device's own session, and
-    // the fresh-home walkthrough counts every refused request on Activity.
-    // The inventory only names origin groups, so it must not be fetched on
-    // the default task axis at all.
-    pairedDevices = [{ id: 'phone-1', name: 'Idle phone' }];
-    usePairedDevicesQuery.mockClear();
     renderView();
-    const enabledCalls = () =>
-      usePairedDevicesQuery.mock.calls.map(
-        (call) => (call[1] as { enabled?: boolean } | undefined)?.enabled,
-      );
-    expect(enabledCalls().length).toBeGreaterThan(0);
-    expect(enabledCalls().every((enabled) => enabled === false)).toBe(true);
-
     fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
-    expect(enabledCalls().at(-1)).toBe(true);
-    expect(screen.getByText('Idle phone')).toBeTruthy();
-
+    expect(screen.getByText('Paired device · Mobile app')).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'By task' }));
-    expect(enabledCalls().at(-1)).toBe(false);
-  });
-
-  test('renders the paired-device inventory when no sessions exist', () => {
-    pairedDevices = [{ id: 'phone-1', name: 'Idle phone' }];
-    sessions = [];
-    renderView();
     fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
-
-    expect(screen.getByText('Idle phone')).toBeTruthy();
-    expect(screen.queryByText('Nothing has run yet')).toBeNull();
+    expect(usePairedDevicesQuery).not.toHaveBeenCalled();
   });
 
   test('keeps an unrecorded origin out of device groups and discloses mixed origins on the row', () => {
@@ -4479,10 +4431,10 @@ describe('Activity presentation (sessions moved under Home)', () => {
     const { container } = renderView();
     fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
 
-    expect(screen.getByText('Origin not recorded')).toBeTruthy();
-    const deviceHeading = screen.getByText('Brian’s Pixel');
     expect(
-      deviceHeading.classList.contains('split-pane__section-header--empty'),
+      Array.from(
+        container.querySelectorAll('.split-pane__section-header'),
+      ).some((node) => node.textContent === 'Started in Claude Code'),
     ).toBe(true);
     expect(container.textContent).toContain('No provenance session');
     expect(screen.getByText('Also driven from another origin')).toBeTruthy();

@@ -1,8 +1,5 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import {
-  useOrchestrationSessionsQuery,
-  usePairedDevicesQuery,
-} from '@kontourai/station-sdk';
+import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
 import {
   captureReturnFocus,
   restoreReturnFocus,
@@ -27,7 +24,7 @@ import { StatusGlyph } from '../components/status/StatusGlyph';
 import { Tabs, tabElementId, tabPanelElementId } from '../components/Tabs';
 import { useAgents } from '../contexts/AgentsContext';
 import { useOpenChats } from '../contexts/open-chats-store';
-import { resolveClientOriginActor } from '../utils/clientOrigin';
+import { clientOriginSummary } from '../utils/clientOrigin';
 import { modelIdentityLabel } from '../utils/modelCapabilities';
 import { relativeTimeAgo } from '../utils/relativeTime';
 import {
@@ -68,13 +65,13 @@ const ACTIVITY_AXIS_TABS = [
   { key: 'origin', label: 'By origin' },
 ] as const;
 
-function originSection(
-  session: OrchestrationSessionSummary,
-  devices: readonly { id: string; name: string }[],
-): string {
+function originSection(session: OrchestrationSessionSummary): string {
   const origin = session.turnOrigin?.latest;
-  if (!origin) return 'Origin not recorded';
-  return resolveClientOriginActor(origin.actor, devices).label;
+  if (!origin)
+    return session.controlMode === 'read-only-attached'
+      ? `Started in ${session.provider === 'claude' ? 'Claude Code' : session.provider}`
+      : 'Origin not recorded';
+  return clientOriginSummary(origin);
 }
 
 // Keep the archive#4072 observation on the same lazy-boundary rail as Home. The
@@ -272,15 +269,8 @@ export function SessionsView({
     useState<SessionEvidenceReveal | null>(null);
   const [search, setSearch] = useState('');
   const [axis, setAxis] = useState<ActivityAxis>('task');
-  // The device inventory is operator-only on the server
-  // (`/api/pairing/devices` answers 401 to a paired device's own session), and
-  // this view only needs it to name the groups of the origin axis. Reading it
-  // eagerly made every fresh-home Activity visit poll a refused route every
-  // 15 s, which the release walkthrough counts as a request-error. Read it
-  // only while the origin axis is the one being looked at.
-  const { data: pairedDevices = [] } = usePairedDevicesQuery(apiBase, {
-    enabled: axis === 'origin',
-  });
+  // Group from recorded session provenance. The device management registry is
+  // operator-only; reading it here can invalidate a valid browser session.
   /** Active project filter, set by clicking a row's project pill. */
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [delegationParent, setDelegationParent] =
@@ -647,10 +637,7 @@ export function SessionsView({
     }
   }
   const originSectionById = new Map(
-    sessions.map((session) => [
-      session.threadId,
-      originSection(session, pairedDevices),
-    ]),
+    sessions.map((session) => [session.threadId, originSection(session)]),
   );
   const items = laneItems
     .map((item) => ({
@@ -666,16 +653,9 @@ export function SessionsView({
         const rightDelegated = right.section?.startsWith('Delegated/') ? 0 : 1;
         return leftDelegated - rightDelegated;
       }
-      const deviceOrder = new Map(
-        pairedDevices.map((device, index) => [device.name, index]),
-      );
-      return (
-        (deviceOrder.get(left.section ?? '') ?? Number.MAX_SAFE_INTEGER) -
-        (deviceOrder.get(right.section ?? '') ?? Number.MAX_SAFE_INTEGER)
-      );
+      return (left.section ?? '').localeCompare(right.section ?? '');
     });
-  const emptySections =
-    axis === 'origin' ? pairedDevices.map((device) => device.name) : [];
+  const emptySections: string[] = [];
 
   const selected = sessions.find((s) => s.threadId === selectedId) ?? null;
   const delegatedTasks = useMemo(
@@ -755,7 +735,7 @@ export function SessionsView({
             >
               {axis === 'task'
                 ? 'Delegated work is separated from sessions you are driving directly.'
-                : 'Sessions are grouped by their recorded origin; paired devices remain listed when empty.'}
+                : 'Conversations grouped by the app or client where they were started.'}
             </div>
             <ActionOperationsSection />
             <LiveCollaboratorsSection />

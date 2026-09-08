@@ -57,9 +57,8 @@ export function UnpairedSampleWorkspace({
     <div className="unpaired-sample" data-testid="unpaired-sample-workspace">
       <header className="unpaired-sample__banner">
         <p className="unpaired-sample__banner-copy">
-          Sample workspace for {UNPAIRED_SAMPLE_PROJECT}. This is a fixture so
-          the tour has something to point at — not a live Station, and not a
-          gate verdict.
+          Explore {UNPAIRED_SAMPLE_PROJECT} with sample data. Nothing here runs
+          agents or changes your files.
         </p>
         <button
           type="button"
