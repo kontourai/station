@@ -139,6 +139,7 @@
 import { existsSync } from 'node:fs';
 import type { ResourceResolutionResult } from '@kontourai/station-contracts/project-identity';
 import { projectResourceShadowComparisons } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { resolveProjectResource } from './project-resource-resolver.js';
 import {
   recordShadowComparison,
@@ -702,7 +703,7 @@ function emitComparison(
       {
         seam: SEAM,
         homeDir: deps.homeDir,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       },
     );
   }

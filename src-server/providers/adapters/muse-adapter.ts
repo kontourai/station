@@ -18,6 +18,7 @@ import {
   providerOps,
 } from '../../telemetry/metrics.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import type {
   ProviderAdapterShape,
@@ -200,8 +201,9 @@ const MUSE_E2E_SMOKE_LIVE_INSTANCE = /^e2e-smoke-live-[a-z0-9]+-[a-z0-9]+$/;
  * the server's cwd is otherwise enough to put ANY variable into `process.env`.
  * That is the case this gate is for, and there the name alone is inert.
  *
- * On a DIRECTLY-LAUNCHED server (`npm run dev:server` / `start:server`, which
- * load dotenv before anything else) there is no attestation at all: nothing
+ * On a DIRECTLY-LAUNCHED server (`npm run dev:server`, or the built
+ * `dist-server/command-station.js` entry run by hand — both load dotenv before
+ * anything else) there is no attestation at all: nothing
  * server-side produces or cross-checks either marker, so a `.env` can set all
  * three variables and the override applies. This gate accepts that residual
  * rather than closing it — exactly as `resource-posture.ts` does with the same
@@ -1334,7 +1336,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       .then(() => true)
       .catch((error: unknown) => {
         this.options.logger?.warn?.(
-          `Muse turn process termination was not confirmed: ${error instanceof Error ? error.message : String(error)}`,
+          `Muse turn process termination was not confirmed: ${errorMessage(error)}`,
         );
         return false;
       })

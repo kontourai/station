@@ -3,6 +3,7 @@ import {
   type ProcessIdentityDependencies,
   probeExactProcessIdentity,
 } from '@kontourai/station-shared/process-identity';
+import { sleep } from '../../utils/sleep.js';
 import {
   emitRestartDiagnostic,
   type RestartStateWriteResult,
@@ -80,10 +81,6 @@ function assertWatchdogPid(pid: number): void {
 }
 
 const defaultFetchImpl: HealthFetch = (url, signal) => fetch(url, { signal });
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function healthCheckUrl(host: string, port: number): string {
   return `http://${host}:${port}/api/system/status`;

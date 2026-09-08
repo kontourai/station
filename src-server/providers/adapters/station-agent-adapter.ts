@@ -74,7 +74,8 @@ const PROVIDER = 'station-agent' as const;
  *
  * Same margin logic as the direct-path client watchdog
  * (`CHAT_STREAM_STALL_TIMEOUT_MS`, `packages/sdk/.../chatRuntimeStream.ts`):
- * the inner `/chat` response carries the SAME `SSE_KEEPALIVE_INTERVAL_MS`
+ * the inner `/chat` response carries the SAME
+ * `CHAT_STREAM_KEEPALIVE_INTERVAL_MS`
  * keepalive comments (`stream-orchestrator.ts`) this bridge already reads
  * (and already ignores — see the `!line.startsWith('data: ')` guard below,
  * unchanged), so this timeout resets on every keepalive too and must stay

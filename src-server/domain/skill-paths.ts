@@ -10,6 +10,7 @@
  * Deliberately dependency-free apart from `node:fs`/`node:path`, so nothing
  * here can create an import cycle between the domain and service layers.
  */
+
 import { lstatSync, realpathSync } from 'node:fs';
 import {
   basename,
@@ -21,6 +22,7 @@ import {
   sep,
 } from 'node:path';
 import { SETUP_IMPORT_MAX_TARGET_NAME_LENGTH } from '@kontourai/station-shared/setup-import-bounds';
+import { errorMessage } from '../utils/error-message.js';
 
 /**
  * Keys that must never be used as a skill name. `JSON.parse` yields
@@ -382,7 +384,7 @@ export function skillPackageDirectoryReport(
   } catch (error) {
     found.push({
       condition: 'unsafe-name',
-      message: error instanceof Error ? error.message : String(error),
+      message: errorMessage(error),
     });
   }
   const resolved = resolve(directory);

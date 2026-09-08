@@ -85,9 +85,11 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 ]);
 
 // Direct `node:child_process` importers discovered from the root corpus, with
-// the reviewed shared-output and dogfood exceptions removed.  The final entry
-// is the responsive UI member of TIMING_RELIABILITY_TEST_FILES; it has no
-// child_process import, but must remain in the bounded timing-sensitive pool.
+// the reviewed shared-output and dogfood exceptions removed, plus reviewed
+// timing-sensitive and other bounded-pool members that import no child_process
+// but must not contend in the ordinary pool. Such admissions should be
+// annotated inline with their reason; do not infer membership from the import
+// alone.
 //
 // ## The constraint on anything you add here (station#1804)
 //
@@ -239,6 +241,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // its exit STATUS is asserted, not just its pure decision functions — a
   // rejection path that has never executed is unproven.
   'scripts/__tests__/prepush-ui-bundle.test.ts',
+  // Asks git (`check-ignore`, `ls-files`) whether the generated Basis MCP app
+  // bundles are ignored and untracked, because .gitignore's text cannot say
+  // whether a rule still matches or a file was force-added. Two single-shot
+  // children, no wall-clock assertion.
+  'scripts/__tests__/basis-mcp-apps.test.ts',
   // #1459: runs the completion-gate summary reporter as a real child process
   // so its EXIT STATUS and its stdout annotations are what the assertions
   // read. Both are the contract — the reporter must never fail a job it only
@@ -645,6 +652,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts',
   'src-server/services/ssh/__tests__/openssh-worker-probe.test.ts',
   'src-server/services/terminal/__tests__/terminal-subprocess-state.test.ts',
+  // Timing-sensitive responsive-UI suites: no child_process import, kept out
+  // of the ordinary pool so a loaded host cannot turn their waits into flakes.
   'src-ui/src/contexts/__tests__/ApiBaseContext.test.tsx',
   'src-ui/src/contexts/__tests__/ApiBaseContext.no-duplicate-connection.test.tsx',
   // Builds a production Vite artifact in a disposable directory to prove the

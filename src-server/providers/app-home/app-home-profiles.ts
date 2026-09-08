@@ -27,6 +27,7 @@
  * (ish) and injectable: the only I/O is the `fs` port (defaults to real
  * `node:fs`/`node:fs/promises`).
  */
+
 import {
   constants as nodeFsConstants,
   lstatSync as nodeLstatSync,
@@ -44,6 +45,7 @@ import {
 } from 'node:fs/promises';
 import { basename, dirname, join, normalize, relative, sep } from 'node:path';
 import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
+import { errorMessage } from '../../utils/error-message.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 
 /** Matches the `any`-typed logger convention used across `providers/adapters`. */
@@ -882,7 +884,7 @@ async function importGlobalSnapshot(
         ? 'global-config-dir-missing'
         : 'global-config-dir-unreadable';
     logger.warn?.(
-      `App home import: could not read global config dir '${globalDir}': ${error instanceof Error ? error.message : String(error)}`,
+      `App home import: could not read global config dir '${globalDir}': ${errorMessage(error)}`,
     );
     return {
       outcome: 'failed',
@@ -1028,10 +1030,7 @@ async function importGlobalSnapshot(
         try {
           await fs.rename(backupPath, destPath);
         } catch (restoreError) {
-          const detailMsg =
-            restoreError instanceof Error
-              ? restoreError.message
-              : String(restoreError);
+          const detailMsg = errorMessage(restoreError);
           // Item 3 (security review round 4): never delete a backup this
           // call could not actually restore from — it is the ONLY
           // remaining copy of the user's pre-import content.
@@ -1065,10 +1064,7 @@ async function importGlobalSnapshot(
           await fs.rmRecursive(destPath);
         }
       } catch (restoreError) {
-        const detailMsg =
-          restoreError instanceof Error
-            ? restoreError.message
-            : String(restoreError);
+        const detailMsg = errorMessage(restoreError);
         if (entry.hadPrior) {
           // Item 3: same "never delete an unrestored backup" posture as
           // the per-entry restore above.
@@ -1094,8 +1090,7 @@ async function importGlobalSnapshot(
         `App home import: preserving backup dir '${backupDir}' — ${restoreFailures.length} entr${restoreFailures.length === 1 ? 'y' : 'ies'} could not be restored during rollback and remain recoverable there.`,
       );
     }
-    const commitDetail =
-      commitError instanceof Error ? commitError.message : String(commitError);
+    const commitDetail = errorMessage(commitError);
     const detail =
       restoreFailures.length > 0
         ? `${commitDetail}; unrestored backups preserved: ${restoreFailures

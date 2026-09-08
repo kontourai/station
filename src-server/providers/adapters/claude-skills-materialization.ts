@@ -72,6 +72,7 @@
  * `skillIds` is a true no-op: no manifest read, no directory created, no
  * writes at all.
  */
+
 import { createHash } from 'node:crypto';
 import {
   lstatSync as nodeLstatSync,
@@ -98,6 +99,7 @@ import {
   resolve as resolvePath,
 } from 'node:path';
 import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
+import { errorMessage } from '../../utils/error-message.js';
 
 /** Matches the `any`-typed logger threaded through the rest of `providers/adapters`. */
 type MaterializationLogger = any;
@@ -411,7 +413,7 @@ async function quarantineManifest(
     );
   } catch (error) {
     logger.warn?.(
-      `Claude skills materialization: manifest '${path}' failed validation (${reason}) and could not be quarantined (${error instanceof Error ? error.message : String(error)}); treating it as absent — nothing in it is acted on.`,
+      `Claude skills materialization: manifest '${path}' failed validation (${reason}) and could not be quarantined (${errorMessage(error)}); treating it as absent — nothing in it is acted on.`,
     );
   }
 }
@@ -1066,12 +1068,12 @@ export async function materializeSkills(
       skipped.push({
         id: rawId,
         reason,
-        detail: error instanceof Error ? error.message : String(error),
+        detail: errorMessage(error),
       });
       logger.warn?.(
         reason === 'symlink-in-source'
           ? `Claude skills materialization: skill '${rawId}' contains a symlink; real copies only, skipping.`
-          : `Claude skills materialization: failed to copy skill '${rawId}' from '${sourceDir}': ${error instanceof Error ? error.message : String(error)}`,
+          : `Claude skills materialization: failed to copy skill '${rawId}' from '${sourceDir}': ${errorMessage(error)}`,
       );
     }
   }

@@ -1,7 +1,10 @@
 import { existsSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { runDir } from '@kontourai/flow';
-import { flowAgentsArtifactRoot, KONTOURAI_DIR } from '@kontourai/flow-agents';
+import {
+  flowAgentsArtifactRoot as flowAgentsRoot,
+  KONTOURAI_DIR,
+} from '@kontourai/flow-agents';
 
 // `@kontourai/flow-agents` 3.x removed the legacy ephemeral workflow-session
 // alias entirely: `.flow-agents` is now exclusively the package's own durable
@@ -12,7 +15,11 @@ import { flowAgentsArtifactRoot, KONTOURAI_DIR } from '@kontourai/flow-agents';
 // package export previously implemented).
 const LEGACY_FLOW_AGENTS_DIR = '.flow-agents';
 
-function legacyFlowAgentsArtifactRoot(cwd: string): string {
+// The canonical root is the package's own export under Station's name for it;
+// the legacy one has no package counterpart (see above) and stays local.
+export { flowAgentsRoot };
+
+export function legacyFlowAgentsRoot(cwd: string): string {
   return resolve(cwd, LEGACY_FLOW_AGENTS_DIR);
 }
 
@@ -127,14 +134,6 @@ export function flowRunArtifactReference(
   return [STATION_ARTIFACT_ROOTS.flowRuns, runId, ...segments].join('/');
 }
 
-export function flowAgentsRoot(cwd: string): string {
-  return flowAgentsArtifactRoot(cwd);
-}
-
-export function legacyFlowAgentsRoot(cwd: string): string {
-  return legacyFlowAgentsArtifactRoot(cwd);
-}
-
 export function workflowSidecarTaskDir(cwd: string, taskSlug: string): string {
   return join(flowAgentsRoot(cwd), taskSlug);
 }
@@ -148,14 +147,6 @@ export function legacyWorkflowSidecarTaskDir(
   taskSlug: string,
 ): string {
   return join(legacyFlowAgentsRoot(cwd), taskSlug);
-}
-
-export function resolveWorkflowSidecarTaskDir(
-  cwd: string,
-  taskSlug: string,
-): string {
-  const next = workflowSidecarTaskDir(cwd, taskSlug);
-  return existsSync(next) ? next : legacyWorkflowSidecarTaskDir(cwd, taskSlug);
 }
 
 export interface WorkflowSidecarTaskPaths {
@@ -228,14 +219,6 @@ export function workflowSidecarTaskPaths(
   };
 }
 
-export function surfaceRunsRoot(cwd: string): string {
-  return stationArtifactPath(cwd, STATION_ARTIFACT_ROOTS.surfaceRuns);
-}
-
-export function legacySurfaceRunsRoot(cwd: string): string {
-  return stationArtifactPath(cwd, STATION_LEGACY_ROOTS.surfaceRuns);
-}
-
 export function veritasGeneratedRoot(cwd: string): string {
   return stationArtifactPath(cwd, STATION_ARTIFACT_ROOTS.veritas);
 }
@@ -254,17 +237,6 @@ export function legacyVeritasGeneratedPath(
   ...segments: string[]
 ): string {
   return join(cwd, STATION_LEGACY_ROOTS.veritas, kind, ...segments);
-}
-
-export function resolveVeritasGeneratedPath(
-  cwd: string,
-  kind: VeritasGeneratedKind,
-  ...segments: string[]
-): string {
-  const next = veritasGeneratedPath(cwd, kind, ...segments);
-  return existsSync(next)
-    ? next
-    : legacyVeritasGeneratedPath(cwd, kind, ...segments);
 }
 
 export function remapGeneratedArtifactReference(reference: string): string {

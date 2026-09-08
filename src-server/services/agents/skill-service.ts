@@ -1,3 +1,4 @@
+import { errorMessage } from '../../utils/error-message.js';
 import type { PluginActivationComposition } from '../plugins/plugin-activation-composition.js';
 /**
  * Agent Skills Service — discovers, indexes, and serves skills
@@ -1567,7 +1568,7 @@ export class SkillService {
           : {}),
       };
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = errorMessage(error);
       if (!config) {
         // No record to fall back to and a body that will not parse: there is
         // nothing this read can answer FROM. Say which failure it was rather
@@ -2231,7 +2232,7 @@ export class SkillService {
       try {
         parseFrontmatter(source);
       } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
+        const detail = errorMessage(error);
         throw new Error(
           `Cannot update ${name}: frontmatter parse failed: ${detail}`,
         );

@@ -1,3 +1,4 @@
+import { errorMessage } from '../../utils/error-message.js';
 import type { ModelCatalogRequest } from '../llm/model-provider-types.js';
 
 export const DEFAULT_MODEL_CATALOG_MAX_ENTRIES = 1000;
@@ -98,9 +99,7 @@ function parseCatalogJson(text: string): unknown {
     return JSON.parse(text);
   } catch (error) {
     throw new ModelCatalogShapeError(
-      `Model catalog response is not JSON: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `Model catalog response is not JSON: ${errorMessage(error)}`,
     );
   }
 }

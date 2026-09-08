@@ -358,8 +358,17 @@ describe('getStoredJobView nextRun', () => {
     });
     const view = read(ledger.listViews())[0];
     expect(view.nextRun).toBeDefined();
-    // Daily at midnight UTC — nextRun is a parseable ISO instant.
-    expect(() => new Date(view.nextRun!)).not.toThrow();
+    // Daily at midnight UTC. `new Date(x)` throws for nothing -- it yields an
+    // Invalid Date -- so the previous `.not.toThrow()` passed for any string
+    // the projection could emit. Parse it, and pin the midnight the cron
+    // expression names.
+    const nextRun = Date.parse(view.nextRun!);
+    expect(Number.isNaN(nextRun)).toBe(false);
+    expect(view.nextRun).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+    );
+    expect(new Date(nextRun).getUTCHours()).toBe(0);
+    expect(new Date(nextRun).getUTCMinutes()).toBe(0);
   });
 
   test('nextRun is undefined for a disabled job', () => {

@@ -27,6 +27,7 @@ import type {
   WorkspaceIsolationConfig,
   WorktreeSessionMetadata,
 } from '@kontourai/station-contracts/workspace-isolation';
+import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
 import {
@@ -741,7 +742,7 @@ export async function executeForegroundMessage(
                 updatedAt: new Date().toISOString(),
               },
             },
-            `Cold session start is accepted but boundary settlement is indeterminate: ${error instanceof Error ? error.message : String(error)}`,
+            `Cold session start is accepted but boundary settlement is indeterminate: ${errorMessage(error)}`,
           );
         }
       }
@@ -771,10 +772,7 @@ export async function executeForegroundMessage(
             terminalState: 'cancelled',
           });
         } catch (cleanupError) {
-          const cleanupMessage =
-            cleanupError instanceof Error
-              ? cleanupError.message
-              : String(cleanupError);
+          const cleanupMessage = errorMessage(cleanupError);
           const message = `LEAKED WORKTREE: session start failed and compensating cleanup failed; manual cleanup is required for path=${worktree.path} branch=${worktree.branch} repo=${worktree.repoPath}: ${cleanupMessage}`;
           const leakFields = {
             worktreePath: worktree.path,

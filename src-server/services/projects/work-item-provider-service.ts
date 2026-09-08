@@ -17,6 +17,7 @@ import type {
   WorkItemProjectContext,
 } from '../../providers/provider-interfaces.js';
 import { workItemProviderListTotal } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 
 interface WorkItemProviderServiceLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
@@ -53,7 +54,7 @@ export class WorkItemProviderService {
         ...result,
       };
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = errorMessage(error);
       this.logger?.warn('Work-item provider threw unexpectedly', {
         providerId: provider.identity.id,
         projectId: context.projectId,

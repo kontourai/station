@@ -177,6 +177,7 @@ import type {
   ResourceResolution,
   ResourceResolutionResult,
 } from '@kontourai/station-contracts/project-identity';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   ProjectResourceResolver,
   type ProjectResourceResolverOptions,
@@ -251,7 +252,7 @@ async function resolveResource(
   } catch (error) {
     return {
       ok: false,
-      reason: error instanceof Error ? error.message : String(error),
+      reason: errorMessage(error),
     };
   }
 }

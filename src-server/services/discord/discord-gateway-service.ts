@@ -9,6 +9,7 @@ import {
 import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import WebSocket from 'ws';
 import { discordGatewayEvents } from '../../telemetry/metrics.js';
+import { isRecord } from '../../utils/is-record.js';
 import type { Logger } from '../../utils/logger.js';
 import type { DiscordAuthorizationResult } from './discord-authorization.js';
 import { DiscordAuthorizationService } from './discord-authorization.js';
@@ -79,10 +80,6 @@ function recordGatewayEvent(outcome: string): void {
   } catch {
     // Metrics must never affect connection or authorization behavior.
   }
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function gatewayResumeUrl(value: string): string | undefined {
@@ -232,7 +229,7 @@ export class DiscordGatewayService {
   }
 
   private handleHello(payload: unknown): void {
-    if (!isObject(payload) || typeof payload.heartbeat_interval !== 'number') {
+    if (!isRecord(payload) || typeof payload.heartbeat_interval !== 'number') {
       this.options.logger.warn('Discord gateway HELLO was invalid');
       recordGatewayEvent('invalid_hello');
       return;
@@ -278,7 +275,7 @@ export class DiscordGatewayService {
   }
 
   private rememberReady(payload: unknown): void {
-    if (!isObject(payload)) return;
+    if (!isRecord(payload)) return;
     if (typeof payload.session_id === 'string')
       this.sessionId = payload.session_id;
     if (typeof payload.resume_gateway_url === 'string') {
@@ -287,7 +284,7 @@ export class DiscordGatewayService {
   }
 
   private async handleInboundMessage(payload: unknown): Promise<void> {
-    if (!isObject(payload) || !isObject(payload.author)) return;
+    if (!isRecord(payload) || !isRecord(payload.author)) return;
     if (
       typeof payload.author.id !== 'string' ||
       typeof payload.guild_id !== 'string' ||
@@ -460,7 +457,7 @@ function isCanonicalTurnCompletedEvent(
   value: unknown,
 ): value is Extract<CanonicalRuntimeEvent, { method: 'turn.completed' }> {
   return (
-    isObject(value) &&
+    isRecord(value) &&
     value.method === 'turn.completed' &&
     typeof value.turnId === 'string'
   );

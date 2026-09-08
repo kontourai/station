@@ -306,6 +306,10 @@ export default defineConfig(({ command }) => {
           __dirname,
           './packages/connect/src/core/pairingDeepLink.ts',
         ),
+        '@kontourai/station-connect/local-self-provision': path.resolve(
+          __dirname,
+          './packages/connect/src/core/localSelfProvision.ts',
+        ),
         '@kontourai/station-connect': path.resolve(
           __dirname,
           './packages/connect/src/index.ts',
