@@ -122,6 +122,56 @@ function isDirectResponseCall(node, sourceFile, contextAliases) {
   );
 }
 
+const ROUTE_ERROR_CLASS = 'RouteError';
+const ROUTE_ERROR_MODULE = /(?:^|\/)utils\/route-error\.(?:js|ts)$/;
+
+/**
+ * The local names in this file that mean the `RouteError` class, resolved
+ * from the imports rather than from the spelling.
+ *
+ * Matching a bare `RouteError` identifier is both too narrow and too wide.
+ * Too narrow: `import { RouteError as RE }` and
+ * `import * as Errors` + `new Errors.RouteError(...)` are one-line evasions
+ * a lane could write without meaning anything by it. Too wide: another
+ * module could export a class of the same name, and constructing that is not
+ * egress.
+ *
+ * `fallback` is true when the file imports no `RouteError` at all. A source
+ * fragment (the gate's own test cases) and a future re-export through a
+ * barrel both land there, and for a gate the safe direction is to review the
+ * spelling rather than skip it.
+ */
+function collectRouteErrorBindings(sourceFile) {
+  const classNames = new Set();
+  const namespaceNames = new Set();
+  let importsForeignRouteError = false;
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    if (!ts.isStringLiteralLike(statement.moduleSpecifier)) continue;
+    const fromRouteErrorModule = ROUTE_ERROR_MODULE.test(
+      statement.moduleSpecifier.text,
+    );
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings) continue;
+    if (ts.isNamespaceImport(bindings)) {
+      if (fromRouteErrorModule) namespaceNames.add(bindings.name.text);
+      continue;
+    }
+    for (const element of bindings.elements) {
+      if ((element.propertyName ?? element.name).text !== ROUTE_ERROR_CLASS) {
+        continue;
+      }
+      if (fromRouteErrorModule) classNames.add(element.name.text);
+      else importsForeignRouteError = true;
+    }
+  }
+  return {
+    classNames,
+    namespaceNames,
+    fallback: classNames.size === 0 && !importsForeignRouteError,
+  };
+}
+
 /**
  * `new RouteError(status, clientMessage, { code, details, cause })` is a
  * response sink, exactly like `c.json`.
@@ -134,11 +184,18 @@ function isDirectResponseCall(node, sourceFile, contextAliases) {
  * `c.json({ error: errorMessage(e) }, 400)` to
  * `throw new RouteError(400, e.message)` silently removes it from review.
  */
-function isRouteErrorConstruction(node) {
+function isRouteErrorConstruction(node, bindings) {
+  if (!ts.isNewExpression(node)) return false;
+  const target = node.expression;
+  if (ts.isIdentifier(target)) {
+    if (bindings.classNames.has(target.text)) return true;
+    return bindings.fallback && target.text === ROUTE_ERROR_CLASS;
+  }
   return (
-    ts.isNewExpression(node) &&
-    ts.isIdentifier(node.expression) &&
-    node.expression.text === 'RouteError'
+    ts.isPropertyAccessExpression(target) &&
+    ts.isIdentifier(target.expression) &&
+    bindings.namespaceNames.has(target.expression.text) &&
+    target.name.text === ROUTE_ERROR_CLASS
   );
 }
 
@@ -605,6 +662,7 @@ export function findDirectRouteMessageEgress(source, file) {
   );
   const found = [];
   const contextAliases = collectHonoContextAliases(sourceFile);
+  const routeErrorBindings = collectRouteErrorBindings(sourceFile);
   const taintOf = collectTaintedErrorBindings(sourceFile);
   const record = (node, expression) => {
     found.push({
@@ -627,7 +685,7 @@ export function findDirectRouteMessageEgress(source, file) {
       if (node.arguments[0]) scan(node.arguments[0]);
       return;
     }
-    if (isRouteErrorConstruction(node)) {
+    if (isRouteErrorConstruction(node, routeErrorBindings)) {
       const scan = (candidate) => {
         // `sanitizeFreeText(error.message)` and friends are the reviewed way
         // to build a client message from caught text.
@@ -638,19 +696,29 @@ export function findDirectRouteMessageEgress(source, file) {
         ) {
           return;
         }
-        if (
-          ts.isPropertyAccessExpression(candidate) &&
-          candidate.name.text === 'message'
-        ) {
-          record(node, candidate.getText(sourceFile));
-          return;
+        if (ts.isPropertyAccessExpression(candidate)) {
+          // `.message` anywhere, as in the `c.json` scan above, plus any
+          // OTHER field read off a caught error -- `stderr`, `detail`,
+          // `conflictId` are text too. Recorded whole, so the allowlist
+          // entry names the field that was reviewed: the taint resolver
+          // stops at `.message`, so without this the recursion would run
+          // past the property access and record the bare root instead.
+          if (
+            candidate.name.text === 'message' ||
+            taintOf(candidate.expression)
+          ) {
+            record(node, candidate.getText(sourceFile));
+            return;
+          }
         }
         // Anything else the taint resolver traces back to a catch binding:
         // an alias (`const detail = error.message`), `String(error)`, or a
-        // template literal interpolating one.
-        const coercion = taintOf(candidate);
-        if (coercion && !ts.isObjectLiteralExpression(candidate)) {
-          record(node, coercion);
+        // template literal interpolating one. The identity is the expression
+        // as written at the sink, not the taint root, so two tainted
+        // arguments in one route are two reviewable entries rather than
+        // `:: error :: 1` and `:: error :: 2`.
+        if (!ts.isObjectLiteralExpression(candidate) && taintOf(candidate)) {
+          record(node, candidate.getText(sourceFile));
           return;
         }
         ts.forEachChild(candidate, scan);

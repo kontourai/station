@@ -209,9 +209,106 @@ describe('route error egress gate', () => {
 
     // `detail` is an alias of the caught value, so it is flagged even though
     // no `.message` appears; `cause: error` is not, because the boundary
-    // never sends it.
+    // never sends it. The identity is the expression AT THE SINK, so two
+    // tainted arguments in one route are two reviewable entries rather than
+    // two occurrences of the shared taint root.
     expect(findDirectRouteMessageEgress(source, FILE)).toEqual([
-      'src-server/routes/example.ts :: route POST /review :: String(error) :: 1',
+      'src-server/routes/example.ts :: route POST /review :: detail :: 1',
+    ]);
+  });
+
+  test('names the field when a caught error contributes structured data, not the taint root', () => {
+    const source = `
+      app.post('/review', async (context) => {
+        try {
+          await task();
+        } catch (error) {
+          throw new RouteError(409, 'Already claimed', {
+            code: (error as any).code,
+            details: { conflictId: (error as any).conflictId },
+            cause: error,
+          });
+        }
+      });
+    `;
+
+    // Both are reads off the caught value, and neither is `.message`, so the
+    // taint resolver is what finds them. Recorded whole: an allowlist entry
+    // has to say WHICH field was reviewed, and before this both of these
+    // were `:: error :: 1` and `:: error :: 2`.
+    expect(findDirectRouteMessageEgress(source, FILE)).toEqual([
+      'src-server/routes/example.ts :: route POST /review :: (error as any).code :: 1',
+      'src-server/routes/example.ts :: route POST /review :: (error as any).conflictId :: 1',
+    ]);
+  });
+
+  test('matches the RouteError binding through an alias or a namespace import', () => {
+    const aliased = `
+      import { RouteError as RE } from '../../utils/route-error.js';
+      app.post('/review', async (context) => {
+        try {
+          await task();
+        } catch (error) {
+          throw new RE(400, (error as Error).message);
+        }
+      });
+    `;
+    const namespaced = `
+      import * as Errors from '../../utils/route-error.js';
+      app.post('/review', async (context) => {
+        try {
+          await task();
+        } catch (error) {
+          throw new Errors.RouteError(400, (error as Error).message);
+        }
+      });
+    `;
+
+    // Both were clean before the binding was resolved from the import: a
+    // one-line rename took a route out of review while it sent strictly
+    // more to the client.
+    expect(findDirectRouteMessageEgress(aliased, FILE)).toEqual([
+      'src-server/routes/example.ts :: route POST /review :: (error as Error).message :: 1',
+    ]);
+    expect(findDirectRouteMessageEgress(namespaced, FILE)).toEqual([
+      'src-server/routes/example.ts :: route POST /review :: (error as Error).message :: 1',
+    ]);
+  });
+
+  test('does not treat a same-named class from another module as the sink', () => {
+    const source = `
+      import { RouteError } from './board-route-error.js';
+      app.post('/review', async (context) => {
+        try {
+          await task();
+        } catch (error) {
+          throw new RouteError(400, (error as Error).message);
+        }
+      });
+    `;
+
+    // Constructing an unrelated class is not egress, and the spelling is not
+    // what makes it one. The negative direction matters: without it the
+    // binding resolution could be a no-op that always falls back to the name.
+    expect(findDirectRouteMessageEgress(source, FILE)).toEqual([]);
+  });
+
+  test('still reviews the spelling in a file that imports no RouteError at all', () => {
+    // Every case above that omits the import relies on this, and so would a
+    // future re-export through a barrel. For a gate, reviewing an unresolved
+    // name beats skipping it.
+    const source = `
+      app.post('/review', async (context) => {
+        try {
+          await task();
+        } catch (error) {
+          throw new RouteError(400, (error as Error).message);
+        }
+      });
+    `;
+
+    expect(findDirectRouteMessageEgress(source, FILE)).toEqual([
+      'src-server/routes/example.ts :: route POST /review :: (error as Error).message :: 1',
     ]);
   });
 
