@@ -5,8 +5,8 @@
  *
  * `guardrail-known-bad-fixtures.test.ts` (station#1555) proved five of the
  * gates in this chain bite. It did not enumerate the rest. Walking the
- * package-script graph from `verify:static:raw` finds **53** gates; 17 were
- * already executed as a child process by some test (5 there, 12 by their own
+ * package-script graph from `verify:static:raw` finds **54** gates; 18 were
+ * already executed as a child process by some test (5 there, 13 by their own
  * test file); the other **36 had never had `main()` run under test at all**.
  * Their tests import the pure scanners and feed them strings, which leaves
  * the entry guard, baseline loading, ceiling comparison, the `FAIL:` output
@@ -44,7 +44,7 @@
  * that file holds the exact partition, so the claim above is a derivation
  * from the package-script graph rather than a count written down here.
  * (`check-generated-pages-links.mjs` also gets a pair below. It is NOT one of
- * the 53: the Pages workflow runs it, not `verify:static:raw`. It is here
+ * the 54: the Pages workflow runs it, not `verify:static:raw`. It is here
  * because the fixture was free once the harness existed.)
  *
  * ## What this suite deliberately does NOT do

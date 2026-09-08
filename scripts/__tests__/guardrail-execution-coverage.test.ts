@@ -20,36 +20,34 @@
  */
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-
-/** `docs:truth:gate`'s lanes, spawned by the aggregate runner via `npm run`. */
-const DOCS_TRUTH_LANES = [
-  'contribution:gate',
-  'labels:check',
-  'docs:issue-lifecycle:check',
-  'docs:contributor-commands:check',
-  'docs:public:hygiene',
-  'docs:hygiene:repo',
-  'docs:index:check',
-  'docs:cli-parity:check',
-  'docs:public:contract-examples',
-  'docs:links:check',
-];
+// The aggregate runner spawns its lanes through `npm run`, so the walk
+// below cannot see through it. Seeding from the runner's OWN exported
+// catalog rather than a hand-typed copy is what stops a lane added there
+// from being silently excluded from the derivation — a hand-typed list was
+// already two short of it.
+import { DOCS_TRUTH_GATE_LANES } from '../docs-truth-gate-aggregate.mjs';
 
 /**
  * Walk the package-script graph from `verify:static:raw`, collecting every
  * `node`/`tsx scripts/*.mjs` invocation. `npm run <x>` recurses; anything
  * else is a leaf command.
  *
- * `docs:truth:gate` delegates to an aggregate runner that spawns its lanes
- * through `npm run`, so its lane scripts are seeded explicitly — they are
- * composed into this chain and the walk cannot see through the runner.
+ * Leaves the gate regex does NOT match are collected too, and asserted
+ * against below. Without that, a composition shape the regex cannot see —
+ * `node --enable-source-maps scripts/x.mjs`, `node ./scripts/x.mjs`,
+ * `bash scripts/x.sh`, `pnpm run`, `npm exec` — makes a gate vanish from the
+ * derivation entirely, and the exact-set assertion agrees with itself about
+ * a set that is missing it. A count floor cannot notice that; only naming
+ * every leaf can.
  */
-function derivedGateScripts(): string[] {
+function walkPackageScripts(): { gates: string[]; unmatchedLeaves: string[] } {
   const scripts: Record<string, string> = JSON.parse(
     readFileSync('package.json', 'utf8'),
   ).scripts;
   const gates = new Set<string>();
+  const unmatchedLeaves = new Set<string>();
   const seen = new Set<string>();
+  const GATE = /(?:^|\s)(?:node|tsx)\s+scripts\/([A-Za-z0-9._-]+\.(?:mjs|ts))/g;
   const walk = (entry: string) => {
     if (seen.has(entry) || scripts[entry] === undefined) return;
     seen.add(entry);
@@ -62,16 +60,21 @@ function derivedGateScripts(): string[] {
         walk(nested[1]);
         continue;
       }
-      for (const match of segment.matchAll(
-        /(?:^|\s)(?:node|tsx)\s+scripts\/([A-Za-z0-9._-]+\.(?:mjs|ts))/g,
-      )) {
+      GATE.lastIndex = 0;
+      let matched = false;
+      for (const match of segment.matchAll(GATE)) {
         gates.add(match[1]);
+        matched = true;
       }
+      if (!matched) unmatchedLeaves.add(segment);
     }
   };
   walk('verify:static:raw');
-  for (const lane of DOCS_TRUTH_LANES) walk(lane);
-  return [...gates].sort();
+  for (const lane of DOCS_TRUTH_GATE_LANES) walk(lane.script);
+  return {
+    gates: [...gates].sort(),
+    unmatchedLeaves: [...unmatchedLeaves].sort(),
+  };
 }
 
 /**
@@ -145,6 +148,11 @@ const EXECUTED_BY_OWN_TEST: ReadonlyArray<readonly [string, string]> = [
     'scripts/__tests__/dialog-surface-class-guard.test.ts',
   ],
   ['docs-index.mjs', 'scripts/__tests__/docs-index-reachability.test.ts'],
+  // Reached through `docs:foundations:test`, which is a docs-truth lane.
+  [
+    'run-focused-tests.mjs',
+    'scripts/__tests__/vitest-worktree-exclusion.test.ts',
+  ],
   [
     'evidence-check-execution-gate.mjs',
     'scripts/__tests__/evidence-check-execution-gate.test.ts',
@@ -204,14 +212,41 @@ const NOT_EXECUTED: ReadonlyArray<readonly [string, string]> = [
 ];
 
 describe('every gate verify:static:raw composes is accounted for', () => {
-  const derived = derivedGateScripts();
+  const { gates: derived, unmatchedLeaves } = walkPackageScripts();
 
-  it('derives a non-trivial gate set from the package-script graph', () => {
-    // A walk that stopped early would make every assertion below vacuous —
-    // an empty partition trivially equals an empty derived set.
-    expect(derived.length).toBeGreaterThan(40);
+  it('reaches the far end of the chain', () => {
+    // Not a count floor. A floor cannot notice a handful of gates vanishing,
+    // which is the exact shape the leaf assertion below exists to catch; and
+    // it is redundant against the partition, since a walk that stopped early
+    // yields a `derived` the classified set no longer equals. What is worth
+    // pinning is that the walk reaches BOTH ends: the first gate the chain
+    // names and the last.
     expect(derived).toContain('a11y-ratchet.mjs');
     expect(derived).toContain('typecheck-aggregate.mjs');
+    // Reached only through the docs-truth aggregate's own lane catalog, so
+    // this is also the pin that the seed comes from that catalog.
+    expect(derived).toContain('check-markdown-links.mjs');
+  });
+
+  it('accounts for every leaf the gate pattern does not match', () => {
+    // The derivation is a regex over shell text, and a shape it cannot see is
+    // a gate that silently leaves the set — after which the exact partition
+    // below agrees with itself about an incomplete world. So every leaf that
+    // is not a gate invocation must be one of the two things the chain
+    // legitimately ends in, named here. `node --flag scripts/x.mjs`,
+    // `node ./scripts/x.mjs`, `bash scripts/x.sh`, `pnpm run x` and
+    // `npm exec x` all fail this rather than vanishing.
+    const ALLOWED_LEAF = /^(?:npx\s+)?(?:biome check|vitest run)\s/;
+    const unexpected = unmatchedLeaves.filter(
+      (leaf) => !ALLOWED_LEAF.test(leaf),
+    );
+    expect(
+      unexpected,
+      'a composed leaf command is neither a `node|tsx scripts/<name>` gate nor a biome/vitest invocation; if it is a gate, the derivation regex cannot see it',
+    ).toEqual([]);
+    // And the leaf set is non-empty, so a walk that collected nothing cannot
+    // pass this by having nothing to reject.
+    expect(unmatchedLeaves.length).toBeGreaterThan(0);
   });
 
   it('partitions that set exactly — no gate unclassified, no entry invented', () => {
