@@ -1,13 +1,30 @@
+import { mkdtempSync, rmSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test, vi } from 'vitest';
+import { afterAll, describe, expect, test, vi } from 'vitest';
 
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import {
   loadIntegrationConfig,
   saveIntegrationConfig,
 } from '../../../domain/config-loader-storage.js';
+
+// These project homes named a fixed path in the shared, world-writable system temp
+// directory, and the service writes stored env and secret bindings under them. Any other process on the host can occupy that
+// name -- which is how #1790 was found, with a sibling shell's file sitting at
+// `/tmp/x`. Own the root instead, and remove it afterwards so runs stop leaving
+// droppings in `/tmp`.
+const MCP_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-mcp-service-home-'));
+const STORED_ENV_HOME = join(MCP_TEMP_ROOT, 'station-stored-env-migration');
+const SECRET_BINDING_HOME = join(
+  MCP_TEMP_ROOT,
+  'station-secret-binding-management',
+);
+
+afterAll(() => {
+  rmSync(MCP_TEMP_ROOT, { force: true, recursive: true });
+});
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   mcpLifecycle: { add: vi.fn() },
@@ -277,7 +294,7 @@ describe('MCPService', () => {
         current = next;
         saved.push(next);
       }),
-      getProjectHomeDir: () => '/tmp/station-stored-env-migration',
+      getProjectHomeDir: () => STORED_ENV_HOME,
     });
     const grants = new Set<string>();
     let failOther = true;
@@ -784,7 +801,7 @@ describe('MCPService', () => {
     const loader = withAtomicUpdate({
       loadIntegration: vi.fn().mockResolvedValue(def),
       saveIntegration: vi.fn().mockResolvedValue(undefined),
-      getProjectHomeDir: () => '/tmp/station-secret-binding-management',
+      getProjectHomeDir: () => SECRET_BINDING_HOME,
     });
     const resolver = { resolveForIntegration: vi.fn() };
     const svc = new MCPService(

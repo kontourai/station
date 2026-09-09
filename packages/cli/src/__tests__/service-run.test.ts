@@ -6,12 +6,24 @@ import {
   upsertInstance,
 } from '@kontourai/station-shared/instance-registry';
 import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import type { CollectedChildStatus } from '../commands/lifecycle.js';
 import { superviseService } from '../commands/service-run.js';
 
+// This supervisor base directory named a fixed path in the shared, world-writable system temp
+// directory, and the escalation-ledger test really `mkdirSync`s and writes a JSON file into it. Any other process on the host can occupy that
+// name -- which is how #1790 was found, with a sibling shell's file sitting at
+// `/tmp/x`. Own the root instead, and remove it afterwards so runs stop leaving
+// droppings in `/tmp`.
+const SERVICE_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-service-run-'));
+const SERVICE_BASE = join(SERVICE_TEMP_ROOT, 'station-service');
+
+afterAll(() => {
+  rmSync(SERVICE_TEMP_ROOT, { force: true, recursive: true });
+});
+
 const lifecycle = {
-  baseDir: '/tmp/station-service',
+  baseDir: SERVICE_BASE,
   homeSource: '--base' as const,
   host: '127.0.0.1',
   instanceName: 'service-test',
@@ -571,7 +583,7 @@ describe('service supervisor', () => {
   });
 
   test('a wedge that survived repeated restarts suspends escalation instead of looping (sol #2669 finding 1)', async () => {
-    const ledgerDir = '/tmp/station-service/logs';
+    const ledgerDir = join(SERVICE_BASE, 'logs');
     mkdirSync(ledgerDir, { recursive: true });
     // Three prior escalations "recently" on the harness clock (which starts
     // at 0 and advances 12s per tick) — all within the 15m window.

@@ -9,10 +9,21 @@
  * envelope was written".
  */
 
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { dispatch, executionPlanDigest } from '@kontourai/dispatch';
 import { FakeModelRuntime } from '@kontourai/relay';
 import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import type { FleetCandidateResolution } from '../../../services/inference/fleet-candidate-service.js';
 import {
   type ActionOperationLedger,
@@ -28,6 +39,18 @@ import {
 } from '../authorized-turn-correlation.js';
 import { FleetInferenceRoutingError } from '../fleet-inference-model.js';
 import type { UnsealedFleetRoutingEnvelope } from '../fleet-routing-envelope.js';
+
+// This project home named a fixed path in the shared, world-writable system temp
+// directory, and dispatch writes under it. Any other process on the host can occupy that
+// name -- which is how #1790 was found, with a sibling shell's file sitting at
+// `/tmp/x`. Own the root instead, and remove it afterwards so runs stop leaving
+// droppings in `/tmp`.
+const FLEET_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-fleet-test-'));
+const FLEET_PROJECT_HOME = join(FLEET_TEMP_ROOT, 'station-fleet-test');
+
+afterAll(() => {
+  rmSync(FLEET_TEMP_ROOT, { force: true, recursive: true });
+});
 
 const createAiSdkManagedModel = vi.fn(() => ({ id: 'fake-language-model' }));
 vi.mock('../../frameworks/framework-model-factory.js', () => ({
@@ -119,7 +142,7 @@ function config(
 ) {
   return {
     appConfig: {} as never,
-    projectHomeDir: '/tmp/station-fleet-test',
+    projectHomeDir: FLEET_PROJECT_HOME,
     dispatchEvidenceSource: {
       getConnectionReadinessEvidence: async (ids: readonly string[]) =>
         new Map(ids.map((id) => [id, readiness])),
