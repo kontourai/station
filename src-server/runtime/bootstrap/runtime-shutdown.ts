@@ -61,7 +61,14 @@ export async function shutdownRuntimeServices({
   terminalService: { dispose(): Promise<void> };
   monitoringEmitter?: { flush(): Promise<void> };
   sshEnvironmentService?: { shutdown(): Promise<void> };
-  configLoader: { dispose(): Promise<void> };
+  /**
+   * Optional since station#1815. Omitting it is a HANDOVER, not a skip: the
+   * runtime disposes its own loader after the native-engine adoption window
+   * has settled, because closing the configuration watcher out from under a
+   * live registry writer is the ordering hazard `ConfigLoader.dispose`'s own
+   * docblock describes. Every other caller passes it and is disposed here.
+   */
+  configLoader?: { dispose(): Promise<void> };
   optionalNetworkShutdownTasks?: readonly OptionalNetworkShutdownTask[];
   optionalNetworkShutdownBudgetMs?: number;
 }): Promise<void> {
@@ -193,7 +200,10 @@ export async function shutdownRuntimeServices({
     sshEnvironmentService?.shutdown(),
   );
   await attempt('monitoringEmitter.flush', () => monitoringEmitter?.flush());
-  await attempt('configLoader.dispose', () => configLoader.dispose());
+  await attempt(
+    'configLoader.dispose',
+    configLoader ? () => configLoader.dispose() : undefined,
+  );
 
   if (failures.length > 0) {
     logger.error('Shutdown completed with errors', {

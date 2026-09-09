@@ -121,7 +121,19 @@ export interface NativeEngineAdoptionDeps {
 }
 
 export interface NativeEngineAdoptionSummary {
-  outcomes: Record<string, NativeEngineAdoptionOutcome | 'absent' | 'error'>;
+  /**
+   * What the window OBSERVED per candidate.
+   *
+   * 'absent' means a probe answered and the CLI was not on PATH. It is not a
+   * stand-in for "the window closed before this candidate got an answer" —
+   * that is 'interrupted', added in station#1815 because the abort guards
+   * make the no-answer case reachable and reporting it as absence states a
+   * host fact nothing observed.
+   */
+  outcomes: Record<
+    string,
+    NativeEngineAdoptionOutcome | 'absent' | 'error' | 'interrupted'
+  >;
 }
 
 /**
@@ -273,12 +285,17 @@ export async function adoptDetectedNativeEngines(
       }
     }
   }
-  // An abort closes the retry window, but preserve the last observed absence
-  // for every candidate so callers never mistake an interrupted probe for an
-  // unknown result.
+  // An abort closes the retry window. A candidate that WAS probed keeps the
+  // absence it was observed to have — `??=` never overwrites that. What the
+  // backfill covers is a candidate the window never got an answer for: one
+  // an abort guard stopped before its probe, and (station#1815 review LOW-1)
+  // one whose probe answered `true` and was then stopped before the write.
+  // Calling either of those 'absent' would report a host fact nothing looked
+  // at, in the same field where 'absent' means a probe said no.
+  const interrupted = deps.signal?.aborted === true;
   for (const candidate of NATIVE_ENGINE_CANDIDATES) {
     if (!unresolved.has(candidate.id)) continue;
-    outcomes[candidate.id] ??= 'absent';
+    outcomes[candidate.id] ??= interrupted ? 'interrupted' : 'absent';
   }
   return { outcomes };
 }

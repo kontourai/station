@@ -1,7 +1,10 @@
 // @vitest-environment node
 
 import { describe, expect, test, vi } from 'vitest';
-import { StationRuntime } from '../station-runtime.js';
+import {
+  NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS,
+  StationRuntime,
+} from '../station-runtime.js';
 
 /**
  * station#1815. The runtime holds this home's runtime lease from construction
@@ -13,9 +16,11 @@ import { StationRuntime } from '../station-runtime.js';
  * writer still live, observed as `STATION_HOME_RESET_REQUIRED` and `ENOENT:
  * rename` attributed to whichever case happened to be running (#1791).
  *
- * What these cases have to hold is an ORDER, not a duration: the last
- * registry write settles before the lease is released, or shutdown says it
- * could not establish that.
+ * What these cases have to hold is an ORDER, and it has two halves. The wait
+ * comes AFTER every teardown step the window cannot affect — a stop SIGKILLs
+ * 5 s after SIGTERM, so a wait at the front of teardown means none of it runs
+ * — and BEFORE the only two steps that depend on the window: the loader
+ * dispose and the lease release.
  */
 
 interface ShutdownDouble {
@@ -29,6 +34,11 @@ interface ShutdownDouble {
  * ones it cannot skip. Everything here settles synchronously or in
  * microtasks, which is what makes the adoption window the ONLY outstanding
  * work in these cases — see `letShutdownRunToQuiescence`.
+ *
+ * `orchestrationEventStore.close`, `configLoader.dispose` and the lease
+ * release all record into one array, so the order between them is the
+ * observable. The event-store close is the marker for "teardown that does not
+ * depend on the window": it is the last such step before the wait.
  */
 function shutdownDouble(): ShutdownDouble {
   const log: string[] = [];
@@ -56,11 +66,19 @@ function shutdownDouble(): ShutdownDouble {
   runtime.voiceService = { stop: vi.fn(async () => {}) };
   runtime.terminalWsServer = { stop: vi.fn() };
   runtime.terminalService = { dispose: vi.fn(async () => {}) };
-  runtime.configLoader = { dispose: vi.fn(async () => {}) };
+  runtime.configLoader = {
+    dispose: vi.fn(async () => {
+      log.push('loader-disposed');
+    }),
+  };
   runtime.pluginOperationalEventSubscriptions = {
     close: vi.fn(async () => ({ kind: 'closed' as const })),
   };
-  runtime.orchestrationEventStore = { close: vi.fn() };
+  runtime.orchestrationEventStore = {
+    close: vi.fn(() => {
+      log.push('event-store-closed');
+    }),
+  };
   runtime.stationHomeRuntimeLease = { ownerId: 'test-owner', release };
   return { runtime, log, release };
 }
@@ -83,7 +101,7 @@ async function letShutdownRunToQuiescence(): Promise<void> {
 }
 
 describe('shutdown and the native-engine adoption window (station#1815)', () => {
-  test('releases the home lease only after the last registry write lands', async () => {
+  test('tears down everything else first, then waits, then disposes and releases', async () => {
     const { runtime, log, release } = shutdownDouble();
     let landWrite!: () => void;
     // Stands in for the exact thing the abort cannot stop: an
@@ -95,7 +113,7 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
         resolve();
       };
     });
-    runtime.nativeEngineAdoptionShutdownBudgetMs = 60_000;
+    runtime.nativeEngineAdoptionSettleBudgetMs = () => 60_000;
 
     let shutdownResolved = false;
     const shutdown = runtime.shutdown().then(() => {
@@ -103,13 +121,23 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
     });
 
     await letShutdownRunToQuiescence();
-    expect(log).toEqual([]);
+    // The half the reviewer's I7 probe defeats: with the wait at the front of
+    // teardown this array is still EMPTY here, and a stop that SIGKILLs at 5 s
+    // would have taken the event-store close, the service shutdown and the
+    // plugin subscription close down with it.
+    expect(log).toEqual(['event-store-closed']);
     expect(shutdownResolved).toBe(false);
+    expect(runtime.configLoader.dispose).not.toHaveBeenCalled();
     expect(release).not.toHaveBeenCalled();
 
     landWrite();
     await shutdown;
-    expect(log).toEqual(['registry-write', 'lease-released']);
+    expect(log).toEqual([
+      'event-store-closed',
+      'registry-write',
+      'loader-disposed',
+      'lease-released',
+    ]);
   });
 
   test('aborts the window before waiting on it', async () => {
@@ -118,7 +146,7 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
     runtime.nativeEngineAdoptionSettled = Promise.resolve().then(() => {
       abortedWhenObserved = runtime.nativeEngineAdoptionAbort.signal.aborted;
     });
-    runtime.nativeEngineAdoptionShutdownBudgetMs = 60_000;
+    runtime.nativeEngineAdoptionSettleBudgetMs = () => 60_000;
 
     await runtime.shutdown();
 
@@ -127,17 +155,20 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
     expect(abortedWhenObserved).toBe(true);
   });
 
-  test('reports the expired bound as itself and keeps the lease', async () => {
+  test('discloses a window it ran out of time for without failing the shutdown', async () => {
     const { runtime, log, release } = shutdownDouble();
-    // A writer that never settles: the one state in which the runtime cannot
-    // establish that the home is free.
+    // A writer that never settles. This is NOT only the wedged case: the
+    // registry write takes two file mutation locks at a 10 s admission
+    // deadline each and retries up to 8 times, so ordinary contention reaches
+    // here too — which is why expiry must not report a wedge, and must not
+    // make an otherwise clean shutdown reject.
     runtime.nativeEngineAdoptionSettled = new Promise<void>(() => {});
-    runtime.nativeEngineAdoptionShutdownBudgetMs = 25;
+    runtime.nativeEngineAdoptionSettleBudgetMs = () => 25;
 
     // Fake timers so the ONE thing this case cannot observe any other way —
-    // that the bound fires at the value it was given — is settled by advancing
+    // that the wait ends at the budget it was given — is settled by advancing
     // exactly that far, not by out-waiting it. Nothing else on this double's
-    // teardown path depends on a timer firing. Under a real clock a bound
+    // teardown path depends on a timer firing. Under a real clock a budget
     // widened by a defect is indistinguishable from a slow host until the
     // runner's own deadline expires, which reports a timeout rather than the
     // condition.
@@ -146,41 +177,90 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
       let outcome: unknown = 'still waiting on the adoption window';
       void runtime.shutdown().then(
         (value: unknown) => {
-          outcome = value ?? 'resolved without reporting the condition';
+          outcome = value ?? 'resolved';
         },
         (error: unknown) => {
           outcome = error;
         },
       );
-      // Exactly the budget. A bound that has been widened leaves `outcome`
+      // Exactly the budget. A budget that has been widened leaves `outcome`
       // untouched and this case names that, rather than expiring on the
       // runner's deadline with a timeout that says nothing.
       await vi.advanceTimersByTimeAsync(25);
       await vi.advanceTimersByTimeAsync(0);
 
-      expect(outcome).toBeInstanceOf(Error);
-      expect((outcome as Error).message).toMatch(
-        /Native engine adoption did not settle within 25ms .* lease was retained/s,
+      expect(outcome).toBe('resolved');
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const [message, fields] = runtime.logger.warn.mock.calls.at(-1) ?? [];
+    expect(message).toMatch(/still running when shutdown ran out of time/);
+    // The claim has to stay the one that is derivable. Naming only a wedge
+    // here would be #1814's mistake with a different subject.
+    expect(message).toMatch(/contention or a wedge/);
+    expect(message).toMatch(/lease record is reaped once this process exits/);
+    expect(fields).toEqual({ budgetMs: 25 });
+
+    // Neither claim the runtime can no longer make is made.
+    expect(release).not.toHaveBeenCalled();
+    expect(runtime.configLoader.dispose).not.toHaveBeenCalled();
+    // Everything that does not depend on the writer still ran.
+    expect(log).toEqual(['event-store-closed']);
+    expect(runtime.orchestrationEventStore.close).toHaveBeenCalledTimes(1);
+  });
+
+  test('waits the shipped budget when nothing overrides it', async () => {
+    const { runtime, release } = shutdownDouble();
+    runtime.nativeEngineAdoptionSettled = new Promise<void>(() => {});
+    // No override: this case reads whatever the runtime itself would use.
+
+    vi.useFakeTimers();
+    try {
+      let resolved = false;
+      void runtime.shutdown().then(() => {
+        resolved = true;
+      });
+      await vi.advanceTimersByTimeAsync(
+        NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS - 1,
       );
+      expect(resolved).toBe(false);
+      expect(runtime.logger.warn).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(resolved).toBe(true);
+      expect(runtime.logger.warn.mock.calls.at(-1)?.[1]).toEqual({
+        budgetMs: NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS,
+      });
     } finally {
       vi.useRealTimers();
     }
     expect(release).not.toHaveBeenCalled();
-    expect(log).toEqual([]);
-    // The rest of the teardown still ran — an unaccounted writer must not
-    // strand the services this process is holding open.
-    expect(runtime.orchestrationEventStore.close).toHaveBeenCalledTimes(1);
-    expect(runtime.configLoader.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  test('claims no more time than the process is given', () => {
+    // Pinned as a literal beside the derived case above, which would follow
+    // the constant anywhere. `killProcessTree` SIGKILLs 5 s after SIGTERM
+    // (`packages/cli/src/commands/platform.ts`), so a longer wait here is a
+    // wait on time this process does not have. Raising it is a decision about
+    // that relationship, not a tuning knob.
+    expect(NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS).toBe(5_000);
   });
 
   test('a window that already settled costs shutdown nothing', async () => {
     const { runtime, log, release } = shutdownDouble();
     runtime.nativeEngineAdoptionSettled = Promise.resolve();
-    runtime.nativeEngineAdoptionShutdownBudgetMs = 25;
+    runtime.nativeEngineAdoptionSettleBudgetMs = () => 25;
 
     await runtime.shutdown();
 
     expect(release).toHaveBeenCalledTimes(1);
-    expect(log).toEqual(['lease-released']);
+    expect(runtime.logger.warn).not.toHaveBeenCalled();
+    expect(log).toEqual([
+      'event-store-closed',
+      'loader-disposed',
+      'lease-released',
+    ]);
   });
 });
