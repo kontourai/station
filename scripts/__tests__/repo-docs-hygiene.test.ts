@@ -119,6 +119,54 @@ describe('repo docs hygiene', () => {
     }
   });
 
+  it('reads a hex SHA starting fc/fd as a SHA, and a ULA literal as an address', () => {
+    // The generated deploy ledger records every ship SHA; one starting `fd`
+    // read as a ULA and failed the sweep (#1810). An address needs IPv6
+    // syntax — a first group of at most four hex digits, then a colon.
+    for (const [label, text] of [
+      ['full ship SHA', 'Ship SHA: `fd2c04e8632d40e6e9c53dd13a558a1764375800`'],
+      ['short ship SHA', 'Ship SHA: `fd2c04e` in the ledger table'],
+      ['short SHA starting fc', 'Reverted `fc1a2b3c4d5e` last night'],
+      [
+        'SHA in a URL path',
+        'See https://example.com/commit/fdbeef1234567890abcdef1234567890abcdef12/log',
+      ],
+      [
+        'short SHA starting fe8 leading a commit subject',
+        'fe8abc1: fix the thing (the link-local branch, same shape)',
+      ],
+    ] as const) {
+      const byFile = findingsFor(
+        ['docs/new.md'],
+        read({ 'docs/new.md': text }),
+      );
+      expect(
+        [...byFile.values()].flat(),
+        `${label} must not read as a private address`,
+      ).toEqual([]);
+    }
+    // Positive control: the same branch still catches a real ULA literal, so
+    // the negatives above are a narrowed rule and not a disabled one.
+    const ula = findingsFor(
+      ['docs/new.md'],
+      read({
+        'docs/new.md': 'The peer answers on fd12:3456::1 over the mesh.',
+      }),
+    );
+    expect(
+      evaluate({ byFile: ula, grandfathered: [] }).failures.join('\n'),
+    ).toContain('private-ip: fd12:3456::1');
+    const linkLocal = findingsFor(
+      ['docs/new.md'],
+      // `fe80:` itself is benign for the repo sweep (the guard in
+      // repo-docs-hygiene.mjs), so the control sits elsewhere in fe80::/10.
+      read({ 'docs/new.md': 'The bridge listens on fe9a:1234::1 for peers.' }),
+    );
+    expect(
+      evaluate({ byFile: linkLocal, grandfathered: [] }).failures.join('\n'),
+    ).toContain('private-ip: fe9a:1234::1');
+  });
+
   it('a grandfathered file holds exactly its pinned findings without failing', () => {
     const byFile = findingsFor(
       ['docs/old.md'],
