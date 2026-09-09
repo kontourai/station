@@ -88,6 +88,10 @@ async function seedGalleryConnectionProfile(page: Page): Promise<void> {
               id: connectionId,
             },
             credentialState: 'saved',
+            // This fixture represents an already verified saved Station.
+            // Do not race a successful probe to decide whether the mismatch
+            // disclosure includes the cached-context explanation.
+            lastSuccessAt: 1_700_000_000_000,
           },
         ]),
       );
