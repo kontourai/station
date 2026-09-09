@@ -284,8 +284,9 @@ const AGENT_CONFIGURATION_SHUTDOWN_DRAIN_GRACE_MS = 5_000;
  * sequence, each with a 10 s admission deadline of its own
  * (`lifecycle-events.ts` `acquireGen`), inside a load-CAS-save loop that
  * retries up to 8 times — and each of those iterations re-enters
- * `loadOrCreateAgentRegistry`, which has an 8-attempt loop of its own. The #1815 reviewer measured a completely healthy
- * adoption against ONE ordinary lock holder at 10_000 ms. So expiry cannot
+ * `loadOrCreateAgentRegistry`, which has an 8-attempt loop of its own. The
+ * #1815 reviewer measured a completely healthy adoption against ONE ordinary
+ * lock holder at 10_000 ms. So expiry cannot
  * mean "wedged" and is not reported as such — see
  * `settleNativeEngineAdoption`.
  *

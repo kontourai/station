@@ -9,9 +9,13 @@ export interface CliDetectionOptions {
    * answer channel and no way to widen it without changing every caller, so
    * "the locator said no" and "you cancelled me" arrive identically — and a
    * caller that needs to tell them apart must consult the signal it passed,
-   * as `adoptDetectedNativeEngines` does after each probe. A caller that
-   * passes no signal cannot reach the case at all, which is why
-   * `/api/system/status` needs no such concept.
+   * as `adoptDetectedNativeEngines` does after each probe.
+   *
+   * `/api/system/status` passes a signal (station#1815) and still needs no
+   * such concept — not because it cannot reach the case, which an earlier
+   * version of this sentence claimed in the same change that gave it a
+   * signal, but because it commits the falsy answer on its own expired
+   * budget regardless and caches it either way (station#1832).
    */
   signal?: AbortSignal;
   /**

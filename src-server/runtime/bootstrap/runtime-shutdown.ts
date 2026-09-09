@@ -223,12 +223,18 @@ export async function shutdownRuntimeServices({
     // error and no trace of it ever having been expected. It does not
     // separate that caller from a deliberate handover, and cannot.
     //
+    // "here", not "was not run": the only production caller omits this
+    // parameter and disposes its loader moments later, so a line claiming
+    // the step did not run would assert something untrue on every real
+    // emission. What this function can derive is that it was given no
+    // target.
+    //
     // The message says only what is observable here. A deliberate handover
     // and an omission look identical from inside this function — the
     // parameter is absent, and that is all it knows — so calling it
     // "delegated" would tell the very reader this line exists for exactly the
     // wrong thing.
-    logger.info('Shutdown step had no target and was not run', {
+    logger.info('Shutdown step had no target here', {
       step: 'configLoader.dispose',
     });
   }

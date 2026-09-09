@@ -272,6 +272,14 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       // Below vitest's own 30s `testTimeout`, deliberately: a value equal to
       // it can never fire first, and the diagnostic this wait was given
       // ("the probes never ran") would be unreachable.
+      //
+      // Ten seconds is also, coincidentally, the file mutation lock's
+      // admission deadline — which sits INSIDE the registry work these waits
+      // are waiting through. A single contended admission would therefore
+      // make the wait fire first and blame the probes for lock contention.
+      // Not reachable here, because every case gets its own fresh home from
+      // `createLoader`, and recorded so the coincidence is not rediscovered
+      // as a mystery.
       { timeout: 10_000, interval: 5 },
     );
     // The span starts HERE, not at the call. Everything before the abort —
@@ -379,7 +387,10 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       signal: controller.signal,
     });
     await vi.waitFor(() => expect(detect).toHaveBeenCalledTimes(1), {
-      timeout: 30_000,
+      // Stated, and below vitest's own 30s `testTimeout` so it can fire
+      // first: a wait equal to the framework's deadline can only ever be
+      // reported as "the test timed out", never as "the probes never ran".
+      timeout: 10_000,
       interval: 5,
     });
     controller.abort();

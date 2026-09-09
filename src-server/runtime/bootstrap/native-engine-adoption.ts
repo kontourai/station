@@ -147,14 +147,16 @@ export interface NativeEngineAdoptionSummary {
    *
    * Two edges of that split, recorded rather than closed. An abort landing
    * between a probe RESOLVING and the loop reading the signal turns a genuine
-   * uncancelled absence into 'interrupted', so the first sentence above
-   * describes a superset: everything called 'absent' came from an uncancelled
-   * falsy probe, but not every uncancelled falsy probe is called 'absent'.
-   * That is the conservative direction — it withholds a claim, it never
-   * invents one. And with an EMPTY delay list the loop never runs, so the
-   * backfill's 'absent' branch is reachable with nothing having looked at the
-   * host at all; no production caller passes one, and `deps.delaysMs` exists
-   * only for tests.
+   * uncancelled absence into 'interrupted', so for a production caller the
+   * first sentence describes a superset: everything called 'absent' came from
+   * an uncancelled falsy probe, but not every uncancelled falsy probe is
+   * called 'absent'. That is the conservative direction — it withholds a
+   * claim, it never invents one. The other edge breaks the first sentence
+   * outright, which is why it is scoped to production callers: with an EMPTY
+   * `deps.delaysMs` the loop never runs at all and the backfill reports
+   * 'absent' with nothing having looked at the host. `delaysMs` exists only
+   * for tests and no production caller passes one, so the guarantee holds
+   * where it is read and is stated here where it does not.
    *
    * 'suppressed' is the screenshot containment: no probe was made, by policy.
    * It used to report 'absent' for a host nothing looked at.
@@ -257,24 +259,27 @@ export async function adoptDetectedNativeEngines(
     }
     for (const candidate of NATIVE_ENGINE_CANDIDATES) {
       if (!unresolved.has(candidate.id)) continue;
-      // Defence in depth, and deliberately untested — say so rather than let
-      // a reader assume a case covers it (station#1815 round-4 verifier).
+      // Load-bearing on the shipped path, and deliberately untested — say
+      // both, because an earlier version of this comment said the first was
+      // false and that is what a future reader would use to delete the guard
+      // (station#1815 rounds 4 and 5).
       //
       // What it covers is the one window neither the abort inside a probe nor
       // the check after one reaches: an abort landing during the PREVIOUS
       // candidate's registry write, so the loop arrives here already
-      // cancelled. With the shipped detector that window is unobservable —
-      // `detectCliOnPath` short-circuits on an aborted signal before it
-      // spawns, so no locator child starts either way and the check below the
-      // probe then breaks the loop with the same outcomes and the same call
-      // count. The verifier ran both shapes against the real detector and got
-      // byte-identical results.
+      // cancelled. Run against the REAL detector in that window, with the
+      // guard and without it: the outcomes are identical — `detectCliOnPath`
+      // short-circuits on an aborted signal, so no locator child is spawned
+      // either way and the check below the probe breaks the loop — but the
+      // detector is INVOKED once with the guard and twice without, once more
+      // per remaining candidate.
       //
-      // It is therefore a guard against an INJECTED detector that ignores its
-      // signal, which is every test double in this file and no shipped path.
-      // A case for it would assert a hypothetical, so there is none; what
-      // keeps it here is that `deps.detect` is a public seam and the cost is
-      // one comparison.
+      // Why there is no case for it: reaching this window needs a candidate
+      // whose probe answers true and whose write then runs, which against the
+      // shipped detector means a CLI genuinely installed on the host running
+      // the suite. That is not hermetic. Every case here injects `deps.detect`
+      // instead, and an injected detector reaches this line by a different
+      // route than the one being claimed.
       if (deps.signal?.aborted) break;
       try {
         const found = await detect(candidate.cli, {
