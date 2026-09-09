@@ -17,6 +17,18 @@ on:
     types: [completed]
 
 permissions:
+  # `actions: read` is what listJobsForWorkflowRun needs. Both jobs call it —
+  # close-after-success to refuse a skip-bearing green, report-failure to name
+  # the failing step — and until now it worked only because this repository is
+  # public. An undeclared permission that happens to work is a dependency on
+  # something nobody wrote down; it would start failing the day the repository
+  # went private, in a workflow whose whole job is noticing failure.
+  actions: read
+  # `contents: read` buys exactly one thing: checking out the default branch
+  # so report-failure can call scripts/main-health-comment-policy.mjs. It is
+  # workflow-level, so close-after-success inherits two read grants it does
+  # not use. No write scope beyond issues is granted.
+  contents: read
   issues: write
 
 jobs:
@@ -26,8 +38,26 @@ jobs:
     concurrency:
       group: main-health-${{ github.event.workflow_run.name }}
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    # 5, not the 2 this job used to take: the budget now also covers an
+    # actions/checkout of the monorepo, the paginated jobs lookup, and the
+    # tracker's own comment history, on top of the issue scan it always ran.
+    # A longer bound only delays a genuinely hung run; the tracker is created,
+    # reopened and labelled before any of that work, so a timeout partway
+    # through leaves the tracker correct and costs one comment.
+    timeout-minutes: 5
     steps:
+      # The comment policy is a module, not inline script, so its five cases
+      # are unit-testable without a workflow_run event
+      # (scripts/__tests__/main-health-comment-policy.test.ts). Same shape as
+      # issue-lifecycle.yml: repository-controlled code, decisions in the
+      # module, API calls here — and, like it, a declared trust root.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The default branch, never the code of the run being reported on: a
+          # policy read from the failing commit would be frozen at whatever it
+          # said then. persist-credentials: false — nothing here pushes.
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
       - name: Open or update the workflow tracking issue
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         # Event values stay data: env indirection prevents injection into JavaScript source.
@@ -37,6 +67,7 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         with:
           script: |
+            const { decideMainHealthComment, summarizeRunFailure } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
             const workflowName = process.env.WORKFLOW_NAME;
             const runUrl = process.env.RUN_URL;
             const headSha = process.env.HEAD_SHA;
@@ -63,7 +94,8 @@ jobs:
               });
               return;
             }
-            if (existing.state !== 'open') {
+            const reopened = existing.state !== 'open';
+            if (reopened) {
               await github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -77,11 +109,49 @@ jobs:
               issue_number: existing.number,
               labels: ['bug', 'P1'],
             });
+            // Everything above is the tracker itself and runs first on purpose:
+            // by this point the issue exists, is open and is labelled, so a
+            // throw below costs one comment rather than the tracker. The jobs
+            // call is the same one close-after-success already makes under
+            // these permissions.
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.payload.workflow_run.id,
+              per_page: 100,
+            });
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: existing.number,
+              per_page: 100,
+            });
+            const decision = decideMainHealthComment({
+              workflowName,
+              runUrl,
+              headSha,
+              failures: summarizeRunFailure(jobs),
+              reopened,
+              comments,
+            });
+            core.info(`main-health: ${decision.action} (${decision.reason})`);
+            if (decision.action === 'update-marker') {
+              // Same failure, inside the heartbeat window: record the run in
+              // the marker of the comment that already exists. An edit sends
+              // no notification, so a persistent red stops paging anyone.
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: decision.commentId,
+                body: decision.body,
+              });
+              return;
+            }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: existing.number,
-              body: `The workflow failed again on main.\n\n${details}`,
+              body: decision.body,
             });
 
   close-after-success:
