@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { ManualAddPanel } from '../react/connection-manager-modal/ManualAddPanel';
 
-const HINT = /For development only/i;
+const HINT = /Messages sent this way are not encrypted/i;
 
 function renderPanel(url: string) {
   return render(
@@ -53,13 +53,13 @@ describe('ManualAddPanel explicit HTTP exception', () => {
     expect(add.hasAttribute('disabled')).toBe(true);
     fireEvent.click(
       screen.getByRole('checkbox', {
-        name: 'Allow HTTP for this Station on this device',
+        name: 'Allow an unencrypted connection',
       }),
     );
     expect(add.hasAttribute('disabled')).toBe(false);
     fireEvent.click(
       screen.getByRole('checkbox', {
-        name: 'Allow HTTP for this Station on this device',
+        name: 'Allow an unencrypted connection',
       }),
     );
     expect(add.hasAttribute('disabled')).toBe(true);

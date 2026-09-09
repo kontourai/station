@@ -1325,7 +1325,10 @@ fn station_profiles_path(app: &AppHandle) -> Result<std::path::PathBuf, String> 
         .path()
         .app_config_dir()
         .map_err(|error| format!("resolve Station mobile config directory: {error}"))?;
-    secure_mobile_station_profiles_path(&app_config_dir)
+    let path = secure_mobile_station_profiles_path(&app_config_dir)?;
+    let _lock = lock_station_profiles_for_app(app, &path)?;
+    ensure_mobile_profile_store_genesis(&path)?;
+    Ok(path)
 }
 
 /// Profile metadata controls which native credentials and local service are
@@ -1609,7 +1612,6 @@ fn write_profile_store_genesis_marker(root: &std::path::Path) -> Result<(), Stri
     }
 }
 
-#[cfg(not(mobile))]
 fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), String> {
     #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
@@ -1646,6 +1648,50 @@ fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), Strin
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
         Err(error) => Err(format!("create initial saved Station metadata: {error}")),
     }
+}
+
+/// Mobile owns a private profile store, independent of desktop channel roots.
+/// Called under the profile lock before exposing the first empty snapshot.
+#[cfg(any(mobile, test))]
+fn ensure_mobile_profile_store_genesis(path: &std::path::Path) -> Result<(), String> {
+    let marker = path.with_file_name(".profiles-initialized");
+    let marker_exists = match std::fs::symlink_metadata(&marker) {
+        Ok(metadata) if metadata.file_type().is_file() => true,
+        Ok(_) => return Err("mobile profile initialization marker must be a regular file".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(format!("inspect mobile profile marker: {error}")),
+    };
+    let missing = match read_station_profile_store(path) {
+        Ok(contents) => {
+            parse_station_profile_store(&contents)?;
+            false
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Err(error) => return Err(format!("read mobile Station profiles: {error}")),
+    };
+    if missing && marker_exists {
+        return Err("saved mobile Station metadata is missing after initialization; refusing to recreate it".into());
+    }
+    if !marker_exists {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options
+            .open(&marker)
+            .map_err(|error| format!("create mobile profile marker: {error}"))?;
+        file.write_all(b"station-mobile-profiles-v1\n")
+            .map_err(|error| error.to_string())?;
+        file.sync_all().map_err(|error| error.to_string())?;
+        sync_profile_store_directory(path.parent().ok_or("mobile profile path has no parent")?)?;
+    }
+    if missing {
+        write_empty_station_profile_store(path)?;
+    }
+    Ok(())
 }
 
 /// Establish the shared profile document before a desktop runtime can create
@@ -12584,6 +12630,23 @@ mod tests {
             "ftp://host",
             Some("ftp://host")
         ));
+    }
+
+    #[test]
+    fn mobile_profile_genesis_creates_once_and_preserves_missing_data_guard() {
+        let root =
+            std::env::temp_dir().join(format!("station-mobile-genesis-{}", uuid::Uuid::new_v4()));
+        let path = secure_mobile_station_profiles_path(&root).unwrap();
+        ensure_mobile_profile_store_genesis(&path).unwrap();
+        let first = read_station_profile_store(&path).unwrap();
+        assert_eq!(parse_station_profile_store(&first).unwrap().revision, 0);
+        ensure_mobile_profile_store_genesis(&path).unwrap();
+        assert_eq!(read_station_profile_store(&path).unwrap(), first);
+        std::fs::remove_file(&path).unwrap();
+        assert!(ensure_mobile_profile_store_genesis(&path)
+            .unwrap_err()
+            .contains("refusing to recreate"));
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

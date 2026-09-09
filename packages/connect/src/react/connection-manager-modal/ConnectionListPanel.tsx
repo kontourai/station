@@ -591,9 +591,9 @@ export function ConnectionListPanel({
       <div className="station-connect-footer">
         <section
           className="station-connect-footer__group"
-          aria-label="Connect this browser"
+          aria-label="Connect this device"
         >
-          <h3>Connect this browser</h3>
+          <h3>Connect this device</h3>
           <p>
             Request approval from{' '}
             {connections.find(
@@ -659,8 +659,8 @@ export function ConnectionListPanel({
           className="station-connect-footer__group"
           aria-label="Manage access to this Station"
         >
-          <h3>Devices allowed into this Station</h3>
-          <p>Review connected devices and manage their access.</p>
+          <h3>Connected devices</h3>
+          <p>Choose which devices can connect.</p>
           <button
             type="button"
             onClick={onViewDevices}

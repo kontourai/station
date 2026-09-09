@@ -572,7 +572,7 @@ export function JoinDevicePairingPanel({
             ? 'This Station does not allow access requests from this app address.'
             : status === 429
               ? 'Too many access requests. Wait a moment, then try again.'
-              : 'This Station could not create an access request. Try again.',
+              : 'Could not send your request. Check the connection and try again.',
       );
     } finally {
       requestInFlight.current = false;
@@ -785,10 +785,10 @@ export function JoinDevicePairingPanel({
             }}
           >
             {directLabel
-              ? `Send a short-lived request to ${directLabel}. Approve it once from an already trusted session; this device will reconnect automatically afterward.`
+              ? `Ask to connect to ${directLabel}. Approve this device on that computer.`
               : originIsStation
-                ? 'Send a short-lived request to this Station. Approve it once from an already trusted session; this device will reconnect automatically afterward.'
-                : 'Enter your Station address, then send a short-lived access request. Approve it once from an already trusted session; this device reconnects automatically afterward.'}
+                ? 'Ask to connect. Approve this device on the computer running Station.'
+                : 'Enter the address of the computer running Station, then request access.'}
           </p>
           {!knowsEndpoint && (
             <input
@@ -803,10 +803,10 @@ export function JoinDevicePairingPanel({
           )}
           <HttpConnectionConsent consent={httpConsent} />
           {directEndpoint && (
-            <div className="pairing-target">
-              <span>Connecting to {directLabel || 'Station'}</span>
+            <details className="pairing-target">
+              <summary>Connection details</summary>
               <span className="pairing-target__address">{directEndpoint}</span>
-            </div>
+            </details>
           )}
           {error && (
             <div className="pairing-error" role="alert">
@@ -987,12 +987,11 @@ const SCOPE_PRESET_COPY: Record<
 > = {
   standard: {
     label: 'Standard',
-    description: 'Can read, operate, and open a terminal.',
+    description: 'Can use chats, files, and the terminal.',
   },
   'read-only': {
     label: 'Read-only',
-    description:
-      'Can view and stream state. Cannot mutate anything or open a terminal.',
+    description: 'Can view conversations and activity. Cannot make changes.',
   },
 };
 
@@ -1252,7 +1251,7 @@ export function HostDevicePairingPanel({
       setOffer(value);
     } catch {
       setError(
-        'This Station could not create a pairing code. Check the connection, then try again.',
+        'Could not create a pairing code. Check the connection and try again.',
       );
     }
   };
@@ -1363,10 +1362,9 @@ export function HostDevicePairingPanel({
       {!offer ? (
         <>
           <p style={{ margin: 0, color: 'var(--text-secondary, #999)' }}>
-            The easiest path is to open this Station on the other device and
-            choose <strong>Request access</strong>. Create a five-minute code
-            only when that is not available. The other device receives a
-            credential only after you confirm its name here.
+            Open Station on your other device and choose{' '}
+            <strong>Request access</strong>. You can approve it here, or create
+            a pairing code below.
           </p>
           <fieldset
             style={{

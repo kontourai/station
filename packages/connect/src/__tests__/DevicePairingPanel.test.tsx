@@ -862,7 +862,7 @@ describe('device pairing panels', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     fireEvent.click(
       screen.getByRole('checkbox', {
-        name: 'Allow HTTP for this Station on this device',
+        name: 'Allow an unencrypted connection',
       }),
     );
     fireEvent.click(button);
@@ -1930,7 +1930,7 @@ describe('device pairing panels', () => {
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
     const address = screen.getByLabelText('Station server address');
-    const hint = /For development only/i;
+    const hint = /Messages sent this way are not encrypted/i;
 
     fireEvent.change(address, { target: { value: 'http://192.168.1.9:3141' } });
     expect(await screen.findByText(hint)).toBeTruthy();
@@ -1938,7 +1938,7 @@ describe('device pairing panels', () => {
     expect(request.hasAttribute('disabled')).toBe(true);
     fireEvent.click(
       screen.getByRole('checkbox', {
-        name: 'Allow HTTP for this Station on this device',
+        name: 'Allow an unencrypted connection',
       }),
     );
     expect(request.hasAttribute('disabled')).toBe(false);
@@ -1948,7 +1948,7 @@ describe('device pairing panels', () => {
     expect(request.hasAttribute('disabled')).toBe(false);
     fireEvent.click(
       screen.getByRole('checkbox', {
-        name: 'Allow HTTP for this Station on this device',
+        name: 'Allow an unencrypted connection',
       }),
     );
     expect(request.hasAttribute('disabled')).toBe(true);
@@ -2207,7 +2207,7 @@ describe('device pairing panels', () => {
       );
 
       expect((await screen.findByRole('alert')).textContent).toBe(expected);
-      expect(screen.getByText(/other device receives/i)).toBeTruthy();
+      expect(screen.getByText(/You can approve it here/i)).toBeTruthy();
     },
   );
 
@@ -2256,7 +2256,7 @@ describe('device pairing panels', () => {
       );
 
       expect((await screen.findByRole('alert')).textContent).toBe(
-        'This Station could not create a pairing code. Check the connection, then try again.',
+        'Could not create a pairing code. Check the connection and try again.',
       );
       expect(document.body.textContent).not.toContain('network unavailable');
       expect(document.body.textContent).not.toContain('not-json');

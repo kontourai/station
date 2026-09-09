@@ -289,6 +289,23 @@ passed; 1 means a failure or candidate visual finding; 2 means incomplete
 coverage. Local callers must provide `UI_SWEEP_RESULT=success` only after
 actually running the UI sweep.
 
+For a local review using the installed Muse CLI and its configured provider,
+set `UI_REVIEW_BACKEND=muse`. This does not require the CI review API key.
+Muse receives only the named screenshots and review prompt; shell, file writes,
+web tools, personal context, and session logging are disabled for that run.
+The same per-image accounting and completed-response validation still apply.
+For gallery-only input, place `capture.json` and its PNGs under `<input>/gallery`:
+
+```bash
+UI_AUDIT_REVISION=<captured-commit-sha> UI_REVIEW_BACKEND=muse \
+  node scripts/usability-feedback.mjs <input> <report-directory> --gallery-only
+```
+
+The default Responses API backend remains available through `OPENAI_API_KEY`,
+`OPENAI_BASE_URL`, and `UI_REVIEW_MODEL`. Image capability and funded access
+must both be available; missing credentials or partial responses remain
+`NOT_VERIFIED`, while visible defect candidates retain `FAIL`.
+
 Image findings are candidates requiring reproduction, not permission to edit
 code or replace reference images. The exact pixel comparison remains a separate
 check against the reviewed gallery baseline below. A screenshot audit cannot

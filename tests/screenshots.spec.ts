@@ -1329,7 +1329,7 @@ const SCREENS: Screen[] = [
           .fill('http://100.64.0.20:3492');
         await expect(
           dialog.getByRole('checkbox', {
-            name: 'Allow HTTP for this Station on this device',
+            name: 'Allow an unencrypted connection',
           }),
         ).not.toBeChecked();
         await expect(

@@ -54,12 +54,11 @@ export function HttpConnectionConsent({
           checked={consent.allowed}
           onChange={(event) => consent.setAllowed(event.target.checked)}
         />
-        <span>Allow HTTP for this Station on this device</span>
+        <span>Allow an unencrypted connection</span>
       </label>
       <p className="station-connect-hint">
-        For development only. HTTP does not encrypt Station traffic; use HTTPS
-        for regular connections. This exception applies only to {consent.origin}
-        .
+        Use only for local testing on a network you trust. Messages sent this
+        way are not encrypted.
       </p>
       {consent.error && <p role="alert">{consent.error}</p>}
     </div>
