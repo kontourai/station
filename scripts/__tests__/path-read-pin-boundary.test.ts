@@ -30,7 +30,7 @@
  *    naming a target that never ran, or into a red gate. Both are asserted
  *    below against `packages/cli/src/cli.ts`, the path where it happened.
  *
- * WHAT THIS GATE DOES NOT COVER. The scan is a partial derivation: 142 test
+ * WHAT THIS GATE DOES NOT COVER. The scan is a partial derivation: 143 test
  * files read by path with a module anchor and it reports 80. Both figures are
  * derived and asserted below, so the fraction cannot go stale in prose. A pin
  * reached through a helper parameter (`const read = (p) =>
@@ -81,7 +81,7 @@ const derived = pathReadPinEdges({ root: ROOT });
  * reds. `PATH_READING_SUITES` counts suites the scanner could in principle
  * resolve a pin in; `REPORTED_SUITES` counts the ones it does.
  */
-const PATH_READING_SUITES = 142;
+const PATH_READING_SUITES = 143;
 const REPORTED_SUITES = 80;
 
 /** The two Playwright pins: seen and existence-checked, never scheduled. */
@@ -112,10 +112,20 @@ describe('path-read pins are discovered', () => {
   });
 
   it('finds the pin whose silent break motivated this gate', () => {
-    const dockPin = pins.find(
-      ({ pin }) => pin === 'src-ui/src/components/chat-dock/ChatDock.tsx',
+    // The whole story in one fixture. #1785 moved the outbound-queue call
+    // out of `ChatDock.tsx` into `useConversationBoundaryDialogs.ts`; this
+    // test's pin still read `ChatDock.tsx`, went red on `main`, and nobody's
+    // pull request selected it because a path read has no import edge. #1808
+    // fixed it forward by repointing the pin at the hook — which is where it
+    // reads today, and why this fixture names that file rather than the dock.
+    // Had this gate existed, the move would have scheduled the pin at
+    // fast-checks instead.
+    const outboundQueuePin = pins.find(
+      ({ pin }) =>
+        pin ===
+        'src-ui/src/components/chat-dock/useConversationBoundaryDialogs.ts',
     );
-    expect(dockPin?.tests).toContain(
+    expect(outboundQueuePin?.tests).toContain(
       'src-ui/src/__tests__/useOutboundQueueSnapshot.test.tsx',
     );
   });
@@ -240,13 +250,16 @@ describe('derived pin edges only add to selection', () => {
   });
 
   it('selects the pinning test and this gate for a pinned path', () => {
-    const dock = 'src-ui/src/components/chat-dock/ChatDock.tsx';
-    const after = selectedTests([dock], built);
+    // Touching the hook #1785 moved the call into must schedule the pin that
+    // reads it (#1808 repointed that pin), and must not have done so before.
+    const hook =
+      'src-ui/src/components/chat-dock/useConversationBoundaryDialogs.ts';
+    const after = selectedTests([hook], built);
     expect(after).toContain(
       'src-ui/src/__tests__/useOutboundQueueSnapshot.test.tsx',
     );
     expect(after).toContain(PATH_READ_PIN_BOUNDARY_TEST);
-    expect(selectedTests([dock])).not.toContain(
+    expect(selectedTests([hook])).not.toContain(
       'src-ui/src/__tests__/useOutboundQueueSnapshot.test.tsx',
     );
   });
