@@ -444,10 +444,14 @@ describe('release SBOM generation', () => {
         'pkg:npm/node-pty@1.1.0',
         'pkg:npm/protobufjs@7.6.5',
       ],
+      // #1719: the root bump to 0.28.2 reaches only this unpruned scope. The
+      // production scopes above still carry 0.28.1 because their esbuild is
+      // `packages/shared`'s own dependency, not the root devDependency.
       container: [
         'pkg:npm/cpu-features@0.0.10',
         'pkg:npm/esbuild@0.25.12',
         'pkg:npm/esbuild@0.28.1',
+        'pkg:npm/esbuild@0.28.2',
         'pkg:npm/libxmljs2@0.37.0',
         'pkg:npm/node-pty@1.1.0',
         'pkg:npm/protobufjs@7.6.5',

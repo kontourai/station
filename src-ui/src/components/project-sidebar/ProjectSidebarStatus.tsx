@@ -1,7 +1,10 @@
 import { useRef, useState } from 'react';
 import { buildLabel, buildTitle } from '../../build-info';
 import { useAgents } from '../../contexts/AgentsContext';
-import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
+import {
+  formatShortcutChord,
+  withShortcutHint,
+} from '../../contexts/KeyboardShortcutsContext';
 import { openChatsStore, useOpenChats } from '../../contexts/open-chats-store';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
@@ -15,9 +18,9 @@ import './ProjectSidebarStatus.css';
 
 /**
  * Bottom-of-sidebar status line: open-chat count (clickable — opens a
- * popover listing the sessions), build identity, and a subtle ⌘K chip for
- * the command palette (desktop only — the chip advertises a keyboard
- * shortcut). Replaces the retired fixed bottom status bar
+ * popover listing the sessions), build identity, and a subtle chip carrying
+ * the command palette's chord (desktop only — the chip advertises a keyboard
+ * shortcut, and the registry spells it for the platform). Replaces the retired fixed bottom status bar
  * (`statusbar--app`), which forced the chat dock to lift itself above it.
  * Hidden entirely when the sidebar is collapsed (shared
  * `.sidebar--collapsed` rules).
@@ -124,7 +127,19 @@ export function ProjectSidebarStatus() {
             window.dispatchEvent(new CustomEvent('open-command-palette'))
           }
         >
-          ⌘K
+          {/*
+            The registry is the authority: it spells the chord for the
+            platform the user is on, and it tracks a rebinding from Settings.
+            A hardcoded `⌘K` advertised a chord Windows and Linux users
+            cannot press (#1649). `CommandPalette` registers the shortcut from
+            a lazily-loaded chunk, so for the first tick the registry has
+            nothing to say — the static default covers that window and is
+            superseded the moment the chunk lands. It can only be wrong about
+            a user's own rebinding, and only until then.
+          */}
+          {commandPaletteShortcut && commandPaletteShortcut !== 'Not set'
+            ? commandPaletteShortcut
+            : formatShortcutChord(['cmd'], 'k')}
         </button>
       </div>
     </div>

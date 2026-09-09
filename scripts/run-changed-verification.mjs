@@ -54,6 +54,7 @@ import {
 import { redactVerificationOutput } from './lib/verification-redaction.mjs';
 import { groupFiles, VITEST_CORPUS_GROUPS } from './run-vitest-corpus.mjs';
 import {
+  buildTestImpactManifest,
   isEscalationPath,
   matches,
   TEST_IMPACT_MANIFEST,
@@ -111,10 +112,14 @@ export function parseRelatedTestDiscovery(result) {
   }
   if (
     !Array.isArray(parsed) ||
-    parsed.length === 0 ||
     parsed.some((path) => typeof path !== 'string' || path.length === 0)
   )
     throw new Error('Related Vitest discovery returned no valid test files');
+  // An empty array is discovery's answer, not its failure: no test in the
+  // corpus imports the changed paths. Only output discovery could not have
+  // produced -- a non-array, or an entry that is not a usable path -- means it
+  // could not run. Conflating the two made a data-only diff read as a broken
+  // runner (#1757).
   return parsed;
 }
 
@@ -419,21 +424,36 @@ export function selectChangedVerification(
         matches(edge.pattern, path) &&
         (edge.whenAll?.every((required) => changed.has(required)) ?? true),
     );
+    // A SUPPLEMENTAL edge only ever adds to `tests`: it is invisible to the
+    // boundary, escalation, and related decisions below, so a derived edge
+    // (`pathReadPinEdges`, #1807) cannot trade a broader selection for a
+    // narrower one. Naming `tests` on an ordinary edge would set
+    // `hasExplicitBoundary`, suppressing the generic `related` edge for the
+    // same path, which is how an explicit list silently DROPS the related
+    // suites (#1563, #1613). This says nothing about whether the added test
+    // can run — `pathReadPinEdges` owns that.
+    const boundaryEdges = edges.filter((edge) => !edge.supplemental);
+    // Added before every branch below: a supplemental test is additive even
+    // where the path escalates, and naming it in the receipt is the point.
+    for (const edge of edges)
+      if (edge.supplemental)
+        for (const test of edge.tests ?? [])
+          addReason(tests, test, `${edge.reason}: ${path}`);
     const hasExplicitBoundary =
       isChangedTest ||
-      edges.some((edge) => edge.tests?.length || edge.lanes?.length);
+      boundaryEdges.some((edge) => edge.tests?.length || edge.lanes?.length);
     if (isEscalationPath(path) && !hasExplicitBoundary) {
       addReason(lanes, 'ci-fast', `escalation: ${path}`);
       escalated = true;
       continue;
     }
-    if (!edges.length) {
+    if (!boundaryEdges.length) {
       if (isChangedTest) continue;
       addReason(lanes, 'ci-fast', `unknown changed path: ${path}`);
       escalated = true;
       continue;
     }
-    for (const edge of edges) {
+    for (const edge of boundaryEdges) {
       // A direct mapping replaces the generic graph fallback. An edge that
       // explicitly requests both tests and related selection supplements the
       // import graph (for example, a source-reading portability check).
@@ -711,15 +731,19 @@ export async function planChangedVitestExecutions(
   const relatedTests = selection.relatedPaths.length
     ? await discoverRelated(root, selection.relatedPaths)
     : [];
-  const selected = validateSelectedTestFiles(
-    root,
-    [
-      ...new Set([
-        ...relatedTests,
-        ...selection.tests.map((entry) => entry.path),
-      ]),
-    ].sort(),
-  );
+  const candidates = [
+    ...new Set([
+      ...relatedTests,
+      ...selection.tests.map((entry) => entry.path),
+    ]),
+  ].sort();
+  // Discovery ran and matched nothing. That is an empty plan, not a planning
+  // failure, so it must not reach validateSelectedTestFiles -- whose empty
+  // throw is the fail-closed guard for a selection that was supposed to hold
+  // files. Only a related-path selection can land here: an explicit test
+  // target always contributes its own path.
+  if (candidates.length === 0 && selection.relatedPaths.length > 0) return [];
+  const selected = validateSelectedTestFiles(root, candidates);
   const groups = partition(selected, { root });
   const kind = selection.relatedPaths.length
     ? selection.tests.length
@@ -865,6 +889,7 @@ async function runVitest(
   }
   return {
     executions,
+    emptySelection: plannedExecutions.length === 0,
     ...(preparation ? { preparation } : {}),
   };
 }
@@ -909,6 +934,33 @@ function cleanupFor(result) {
   if (observations.some((cleanup) => cleanup.status === 'passed'))
     return { status: 'passed', survivingOwnedChildren: 0 };
   return { status: 'not_required', survivingOwnedChildren: 0 };
+}
+
+/**
+ * Name the obligation an empty related selection leaves behind. Exit 3 must
+ * name the next lane (docs/guides/testing.md) and the test-changed lane
+ * declares that "empty selections escalate to named deferred lanes"
+ * (scripts/verification-lanes.mjs), so an empty plan that named nothing left
+ * a provisional exit 3 with no lane, no next command and escalated: false --
+ * an unnamed obligation, which run-ci-fast then passes over.
+ */
+function escalateEmptyRelatedSelection(selection, relatedPaths) {
+  const laneReasons = new Map(
+    selection.lanes.map(({ id, reasons }) => [id, new Set(reasons)]),
+  );
+  for (const path of relatedPaths)
+    addReason(
+      laneReasons,
+      'test-full',
+      `no related suites for ${path}; ${EMPTY_RELATED_SELECTION_REMEDY}`,
+    );
+  return {
+    ...selection,
+    lanes: [...laneReasons.keys()]
+      .sort()
+      .map((id) => ({ id, reasons: [...laneReasons.get(id)].sort() })),
+    escalated: true,
+  };
 }
 
 function escalateEmptyReports(selection, executions) {
@@ -1021,6 +1073,8 @@ const CHANGED_OUTPUT_NAME_LIMIT = 6;
 const CHANGED_OUTPUT_LINE_LIMIT = 1_024;
 const CHANGED_SELECTION_ARTIFACT =
   '.kontourai/test-impact/changed-selection.json';
+const EMPTY_RELATED_SELECTION_REMEDY =
+  'declare a boundary in scripts/test-impact-manifest.mjs if a test reads this file';
 
 function boundedNames(names) {
   const unique = [...new Set(names)].sort();
@@ -1055,9 +1109,18 @@ export function renderChangedVerificationSummary(result) {
   const truncated = focused.truncated || lanes.truncated;
   const mode = result.receipt?.terminal?.status ?? 'unknown';
   const laws = boundedNames(result.productLaws ?? []);
+  const emptyRelated = result.emptyRelatedSelection
+    ? boundedNames(result.emptyRelatedSelection.relatedPaths ?? [])
+    : undefined;
   return [
     `[test:changed] ${result.paths?.length ?? 0} changed path(s); ${focusedCount(result.selection)} focused target(s), ${result.selection.lanes.length} deferred lane(s) (${mode}).`,
     `[test:changed] focused: ${focused.rendered}`,
+    ...(emptyRelated
+      ? [
+          `[test:changed] no related suites for: ${emptyRelated.rendered}`,
+          `[test:changed] remedy: ${result.emptyRelatedSelection.remedy ?? EMPTY_RELATED_SELECTION_REMEDY}`,
+        ]
+      : []),
     `[test:changed] lanes: ${lanes.rendered}`,
     `[test:changed] product laws: ${laws.rendered}`,
     `[test:changed] detail: ${CHANGED_SELECTION_ARTIFACT}${truncated ? ' (terminal names truncated; full selection is in the artifact)' : ''}`,
@@ -1227,11 +1290,20 @@ export async function runChangedVerification(
   assertDependencyProvenance({ cwd: root });
   const { base, explain } = parseChangedArgs(args);
   const changed = changedPathsFn({ root, base });
+  // The derived manifest adds the path-read pin edges (#1807): a test that
+  // reads a source file's text has no import edge to it, so neither the graph
+  // fallback nor `vitest related` would schedule it here.
   let selection = escalateUnavailableExplicitTests(
-    escalateUnavailableRelatedPaths(selectChangedVerification(changed.paths), {
-      root,
-      pathExists,
-    }),
+    escalateUnavailableRelatedPaths(
+      selectChangedVerification(
+        changed.paths,
+        buildTestImpactManifest({ root }),
+      ),
+      {
+        root,
+        pathExists,
+      },
+    ),
     { root, pathExists },
   );
   const productLawRouting = withProductLawDispositions(
@@ -1311,12 +1383,32 @@ export async function runChangedVerification(
     result.executed = vitestOutcome.executions;
     if (vitestOutcome.preparation)
       result.preparation = vitestOutcome.preparation;
+    // Related discovery ran and named no suite. Record the fact durably in
+    // the selection artifact so a reader sees a selection decision rather
+    // than a silent zero-execution run.
+    if (vitestOutcome.emptySelection === true && !vitestOutcome.preparation) {
+      result.emptyRelatedSelection = {
+        relatedPaths: [...executionSelection.relatedPaths].sort(),
+        remedy: EMPTY_RELATED_SELECTION_REMEDY,
+      };
+      selection = escalateEmptyRelatedSelection(
+        selection,
+        executionSelection.relatedPaths,
+      );
+    }
     selection = escalateEmptyReports(selection, result.executed);
     result.selection = selection;
     result.nextCommands = nextCommands(selection);
   }
   const after = collectProvenance({ cwd: root });
   const counts = countsFor(result.executed, result.preparation);
+  // An empty related selection is deferred, not complete and not broken: no
+  // suite was executed, so the receipt layer cannot call it a pass
+  // (isPassingCounts requires executed > 0), and nothing here justifies
+  // loosening that. The escalation above names test-full, which makes this
+  // `provisional` -- and run-ci-fast reads its exit 3 as a deferred selection
+  // and carries on, so a data-only diff does not red fast-checks while its
+  // receipt still names the obligation (#1757).
   const deferred = explain || selection.lanes.length > 0;
   const failed = counts.failed > 0;
   const childFailed = result.executed.some(

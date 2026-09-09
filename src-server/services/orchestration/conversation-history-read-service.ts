@@ -1,7 +1,7 @@
 import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
-import { publicAgentIdFromRuntimeKey } from '../../routes/agents/runtime-agent-identity.js';
+import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
 import type { ConversationHistoryCursor, EventStore } from './event-store.js';
 import { buildOrchestrationSessionSummary } from './orchestration-session-state.js';
 

@@ -2929,9 +2929,13 @@ export async function buildApplication(
   try {
     // The Basis MCP app bundles are git-ignored build output that both
     // bundles below resolve as ordinary modules. Generating here makes
-    // `station build` self-sufficient for every caller — `upgrade()`'s
-    // `git pull` + raw `npm install` runs no install-time generation, and the
-    // container's build stage never installed with the generator present.
+    // `station build` self-sufficient for every caller: most reach it without
+    // having installed at all, and the container's build stage never
+    // installed with the generator present. `upgrade()` is the exception —
+    // #1747 routed it through `npm run dependencies:install`, whose
+    // `generateBuildInputs` already wrote these bundles minutes earlier — so
+    // that one path regenerates them. The generator is deterministic and
+    // cheap, and a build step that depends on who called it would be worse.
     runBuildStep('Basis MCP apps', 'npm run basis:mcp:generate');
     runBuildStep('Server', 'npm run build:server');
     runBuildStep('UI', 'npm run build:ui');
@@ -4706,6 +4710,57 @@ function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
   }
 }
 
+/**
+ * The repository's owned dependency bootstrap, as a `npm run` script — the
+ * script interface this file already uses for `build:server`/`build:ui`.
+ *
+ * `dependencies:install` runs `scripts/dependency-lifecycle.mjs install`,
+ * which bootstraps the exact pinned pnpm, validates the lifecycle allowlist
+ * against the lockfile, stages the reviewed prebuilds, runs only the approved
+ * install hooks plus Station's own, and verifies the result. A raw
+ * `npm install` (station#1747) does none of that, and npm is not this
+ * workspace's package manager at all, so it leaves a `node_modules` the
+ * rebuild below cannot rely on.
+ *
+ * `install` rather than `ci`: `ci` is the same code path with
+ * `--frozen-lockfile`, which refuses whenever `package.json` and
+ * `pnpm-lock.yaml` disagree. That is a normal state in the developer
+ * checkouts this path serves — a packaged install never reaches here, it
+ * delegates to `install.sh` above — and `npm install` never refused for it,
+ * so `ci` would turn a working upgrade into a hard failure over a local
+ * dependency edit. The `station` launcher's cold bootstrap uses `ci` because
+ * it installs a freshly cloned checkout nobody has edited yet.
+ */
+const UPGRADE_DEPENDENCY_INSTALL_COMMAND = 'npm run dependencies:install';
+
+/**
+ * Why the pulled tree cannot run the owned installer, or `null` when it can.
+ *
+ * `git pull` can leave any tree the upstream branch happens to name, so the
+ * two things `npm run dependencies:install` needs are checked before it is
+ * spawned: the script binding and the script itself. There is no fallback —
+ * a raw `npm install` in a pinned-pnpm workspace is the defect this replaced,
+ * not a degraded mode — so the caller refuses and says which file is missing.
+ */
+function ownedDependencyInstallerUnavailable(gitRoot: string): string | null {
+  const manifestPath = join(gitRoot, 'package.json');
+  let script: unknown;
+  try {
+    script = (
+      JSON.parse(readFileSync(manifestPath, 'utf-8')) as {
+        scripts?: Record<string, unknown>;
+      }
+    ).scripts?.['dependencies:install'];
+  } catch (error) {
+    return `${manifestPath} could not be read as JSON (${error instanceof Error ? error.message : String(error)})`;
+  }
+  if (typeof script !== 'string')
+    return `${manifestPath} does not define the "dependencies:install" script`;
+  const lifecyclePath = join(gitRoot, 'scripts', 'dependency-lifecycle.mjs');
+  if (!existsSync(lifecyclePath)) return `${lifecyclePath} is missing`;
+  return null;
+}
+
 export async function upgrade(options: BuildOptions = {}): Promise<void> {
   const packagedStationHome = delegatePackagedUpgradeIfPresent();
   if (packagedStationHome !== null) {
@@ -4763,8 +4818,17 @@ export async function upgrade(options: BuildOptions = {}): Promise<void> {
   console.log('Pulling latest...');
   execSync('git pull', { cwd: gitRoot, stdio: 'inherit', windowsHide: true });
 
+  const installerUnavailable = ownedDependencyInstallerUnavailable(gitRoot);
+  if (installerUnavailable !== null) {
+    throw new Error(
+      `station upgrade cannot install dependencies: ${installerUnavailable}.\n` +
+        'The pulled tree does not carry this repository\'s owned dependency lifecycle, and a raw "npm install" is not a substitute — this workspace installs through a pinned pnpm and arms only reviewed lifecycle hooks.\n' +
+        'The pull already landed; nothing was rebuilt. Any Station instance this checkout was running was stopped for the upgrade, and the previous build is untouched, so "station start" relaunches that older build against the newly pulled sources until a rebuild succeeds. Check out a tree that carries the lifecycle and rerun "station upgrade".',
+    );
+  }
+
   console.log('\nInstalling dependencies...');
-  execSync('npm install', {
+  execSync(UPGRADE_DEPENDENCY_INSTALL_COMMAND, {
     cwd: gitRoot,
     stdio: 'inherit',
     windowsHide: true,

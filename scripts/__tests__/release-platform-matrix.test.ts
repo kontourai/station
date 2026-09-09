@@ -54,12 +54,37 @@ describe('cross-platform release invariant matrix', () => {
       status: 'VERIFIED',
       sha: ledger.find((entry: any) => entry.channel === 'nightly-desktop').sha,
     });
+    // Each platform is required for its own promotion; the cohort publishes
+    // per platform and discloses a partial night rather than withholding the
+    // other platform (#1774).
     for (const cell of [nightlyAndroid, nightlyDesktop]) {
       expect(cell).toMatchObject({
         requiredForPromotion: true,
-        availabilityPolicy: expect.stringContaining('atomic-native-cohort'),
+        availabilityPolicy: expect.stringContaining(
+          'per-platform-native-cohort',
+        ),
       });
+      expect(cell?.availabilityPolicy).not.toContain('atomic');
     }
+    // Nightly iOS is delivered outside the atomic chain (#1774): its policy
+    // must say so rather than claim a recovery lock the workflow never writes
+    // for it, and its evidence stays NOT_VERIFIED until a processed channel
+    // receipt exists (#1016).
+    const nightlyIos = projection.cells.find(
+      (cell) => cell.channel === 'nightly' && cell.platform === 'ios',
+    );
+    expect(nightlyIos).toMatchObject({
+      requiredForPromotion: false,
+      availabilityPolicy: expect.stringContaining('#1774'),
+    });
+    expect(nightlyIos?.availabilityPolicy).not.toContain(
+      'recovery remains locked',
+    );
+    expect(nightlyIos?.availabilityPolicy).toContain('NOT_VERIFIED');
+    expect(nightlyIos?.currentEvidence).toMatchObject({
+      status: 'NOT_VERIFIED',
+      owner: '#1016',
+    });
     expect(stableIos?.currentEvidence).toMatchObject({
       status: 'NOT_VERIFIED',
       owner: '#844',

@@ -23,6 +23,12 @@ import {
   registryEngineConnectionForDefaultSync,
   withoutReservedStationBinding,
 } from './agent-registry.js';
+import {
+  WorkflowExistsError,
+  WorkflowInvalidError,
+  WorkflowNotFoundError,
+  WorkflowUnsafeContentError,
+} from './agent-workflow-errors.js';
 import { readRegularFileNoFollow } from './home-schema-gate.js';
 import {
   PLUGIN_AGENT_OWNER_FILE,
@@ -84,7 +90,7 @@ async function withAgentPersistenceLock<T>(
  * async project-service call, so it guards every save path — routes,
  * `updateAgent` materialization, plugin installs — with zero dep
  * threading). Fail-closed by construction: a nonexistent project is the
- * only way this returns false. Exported so `plugin-install-shared.ts`'s
+ * only way this returns false. Exported so `plugin-install-transaction.ts`'s
  * plugin-agent sync reuses this exact check (archive#1004 review HIGH-1)
  * instead of duplicating it.
  */
@@ -669,10 +675,38 @@ export async function readAgentCatalog(
   );
 }
 
+/**
+ * A caller-supplied id is one path segment and nothing else.
+ *
+ * `join` treats `..` and a separator as navigation, so an id carrying either
+ * one addresses a file outside the directory the caller was given. Hono
+ * percent-decodes a path parameter before the handler sees it, so `%2F` and
+ * `%2e%2e` arrive here as `/` and `..`.
+ *
+ * `basename` alone is not the check: `basename('..')` is `'..'`. The explicit
+ * cases below are what reject it; the `basename` comparison stays for
+ * platform-specific forms it catches that a separator scan does not.
+ */
+function assertSingleSegment(value: string, message: string): void {
+  if (
+    value === '' ||
+    value === '.' ||
+    value === '..' ||
+    /[/\\]/.test(value) ||
+    basename(value) !== value
+  ) {
+    throw new WorkflowInvalidError(message);
+  }
+}
+
+const INVALID_AGENT_SLUG = 'Invalid agent slug';
+const INVALID_WORKFLOW_ID = 'Invalid workflow id';
+
 export async function listAgentWorkflowMetadata(
   projectHomeDir: string,
   slug: string,
 ): Promise<WorkflowMetadata[]> {
+  assertSingleSegment(slug, INVALID_AGENT_SLUG);
   const workflowsDir = join(projectHomeDir, 'agents', slug, 'workflows');
 
   if (!existsSync(workflowsDir)) {
@@ -703,6 +737,35 @@ export async function listAgentWorkflowMetadata(
   return workflows.sort((a, b) => a.label.localeCompare(b.label));
 }
 
+/**
+ * Refuse content the context-safety scanner blocks, as a caller-caused
+ * `WorkflowInvalidError` rather than the scanner's own `ContextSafetyError`.
+ *
+ * Only for content the CALLER supplied. `readAgentWorkflow` runs the same
+ * scanner over bytes already on disk, and that failure is not the reader's
+ * fault -- it stays a `ContextSafetyError` so it reaches the route's generic
+ * envelope instead of being reported to the reader as a bad request.
+ *
+ * The scanner's message is preserved verbatim, so this discloses nothing the
+ * previous 400 did not: its excerpt is a slice of the caller's own submission
+ * handed back to that same caller.
+ */
+function assertCallerSuppliedWorkflowContentIsSafe(
+  content: string,
+  workflowId: string,
+  slug: string,
+): void {
+  try {
+    assertSafeContextText(content, {
+      source: `workflow '${workflowId}' for agent '${slug}'`,
+    });
+  } catch (error) {
+    throw new WorkflowInvalidError(
+      error instanceof Error ? error.message : 'Workflow content was refused',
+    );
+  }
+}
+
 export async function createAgentWorkflow(
   projectHomeDir: string,
   slug: string,
@@ -711,12 +774,12 @@ export async function createAgentWorkflow(
 ): Promise<void> {
   const ext = extname(filename).toLowerCase();
   if (!WORKFLOW_EXTENSIONS.includes(ext)) {
-    throw new Error('Workflow filename must end with .ts, .js, .mjs, or .cjs');
+    throw new WorkflowInvalidError(
+      'Workflow filename must end with .ts, .js, .mjs, or .cjs',
+    );
   }
 
-  assertSafeContextText(content, {
-    source: `workflow '${filename}' for agent '${slug}'`,
-  });
+  assertCallerSuppliedWorkflowContentIsSafe(content, filename, slug);
   await mutateWorkflow(projectHomeDir, slug, filename, 'create', content);
 }
 
@@ -725,16 +788,29 @@ export async function readAgentWorkflow(
   slug: string,
   workflowId: string,
 ): Promise<string> {
+  assertSingleSegment(slug, INVALID_AGENT_SLUG);
+  assertSingleSegment(workflowId, INVALID_WORKFLOW_ID);
   const path = join(projectHomeDir, 'agents', slug, 'workflows', workflowId);
 
   if (!existsSync(path)) {
-    throw new Error(`Workflow '${workflowId}' not found`);
+    throw new WorkflowNotFoundError(workflowId);
   }
 
   const content = await readFile(path, 'utf-8');
-  assertSafeContextText(content, {
-    source: `workflow '${workflowId}' for agent '${slug}'`,
-  });
+  try {
+    assertSafeContextText(content, {
+      source: `workflow '${workflowId}' for agent '${slug}'`,
+    });
+  } catch (error) {
+    // The stored file, not the request. Typed separately from the write
+    // path's `WorkflowInvalidError` so the route can say "your file" rather
+    // than "your request" -- and so this stops reaching the boundary as an
+    // unclassified 500 with no text, which told the reader nothing about
+    // which file to fix.
+    throw new WorkflowUnsafeContentError(
+      error instanceof Error ? error.message : 'Workflow content was refused',
+    );
+  }
   return content;
 }
 
@@ -744,9 +820,7 @@ export async function updateAgentWorkflow(
   workflowId: string,
   content: string,
 ): Promise<void> {
-  assertSafeContextText(content, {
-    source: `workflow '${workflowId}' for agent '${slug}'`,
-  });
+  assertCallerSuppliedWorkflowContentIsSafe(content, workflowId, slug);
   await mutateWorkflow(projectHomeDir, slug, workflowId, 'update', content);
 }
 
@@ -820,12 +894,14 @@ async function mutateWorkflow(
   operation: 'create' | 'update' | 'delete',
   content?: string,
 ): Promise<void> {
+  assertSingleSegment(slug, INVALID_AGENT_SLUG);
   assertCustomAgentIdentity(slug);
-  if (basename(workflowId) !== workflowId)
-    throw new Error('Invalid workflow id');
+  assertSingleSegment(workflowId, INVALID_WORKFLOW_ID);
   const ext = extname(workflowId).toLowerCase();
   if (!WORKFLOW_EXTENSIONS.includes(ext)) {
-    throw new Error('Workflow filename must end with .ts, .js, .mjs, or .cjs');
+    throw new WorkflowInvalidError(
+      'Workflow filename must end with .ts, .js, .mjs, or .cjs',
+    );
   }
   await withAgentPersistenceLock(projectHomeDir, slug, async () => {
     assertRegistryIntegrityAtHomeSync(projectHomeDir);
@@ -834,10 +910,10 @@ async function mutateWorkflow(
     const path = join(workflowsDir, workflowId);
     const exists = existsSync(path);
     if (operation === 'create' && exists) {
-      throw new Error(`Workflow '${workflowId}' already exists`);
+      throw new WorkflowExistsError(workflowId);
     }
     if (operation !== 'create' && !exists) {
-      throw new Error(`Workflow '${workflowId}' not found`);
+      throw new WorkflowNotFoundError(workflowId);
     }
     if (operation === 'delete')
       await deleteAgentFileWithIdentityFence(projectHomeDir, slug, path);

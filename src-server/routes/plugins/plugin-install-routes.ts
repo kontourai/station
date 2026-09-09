@@ -26,6 +26,13 @@ import {
   isPluginConsentRefusedError,
   type PluginInstallConsent,
 } from '../../services/plugins/plugin-install-consent.js';
+import {
+  installPluginFromSource,
+  type PluginInstallTransactionDeps,
+  previewInstalledPluginRecovery,
+  recoverInstalledPlugin,
+  resolvePluginRegistrySource,
+} from '../../services/plugins/plugin-install-transaction.js';
 import { localPluginInstallationState } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
@@ -38,6 +45,14 @@ import {
   readPluginGrantRecord,
   requiredPermissionsForManifest,
 } from '../../services/plugins/plugin-permissions.js';
+import {
+  detectPluginConflicts,
+  detectWorkspacePaneCatalogConflicts,
+  fetchPluginSource,
+  getPluginGitInfo,
+  PluginPreviewUnsupportedDependencyError,
+  resolvePluginDependencies,
+} from '../../services/plugins/plugin-source.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   errorMessage,
@@ -54,21 +69,6 @@ import {
 } from '../system/configuration-activation.js';
 import { buildPlugin } from './plugin-bundles.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
-import {
-  installPluginFromSource,
-  type PluginInstallSharedDeps,
-  previewInstalledPluginRecovery,
-  recoverInstalledPlugin,
-  resolvePluginRegistrySource,
-} from './plugin-install-shared.js';
-import {
-  detectPluginConflicts,
-  detectWorkspacePaneCatalogConflicts,
-  fetchPluginSource,
-  getPluginGitInfo,
-  PluginPreviewUnsupportedDependencyError,
-  resolvePluginDependencies,
-} from './plugin-source.js';
 
 interface PluginInstallRouteDeps {
   installationHost?: PluginInstallationHost;
@@ -258,7 +258,7 @@ export function registerPluginInstallRoutes(
     }
   });
 
-  const recoveryDependencies: PluginInstallSharedDeps = {
+  const recoveryDependencies: PluginInstallTransactionDeps = {
     agentsDir,
     pluginsDir,
     projectHomeDir,

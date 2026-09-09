@@ -34,7 +34,13 @@ exact-hook and artifact proofs; a successful raw pnpm install is not their
 receipt.
 
 `npm run dependencies:check` fails on an unknown, nested-path, version,
-integrity, lifecycle marker, platform, or stale-entry change. `npm run
+integrity, lifecycle marker, platform, or stale-entry change. An entry's
+`path` is the package directory relative to the checkout as the inventory
+records it: `node_modules/<package>`, a nested
+`node_modules/<parent>/node_modules/<package>`, or, when pnpm materializes a
+copy under a workspace package, `<workspace importer>/node_modules/<package>`
+where the importer is a directory listed under `importers` in
+`pnpm-lock.yaml` (never `.`, never an arbitrary prefix). `npm run
 dependencies:propose` emits a review starting point; it is not an approval.
 Every approval names an owner, reason, artifact proof, purl, and dependency
 refresh/removal/advisory trigger. The release SBOM context carries the exact
@@ -168,6 +174,25 @@ must contain the exact `scope`, `package`, resolved `version`, `advisory`,
 `disposition`, compensating `controls`, HTTPS upstream or tracking URL,
 `expires`, and a `recheckTrigger`. The gate rejects a missing, mismatched,
 expired, duplicate, or unused record.
+
+Within 14 days of an `expires` date the policy prints a `WARN:` line naming
+the record and the days remaining, and raises it as a GitHub warning
+annotation on any Actions run that scans — the six-hourly scheduled run in
+`.github/workflows/dependency-advisory.yml`, and any pull request or merge
+group whose diff touches a dependency input. The reminder never changes the
+exit code, so renew or remediate before the date rather than after the floor
+starts failing.
+
+That schedule is also the repository's own detector for a floor break nothing
+in the repository caused. A newly disclosed advisory, or an affected range
+narrowing until a residual record is unused, reds the floor for every
+dependency-touching pull request from the moment the registry publishes it — with no commit to
+attribute it to, and outside what the expiry warning above can see. The
+scheduled run scans on its own cadence, and a failure files or updates one
+tracking issue through `.github/workflows/main-health.yml`, titled
+`Main pipeline red: Scheduled dependency advisory floor`. The next green
+scheduled run closes it. Renew or remediate the ledger against that tracker
+rather than against whichever pull request happened to gate next.
 
 Critical/high exception entries contain only:
 

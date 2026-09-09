@@ -908,6 +908,7 @@ export function useOrchestrationSessionsQuery(
       staleTime: config?.staleTime ?? orchestrationQueries.sessions().staleTime,
       gcTime: config?.gcTime,
       enabled: config?.enabled,
+      refetchInterval: config?.refetchInterval,
     },
   );
 }

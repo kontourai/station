@@ -280,6 +280,8 @@ async function loadLifecycleModule(
       spawnSync?: Mock;
     };
     fsOverrides?: Partial<FsModule>;
+    /** `resolveGitInfo`'s repository root; defaults to `TEST_CWD`. */
+    gitRoot?: string;
     httpRequestMock?: Mock;
     netConnectMock?: Mock;
     // The default `normalizeHomePath` mock below is `resolve()`, which never
@@ -297,10 +299,11 @@ async function loadLifecycleModule(
   vi.resetModules();
   vi.doUnmock('node:fs');
 
+  const gitRoot = options.gitRoot ?? TEST_CWD;
   vi.doMock('@kontourai/station-shared/git', () => ({
     resolveGitInfo: () => ({
       branch: 'main',
-      gitRoot: TEST_CWD,
+      gitRoot,
       hash: '0123456',
     }),
   }));
@@ -3511,9 +3514,35 @@ describe('collectDoctorReport', () => {
 });
 
 describe('upgrade', () => {
+  /**
+   * The two things `npm run dependencies:install` needs from the tree
+   * `git pull` just left behind (station#1747): the script binding and the
+   * script it runs. `upgrade` refuses rather than falling back to a raw
+   * `npm install`, so every upgrade fixture has to write them.
+   */
+  function writeOwnedDependencyLifecycle(root: string) {
+    ensureDir(root);
+    writeFileSync(
+      join(root, 'package.json'),
+      `${JSON.stringify({
+        name: '@kontourai/station-core',
+        scripts: {
+          'dependencies:install':
+            'node scripts/dependency-lifecycle.mjs install',
+        },
+      })}\n`,
+    );
+    ensureDir(join(root, 'scripts'));
+    writeFileSync(
+      join(root, 'scripts', 'dependency-lifecycle.mjs'),
+      'export {};\n',
+    );
+  }
+
   it('builds and checks source-upgrade guidance for the resolved channel instance', async () => {
     ensureDir(TEST_CWD);
     ensureDir(join(TEST_CWD, '.git'));
+    writeOwnedDependencyLifecycle(TEST_CWD);
     const channelHome = join(TEST_ROOT, 'beta-home');
     const unitPath = writeStaleServiceManifest(channelHome, 'beta-upgrade');
     const execSync = vi.fn(
@@ -3723,6 +3752,7 @@ describe('upgrade', () => {
   it('reports stale scheduling guidance after a source upgrade', async () => {
     ensureDir(TEST_CWD);
     ensureDir(join(TEST_CWD, '.git'));
+    writeOwnedDependencyLifecycle(TEST_CWD);
     vi.stubEnv('STATION_HOME', TEST_DEFAULT_HOME);
     const unitPath = writeStaleServiceManifest(
       TEST_DEFAULT_HOME,
@@ -3876,6 +3906,16 @@ describe('upgrade', () => {
 
   it('rebuilds through buildApplication so the promoted manifest sha matches the built tree (station#2671)', async () => {
     ensureDir(join(TEST_CWD, '.git'));
+    // The git root is deliberately NOT `CWD`. In production the two coincide
+    // (`upgrade` only proceeds when `.git` sits in the process cwd, and
+    // `git rev-parse --show-toplevel` then returns that cwd), so this is a
+    // fixture divergence, not a reachable one; it exists because the `cwd`
+    // assertion below has no power when one directory serves both — an
+    // installer spawned in the wrong one would be indistinguishable. What the
+    // pin guards is "install where the pull ran", the same root as `git pull`.
+    const upgradeGitRoot = join(TEST_ROOT, 'upgrade-git-root');
+    ensureDir(join(upgradeGitRoot, '.git'));
+    writeOwnedDependencyLifecycle(upgradeGitRoot);
     // Pin the home to the mocked default so the rebuild resolves the DEFAULT
     // instance (dist-server/dist-ui) — the deployment shape from #2671.
     // vitest.setup.ts otherwise points STATION_HOME at an isolated home,
@@ -3909,6 +3949,7 @@ describe('upgrade', () => {
     );
     const execFileSync = vi.fn();
     const { lifecycle } = await loadLifecycleModule({
+      gitRoot: upgradeGitRoot,
       childProcessMock: { execFileSync, execSync },
     });
 
@@ -3933,21 +3974,97 @@ describe('upgrade', () => {
     expect(readFileSync(join(TEST_CWD, 'dist-ui', 'index.html'), 'utf-8')).toBe(
       'upgraded-ui',
     );
-    // Pull/install ordering is preserved, and the rebuild now flows through
-    // the candidate pipeline (which appends the provenance `git rev-parse
-    // HEAD` read after both builds).
+    // Pull/install ordering is preserved, the install is the repository's
+    // owned dependency lifecycle rather than a raw `npm install`
+    // (station#1747), and the rebuild flows through the candidate pipeline
+    // (which appends the provenance `git rev-parse HEAD` read after both
+    // builds).
     expect(execSync.mock.calls.map(([command]) => command)).toEqual([
       'git rev-parse --abbrev-ref main@{u}',
       'git pull',
-      'npm install',
-      // The pull deletes nothing tracked any more, but it can bring a new
-      // browser entry, and the raw install above runs no generation.
+      'npm run dependencies:install',
+      // #1755's generation step. The install above already generates the
+      // Basis MCP app bundles (`generateBuildInputs` runs at the end of
+      // `dependency-lifecycle.mjs`'s `install`), so on this path the build's
+      // own generate is a repeat — kept because `station build` has callers
+      // that never installed, and the generator is deterministic and cheap.
       'npm run basis:mcp:generate',
       'npm run build:server',
       'npm run build:ui',
       'git rev-parse HEAD',
     ]);
+    // The command list above says nothing about WHERE each ran, and the
+    // installer only reaches the workspace it is spawned in: `npm run
+    // dependencies:install` must run at the git root the pull just updated,
+    // which is `resolveGitInfo`'s root and not necessarily `process.cwd()`.
+    expect(execSync).toHaveBeenNthCalledWith(
+      3,
+      'npm run dependencies:install',
+      expect.objectContaining({ cwd: upgradeGitRoot }),
+    );
     expect(execFileSync).not.toHaveBeenCalled();
+  });
+
+  it('refuses to install when the pulled tree has no owned dependency lifecycle (station#1747)', async () => {
+    const root = join(TEST_ROOT, 'upgrade-no-owned-installer');
+    ensureDir(join(root, '.git'));
+    writeOwnedDependencyLifecycle(root);
+    // The binding survives but the file it runs is gone: a half-applied
+    // checkout, or the script moved without `package.json` following. (A tree
+    // predating the owned lifecycle would lack the BINDING instead — that is
+    // the case below.)
+    rmSync(join(root, 'scripts', 'dependency-lifecycle.mjs'));
+    const execSync = vi.fn((command: string) =>
+      command === 'git pull' ? '' : 'origin/main\n',
+    );
+    const { lifecycle } = await loadLifecycleModule({
+      cwd: root,
+      gitRoot: root,
+      childProcessMock: { execSync, execFileSync: vi.fn() },
+    });
+
+    await expect(lifecycle.upgrade()).rejects.toThrow(
+      /station upgrade cannot install dependencies:.*dependency-lifecycle\.mjs is missing/s,
+    );
+    // The pull ran; nothing installed or built after it. A raw `npm install`
+    // is never the fallback — it is the defect the owned installer replaced.
+    expect(execSync.mock.calls.map(([command]) => command)).toEqual([
+      'git rev-parse --abbrev-ref main@{u}',
+      'git pull',
+    ]);
+  });
+
+  it('refuses to install when the pulled tree does not declare the owned installer (station#1747)', async () => {
+    const root = join(TEST_ROOT, 'upgrade-no-install-script');
+    ensureDir(join(root, '.git'));
+    writeOwnedDependencyLifecycle(root);
+    // `scripts/dependency-lifecycle.mjs` stays. Only the binding `npm run`
+    // resolves is gone — the shape a tree predating the owned lifecycle (or
+    // one whose script was renamed) actually has, and the branch the
+    // missing-file case above cannot reach.
+    writeFileSync(
+      join(root, 'package.json'),
+      `${JSON.stringify({
+        name: '@kontourai/station-core',
+        scripts: { build: 'node esbuild.config.mjs' },
+      })}\n`,
+    );
+    const execSync = vi.fn((command: string) =>
+      command === 'git pull' ? '' : 'origin/main\n',
+    );
+    const { lifecycle } = await loadLifecycleModule({
+      cwd: root,
+      gitRoot: root,
+      childProcessMock: { execSync, execFileSync: vi.fn() },
+    });
+
+    await expect(lifecycle.upgrade()).rejects.toThrow(
+      /station upgrade cannot install dependencies:.*does not define the "dependencies:install" script/s,
+    );
+    expect(execSync.mock.calls.map(([command]) => command)).toEqual([
+      'git rev-parse --abbrev-ref main@{u}',
+      'git pull',
+    ]);
   });
 });
 

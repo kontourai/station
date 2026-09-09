@@ -5027,21 +5027,11 @@ for (const retiredInlineConnectionsHubSnippet of [
   }
 }
 
-const connectionsHubUtils = readRequiredSource(
-  '../src-ui/src/views/connections-hub/utils.tsx',
-);
-for (const requiredHelper of [
-  'export function getProviderIcon',
-  'export function getConnectionStatusClass',
-  'export function describeConnection',
-  // station#3879: `getConnectionTypeText` no longer exists in the repo.
-  'export function IconDatabase',
-  'export function IconTool',
-]) {
-  if (!connectionsHubUtils.includes(requiredHelper)) {
-    errors.push(`connections-hub/utils.tsx must include ${requiredHelper}.`);
-  }
-}
+// The extraction target itself is gone: `connections-hub/utils.tsx` held the
+// helpers lifted out of the old ConnectionsHub page, and once #3733 turned
+// that page into a redirect resolver nothing rendered them again. The
+// invariant that still has a subject is the "must not inline" list above —
+// ConnectionsHub may not grow its own copies back.
 
 const connectionsHubSection = readRequiredSource(
   '../src-ui/src/views/connections-hub/ConnectionsHubSection.tsx',
@@ -5643,13 +5633,22 @@ for (const legacyHelper of [
 const pluginConfigRoutes = readRequiredSource(
   '../src-server/routes/plugins/plugin-config-routes.ts',
 );
+// A route pin names a registration, not its line layout: once a handler
+// gains a middleware argument the formatter wraps `app.put(` onto its own
+// line, and a byte-literal `includes` reads that as the route being gone.
+// Compare with the whitespace after `(` and `,` collapsed on both sides so
+// the pin still fails when the registration is removed or renamed.
+const collapseCallLayout = (text) => text.replace(/([(,])\s+/g, '$1');
+const pluginConfigRoutesLayoutFree = collapseCallLayout(pluginConfigRoutes);
 for (const requiredHelper of [
   'export function registerPluginConfigRoutes',
   'pluginSettingsUpdates.add',
   "app.get('/:name/changelog'",
   "'/:name/overrides',",
 ]) {
-  if (!pluginConfigRoutes.includes(requiredHelper)) {
+  if (
+    !pluginConfigRoutesLayoutFree.includes(collapseCallLayout(requiredHelper))
+  ) {
     errors.push(`plugin-config-routes.ts must include ${requiredHelper}.`);
   }
 }
@@ -5677,8 +5676,8 @@ for (const requiredHelper of [
   "app.get('/',",
   "app.post('/preview'",
   "app.post('/install'",
-  './plugin-install-shared.js',
-  './plugin-source.js',
+  '../../services/plugins/plugin-install-transaction.js',
+  '../../services/plugins/plugin-source.js',
   './plugin-bundles.js',
 ]) {
   if (!pluginInstallRoutes.includes(requiredHelper)) {
@@ -5689,7 +5688,9 @@ for (const requiredHelper of [
 const pluginPublicRoutes = readRequiredSource(
   '../src-server/routes/plugins/plugin-public-routes.ts',
 );
-if (!pluginPublicRoutes.includes('./plugin-public-server.js')) {
+if (
+  !pluginPublicRoutes.includes('../../services/plugins/plugin-public-server.js')
+) {
   errors.push(
     'plugin-public-routes.ts must delegate server module request/context helpers to plugin-public-server.ts.',
   );
@@ -5722,7 +5723,7 @@ for (const retiredPluginPublicSnippet of [
 }
 
 const pluginPublicServer = readRequiredSource(
-  '../src-server/routes/plugins/plugin-public-server.ts',
+  '../src-server/services/plugins/plugin-public-server.ts',
 );
 for (const requiredHelper of [
   'export function buildPluginRequestContext',

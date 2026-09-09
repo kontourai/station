@@ -15,7 +15,7 @@ import {
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
 import type { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
-import { streamSSE } from '../sse-response.js';
+import { SSE_KEEPALIVE_FRAME, streamSSE } from '../sse-response.js';
 
 export async function settleProjectTaskRoomCadence(input: {
   /** A rejected cadence is operationally incomplete, never authorization proof. */
@@ -420,8 +420,13 @@ export function createProjectTaskRoomRoutes(runtime: ProjectTaskRoomRuntime) {
             subscriptionAlive: () =>
               runtime.subscriptionAlive({ taskId, request: c.req.raw }),
             closeTerminal,
-            writePing: () => stream.writeSSE({ event: 'ping', data: '' }),
+            writePing: () => stream.writeSSE(SSE_KEEPALIVE_FRAME),
           }).catch(() => {});
+          // Deliberately NOT `SSE_KEEPALIVE_INTERVAL_MS` and deliberately not
+          // `sseKeepalive`: this is the room's authorization cadence, which
+          // re-checks the subscription and can close the stream terminally.
+          // The ping is its side effect, and 15s is the cadence that decides
+          // how long a revoked reader keeps reading.
         }, 15_000);
         await abort;
       } finally {

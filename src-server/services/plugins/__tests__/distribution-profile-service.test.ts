@@ -10,6 +10,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  captureLoggerLines,
+  stopLoggerCaptures,
+} from '../../../__test-utils__/logger-capture.js';
 import { readCurrentWorkspacePaneCatalog } from '../../projects/workspace-pane-catalog.js';
 import {
   DistributionProfileService,
@@ -20,6 +24,10 @@ vi.mock('node:fs', async (original) => {
   const actual = await original<typeof import('node:fs')>();
   return { ...actual, readFileSync: vi.fn(actual.readFileSync) };
 });
+// A capture is process-wide, and every use in this file asserts BEFORE its own
+// `stop()`. Without this, one failing assertion leaks the sink — and any raised
+// debug level — into every test after it.
+afterEach(stopLoggerCaptures);
 
 describe('DistributionProfileService', () => {
   const homes: string[] = [];
@@ -382,7 +390,7 @@ describe('DistributionProfileService', () => {
         ...extra,
       }),
     );
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = captureLoggerLines('debug');
     try {
       const service = new DistributionProfileService(projectHome);
 
@@ -395,14 +403,14 @@ describe('DistributionProfileService', () => {
       // The reason has to reach the operator, or "the plugin vanished" is all
       // they get. Asserted on the logged error, not assumed.
       expect(
-        debug.mock.calls.some((call) =>
-          call.some((arg) =>
-            message.test(String((arg as Error)?.message ?? arg)),
+        debug
+          .at('debug')
+          .some((line) =>
+            message.test(String((line.error as Error)?.message ?? line.msg)),
           ),
-        ),
       ).toBe(true);
     } finally {
-      debug.mockRestore();
+      debug.stop();
     }
   });
 
@@ -613,15 +621,15 @@ describe('DistributionProfileService', () => {
     const layoutLinkDir = writePlugin(projectHome, 'layout-link');
     rmSync(join(layoutLinkDir, 'layout.json'));
     symlinkSync(outsideLayout, join(layoutLinkDir, 'layout.json'));
-    const diagnostic = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const diagnostic = captureLoggerLines('debug');
 
     expect(
       new DistributionProfileService(projectHome)
         .listLayouts()
         .filter((item) => item.source === 'plugin'),
     ).toEqual([]);
-    expect(diagnostic).toHaveBeenCalledTimes(2);
-    diagnostic.mockRestore();
+    expect(diagnostic.at('debug')).toHaveLength(2);
+    diagnostic.stop();
   });
 
   test('skips a malformed plugin with a diagnostic', () => {
@@ -629,7 +637,7 @@ describe('DistributionProfileService', () => {
     const pluginDir = join(projectHome, 'plugins', 'broken-plugin');
     mkdirSync(pluginDir, { recursive: true });
     writeFileSync(join(pluginDir, 'plugin.json'), '{not-json');
-    const diagnostic = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const diagnostic = captureLoggerLines('debug');
 
     const layouts = new DistributionProfileService(projectHome).listLayouts();
     expect(layouts.some((item) => item.source === 'plugin')).toBe(false);
@@ -642,12 +650,14 @@ describe('DistributionProfileService', () => {
         }),
       ]),
     );
-    expect(diagnostic).toHaveBeenCalledWith(
-      'Failed to read installed plugin layout:',
-      'broken-plugin',
-      expect.anything(),
+    expect(diagnostic.at('debug')).toContainEqual(
+      expect.objectContaining({
+        msg: 'Failed to read installed plugin layout',
+        plugin: 'broken-plugin',
+        error: expect.anything(),
+      }),
     );
-    diagnostic.mockRestore();
+    diagnostic.stop();
   });
 
   test('one pane catalog observes each package once and the next request sees new bytes', async () => {

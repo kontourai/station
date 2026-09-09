@@ -293,6 +293,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/shared/src/__tests__/workspace-package.test.ts',
   'packages/cli/src/__tests__/cloud.test.ts',
   'packages/cli/src/__tests__/cloud-project-import.test.ts',
+  'packages/cli/src/__tests__/cloud-project-import-durability.test.ts',
   // Bounded disposable npm-shaped children; no registry/network calls.
   'scripts/__tests__/dependency-audit-diagnostics.test.ts',
   // station#1085: builds throwaway git checkouts and drives `git` through
@@ -328,6 +329,18 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // through `execFileSync` on purpose — its oracle has to be what git actually
   // returns for a pathspec, not a fixture that would pin the bug instead.
   'scripts/__tests__/gate-scope.test.ts',
+  // station#1649: runs the glyph-coverage ratchet as a real child process
+  // against a throwaway git repository, because the thing under test is the
+  // gate's EXIT STATUS on a rejection — a guardrail whose failure branch has
+  // never executed is unproven. Bounded and single-shot; also builds the
+  // fixture with real `git init`/`git add`.
+  'scripts/__tests__/ui-glyph-coverage-gate.cli.test.ts',
+  // #1780: runs the native cohort decide CLI as a real child process against
+  // a throwaway git repository whose checkout ledger and origin/main ledger
+  // disagree, because the property under test is WHICH ref the script reads
+  // and its exit status when that ref is missing or malformed. Bounded,
+  // single-shot children; the fixture is built with real `git init`/`commit`.
+  'scripts/__tests__/nightly-cohort-decide.cli.test.ts',
   // station#928: the placement-vocabulary ratchet enumerates its scan scope
   // through one single-shot `git ls-files` for the same reason as
   // gate-scope.test.ts above — the scope must be what git tracks, not a
@@ -415,6 +428,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // single-shot spawn.
   'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
   'scripts/__tests__/release-workflow.test.ts',
+  // #1776: runs the pinned tauri-cli `icon` fan-out twice as a real child
+  // process to prove the committed iOS channel sets are byte-reproducible.
+  // #1797 adds two more runs for the desktop `.icns`, whose writer was the
+  // one output that disagreed with itself between runs.
+  'scripts/__tests__/generate-app-icons.test.ts',
+  // #1776: on macOS, runs xcrun pngcrush + sips to prove the shipped-icon
+  // pixel comparison catches a wrong channel through Apple's CgBI re-encode.
+  'scripts/__tests__/ios-channel-icons.test.ts',
   // Runs the pinned Cargo producer against the patched native workspace and
   // owns its deterministic output file; never make release:static host-bound.
   'scripts/__tests__/release-cargo-producer.test.ts',
@@ -424,6 +445,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // reason content-integrity-gate.test.ts does — every one of those guardrails
   // scopes itself with `git ls-files` or `git grep`.
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts',
+  // The same argument for the rest of them: every gate `verify:static:raw`
+  // composes that no test had ever executed now runs here as a real child
+  // process — against a known-bad fixture tree where one is affordable, and
+  // against this repository where it is not. Bounded single-shot spawns, no
+  // wall-clock assertions.
+  'scripts/__tests__/guardrail-process-boundary.test.ts',
   // station#1398 security review, M-5: the content-integrity gate's own test
   // builds throwaway git repos and drives `git grep` through `execFileSync`,
   // because the scan is `git grep` over TRACKED files and a fixture written

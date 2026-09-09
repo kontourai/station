@@ -26,6 +26,7 @@ import {
   platformMatches,
   preflightLifecycleArtifactTargets,
   prepareLifecycleArtifacts,
+  readLifecycleImporters,
   readLifecycleLocks,
   readNodePtyPrebuildManifest,
   stageNodePtyPrebuild,
@@ -33,7 +34,10 @@ import {
   verifyArtifact,
 } from './lib/dependency-lifecycle-policy.mjs';
 import { resolveNpmCli } from './lib/npm-cli.mjs';
-import { readPnpmWorkspace } from './lib/pnpm-lockfile.mjs';
+import {
+  readPnpmLockfileImporters,
+  readPnpmWorkspace,
+} from './lib/pnpm-lockfile.mjs';
 import { assertWorkspaceDependencySatisfaction } from './lib/workspace-dependency-satisfaction.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -47,15 +51,30 @@ function loadPolicy() {
   return JSON.parse(readFileSync(allowlistPath, 'utf8'));
 }
 
-export function check({ cwd = root, bootstrap = false } = {}) {
-  const allowlist = loadPolicy();
+/**
+ * `allowlist` overrides the committed policy so tests can drive this seam
+ * against a fixture checkout; production callers never pass it. The public
+ * signature lives in dependency-lifecycle.d.mts.
+ */
+export function check({
+  cwd = root,
+  bootstrap = false,
+  allowlist = undefined,
+} = {}) {
+  allowlist ??= loadPolicy();
   if (bootstrap && !existsSync(resolve(cwd, 'pnpm-lock.yaml')))
     throw new Error('dependency lockfile is missing: pnpm-lock.yaml');
+  // #1718: entry paths may sit under a workspace importer's node_modules.
+  // The bootstrap reads importer keys without the YAML parser; the full
+  // check reads them from the parsed lock the inventory itself walks.
   const findings = bootstrap
-    ? validateAllowlist(allowlist)
+    ? validateAllowlist(allowlist, {
+        importers: readPnpmLockfileImporters(cwd),
+      })
     : evaluateLifecyclePolicy({
         allowlist,
         nodes: readLifecycleLocks(cwd),
+        importers: readLifecycleImporters(cwd),
       });
   if (!bootstrap && existsSync(resolve(cwd, 'pnpm-lock.yaml'))) {
     const workspace = readPnpmWorkspace(cwd);

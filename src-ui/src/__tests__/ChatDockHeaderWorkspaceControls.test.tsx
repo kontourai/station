@@ -24,6 +24,7 @@ vi.mock('../contexts/NavigationContext', () => ({
 
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useShortcutDisplay: () => '',
+  useShortcutDisplayLookup: () => (_id: string) => '',
 }));
 
 vi.mock('../contexts/ApiBaseContext', () => ({

@@ -248,7 +248,7 @@ export class TerminalWebSocketServer {
       try {
         msg = JSON.parse(raw.toString());
       } catch (e) {
-        console.debug('Failed to parse WebSocket message:', e);
+        logger.debug('Failed to parse WebSocket message', { error: e });
         ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }));
         return;
       }

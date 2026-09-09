@@ -347,6 +347,54 @@ describe('ConsoleBridgeService', () => {
     await service.stop();
   });
 
+  test('removes the staged segment when its rename fails', async () => {
+    // The export retries the same segment from this exact failure, and the
+    // temp name carries a timestamp -- so without the cleanup a segment that
+    // fails repeatedly fills the events directory with orphans nothing reaps.
+    const workspace = join(dir, 'workspace-segment-temp');
+    const logger = makeLogger();
+    const service = new ConsoleBridgeService({
+      eventBus: bus,
+      eventStore: store,
+      logger,
+      config: resolveConsoleBridgeConfig({ STATION_CONSOLE_FILE_SINK: '1' }),
+      flushDelayMs: 0,
+      fileSystem: {
+        existsSync: fs.existsSync,
+        mkdirSync: fs.mkdirSync,
+        readFileSync: fs.readFileSync,
+        renameSync: (source, destination) => {
+          if (String(destination).endsWith('.jsonl')) {
+            throw new Error('injected segment rename interruption');
+          }
+          fs.renameSync(source, destination);
+        },
+        unlinkSync: fs.unlinkSync,
+        writeFileSync: fs.writeFileSync,
+      },
+    });
+    service.start();
+    for (const event of gatedSessionEvents(workspace)) {
+      emitThroughStore(store, bus, event);
+    }
+    await service.flushNow();
+
+    const segmentDirectory = join(
+      workspace,
+      '.kontourai',
+      'console',
+      'events',
+      'station-bridge',
+      'project',
+      'station-local',
+      THREAD,
+    );
+    expect(
+      fs.readdirSync(segmentDirectory).filter((name) => name.endsWith('.tmp')),
+    ).toEqual([]);
+    await service.stop();
+  });
+
   test('keeps progress at zero after a manifest write failure and retries the same atomic segment without duplicate records', async () => {
     const workspace = join(dir, 'workspace-manifest-retry');
     let interruptManifestRename = true;

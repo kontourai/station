@@ -53,9 +53,9 @@ import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
-import { waitForReceipt } from '../../../services/infra/receipt-bus.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -336,22 +336,25 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         logger: { debug() {}, warn() {} },
         legacyPersonalOwner: getCachedUser().alias,
       });
-      const settled = waitForReceipt(
-        (receipt) => receipt.kind === 'session.attachment.settled',
-      );
       orchestration.initialize();
-      await settled;
+      // Registered BEFORE the barrier is awaited. The barrier resolves only
+      // from the `finally` in `initialize()`; if that never runs, an `await`
+      // placed ahead of this push leaves `afterEach` with nothing to close,
+      // so the runtime and its SQLite handle leak into every later test in
+      // the file. `runtimeSearch` is deliberately optional here — it does not
+      // exist yet, and a barrier that never resolved means it never will.
+      searchCleanup.push(async () => {
+        await runtimeSearch?.close();
+        await orchestration!.shutdown();
+        await expect.poll(() => store.close().kind).toBe('closed');
+      });
+      await awaitSessionAttachmentSettled(orchestration);
       runtimeSearch = createRuntimeSearch({
         stationId: '22222222-2222-4222-8222-222222222222',
         tasks: new TaskGraphService(roomHomeDir, {
           resolveProjectWorkspace: async () => '',
         }),
         transcripts: orchestration,
-      });
-      searchCleanup.push(async () => {
-        await runtimeSearch!.close();
-        await orchestration!.shutdown();
-        await expect.poll(() => store.close().kind).toBe('closed');
       });
     }
     const project = {
@@ -509,9 +512,13 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         mode === 'home' || mode === 'operator'
           ? 'legacy-owned'
           : `${mode}-owned`;
-      expect(body.data.results.map((row: any) => row.scope.sessionId)).toEqual(
-        mode === 'operator' ? [] : [expected],
-      );
+      // The source states ride in the failure message: a provider that timed
+      // out or a read the attachment gate refused answers 200 with an empty
+      // list, which reads exactly like a wrong owner filter (station#1707).
+      expect(
+        body.data.results.map((row: any) => row.scope.sessionId),
+        JSON.stringify(body.data.sources),
+      ).toEqual(mode === 'operator' ? [] : [expected]);
       const opened = await app.request(
         '/api/search/resolve-open',
         {

@@ -16,13 +16,13 @@ import { basename, isAbsolute, join, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { getOrchestrationDatabasePath } from '../src-server/domain/migrations/003-orchestration-events.js';
 import { buildPlugin } from '../src-server/routes/plugins/plugin-bundles.js';
-import { installPluginFromSource } from '../src-server/routes/plugins/plugin-install-shared.js';
 import { EventStore } from '../src-server/services/orchestration/event-store.js';
 import {
   closePluginActivationSession,
   createPluginActivationSession,
 } from '../src-server/services/plugins/plugin-activation-composition.js';
 import { derivePluginConsentBasis } from '../src-server/services/plugins/plugin-install-consent.js';
+import { installPluginFromSource } from '../src-server/services/plugins/plugin-install-transaction.js';
 import { createLocalPluginInstallationHost } from '../src-server/services/plugins/plugin-installation-local.js';
 import { readPluginManifestFile } from '../src-server/services/plugins/plugin-manifest-loader.js';
 import { readPluginGrantRevision } from '../src-server/services/plugins/plugin-permissions.js';

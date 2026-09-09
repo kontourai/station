@@ -22,7 +22,7 @@ import {
 import { parseUnifiedSearchProviderPage } from './unified-search-service.js';
 
 export interface IsolatedTaskSearch
-  extends Pick<OwnedSearchReadWorker, 'inspect' | 'close'> {
+  extends Pick<OwnedSearchReadWorker, 'inspect' | 'close' | 'whenReady'> {
   readonly provider: UnifiedSearchProvider;
   /** Personal TaskGraph authority only; hosted requests never reach this worker. */
   open(input: {
@@ -50,6 +50,8 @@ export function createIsolatedTaskSearch(
   return {
     inspect: worker.inspect,
     close: worker.close,
+    /** station#1707: readiness is a startup cost, never part of a read budget. */
+    whenReady: worker.whenReady,
     async open(input) {
       const { authority, taskId, projectId, signal, current } = input;
       const authorized = () => {

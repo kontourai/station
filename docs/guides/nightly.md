@@ -21,9 +21,13 @@ moved.** The single schedule trigger fires at 09:00 UTC — early morning in the
 maintainer's timezone, so a day's work starts against a build of the previous
 day's merges. The scheduled job compares `HEAD` against the rolling `nightly`
 tag (the commit the last published nightly was cut from) and builds nothing
-when they match: a new version number over identical content is a version
-number that lies. A quiet day therefore produces no update on a tester's
-device, by design. Manual same-day rebuilds are the one exception, below.
+when they match and the deploy ledger records that ship: a new version number
+over identical content is a version number that lies. A quiet day therefore
+produces no update on a tester's device, by design. The tag alone is not the
+evidence — the macOS marker moves before its publish is verified, so the
+decision also requires a ledger row per platform at the tag's commit
+(see [Native Nightly cohort](./native-releases.md#native-nightly-cohort)).
+Manual same-day rebuilds are the one exception, below.
 
 **What a tester should expect.** The job has a 90-minute timeout (plus
 possible queueing for fleet capacity), and Play typically processes an

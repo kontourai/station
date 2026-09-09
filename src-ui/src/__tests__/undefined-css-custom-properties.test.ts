@@ -357,7 +357,6 @@ const UNTHEMED_FALLBACK: string[] = [
   '--surface-hover',
   '--surface-raised',
   '--warning',
-  '--warning-color',
 ];
 
 /**

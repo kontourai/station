@@ -18,6 +18,7 @@ import {
   awaitSettlementWithin,
   raceWithSignal,
 } from '../../utils/bounded-async.js';
+import { createLogger } from '../../utils/logger.js';
 import {
   type ProviderAdapterShape,
   setProviderAdapterRegistrationProvenance,
@@ -47,6 +48,8 @@ import type {
 } from '../provider-interfaces.js';
 import { PROVIDER_TYPE_META } from '../provider-interfaces.js';
 import { createIntegrationRegistryProvider } from './integration-registry-provider.js';
+
+const logger = createLogger({ name: 'provider-registry' });
 
 // ── Generic Store ──────────────────────────────────────
 
@@ -266,7 +269,7 @@ function commitProviderAdapterLaunchabilityRevision(): void {
     try {
       listener(providerAdapterLaunchabilityRevision);
     } catch {
-      console.debug('Provider adapter launchability listener failed.');
+      logger.debug('Provider adapter launchability listener failed.');
     }
   }
 }
@@ -909,7 +912,7 @@ export function registerPluginRegistryProvider(
   registerProvider('pluginRegistry', provider, { source });
 }
 
-// Accessed via dynamic import() namespace in plugin-install-shared.
+// Accessed via dynamic import() namespace in plugin-install-transaction.
 // fallow-ignore-next-line unused-export
 export function getPluginRegistryProviders(): {
   provider: IPluginRegistryProvider;

@@ -12,10 +12,11 @@ type ClearanceVariable = `--region-${DockRegionId}-size` | '--dock-slot-size';
  *
  * `--dock-slot-size` is the surviving pre-#928 alias: it names the space the
  * dock takes along the BOTTOM edge, which is one number whatever else is
- * occupied. Five stylesheets and one measuring component read it (index.css,
- * OnboardingGate, SplitPaneLayout, GlobalVoiceButton, SettingsView and
- * Coachmark.tsx), and `dock-bottom-clearance.test.ts` pins this file as its
- * only writer.
+ * occupied. Several stylesheets and measuring components read it; the list is
+ * deliberately not transcribed here, because it drifts — the version that was
+ * here named `GlobalVoiceButton`, since deleted, and omitted others.
+ * `dock-bottom-clearance.test.ts` scans
+ * the tree for readers and pins this file as the only writer.
  *
  * Its side-width counterpart is retired (#1374; the spelling lives
  * once, in `placement-vocabulary.test.ts`, which keeps it from coming

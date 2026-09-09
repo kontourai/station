@@ -699,9 +699,11 @@ function App() {
               pending={null}
             />
             {/* Single floating voice affordance: the S2S pill. The separate STT
-              FAB (GlobalVoiceButton) was removed — having both rendered two
-              floating mics (opposite corners) whenever voice was enabled. STT
-              while typing remains available via the inline VoiceOrb in the chat
+              FAB was unmounted here first — having both rendered two floating
+              mics (opposite corners) whenever voice was enabled — and its
+              module (`components/voice/GlobalVoiceButton.tsx`) has since been
+              deleted, so no caller can bring the second mic back. STT while
+              typing remains available via the inline VoiceOrb in the chat
               input. */}
             {featureSettings.voiceS2SEnabled && (
               <LazyBoundary

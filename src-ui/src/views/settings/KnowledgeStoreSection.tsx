@@ -33,7 +33,6 @@ import { useState } from 'react';
 import { ArchiveGlyph, BrainGlyph } from '../../components/icons/Glyph';
 import { PathAutocomplete } from '../../components/PathAutocomplete';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
-import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { errorText } from '../../utils/errorText';
 import './KnowledgeStoreSection.css';
@@ -47,7 +46,6 @@ const OBSIDIAN_ADAPTER_ID = 'kit-obsidian-store';
  * ever shown while there is no personal root yet (a user has exactly one
  * personal root — once it exists there is nothing left to connect). */
 function ConnectObsidianVault() {
-  const { apiBase } = useApiBase();
   const createRoot = useCreateKnowledgeRootMutation();
   const validateRoot = useValidateKnowledgeRootMutation();
   const [open, setOpen] = useState(false);
@@ -85,7 +83,6 @@ function ConnectObsidianVault() {
           setValidated(null);
         }}
         placeholder="/path/to/vault"
-        apiBase={apiBase}
         className="editor-input knowledge-store-section__obsidian-input"
       />
       <span className="settings__field-hint">

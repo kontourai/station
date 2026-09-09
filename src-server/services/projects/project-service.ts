@@ -11,8 +11,11 @@ import {
   projectOps,
 } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
+import { createLogger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
 import type { ProjectManifestStore } from './project-manifest-store.js';
+
+const logger = createLogger({ name: 'project-service' });
 
 export class ProjectWorktreeDirectoryError extends Error {
   readonly code = 'project_worktree_directory_invalid';
@@ -275,9 +278,9 @@ export class ProjectService {
         await this.manifests.ensureProjectManifest(project);
       } catch (error) {
         projectManifestBackfills.add(1, { outcome: 'failed' });
-        console.warn(
-          `Project "${project.slug}" was created, but writing its manifest sidecar failed; it stays on the working-directory compat path:`,
-          error,
+        logger.warn(
+          'Project was created, but writing its manifest sidecar failed; it stays on the working-directory compat path',
+          { project: project.slug, error },
         );
       }
     }

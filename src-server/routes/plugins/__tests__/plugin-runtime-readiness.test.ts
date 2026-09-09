@@ -30,18 +30,18 @@ import {
   revokeGrants,
 } from '../../../services/plugins/plugin-permissions.js';
 import {
+  acquirePluginPublicServerModule,
+  readPluginPublicManifest,
+} from '../../../services/plugins/plugin-public-server.js';
+import {
   capturePluginRuntimeArtifact,
   capturePluginRuntimeArtifactAsync,
 } from '../../../services/plugins/plugin-runtime-artifact.js';
+import * as pluginSource from '../../../services/plugins/plugin-source.js';
 import { readCurrentWorkspacePaneCatalog } from '../../../services/projects/workspace-pane-catalog.js';
 import { readPluginBundle } from '../plugin-bundles.js';
 import { registerPluginInstallRoutes } from '../plugin-install-routes.js';
 import { registerPluginPublicRoutes } from '../plugin-public-routes.js';
-import {
-  acquirePluginPublicServerModule,
-  readPluginPublicManifest,
-} from '../plugin-public-server.js';
-import * as pluginSource from '../plugin-source.js';
 
 vi.mock('node:fs', async (original) => {
   const actual = await original<typeof import('node:fs')>();

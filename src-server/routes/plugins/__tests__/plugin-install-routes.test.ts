@@ -32,7 +32,7 @@ vi.mock('../../../providers/registries/registry.js', () => ({
   ]),
 }));
 
-vi.mock('../plugin-install-shared.js', () => ({
+vi.mock('../../../services/plugins/plugin-install-transaction.js', () => ({
   installPluginFromSource,
 }));
 

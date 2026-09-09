@@ -38,21 +38,6 @@
   transform: scale(1.1) rotate(5deg);
 }
 
-.app-toolbar__name {
-  font-family: var(--font-sans);
-  font-size: var(--text-lg);
-  font-weight: 600;
-  color: var(--text-primary);
-  background: linear-gradient(
-    135deg,
-    var(--text-primary) 0%,
-    var(--accent-primary) 100%
-  );
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
 .app-toolbar__spacer {
   flex: 1;
 }

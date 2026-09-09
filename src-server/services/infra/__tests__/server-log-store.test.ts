@@ -16,6 +16,7 @@ import {
   serverLogStoreRetentionRemovedFiles,
   serverLogStoreWriteErrors,
 } from '../../../telemetry/metrics.js';
+import { createLogger } from '../../../utils/logger.js';
 import {
   createServerLogStore,
   getInstalledServerLogSink,
@@ -41,6 +42,16 @@ function fileNames(directory: string): string[] {
   return readdirSync(directory)
     .filter((name) => /^server-\d{4}-\d{2}-\d{2}\.ndjson$/.test(name))
     .sort();
+}
+
+/** Parses every line of the single today-dated NDJSON file, in write order. */
+function readTodayLines(directory: string): Array<Record<string, unknown>> {
+  const files = fileNames(directory);
+  expect(files).toHaveLength(1);
+  return readFileSync(join(directory, files[0]), 'utf8')
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
 }
 
 describe('createServerLogStore — NDJSON writes', () => {
@@ -292,6 +303,46 @@ describe('installServerLogSink / getInstalledServerLogSink', () => {
     const replaced = installServerLogSink({ directory: second });
     expect(getInstalledServerLogSink()).toBe(replaced);
     expect(getInstalledServerLogSink()?.directory).toBe(second);
+  });
+
+  /**
+   * ORDER, not just outcome. `installServerLogSink` registers the new sink
+   * with the logger seam BEFORE closing the store it replaces. Moving the
+   * registration after `previous.close()` leaves every other assertion in
+   * this file green, because nothing else observes the window between the two
+   * — yet in that window a logger write would be handed to a store whose fd
+   * has just been closed, and the line is dropped.
+   *
+   * The observation point is a write issued FROM the close itself, which is
+   * the only moment inside that window a test can reach.
+   */
+  it('registers the replacement before closing the previous store, so a line logged during the swap still lands', () => {
+    const first = createTempDir();
+    const second = createTempDir();
+    const firstSink = installServerLogSink({ directory: first });
+    const logger = createLogger({ name: 'log-sink-swap', level: 'info' });
+    logger.info('before the swap');
+
+    const originalClose = firstSink.close.bind(firstSink);
+    let closed = false;
+    vi.spyOn(firstSink, 'close').mockImplementation(() => {
+      closed = true;
+      logger.info('logged while the previous store was closing');
+      originalClose();
+    });
+
+    installServerLogSink({ directory: second });
+    expect(closed).toBe(true);
+
+    // Pre-swap line in the old store, swap-window line in the NEW one: with
+    // the registration moved after the close, the swap-window line would be
+    // handed to `firstSink` instead and lost on its closed fd.
+    expect(readTodayLines(first).map((line) => line.msg)).toEqual([
+      'before the swap',
+    ]);
+    expect(readTodayLines(second).map((line) => line.msg)).toEqual([
+      'logged while the previous store was closing',
+    ]);
   });
 
   it("closes the replaced sink's fd — a double-install must not orphan an open descriptor", () => {

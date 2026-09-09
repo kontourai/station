@@ -2,6 +2,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  afterAll,
   afterEach,
   beforeEach,
   describe,
@@ -56,6 +57,30 @@ afterEach(() => {
   vi.doUnmock('../commands/environment.js');
   vi.doUnmock('../commands/lazy-start.js');
   vi.restoreAllMocks();
+});
+
+// Lifecycle homes and targets below used to name fixed paths under the shared
+// system temp directory (`/tmp/x`, `/tmp/station-home`, ...). That directory is
+// world-writable and shared with every other process on this host, so an
+// unrelated program leaving a regular file at one of those names made the CLI's
+// home admission check refuse the path, and these tests failed for a reason
+// with nothing to do with the parser (#1790 -- observed live with a sibling
+// shell's redirect sitting at `/tmp/x`). `mkdtempSync` hands back a directory
+// this file alone owns; the names below are leaves inside it, so they stay
+// absent on disk exactly as the originals were, without being shared.
+const TEST_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-cli-test-'));
+const ownedPath = (name: string): string => join(TEST_TEMP_ROOT, name);
+
+const STATION_HOME = ownedPath('station-home');
+const PERSISTENT_HOME = ownedPath('station-persistent-home');
+const AMBIENT_HOME = ownedPath('ambient-home');
+const ENV_HOME = ownedPath('env-home');
+const KEEP_ME_HOME = ownedPath('keep-me');
+const OTHER_HOME = ownedPath('other');
+const AGENTS_MD_TARGET = ownedPath('AGENTS.md');
+
+afterAll(() => {
+  rmSync(TEST_TEMP_ROOT, { force: true, recursive: true });
 });
 
 describe('bundled client admission', () => {
@@ -844,15 +869,19 @@ describe('runCli', () => {
     }));
 
     const { runCli } = await import('../cli.js');
-    await runCli(['export', '--format=agents-md', '--output=/tmp/AGENTS.md']);
-    await runCli(['import', '/tmp/AGENTS.md']);
+    await runCli([
+      'export',
+      '--format=agents-md',
+      `--output=${AGENTS_MD_TARGET}`,
+    ]);
+    await runCli(['import', AGENTS_MD_TARGET]);
 
     expect(exportConfig).toHaveBeenCalledWith({
       format: 'agents-md',
       includeSecrets: false,
-      output: '/tmp/AGENTS.md',
+      output: AGENTS_MD_TARGET,
     });
-    expect(importConfig).toHaveBeenCalledWith('/tmp/AGENTS.md');
+    expect(importConfig).toHaveBeenCalledWith(AGENTS_MD_TARGET);
   });
 
   test('passes an explicit base through clean-before-start lifecycle calls', async () => {
@@ -862,7 +891,7 @@ describe('runCli', () => {
       'start',
       '--clean',
       '--force',
-      '--base=/tmp/station-home',
+      `--base=${STATION_HOME}`,
       '--instance=smoke-a',
       '--port=3242',
       '--ui-port=5274',
@@ -875,14 +904,14 @@ describe('runCli', () => {
       force: true,
       homeSource: '--base',
       instanceName: 'smoke-a',
-      projectHome: '/tmp/station-home',
+      projectHome: STATION_HOME,
       serverPort: 3242,
       uiPort: 5274,
     });
     expect(lifecycle.start).toHaveBeenCalledWith({
       allowSharedHome: false,
       allowedOrigins: undefined,
-      baseDir: '/tmp/station-home',
+      baseDir: STATION_HOME,
       build: false,
       features: undefined,
       force: true,
@@ -908,7 +937,7 @@ describe('runCli', () => {
 
     await runCli([
       'start',
-      '--home=/tmp/station-persistent-home',
+      `--home=${PERSISTENT_HOME}`,
       '--instance=smoke-home',
       '--port=3242',
       '--ui-port=5274',
@@ -916,7 +945,7 @@ describe('runCli', () => {
 
     expect(lifecycle.start).toHaveBeenCalledWith(
       expect.objectContaining({
-        baseDir: '/tmp/station-persistent-home',
+        baseDir: PERSISTENT_HOME,
         homeSource: '--home',
         instanceName: 'smoke-home',
       }),
@@ -924,14 +953,14 @@ describe('runCli', () => {
   });
 
   test('--home wins over an ambient STATION_HOME', async () => {
-    process.env.STATION_HOME = '/tmp/ambient-home';
+    process.env.STATION_HOME = AMBIENT_HOME;
     const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
 
-    await runCli(['start', '--home=/tmp/station-persistent-home']);
+    await runCli(['start', `--home=${PERSISTENT_HOME}`]);
 
     expect(lifecycle.start).toHaveBeenCalledWith(
       expect.objectContaining({
-        baseDir: '/tmp/station-persistent-home',
+        baseDir: PERSISTENT_HOME,
         homeSource: '--home',
       }),
     );
@@ -941,10 +970,10 @@ describe('runCli', () => {
     const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
 
     await expect(
-      runCli(['start', '--home=/tmp/keep-me', '--temp-home']),
+      runCli(['start', `--home=${KEEP_ME_HOME}`, '--temp-home']),
     ).rejects.toThrow('--temp-home cannot be combined with --home.');
     await expect(
-      runCli(['start', '--home=/tmp/keep-me', '--base=/tmp/other']),
+      runCli(['start', `--home=${KEEP_ME_HOME}`, `--base=${OTHER_HOME}`]),
     ).rejects.toThrow(
       '--home and --base set the same directory. Pass only one of them.',
     );
@@ -957,9 +986,7 @@ describe('runCli', () => {
     // the failure this flag exists to prevent.
     const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
 
-    await expect(
-      runCli(['start', '--home', '/tmp/station-persistent-home']),
-    ).rejects.toThrow(
+    await expect(runCli(['start', '--home', PERSISTENT_HOME])).rejects.toThrow(
       'Lifecycle option --home requires the --home=<value> form.',
     );
     expect(lifecycle.start).not.toHaveBeenCalled();
@@ -975,7 +1002,7 @@ describe('runCli', () => {
     await runCli([
       'start',
       '--allow-shared-home',
-      '--base=/tmp/station-home',
+      `--base=${STATION_HOME}`,
       '--instance=smoke-a',
       '--port=3242',
       '--ui-port=5274',
@@ -1041,13 +1068,13 @@ describe('runCli', () => {
   });
 
   test('uses the resolved home selector when stopping with an env home override', async () => {
-    process.env.STATION_HOME = '/tmp/env-home';
+    process.env.STATION_HOME = ENV_HOME;
     const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
 
     await runCli(['stop']);
 
     expect(lifecycle.stop).toHaveBeenCalledWith({
-      baseDir: '/tmp/env-home',
+      baseDir: ENV_HOME,
       instanceName: undefined,
       serverPort: undefined,
       uiPort: undefined,
@@ -1055,7 +1082,7 @@ describe('runCli', () => {
   });
 
   test('does not inject the resolved default home when stopping a named instance', async () => {
-    process.env.STATION_HOME = '/tmp/env-home';
+    process.env.STATION_HOME = ENV_HOME;
     const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
 
     await runCli(['stop', '--instance=smoke-a']);

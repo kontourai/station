@@ -1,6 +1,6 @@
 import { useProjectLayoutsQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
-import { useNavigation } from '../../contexts/NavigationContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
 import { Button } from '../Button';
 import { ArrowDownGlyph } from '../icons/Glyph';
 import { describeReadFailure, Empty, ErrorState } from '../state';
@@ -23,7 +23,7 @@ export function LayoutSwitcher({
   projectSlug,
   layoutSlug,
 }: LayoutSwitcherProps) {
-  const { setLayout } = useNavigation();
+  const { setLayout } = useNavigationActions();
   // `= []` on its own makes a failed read indistinguishable from a
   // project with no layouts, so the menu asserted "No layouts" over a read
   // that never answered.

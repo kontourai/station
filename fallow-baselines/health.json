@@ -3432,7 +3432,7 @@
         "count": 1
       }
     },
-    "src-server/routes/plugins/plugin-install-shared.ts": {
+    "src-server/services/plugins/plugin-install-transaction.ts": {
       "complexity_critical": {
         "count": 1
       },
@@ -3477,7 +3477,7 @@
         "count": 1
       }
     },
-    "src-server/routes/plugins/plugin-public-server.ts": {
+    "src-server/services/plugins/plugin-public-server.ts": {
       "complexity_critical": {
         "count": 1
       },
@@ -3485,7 +3485,7 @@
         "count": 1
       }
     },
-    "src-server/routes/plugins/plugin-source.ts": {
+    "src-server/services/plugins/plugin-source.ts": {
       "complexity_critical": {
         "count": 2
       },
@@ -8207,7 +8207,7 @@
     "src-ui/src/components/chat-dock/ChatDockBody.tsx:complexity",
     "src-server/domain/shared-working-state.ts:complexity",
     "src-server/providers/adapters/muse-adapter.ts:dead code",
-    "src-server/routes/plugins/plugin-public-server.ts:circular dependency",
+    "src-server/services/plugins/plugin-public-server.ts:circular dependency",
     "src-ui/src/workspace-panes/browserPreviewPaneInstance.ts:high impact",
     "src-server/services/orchestration/orchestration-session-state.ts:complexity",
     "src-server/routes/system/self-update-watchdog.ts:dead code",
@@ -8218,7 +8218,7 @@
     "scripts/run-verification.mjs:complexity",
     "src-ui/src/components/notifications/NotificationHistory.tsx:complexity",
     "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx:high impact",
-    "src-server/routes/plugins/plugin-install-shared.ts:circular dependency",
+    "src-server/services/plugins/plugin-install-transaction.ts:circular dependency",
     "src-ui/src/components/notifications/BannerHost.tsx:complexity",
     "packages/cli/src/commands/profile-store.ts:complexity",
     "src-ui/src/components/chat/ChatInputArea.tsx:complexity",
@@ -8405,7 +8405,7 @@
     "src-ui/src/components/coding-layout/BranchToolbar.tsx:complexity",
     "src-server/providers/adapters/codex-adapter-notifications.ts:complexity",
     "src-server/runtime/diagnostics/task-room-acceptance-control.ts:untested risk",
-    "src-server/routes/plugins/plugin-source.ts:complexity",
+    "src-server/services/plugins/plugin-source.ts:complexity",
     "src-server/services/starter-work/starter-registry.ts:complexity",
     "scripts/builder-delivery-viewer-import-gate.mjs:complexity",
     "src-ui/src/workspace-panes/BrowserPreviewPane.tsx:complexity",

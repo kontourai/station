@@ -15,11 +15,11 @@ import {
   readPluginGrantRecord,
   revokeGrants,
 } from '../../../services/plugins/plugin-permissions.js';
-import { registerPluginPublicRoutes } from '../plugin-public-routes.js';
 import {
   acquirePluginPublicServerModule,
   quiescePluginPublicServerModule,
-} from '../plugin-public-server.js';
+} from '../../../services/plugins/plugin-public-server.js';
+import { registerPluginPublicRoutes } from '../plugin-public-routes.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   pluginGrantsStoreCorruption: { add: vi.fn() },

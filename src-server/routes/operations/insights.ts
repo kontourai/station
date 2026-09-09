@@ -13,8 +13,11 @@ import {
 } from '../../../src-shared/monitoring-keys.js';
 import { monitoringSessionIdentity } from '../../monitoring/monitoring-session-identity.js';
 import { insightOps } from '../../telemetry/metrics.js';
+import { createLogger } from '../../utils/logger.js';
 import { getCachedUser } from '../system/auth.js';
 import { canReadMonitoringEvent } from './monitoring.js';
+
+const logger = createLogger({ name: 'insights-routes' });
 
 /**
  * A derived absence, never a value. Parenthesized so it cannot collide with
@@ -455,11 +458,11 @@ export function createInsightsRoutes(
               }
             }
           } catch (e) {
-            console.debug('Failed to parse insights event line:', e);
+            logger.debug('Failed to parse insights event line', { error: e });
           }
         }
       } catch (e) {
-        console.debug('Failed to read insights event file:', e);
+        logger.debug('Failed to read insights event file', { error: e });
       }
     }
 

@@ -1017,39 +1017,6 @@ button:hover {
   align-items: center;
 }
 
-.header-nav-btn {
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-secondary);
-  padding: 5px 10px;
-  border-radius: 4px;
-  font-size: var(--text-md);
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background-color var(--motion-fast) var(--ease-standard),
-    color var(--motion-fast) var(--ease-standard),
-    border-color var(--motion-fast) var(--ease-standard);
-}
-
-.header-nav-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: var(--border-primary);
-}
-
-.header-nav-btn.is-active {
-  color: var(--accent-primary);
-  background: transparent;
-  border-color: transparent;
-  border-bottom: 2px solid var(--accent-primary);
-  border-radius: 4px 4px 0 0;
-}
-
-.header-hamburger {
-  display: none;
-}
-
 /* Mobile: hamburger + logo in toolbar */
 .app-toolbar__sidebar-toggle {
   display: none;
@@ -1084,31 +1051,6 @@ button:hover {
 .theme-toggle:hover {
   border-color: var(--accent-primary);
   color: var(--text-primary);
-}
-
-.management-notice {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 24px;
-  background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border-primary);
-  font-size: var(--text-md);
-  color: var(--text-secondary);
-}
-
-.management-notice button {
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--border-secondary);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.management-notice button:hover {
-  border-color: var(--accent-primary);
 }
 
 .toast {
@@ -1275,69 +1217,6 @@ button:hover {
   cursor: not-allowed;
 }
 
-.quick-actions {
-  display: flex;
-  flex: 1;
-  justify-content: flex-end;
-  gap: 24px;
-  align-items: center;
-}
-
-.quick-actions--placeholder {
-  justify-content: center;
-  font-size: var(--text-md);
-  color: var(--text-muted);
-}
-
-.quick-actions__group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 220px;
-}
-
-.quick-actions__label {
-  font-size: var(--text-base);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-}
-
-.quick-actions__buttons {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.quick-actions__button {
-  padding: 8px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--accent-primary);
-  background: transparent;
-  color: var(--accent-primary);
-  cursor: pointer;
-  font-size: var(--text-md);
-}
-
-.quick-actions__button:hover {
-  background: var(--accent-medium);
-}
-
-.quick-actions__button--secondary {
-  border-color: var(--border-light);
-  color: var(--text-secondary);
-}
-
-.quick-actions__button--secondary:hover {
-  border-color: var(--text-tertiary);
-  background: var(--bg-tertiary);
-}
-
-.quick-actions__helper {
-  font-size: var(--text-base);
-  color: var(--text-disabled);
-}
-
 .sidebar {
   width: 280px;
   background: var(--bg-secondary);
@@ -1366,41 +1245,6 @@ button:hover {
   flex: 1;
   overflow-y: auto;
   padding: 12px;
-}
-
-.agent-item {
-  padding: 12px 16px;
-  margin-bottom: 8px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition:
-    background-color var(--motion-base) var(--ease-standard),
-    border-color var(--motion-base) var(--ease-standard);
-  background: var(--bg-tertiary);
-  border: 2px solid transparent;
-}
-
-.agent-item:hover {
-  background: var(--bg-elevated);
-}
-
-.agent-item.active {
-  background: var(--bg-highlight);
-  border-color: var(--accent-primary);
-}
-
-.agent-item h3 {
-  font-size: var(--text-lg);
-  font-weight: 500;
-  margin-bottom: 4px;
-}
-
-.agent-item p {
-  font-size: var(--text-base);
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .main-content {
@@ -3151,10 +2995,19 @@ button:hover {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   /* The branch glyph and the branch name are one token; without this the
-     header squeezed "main" onto a second line under the ⎇, and a long branch
-     name broke across three. A squeezed badge ellipsises instead. */
+     header squeezed "main" onto a second line under the branch glyph, and a
+     long branch name broke across three. A squeezed badge ellipsises
+     instead. */
   min-width: 0;
   white-space: nowrap;
+}
+/* The glyph is inline rather than a flex item on purpose: `.git-badge__branch`
+   below owns the text-overflow ellipsis that keeps a long branch name on one
+   line, and that needs the name to be text directly inside a non-flex box.
+   An inline SVG sits on the text baseline, so nudge it onto the optical
+   centre of the name beside it. */
+.git-badge__branch-icon {
+  vertical-align: -0.15em;
 }
 .git-badge__branch {
   min-width: 0;
@@ -3837,17 +3690,6 @@ button:hover {
   border-color: var(--accent-primary);
 }
 
-.chat-header {
-  padding: 20px;
-  border-bottom: 1px solid var(--border-primary);
-  background: var(--bg-secondary);
-}
-
-.chat-header h2 {
-  font-size: var(--text-2xl);
-  font-weight: 600;
-}
-
 .chat-messages--empty {
   align-items: center;
   justify-content: center;
@@ -4301,14 +4143,16 @@ button.background-tasks-banner:focus-visible {
   clip: rect(0 0 0 0);
 }
 
-/* #1130/#1170 sweep: `CollaborativeEditorPane.tsx` (remote-cursor-count and
-   working-revision live regions) and `OutboundQueuedMessages.tsx` (offline
-   queue announcement) both reached for a bare `className="sr-only"` — a name
-   no stylesheet in this repo defined, so the "visually-hidden" text rendered
-   fully visible instead. Every other call site above scopes its own
-   feature-named class to this identical clip technique rather than sharing
-   one; these two independently reached for a shared generic name instead, so
-   this is that shared utility rather than a fifth near-identical copy. */
+/* #1130/#1170 sweep: several call sites reached for a bare
+   `className="sr-only"` — a name no stylesheet in this repo defined, so the
+   "visually-hidden" text rendered fully visible instead. Every other call
+   site above scopes its own feature-named class to this identical clip
+   technique rather than sharing one; these independently reached for a shared
+   generic name instead, so this is that shared utility rather than a fifth
+   near-identical copy. (One of the two originally named here,
+   `CollaborativeEditorPane.tsx`, was never mounted and has been deleted; the
+   rule stays because `OutboundQueuedMessages.tsx` and three other live
+   surfaces still use the class.) */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -5125,34 +4969,11 @@ button.tool-call__line:hover {
   z-index: var(--layer-popover);
 }
 
-.command-item {
-  padding: 10px 14px;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  transition:
-    background-color var(--motion-fast) var(--ease-standard),
-    border-left-color var(--motion-fast) var(--ease-standard);
-  border-left: 3px solid transparent;
-}
-
-.command-item:hover,
-.command-item.selected {
-  background: var(--bg-tertiary);
-  border-left-color: var(--accent-primary);
-}
-
 .command-name {
   font-family: var(--font-mono);
   font-weight: 600;
   color: var(--accent-primary);
   font-size: 0.95em;
-}
-
-.command-desc {
-  font-size: 0.85em;
-  color: var(--text-secondary);
 }
 
 .chat-input textarea {
@@ -5492,12 +5313,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-primary);
 }
 
-/* Forms */
-.form-panel {
-  padding: 24px;
-  max-width: 800px;
-}
-
 .form-group {
   margin-bottom: 24px;
 }
@@ -5568,90 +5383,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-muted);
 }
 
-.template-variables-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.template-variable-item {
-  display: grid;
-  grid-template-columns: 1fr 120px 1fr auto;
-  gap: 8px;
-  align-items: center;
-}
-
-.template-variable-item input,
-.template-variable-item select {
-  padding: 8px 12px;
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  background: var(--bg-input);
-  color: var(--text-primary);
-  font-size: var(--text-lg);
-}
-
 .form-error {
   display: block;
   margin-top: 6px;
   font-size: var(--text-base);
   color: var(--error-text);
-}
-
-.field-with-help {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.field-with-help input {
-  flex: 1;
-}
-
-.help-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--bg-elevated);
-  color: var(--text-muted);
-  font-size: var(--text-md);
-  font-weight: 600;
-  cursor: help;
-  text-decoration: none;
-  transition:
-    background-color var(--motion-base) var(--ease-standard),
-    color var(--motion-base) var(--ease-standard);
-  flex-shrink: 0;
-}
-
-.help-icon:hover {
-  background: var(--accent-primary);
-  color: var(--text-on-accent);
-}
-
-.generate-button {
-  margin-top: 8px;
-  padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--accent-primary);
-  background: transparent;
-  color: var(--accent-primary);
-  font-size: var(--text-md);
-  cursor: pointer;
-  transition: background-color var(--motion-base) var(--ease-standard);
-}
-
-.generate-button:hover:not(:disabled) {
-  background: var(--accent-medium);
-}
-
-.generate-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* Modal */
@@ -5793,29 +5529,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   flex-shrink: 0;
 }
 
-.step-indicator {
-  padding: 14px 20px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: var(--text-lg);
-  font-weight: 500;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition:
-    color var(--motion-base) var(--ease-standard),
-    border-bottom-color var(--motion-base) var(--ease-standard);
-}
-
-.step-indicator:hover {
-  color: var(--text-primary);
-}
-
-.step-indicator.is-active {
-  color: var(--accent-primary);
-  border-bottom-color: var(--accent-primary);
-}
-
 .agent-editor__content {
   flex: 1;
   overflow-y: auto;
@@ -5829,36 +5542,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   padding: 12px 24px;
   border-top: 1px solid var(--border-primary);
   background: var(--bg-secondary);
-  flex-shrink: 0;
-}
-
-.tool-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-}
-
-.tool-checkbox {
-  display: flex;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  background: var(--bg-secondary);
-  cursor: pointer;
-  transition:
-    background-color var(--motion-base) var(--ease-standard),
-    border-color var(--motion-base) var(--ease-standard);
-}
-
-.tool-checkbox:hover {
-  border-color: var(--accent-primary);
-  background: var(--bg-tertiary);
-}
-
-.tool-checkbox input[type="checkbox"] {
-  width: 20px;
-  height: 20px;
   flex-shrink: 0;
 }
 
@@ -5880,67 +5563,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-muted);
 }
 
-.tool-meta {
-  font-size: var(--text-sm);
-  color: var(--text-disabled);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.quick-prompt-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
-  padding: 12px;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  background: var(--bg-secondary);
-}
-
-.quick-prompt-editor input {
-  width: 100%;
-}
-
-.quick-prompt-editor textarea {
-  width: 100%;
-  min-height: 80px;
-}
-
-.new-tool-form {
-  padding: 20px;
-  margin-bottom: 24px;
-  border: 1px solid var(--accent-primary);
-  border-radius: 10px;
-  background: var(--accent-subtle);
-}
-
-.new-tool-form h4 {
-  font-size: var(--text-xl);
-  font-weight: 600;
-  margin-bottom: 16px;
-  color: var(--accent-primary);
-}
-
-.empty-state-small {
-  padding: 32px;
-  text-align: center;
-  border: 1px dashed var(--border-dashed);
-  border-radius: 10px;
-  color: var(--text-muted);
-}
-
-/* App Toolbar Additions */
-.app-toolbar__title {
-  font-size: var(--text-2xl);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.app-toolbar__settings {
-  margin-left: auto;
-}
-
 @keyframes spin {
   from {
     transform: rotate(0deg);
@@ -5959,12 +5581,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-.hide-past-toggle:hover {
-  background: var(--color-bg-secondary) !important;
-  color: var(--color-text) !important;
-  border-color: var(--color-primary) !important;
 }
 
 /* Meeting body content - strip all colors and use theme */
@@ -7314,162 +6930,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   animation: acp-pulse var(--motion-status-pulse) var(--ease-standard) infinite;
 }
 
-/* ── ACP Preset Dropdown ── */
-.acp-preset-menu {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  margin-top: 4px;
-  z-index: 10;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  min-width: 220px;
-  overflow: hidden;
-}
-.acp-preset-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 14px;
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  font-size: var(--text-md);
-  text-align: left;
-}
-.acp-preset-item:hover {
-  background: var(--bg-hover);
-}
-.acp-preset-item--disabled {
-  opacity: 0.5;
-  cursor: default;
-  color: var(--text-muted);
-}
-.acp-preset-item--disabled:hover {
-  background: none;
-}
-.acp-preset-item__name {
-  font-weight: 500;
-  flex: 1;
-}
-.acp-preset-item__hint {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-}
-.acp-preset-divider {
-  height: 1px;
-  background: var(--border-primary);
-}
-.acp-registry-list {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.acp-registry-list .acp-preset-item {
-  min-height: 54px;
-}
-.acp-registry-list .acp-preset-item__name {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-/* ── ACP Custom Connection Modal ── */
-.acp-custom-modal {
-  max-width: 480px;
-  width: 90vw;
-}
-.acp-custom-modal__grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.acp-custom-modal__label {
-  font-size: var(--text-base);
-  color: var(--text-secondary);
-  display: block;
-  margin-bottom: 4px;
-}
-.acp-custom-modal__input {
-  width: 100%;
-  padding: 8px 10px;
-  font-size: var(--text-md);
-  border-radius: 6px;
-  border: 1px solid var(--border-primary);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-}
-
-/* ── Workspace Onboarding ── */
-.workspace-onboarding {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 2rem;
-}
-.workspace-onboarding__inner {
-  max-width: 520px;
-  text-align: center;
-}
-.workspace-onboarding__icon {
-  width: 48px;
-  height: 48px;
-  margin-bottom: 16px;
-}
-.workspace-onboarding__title {
-  margin: 0 0 8px;
-  font-size: var(--text-4xl);
-  font-weight: 600;
-}
-.workspace-onboarding__desc {
-  margin: 0 0 32px;
-  font-size: var(--text-lg);
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-.workspace-onboarding__actions {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 360px;
-  margin: 0 auto;
-}
-.workspace-onboarding__card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 10px;
-  cursor: pointer;
-  color: inherit;
-  text-align: left;
-  transition: border-color var(--motion-base) var(--ease-standard);
-}
-.workspace-onboarding__card:hover {
-  border-color: var(--accent-primary);
-}
-.workspace-onboarding__card-icon {
-  font-size: var(--text-5xl);
-}
-.workspace-onboarding__card-title {
-  font-weight: 600;
-  font-size: var(--text-lg);
-}
-.workspace-onboarding__card-desc {
-  font-size: var(--text-base);
-  color: var(--text-secondary);
-  margin-top: 2px;
-}
-
 /* ── Project Dashboard ──────────────────────────────────────────── */
 
 .project-dashboard__modal-overlay {
@@ -7686,10 +7146,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .app-toolbar__breadcrumb-sep {
   color: var(--text-muted);
-}
-
-.app-toolbar__breadcrumb-current {
-  color: var(--text-secondary);
 }
 
 /* ── ChatDock Session Info Bar ──────────────────────────────────── */
