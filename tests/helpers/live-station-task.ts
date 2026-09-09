@@ -345,9 +345,15 @@ export async function createTaskFromProject(
     success: true,
     data: { isRepo: true, branch },
   });
-  await expect(
-    page.getByText(`⎇ ${branch}`, { exact: true }).first(),
-  ).toBeVisible({ timeout: 15_000 });
+  const branchLabel = page.locator(
+    '.project-page__git-section .project-page__section-label',
+  );
+  // The branch icon is an SVG, not part of the label's text contract.
+  const escapedBranch = branch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  await expect(branchLabel).toHaveText(
+    new RegExp(`^\\s*${escapedBranch}(?:\\s*·.*)?\\s*$`),
+    { timeout: 15_000 },
+  );
   await page.getByLabel('Task title').fill(title);
   await page.getByRole('button', { name: 'Add task' }).click();
   await page.waitForURL(/\/tasks\//, { timeout: 15_000 });

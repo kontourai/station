@@ -197,7 +197,9 @@ export function assertSupportedE2EPlatform(platform = process.platform) {
 
 const E2E_SETTLEMENT_MS = 5_000;
 const E2E_STARTUP_DEADLINE_MS = 120_000;
-const E2E_STOP_DEADLINE_MS = 15_000;
+// The CLI can spend 5s on each of two tracked process groups, then 15s on
+// managed shutdown convergence. Leave bounded time for CLI startup and I/O.
+const E2E_STOP_DEADLINE_MS = 45_000;
 const E2E_STOP_SETTLEMENT_MS = 7_500;
 const E2E_LEASE_DIRECTORY = '.kontourai/e2e-runs';
 const E2E_STARTUP_CAPTURE_BYTES = 16 * 1024;
@@ -1989,6 +1991,7 @@ async function main() {
               `--port=${chosenServerPort}`,
               `--ui-port=${chosenUiPort}`,
               `--log=${serverLog}`,
+              `--lifecycle-journal=${join(testResultsRoot, 'lifecycle.ndjson')}`,
             ],
             {
               // The selected status mode must reach the SERVER, not just
