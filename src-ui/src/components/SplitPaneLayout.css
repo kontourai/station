@@ -728,7 +728,7 @@
   }
 
   .split-pane__header {
-    padding: 1.2rem 1rem 0.8rem;
+    padding: var(--space-10) var(--space-8) var(--space-6);
   }
 
   .split-pane__heading {
