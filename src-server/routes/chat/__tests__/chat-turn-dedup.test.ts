@@ -27,8 +27,10 @@ import {
 } from '../chat-turn-dedup.js';
 
 // These project homes were the fixed paths `/tmp/station-test-home-{a,b,c}`,
-// and `getChatTurnDedupStore` really creates a store directory under each --
-// all three were still on this host from a run on Sep 5, never cleaned up.
+// and `getChatTurnDedupStore` really creates a store under each: it lands
+// `<home>/data/orchestration.sqlite` (plus `-shm`/`-wal`) and nothing removed
+// it. All three directories were observed on this host on 2026-09-08, dated
+// Sep 5 -- left by a run twelve days earlier.
 // A directory shared with every other process is the wrong place to persist
 // test state: it accumulates, and anything else on the host can occupy or
 // replace the name. Own the root, and remove it in `afterAll`.

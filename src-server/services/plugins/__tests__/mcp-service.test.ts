@@ -11,13 +11,16 @@ import {
 } from '../../../domain/config-loader-storage.js';
 
 // These project homes were fixed paths in a directory shared with every other
-// process on the host. The secret-binding home is disk-proven to be written:
-// `/tmp/station-secret-binding-management` was still on this host from a run on
-// Sep 4, never cleaned up. `/tmp/station-stored-env-migration` is ABSENT here,
-// so whether that path is ever created is unverified -- it is converted for
-// consistency, not on evidence of a write. Either way the name was unowned, so
-// anything else on the host could occupy it. `afterAll` removes THIS root;
-// other `mkdtempSync` roots in this file are pre-existing and still uncleaned.
+// process on the host, so anything else could occupy or replace either name.
+//
+// Only the secret-binding home has ever been observed on disk
+// (`/tmp/station-secret-binding-management`, observed 2026-09-08, dated Sep 4
+// -- since reaped by the host's /tmp cleaner, so it is not reproducible now).
+// Whether `station-stored-env-migration` is ever created is UNVERIFIED: that
+// one is converted for consistency, not on evidence of a write.
+//
+// `afterAll` removes THIS root; other `mkdtempSync` roots in this file are
+// pre-existing and still uncleaned.
 const MCP_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-mcp-service-home-'));
 const STORED_ENV_HOME = join(MCP_TEMP_ROOT, 'station-stored-env-migration');
 const SECRET_BINDING_HOME = join(

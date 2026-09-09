@@ -41,10 +41,13 @@ import { FleetInferenceRoutingError } from '../fleet-inference-model.js';
 import type { UnsealedFleetRoutingEnvelope } from '../fleet-routing-envelope.js';
 
 // This project home was the fixed path `/tmp/station-fleet-test`, and dispatch
-// really creates it -- the directory was still on this host from a run on Sep 4,
-// never cleaned up. A directory shared with every other process is the wrong
-// place to persist test state: it accumulates, and anything else on the host
-// can occupy or replace the name. Own the root, and remove it in `afterAll`.
+// really writes under it: it lands
+// `<home>/monitoring/model-dispatch-receipts.ndjson` and nothing removed it.
+// The directory was observed on this host on 2026-09-08, dated Sep 4.
+//
+// A directory shared with every other process is the wrong place to persist
+// test state: it accumulates, and anything else on the host can occupy or
+// replace the name. Own the root, and remove it in `afterAll`.
 const FLEET_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-fleet-test-'));
 const FLEET_PROJECT_HOME = join(FLEET_TEMP_ROOT, 'station-fleet-test');
 

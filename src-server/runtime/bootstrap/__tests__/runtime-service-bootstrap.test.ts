@@ -16,10 +16,11 @@ import { createRuntimeServiceBundle } from '../runtime-service-bootstrap.js';
 
 // `mkdtemp('/tmp/station-runtime-bootstrap-')` hardcoded `/tmp` as the mkdtemp
 // BASE and never removed what it made, so every run left one more directory in
-// a world-writable directory shared with the whole host: 123 of them had
-// accumulated when this was found (#1790). `tmpdir()` is the platform's own
-// answer -- `/tmp` does not exist on Windows at all -- and the roots are
-// removed below.
+// a world-writable directory shared with the whole host -- 123 had accumulated
+// when this was found (#1790; the live count drifts as sibling lanes on `main`
+// add more and the host's /tmp cleaner reaps older ones). `tmpdir()` is the
+// platform's own answer -- `/tmp` does not exist on Windows at all -- and the
+// roots are removed below.
 const createdTempRoots: string[] = [];
 
 afterAll(() => {

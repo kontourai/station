@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -61,16 +61,7 @@ afterEach(() => {
 // shell's redirect sitting at `/tmp/x`). `mkdtempSync` hands back a directory
 // this file alone owns; the names below are leaves inside it, so they stay
 // absent on disk exactly as the originals were, without being shared.
-//
-// `realpathSync` here is belt-and-braces for this file only, which asserts the
-// resolved home as an exact string in many places. It is not needed in general:
-// admission canonicalises through the nearest existing ancestor, but
-// `resolveAdmittedRuntimeHome` deliberately returns the caller's spelling
-// (`runtime-path-resolver.ts:411-419`), so sibling suites that skip it are
-// correct rather than lucky.
-const TEST_TEMP_ROOT = realpathSync(
-  mkdtempSync(join(tmpdir(), 'station-cli-test-')),
-);
+const TEST_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-cli-test-'));
 const ownedPath = (name: string): string => join(TEST_TEMP_ROOT, name);
 
 const SERVICE_BASE = ownedPath('station-service');
