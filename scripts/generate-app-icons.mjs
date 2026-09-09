@@ -22,7 +22,14 @@ import { execFileSync } from 'node:child_process';
  *
  * Platform fan-out (also run by this script, via `tauri icon`):
  *   src-desktop/icons/{icon.icns,icon.ico,icon.png,32x32,64x64,128x128*}
- *                                     — from the rounded master
+ *                                     — from the rounded master. Every `.icns`
+ *                                       is rewritten into canonical member
+ *                                       order on the way out (lib/icns.mjs):
+ *                                       tauri's icns writer emits the same
+ *                                       members in a per-process random
+ *                                       sequence, so without that the four
+ *                                       committed icns churned on every run
+ *                                       (#1797).
  *   src-desktop/icons/{Square*,StoreLogo}.png, gen/apple AppIcon set,
  *   gen/android app/src/main mipmaps  — from the square master
  *   src-desktop/icons/<channel>/ios/AppIcon-*.png (stable, beta, nightly)
@@ -65,6 +72,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertOpaqueIosPngs } from './ios-channel-icons.mjs';
+import { canonicalizeIcns } from './lib/icns.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BRAND_DIR = join(ROOT, 'assets', 'brand');
@@ -399,6 +407,19 @@ async function renderMasters() {
   };
 }
 
+/**
+ * Run the pinned `tauri icon` fan-out, then rewrite the `.icns` it emits into
+ * canonical member order.
+ *
+ * Everything else `tauri icon` writes is byte-identical across runs; the
+ * `.icns` is not, because its writer walks a Rust `HashMap` and emits the
+ * same members in a different sequence every process (#1797). The
+ * canonicalization is a lossless permutation of members the writer already
+ * produced -- see `lib/icns.mjs` for why that is the safe normalization and
+ * `iconutil` is not. It happens here rather than at each destination so that
+ * every icns this script emits is canonical by construction, including the
+ * ones only a channel copy consumes.
+ */
 function tauriIcon(source, outDir) {
   const args = ['icon', source];
   if (outDir) args.push('-o', outDir);
@@ -407,7 +428,23 @@ function tauriIcon(source, outDir) {
     stdio: 'pipe',
     windowsHide: true,
   });
+  const icns = join(outDir ?? ICONS_DIR, 'icon.icns');
+  writeFileSync(icns, canonicalizeIcns(readFileSync(icns)));
 }
+
+/**
+ * Fan a rounded master out to `outDir` and return the `.icns` bytes that run
+ * emitted. Exported so the byte-stability test reaches the real `tauri icon`
+ * seam -- the one that is not deterministic on its own -- rather than a
+ * fixture of what it once wrote.
+ */
+export function readDesktopIcns(roundedMaster, outDir) {
+  tauriIcon(roundedMaster, outDir);
+  return readFileSync(join(outDir, 'icon.icns'));
+}
+
+/** The rounded master the committed `src-desktop/icons/icon.icns` comes from. */
+export const ROUNDED_MASTER = join(BRAND_DIR, 'icon-1024.png');
 
 /**
  * Fan an opaque square master out to an iOS asset-catalog set: the exact
@@ -488,7 +525,7 @@ async function main() {
     };
 
     // Rounded master drives the whole default fan-out first...
-    tauriIcon(join(BRAND_DIR, 'icon-1024.png'));
+    tauriIcon(ROUNDED_MASTER);
 
     // ...then the surfaces whose platforms mask or reject alpha themselves
     // are overwritten from the full-bleed square master.

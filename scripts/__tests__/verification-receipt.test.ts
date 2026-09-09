@@ -13,7 +13,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { ErrorObject } from 'ajv';
 import Ajv2020 from 'ajv/dist/2020';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import {
   PRODUCT_LAW_OBSERVATION_TIMEOUT_ENV,
   PRODUCT_LAW_OBSERVATION_TIMEOUT_MS,
@@ -94,6 +94,18 @@ function buildPassingReceipt() {
     after: provenance,
   });
 }
+
+// The npm executable named below must be ABSENT for the "not a regular file"
+// refusal to be what the assertion observes. `<tmpdir>/station-missing-npm-cli.js`
+// made that absence a property of the shared host (#1790); a leaf inside a
+// directory this file owns is absent by construction.
+const MISSING_TOOLCHAIN_ROOT = mkdtempSync(
+  join(tmpdir(), 'station-missing-toolchain-'),
+);
+
+afterAll(() => {
+  rmSync(MISSING_TOOLCHAIN_ROOT, { force: true, recursive: true });
+});
 
 describe('verification receipt schema version', () => {
   it('is pinned to version 3 (bumped for station#3584: terminal.indeterminate is not additively compatible)', () => {
@@ -1319,7 +1331,10 @@ describe('collectRepositoryIdentity and toolchain', () => {
     expect(() =>
       assertVerificationToolchain({
         ...toolchain,
-        npmExecutable: join(tmpdir(), 'station-missing-npm-cli.js'),
+        npmExecutable: join(
+          MISSING_TOOLCHAIN_ROOT,
+          'station-missing-npm-cli.js',
+        ),
       }),
     ).toThrow('toolchain executable is not a regular file');
   });

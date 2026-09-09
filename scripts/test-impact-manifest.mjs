@@ -1,3 +1,8 @@
+import {
+  invertPathReadPins,
+  scanPathReadPins,
+} from './lib/path-read-pin-scan.mjs';
+
 /**
  * E2E contract seams that Vitest import analysis cannot safely infer. Keep
  * this list exact: an ordinary script still receives related-test selection,
@@ -1172,6 +1177,138 @@ export const ESCALATION_PATHS = Object.freeze([
   '.github/workflows/',
 ]);
 
+/**
+ * Reason recorded on every derived path-read pin edge.
+ *
+ * A test that reads a source file's TEXT
+ * (`readFileSync(join(__dirname, ...))`) asserts something about that file
+ * while having no import edge to it, so neither `vitest related` nor this
+ * manifest's graph fallback can schedule it. #1785 moved
+ * `useOutboundQueueSnapshot(...)` out of `ChatDock.tsx` and left its pin red
+ * on `main`.
+ */
+const PATH_READ_PIN_REASON =
+  'source is read as text by a test, outside the import graph (#1807)';
+
+/**
+ * The gate that re-derives the scan and fails when a pinned path no longer
+ * exists. Every derived edge selects it, so a rename of a pinned file reds a
+ * test that names the pin and the path rather than waiting for a broad
+ * selection on somebody else's pull request.
+ */
+export const PATH_READ_PIN_BOUNDARY_TEST =
+  'scripts/__tests__/path-read-pin-boundary.test.ts';
+
+/**
+ * Patterns `validateTestImpactManifest` requires EXACTLY ONE edge for. A
+ * derived edge carries a bare repository path as its pattern, so a pin on one
+ * of these would be a second edge and the validator would throw — failing the
+ * whole selector and blaming the E2E contract edge for a new test's read
+ * call.
+ *
+ * Skipping is the only way to keep the manifest valid, and it is a real
+ * coverage hole, not a free one: the pin edge is dropped, so the PINNING TEST
+ * IS NOT SCHEDULED either. What the path keeps is its committed boundary — an
+ * e2e lane, or that edge's fixed test list — which does not include the suite
+ * that reads the file's text. The existence check is what survives: the scan
+ * still reports the pin, so a move of the file still reds the boundary gate.
+ * The same applies forward: adding a path that has a derived edge today to
+ * `E2E_CONTRACT_BOUNDARIES` silently removes its pin edge.
+ */
+const UNIQUE_IMPACT_PATTERNS = Object.freeze(
+  new Set([
+    ...E2E_CONTRACT_BOUNDARIES,
+    TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern,
+  ]),
+);
+
+/**
+ * A pinning test the selector cannot schedule. `selection.tests` is handed to
+ * Vitest, and `vitest.config.ts` excludes `tests/**` — so a Playwright spec
+ * placed here is either dropped in silence (a receipt naming a target that
+ * never ran) or, when the spec imports `node:child_process`, a fatal
+ * resource-classification error on an ordinary source change. The repo
+ * schedules `tests/` through the `verify-e2e-full` lane instead, which a
+ * supplemental edge may not carry. `PIN_SCAN_ROOTS` deliberately DOES include
+ * `tests`, so those pins are still existence-checked; this filter is what
+ * keeps them out of the argv. Scheduling them properly is #1817.
+ */
+const VITEST_INELIGIBLE_TEST = /^tests\//;
+
+// Keyed by root and never invalidated within a process: the scan is a
+// snapshot of the working tree at first call. Correct for the one-shot CLI,
+// wrong for any long-lived caller that expects to see later edits.
+const pathReadPinEdgeCache = new Map();
+
+/**
+ * Impact edges derived from the repository's path-read pins.
+ *
+ * Every edge is `supplemental`, which in `selectChangedVerification` means it
+ * contributes tests and nothing else: it does not set `hasExplicitBoundary`,
+ * does not satisfy the unknown-path check, and does not add a related path.
+ * That is what makes the SELECTION a strict addition. Naming `tests` on an
+ * ordinary edge would suppress the generic `related` edge for the same path —
+ * the way an explicit list silently DROPS the related suites (#1563, #1613) —
+ * and would also cancel the `ci-fast` escalation an escalation path is
+ * entitled to.
+ *
+ * `supplemental` is a claim about the selector's return value and nothing
+ * further. What is scheduled must still be runnable: a test named here that
+ * Vitest refuses (a `tests/` spec) or that fails the resource-classification
+ * preflight turns an addition into a broken gate, which is why the tests are
+ * filtered before the edge is built rather than trusted from the scan.
+ *
+ * Derived at gate time rather than hand-listed, because a hand-listed pin
+ * goes stale the moment somebody adds one. It deliberately does not feed
+ * `laneManifestDigest`, which must stay a pure function of the committed
+ * manifest rather than of the working tree.
+ *
+ * @param {{
+ *   root?: string,
+ *   entries?: readonly { test: string, pins: readonly string[] }[],
+ * }} [options] `entries` substitutes a scan result, for tests.
+ * @returns {readonly ImpactEdge[]}
+ */
+export function pathReadPinEdges({ root = process.cwd(), entries } = {}) {
+  const cacheable = entries === undefined;
+  const cached = cacheable ? pathReadPinEdgeCache.get(root) : undefined;
+  if (cached) return cached;
+  const scanned = entries ?? scanPathReadPins({ root });
+  const edges = Object.freeze(
+    invertPathReadPins(scanned).flatMap(({ pin, tests }) => {
+      if (UNIQUE_IMPACT_PATTERNS.has(pin)) return [];
+      const schedulable = tests.filter(
+        (test) => !VITEST_INELIGIBLE_TEST.test(test),
+      );
+      if (!schedulable.length) return [];
+      return [
+        Object.freeze({
+          pattern: pin,
+          supplemental: true,
+          tests: Object.freeze(
+            [...new Set([...schedulable, PATH_READ_PIN_BOUNDARY_TEST])].sort(),
+          ),
+          reason: PATH_READ_PIN_REASON,
+        }),
+      ];
+    }),
+  );
+  if (cacheable) pathReadPinEdgeCache.set(root, edges);
+  return edges;
+}
+
+/**
+ * The committed manifest plus the pin edges derived from the working tree.
+ * `runChangedVerification` selects against this; the exported constant stays
+ * static for the consumers that need a stable, tree-independent value.
+ *
+ * @param {Parameters<typeof pathReadPinEdges>[0]} [options]
+ * @returns {readonly ImpactEdge[]}
+ */
+export function buildTestImpactManifest(options) {
+  return Object.freeze([...TEST_IMPACT_MANIFEST, ...pathReadPinEdges(options)]);
+}
+
 export function matches(pattern, path) {
   if (pattern.endsWith('/**')) return path.startsWith(pattern.slice(0, -2));
   return path === pattern;
@@ -1188,6 +1325,22 @@ export function isEscalationPath(path) {
   );
 }
 
+/**
+ * @typedef {{
+ *   pattern?: string,
+ *   tests?: readonly string[],
+ *   lanes?: readonly string[],
+ *   related?: boolean,
+ *   supplemental?: boolean,
+ *   whenAll?: readonly string[],
+ *   reason?: string,
+ * }} ImpactEdge
+ */
+
+/**
+ * @param {readonly ImpactEdge[]} [manifest]
+ * @returns {string[]}
+ */
 export function validateTestImpactManifest(manifest = TEST_IMPACT_MANIFEST) {
   const errors = [];
   for (const edge of manifest) {
@@ -1196,6 +1349,13 @@ export function validateTestImpactManifest(manifest = TEST_IMPACT_MANIFEST) {
       (!edge.related && !edge.tests?.length && !edge.lanes?.length)
     )
       errors.push(`invalid impact edge: ${JSON.stringify(edge)}`);
+    // A supplemental edge is excluded from the boundary, escalation, and
+    // related decisions, so `lanes` or `related` on one would be silently
+    // ignored — and a reader would believe the lane was scheduled.
+    if (edge?.supplemental && (edge.lanes?.length || edge.related))
+      errors.push(
+        `supplemental impact edge may only add tests: ${edge.pattern}`,
+      );
   }
   // These dynamic seams cannot be inferred from Vitest imports. Deleting one
   // is an unsafe silent narrowing, so validation is intentionally explicit.

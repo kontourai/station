@@ -428,6 +428,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/release-workflow.test.ts',
   // #1776: runs the pinned tauri-cli `icon` fan-out twice as a real child
   // process to prove the committed iOS channel sets are byte-reproducible.
+  // #1797 adds two more runs for the desktop `.icns`, whose writer was the
+  // one output that disagreed with itself between runs.
   'scripts/__tests__/generate-app-icons.test.ts',
   // #1776: on macOS, runs xcrun pngcrush + sips to prove the shipped-icon
   // pixel comparison catches a wrong channel through Apple's CgBI re-encode.
@@ -441,6 +443,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // reason content-integrity-gate.test.ts does — every one of those guardrails
   // scopes itself with `git ls-files` or `git grep`.
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts',
+  // The same argument for the rest of them: every gate `verify:static:raw`
+  // composes that no test had ever executed now runs here as a real child
+  // process — against a known-bad fixture tree where one is affordable, and
+  // against this repository where it is not. Bounded single-shot spawns, no
+  // wall-clock assertions.
+  'scripts/__tests__/guardrail-process-boundary.test.ts',
   // station#1398 security review, M-5: the content-integrity gate's own test
   // builds throwaway git repos and drives `git grep` through `execFileSync`,
   // because the scan is `git grep` over TRACKED files and a fixture written
