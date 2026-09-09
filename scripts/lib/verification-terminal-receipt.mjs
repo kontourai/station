@@ -282,20 +282,22 @@ export function reportExecution({ raw, result, cleanup, worktree, request }) {
       summary: summarizeVerificationOutput({
         stdout: raw?.output?.stdout?.text ?? '',
         stderr: raw?.output?.stderr?.text ?? '',
-        // The same already-normalized value the receipt carries.
+        // The SAME STRING the receipt carries -- this is the whole of the
+        // "one cause" guarantee, and it is an identity rather than a claim
+        // about two transforms agreeing (station#1827 fix round 2).
         //
-        // What that guarantees, stated no wider than it is true (review item
-        // 2): the summary and the receipt resolve the same declaration and
-        // hold the same bytes of it. What it does NOT guarantee is identical
-        // rendering -- the reconcile branch below wraps the cause in a
-        // sentence, and the summary's byte budget can cut the excerpt shorter
-        // than the receipt's field. A reader comparing them is comparing a
-        // rendering against a record, not two independent claims.
+        // The first round threaded a normalized value here and let the
+        // summarizer normalize it again, which read as belt-and-braces and
+        // was not: `normalizeDeclaredCause` is not idempotent, so a cause
+        // whose bound landed on a token prefix came back different, and the
+        // two artifacts named different causes for one run. The summarizer
+        // now uses what it is given, and this is the only derivation.
         //
-        // `normalizeDeclaredCause` is idempotent, so the summarizer running
-        // it again on this value is a no-op rather than a second convention:
-        // the agreement is structural, not a coincidence of both writers
-        // applying the same transforms in the same order.
+        // What that guarantees, stated no wider than it is true: every
+        // rendering of this cause is a PREFIX of the receipt's field. The
+        // summary's byte budget can cut the excerpt shorter, and the
+        // reconcile branch below wraps it in a sentence. A reader comparing
+        // them is comparing renderings against one record, not two claims.
         ...(infrastructureCause ? { infrastructureCause } : {}),
         // exitCode and truncated are what let the reporter tell a real
         // non-pass from a `completed` status, and a prefix-capture from a

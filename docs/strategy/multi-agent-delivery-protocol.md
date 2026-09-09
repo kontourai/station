@@ -312,18 +312,21 @@ to the failing step. Among scanned excerpts its **absence is the stronger
 claim** — the excerpt was scoped to the step that failed.
 
 `infrastructureCause` (station#1827) says the excerpt was not scanned at all.
-On an `infrastructure_error` whose runner named its own reason for stopping,
-that reason is the head excerpt, and this field carries it. A declaration is
-not a scan result, so it deliberately sets no `causeStream`: the sentence that
-field renders — "picked by severity and position" — would be false for it.
-The two are mutually exclusive by construction, so `causeStream`'s absence is
-read against `infrastructureCause`'s presence, never on its own.
+On an `infrastructure_error` where the verification runner recorded its own
+reason for stopping, that reason is the head excerpt and this field carries
+it. A declaration is not a scan result, so it deliberately sets no
+`causeStream`: the sentence that field renders — "picked by severity and
+position" — would be false for it. The two are mutually exclusive because one
+computation decides both, in `summarizeVerificationOutput`, so `causeStream`'s
+absence can be read against `infrastructureCause`'s presence.
 
-Both appear in the bounded **summary** the CLI prints and the CI annotation
-renders. The **receipt** is a separate artifact: it records
-`terminal.infrastructureCause` and does not carry `causeStream` at all, and it
-is the copy `boundedControlResult` stamps the printed verdict from, because no
-byte budget can drop it there.
+Both are fields of the bounded **summary** the CLI prints and the CI
+annotation renders, and both reach every rendering from there — neither is
+re-stamped from anywhere else, which is what keeps the pair consistent. The
+**receipt** is a separate artifact: it records `terminal.infrastructureCause`
+as the durable full-length record and carries no `causeStream` at all. A
+rendering's marker is a prefix of the receipt's field, not a second copy of
+it, and a rendering with no summary carries no marker.
 
 Severity is ranked too — an error outranks a warning above it — after two
 blind spots that made most errors invisible to the matcher entirely (biome's

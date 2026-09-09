@@ -1374,4 +1374,65 @@ test("a reporting-pipeline failure still records the runner's cause on the prese
   expect(reported.summary.firstCausalExcerpt).toBe(
     `verification execution infrastructure error: ${BUDGET_CAUSE}`,
   );
+  // station#1827 fix round 2, L3: this path sets no summary MARKER, and that
+  // is what keeps the CI annotation's declared-cause sentence off it. The
+  // second excerpt here is the `reconcileNote` this pipeline synthesized about
+  // its own failure, so a sentence claiming the runner named the cause -- or
+  // that the rest came from a scan -- would be false about this document.
+  expect(reported.summary.infrastructureCause).toBeUndefined();
+  expect(reported.summary.causalExcerpts[1]).toContain(
+    'verification reporting failed',
+  );
+});
+
+/**
+ * station#1827 fix round 2, M1. The delta review's case: bounding after
+ * redacting can move a token-shaped fragment to end-of-string, where
+ * `verification-redaction.mjs`'s `$`-anchored partial-token rules match on a
+ * LATER pass but could not on the first -- so a second derivation of the same
+ * declaration came back different, and the summary and the receipt named
+ * different causes for one run.
+ *
+ * The fix is that there is no second derivation: `reportExecution` normalizes
+ * once and hands that one string to both. Swept across the offsets where the
+ * cut lands inside the token, because a single offset proves nothing about a
+ * boundary condition.
+ */
+test('one derivation reaches both artifacts even when the bound cuts inside a token (station#1827)', () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-one-value-'));
+  roots.push(worktree);
+  let redactedAtCut = 0;
+  for (let pad = 495; pad <= 512; pad += 1) {
+    const reported = reportExecution({
+      raw: {
+        infrastructureCause: `${'a'.repeat(pad)}ghp_ABCDEFG and more text after it`,
+        output: {
+          stdout: { text: `${SCANNED_DECOY_DIAGNOSTIC}\n` },
+          stderr: { text: '' },
+        },
+      },
+      result: {
+        status: 'infrastructure_error',
+        exitCode: null,
+        counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+      },
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      worktree,
+      request: { key: 'a'.repeat(64) },
+    });
+    const persisted = reported.result.infrastructureCause as string;
+    // One value, three surfaces. Under a second derivation the receipt kept
+    // `…aaaghp_ABC` while the summary held `…aaa[REDACT`.
+    expect(reported.summary.firstCausalExcerpt).toBe(persisted);
+    expect(reported.summary.infrastructureCause).toBe(persisted);
+    // And that one value is safe to persist: no token fragment left at the
+    // end, no replacement marker cut in half.
+    expect(persisted).not.toMatch(/gh[pousr]_[A-Za-z0-9]*$/);
+    if (!persisted.endsWith('[REDACTED]'))
+      expect(persisted).not.toMatch(/\[R(?:E(?:D(?:A(?:C(?:T(?:E)?)?)?)?)?)?$/);
+    if (persisted.endsWith('[REDACTED]')) redactedAtCut += 1;
+  }
+  // Not vacuous: the sweep really does include offsets that cut inside the
+  // token and therefore exercise the partial-token rules.
+  expect(redactedAtCut).toBeGreaterThan(0);
 });

@@ -455,14 +455,19 @@ describe('verification reporter', () => {
     expect(red.firstCausalExcerpt).toBe('          Error: observer failed');
     expect(red.causalExcerpts).toEqual(['          Error: observer failed']);
 
-    // A blank declaration is not a cause. Promoting one would displace the
-    // scanned excerpt with nothing, which is worse than the wrong excerpt.
-    const blank = summarizeVerificationOutput({
+    // station#1827 fix round 2: this function uses the cause it is GIVEN and
+    // does not re-derive it, so the admission test here is shape-only. A
+    // caller that hands it nothing gets no cause and the scan wins. Rejecting
+    // a blank or unredacted declaration belongs to `normalizeDeclaredCause`
+    // and to `reportExecution`, which are where it is asserted -- putting a
+    // trim or a redaction pass here would be the second derivation that made
+    // the summary and the receipt disagree in the first place.
+    const absent = summarizeVerificationOutput({
       ...capture,
       terminal: { status: 'infrastructure_error', exitCode: null },
-      infrastructureCause: '   ',
+      infrastructureCause: '',
     });
-    expect(blank.firstCausalExcerpt).toBe('          Error: observer failed');
+    expect(absent.firstCausalExcerpt).toBe('          Error: observer failed');
 
     // station#1827 review item 7: the marker that says which of the two the
     // head excerpt is. Withholding `causeStream` for a declared cause left the
@@ -471,7 +476,33 @@ describe('verification reporter', () => {
     expect(stopped.infrastructureCause).toBe('ci:fast exceeded its budget');
     expect(stopped.causeStream).toBeUndefined();
     expect(red.infrastructureCause).toBeUndefined();
-    expect(blank.infrastructureCause).toBeUndefined();
+    expect(absent.infrastructureCause).toBeUndefined();
+
+    // station#1827 fix round 2: the parameter is used VERBATIM. This is the
+    // assertion that pins "no second derivation" directly, rather than
+    // through a consequence of it.
+    //
+    // Pinning it through non-idempotence no longer works: the same round
+    // reordered `normalizeDeclaredCause` so the bound precedes redaction, and
+    // that made it idempotent over ~300k randomised inputs, so re-normalizing
+    // here is now a silent no-op. Two changes, one of which hides the other.
+    // A value the normalizer WOULD change is therefore the only discriminator
+    // left -- and it is the truer statement anyway, because the contract is
+    // "uses what it is given", not "happens to agree with a second pass".
+    //
+    // It reads as "the summarizer does not sanitize", and that is exactly
+    // right: sanitizing is `normalizeDeclaredCause`'s job, `reportExecution`
+    // is the only production caller, and a safety net here would be the
+    // second derivation wearing a disguise.
+    const unnormalized = '  padded declaration  ';
+    expect(normalizeDeclaredCause(unnormalized)).not.toBe(unnormalized);
+    const verbatim = summarizeVerificationOutput({
+      ...capture,
+      terminal: { status: 'infrastructure_error', exitCode: null },
+      infrastructureCause: unnormalized,
+    });
+    expect(verbatim.firstCausalExcerpt).toBe(unnormalized);
+    expect(verbatim.infrastructureCause).toBe(unnormalized);
 
     // The marker is additive and LOWEST priority: a cap tight enough to cut
     // the excerpt drops the marker rather than the excerpt. That direction is
@@ -516,7 +547,11 @@ describe('verification reporter', () => {
   // station#1827 review item 2: one normalization, shared by every writer that
   // records a declared cause, so the summary and the receipt agree by
   // structure rather than by two writers being written carefully.
-  test('normalizes a declared cause once, idempotently, and refuses a non-declaration (station#1827)', () => {
+  // station#1827 fix round 2. This function is called ONCE per run and its
+  // result threaded to every consumer, so what has to hold is not that a
+  // second pass agrees -- it does not, and the delta review proved it -- but
+  // that the single value it returns is safe to persist and to render.
+  test('bounds and redacts a declared cause on its real end, and refuses a non-declaration (station#1827)', () => {
     const esc = String.fromCharCode(27);
     // Escapes come off BEFORE redaction, and this is the shape that proves the
     // order rather than merely exercising it: a token whose CHARACTER CLASS
@@ -541,23 +576,57 @@ describe('verification reporter', () => {
     expect(normalizeDeclaredCause(undefined)).toBeNull();
     expect(normalizeDeclaredCause(`${esc}[0m`)).toBeNull();
 
+    // The case the delta review found, swept rather than sampled. A cause long
+    // enough to be cut lands the cut somewhere inside a token for SOME offset,
+    // and `verification-redaction.mjs` carries `$`-anchored rules for exactly
+    // that -- rules that can only fire on the string's real end. Bounding
+    // after redacting (the first round's order) left the fragment in the value
+    // AND made a second pass return something different.
+    //
+    // Three properties, on every offset: within the byte bound, no unredacted
+    // token fragment at the end, and never a partial `[REDACTED]` (a cut
+    // inside the replacement reads as content, not as a redaction).
+    const partialMarker = /\[R(?:E(?:D(?:A(?:C(?:T(?:E)?)?)?)?)?)?$/;
+    const tokenTail =
+      /(?:gh[pousr]_[A-Za-z0-9]*|github_pat_[A-Za-z0-9_]*|\bsk-[A-Za-z0-9_-]*|(?:AKIA|ASIA)[0-9A-Z]*)$/;
+    let cutInsideToken = 0;
+    for (let pad = 480; pad <= 520; pad += 1) {
+      for (const token of [
+        'ghp_ABCDEFG and more text after it',
+        'github_pat_ABCDEFGHIJ and more',
+        'sk-ABCDEFGHIJ and more',
+        'AKIAABCDEFG and more',
+      ]) {
+        const raw = `${'a'.repeat(pad)}${token}`;
+        const value = normalizeDeclaredCause(raw) as string;
+        expect(value).not.toBeNull();
+        expect(Buffer.byteLength(value)).toBeLessThanOrEqual(512);
+        expect(value).not.toMatch(tokenTail);
+        if (!value.endsWith('[REDACTED]'))
+          expect(value).not.toMatch(partialMarker);
+        // Not vacuous: these offsets really do cut inside the token region.
+        if (Buffer.byteLength(raw) > 512 && value.endsWith('[REDACTED]'))
+          cutInsideToken += 1;
+      }
+    }
+    expect(cutInsideToken).toBeGreaterThan(0);
+
     // Bounded in BYTES, codepoint-aligned, and never above the schema's own
     // code-point wall. A surrogate pair is never cut in half.
     for (const value of [
       'a'.repeat(600),
-      // Space-separated so a byte cut lands immediately after a space, which
-      // is the case the post-prefix trim exists for.
+      // Space-separated so a byte cut lands immediately after a space. The
+      // trim that follows the bound has to precede redaction: a value ending
+      // in a space has no token at its end for the `$` rules to see.
       'x '.repeat(400),
       `e${'\u{1F600}'.repeat(400)}`,
     ]) {
-      const once = normalizeDeclaredCause(value);
+      const once = normalizeDeclaredCause(value) as string;
       expect(once).not.toBeNull();
-      expect(Buffer.byteLength(once as string)).toBeLessThanOrEqual(512);
-      expect([...(once as string)].length).toBeLessThanOrEqual(512);
-      expect(once).toBe((once as string).trim());
-      // Idempotent: this is what lets the receipt writer normalize and the
-      // summarizer normalize again without the two diverging.
-      expect(normalizeDeclaredCause(once)).toBe(once);
+      expect(Buffer.byteLength(once)).toBeLessThanOrEqual(512);
+      expect([...once]).toHaveLength(Math.min([...once].length, 512));
+      expect([...once].length).toBeLessThanOrEqual(512);
+      expect(once).toBe(once.trim());
     }
   });
 

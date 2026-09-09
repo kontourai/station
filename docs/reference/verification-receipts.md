@@ -216,13 +216,23 @@ When the RUNNER stops a lane rather than a check failing it, the receipt
 records the runner's own final word in `terminal.infrastructureCause`
 (station#1827). Two channels feed it, in this order: the payload of the
 structured owner-final line ci:fast prints before it returns its
-infrastructure exit code, and otherwise the message of the error the owned
-runner itself raised (a surviving owned process, an unreadable capture, a
-spawn failure — every lane, not only ci:fast). Both were previously computed
-and dropped on the ordinary reporting path. What is never recorded is the
-fixed "ended with an infrastructure error" sentence `reportExecution`
-synthesizes when neither channel spoke: that is prose about the absence of a
-declaration, not a declaration.
+infrastructure exit code, and otherwise the message of whatever rejected the
+execution — on every lane, not only ci:fast. Both were previously computed and
+dropped on the ordinary reporting path.
+
+The second channel is a catch-all, and its provenance is weaker than the
+first, so do not read the field as "the child said this". It is most often the
+owned runner's own diagnosis (a surviving owned process, an unreadable
+capture, a spawn failure), but it also carries a harness assertion raised
+while the child was being adopted, or an error from an injected phase runner —
+cases where the stopping command never spoke at all. What the field does
+assert is that the verification runner recorded this as its reason for
+stopping, rather than a scan picking a line out of the lane's output. Every
+rendering says it that way for the same reason.
+
+What is never recorded is the fixed "ended with an infrastructure error"
+sentence `reportExecution` synthesizes when neither channel spoke: that is
+prose about the absence of a declaration, not a declaration.
 
 Both the producer and the schema bind the field to `infrastructure_error`, the
 one status it explains — a receipt cannot carry an infrastructure explanation
@@ -237,12 +247,19 @@ consulted, so a declaration can exist and go unrecorded — deliberately, since
 the reconcile path reports a timeout-specific cause there and never reads this
 one, and admitting it on both would put the two paths back into disagreement.
 
-The value is bounded to **512 bytes**, codepoint-aligned, by the one
-normalization every writer shares (`normalizeDeclaredCause` in
-`scripts/lib/verification-reporter.mjs`: strip terminal escapes, redact, trim,
-byte-bound). The schema's `maxLength: 512` counts **code points**, so it is a
-looser outer wall that a byte-bounded value can never reach; where the two
-differ, the byte bound is the binding one.
+The value is derived **once**, by `normalizeDeclaredCause` in
+`scripts/lib/verification-reporter.mjs` — strip terminal escapes, trim, bound
+to **512 bytes** codepoint-aligned, then redact — and `reportExecution` hands
+that one string to both the summary and the receipt. Nothing recomputes it.
+That ordering matters twice: escapes come off before redaction so a secret
+split by one is still recognisable, and the bound comes before redaction so
+the redactor's partial-token rules see the string's real end. Re-deriving the
+value is what made the two artifacts disagree in the first place, and the
+function is deliberately not idempotent-by-proof; it is called once instead.
+
+The schema's `maxLength: 512` counts **code points**, so it is a looser outer
+wall that a byte-bounded value can never reach; where the two differ, the byte
+bound is the binding one.
 
 `schemaVersion` stays 3, and that is a deliberate trade rather than a free
 addition. `terminal` is `additionalProperties: false`, so an older checkout's
@@ -565,14 +582,20 @@ needs to be able to tell which one produced a given receipt's entries:
    from case 1 is not where the bytes came from but how they were selected —
    structurally, from a channel the runner owns, rather than by matching a
    diagnostic shape. The scanned excerpts are still reported, ranked after it.
+
    The summary says which case it is in `summary.infrastructureCause`: present
-   means the head excerpt is a declaration, and the same text is on the
-   canonical receipt as `terminal.infrastructureCause`. That marker is
-   additive and lowest-priority in the summary's byte budget, so a very tight
-   cap can omit it there — which understates confidence rather than
-   overstating it, and the receipt copy is never subject to that budget. The
-   printed verdict (`boundedControlResult` in `scripts/run-verification.mjs`)
-   therefore stamps the marker from the receipt, not from the summary.
+   means the head excerpt beside it is a declaration. Its value is that same
+   head excerpt, so the two can never describe one declaration differently —
+   and both are a **prefix** of the receipt's `terminal.infrastructureCause`,
+   not necessarily equal to it, because the summary's byte budget may have cut
+   the excerpt shorter. The receipt holds the full derivation.
+
+   The marker is additive and lowest-priority in that budget, so a very tight
+   cap omits it — which understates confidence rather than overstating it.
+   It is deliberately **not** re-stamped from the receipt anywhere: it is a
+   claim about the excerpt beside it, so a rendering with no summary (a
+   `reused` or `joined` disposition, which has no excerpts at all) carries no
+   marker either.
 
 Case 2 is identifiable in the summary itself: it always also carries a
 `reconcileNote` field (the same bounded diagnostic text `causalExcerpts`

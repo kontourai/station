@@ -355,9 +355,23 @@ export function renderSummary({ document, unparseableReason, sourcePath }) {
     // said out loud. They are mutually exclusive by construction: the
     // reporter withholds `causeStream` for exactly the case that sets
     // `infrastructureCause`.
+    // station#1827 fix round 2. Two clauses came out of the first version.
+    //
+    // "Any excerpts after it were found by the scan" was false on the
+    // reconcile path, where the second excerpt is the `reconcileNote` this
+    // pipeline synthesized about its own failure. Sourcing the marker from
+    // the summary now keeps that path out of this branch entirely, but the
+    // sentence should not depend on that to be true, so the clause is gone.
+    //
+    // "the stopping component naming its own reason" claimed a provenance the
+    // value does not always have: the other channel is `raw.error.message`,
+    // which is whatever rejected the execute call -- a harness assertion from
+    // `onSpawn` or an injected phase runner included. The child may never have
+    // spoken. The sentence now attributes it to the runner layer, which is
+    // true of both channels, and says which they are.
     if (typeof summary.infrastructureCause === 'string')
       lines.push(
-        'Declared by the runner that stopped this lane, not selected from its output: the first excerpt is the stopping component naming its own reason. Any excerpts after it were found by the scan.',
+        "Recorded by the verification runner as why this lane stopped — the stopping command's own owner-final line, or the error the runner raised about it — not selected from the lane's output.",
         '',
       );
     else if (summary.causeStream === 'stderr')

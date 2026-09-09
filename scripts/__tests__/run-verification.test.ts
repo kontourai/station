@@ -743,21 +743,27 @@ describe('verification status projection', () => {
     });
   });
 
-  // station#1827 review item 7: same idiom, sharper reason. The summarizer's
-  // own `infrastructureCause` is additive and LOWEST priority in its byte
-  // budget, so a tight cap can omit it there; the receipt's copy is subject to
-  // no budget. Stamping the printed verdict from the receipt is what keeps the
-  // marker present on exactly the runs a reader most needs it -- the long,
-  // truncated ones. The summary below deliberately omits the field to make
-  // that the only source this can be reading.
-  test('stamps summary.infrastructureCause from the receipt, not from the summary (station#1827)', () => {
-    const cause = 'ci:fast exceeded its 12-minute feedback budget';
+  // station#1827 fix round 2. The first round stamped this from the RECEIPT,
+  // alongside `passed` and `indeterminate`, and the delta review measured what
+  // that produced: because the `...result.summary` spread comes first, the
+  // receipt's full-length copy overwrote the summarizer's truncation-aligned
+  // one, so a rendered document held a 67-byte excerpt beside a 347-byte
+  // marker of the same declaration. The first round's test could not see it
+  // because it put identical text on both sides. This one does not.
+  //
+  // `passed` and `indeterminate` are verdict facts no summary shape carries,
+  // so the receipt is their only source. This is a claim ABOUT the excerpt
+  // beside it, so the summary is its only honest source.
+  test('renders the summary marker, never the receipt copy that would outrun its excerpt (station#1827)', () => {
+    const declaration = `ci:fast exceeded its budget ${'x'.repeat(300)}`;
+    const excerpt = declaration.slice(0, 67);
     const stopped = {
       terminal: {
         status: 'infrastructure_error',
         exitCode: null,
         passed: false,
-        infrastructureCause: cause,
+        // The durable full-length record.
+        infrastructureCause: declaration,
       },
       counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
       cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
@@ -769,33 +775,51 @@ describe('verification status projection', () => {
       disposition: 'executed',
       request: { key: 'k', laneId: 'ci-fast' },
       receipt: stopped,
+      // What the summarizer produced under its own byte budget: the marker is
+      // the truncated excerpt, not the whole declaration.
       summary: {
         terminal: 'infrastructure_error',
         counts: stopped.counts,
-        firstCausalExcerpt: cause,
+        firstCausalExcerpt: excerpt,
+        infrastructureCause: excerpt,
       },
     });
-    expect(bounded.summary).toMatchObject({
-      passed: false,
-      infrastructureCause: cause,
-    });
+    expect(bounded.summary.infrastructureCause).toBe(excerpt);
+    expect(bounded.summary.infrastructureCause).toBe(
+      bounded.summary.firstCausalExcerpt,
+    );
+    expect(bounded.summary.passed).toBe(false);
 
-    // A receipt that recorded no declaration must not gain one here: absence
-    // is a claim of its own, and this is a rendering, not a derivation.
-    const scanned = boundedControlResult({
+    // A summary the summarizer gave no marker does not gain one from the
+    // receipt: the byte budget dropped it deliberately, and re-adding it here
+    // would restore the very divergence above.
+    const dropped = boundedControlResult({
       disposition: 'executed',
       request: { key: 'k', laneId: 'ci-fast' },
-      receipt: {
-        ...stopped,
-        terminal: { ...stopped.terminal, infrastructureCause: undefined },
-      },
+      receipt: stopped,
       summary: {
         terminal: 'infrastructure_error',
         counts: stopped.counts,
-        firstCausalExcerpt: '          Error: observer failed',
+        firstCausalExcerpt: excerpt,
       },
     });
-    expect(scanned.summary.infrastructureCause).toBeUndefined();
+    expect(dropped.summary.infrastructureCause).toBeUndefined();
+
+    // station#1827 fix round 2, L5: a `reused` or `joined` disposition has no
+    // summary at all, so `boundedControlResult` synthesizes one from the
+    // receipt -- with ZERO causal excerpts. A marker there qualifies nothing
+    // and contradicts its own documented meaning.
+    const reused = boundedControlResult({
+      disposition: 'reused',
+      request: { key: 'k', laneId: 'ci-fast' },
+      receipt: stopped,
+    });
+    expect(reused.summary.causalExcerpts).toBeUndefined();
+    expect(reused.summary.firstCausalExcerpt).toBeUndefined();
+    expect(reused.summary.infrastructureCause).toBeUndefined();
+    // The verdict facts ARE still stamped there, which is what makes the
+    // absence above a decision rather than an oversight.
+    expect(reused.summary.passed).toBe(false);
   });
 
   // station#3584 review item 1: summarizeVerificationOutput

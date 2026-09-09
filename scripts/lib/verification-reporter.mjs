@@ -24,7 +24,10 @@ import {
   tryAcquireVerificationArtifactMutation,
 } from './verification-artifact-mutation.mjs';
 import { assertReceiptSemantics } from './verification-receipt.mjs';
-import { redactVerificationOutput } from './verification-redaction.mjs';
+import {
+  REDACTED,
+  redactVerificationOutput,
+} from './verification-redaction.mjs';
 
 // Two streams consume at most 6MiB, leaving the independently bounded 2MiB
 // attachment allowance inside MAX_ARTIFACT_TOTAL_BYTES.
@@ -249,8 +252,23 @@ function longestUtf8Prefix(text, maxBytes) {
 export const DECLARED_CAUSE_BYTE_CAP = 512;
 
 /**
- * The one normalization of a runner-declared stop cause, for every writer that
- * records one (station#1827 review item 2).
+ * `text` without a trailing PARTIAL `[REDACTED]` marker.
+ *
+ * A byte cut landing inside the replacement leaves `…[REDACT`, which reads as
+ * content rather than as a redaction and is the one shape a bound must never
+ * emit. A complete marker is left alone: it ends in `]`, so no proper prefix
+ * of the token can match it.
+ */
+function withoutPartialRedactionMarker(text) {
+  for (let length = REDACTED.length - 1; length > 0; length -= 1)
+    if (text.endsWith(REDACTED.slice(0, length)))
+      return text.slice(0, text.length - length);
+  return text;
+}
+
+/**
+ * The one derivation of a runner-declared stop cause. Every consumer is handed
+ * the string this returns; nothing recomputes it (station#1827 fix round 2).
  *
  * Returns null for anything that is not a non-empty declaration, so a caller
  * can use it as the whole admission test as well as the transform. A blank
@@ -258,34 +276,60 @@ export const DECLARED_CAUSE_BYTE_CAP = 512;
  * with nothing at all, which is worse than the wrong excerpt this change
  * exists to remove.
  *
- * The order is fixed and not interchangeable. Escapes come off BEFORE the
- * redaction boundary for the reason `summarizeVerificationOutput` states about
- * its own captures: a secret SPLIT by an escape sequence is not a token the
- * redactor can recognise while the escape sits in the middle of it, and
- * redacting first would reconstitute exactly that secret. `boundedText` in
- * `verification-terminal-receipt.mjs` redacts without stripping, which is why
- * the receipt cannot simply reuse it for this value.
+ * ## Why this is called once and never re-applied
  *
- * It exists as one exported function rather than two matching local
- * transforms because `reportExecution` promises the printed summary and the
- * persisted receipt never name different causes for one run. Two writers
- * agreeing because both were written carefully is a coincidence; one function
- * is a structure. It is idempotent, so a caller handed an already-normalized
- * value gets it back unchanged.
+ * It is NOT idempotent, and the delta review of the first fix round proved it
+ * with the case that matters: bounding after redacting can move a token-shaped
+ * fragment to end-of-string, where `verification-redaction.mjs`'s
+ * `$`-anchored partial-token rules match on a LATER pass but could not on the
+ * first. Nine offsets in a 53-wide sweep of `'a'*n + 'ghp_ABCDEFG …'` changed
+ * under a second pass, three of them by splitting the replacement.
+ *
+ * The answer is structural rather than a proof of idempotence: `reportExecution`
+ * calls this once and threads the result to the summarizer and to the receipt,
+ * so there is no second derivation to agree with. Do not reintroduce one.
+ *
+ * ## The order, which is fixed and not interchangeable
+ *
+ * Escapes come off BEFORE the redaction boundary for the reason
+ * `summarizeVerificationOutput` states about its own captures: a secret SPLIT
+ * by an escape sequence is not a token the redactor can recognise while the
+ * escape sits in the middle of it, and redacting first would reconstitute it.
+ * (`boundedText` in `verification-terminal-receipt.mjs` redacts without
+ * stripping, which is why the receipt cannot simply reuse it for this value.)
+ *
+ * The BOUND then comes before redaction, which the first round had backwards.
+ * Those `$`-anchored rules exist precisely to catch a token the surrounding
+ * cut left partial, and they can only fire on the string's real end -- so
+ * cutting afterwards both defeated them and produced the non-idempotence
+ * above. Redaction can lengthen what it rewrites, so a value that grows past
+ * the bound is cut back, never through a replacement marker.
+ *
+ * What that guarantees: at most `maxBytes` bytes, codepoint-aligned, no
+ * trailing partial marker, and any token left partial by the FIRST cut
+ * redacted. What it does not: a value whose redaction grew past the bound is
+ * cut a second time, and that second cut is not itself re-scanned, so a token
+ * prefix it exposes stays. Reaching that needs a redacted secret before the
+ * bound and a token prefix at the shifted cut.
  */
 export function normalizeDeclaredCause(
   value,
   { maxBytes = DECLARED_CAUSE_BYTE_CAP } = {},
 ) {
   if (typeof value !== 'string' || value.length === 0) return null;
-  // Trimmed again AFTER the byte prefix: cutting inside a longer declaration
-  // can land immediately after a space, and a value that still needed
-  // trimming would not survive a second pass unchanged -- which is the whole
-  // property the two writers rely on.
-  const normalized = longestUtf8Prefix(
-    redactVerificationOutput(withoutAnsi(value)).trim(),
-    maxBytes,
-  ).trim();
+  // Trimmed AFTER the bound as well as before it, and that second trim has to
+  // precede redaction: a cut landing one character past a token leaves
+  // `…ghp_ABCDEFG ` , whose real end is a space, and the `$`-anchored rules
+  // then see no token at all. Trimming afterwards would re-expose it. (Found
+  // by sweeping this function's own guarantees, not by review.)
+  const bounded = longestUtf8Prefix(withoutAnsi(value).trim(), maxBytes).trim();
+  const redacted = redactVerificationOutput(bounded);
+  const normalized =
+    Buffer.byteLength(redacted) <= maxBytes
+      ? redacted
+      : withoutPartialRedactionMarker(
+          longestUtf8Prefix(redacted, maxBytes),
+        ).trim();
   return normalized.length > 0 ? normalized : null;
 }
 
@@ -756,6 +800,10 @@ export function captureBoundedOutput(
  *   infrastructureCause?: string,
  *   maxBytes?: number,
  * }} options
+ *   `infrastructureCause` must ALREADY have been through
+ *   `normalizeDeclaredCause`; this function uses it verbatim and does not
+ *   redact, trim or bound it (station#1827 fix round 2 -- one derivation, not
+ *   two that agree).
  *   `terminal`, `counts` and `cleanup` are required at runtime (the function
  *   throws without each of them). This annotation exists for the same reason
  *   `persistVerificationOutput`'s does: tsconfig.scripts.json runs with
@@ -929,13 +977,22 @@ export function summarizeVerificationOutput({
   // up a structured claim. The scan stays the second line, never the only
   // one -- the excerpts it found are still reported, ranked below this.
   //
-  // Normalized through `normalizeDeclaredCause`, the SAME function the
-  // terminal-receipt module runs before it puts the value on the receipt, so
-  // the summary and the receipt name one cause structurally rather than by
-  // both writers happening to transform it the same way.
+  // Used EXACTLY as given, never re-derived (station#1827 fix round 2). The
+  // caller normalizes once through `normalizeDeclaredCause` and hands the same
+  // string here and to the receipt writer, so the two artifacts hold one
+  // value rather than two derivations that have to agree. Re-normalizing here
+  // is what made them disagree: that function is not idempotent, and its own
+  // doc comment says why.
+  //
+  // The admission test is deliberately shape-only. A `.trim()` or a redaction
+  // pass here would be a second derivation wearing the clothes of a safety
+  // net -- the safety net is that `normalizeDeclaredCause` is the only way a
+  // value reaches this parameter in production.
   const ownerFinalCause =
-    terminal.status === 'infrastructure_error'
-      ? normalizeDeclaredCause(infrastructureCause)
+    terminal.status === 'infrastructure_error' &&
+    typeof infrastructureCause === 'string' &&
+    infrastructureCause.length > 0
+      ? infrastructureCause
       : null;
   const firstCausalExcerpt =
     ownerFinalCause ??
@@ -1141,20 +1198,24 @@ export function summarizeVerificationOutput({
   // this one leaves a reader assuming the excerpt was scanned, which is the
   // weaker claim. An understated diagnostic is a safe cut; an overstated one
   // is not. The receipt's own `terminal.infrastructureCause` is never subject
-  // to this budget, and `boundedControlResult` stamps the printed verdict from
-  // there, so the marker survives a tight cap where a reader needs it most.
+  // to this budget and keeps the full-length record; nothing re-stamps this
+  // field from there, because a marker is a claim about the excerpt beside it
+  // and a rendering without that excerpt has nothing to qualify.
+  //
   // Its value is deliberately `summary.firstCausalExcerpt` -- the
   // ALREADY-TRUNCATED field, not the raw cause -- for the same reason
   // `causalExcerpts` seeds its head from it below: two fields in one summary
   // describing the same declaration must not hold different text.
   //
-  // Stated honestly, that is a guarantee by construction and not one this
-  // suite can currently observe. Sweeping every cap from 180 to 3000 bytes
-  // finds NO cap at which the marker is present while the excerpt was cut --
-  // `promoteSemantic` spends the remaining budget on the excerpt, so a cap
-  // tight enough to truncate it is already too tight for this field. Written
-  // this way anyway: the alternative depends on that allocation order staying
-  // as it is, and a field added above could make the two diverge silently.
+  // Stated honestly, that last part is a guarantee by construction and not one
+  // this suite can observe, even after the round-2 fix that stopped
+  // `boundedControlResult` overwriting it. Sweeping every cap from 180 to 3000
+  // bytes finds NO cap at which the marker is present while the excerpt was
+  // cut -- `promoteSemantic` spends the remaining budget on the excerpt, so a
+  // cap tight enough to truncate it is already too tight for this field.
+  // Written this way anyway: the alternative depends on that allocation order
+  // staying as it is, and a field added above could make the two diverge
+  // silently.
   if (ownerFinalCause && summary.firstCausalExcerpt) {
     const candidate = {
       ...summary,

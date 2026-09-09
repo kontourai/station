@@ -47,6 +47,7 @@ function verdictDocument({
   passed,
   extraSummary = {},
   infrastructureCause,
+  receiptInfrastructureCause,
 }: {
   stdout: string;
   stderr?: string;
@@ -61,6 +62,12 @@ function verdictDocument({
    * fixture cannot show a marker the pipeline would not have produced.
    */
   infrastructureCause?: string;
+  /**
+   * station#1827: a cause the RECEIPT records while the summary does not --
+   * the reconcile path's shape. It exists to prove the renderer reads the
+   * summary, so a document in that shape cannot be built by accident.
+   */
+  receiptInfrastructureCause?: string;
 }): string {
   const summary = summarizeVerificationOutput({
     stdout,
@@ -80,7 +87,12 @@ function verdictDocument({
         status,
         exitCode,
         passed,
-        ...(infrastructureCause ? { infrastructureCause } : {}),
+        ...(infrastructureCause || receiptInfrastructureCause
+          ? {
+              infrastructureCause:
+                infrastructureCause ?? receiptInfrastructureCause,
+            }
+          : {}),
       },
       counts,
       cleanup,
@@ -692,13 +704,79 @@ describe('verification gate summary', () => {
     expect(status).toBe(0);
     expect(summary).toContain('Causal excerpts');
     expect(summary).toContain('ci:fast exceeded its 12-minute feedback budget');
-    expect(summary).toContain('Declared by the runner that stopped this lane');
+    expect(summary).toContain('Recorded by the verification runner');
+    // station#1827 fix round 2, L6: the sentence must not claim the stopping
+    // COMMAND spoke. The other channel is whatever rejected the execution --
+    // a harness assertion or an injected phase runner included -- so the
+    // provenance it may assert is the runner layer, not the child.
+    expect(summary).not.toContain('naming its own reason');
+    // L3: and it must not characterise the excerpts after the head, which are
+    // synthesized rather than scanned on the reconcile path.
+    expect(summary).not.toContain('found by the scan');
     // The caveat that would have been false. Absence here is now a positive
     // statement rather than the silence it used to be.
     expect(summary).not.toContain('picked by severity and position');
     expect(errorAnnotations(stdout).join('\n')).toContain(
       'ci:fast exceeded its 12-minute feedback budget',
     );
+  });
+
+  // station#1827 fix round 2, L3. The first round's sentence ended "Any
+  // excerpts after it were found by the scan", which is false on the reconcile
+  // path: there the second excerpt is the `reconcileNote` reportExecution
+  // synthesized about its OWN failure. Two things stop that being rendered now
+  // -- the clause is gone, and the marker comes from the summary, which the
+  // reconcile path never sets. This pins the second, with a document shaped
+  // exactly as that path emits one.
+  test('renders no declared-cause sentence for a reporting-pipeline failure (station#1827)', () => {
+    const root = workspace();
+    const capture = join(root, 'ci-fast.stdout.log');
+    const reconcileLog = [
+      '> @kontourai/station-core@0.0.0 ci:fast',
+      '> node scripts/run-ci-fast.mjs',
+    ].join('\n');
+    writeFileSync(
+      capture,
+      capturedStdout(
+        reconcileLog,
+        verdictDocument({
+          stdout: reconcileLog,
+          status: 'infrastructure_error',
+          exitCode: null,
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 1,
+          },
+          passed: false,
+          // The receipt DOES record the declaration on this path; the summary
+          // deliberately does not carry the marker, and the summary is what
+          // this renderer reads.
+          receiptInfrastructureCause:
+            'ci:fast exceeded its 12-minute feedback budget',
+          extraSummary: {
+            firstCausalExcerpt:
+              'verification execution infrastructure error: ci:fast exceeded its 12-minute feedback budget',
+            causalExcerpts: [
+              'verification execution infrastructure error: ci:fast exceeded its 12-minute feedback budget',
+              'verification reporting failed: required attachment unavailable: changed-test-diagnostics (missing)',
+            ],
+            reconcileNote:
+              'verification reporting failed: required attachment unavailable: changed-test-diagnostics (missing)',
+          },
+        }),
+      ),
+    );
+
+    const { status, summary } = runSummary(root, ['--stdout-file', capture]);
+
+    expect(status).toBe(0);
+    expect(summary).toContain('Causal excerpts');
+    expect(summary).toContain('verification reporting failed');
+    // Neither caveat applies here, and the first round rendered one of them.
+    expect(summary).not.toContain('Recorded by the verification runner');
+    expect(summary).not.toContain('picked by severity and position');
   });
 
   // GitHub reads `%0A` as one newline; a cut landing inside it leaves a bare
