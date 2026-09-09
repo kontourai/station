@@ -1,7 +1,5 @@
 import {
-  lazy,
   type ReactNode,
-  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -16,13 +14,19 @@ import {
   subscribeLocalUiSessionAttempt,
 } from '../lib/local-ui-bootstrap';
 import { LOCAL_UI_SESSION_ATTEMPT_LIMIT } from '../lib/local-ui-session-retry';
-import { GuidedConnect } from './GuidedConnect';
+import { ElapsedWait } from './ElapsedWait';
+import { LazyBoundary } from './LazyBoundary';
 import { SkeletonBlock } from './state';
 
-const UnpairedSampleWorkspace = lazy(async () => {
+const loadGuidedConnect = () =>
+  import('./GuidedConnect').then((module) => ({
+    default: module.GuidedConnect,
+  }));
+
+const loadUnpairedSampleWorkspace = async () => {
   const module = await import('./first-run/UnpairedSampleWorkspace');
   return { default: module.UnpairedSampleWorkspace };
-});
+};
 
 interface LocalUiSessionGateProps {
   apiBase: string;
@@ -65,6 +69,7 @@ export function LocalUiSessionGate({
     Awaited<ReturnType<typeof resolveLocalUiSession>>
   > | null>(null);
   const [sampleOpen, setSampleOpen] = useState(false);
+  const [accessStartedAt] = useState(Date.now);
   // Deliberately NOT passed as `useDegradedQueryState`'s `resetKey`: the
   // degraded window measures how long this browser has been waiting for ONE
   // answer, and a retry does not restart that wait — it is part of it. Bumping
@@ -112,6 +117,7 @@ export function LocalUiSessionGate({
             browser&rsquo;s access check.
           </p>
           <RetryAttempt attempt={identityAttempt} />
+          <ElapsedWait startedAt={accessStartedAt} />
           <button type="button" onClick={() => window.location.reload()}>
             Try again
           </button>
@@ -122,6 +128,7 @@ export function LocalUiSessionGate({
       <main aria-live="polite">
         <p>Checking this browser's Station access…</p>
         <RetryAttempt attempt={identityAttempt} />
+        <ElapsedWait startedAt={accessStartedAt} />
       </main>
     );
   }
@@ -129,26 +136,28 @@ export function LocalUiSessionGate({
     if (sampleOpen) {
       return (
         <section aria-label="Station sample workspace">
-          <Suspense
-            fallback={
-              // SHELL-13: not a twelfth wait sentence. The wait names itself
-              // in the skeleton's `label`; only the pre-auth access check
-              // above still renders a full-screen sentence, and it is the one
-              // recorded exception to the vocabulary.
+          <LazyBoundary
+            load={loadUnpairedSampleWorkspace}
+            componentProps={{ onConnect: () => setSampleOpen(false) }}
+            pending={
               <SkeletonBlock count={2} label="Opening the sample workspace" />
             }
-          >
-            <UnpairedSampleWorkspace onConnect={() => setSampleOpen(false)} />
-          </Suspense>
+          />
         </section>
       );
     }
     return (
       <section aria-label="Station access required">
         {resolution.message && <p role="alert">{resolution.message}</p>}
-        <GuidedConnect
-          onSessionEstablished={handleSessionEstablished}
-          onExploreSample={() => setSampleOpen(true)}
+        <LazyBoundary
+          load={loadGuidedConnect}
+          componentProps={{
+            onSessionEstablished: handleSessionEstablished,
+            onExploreSample: () => setSampleOpen(true),
+          }}
+          pending={
+            <SkeletonBlock count={1} label="Opening connection options" />
+          }
         />
       </section>
     );

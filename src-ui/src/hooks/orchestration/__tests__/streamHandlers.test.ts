@@ -45,15 +45,19 @@ describe('handleToolCompletedEvent — tool outcome truth (station#3113, #3117)'
     });
     vi.resetModules();
 
-    vi.doMock('../../../contexts/active-chats-store', async () => {
-      const actual = await vi.importActual<
-        typeof import('../../../contexts/active-chats-store')
-      >('../../../contexts/active-chats-store');
-      const store = new actual.ActiveChatsStore({
-        storage: { getItem: () => null, setItem: () => {} },
-      });
-      return { ...actual, activeChatsStore: store };
+    const actual = await vi.importActual<
+      typeof import('../../../contexts/active-chats-store')
+    >('../../../contexts/active-chats-store');
+    // One instance per test, not per asynchronous mock-factory evaluation.
+    // Re-entering the factory under import pressure must not split handlers
+    // and assertions across independent stores (#1701).
+    const store = new actual.ActiveChatsStore({
+      storage: { getItem: () => null, setItem: () => {} },
     });
+    vi.doMock('../../../contexts/active-chats-store', () => ({
+      ...actual,
+      activeChatsStore: store,
+    }));
 
     ({ activeChatsStore } = await import(
       '../../../contexts/active-chats-store'
@@ -1243,15 +1247,19 @@ describe('handleTextDeltaEvent — per-token plan derivation (station#3351)', ()
     });
     vi.resetModules();
 
-    vi.doMock('../../../contexts/active-chats-store', async () => {
-      const actual = await vi.importActual<
-        typeof import('../../../contexts/active-chats-store')
-      >('../../../contexts/active-chats-store');
-      const store = new actual.ActiveChatsStore({
-        storage: { getItem: () => null, setItem: () => {} },
-      });
-      return { ...actual, activeChatsStore: store };
+    const actual = await vi.importActual<
+      typeof import('../../../contexts/active-chats-store')
+    >('../../../contexts/active-chats-store');
+    // One instance per test, not per asynchronous mock-factory evaluation.
+    // Re-entering the factory under import pressure must not split handlers
+    // and assertions across independent stores (#1701).
+    const store = new actual.ActiveChatsStore({
+      storage: { getItem: () => null, setItem: () => {} },
     });
+    vi.doMock('../../../contexts/active-chats-store', () => ({
+      ...actual,
+      activeChatsStore: store,
+    }));
 
     upsertTextPartCalls = 0;
     vi.doMock('../messageParts', async () => {

@@ -7,6 +7,7 @@ import { useStreamingContent } from '../../hooks/useStreamingContent';
 import { useStreamingHaptics } from '../../hooks/useStreamingHaptics';
 import { deriveToolProgressSummary } from '../../utils/chat-progress';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
+import { ElapsedWait } from '../ElapsedWait';
 import { LoadingDots } from '../LoadingDots';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
@@ -22,7 +23,11 @@ export type StreamingMessageProps = {
   agentIconStyle: React.CSSProperties;
   fontSize: number;
   showReasoning?: boolean;
-  renderToolCall?: (part: ChatContentPart, index: number) => React.ReactNode;
+  renderToolCall?: (
+    part: ChatContentPart,
+    index: number,
+    expanded?: boolean,
+  ) => React.ReactNode;
   renderReasoning?: (
     content: string,
     index: number,
@@ -200,6 +205,7 @@ export function StreamingMessageView({
           <div className="streaming-activity" role="status">
             <LoadingDots />
             <span className="streaming-activity__label">{activityLabel}</span>
+            <ElapsedWait label="Elapsed" />
           </div>
         )}
       </div>

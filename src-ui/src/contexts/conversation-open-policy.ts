@@ -18,11 +18,16 @@ export interface ConversationOpenPolicyState {
  * red line under the composer: three contradictory claims about a healthy
  * conversation (#1582 E3/B6).
  *
+ * `busy` is an authorized active-turn wait and still blocks writes.
  * `read-only` is the verdict: the read failed, or it resolved to
- * `missing-session`/`unavailable`/`canContinue: false`. Only that earns error
+ * `missing-session`/`unavailable`, or denied continuation without an active-turn wait. Only that earns error
  * chrome.
  */
-export type ConversationOpenPhase = 'resolving' | 'writable' | 'read-only';
+export type ConversationOpenPhase =
+  | 'resolving'
+  | 'busy'
+  | 'writable'
+  | 'read-only';
 
 export function conversationOpenPhase(
   state: ConversationOpenPolicyState,
@@ -32,6 +37,12 @@ export function conversationOpenPhase(
   if (state.conversationOpenPending) return 'resolving';
   if (state.conversationOpenFailed) return 'read-only';
   const resolution = state.conversationOpenState;
+  if (
+    resolution?.status === 'resolved' &&
+    !resolution.canContinue &&
+    resolution.continuationPending
+  )
+    return 'busy';
   return resolution === undefined ||
     (resolution.status === 'resolved' && resolution.canContinue)
     ? 'writable'

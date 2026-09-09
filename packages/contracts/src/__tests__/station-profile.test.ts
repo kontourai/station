@@ -18,6 +18,26 @@ const profile = {
 };
 
 describe('saved Station contract', () => {
+  test('binds a development HTTP exception to the profile endpoint', () => {
+    const endpoint = 'http://100.77.142.114:3492';
+    expect(
+      isStationProfile({
+        ...profile,
+        endpoint,
+        developmentHttpOrigin: endpoint,
+      }),
+    ).toBe(true);
+    expect(
+      isStationProfile({
+        ...profile,
+        endpoint,
+        developmentHttpOrigin: 'http://other:3492',
+      }),
+    ).toBe(false);
+    expect(isStationProfile({ ...profile, developmentHttpOrigin: true })).toBe(
+      false,
+    );
+  });
   /**
    * station#1818 part 3 review round 1 (MEDIUM) — `clientInstanceId` is
    * shared, plain-JSON state written by the desktop app's

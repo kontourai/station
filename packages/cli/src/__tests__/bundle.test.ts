@@ -570,8 +570,8 @@ describe('published CLI bundle', () => {
     expect(result.stdout).toContain('doctor');
   });
 
-  it('refuses host-local environment verbs by naming ./station', () => {
-    const result = runBundle(['environment', 'show']);
+  it('refuses credential mutation without a host management path', () => {
+    const result = runBundle(['environment', 'credential', 'rotate']);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
       'require the Station repository launcher (./station)',

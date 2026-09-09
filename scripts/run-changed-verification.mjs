@@ -54,6 +54,7 @@ import {
 import { redactVerificationOutput } from './lib/verification-redaction.mjs';
 import { groupFiles, VITEST_CORPUS_GROUPS } from './run-vitest-corpus.mjs';
 import {
+  buildTestImpactManifest,
   isEscalationPath,
   matches,
   TEST_IMPACT_MANIFEST,
@@ -423,21 +424,36 @@ export function selectChangedVerification(
         matches(edge.pattern, path) &&
         (edge.whenAll?.every((required) => changed.has(required)) ?? true),
     );
+    // A SUPPLEMENTAL edge only ever adds to `tests`: it is invisible to the
+    // boundary, escalation, and related decisions below, so a derived edge
+    // (`pathReadPinEdges`, #1807) cannot trade a broader selection for a
+    // narrower one. Naming `tests` on an ordinary edge would set
+    // `hasExplicitBoundary`, suppressing the generic `related` edge for the
+    // same path, which is how an explicit list silently DROPS the related
+    // suites (#1563, #1613). This says nothing about whether the added test
+    // can run — `pathReadPinEdges` owns that.
+    const boundaryEdges = edges.filter((edge) => !edge.supplemental);
+    // Added before every branch below: a supplemental test is additive even
+    // where the path escalates, and naming it in the receipt is the point.
+    for (const edge of edges)
+      if (edge.supplemental)
+        for (const test of edge.tests ?? [])
+          addReason(tests, test, `${edge.reason}: ${path}`);
     const hasExplicitBoundary =
       isChangedTest ||
-      edges.some((edge) => edge.tests?.length || edge.lanes?.length);
+      boundaryEdges.some((edge) => edge.tests?.length || edge.lanes?.length);
     if (isEscalationPath(path) && !hasExplicitBoundary) {
       addReason(lanes, 'ci-fast', `escalation: ${path}`);
       escalated = true;
       continue;
     }
-    if (!edges.length) {
+    if (!boundaryEdges.length) {
       if (isChangedTest) continue;
       addReason(lanes, 'ci-fast', `unknown changed path: ${path}`);
       escalated = true;
       continue;
     }
-    for (const edge of edges) {
+    for (const edge of boundaryEdges) {
       // A direct mapping replaces the generic graph fallback. An edge that
       // explicitly requests both tests and related selection supplements the
       // import graph (for example, a source-reading portability check).
@@ -1274,11 +1290,20 @@ export async function runChangedVerification(
   assertDependencyProvenance({ cwd: root });
   const { base, explain } = parseChangedArgs(args);
   const changed = changedPathsFn({ root, base });
+  // The derived manifest adds the path-read pin edges (#1807): a test that
+  // reads a source file's text has no import edge to it, so neither the graph
+  // fallback nor `vitest related` would schedule it here.
   let selection = escalateUnavailableExplicitTests(
-    escalateUnavailableRelatedPaths(selectChangedVerification(changed.paths), {
-      root,
-      pathExists,
-    }),
+    escalateUnavailableRelatedPaths(
+      selectChangedVerification(
+        changed.paths,
+        buildTestImpactManifest({ root }),
+      ),
+      {
+        root,
+        pathExists,
+      },
+    ),
     { root, pathExists },
   );
   const productLawRouting = withProductLawDispositions(

@@ -649,7 +649,14 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     let unlisten: UnlistenFn | undefined;
     const emit = (urls: string[]) => {
       if (disposed) return;
-      for (const url of urls) listener({ url });
+      for (const url of urls) {
+        try {
+          if (new URL(url).hostname === 'open-browser') continue;
+        } catch {
+          /* Pairing parser reports malformed links. */
+        }
+        listener({ url });
+      }
     };
 
     void this.deepLinkBridge

@@ -1,14 +1,21 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import vm from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 // The gate declares the reviewed capacity-action commit; this test reads it
 // rather than restating it. When those were two literals they drifted (#3443
 // moved this one and left the gate's behind, taking `main` red).
 import {
+  CHECKOUT_ACTION,
   REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
   readWorkflowDocuments,
 } from '../actionlint-gate.mjs';
 import { readPnpmLockfile } from '../lib/pnpm-lockfile.mjs';
+import {
+  failureDigest,
+  parseMainHealthState,
+  renderMainHealthComment,
+} from '../main-health-comment-policy.mjs';
 import {
   resolveAndroidBuildRun,
   sanitizeLookupDiagnostic,
@@ -237,7 +244,10 @@ describe('CI verification workflow contracts', () => {
     const parsedMainHealth = workflowDocuments.find(
       ({ file }) => file === '.github/workflows/main-health.yml',
     )?.document as
-      | { on?: { workflow_run?: { workflows?: unknown } } }
+      | {
+          on?: { workflow_run?: { workflows?: unknown } };
+          permissions?: unknown;
+        }
       | undefined;
     const intendedTargetFiles = [
       '.github/workflows/nightly.yml',
@@ -273,8 +283,21 @@ describe('CI verification workflow contracts', () => {
 
     expect(trigger).toContain('types: [completed]');
     expect(trigger).not.toContain('Main pipeline health');
-    expect(mainHealth).toMatch(/^permissions:\n {2}issues: write$/m);
-    expect(mainHealth).not.toContain('contents:');
+    // `contents: read` was added for one reason — checking out the default
+    // branch so the failure job can import its comment-policy module (#1811).
+    // Pinned as an exact object rather than a `not.toContain`, so the next
+    // scope added to this privileged workflow_run handler is a visible edit
+    // here and not a silently passing absence check.
+    expect(parsedMainHealth?.permissions).toEqual({
+      actions: 'read',
+      contents: 'read',
+      issues: 'write',
+    });
+    // Only report-failure grew: it checks out and reads the tracker's comment
+    // history. close-after-success does the same work it always did, so the
+    // asymmetry is deliberate and pinned as such.
+    expect(failureJob).toContain('timeout-minutes: 5');
+    expect(successJob).toContain('timeout-minutes: 2');
     expect(failureJob).toContain(
       "github.event.workflow_run.conclusion == 'failure'",
     );
@@ -300,6 +323,19 @@ describe('CI verification workflow contracts', () => {
       'group: main-health-$' + '{{ github.event.workflow_run.name }}',
     );
     expect(failureJob).not.toContain('cancel-in-progress');
+    // The comment policy lives in a module so its transitions are testable
+    // without a workflow_run event; re-inlining it would take that away
+    // silently. The checkout reads the default branch, never the reported
+    // run's code, and keeps no credentials.
+    expect(failureJob).toContain(`uses: ${CHECKOUT_ACTION}`);
+    expect(failureJob).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'ref: ${{ github.event.repository.default_branch }}',
+    );
+    expect(failureJob).toContain('persist-credentials: false');
+    expect(failureJob).toContain('scripts/main-health-comment-policy.mjs');
+    expect(failureJob).toContain('summarizeRunFailure(jobs)');
+    expect(failureJob).toContain('github.rest.issues.updateComment');
     expect(successJob).toContain("state: 'closed'");
     expect(successJob).not.toContain("conclusion == 'failure'");
   });
@@ -320,6 +356,180 @@ describe('CI verification workflow contracts', () => {
     expect(successJob).toContain(
       'if (!hasSuccessfulJob || hasSkippedJob) return;',
     );
+  });
+
+  /**
+   * Runs the report-failure step's own script, the way the Nightly test below
+   * runs close-after-success's. The module pin above proves the workflow
+   * NAMES the policy; only executing the script proves it ACTS on the answer —
+   * a step that imported the module and then commented unconditionally would
+   * satisfy every string assertion in this file.
+   *
+   * The `workflow_run` event itself still cannot be raised locally; what this
+   * covers is everything downstream of it.
+   */
+  async function runReportFailure({
+    comments,
+    failingStep,
+    issueState = 'open',
+  }: {
+    comments: { id: number; body: string; user?: { type: string } }[];
+    failingStep: string;
+    issueState?: 'open' | 'closed';
+  }) {
+    const document = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/main-health.yml',
+    )?.document as {
+      jobs: Record<string, { steps: { with?: { script?: string } }[] }>;
+    };
+    const script = document.jobs['report-failure'].steps.find(
+      (step) => typeof step.with?.script === 'string',
+    )?.with?.script as string;
+    // `new Function` cannot host a dynamic `import()`, and this step's first
+    // statement is one. vm.compileFunction with the main context's loader can,
+    // so the script runs verbatim rather than being rewritten to suit the test.
+    const run = vm.compileFunction(
+      `return async function (github, context, process, core) {\n${script}\n};`,
+      [],
+      { importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER },
+    )();
+    const listForRepo = vi.fn();
+    const listJobs = vi.fn();
+    const listComments = vi.fn();
+    const createComment = vi.fn();
+    const updateComment = vi.fn();
+    const updateIssue = vi.fn();
+    const github = {
+      rest: {
+        actions: { listJobsForWorkflowRun: listJobs },
+        issues: {
+          listForRepo,
+          listComments,
+          create: vi.fn(),
+          update: updateIssue,
+          addLabels: vi.fn(),
+          createComment,
+          updateComment,
+        },
+      },
+      paginate: vi.fn(async (method: unknown) => {
+        if (method === listJobs)
+          return [
+            {
+              name: 'policy',
+              conclusion: 'failure',
+              steps: [{ name: failingStep, conclusion: 'failure' }],
+            },
+          ];
+        if (method === listComments) return comments;
+        return [
+          {
+            number: 42,
+            state: issueState,
+            title: 'Main pipeline red: Backlog disposition policy',
+          },
+        ];
+      }),
+    };
+    await run(
+      github,
+      {
+        repo: { owner: 'kontourai', repo: 'station' },
+        payload: { workflow_run: { id: 123 } },
+      },
+      {
+        env: {
+          GITHUB_WORKSPACE: root,
+          WORKFLOW_NAME: 'Backlog disposition policy',
+          RUN_URL: 'https://example.test/run/123',
+          HEAD_SHA: 'a'.repeat(40),
+        },
+      },
+      { info: vi.fn() },
+    );
+    return { createComment, updateComment, updateIssue };
+  }
+
+  function recordedComment(failure: string) {
+    return renderMainHealthComment(
+      {
+        workflowName: 'Backlog disposition policy',
+        runUrl: 'https://example.test/run/1',
+        headSha: 'a'.repeat(40),
+      },
+      {
+        lead: 'The workflow failed again on main.',
+        failures: [failure],
+        failureCount: 1,
+        digest: failureDigest([failure]),
+        redRunsSinceComment: 4,
+        commentedAt: new Date().toISOString(),
+      },
+    );
+  }
+
+  it('records an unchanged red run in the existing comment rather than adding one', async () => {
+    const { createComment, updateComment } = await runReportFailure({
+      comments: [
+        {
+          id: 7,
+          body: recordedComment('policy > Run the gate (failure)'),
+          user: { type: 'Bot' },
+        },
+      ],
+      failingStep: 'Run the gate',
+    });
+
+    expect(createComment).not.toHaveBeenCalled();
+    expect(updateComment).toHaveBeenCalledTimes(1);
+    const [call] = updateComment.mock.calls;
+    expect(call[0].comment_id).toBe(7);
+    expect(parseMainHealthState(call[0].body)?.redRunsSinceComment).toBe(5);
+  });
+
+  it('comments when a different step fails than the last comment recorded', async () => {
+    const { createComment, updateComment } = await runReportFailure({
+      comments: [
+        {
+          id: 7,
+          body: recordedComment('policy > Run the gate (failure)'),
+          user: { type: 'Bot' },
+        },
+      ],
+      failingStep: 'Publish the report',
+    });
+
+    expect(updateComment).not.toHaveBeenCalled();
+    expect(createComment).toHaveBeenCalledTimes(1);
+    expect(createComment.mock.calls[0][0].body).toContain(
+      'policy > Publish the report (failure)',
+    );
+  });
+
+  it('speaks when a green-closed tracker is reopened, even with matching state', async () => {
+    // The reducer's own reopen test passes `reopened: true` directly, so it
+    // never reaches the wiring. Here the ONLY signal is the closed issue the
+    // workflow reads: with `reopened` hardcoded false at the call site, the
+    // pre-close marker still matches and the tracker reopens in silence —
+    // the one comment the design most owes a reader.
+    const { createComment, updateComment, updateIssue } =
+      await runReportFailure({
+        comments: [
+          {
+            id: 7,
+            body: recordedComment('policy > Run the gate (failure)'),
+            user: { type: 'Bot' },
+          },
+        ],
+        failingStep: 'Run the gate',
+        issueState: 'closed',
+      });
+
+    expect(updateIssue).toHaveBeenCalledWith(
+      expect.objectContaining({ issue_number: 42, state: 'open' }),
+    );
+    expect(updateComment).not.toHaveBeenCalled();
+    expect(createComment).toHaveBeenCalledTimes(1);
   });
 
   it('scans the advisory floor on its own sub-daily schedule, in a shape main-health can clear (#1753)', () => {

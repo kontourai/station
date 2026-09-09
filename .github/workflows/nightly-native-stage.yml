@@ -278,6 +278,7 @@ jobs:
           node scripts/apply-android-release-signing.mjs
           node scripts/apply-android-channel-icons.mjs nightly
           node scripts/apply-android-native-bootstrap.mjs
+          node scripts/apply-android-network-policy.mjs
           node scripts/write-android-build-manifest.mjs
           keystore="$RUNNER_TEMP/station-nightly.keystore"; printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
           export TAURI_ANDROID_KEYSTORE_PATH="$keystore" NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
@@ -295,6 +296,7 @@ jobs:
           # The retained sibling APK is a separate packaging surface.
           node scripts/read-android-build-provenance.mjs cohort-android/station-nightly-universal.apk --expected src-desktop/station-client-build.json
           aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/aapt"; apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/apksigner"
+          "$aapt" dump xmltree "$apk" AndroidManifest.xml | grep -E 'android:usesCleartextTraffic.*0xffffffff'
           "$aapt" dump badging "$apk" | grep -F "package: name='io.kontourai.station.nightly'"
           node scripts/verify-android-aab-signature.mjs cohort-android/station-nightly-universal.aab "$ANDROID_UPLOAD_CERT_SHA256"
           node scripts/verify-android-apk-signature.mjs "$apk" "$ANDROID_UPLOAD_CERT_SHA256" "$apksigner"

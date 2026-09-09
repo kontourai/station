@@ -732,6 +732,15 @@ function HomeRouteHostUnavailable({
   host: string;
   address: string;
 }) {
+  if (!address.trim()) {
+    return (
+      <Empty
+        variant="prominent"
+        label="Connect to a Station to get started"
+        description="Choose a saved Station or add its address."
+      />
+    );
+  }
   // archive#3711: this used to say "Workspace unavailable while offline" for
   // EVERY non-connected state — an authentication rejection or a version
   // mismatch became a false device-network claim. The connection layer

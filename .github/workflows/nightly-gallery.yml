@@ -13,6 +13,11 @@ on:
     # rather than from this cron (#1645).
     - cron: '30 7 * * *'
   workflow_dispatch:
+    inputs:
+      review_images:
+        description: Run the API image reviewer (disable for capture-only diagnostics)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -207,3 +212,44 @@ jobs:
             gallery/diffs/
           if-no-files-found: ignore
           retention-days: 14
+
+  image-review:
+    name: Review gallery usability
+    permissions:
+      contents: read
+      actions: read
+    needs: screenshot-diff
+    if: always() && github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.review_images)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightly-gallery-${{ github.run_id }}
+          path: test-results/gallery
+      - name: Review every captured image
+        env:
+          OPENAI_API_KEY: ${{ secrets.CODEX_REVIEW_API_KEY || secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ vars.CODEX_REVIEW_BASE_URL || 'https://api.openai.com/v1' }}
+          UI_REVIEW_MODEL: ${{ vars.UI_REVIEW_MODEL || 'gpt-5.6-sol' }}
+        run: node scripts/usability-feedback.mjs test-results test-results/gallery-review --gallery-only
+      - name: Summarize review coverage
+        if: always()
+        run: |
+          if test -f test-results/gallery-review/report.md; then
+            cat test-results/gallery-review/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain review findings and coverage gaps
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gallery-review-${{ github.run_id }}
+          path: test-results/gallery-review
+          if-no-files-found: error

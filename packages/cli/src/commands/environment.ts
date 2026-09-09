@@ -21,6 +21,7 @@ import {
   PUBLIC_STATION_PROOF_PATH,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
+import { readExistingEnvironmentSecurityRecord } from '@kontourai/station-shared/environment-security-record';
 import QRCode from 'qrcode';
 import {
   activeLocalStationPath,
@@ -1497,17 +1498,21 @@ async function runLocalAccessCommand(
   const request = dependencies.request ?? requestBareJson;
   const serviceProjectHome =
     targetProfile?.localService?.baseDir ?? dependencies.projectHome;
-  const service = requireSecurityService({
-    ...dependencies,
-    projectHome: serviceProjectHome,
-  });
-  const snapshot = targetProfile?.localService?.baseDir
-    ? await readSavedStationRecord(
-        service,
-        targetProfile.name,
-        targetProfile.localService.baseDir,
-      )
-    : await service.initialize();
+  const snapshot = dependencies.createService
+    ? await (async () => {
+        const service = requireSecurityService({
+          ...dependencies,
+          projectHome: serviceProjectHome,
+        });
+        return targetProfile?.localService?.baseDir
+          ? readSavedStationRecord(
+              service,
+              targetProfile.name,
+              targetProfile.localService.baseDir,
+            )
+          : service.initialize();
+      })()
+    : readExistingEnvironmentSecurityRecord(serviceProjectHome);
   const handshake = await request(apiBase, '/.well-known/station/v1');
   // station#4515 review NEW-3: an explicit, standalone shape rejection —
   // mirrors the sibling check in `verifyLocalOfferHost` above
@@ -1707,9 +1712,19 @@ function requireSecurityService(
   dependencies: EnvironmentCommandDependencies,
 ): EnvironmentSecurityServiceLike {
   if (!dependencies.createService) {
-    throw new Error(
-      'Environment security commands require the Station repository launcher (./station).',
-    );
+    const read = async () =>
+      readExistingEnvironmentSecurityRecord(dependencies.projectHome);
+    const unavailable = async (): Promise<EnvironmentSecuritySnapshot> => {
+      throw new Error(
+        'Credential rotation and identity reset require the host management UI or repository launcher.',
+      );
+    };
+    return {
+      initialize: read,
+      readExistingRecord: read,
+      rotateCredential: unavailable,
+      resetEnvironment: unavailable,
+    };
   }
   return dependencies.createService(dependencies.projectHome);
 }

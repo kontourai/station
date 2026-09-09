@@ -119,7 +119,7 @@ export function HomeActionSection({
         title={
           model.startReady
             ? 'Write a message and begin'
-            : 'Finish setting up an engine to chat'
+            : 'Set up an AI app to start chatting'
         }
         detail={model.startIdentity}
         onClick={() => window.dispatchEvent(new Event(OPEN_NEW_CHAT_EVENT))}

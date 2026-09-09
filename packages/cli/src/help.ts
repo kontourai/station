@@ -317,6 +317,14 @@ const VERBS: Record<string, VerbSpec> = {
       ...TARGET_FLAGS,
     ],
   },
+  open: {
+    group: 'Stations',
+    summary: 'Open an authorized browser session for a running local Station',
+    usage: ['station open [--home=<directory>] [--instance=<name>]'],
+    detail: [
+      'Uses the selected local Station home and one-time browser authorization. Never starts or stops a backend.',
+    ],
+  },
   target: {
     group: 'Stations',
     summary: 'Show the exact Station and endpoint a command will use',
@@ -342,7 +350,7 @@ const VERBS: Record<string, VerbSpec> = {
       'authorizes sending it to the fixed read-only Station issue search.',
       'When both agents are available, a TTY asks; a non-interactive shell',
       'requires --agent=codex or --agent=claude.',
-      'The packaged client does not inspect local files or run the source doctor.',
+      'The packaged client uses remote diagnostics; station doctor reports target, access and service state.',
       'Triage never repairs, changes Station state, patches source, or posts to GitHub.',
     ],
   },

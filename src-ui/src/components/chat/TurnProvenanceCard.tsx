@@ -9,6 +9,7 @@ import {
   type TurnProvenanceUsage,
 } from '@kontourai/station-contracts/turn-provenance';
 import {
+  cacheInclusivePromptTokens,
   cacheInclusiveTotalTokens,
   providerPromptCacheInclusivity,
 } from '@kontourai/station-shared/usage-fold';
@@ -170,19 +171,32 @@ function refRow<TRef>(
 }
 
 /**
- * The detail row's full usage sentence — every field the engine reported,
- * named in full. Only fields the engine actually reported are named. An
- * absent field is left out of the sentence entirely rather than printed as
- * `0 in`.
+ * Lead with the full prompt when the provider's accounting supports it,
+ * then show the reported components. Omit a redundant input/output subtotal;
+ * absent measurements are never printed as zero.
  */
 function usageText(
   usage: TurnProvenanceUsage,
   provider?: string,
 ): string | null {
   const parts: string[] = [];
-  if (usage.inputTokens !== undefined) parts.push(`${usage.inputTokens} in`);
+  const totalInput = cacheInclusivePromptTokens(provider, usage);
+  if (totalInput !== undefined)
+    parts.push(`${exactTokenCount(totalInput)} total input`);
+  if (usage.inputTokens !== undefined) {
+    const inputLabel =
+      providerPromptCacheInclusivity(provider) === 'disjoint'
+        ? 'uncached input'
+        : 'input';
+    parts.push(`${exactTokenCount(usage.inputTokens)} ${inputLabel}`);
+  }
   if (usage.outputTokens !== undefined) parts.push(`${usage.outputTokens} out`);
-  if (usage.totalTokens !== undefined) {
+  const redundantTotal =
+    totalInput !== undefined &&
+    usage.inputTokens !== undefined &&
+    usage.outputTokens !== undefined &&
+    usage.totalTokens === usage.inputTokens + usage.outputTokens;
+  if (usage.totalTokens !== undefined && !redundantTotal) {
     // archive#4196: for a provider DECLARED 'disjoint', its reported total is
     // input + output and excludes the cache fields named beside it — calling
     // that figure "total" in the same sentence contradicts the collapsed

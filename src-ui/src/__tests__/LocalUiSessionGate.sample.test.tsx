@@ -12,7 +12,8 @@ vi.mock('../lib/serverHealth', () => ({
   checkServerHealthDetailed: vi.fn(),
 }));
 
-vi.mock('@kontourai/station-connect', () => ({
+vi.mock('@kontourai/station-connect', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
   ConnectionManagerModal: () => null,
 }));
 
@@ -42,10 +43,20 @@ describe('LocalUiSessionGate unpaired sample (station#2652)', () => {
     );
 
     fireEvent.click(
-      await screen.findByRole('button', { name: 'See how Station works' }),
+      await screen.findByRole(
+        'button',
+        { name: 'See how Station works' },
+        { timeout: 5000 },
+      ),
     );
 
-    expect(await screen.findByTestId('unpaired-sample-workspace')).toBeTruthy();
+    expect(
+      await screen.findByTestId(
+        'unpaired-sample-workspace',
+        {},
+        { timeout: 5000 },
+      ),
+    ).toBeTruthy();
     expect(protectedMount).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -56,7 +67,11 @@ describe('LocalUiSessionGate unpaired sample (station#2652)', () => {
       screen.getAllByRole('button', { name: 'Connect your Station' })[0],
     );
     expect(
-      screen.getByRole('button', { name: 'See how Station works' }),
+      await screen.findByRole(
+        'button',
+        { name: 'See how Station works' },
+        { timeout: 5000 },
+      ),
     ).toBeTruthy();
     expect(protectedMount).not.toHaveBeenCalled();
   });

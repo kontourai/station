@@ -241,6 +241,7 @@ export function splitMuseLines(
  */
 export function buildMuseExecArgs(input: {
   sessionId: string;
+  imagePaths?: string[];
   prompt: string;
   modelId?: string;
   cwd?: string;
@@ -276,6 +277,7 @@ export function buildMuseExecArgs(input: {
   if (input.cwd) {
     args.push('--workspace', input.cwd);
   }
+  for (const path of input.imagePaths ?? []) args.push('--image', path);
   args.push('--', input.prompt);
   return args;
 }

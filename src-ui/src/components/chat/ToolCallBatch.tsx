@@ -47,7 +47,7 @@ export interface ToolCallBatchProps<P extends ToolCallLike> {
    * per-part `ToolCallDisplay` renderer (including its `onApprove` wiring)
    * so this component never builds a second detail renderer.
    */
-  renderCall: (part: P, index: number) => ReactNode;
+  renderCall: (part: P, index: number, expanded?: boolean) => ReactNode;
 }
 
 /**

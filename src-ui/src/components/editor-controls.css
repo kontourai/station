@@ -47,6 +47,15 @@
   line-height: var(--leading-normal);
 }
 
+.editor-disclosure > summary {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-block: var(--space-6);
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  cursor: pointer;
+}
+
 /* A hint INSIDE a label is part of the label line, not a helper under it. */
 .editor-label .editor-hint {
   display: inline;

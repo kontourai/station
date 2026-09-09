@@ -2040,3 +2040,32 @@ describe('projectRuntimeEventsToMessages', () => {
     });
   });
 });
+
+it('retains the invocation name when an imported result supplies the generic fallback', () => {
+  const messages = projectRuntimeEventsToMessages([
+    ev({ method: 'turn.started', turnId: 'keep-name', prompt: 'read' }),
+    ev({
+      method: 'tool.started',
+      turnId: 'keep-name',
+      toolCallId: 'read-1',
+      toolName: 'Read',
+      arguments: { file_path: 'file.ts' },
+    }),
+    ev({
+      method: 'tool.completed',
+      turnId: 'keep-name',
+      toolCallId: 'read-1',
+      toolName: 'tool',
+      status: 'success',
+      output: 'contents',
+    }),
+  ]);
+  const tool = messages
+    .flatMap((message) => message.parts)
+    .find((part) => part.toolCallId === 'read-1');
+  expect(tool).toMatchObject({
+    toolName: 'Read',
+    args: { file_path: 'file.ts' },
+    output: 'contents',
+  });
+});
