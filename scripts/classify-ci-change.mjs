@@ -114,7 +114,7 @@ export function classifyChangedPaths(paths) {
   // touched ANY dependency input incidentally re-audited the other two, so an
   // advisory disclosed hours earlier against an untouched scope could be
   // caught by an unrelated PR. That opportunistic catch is what narrowing
-  // trades away, and the daily scan is what replaces it -- a bounded delay,
+  // trades away, and the scheduled scan (four slots a day) is what replaces it -- a bounded delay,
   // not an equivalence.
   const selected = new Set();
   for (const changedPath of dependencyInputs) {

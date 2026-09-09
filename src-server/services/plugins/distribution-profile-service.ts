@@ -1,13 +1,10 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   lstatSync,
   mkdirSync,
   readFileSync,
   realpathSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
 } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
@@ -36,6 +33,7 @@ import {
   type PluginManifest,
 } from '@kontourai/station-contracts/plugin';
 import type { WorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { createLogger } from '../../utils/logger.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import {
@@ -709,12 +707,8 @@ export class DistributionProfileService {
     };
     const path = this.lifecyclePath();
     mkdirSync(join(this.projectHomeDir, 'config'), { recursive: true });
-    const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
-    try {
-      writeFileSync(temporary, JSON.stringify(next, null, 2), 'utf-8');
-      renameSync(temporary, path);
-    } finally {
-      rmSync(temporary, { force: true });
-    }
+    // Same two-space document; the shared durable writer adds the exclusive
+    // temporary, the data fsync and the directory fsync.
+    writeJsonDurably(path, next, { trailingNewline: false });
   }
 }

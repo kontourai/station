@@ -1,13 +1,6 @@
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { isNonEmptyString } from '../../utils/non-empty-string.js';
 
 interface DiscordTurnRelay {
@@ -80,23 +73,9 @@ export class DiscordTurnRelayStore {
     const directory = dirname(path);
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     chmodSync(directory, 0o700);
-    const temporaryPath = `${path}.${process.pid}.tmp`;
-    try {
-      writeFileSync(temporaryPath, JSON.stringify(relays, null, 2), {
-        encoding: 'utf8',
-        mode: 0o600,
-        flag: 'w',
-      });
-      renameSync(temporaryPath, path);
-      chmodSync(path, 0o600);
-    } finally {
-      if (existsSync(temporaryPath)) {
-        try {
-          rmSync(temporaryPath, { force: true });
-        } catch {
-          // The preceding write error remains authoritative.
-        }
-      }
-    }
+    // Same two-space document; the shared durable writer adds the exclusive
+    // temporary, the data fsync and the directory fsync.
+    writeJsonDurably(path, relays, { trailingNewline: false });
+    chmodSync(path, 0o600);
   }
 }

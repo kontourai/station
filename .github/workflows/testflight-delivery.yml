@@ -505,7 +505,7 @@ jobs:
           --app-id '${{ steps.app_store.outputs.app_id }}'
           --bundle-version '${{ inputs.bundle_version }}'
           --deadline-seconds 1800
-      - name: Record processed provider receipt and attach the channel group
+      - name: Record processed provider receipt and channel group membership
         env:
           WORKFLOW_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |

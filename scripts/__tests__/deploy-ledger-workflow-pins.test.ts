@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { GENERATED_LEDGER_SUBJECT } from '../normalize-deploy-ledger-head.mjs';
 
 /**
  * The deploy ledger's workflow contract (station#4572), pinned the same way
@@ -97,6 +98,32 @@ describe('the nightly workflow records what it ships', () => {
     );
     expect(decision).toContain(
       'normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$desktop_sha"',
+    );
+  });
+
+  it('decides the cohort from the ledger at origin/main, not marker position alone (#1780)', () => {
+    const decision = stepBlock(
+      nightly,
+      'Decide one cohort rather than independent native ships',
+    );
+    // A marker at HEAD without a ledger row is a served, unverified release
+    // (macOS moves nightly-desktop before its claim step). The decision must
+    // consult the ledger, and the ledger it consults must be main's: rows
+    // land on main after the ship, so the checkout at the source SHA never
+    // contains the row for its own marker.
+    expect(decision).toContain('node scripts/nightly-cohort-decide.mjs');
+    expect(decision).toContain('--android-candidate "$normalized_android_sha"');
+    expect(decision).toContain('--desktop-candidate "$normalized_desktop_sha"');
+    expect(decision).toContain('--ledger-ref origin/main');
+    expect(decision).not.toContain(
+      '[ "$normalized_android_sha" = "$android_sha" ]',
+    );
+    expect(decision).not.toContain("echo 'build=false'");
+    // The ref the CLI reads was fetched by this job before the decision.
+    const source = stepBlock(nightly, "Re-bind the caller's exact source");
+    expect(source).toContain('git fetch --no-tags origin main');
+    expect(nightly.indexOf("Re-bind the caller's exact source")).toBeLessThan(
+      nightly.indexOf('Decide one cohort rather than independent native ships'),
     );
   });
 
@@ -275,6 +302,40 @@ describe('the desktop nightly workflow records what it ships (station#575)', () 
     expect(nightly).toContain(
       'name: Verify finalized receipt provenance before minting the ledger token',
     );
+  });
+
+  it('writes ledger commit subjects the normalizer will peel (#1802)', () => {
+    // The cohort wrote `docs(ledger): record finalized <channel> <ver>` —
+    // no `from run N` — so its commits never matched GENERATED_LEDGER_SUBJECT
+    // and an idle main rebuilt the cohort every night. The two subjects are
+    // pinned verbatim, and every `--commit-subject` in every workflow is
+    // bound to the normalizer's regex after shell substitution, so a future
+    // writer cannot drift from the peel contract without reddening this.
+    const step = stepBlock(nightly, NIGHTLY_DESKTOP_LEDGER_STEP);
+    expect(step).toContain(
+      '--commit-subject "docs(ledger): record nightly-android $androidVersion from run $GITHUB_RUN_ID"',
+    );
+    expect(step).toContain(
+      '--commit-subject "docs(ledger): record nightly-desktop $desktopVersion from run $GITHUB_RUN_ID"',
+    );
+    expect(step).not.toContain('record finalized');
+
+    const subjects = [
+      nightly,
+      nightlyCaller,
+      publishRelease,
+      publishPackages,
+    ].flatMap((workflow) =>
+      Array.from(workflow.matchAll(/--commit-subject "([^"]+)"/g), (m) => m[1]),
+    );
+    expect(subjects).toHaveLength(5);
+    for (const subject of subjects) {
+      const substituted = subject
+        .replace(/\$GITHUB_RUN_ID\b/g, '34252063142')
+        .replace(/\$\{\{[^}]*\}\}/g, '0.6.0-nightly.2442.34252063142')
+        .replace(/\$[A-Za-z_][A-Za-z0-9_]*/g, '0.1.11-nightly.2442.5');
+      expect(substituted, subject).toMatch(GENERATED_LEDGER_SUBJECT);
+    }
   });
 
   it('uses the DEPLOY_LEDGER_CHANNELS vocabulary, not a literal string only the workflow knows', () => {
