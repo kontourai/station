@@ -85,6 +85,7 @@ const {
     regionModel: null as Record<string, unknown> | null,
   },
   homeConnection: {
+    apiBase: 'http://station.test',
     id: 'home-connection',
     environmentId: 'home-environment',
   },
@@ -298,7 +299,7 @@ vi.mock('../contexts/AgentsContext', () => ({
   useAgentsSettled: () => true,
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
-  useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useApiBase: () => ({ apiBase: homeConnection.apiBase }),
 }));
 vi.mock('../contexts/ConfigContext', () => ({
   useConfig: () => ({ defaultModel: 'codex-mini' }),
@@ -462,6 +463,24 @@ describe('App home route resolution', () => {
   // became a false device-network claim. With no reason yet derived, the copy
   // claims nothing beyond unavailability; with a typed reason, it renders
   // that reason's own actionable copy (#3297).
+  test('does not claim it is retrying a Station when no address exists', async () => {
+    connectionState.status = 'error';
+    connectionState.reason = 'network-unreachable';
+    hooks.projects = { data: [], isLoading: false, isError: true };
+    homeConnection.apiBase = '';
+    try {
+      render(<App />);
+      await act(async () => undefined);
+      expect(
+        screen.getByText('Connect to a Station to get started'),
+      ).toBeTruthy();
+      expect(screen.queryByText(/Trying again shortly/)).toBeNull();
+      expect(screen.queryByText(/connection to \./)).toBeNull();
+    } finally {
+      homeConnection.apiBase = 'http://station.test';
+    }
+  });
+
   test('renders an in-place unavailable workspace state without an impossible retry', async () => {
     connectionState.status = 'error';
     hooks.projects = { data: [], isLoading: false, isError: true };

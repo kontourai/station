@@ -379,6 +379,8 @@ struct CredentialProfileStore {
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 struct CredentialProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    development_http_origin: Option<String>,
     schema_version: u8,
     name: String,
     endpoint: String,
@@ -703,6 +705,13 @@ fn credential_endpoint_uses_secure_transport(endpoint: &str) -> bool {
     }
 }
 
+fn credential_endpoint_allowed(endpoint: &str, development_origin: Option<&str>) -> bool {
+    credential_endpoint_uses_secure_transport(endpoint)
+        || (endpoint.starts_with("http://")
+            && development_origin == Some(endpoint)
+            && exact_origin(endpoint).ok().as_deref() == Some(endpoint))
+}
+
 fn parse_station_profile_store(contents: &str) -> Result<CredentialProfileStore, String> {
     let raw: serde_json::Value = serde_json::from_str(contents)
         .map_err(|error| format!("parse saved Station metadata: {error}"))?;
@@ -756,7 +765,10 @@ fn parse_station_profile_store(contents: &str) -> Result<CredentialProfileStore,
             if !references.insert(key) {
                 return Err("Station credential references must be unique".to_string());
             }
-            if !credential_endpoint_uses_secure_transport(&profile.endpoint) {
+            if !credential_endpoint_allowed(
+                &profile.endpoint,
+                profile.development_http_origin.as_deref(),
+            ) {
                 return Err(
                     "Station refuses credentials for a non-HTTPS, non-loopback endpoint"
                         .to_string(),
@@ -3058,6 +3070,8 @@ fn station_native_http_cancel(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct NativePairingExchangeRequest {
+    #[serde(default)]
+    development_http_origin: Option<String>,
     endpoint: String,
     offer_id: String,
     proof: String,
@@ -3100,7 +3114,7 @@ fn validate_native_pairing_exchange_request(
         ));
     }
     let origin = exact_origin(&request.endpoint).map_err(NativeCommandError::from)?;
-    if !credential_endpoint_uses_secure_transport(&origin) {
+    if !credential_endpoint_allowed(&origin, request.development_http_origin.as_deref()) {
         return Err(NativeCommandError::new(
             "insecure_endpoint",
             "Station pairing endpoints must use HTTPS or strict loopback HTTP",
@@ -4561,6 +4575,7 @@ fn reconciled_bundled_local_profile_store(
         }
     } else {
         next.profiles.push(CredentialProfile {
+            development_http_origin: None,
             schema_version: 1,
             name: owner_name.clone(),
             endpoint,
@@ -12546,6 +12561,29 @@ mod tests {
         .expect("selected Station is credential-safe");
 
         assert_eq!(reference.id, "local-token");
+    }
+
+    #[test]
+    fn development_http_permission_is_exact_origin_and_opt_in() {
+        let origin = "http://100.77.142.114:3492";
+        assert!(!credential_endpoint_allowed(origin, None));
+        assert!(credential_endpoint_allowed(origin, Some(origin)));
+        assert!(!credential_endpoint_allowed(
+            origin,
+            Some("http://100.77.142.114:3493")
+        ));
+        assert!(!credential_endpoint_allowed(
+            "http://user@host",
+            Some("http://user@host")
+        ));
+        assert!(!credential_endpoint_allowed(
+            "http://host/path",
+            Some("http://host/path")
+        ));
+        assert!(!credential_endpoint_allowed(
+            "ftp://host",
+            Some("ftp://host")
+        ));
     }
 
     #[test]

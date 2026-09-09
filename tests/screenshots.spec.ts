@@ -2540,6 +2540,17 @@ test('build gallery — capture key screens', async ({ page }) => {
   // banner fixture intentionally overrides only the handshake while that one
   // named screen is active, then unregisters itself via `withRoute`.
   await seedGalleryConnectionProfile(page);
+  // Each navigation starts with the same device placement. Closing a lazy
+  // Activity pane after mount races its restoration from the previous shot.
+  // Intentional region scenarios still open their surface through the URL.
+  await page.addInitScript(() => {
+    const key = 'station-device-settings-v1';
+    const raw = localStorage.getItem(key);
+    if (!raw) return;
+    const envelope = JSON.parse(raw);
+    if (envelope.values) delete envelope.values.regionArrangement;
+    localStorage.setItem(key, JSON.stringify(envelope));
+  });
   await page.route('**/.well-known/station/v1', fulfillGalleryStationHandshake);
   await page.route('**/api/system/identity', fulfillGalleryStationIdentity);
 
@@ -2730,6 +2741,9 @@ test('build gallery — capture key screens', async ({ page }) => {
               : () => assertGalleryConnectionChrome(page),
           hideVolatileChrome: () => hideVolatileChrome(page),
           screenshot: async () => {
+            if (screen.name !== 'settings-info-tip') {
+              await page.mouse.move(0, 0);
+            }
             await page.screenshot({
               path: join(GALLERY_DIR, file),
               fullPage: true,
