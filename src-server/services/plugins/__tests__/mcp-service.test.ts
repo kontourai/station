@@ -10,11 +10,14 @@ import {
   saveIntegrationConfig,
 } from '../../../domain/config-loader-storage.js';
 
-// These project homes named a fixed path in the shared, world-writable system temp
-// directory, and the service writes stored env and secret bindings under them. Any other process on the host can occupy that
-// name -- which is how #1790 was found, with a sibling shell's file sitting at
-// `/tmp/x`. Own the root instead, and remove it afterwards so runs stop leaving
-// droppings in `/tmp`.
+// These project homes were fixed paths in a directory shared with every other
+// process on the host. The secret-binding home is disk-proven to be written:
+// `/tmp/station-secret-binding-management` was still on this host from a run on
+// Sep 4, never cleaned up. `/tmp/station-stored-env-migration` is ABSENT here,
+// so whether that path is ever created is unverified -- it is converted for
+// consistency, not on evidence of a write. Either way the name was unowned, so
+// anything else on the host could occupy it. `afterAll` removes THIS root;
+// other `mkdtempSync` roots in this file are pre-existing and still uncleaned.
 const MCP_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-mcp-service-home-'));
 const STORED_ENV_HOME = join(MCP_TEMP_ROOT, 'station-stored-env-migration');
 const SECRET_BINDING_HOME = join(

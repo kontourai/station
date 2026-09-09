@@ -162,6 +162,12 @@ describe('shared saved Station store', () => {
   });
 
   test('publishes first-install metadata beneath a lexical macOS /tmp root', () => {
+    // The lexical `/tmp` is this test's SUBJECT, not an oversight: on macOS it is
+    // a symlink (`/tmp -> private/tmp`), and this is the positive counterpart to
+    // the symlink-refusal tests above -- admission must accept a home reached
+    // through a symlinked ancestor. Do not convert it to `tmpdir()`; that would
+    // make the test's name false. It cleans up after itself, and no lane runs
+    // this file on Windows (`scripts/prepush-test-manifest.mjs`).
     const temporaryHome = mkdtempSync('/tmp/station-profile-genesis-');
     try {
       upsertProfile(

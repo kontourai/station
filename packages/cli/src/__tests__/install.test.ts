@@ -4,10 +4,14 @@ import { join } from 'node:path';
 import { afterAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ApiBaseSource, ParsedCoreArgs } from '../commands/core-api.js';
 
-// `install()` resolves its source argument on disk, so the fixed shared name
-// `/tmp/demo` handed the outcome of these tests to whatever else on the host
-// happens to create that path (#1790). Own the root; the source stays an
-// absent leaf inside it, exactly as `/tmp/demo` was meant to be.
+// The plugin source was the fixed shared name `/tmp/demo` -- a path in a
+// world-writable directory this test does not own, passed as an argument and
+// asserted in a request body (#1790). `install()` does stat it
+// (`install.ts:39-40`), but for an ABSOLUTE source `resolve(INVOKED_CWD, source)`
+// equals `source`, so both branches of that ternary return the same string and
+// the stat's result is unobservable: no file appearing at `/tmp/demo` could have
+// changed these outcomes. The reason to own the path is therefore hygiene and
+// consistency with the rest of the suite, not a live failure mode.
 const TEST_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-install-test-'));
 const PLUGIN_SOURCE = join(TEST_TEMP_ROOT, 'demo');
 

@@ -26,11 +26,12 @@ import {
   resetChatTurnDedupStoresForTest,
 } from '../chat-turn-dedup.js';
 
-// These project homes named a fixed path in the shared, world-writable system temp
-// directory, and the dedup store writes under them. Any other process on the host can occupy that
-// name -- which is how #1790 was found, with a sibling shell's file sitting at
-// `/tmp/x`. Own the root instead, and remove it afterwards so runs stop leaving
-// droppings in `/tmp`.
+// These project homes were the fixed paths `/tmp/station-test-home-{a,b,c}`,
+// and `getChatTurnDedupStore` really creates a store directory under each --
+// all three were still on this host from a run on Sep 5, never cleaned up.
+// A directory shared with every other process is the wrong place to persist
+// test state: it accumulates, and anything else on the host can occupy or
+// replace the name. Own the root, and remove it in `afterAll`.
 const DEDUP_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-dedup-home-'));
 const DEDUP_HOME_A = join(DEDUP_TEMP_ROOT, 'station-test-home-a');
 const DEDUP_HOME_B = join(DEDUP_TEMP_ROOT, 'station-test-home-b');

@@ -40,11 +40,11 @@ import {
 import { FleetInferenceRoutingError } from '../fleet-inference-model.js';
 import type { UnsealedFleetRoutingEnvelope } from '../fleet-routing-envelope.js';
 
-// This project home named a fixed path in the shared, world-writable system temp
-// directory, and dispatch writes under it. Any other process on the host can occupy that
-// name -- which is how #1790 was found, with a sibling shell's file sitting at
-// `/tmp/x`. Own the root instead, and remove it afterwards so runs stop leaving
-// droppings in `/tmp`.
+// This project home was the fixed path `/tmp/station-fleet-test`, and dispatch
+// really creates it -- the directory was still on this host from a run on Sep 4,
+// never cleaned up. A directory shared with every other process is the wrong
+// place to persist test state: it accumulates, and anything else on the host
+// can occupy or replace the name. Own the root, and remove it in `afterAll`.
 const FLEET_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-fleet-test-'));
 const FLEET_PROJECT_HOME = join(FLEET_TEMP_ROOT, 'station-fleet-test');
 

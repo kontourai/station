@@ -10,11 +10,15 @@ import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import type { CollectedChildStatus } from '../commands/lifecycle.js';
 import { superviseService } from '../commands/service-run.js';
 
-// This supervisor base directory named a fixed path in the shared, world-writable system temp
-// directory, and the escalation-ledger test really `mkdirSync`s and writes a JSON file into it. Any other process on the host can occupy that
-// name -- which is how #1790 was found, with a sibling shell's file sitting at
-// `/tmp/x`. Own the root instead, and remove it afterwards so runs stop leaving
-// droppings in `/tmp`.
+// The supervisor base was the fixed path `/tmp/station-service`, and the
+// escalation-ledger test below really `mkdirSync`s `<base>/logs` and writes a
+// JSON ledger into it. Nothing removed it, so the directory persisted between
+// runs in a directory shared with the whole host -- meaning a run could read a
+// ledger a PREVIOUS run had left, and any other process could occupy or replace
+// the path. (`/tmp/station-service/logs` was on this host, last stamped by the
+// pre-fix run.) Deriving the base from an owned root makes each run hermetic;
+// `afterAll` removes THIS root. Other `mkdtempSync` roots in this file are
+// pre-existing and still uncleaned.
 const SERVICE_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-service-run-'));
 const SERVICE_BASE = join(SERVICE_TEMP_ROOT, 'station-service');
 
