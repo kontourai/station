@@ -17,9 +17,10 @@ on:
     types: [completed]
 
 permissions:
-  # `contents: read` buys exactly one thing: checking out the default
-  # branch so this job can call scripts/main-health-comment-policy.mjs.
-  # No other scope is granted, so a bug here cannot write to the tree.
+  # `contents: read` buys exactly one thing: checking out the default branch
+  # so report-failure can call scripts/main-health-comment-policy.mjs. It is
+  # workflow-level, so close-after-success inherits a read grant it never
+  # uses. No write scope beyond issues is granted.
   contents: read
   issues: write
 
@@ -32,11 +33,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      # The comment policy is a module, not inline script, so its four
-      # transitions are unit-testable without a workflow_run event
+      # The comment policy is a module, not inline script, so its five cases
+      # are unit-testable without a workflow_run event
       # (scripts/__tests__/main-health-comment-policy.test.ts). Same shape as
       # issue-lifecycle.yml: repository-controlled code, decisions in the
-      # module, API calls here.
+      # module, API calls here — and, like it, a declared trust root.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The default branch, never the code of the run being reported on: a

@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 /**
  * Deterministic comment policy for `.github/workflows/main-health.yml` (#1811).
  *
@@ -23,8 +25,15 @@
  *    different conclusion, than the last comment recorded.
  * 4. **Heartbeat** — same failure, but 24h have passed since the last comment.
  *    Says how many red runs happened in that window.
- * 5. Otherwise **silent**: no comment. The run is still counted, by rewriting
- *    the marker inside the comment that already exists.
+ * 5. Otherwise **silent**: no new comment. The run is still recorded, by
+ *    rewriting the comment that already exists — which updates its visible
+ *    run link, head SHA and run count as well as the marker, so a reader
+ *    between heartbeats sees current information rather than a day-old link.
+ *    Editing a comment sends no notification, which is the whole point.
+ *
+ * A brand-new tracker is a special case with no marker at all: the run details
+ * go in the issue BODY, and the next red posts a near-identical first comment
+ * that establishes the marker. That is intentional, not a duplicate.
  *
  * ## Where the state lives
  *
@@ -35,10 +44,26 @@
  * paginated `listComments` call and no new permission — `issues: write`
  * already covers reading and editing comments.
  *
+ * ## Whose comment may carry state
+ *
+ * Only a comment authored by a **bot**. A marker is just text, and GitHub's
+ * "Quote reply" copies the raw markdown of a quoted comment — HTML comments
+ * included — so a maintainer quoting the tracker would otherwise become the
+ * state anchor, and every silent red run would rewrite THEIR comment with
+ * `issues: write`. Authorship comes from `listComments`' own `user.type`, so
+ * this is a derivation from what GitHub reports, not a claim about the text.
+ * Quoted lines are stripped before the marker is read, so a bot that ever
+ * quotes cannot anchor to someone else's state either.
+ *
+ * ## What can and cannot go wrong
+ *
  * Every parse failure here resolves toward COMMENTING, never toward silence:
- * a missing, malformed, or truncated marker yields `null`, which is case 2. A
- * bug in this file can make the tracker noisy again — the behaviour it
- * replaced — but cannot make a red main silent.
+ * a missing, malformed, truncated, or non-bot marker yields `null`, which is
+ * case 2. Failure identity is compared on a digest of the UNTRUNCATED failure
+ * set, so the 20-entry display cap cannot make a changed failure look
+ * unchanged. The one residual gap is per-label: two labels identical for their
+ * first `MAX_FAILURE_LABEL_LENGTH` characters are indistinguishable, on both
+ * sides of the comparison.
  */
 
 /** Marker name; also the grep handle for a human reading raw comment source. */
@@ -47,7 +72,11 @@ export const MAIN_HEALTH_STATE_MARKER = 'main-health-state';
 /** Longest silence before a heartbeat comment restates that main is still red. */
 export const HEARTBEAT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-/** Bounds on what a run's failure summary may carry into an issue comment. */
+/**
+ * Bounds on what a run's failure summary may DISPLAY. The comparison never
+ * reads these — it reads a digest of the untruncated set — so tightening them
+ * changes what a reader sees and nothing about when the tracker speaks.
+ */
 export const MAX_TRACKED_FAILURES = 20;
 export const MAX_FAILURE_LABEL_LENGTH = 200;
 
@@ -66,7 +95,10 @@ const UNSUCCESSFUL_CONCLUSIONS = new Set([
 
 /**
  * @typedef {object} MainHealthState
- * @property {string[]} failures Sorted job/step labels that failed.
+ * @property {string} lead First line of the comment carrying this state.
+ * @property {string[]} failures Sorted job/step labels, truncated for display.
+ * @property {number} failureCount How many there were before truncation.
+ * @property {string} digest Digest of the untruncated set; the comparison key.
  * @property {number} redRunsSinceComment Red runs observed since this comment.
  * @property {string} commentedAt ISO timestamp this comment was posted.
  */
@@ -102,8 +134,11 @@ function normalizeFailureLabel(value) {
 }
 
 /**
+ * Sorted and deduped, and deliberately NOT truncated — this is what the digest
+ * is taken over.
+ *
  * @param {Iterable<unknown> | undefined} failures
- * @returns {string[]} sorted, deduped, bounded labels
+ * @returns {string[]}
  */
 function normalizeFailures(failures) {
   const labels = new Set();
@@ -111,7 +146,22 @@ function normalizeFailures(failures) {
     const label = normalizeFailureLabel(failure);
     if (label) labels.add(label);
   }
-  return [...labels].sort().slice(0, MAX_TRACKED_FAILURES);
+  return [...labels].sort();
+}
+
+/**
+ * The comparison key. Taken over the whole normalized set so that a run whose
+ * first 20 sorted labels match an earlier run, but whose tail differs, is
+ * still recognized as a different failure.
+ *
+ * @param {string[]} failures normalized, untruncated
+ * @returns {string}
+ */
+export function failureDigest(failures) {
+  return createHash('sha256')
+    .update(failures.join('\n'), 'utf8')
+    .digest('hex')
+    .slice(0, 32);
 }
 
 /**
@@ -124,7 +174,7 @@ function normalizeFailures(failures) {
  * summary is never empty for a run that has an unsuccessful job.
  *
  * @param {{name?: unknown, conclusion?: unknown, steps?: {name?: unknown, conclusion?: unknown}[]}[]} jobs
- * @returns {string[]}
+ * @returns {string[]} normalized and untruncated
  */
 export function summarizeRunFailure(jobs = []) {
   const failures = [];
@@ -158,6 +208,21 @@ export function renderMainHealthState(state) {
 }
 
 /**
+ * Drop quoted lines, the way `issue-lifecycle-reducer.mjs` does before reading
+ * a reply: a marker inside a quote is a copy of someone else's state, not this
+ * comment's own.
+ *
+ * @param {string} body
+ * @returns {string}
+ */
+function unquoted(body) {
+  return body
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*>/.test(line))
+    .join('\n');
+}
+
+/**
  * Read a marker back. Returns `null` — "no state recorded", which comments —
  * for anything it cannot fully validate.
  *
@@ -165,7 +230,7 @@ export function renderMainHealthState(state) {
  * @returns {MainHealthState | null}
  */
 export function parseMainHealthState(body) {
-  const match = MARKER_PATTERN.exec(String(body ?? ''));
+  const match = MARKER_PATTERN.exec(unquoted(String(body ?? '')));
   if (!match) return null;
   let parsed;
   try {
@@ -175,14 +240,21 @@ export function parseMainHealthState(body) {
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
     return null;
-  const { failures, redRunsSinceComment, commentedAt } = parsed;
+  const {
+    lead,
+    failures,
+    failureCount,
+    digest,
+    redRunsSinceComment,
+    commentedAt,
+  } = parsed;
+  if (typeof lead !== 'string' || lead.length === 0) return null;
   if (!Array.isArray(failures)) return null;
   if (!failures.every((failure) => typeof failure === 'string')) return null;
-  if (
-    typeof redRunsSinceComment !== 'number' ||
-    !Number.isInteger(redRunsSinceComment) ||
-    redRunsSinceComment < 0
-  )
+  if (typeof digest !== 'string' || digest.length === 0) return null;
+  if (!Number.isInteger(failureCount) || failureCount < failures.length)
+    return null;
+  if (!Number.isInteger(redRunsSinceComment) || redRunsSinceComment < 0)
     return null;
   if (
     typeof commentedAt !== 'string' ||
@@ -190,89 +262,89 @@ export function parseMainHealthState(body) {
   )
     return null;
   return {
-    failures: normalizeFailures(failures),
+    lead: normalizeFailureLabel(lead),
+    // Re-bounded on the way out: the display list is regenerated into a
+    // comment body, and this is the bot's own comment but not beyond editing.
+    failures: failures
+      .map(normalizeFailureLabel)
+      .slice(0, MAX_TRACKED_FAILURES),
+    failureCount,
+    digest,
     redRunsSinceComment,
     commentedAt,
   };
 }
 
 /**
- * The most recent comment carrying a valid marker. Comments arrive oldest
+ * The most recent BOT comment carrying a valid marker. Comments arrive oldest
  * first, matching `listComments`' default order.
  *
- * @param {{id?: unknown, body?: unknown}[]} comments
- * @returns {{commentId: number, body: string, state: MainHealthState} | null}
+ * A human comment is never state, however exactly it reproduces the marker —
+ * quote-reply copies it verbatim, and the caller edits whatever this returns.
+ *
+ * The check is `user.type`, not a login: the workflow's identity can
+ * legitimately change (a GitHub App or PAT instead of the default token), and
+ * a login pin that goes stale would make the tracker forget its state and
+ * comment on every run — noisy rather than harmful, but avoidable. `type`
+ * separates bots from people, which is the property that matters here.
+ *
+ * @param {{id?: unknown, body?: unknown, user?: {type?: unknown}}[]} comments
+ * @returns {{commentId: number, state: MainHealthState} | null}
  */
 export function findLastRecordedState(comments = []) {
   let found = null;
   for (const comment of comments ?? []) {
+    if (comment?.user?.type !== 'Bot') continue;
     const state = parseMainHealthState(comment?.body);
     if (!state) continue;
-    found = {
-      commentId: Number(comment?.id),
-      body: String(comment?.body ?? ''),
-      state,
-    };
+    found = { commentId: Number(comment?.id), state };
   }
   return found;
 }
 
 /**
- * Replace the marker in `body`, or append one when the body carries none.
+ * The comment body is a pure function of the run being reported and the state
+ * it carries, so a silent run can regenerate it in place: same comment, no
+ * notification, but the newest run link and an honest count.
  *
- * @param {string} body
+ * @param {{workflowName: string, runUrl: string, headSha: string}} run
  * @param {MainHealthState} state
  * @returns {string}
  */
-export function applyMainHealthState(body, state) {
-  const marker = renderMainHealthState(state);
-  const source = String(body ?? '');
-  if (MARKER_PATTERN.test(source))
-    return source.replace(MARKER_PATTERN, marker);
-  return `${source.replace(/\s+$/, '')}\n\n${marker}`;
-}
-
-/**
- * @param {{workflowName: string, runUrl: string, headSha: string}} run
- * @returns {string}
- */
-function renderRunDetails({ workflowName, runUrl, headSha }) {
-  return [
-    `Workflow: ${workflowName}`,
-    `Run: ${runUrl}`,
-    `Head SHA: ${headSha}`,
-  ].join('\n');
-}
-
-/**
- * @param {{lead: string, run: {workflowName: string, runUrl: string, headSha: string}, failures: string[], state: MainHealthState}} input
- * @returns {string}
- */
-function renderComment({ lead, run, failures, state }) {
-  const sections = [lead, '', renderRunDetails(run)];
-  if (failures.length > 0) {
-    sections.push('', 'Failing:', ...failures.map((failure) => `- ${failure}`));
+export function renderMainHealthComment(run, state) {
+  const sections = [
+    state.lead,
+    '',
+    `Workflow: ${run.workflowName}`,
+    `Run: ${run.runUrl}`,
+    `Head SHA: ${run.headSha}`,
+  ];
+  if (state.failures.length > 0) {
+    sections.push('', 'Failing:');
+    for (const failure of state.failures) sections.push(`- ${failure}`);
+    const hidden = state.failureCount - state.failures.length;
+    if (hidden > 0) sections.push(`- …and ${hidden} more`);
+  }
+  if (state.redRunsSinceComment > 0) {
+    const runs =
+      state.redRunsSinceComment === 1
+        ? '1 further red run'
+        : `${state.redRunsSinceComment} further red runs`;
+    sections.push(
+      '',
+      `${runs} since this comment, all failing at the same point. The run above is the most recent.`,
+    );
   }
   sections.push('', renderMainHealthState(state));
   return sections.join('\n');
 }
 
 /**
- * @param {string[]} left
- * @param {string[]} right
- * @returns {boolean}
- */
-function sameFailures(left, right) {
-  return (
-    left.length === right.length && left.every((item, i) => item === right[i])
-  );
-}
-
-/**
  * Decide what — if anything — main-health should say about this red run.
  *
  * Pure: it performs no API call and reads no clock of its own, so all four
- * transitions are unit-testable without a `workflow_run` event.
+ * speaking transitions and the silent one are unit-testable without a
+ * `workflow_run` event.
  *
  * @param {{
  *   workflowName: string,
@@ -280,7 +352,7 @@ function sameFailures(left, right) {
  *   headSha: string,
  *   failures?: string[],
  *   reopened?: boolean,
- *   comments?: {id?: unknown, body?: unknown}[],
+ *   comments?: {id?: unknown, body?: unknown, user?: {type?: unknown}}[],
  *   now?: number,
  *   heartbeatIntervalMs?: number,
  * }} input
@@ -298,6 +370,7 @@ export function decideMainHealthComment({
 }) {
   const run = { workflowName, runUrl, headSha };
   const current = normalizeFailures(failures);
+  const digest = failureDigest(current);
   const recorded = findLastRecordedState(comments);
   const previous = recorded?.state ?? null;
   const commentedAt = new Date(now).toISOString();
@@ -308,11 +381,18 @@ export function decideMainHealthComment({
    * @returns {MainHealthDecision}
    */
   const comment = (reason, lead) => {
-    const state = { failures: current, redRunsSinceComment: 0, commentedAt };
+    const state = {
+      lead,
+      failures: current.slice(0, MAX_TRACKED_FAILURES),
+      failureCount: current.length,
+      digest,
+      redRunsSinceComment: 0,
+      commentedAt,
+    };
     return {
       action: 'create-comment',
       reason,
-      body: renderComment({ lead, run, failures: current, state }),
+      body: renderMainHealthComment(run, state),
       state,
       commentId: undefined,
     };
@@ -325,13 +405,13 @@ export function decideMainHealthComment({
     );
   if (!previous)
     return comment('no-recorded-state', 'The workflow failed again on main.');
-  if (!sameFailures(previous.failures, current))
+  if (previous.digest !== digest)
     return comment(
       'failure-changed',
       'The workflow failed again on main, at a different point than the last comment recorded.',
     );
 
-  // A red run that says nothing is still counted, so the next heartbeat can
+  // A red run that posts nothing is still recorded, so the next heartbeat can
   // report the size of the silence rather than only its duration.
   const redRunsSinceComment = previous.redRunsSinceComment + 1;
   const elapsedMs = now - Date.parse(previous.commentedAt);
@@ -350,16 +430,13 @@ export function decideMainHealthComment({
     );
   }
 
-  const state = {
-    failures: previous.failures,
-    redRunsSinceComment,
-    commentedAt: previous.commentedAt,
-  };
+  const state = { ...previous, redRunsSinceComment };
   return {
     action: 'update-marker',
     reason: 'unchanged',
     commentId: recorded?.commentId,
-    body: applyMainHealthState(recorded?.body ?? '', state),
+    // Regenerated against THIS run, so the visible link and SHA are current.
+    body: renderMainHealthComment(run, state),
     state,
   };
 }

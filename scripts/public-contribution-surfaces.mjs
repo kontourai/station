@@ -3,7 +3,7 @@
  * GitHub forms, the PR handoff, contributor routing, ownership, and Pages.
  * Parse those sources here instead of relying on review memory or prose alone.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { BACKLOG_POLICY } from './backlog-priority-policy.mjs';
@@ -25,6 +25,7 @@ export const TRUST_ROOTS = Object.freeze([
   'scripts/dependency-advisory-policy.mjs',
   'scripts/dependency-advisory-exceptions.json',
   'scripts/issue-lifecycle-reducer.mjs',
+  'scripts/main-health-comment-policy.mjs',
   'scripts/issue-availability.mjs',
   'scripts/source-availability-driver.mjs',
   'scripts/lib/github-merged-issue-facts.mjs',
@@ -295,6 +296,67 @@ function validateCodeowners(source, root, exists, findings) {
   }
 }
 
+/**
+ * A module imported INTO an `actions/github-script` step is not an ordinary
+ * script: it is evaluated in the same process as that step's authenticated
+ * octokit, so it can do anything the job's token can. That is the same
+ * privilege the workflow file itself carries, and `.github/workflows/` is a
+ * trust root — so the module must be one too, or the ownership boundary ends
+ * at the `import()` call.
+ *
+ * Derived rather than listed, because the registry above cannot notice an
+ * omission: `validateCodeowners` only asserts CODEOWNERS and `TRUST_ROOTS`
+ * agree with each other, which both do while a new privileged module is
+ * missing from both (#1811 shipped exactly that).
+ *
+ * Deliberately NOT covered: `run: node scripts/x.mjs`. A subprocess holds no
+ * token unless one is passed to it explicitly, and most of those scripts are
+ * ordinary build steps. The privilege here comes from sharing the process.
+ *
+ * This reads the parsed step rather than the raw file, so it does not depend
+ * on how the import is spelled; any `scripts/*.mjs` named inside a
+ * github-script body counts, including in a comment. Over-strict is the
+ * correct direction for a trust gate.
+ */
+const GITHUB_SCRIPT_ACTION = 'actions/github-script@';
+const SCRIPT_MODULE_REFERENCE =
+  /(scripts\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\.mjs)/g;
+
+function validateWorkflowImportedModules(root, read, list, findings) {
+  const directory = resolve(root, '.github/workflows');
+  let entries;
+  try {
+    entries = list(directory);
+  } catch {
+    findings.push('Missing .github/workflows.');
+    return;
+  }
+  const trusted = new Set(TRUST_ROOTS);
+  for (const entry of [...entries].map(String).sort()) {
+    if (!entry.endsWith('.yml') && !entry.endsWith('.yaml')) continue;
+    const parsed = parseYamlDocument(resolve(directory, entry), read);
+    if (parsed.error) {
+      findings.push(`.github/workflows/${entry}: ${parsed.error}`);
+      continue;
+    }
+    const jobs = isRecord(parsed.document?.jobs) ? parsed.document.jobs : {};
+    for (const job of Object.values(jobs)) {
+      const steps = Array.isArray(job?.steps) ? job.steps : [];
+      for (const step of steps) {
+        if (!String(step?.uses ?? '').startsWith(GITHUB_SCRIPT_ACTION))
+          continue;
+        const script = String(step?.with?.script ?? '');
+        for (const [, module] of script.matchAll(SCRIPT_MODULE_REFERENCE)) {
+          if (trusted.has(module)) continue;
+          findings.push(
+            `.github/workflows/${entry} runs '${module}' inside a github-script step, so it must be an approved narrow trust root.`,
+          );
+        }
+      }
+    }
+  }
+}
+
 function validatePrTemplate(source, findings) {
   for (const heading of [
     '## User outcome',
@@ -429,6 +491,7 @@ export function collectPublicContributionSurfaceFindings({
   root = process.cwd(),
   read = readFileSync,
   exists = existsSync,
+  list = readdirSync,
 } = {}) {
   const findings = [];
   const path = (relative) => resolve(root, relative);
@@ -473,6 +536,7 @@ export function collectPublicContributionSurfaceFindings({
   const codeowners = readText(path('.github/CODEOWNERS'), read);
   if (codeowners === null) findings.push('Missing .github/CODEOWNERS.');
   else validateCodeowners(codeowners, root, exists, findings);
+  validateWorkflowImportedModules(root, read, list, findings);
 
   const guide = readText(path('docs/user/contributing.md'), read);
   const manifestSource = readText(path('docs/pages/public-docs.json'), read);

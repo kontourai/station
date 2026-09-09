@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyMainHealthState,
   decideMainHealthComment,
+  failureDigest,
   HEARTBEAT_INTERVAL_MS,
+  MAX_TRACKED_FAILURES,
   parseMainHealthState,
+  renderMainHealthComment,
   summarizeRunFailure,
 } from '../main-health-comment-policy.mjs';
 
@@ -14,6 +16,9 @@ const RUN = {
 };
 
 const START = Date.parse('2026-09-08T00:00:00.000Z');
+const BOT = { type: 'Bot', login: 'github-actions[bot]' };
+const HUMAN = { type: 'User', login: 'briananderson1222' };
+const GATE_FAILURE = 'policy > Run the gate (failure)';
 
 function jobs(...failing: { job: string; step?: string }[]) {
   return [
@@ -31,6 +36,18 @@ function jobs(...failing: { job: string; step?: string }[]) {
   ];
 }
 
+function stateFor(failures: string[], overrides: Record<string, unknown> = {}) {
+  return {
+    lead: 'The workflow failed again on main.',
+    failures: failures.slice(0, MAX_TRACKED_FAILURES),
+    failureCount: failures.length,
+    digest: failureDigest(failures),
+    redRunsSinceComment: 0,
+    commentedAt: new Date(START).toISOString(),
+    ...overrides,
+  };
+}
+
 /**
  * A comment stream the decisions are actually applied to, exactly as
  * main-health.yml applies them: `create-comment` appends, `update-marker`
@@ -39,19 +56,30 @@ function jobs(...failing: { job: string; step?: string }[]) {
  * never produces; this tests it against its own output.
  */
 class Tracker {
-  comments: { id: number; body: string }[] = [];
+  comments: { id: number; body: string; user: typeof BOT | typeof HUMAN }[] =
+    [];
   nextId = 100;
 
-  run(input: { failures: string[]; reopened?: boolean; now: number }) {
+  run(input: {
+    failures: string[];
+    reopened?: boolean;
+    now: number;
+    runUrl?: string;
+  }) {
     const decision = decideMainHealthComment({
       ...RUN,
+      runUrl: input.runUrl ?? RUN.runUrl,
       failures: input.failures,
       reopened: input.reopened ?? false,
       comments: this.comments,
       now: input.now,
     });
     if (decision.action === 'create-comment') {
-      this.comments.push({ id: this.nextId++, body: decision.body });
+      this.comments.push({
+        id: this.nextId++,
+        body: decision.body,
+        user: BOT,
+      });
     } else {
       const target = this.comments.find(
         (comment) => comment.id === decision.commentId,
@@ -71,7 +99,7 @@ describe('summarizeRunFailure', () => {
   it('names the failing step, not just the failing job', () => {
     expect(
       summarizeRunFailure(jobs({ job: 'policy', step: 'Run the gate' })),
-    ).toEqual(['policy > Run the gate (failure)']);
+    ).toEqual([GATE_FAILURE]);
   });
 
   it('ignores successful and skipped jobs', () => {
@@ -91,16 +119,21 @@ describe('summarizeRunFailure', () => {
     ).toEqual(['runner (startup_failure)']);
   });
 
+  it('reports every failure, so the digest sees past the display cap', () => {
+    const many = Array.from({ length: 25 }, (_, index) => ({
+      name: `job${String(index).padStart(2, '0')}`,
+      conclusion: 'failure',
+      steps: [],
+    }));
+    expect(summarizeRunFailure(many)).toHaveLength(25);
+  });
+
   it('cannot let a job name terminate the marker that carries it', () => {
     const [label] = summarizeRunFailure([
       { name: 'evil --> injected', conclusion: 'failure', steps: [] },
     ]);
     expect(label).not.toContain('-->');
-    const body = applyMainHealthState('lead', {
-      failures: [label],
-      redRunsSinceComment: 0,
-      commentedAt: new Date(START).toISOString(),
-    });
+    const body = renderMainHealthComment(RUN, stateFor([label]));
     expect(parseMainHealthState(body)?.failures).toEqual([label]);
   });
 });
@@ -111,9 +144,9 @@ describe('main-health comment policy transitions', () => {
     // Seed the state a previous red left behind, then close-and-reopen with
     // the SAME failure inside the quiet window. Only `reopened` distinguishes
     // this from the silent case below, so the assertion has power.
-    tracker.run({ failures: ['policy > Run the gate (failure)'], now: START });
+    tracker.run({ failures: [GATE_FAILURE], now: START });
     const decision = tracker.run({
-      failures: ['policy > Run the gate (failure)'],
+      failures: [GATE_FAILURE],
       reopened: true,
       now: START + 60_000,
     });
@@ -123,11 +156,11 @@ describe('main-health comment policy transitions', () => {
     expect(tracker.comments).toHaveLength(2);
   });
 
-  it('says nothing for the same failure inside the heartbeat window', () => {
+  it('posts no new comment for the same failure inside the heartbeat window', () => {
     const tracker = new Tracker();
-    tracker.run({ failures: ['policy > Run the gate (failure)'], now: START });
+    tracker.run({ failures: [GATE_FAILURE], now: START });
     const decision = tracker.run({
-      failures: ['policy > Run the gate (failure)'],
+      failures: [GATE_FAILURE],
       now: START + HEARTBEAT_INTERVAL_MS - 1,
     });
 
@@ -140,9 +173,36 @@ describe('main-health comment policy transitions', () => {
     });
   });
 
+  it('refreshes the visible run link and count on a silent run', () => {
+    const tracker = new Tracker();
+    tracker.run({
+      failures: [GATE_FAILURE],
+      now: START,
+      runUrl: 'https://example.test/run/first',
+    });
+    tracker.run({
+      failures: [GATE_FAILURE],
+      now: START + 60_000,
+      runUrl: 'https://example.test/run/second',
+    });
+    tracker.run({
+      failures: [GATE_FAILURE],
+      now: START + 120_000,
+      runUrl: 'https://example.test/run/third',
+    });
+
+    // One comment, but it points at the newest run and says how many reds it
+    // now stands for — the count is a visible fact, not only a hidden one.
+    expect(tracker.comments).toHaveLength(1);
+    const [body] = tracker.bodies;
+    expect(body).toContain('Run: https://example.test/run/third');
+    expect(body).not.toContain('run/first');
+    expect(body).toContain('2 further red runs since this comment');
+  });
+
   it('posts one heartbeat after 24h, counting the runs it stayed quiet for', () => {
     const tracker = new Tracker();
-    const failures = ['policy > Run the gate (failure)'];
+    const failures = [GATE_FAILURE];
     tracker.run({ failures, now: START });
     // Three silent runs — the scheduled advisory floor's real six-hourly
     // cadence. The 24h mark itself is heartbeat-due, so the window stops
@@ -167,7 +227,7 @@ describe('main-health comment policy transitions', () => {
 
   it('comments when a different step fails, however soon', () => {
     const tracker = new Tracker();
-    tracker.run({ failures: ['policy > Run the gate (failure)'], now: START });
+    tracker.run({ failures: [GATE_FAILURE], now: START });
     const decision = tracker.run({
       failures: ['policy > Publish the report (failure)'],
       now: START + 60_000,
@@ -185,8 +245,9 @@ describe('main-health comment policy transitions', () => {
     tracker.comments = Array.from({ length: 326 }, (_, index) => ({
       id: index + 1,
       body: 'The workflow failed again on main.',
+      user: BOT,
     }));
-    const failures = ['policy > Run the gate (failure)'];
+    const failures = [GATE_FAILURE];
 
     const first = tracker.run({ failures, now: START });
     expect(first.action).toBe('create-comment');
@@ -198,27 +259,166 @@ describe('main-health comment policy transitions', () => {
   });
 });
 
+describe('a changed failure is never silent, past the display cap', () => {
+  const twentyFive = Array.from(
+    { length: 25 },
+    (_, index) => `job${String(index).padStart(2, '0')} (failure)`,
+  );
+
+  it('sees a new failure whose sorted position is past the cap', () => {
+    // The first 20 sorted labels are identical in both runs; only the tail
+    // differs. Comparing the displayed list would call this "unchanged".
+    const next = [...twentyFive.slice(0, 20), 'zzz-brand-new (failure)'];
+    const decision = decideMainHealthComment({
+      ...RUN,
+      failures: next,
+      comments: [
+        {
+          id: 1,
+          body: renderMainHealthComment(RUN, stateFor(twentyFive)),
+          user: BOT,
+        },
+      ],
+      now: START + 1000,
+    });
+
+    expect(decision.action).toBe('create-comment');
+    expect(decision.reason).toBe('failure-changed');
+  });
+
+  it('still stays quiet when the untruncated set really is identical', () => {
+    const decision = decideMainHealthComment({
+      ...RUN,
+      failures: [...twentyFive].reverse(),
+      comments: [
+        {
+          id: 1,
+          body: renderMainHealthComment(RUN, stateFor(twentyFive)),
+          user: BOT,
+        },
+      ],
+      now: START + 1000,
+    });
+
+    expect(decision.action).toBe('update-marker');
+  });
+
+  it('tells the reader the display list was truncated', () => {
+    const body = renderMainHealthComment(RUN, stateFor(twentyFive));
+    expect(body).toContain('- …and 5 more');
+  });
+});
+
+describe('only a bot comment may carry the tracker state', () => {
+  const botBody = renderMainHealthComment(
+    RUN,
+    stateFor([GATE_FAILURE], { redRunsSinceComment: 4 }),
+  );
+  // GitHub's "Quote reply" copies the raw markdown of the quoted comment,
+  // HTML comments included — so a maintainer quoting the tracker reproduces
+  // the marker verbatim inside their own comment.
+  const quoteReply = `${botBody
+    .split('\n')
+    .map((line) => `> ${line}`)
+    .join('\n')}\n\nI am looking at this.`;
+
+  it('never anchors state to a human comment that copied the marker', () => {
+    const decision = decideMainHealthComment({
+      ...RUN,
+      failures: [GATE_FAILURE],
+      comments: [
+        { id: 7, body: botBody, user: BOT },
+        { id: 8, body: quoteReply, user: HUMAN },
+      ],
+      now: START + 1000,
+    });
+
+    // Without the author check this picks 8 and rewrites the maintainer's
+    // own comment on every silent red run, using `issues: write`.
+    expect(decision.action).toBe('update-marker');
+    expect(decision.commentId).toBe(7);
+  });
+
+  // Quote reply is not the only way a marker reaches a human's comment: a
+  // maintainer can paste the tracker's text, and an issue-transfer or a
+  // template can carry it verbatim. These two cases isolate the author check
+  // from the quote-stripping one — with the marker UNQUOTED, authorship is
+  // the only thing standing between the bot and editing someone else's
+  // comment. (Written after removing the author check left the quote-reply
+  // test green: the quoted fixture was covered by the other defence.)
+  const pastedByHuman = `Copying this for reference:\n\n${botBody}`;
+
+  it('never anchors state to a human comment that pasted the marker unquoted', () => {
+    const decision = decideMainHealthComment({
+      ...RUN,
+      failures: [GATE_FAILURE],
+      comments: [
+        { id: 7, body: botBody, user: BOT },
+        { id: 8, body: pastedByHuman, user: HUMAN },
+      ],
+      now: START + 1000,
+    });
+
+    expect(decision.action).toBe('update-marker');
+    expect(decision.commentId).toBe(7);
+  });
+
+  it('comments when only a human carries an unquoted marker', () => {
+    const decision = decideMainHealthComment({
+      ...RUN,
+      failures: [GATE_FAILURE],
+      comments: [{ id: 8, body: pastedByHuman, user: HUMAN }],
+      now: START + 1000,
+    });
+
+    expect(decision.action).toBe('create-comment');
+    expect(decision.reason).toBe('no-recorded-state');
+  });
+
+  it('finds the bot comment when it is the only one', () => {
+    const decision = decideMainHealthComment({
+      ...RUN,
+      failures: [GATE_FAILURE],
+      comments: [{ id: 7, body: botBody, user: BOT }],
+      now: START + 1000,
+    });
+
+    expect(decision.action).toBe('update-marker');
+    expect(decision.commentId).toBe(7);
+  });
+
+  it('comments rather than editing when only a human carries the marker', () => {
+    const decision = decideMainHealthComment({
+      ...RUN,
+      failures: [GATE_FAILURE],
+      comments: [{ id: 8, body: quoteReply, user: HUMAN }],
+      now: START + 1000,
+    });
+
+    expect(decision.action).toBe('create-comment');
+    expect(decision.reason).toBe('no-recorded-state');
+  });
+
+  it('ignores a marker the bot itself only quoted', () => {
+    const decision = decideMainHealthComment({
+      ...RUN,
+      failures: [GATE_FAILURE],
+      comments: [{ id: 9, body: quoteReply, user: BOT }],
+      now: START + 1000,
+    });
+
+    expect(decision.action).toBe('create-comment');
+    expect(decision.reason).toBe('no-recorded-state');
+  });
+});
+
 describe('recorded state is read back only when it is trustworthy', () => {
-  const validState = {
-    failures: ['policy > Run the gate (failure)'],
-    redRunsSinceComment: 3,
-    commentedAt: new Date(START).toISOString(),
-  };
+  const validState = stateFor([GATE_FAILURE], { redRunsSinceComment: 3 });
 
   it('round-trips through the comment body', () => {
     expect(
-      parseMainHealthState(applyMainHealthState('lead', validState)),
+      parseMainHealthState(renderMainHealthComment(RUN, validState)),
     ).toEqual(validState);
-  });
-
-  it('replaces the marker rather than accumulating one per run', () => {
-    const once = applyMainHealthState('lead', validState);
-    const twice = applyMainHealthState(once, {
-      ...validState,
-      redRunsSinceComment: 4,
-    });
-    expect(twice.match(/main-health-state:/g)).toHaveLength(1);
-    expect(parseMainHealthState(twice)?.redRunsSinceComment).toBe(4);
   });
 
   it.each([
@@ -226,22 +426,30 @@ describe('recorded state is read back only when it is trustworthy', () => {
     ['malformed JSON', '<!-- main-health-state: {"failures":[ -->'],
     [
       'a non-string failure label',
-      '<!-- main-health-state: {"failures":[7],"redRunsSinceComment":0,"commentedAt":"2026-09-08T00:00:00.000Z"} -->',
+      '<!-- main-health-state: {"lead":"x","failures":[7],"failureCount":1,"digest":"d","redRunsSinceComment":0,"commentedAt":"2026-09-08T00:00:00.000Z"} -->',
+    ],
+    [
+      'no digest to compare against',
+      '<!-- main-health-state: {"lead":"x","failures":[],"failureCount":0,"redRunsSinceComment":0,"commentedAt":"2026-09-08T00:00:00.000Z"} -->',
+    ],
+    [
+      'a failure count smaller than the list it summarizes',
+      '<!-- main-health-state: {"lead":"x","failures":["a","b"],"failureCount":1,"digest":"d","redRunsSinceComment":0,"commentedAt":"2026-09-08T00:00:00.000Z"} -->',
     ],
     [
       'an unparseable timestamp',
-      '<!-- main-health-state: {"failures":[],"redRunsSinceComment":0,"commentedAt":"never"} -->',
+      '<!-- main-health-state: {"lead":"x","failures":[],"failureCount":0,"digest":"d","redRunsSinceComment":0,"commentedAt":"never"} -->',
     ],
     [
       'a negative run count',
-      '<!-- main-health-state: {"failures":[],"redRunsSinceComment":-1,"commentedAt":"2026-09-08T00:00:00.000Z"} -->',
+      '<!-- main-health-state: {"lead":"x","failures":[],"failureCount":0,"digest":"d","redRunsSinceComment":-1,"commentedAt":"2026-09-08T00:00:00.000Z"} -->',
     ],
   ])('treats %s as no recorded state, which comments', (_label, body) => {
     expect(parseMainHealthState(body)).toBeNull();
     const decision = decideMainHealthComment({
       ...RUN,
-      failures: ['policy > Run the gate (failure)'],
-      comments: [{ id: 1, body }],
+      failures: [GATE_FAILURE],
+      comments: [{ id: 1, body, user: BOT }],
       now: START,
     });
     // Unreadable state must never resolve to silence on a red main.
@@ -250,17 +458,16 @@ describe('recorded state is read back only when it is trustworthy', () => {
   });
 
   it('reads the most recent marker, not the first', () => {
-    const older = applyMainHealthState('older', {
-      ...validState,
-      failures: ['old (failure)'],
-    });
-    const newer = applyMainHealthState('newer', validState);
     const decision = decideMainHealthComment({
       ...RUN,
-      failures: validState.failures,
+      failures: [GATE_FAILURE],
       comments: [
-        { id: 1, body: older },
-        { id: 2, body: newer },
+        {
+          id: 1,
+          body: renderMainHealthComment(RUN, stateFor(['old (failure)'])),
+          user: BOT,
+        },
+        { id: 2, body: renderMainHealthComment(RUN, validState), user: BOT },
       ],
       now: START + 1000,
     });
@@ -273,8 +480,10 @@ describe('recorded state is read back only when it is trustworthy', () => {
   it('comments rather than staying silent when the recorded time is in the future', () => {
     const decision = decideMainHealthComment({
       ...RUN,
-      failures: validState.failures,
-      comments: [{ id: 1, body: applyMainHealthState('lead', validState) }],
+      failures: [GATE_FAILURE],
+      comments: [
+        { id: 1, body: renderMainHealthComment(RUN, validState), user: BOT },
+      ],
       now: START - 60_000,
     });
 

@@ -12,8 +12,9 @@ import {
 } from '../actionlint-gate.mjs';
 import { readPnpmLockfile } from '../lib/pnpm-lockfile.mjs';
 import {
-  applyMainHealthState,
+  failureDigest,
   parseMainHealthState,
+  renderMainHealthComment,
 } from '../main-health-comment-policy.mjs';
 import {
   resolveAndroidBuildRun,
@@ -364,9 +365,11 @@ describe('CI verification workflow contracts', () => {
   async function runReportFailure({
     comments,
     failingStep,
+    issueState = 'open',
   }: {
-    comments: { id: number; body: string }[];
+    comments: { id: number; body: string; user?: { type: string } }[];
     failingStep: string;
+    issueState?: 'open' | 'closed';
   }) {
     const document = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/main-health.yml',
@@ -389,6 +392,7 @@ describe('CI verification workflow contracts', () => {
     const listComments = vi.fn();
     const createComment = vi.fn();
     const updateComment = vi.fn();
+    const updateIssue = vi.fn();
     const github = {
       rest: {
         actions: { listJobsForWorkflowRun: listJobs },
@@ -396,7 +400,7 @@ describe('CI verification workflow contracts', () => {
           listForRepo,
           listComments,
           create: vi.fn(),
-          update: vi.fn(),
+          update: updateIssue,
           addLabels: vi.fn(),
           createComment,
           updateComment,
@@ -415,7 +419,7 @@ describe('CI verification workflow contracts', () => {
         return [
           {
             number: 42,
-            state: 'open',
+            state: issueState,
             title: 'Main pipeline red: Backlog disposition policy',
           },
         ];
@@ -437,18 +441,36 @@ describe('CI verification workflow contracts', () => {
       },
       { info: vi.fn() },
     );
-    return { createComment, updateComment };
+    return { createComment, updateComment, updateIssue };
+  }
+
+  function recordedComment(failure: string) {
+    return renderMainHealthComment(
+      {
+        workflowName: 'Backlog disposition policy',
+        runUrl: 'https://example.test/run/1',
+        headSha: 'a'.repeat(40),
+      },
+      {
+        lead: 'The workflow failed again on main.',
+        failures: [failure],
+        failureCount: 1,
+        digest: failureDigest([failure]),
+        redRunsSinceComment: 4,
+        commentedAt: new Date().toISOString(),
+      },
+    );
   }
 
   it('records an unchanged red run in the existing comment rather than adding one', async () => {
-    const body = applyMainHealthState('The workflow failed again on main.', {
-      failures: ['policy > Run the gate (failure)'],
-      redRunsSinceComment: 4,
-      commentedAt: new Date().toISOString(),
-    });
-
     const { createComment, updateComment } = await runReportFailure({
-      comments: [{ id: 7, body }],
+      comments: [
+        {
+          id: 7,
+          body: recordedComment('policy > Run the gate (failure)'),
+          user: { type: 'Bot' },
+        },
+      ],
       failingStep: 'Run the gate',
     });
 
@@ -460,14 +482,14 @@ describe('CI verification workflow contracts', () => {
   });
 
   it('comments when a different step fails than the last comment recorded', async () => {
-    const body = applyMainHealthState('The workflow failed again on main.', {
-      failures: ['policy > Run the gate (failure)'],
-      redRunsSinceComment: 4,
-      commentedAt: new Date().toISOString(),
-    });
-
     const { createComment, updateComment } = await runReportFailure({
-      comments: [{ id: 7, body }],
+      comments: [
+        {
+          id: 7,
+          body: recordedComment('policy > Run the gate (failure)'),
+          user: { type: 'Bot' },
+        },
+      ],
       failingStep: 'Publish the report',
     });
 
@@ -476,6 +498,32 @@ describe('CI verification workflow contracts', () => {
     expect(createComment.mock.calls[0][0].body).toContain(
       'policy > Publish the report (failure)',
     );
+  });
+
+  it('speaks when a green-closed tracker is reopened, even with matching state', async () => {
+    // The reducer's own reopen test passes `reopened: true` directly, so it
+    // never reaches the wiring. Here the ONLY signal is the closed issue the
+    // workflow reads: with `reopened` hardcoded false at the call site, the
+    // pre-close marker still matches and the tracker reopens in silence —
+    // the one comment the design most owes a reader.
+    const { createComment, updateComment, updateIssue } =
+      await runReportFailure({
+        comments: [
+          {
+            id: 7,
+            body: recordedComment('policy > Run the gate (failure)'),
+            user: { type: 'Bot' },
+          },
+        ],
+        failingStep: 'Run the gate',
+        issueState: 'closed',
+      });
+
+    expect(updateIssue).toHaveBeenCalledWith(
+      expect.objectContaining({ issue_number: 42, state: 'open' }),
+    );
+    expect(updateComment).not.toHaveBeenCalled();
+    expect(createComment).toHaveBeenCalledTimes(1);
   });
 
   it('closes Nightly health only after terminal deliveries, despite expected recovery skips', async () => {
