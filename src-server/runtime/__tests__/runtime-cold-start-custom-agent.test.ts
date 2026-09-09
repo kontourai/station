@@ -456,9 +456,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       // fails the priming case's `toHaveLength(1)` against a case that did
       // nothing wrong. That misattribution is the whole subject of #1791.
       runtime = undefined;
-      if (home) {
-        rmDirSyncRetrying(home);
-      }
       storeIntegrityVerification.start.mockClear();
       storeIntegrityVerification.stop.mockClear();
       enginePrerequisitePriming.calls.length = 0;
@@ -472,6 +469,17 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       if (originalHostedRegistryFile === undefined)
         delete process.env[hostedRegistryFileEnv];
       else process.env[hostedRegistryFileEnv] = originalHostedRegistryFile;
+      // Last, because it is the only statement here that can throw and so
+      // the only one that could skip the rest. `rmSync(force: true)`
+      // suppresses ENOENT, not EBUSY/EPERM/ENOTEMPTY, and the realistic
+      // trigger is #1814's own condition: a search reader still winding
+      // down is a live writer under the directory being removed. Every
+      // reset above is non-throwing, so the order costs nothing. Belt and
+      // braces — `awaitRouteConfiguration`'s call-count delta already turns
+      // a skipped re-arm into a loud failure rather than a vacuous pass.
+      if (home) {
+        rmDirSyncRetrying(home);
+      }
     }
   });
 
