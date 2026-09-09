@@ -322,7 +322,12 @@ export function createWorkspacePaneHostAdmission(input: {
                   else turnInvoked = true;
                   // Box the Promise: Project and Agent mutation locks release
                   // after the synchronous invocation, BEFORE provider settlement.
-                  return { pending: effect() };
+                  const pending = effect();
+                  // Lock cleanup can yield before the outer await attaches.
+                  // Observe rejection immediately, but return the original
+                  // promise so the caller still receives the exact failure.
+                  void pending.catch(() => {});
+                  return { pending };
                 }),
               );
             const invoked = input.withInvocationPermission
