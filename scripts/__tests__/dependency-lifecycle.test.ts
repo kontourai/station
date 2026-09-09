@@ -72,6 +72,10 @@ const policy = JSON.parse(
   ),
 );
 const nodes = readLifecycleLocks(root);
+// `check()` always evaluates the committed policy against the lockfile's own
+// importer keys; entries under a workspace importer (#1718) are only valid
+// with that set, so the committed-policy assertions must thread it too.
+const lockImporters = readLifecycleImporters(root);
 const shellLauncherTest = process.platform === 'win32' ? it.skip : it;
 
 // `installGitIntegration` compares `resolve(toplevel)` against `root`, so the
@@ -397,7 +401,13 @@ describe('dependency lifecycle policy', () => {
   });
 
   it('matches every installed lifecycle package against the single workspace lock', () => {
-    expect(evaluateLifecyclePolicy({ allowlist: policy, nodes })).toEqual([]);
+    expect(
+      evaluateLifecyclePolicy({
+        allowlist: policy,
+        nodes,
+        importers: lockImporters,
+      }),
+    ).toEqual([]);
     expect(allowlistDigest(policy)).toMatch(/^[a-f0-9]{64}$/);
     expect(expectedLifecyclePurls(policy)).toContain('pkg:npm/node-pty@1.1.0');
   });
@@ -461,9 +471,11 @@ describe('dependency lifecycle policy', () => {
     ],
   ])('rejects %s', (_name, mutate, message) => {
     expect(
-      evaluateLifecyclePolicy({ allowlist: policy, nodes: mutate(nodes) }).join(
-        '\n',
-      ),
+      evaluateLifecyclePolicy({
+        allowlist: policy,
+        nodes: mutate(nodes),
+        importers: lockImporters,
+      }).join('\n'),
     ).toContain(message);
   });
 
@@ -547,8 +559,14 @@ describe('dependency lifecycle policy', () => {
       const esbuild = nested.entries.find(
         (entry: any) => entry.path === 'node_modules/esbuild',
       );
-      esbuild.path = 'examples/builder-delivery-viewer/node_modules/esbuild';
-      const withImporters = validateAllowlist(nested, { importers });
+      // `packages/board-pane` is a real lockfile importer that installs no
+      // script-bearing package, so the moved entry is unambiguously stale
+      // rather than colliding with one of the esbuild copies #1719 split out.
+      const moved = 'packages/board-pane/node_modules/esbuild';
+      esbuild.path = moved;
+      const withImporters = validateAllowlist(nested, {
+        importers: lockImporters,
+      });
       expect(withImporters.join('\n')).not.toContain('invalid package path');
       const withoutImporters = validateAllowlist(nested);
       expect(withoutImporters.join('\n')).toContain(
@@ -559,11 +577,17 @@ describe('dependency lifecycle policy', () => {
       const findings = evaluateLifecyclePolicy({
         allowlist: nested,
         nodes,
-        importers,
+        importers: lockImporters,
       });
       expect(findings.join('\n')).not.toContain('invalid package path');
       expect(findings.join('\n')).toContain(
-        'stale allowlist entry: pnpm-lock.yaml:examples/builder-delivery-viewer/node_modules/esbuild',
+        `stale allowlist entry: pnpm-lock.yaml:${moved}`,
+      );
+      // The narrow set still discriminates: with an importer set that omits
+      // `packages/board-pane`, this exact entry is malformed again.
+      const index = nested.entries.indexOf(esbuild);
+      expect(validateAllowlist(nested, { importers }).join('\n')).toContain(
+        `allowlist entries[${index}] has an invalid package path`,
       );
     });
 
