@@ -664,7 +664,16 @@ export async function markAppHomeProfileImported(
   // Commit atomically. `rename()` never follows a symlink at `markerPath`
   // — it replaces that path entry itself — so this is safe regardless of
   // what (if anything) raced into place there since the check above.
-  await fs.rename(tempPath, markerPath);
+  try {
+    await fs.rename(tempPath, markerPath);
+  } catch (error) {
+    // A failed commit must not leave the staged marker behind. The temp name
+    // carries a random suffix, so nothing ever reuses or reaps it: without
+    // this the profile dir accumulates one orphan per failed import, and the
+    // collision refusal above is the only thing that would ever notice.
+    await fs.rmRecursive(tempPath).catch(() => {});
+    throw error;
+  }
   return { ok: true };
 }
 
