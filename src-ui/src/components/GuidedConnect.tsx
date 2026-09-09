@@ -8,10 +8,7 @@
  */
 
 import { ConnectionManagerModal } from '@kontourai/station-connect';
-import {
-  type PairingDeepLinkChannel,
-  pairingDeepLinkScheme,
-} from '@kontourai/station-connect/pairing-deep-link';
+import { pairingDeepLinkScheme } from '@kontourai/station-connect/pairing-deep-link';
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { checkHostCompatibility } from '../lib/compatibilityLoader';
@@ -42,13 +39,9 @@ export function GuidedConnect({
     window.location.hostname,
   );
   const destination = window.location.host;
-  const [nativeChannel, setNativeChannel] = useState<PairingDeepLinkChannel>(
-    () => {
-      const channel = import.meta.env.VITE_NATIVE_APP_UPDATE_CHANNEL;
-      return channel === 'beta' || channel === 'nightly' ? channel : 'stable';
-    },
-  );
-  const browserHandoff = `${pairingDeepLinkScheme(nativeChannel)}://open-browser?${new URLSearchParams({ origin: window.location.origin })}`;
+  // A web page cannot reliably enumerate installed desktop apps. Open the
+  // production app's own workspace without guessing a channel or local port.
+  const browserHandoff = `${pairingDeepLinkScheme('stable')}://open-browser`;
 
   return (
     <div className="guided-connect">
@@ -67,34 +60,26 @@ export function GuidedConnect({
             <code>{destination}</code>
             <p>
               {isLocal
-                ? 'Open Station from its tray menu or use the start link printed by its launcher. That connects this browser without a pairing code.'
+                ? 'Open the Station desktop app to continue on this computer.'
                 : 'Ask this Station to approve access for your browser. Confirm the request on the computer running it.'}
             </p>
             {isLocal && (
               <>
-                <label className="guided-connect__app-choice">
-                  Installed app
-                  <select
-                    value={nativeChannel}
-                    onChange={(event) =>
-                      setNativeChannel(
-                        event.target.value as PairingDeepLinkChannel,
-                      )
-                    }
-                  >
-                    <option value="stable">Station</option>
-                    <option value="beta">Station Beta</option>
-                    <option value="nightly">Station Nightly</option>
-                  </select>
-                </label>
                 <a
                   className="guided-connect__action guided-connect__action--primary"
                   href={browserHandoff}
                 >
-                  Connect with Station app
+                  Open Station
                 </a>
                 <small>
-                  If the app does not open, use Request access below.
+                  Don't have the app?{' '}
+                  <a
+                    href="https://station.kontourai.io/#start"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Get Station
+                  </a>
                 </small>
               </>
             )}
@@ -111,7 +96,7 @@ export function GuidedConnect({
             </button>
             {isLocal && (
               <small>
-                Or request approval here if you do not have the start link.
+                Or request access to connect this browser to the address above.
               </small>
             )}
           </section>
