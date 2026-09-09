@@ -52,6 +52,10 @@ even when an assertion fails. Wait for the owned lifecycle signal within the
 test's existing overall budget instead of adding an unrelated polling deadline.
 Cached data alone does not prove that a refresh succeeded; cover failed refreshes
 and subsequent recovery when asserting readiness or performance marks.
+Exercise read-only POST routes through the global HTTP middleware as well as
+their route handler. They must not broadcast data-change invalidations: doing
+so makes an active query refetch itself. Keep positive controls for real writes,
+and preserve authentication and request-budget enforcement independently.
 
 For read-cost regressions, assert file reads or payload construction through the
 real request/component owner, then change the backing data and re-read. A cache
