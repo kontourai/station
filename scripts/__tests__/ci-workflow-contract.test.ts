@@ -532,6 +532,51 @@ describe('CI verification workflow contracts', () => {
     expect(createComment).toHaveBeenCalledTimes(1);
   });
 
+  it('scans the advisory floor on its own sub-daily schedule, in a shape main-health can clear (#1753)', () => {
+    const document = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/dependency-advisory.yml',
+    )?.document as
+      | {
+          on?: { schedule?: unknown; workflow_dispatch?: unknown };
+          permissions?: unknown;
+          jobs?: Record<
+            string,
+            { if?: unknown; 'runs-on'?: unknown; steps?: { run?: unknown }[] }
+          >;
+        }
+      | undefined;
+
+    // Parsed values, not file text: every constant below is also named in
+    // that workflow's own comments, so a substring check over the source
+    // would stay green if the key itself changed while the prose survived.
+    //
+    // A registry-side break reds the floor for every pull request whose diff
+    // touches a dependency input (the policy narrows by range), with no
+    // commit to attribute it to — a newly disclosed advisory, or an affected
+    // range narrowing until a ledger residual is unused. Four slots a day
+    // bound how long that goes unattributed; one slot leaves it to whichever
+    // pull request gates next, which is how four such breaks were found on
+    // 2026-09-08.
+    expect(document?.on?.schedule).toEqual([{ cron: '23 2,8,14,20 * * *' }]);
+    expect(document?.on).toHaveProperty('workflow_dispatch');
+    // main-health.yml owns every issue write; a red scan here only has to be
+    // observable as a failed run on main.
+    expect(document?.permissions).toEqual({ contents: 'read' });
+
+    // main-health clears this workflow's tracker only for a run that has a
+    // successful job and NO skipped job. A second job here, or an `if:` on
+    // this one, would leave the tracker open against a floor that has since
+    // gone green.
+    const jobs = Object.entries(document?.jobs ?? {});
+    expect(jobs).toHaveLength(1);
+    const [, audit] = jobs[0];
+    expect(audit.if).toBeUndefined();
+    expect(audit['runs-on']).toBe('ubuntu-22.04');
+    expect(audit.steps?.map((step) => step.run)).toContain(
+      'npm run audit:policy',
+    );
+  });
+
   it('closes Nightly health only after terminal deliveries, despite expected recovery skips', async () => {
     const document = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/main-health.yml',
@@ -1654,6 +1699,110 @@ describe('CI verification workflow contracts', () => {
     expect(diagnostic).not.toContain('\n');
     expect(diagnostic).not.toContain('\u0000');
     expect(diagnostic.length).toBeLessThanOrEqual(1_024);
+  });
+
+  it('keeps the two copied classify jobs identical where they are copies, and different only where their own triggers require it', () => {
+    // ci.yml and container-smoke.yml both carry a job called `classify` that
+    // runs the same classifier. They had drifted, and the drift was invisible
+    // because nothing compared them. Byte-equality is the wrong pin — one
+    // workflow runs on merge_group and the other does not, so forcing the
+    // expressions identical would add a dead branch to container-smoke. So
+    // the invocation is pinned identical and the event handling is pinned
+    // DERIVED from each workflow's own `on:` block.
+    type ClassifyStep = {
+      id?: string;
+      run?: string;
+      env?: Record<string, string>;
+    };
+    type ClassifyJob = {
+      name?: string;
+      'runs-on'?: string;
+      if?: string;
+      steps?: ClassifyStep[];
+    };
+    const documents = readWorkflowDocuments();
+    const read = (file: string, stepId = 'classify') => {
+      const entry = documents.find(
+        (candidate) => candidate.file === `.github/workflows/${file}`,
+      );
+      expect(entry, `${file} must exist`).toBeDefined();
+      const document = entry?.document as {
+        on?: Record<string, unknown>;
+        true?: Record<string, unknown>;
+        jobs?: Record<string, ClassifyJob>;
+      };
+      // `on` is YAML 1.1 truthy, so a permissive parser can hand it back
+      // under the key `true`. Both are accepted rather than assuming one.
+      const triggers = Object.keys(document.on ?? document.true ?? {});
+      const job = document.jobs?.classify;
+      expect(job, `${file} must define job "classify"`).toBeDefined();
+      const step = job?.steps?.find((candidate) => candidate.id === stepId);
+      expect(
+        step,
+        `${file} classify job must have a step id "${stepId}"`,
+      ).toBeDefined();
+      return { triggers, job: job as ClassifyJob, step: step as ClassifyStep };
+    };
+
+    const ci = read('ci.yml');
+    const smoke = read('container-smoke.yml');
+
+    // The copied part: same classifier, same command, same runner, same
+    // budget, same job name. A change to one that is not made to the other
+    // fails here.
+    expect(smoke.step.run).toBe(ci.step.run);
+    expect(ci.step.run).toContain('node scripts/classify-ci-change.mjs');
+    expect(smoke.job.name).toBe(ci.job.name);
+    expect(smoke.job['runs-on']).toBe(ci.job['runs-on']);
+    expect(smoke.job['runs-on']).toBe('ubuntu-22.04');
+
+    // The part that is allowed to differ, and only in one direction: a
+    // workflow handles merge_group in its BEFORE/AFTER expressions if and
+    // only if it declares the merge_group trigger. That is what makes
+    // container-smoke's shorter expression correct rather than stale, and it
+    // is also what would catch a merge_group trigger added without the
+    // matching base_sha branch — the actual drift shape here.
+    for (const { name, triggers, step } of [
+      { name: 'ci.yml', ...ci },
+      { name: 'container-smoke.yml', ...smoke },
+    ]) {
+      const declaresMergeGroup = triggers.includes('merge_group');
+      const expressions = `${step.env?.BEFORE ?? ''}${step.env?.AFTER ?? ''}`;
+      expect(
+        expressions,
+        `${name} classify must derive BEFORE/AFTER`,
+      ).toContain('github.sha');
+      expect(
+        expressions.includes('github.event.merge_group'),
+        `${name}: merge_group trigger ${declaresMergeGroup ? 'declared' : 'absent'}, expression ${expressions.includes('github.event.merge_group') ? 'handles' : 'ignores'} it`,
+      ).toBe(declaresMergeGroup);
+    }
+
+    // The guards that read as dead code and are not. Neither workflow
+    // declares the event its job-level `if` excludes; the guard is what keeps
+    // candidate code off a self-hosted runner if one is ever added. Pinned so
+    // a later reader does not delete them as unreachable.
+    expect(ci.triggers).not.toContain('pull_request');
+    expect(smoke.triggers).not.toContain('pull_request');
+    expect(smoke.job.if).toContain("github.event_name != 'pull_request'");
+    // ci.yml's guard is live rather than defensive: it DOES declare
+    // pull_request_target, and the classifier is intentionally skipped there
+    // because a fork candidate must not choose its own classification.
+    expect(ci.triggers).toContain('pull_request_target');
+    expect(ci.job.if).toContain("github.event_name != 'pull_request_target'");
+
+    // build-ios.yml also has a `classify` job. It is NOT a third copy and
+    // must not be unified with these: it resolves the classifier out of the
+    // BASE commit (`git show "$BASE_SHA:scripts/classify-ci-change.mjs"`) and
+    // fails closed, because it runs on pull_request_target where the head
+    // commit is untrusted. Deleting that difference in the name of removing
+    // duplication would hand a fork PR control of its own iOS relevance.
+    // Its step is `relevance`, not `classify` — the first sign these are
+    // not the same thing.
+    const ios = read('build-ios.yml', 'relevance');
+    expect(ios.step.run).not.toBe(ci.step.run);
+    expect(ios.step.run).toContain('$BASE_SHA:scripts/classify-ci-change.mjs');
+    expect(ios.step.run).toContain('fail_closed');
   });
 
   it('provides the supported post-merge Windows fallback without pretending E2E is covered', () => {

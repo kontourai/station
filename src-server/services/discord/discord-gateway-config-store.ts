@@ -1,12 +1,4 @@
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type {
   DiscordCapability,
@@ -16,6 +8,7 @@ import type {
   DiscordIdentityMapping,
 } from '@kontourai/station-contracts/discord';
 import { DISCORD_CAPABILITIES } from '@kontourai/station-contracts/discord';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { isNonEmptyString } from '../../utils/non-empty-string.js';
 
 const FILE_NAME = 'discord-gateway.json';
@@ -146,25 +139,12 @@ export class DiscordGatewayConfigurationStore {
     const directory = dirname(path);
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     chmodSync(directory, 0o700);
-    const temporaryPath = `${path}.${process.pid}.tmp`;
-    try {
-      writeFileSync(temporaryPath, JSON.stringify(configuration, null, 2), {
-        encoding: 'utf8',
-        mode: 0o600,
-        flag: 'w',
-      });
-      renameSync(temporaryPath, path);
-      chmodSync(path, 0o600);
-    } finally {
-      if (existsSync(temporaryPath)) {
-        try {
-          // A failed replacement must not leave a token-bearing scratch file.
-          rmSync(temporaryPath, { force: true });
-        } catch {
-          // The original error remains authoritative.
-        }
-      }
-    }
+    // The shared durable writer owns the temporary (created O_EXCL, removed
+    // on failure so no token-bearing scratch file survives), the data fsync
+    // and the directory fsync. `trailingNewline: false` keeps this file's
+    // existing two-space document byte for byte.
+    writeJsonDurably(path, configuration, { trailingNewline: false });
+    chmodSync(path, 0o600);
   }
 }
 

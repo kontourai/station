@@ -1,6 +1,14 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   FileSessionSummaryStore,
@@ -13,6 +21,37 @@ afterEach(() => {
   for (const root of roots.splice(0))
     rmSync(root, { recursive: true, force: true });
 });
+
+function byteFixtureSummary() {
+  return {
+    version: 2 as const,
+    text: 'first',
+    overview: 'first',
+    goals: [],
+    constraints: [],
+    progress: [],
+    nextSteps: [],
+    reportedCompletion: [],
+    relatedEvidenceRefs: [],
+    verificationRefs: [],
+    model: 'structure-model',
+    generatedAt: '2026-08-16T12:00:00.000Z',
+    sourceRange: {
+      fromMessageId: 'm1',
+      throughMessageId: 'm2',
+      messageCount: 2,
+    },
+    sourceRevision: 'revision',
+    sourceRanges: [
+      { fromMessageId: 'm1', throughMessageId: 'm2', messageCount: 2 },
+    ],
+    sourceMessageCount: 2,
+    partialMessageIncluded: false,
+    contextBoundaryCount: 0,
+    contextBoundaries: [],
+    generationUsage: { state: 'unknown' as const },
+  };
+}
 
 describe('FileSessionSummaryStore', () => {
   test('persists a derived record outside the transcript and keeps dismissal across a fresh reader', async () => {
@@ -325,5 +364,242 @@ describe('FileSessionSummaryStore', () => {
         verificationRefs: [...verification, verification[0]!],
       }),
     ).toBe(false);
+  });
+
+  // The sidecar's on-disk contract is two-space JSON with no trailing newline.
+  // Pinned so that changing the publication mechanism has to preserve the
+  // format, not merely keep the document parseable.
+  test('publishes two-space JSON with no trailing newline', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-session-summary-bytes-'));
+    roots.push(root);
+    const coordinate = { ownerScope: 'user:alpha', conversationId: 'c-bytes' };
+    const summary = {
+      version: 2 as const,
+      text: 'Derived output',
+      overview: 'Derived output',
+      goals: [],
+      constraints: [],
+      progress: [],
+      nextSteps: [],
+      reportedCompletion: [],
+      relatedEvidenceRefs: [],
+      verificationRefs: [],
+      model: 'structure-model',
+      generatedAt: '2026-08-16T12:00:00.000Z',
+      sourceRange: {
+        fromMessageId: 'm1',
+        throughMessageId: 'm2',
+        messageCount: 2,
+      },
+      sourceRevision: 'revision',
+      sourceRanges: [
+        { fromMessageId: 'm1', throughMessageId: 'm2', messageCount: 2 },
+      ],
+      sourceMessageCount: 2,
+      partialMessageIncluded: false,
+      contextBoundaryCount: 0,
+      contextBoundaries: [],
+      generationUsage: { state: 'unknown' as const },
+    };
+
+    await new FileSessionSummaryStore(root).write(coordinate, summary);
+
+    expect(
+      readFileSync(
+        join(
+          root,
+          'conversation-intent-summaries',
+          'v2',
+          encodeURIComponent(coordinate.ownerScope),
+          `${coordinate.conversationId}.json`,
+        ),
+        'utf8',
+      ),
+    ).toBe(JSON.stringify(summary, null, 2));
+  });
+
+  // dismiss/show read the sidecar and publish a value derived from it, and
+  // they are reached from HTTP handlers that can race each other and the
+  // regeneration write. Before these paths shared a mutation capability, the
+  // read sat outside it: whichever publish landed second silently discarded
+  // the other's. `SessionSummaryCoordinator` does not close this -- it bumps
+  // an epoch and fences only the generation path.
+  test('a dismissal and a concurrent regeneration do not lose each other', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-session-summary-race-'));
+    roots.push(root);
+    const store = new FileSessionSummaryStore(root);
+    const coordinate = { ownerScope: 'user:alpha', conversationId: 'c-race' };
+    const base = {
+      version: 2 as const,
+      text: 'first',
+      overview: 'first',
+      goals: [],
+      constraints: [],
+      progress: [],
+      nextSteps: [],
+      reportedCompletion: [],
+      relatedEvidenceRefs: [],
+      verificationRefs: [],
+      model: 'structure-model',
+      generatedAt: '2026-08-16T12:00:00.000Z',
+      sourceRange: {
+        fromMessageId: 'm1',
+        throughMessageId: 'm2',
+        messageCount: 2,
+      },
+      sourceRevision: 'revision',
+      sourceRanges: [
+        { fromMessageId: 'm1', throughMessageId: 'm2', messageCount: 2 },
+      ],
+      sourceMessageCount: 2,
+      partialMessageIncluded: false,
+      contextBoundaryCount: 0,
+      contextBoundaries: [],
+      generationUsage: { state: 'unknown' as const },
+    };
+    await store.write(coordinate, base);
+
+    // Started together, settled together: whichever order the capability
+    // grants, the later transaction must have READ the earlier one's result.
+    await Promise.all([
+      store.dismiss(coordinate),
+      store.write(coordinate, { ...base, text: 'second', overview: 'second' }),
+    ]);
+
+    const after = await store.read(coordinate);
+    // Regeneration published second: its text wins and it clears the
+    // dismissal (a fresh summary is not dismissed). Dismissal published
+    // second: the dismissal is recorded ON the regenerated text, because it
+    // read inside the capability. The forbidden outcome is the third one --
+    // a dismissal stamped on the STALE text, which is what an unserialized
+    // read produces.
+    expect(after).toMatchObject({ text: 'second', overview: 'second' });
+  });
+
+  test('two dismissals do not resurrect a regenerated summary', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-session-summary-race2-'));
+    roots.push(root);
+    const store = new FileSessionSummaryStore(root);
+    const coordinate = { ownerScope: 'user:alpha', conversationId: 'c-race2' };
+    const base = {
+      version: 2 as const,
+      text: 'first',
+      overview: 'first',
+      goals: [],
+      constraints: [],
+      progress: [],
+      nextSteps: [],
+      reportedCompletion: [],
+      relatedEvidenceRefs: [],
+      verificationRefs: [],
+      model: 'structure-model',
+      generatedAt: '2026-08-16T12:00:00.000Z',
+      sourceRange: {
+        fromMessageId: 'm1',
+        throughMessageId: 'm2',
+        messageCount: 2,
+      },
+      sourceRevision: 'revision',
+      sourceRanges: [
+        { fromMessageId: 'm1', throughMessageId: 'm2', messageCount: 2 },
+      ],
+      sourceMessageCount: 2,
+      partialMessageIncluded: false,
+      contextBoundaryCount: 0,
+      contextBoundaries: [],
+      generationUsage: { state: 'unknown' as const },
+    };
+    await store.write(coordinate, base);
+
+    await Promise.all([
+      store.dismiss(coordinate),
+      store.write(coordinate, { ...base, text: 'second', overview: 'second' }),
+      store.dismiss(coordinate),
+    ]);
+
+    const after = await store.read(coordinate);
+    expect(after).toMatchObject({ text: 'second', overview: 'second' });
+  });
+
+  // `delete()` was the one mutation outside `${v2}.mutation`. A delete landing
+  // between a dismissal's locked read and its publish republished the sidecar
+  // with `dismissedAt` set -- a summary the user asked to be gone, restored by
+  // the request that was supposed to hide it.
+  //
+  // Asserted as participation in the capability rather than by racing the two
+  // calls: `Promise.all([dismiss, delete])` cannot reach that interleaving,
+  // because an unlocked delete unlinks long before the dismissal finishes
+  // acquiring, and the dismissal then reads nothing and returns. Holding the
+  // capability and watching `delete` wait for it is the same property,
+  // observed where it is deterministic.
+  test('delete waits for the coordinate capability instead of unlinking under a live transaction', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-session-summary-cap-'));
+    roots.push(root);
+    const store = new FileSessionSummaryStore(root);
+    const coordinate = { ownerScope: 'user:alpha', conversationId: 'c-cap' };
+    await store.write(coordinate, byteFixtureSummary());
+    const path = join(
+      root,
+      'conversation-intent-summaries',
+      'v2',
+      encodeURIComponent(coordinate.ownerScope),
+      `${coordinate.conversationId}.json`,
+    );
+
+    const release = await acquireFileMutationLockAsync(`${path}.mutation`);
+    let settled = false;
+    const deleting = store.delete(coordinate).then(() => {
+      settled = true;
+    });
+    // Far longer than an unlink needs, far short of the lock's 10s deadline.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    expect(settled, 'delete completed while the capability was held').toBe(
+      false,
+    );
+    expect(existsSync(path)).toBe(true);
+
+    await release();
+    await deleting;
+    expect(existsSync(path)).toBe(false);
+  });
+
+  test('a delete racing a dismissal leaves no sidecar behind', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-session-summary-del-'));
+    roots.push(root);
+    const store = new FileSessionSummaryStore(root);
+    const coordinate = { ownerScope: 'user:alpha', conversationId: 'c-del' };
+    await store.write(coordinate, byteFixtureSummary());
+
+    await Promise.all([store.dismiss(coordinate), store.delete(coordinate)]);
+
+    expect(await store.read(coordinate)).toBeNull();
+    expect(
+      existsSync(
+        join(
+          root,
+          'conversation-intent-summaries',
+          'v2',
+          encodeURIComponent(coordinate.ownerScope),
+          `${coordinate.conversationId}.json`,
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  // The publishers create the owner directory; the read-modify-write paths
+  // must not. Before the existence check moved ahead of the acquisition, the
+  // lock file's directory was created for a coordinate that has no summary --
+  // so "dismiss creates nothing" was true of documents and false of disk.
+  test('dismiss and show on an empty coordinate leave no directory', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-session-summary-none-'));
+    roots.push(root);
+    const store = new FileSessionSummaryStore(root);
+    const coordinate = { ownerScope: 'user:alpha', conversationId: 'c-none' };
+
+    await store.dismiss(coordinate);
+    await store.show(coordinate);
+
+    expect(existsSync(join(root, 'conversation-intent-summaries'))).toBe(false);
   });
 });

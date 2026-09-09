@@ -11,7 +11,10 @@ import type {
   ScheduleNotificationOpts,
 } from '@kontourai/station-contracts/notification';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLockAsync,
+  type FileMutationLock,
+} from '@kontourai/station-shared/lifecycle-events';
 import {
   classifyNotificationCategory,
   NOTIFICATION_TTL_MS,
@@ -43,9 +46,6 @@ type NotificationStore = Pick<
   JsonFileStore<StoredNotification[]>,
   'read' | 'write'
 >;
-type NotificationMutationLock = (
-  lockPath: string,
-) => Promise<() => void | Promise<void>>;
 type NotificationStoreFactory = (storePath: string) => NotificationStore;
 const ACTION_LEASE_MS = 30_000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5_000;
@@ -77,7 +77,7 @@ type NotificationClearResult = NotificationClearMutation['result'];
 
 export interface NotificationServiceOptions {
   /** Injectable only for deterministic cross-process mutation tests. */
-  acquireMutationLock?: NotificationMutationLock;
+  acquireMutationLock?: FileMutationLock;
   /** Injectable only for durable-write fault-injection tests. */
   storeFactory?: NotificationStoreFactory;
   /** Injectable only to hold a reserved action before provider dispatch. */
@@ -115,7 +115,7 @@ export class NotificationService {
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private readonly storePath: string;
-  private readonly acquireMutationLock: NotificationMutationLock;
+  private readonly acquireMutationLock: FileMutationLock;
   private readonly beforeActionDispatch?: (
     notificationId: string,
   ) => Promise<void>;

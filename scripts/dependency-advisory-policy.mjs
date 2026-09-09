@@ -1017,7 +1017,7 @@ function describeRange(range) {
  * message that explained nothing survived (#1442).
  */
 /**
- * Render the approaching-expiry warnings as GitHub annotations. The daily
+ * Render the approaching-expiry warnings as GitHub annotations. The
  * scheduled run in .github/workflows/dependency-advisory.yml is the reader:
  * a WARN line in a green log nobody opens is not a reminder, and the run
  * summary is where a maintainer sees one without being blocked by it.
