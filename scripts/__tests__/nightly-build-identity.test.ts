@@ -693,7 +693,18 @@ describe('the nightly workflow keeps its promises', () => {
     expect(decide).toContain(
       'node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$android_sha"',
     );
-    expect(decide).toContain('[ "$normalized_android_sha" = "$android_sha" ]');
+    // #1780: the decision is the CLI's, from markers AND the ledger. The
+    // rebuild index reaches it as an argument, not a shell-inlined test.
+    expect(decide).toContain(
+      'node scripts/nightly-cohort-decide.mjs --head-sha "$head_sha" --android-marker "$android_sha" --android-candidate "$normalized_android_sha" --desktop-marker "$desktop_sha" --desktop-candidate "$normalized_desktop_sha" --rebuild-index "$NIGHTLY_REBUILD_INDEX" --ledger-ref origin/main',
+    );
+    expect(decide).toContain(
+      'NIGHTLY_REBUILD_INDEX: $' + '{{ inputs.rebuild_index }}',
+    );
+    expect(decide).not.toContain(
+      '[ "$normalized_android_sha" = "$android_sha" ]',
+    );
+    expect(decide).not.toContain("echo 'build=");
   });
 
   it('uses an explicit non-boolean rebuild input and validates it before the nightly job builds', () => {

@@ -115,18 +115,23 @@ jobs:
           esac
       - id: decide
         name: Decide one cohort rather than independent native ships
+        env:
+          NIGHTLY_REBUILD_INDEX: ${{ inputs.rebuild_index }}
         run: |
+          set -euo pipefail
           head_sha=$(git rev-parse HEAD)
           android_sha=$(git rev-parse --verify --quiet 'refs/tags/nightly^{commit}' || true)
           desktop_sha=$(git rev-parse --verify --quiet 'refs/tags/nightly-desktop^{commit}' || true)
           normalized_android_sha=$(node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$android_sha")
           normalized_desktop_sha=$(node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$desktop_sha")
-          if [ "$normalized_android_sha" = "$android_sha" ] && [ "$normalized_desktop_sha" = "$desktop_sha" ] && [ -z "${{ inputs.rebuild_index }}" ]; then
-            echo 'build=false' >> "$GITHUB_OUTPUT"
-            echo 'No native cohort is needed for this source.' >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo 'build=true' >> "$GITHUB_OUTPUT"
-          fi
+          # A marker at HEAD is not proof the platform shipped verified: macOS
+          # moves nightly-desktop before its claim step, so a failed claim
+          # leaves the marker at HEAD with no ledger row (#1780). The decision
+          # therefore requires a deploy-ledger row per platform at the marker
+          # SHA, read from origin/main (fetched in the source step): ledger
+          # rows land on main AFTER the ship, so the checkout at the source
+          # SHA can never contain the row for its own marker.
+          node scripts/nightly-cohort-decide.mjs --head-sha "$head_sha" --android-marker "$android_sha" --android-candidate "$normalized_android_sha" --desktop-marker "$desktop_sha" --desktop-candidate "$normalized_desktop_sha" --rebuild-index "$NIGHTLY_REBUILD_INDEX" --ledger-ref origin/main
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.decide.outputs.build == 'true'
         with: { node-version-file: .nvmrc }
