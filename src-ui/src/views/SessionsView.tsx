@@ -62,7 +62,7 @@ const SESSION_LIST_REFRESH_MS = 5000;
 type ActivityAxis = 'task' | 'origin';
 const ACTIVITY_AXIS_TABS = [
   { key: 'task', label: 'By task' },
-  { key: 'origin', label: 'By origin' },
+  { key: 'origin', label: 'By app' },
 ] as const;
 
 function originSection(session: OrchestrationSessionSummary): string {
@@ -633,7 +633,7 @@ export function SessionsView({
     const isDelegated = row.members.some((member) => member.delegation);
     const section = isDelegated
       ? `Delegated/background work · ${delegatedCount}`
-      : `Operator sessions · ${operatorCount}`;
+      : `Conversations · ${operatorCount}`;
     for (const member of row.members) {
       taskSectionById.set(member.threadId, section);
     }

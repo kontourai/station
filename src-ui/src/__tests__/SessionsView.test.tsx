@@ -3327,7 +3327,7 @@ describe('SessionsView', () => {
       expect(headings).toEqual([]);
       expect(sectionHeadings(container)).toEqual([
         'Delegated/background work · 2',
-        'Operator sessions · 1',
+        'Conversations · 1',
       ]);
     });
 
@@ -3477,7 +3477,7 @@ describe('SessionsView', () => {
       const { container } = renderView();
 
       // Every fixture is `completed` and hours old: one lane, one heading.
-      expect(sectionHeadings(container)).toEqual(['Operator sessions · 4']);
+      expect(sectionHeadings(container)).toEqual(['Conversations · 4']);
       expect(listRows(container)).toHaveLength(4);
       expect(rowNames(container)).toEqual([
         'Beta two',
@@ -3529,7 +3529,7 @@ describe('SessionsView', () => {
 
       const { container } = renderView();
 
-      expect(sectionHeadings(container)).toEqual(['Operator sessions · 4']);
+      expect(sectionHeadings(container)).toEqual(['Conversations · 4']);
       expect(rowNames(container)).toEqual([
         'Waiting on a decision',
         'Also waiting on you',
@@ -3641,7 +3641,7 @@ describe('SessionsView', () => {
       // over a short or single-lane render would pass while checking nothing.
       expect(rendered).toHaveLength(6);
       expect(new Set(rendered.map((entry) => entry.heading))).toEqual(
-        new Set(['Operator sessions']),
+        new Set(['Conversations']),
       );
 
       // The four A1 shapes, by the word each used to print.
@@ -3736,7 +3736,7 @@ describe('SessionsView', () => {
       fireEvent.click(alphaPill);
 
       expect(rowNames(container)).toEqual(['Alpha work']);
-      expect(sectionHeadings(container)).toEqual(['Operator sessions · 1']);
+      expect(sectionHeadings(container)).toEqual(['Conversations · 1']);
       const clear = screen.getByRole('button', {
         name: 'Clear the alpha project filter',
       });
@@ -4384,7 +4384,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
       Array.from(container.querySelectorAll('.split-pane__section-header')).map(
         (node) => node.textContent,
       ),
-    ).toEqual(['Delegated/background work · 1', 'Operator sessions · 1']);
+    ).toEqual(['Delegated/background work · 1', 'Conversations · 1']);
     expect(screen.queryByTestId('session-detail')).toBeNull();
   });
 
@@ -4404,10 +4404,10 @@ describe('Activity presentation (sessions moved under Home)', () => {
       }),
     ];
     renderView();
-    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'By app' }));
     expect(screen.getByText('Paired device · Mobile app')).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'By task' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'By app' }));
     expect(usePairedDevicesQuery).not.toHaveBeenCalled();
   });
 
@@ -4429,7 +4429,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
       }),
     ];
     const { container } = renderView();
-    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'By app' }));
 
     expect(
       Array.from(
@@ -4449,9 +4449,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
     fireEvent.keyDown(taskTab, { key: 'ArrowRight' });
 
     expect(
-      screen
-        .getByRole('tab', { name: 'By origin' })
-        .getAttribute('aria-selected'),
+      screen.getByRole('tab', { name: 'By app' }).getAttribute('aria-selected'),
     ).toBe('true');
     expect(screen.getByTestId('session-detail')).toBeTruthy();
   });

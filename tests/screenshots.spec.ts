@@ -1285,7 +1285,7 @@ const SCREENS: Screen[] = [
     viewport: MOBILE,
     waitFor: '.sessions-axis-tabs',
     afterGoto: async (page) => {
-      const tab = page.getByRole('tab', { name: 'By origin', exact: true });
+      const tab = page.getByRole('tab', { name: 'By app', exact: true });
       await tab.click();
       await expect(tab).toHaveAttribute('aria-selected', 'true');
       for (const control of [
