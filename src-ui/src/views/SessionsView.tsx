@@ -737,7 +737,7 @@ export function SessionsView({
               className="sessions-axis-description"
             >
               {axis === 'task'
-                ? 'Delegated work is separated from sessions you are driving directly.'
+                ? 'Tasks and conversations, grouped by what you are working on.'
                 : 'Conversations grouped by the app or client where they were started.'}
             </div>
             <ActionOperationsSection />
@@ -791,8 +791,8 @@ export function SessionsView({
            read-only attached external-engine ones). */
         label="Activity"
         title="Activity"
-        subtitle="Watch and talk to AI sessions across this host"
-        emptyDescription="Select a session to watch its live events and send input."
+        subtitle="Conversations and work across your AI apps"
+        emptyDescription="Select a conversation to read messages and review its activity."
         firstRunAnchor="activity"
       >
         {selected && (

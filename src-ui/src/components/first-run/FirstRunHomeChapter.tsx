@@ -151,8 +151,8 @@ function FirstRunHomeCard({ onOpen }: { onOpen: () => void }) {
         </Button>
       }
     >
-      Pick the agent CLIs you use and tell Station how you like your answers.
-      Two minutes, and you can change everything later.
+      Choose your AI apps and tell Station how you like your answers. Two
+      minutes, and you can change everything later.
     </PageCallout>
   );
 }
