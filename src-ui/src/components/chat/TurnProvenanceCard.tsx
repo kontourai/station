@@ -171,10 +171,9 @@ function refRow<TRef>(
 }
 
 /**
- * The detail row's full usage sentence — every field the engine reported,
- * named in full. Only fields the engine actually reported are named. An
- * absent field is left out of the sentence entirely rather than printed as
- * `0 in`.
+ * Lead with the full prompt when the provider's accounting supports it,
+ * then show the reported components. Omit a redundant input/output subtotal;
+ * absent measurements are never printed as zero.
  */
 function usageText(
   usage: TurnProvenanceUsage,

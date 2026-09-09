@@ -279,8 +279,7 @@ function RecentWorkEmpty() {
   return (
     <Empty
       variant="prominent"
-      label="No recent work yet"
-      description="Your chats and project work will appear here."
+      label="Your chats and project work will appear here"
     />
   );
 }

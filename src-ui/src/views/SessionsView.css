@@ -1037,30 +1037,3 @@
   justify-content: flex-end;
   padding: 0 12px 12px;
 }
-
-/* Keep controls reachable when Activity occupies a short dock region. */
-.split-pane:has(.sessions-axis-tabs) {
-  container-name: activity-inventory;
-  container-type: size;
-}
-@container activity-inventory (max-height: 480px) {
-  .split-pane__left {
-    overflow-y: auto;
-  }
-  .split-pane__left > :not(.split-pane__list) {
-    flex-shrink: 0;
-  }
-  .split-pane__list {
-    flex: 1 0 64px;
-  }
-  .sessions-coordinator--starter {
-    padding: 0;
-    border: 0;
-    gap: 0;
-    background: transparent;
-  }
-  .sessions-coordinator--starter > div:first-child,
-  .sessions-coordinator--starter > .sessions-coordinator__notice {
-    display: none;
-  }
-}

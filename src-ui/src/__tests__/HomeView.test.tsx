@@ -606,7 +606,9 @@ describe('HomeView', () => {
 
     expect(container.querySelector('.home-view__empty')).toBeNull();
     expect(container.querySelector('.empty.empty--prominent')).toBeTruthy();
-    expect(screen.getByText('No recent work yet')).toBeTruthy();
+    expect(
+      screen.getByText('Your chats and project work will appear here'),
+    ).toBeTruthy();
   });
 
   /**

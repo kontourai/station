@@ -698,6 +698,7 @@ export function SessionsView({
     <>
       {/* empty-state action: delegation starter and filter reset are adjacent */}
       <SplitPaneLayout
+        heightResponsive
         items={items}
         emptySections={emptySections}
         selectedId={selectedId}

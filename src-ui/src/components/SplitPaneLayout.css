@@ -801,3 +801,29 @@
     cursor: pointer;
   }
 }
+
+/* Constrained-height embeds keep list and footer actions reachable. */
+.split-pane--height-responsive {
+  container-name: split-pane-height;
+  container-type: size;
+}
+@container split-pane-height (max-height: 480px) {
+  .split-pane__left {
+    overflow-y: auto;
+  }
+  .split-pane__left > :not(.split-pane__list) {
+    flex-shrink: 0;
+  }
+  .split-pane__list {
+    flex: 1 0 64px;
+  }
+  .split-pane__action-card {
+    padding: 0;
+    border: 0;
+    gap: 0;
+    background: transparent;
+  }
+  .split-pane__secondary-copy {
+    display: none;
+  }
+}

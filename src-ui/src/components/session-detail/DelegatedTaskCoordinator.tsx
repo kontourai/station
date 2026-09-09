@@ -238,15 +238,15 @@ export function DelegatedTaskStarter({
 }) {
   return (
     <section
-      className="sessions-coordinator sessions-coordinator--starter"
+      className="sessions-coordinator sessions-coordinator--starter split-pane__action-card"
       data-testid="delegated-task-starter"
       aria-labelledby="delegated-task-starter-title"
     >
-      <div>
+      <div className="split-pane__secondary-copy">
         <p className="sessions-coordinator__eyebrow">Delegated work</p>
         <h3 id="delegated-task-starter-title">Hand off a bounded task</h3>
       </div>
-      <p className="sessions-coordinator__notice">
+      <p className="sessions-coordinator__notice split-pane__secondary-copy">
         Start a resumable worker on this Station or a saved SSH environment.
       </p>
       <div className="sessions-coordinator__actions">
