@@ -13,6 +13,11 @@ on:
     # rather than from this cron (#1645).
     - cron: '30 7 * * *'
   workflow_dispatch:
+    inputs:
+      review_images:
+        description: Run the API image reviewer (disable for capture-only diagnostics)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -214,7 +219,7 @@ jobs:
       contents: read
       actions: read
     needs: screenshot-diff
-    if: always() && github.event_name != 'pull_request'
+    if: always() && github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.review_images)
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
