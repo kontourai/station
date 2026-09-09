@@ -1,5 +1,35 @@
 [
   {
+    "timestampUtc": "2026-09-09T13:52:04Z",
+    "channel": "nightly-npm",
+    "version": "0.6.0-nightly.2443.34355735437",
+    "sha": "49cfa59dd6d037208595040721e0e7bbff114840",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34355735437",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.6.0-nightly.2443.34355735437 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "a7935a4cf5297db2eea11364badf96f8ce1d106b",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#1818](https://github.com/kontourai/station/pull/1818) test(runtime): wait on the cold-start harness's own event instead of a wall clock",
+          "[#1788](https://github.com/kontourai/station/pull/1788) test(scripts): execute every composed guardrail, dedupe verify:static linting, pin the copied CI classify jobs"
+        ]
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-09-09T02:49:16Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2443.1",
