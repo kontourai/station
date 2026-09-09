@@ -396,6 +396,12 @@ function replaceTerminalListener(
 async function awaitRouteConfiguration(
   initialization: Promise<unknown>,
 ): Promise<void> {
+  // Captured before the wait, deliberately. `configureRuntimeRoutes`'s
+  // `mockClear()` shares a teardown block with the deferred's re-arm, so an
+  // absolute `toHaveBeenCalled()` would be satisfied by the very stale state
+  // it is meant to catch — both survive the same skipped reset. A delta
+  // cannot be.
+  const callsBeforeWait = routeMocks.configureRuntimeRoutes.mock.calls.length;
   const reachedRoutes = await Promise.race([
     routeMocks.routesConfigured.then(() => true),
     initialization.then(
@@ -403,7 +409,16 @@ async function awaitRouteConfiguration(
       () => false,
     ),
   ]);
-  if (reachedRoutes) return;
+  if (reachedRoutes) {
+    // The deferred is a signal standing in for an event; assert the event
+    // too, so a deferred left resolved by a previous case can only ever
+    // produce a failure here, never a silent pass in everything after it.
+    expect(
+      routeMocks.configureRuntimeRoutes.mock.calls.length,
+      'route configuration was signalled without this boot configuring routes',
+    ).toBeGreaterThan(callsBeforeWait);
+    return;
+  }
   // A boot that rejects here reports its own error. One that settled to a
   // value reports that value — including a caller that folded its rejection
   // into one, as the Kit-failure case below does, so the message is never
@@ -426,26 +441,38 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
   let runtime: InstanceType<typeof StationRuntime> | undefined;
 
   afterEach(async () => {
-    if (runtime) {
-      await runtime.shutdown();
+    try {
+      if (runtime) {
+        await runtime.shutdown();
+      }
+    } finally {
+      // Unconditional, because `shutdown()` REJECTS whenever
+      // `shutdownAfterConfigurationDrain` collects a failure — and #1814's
+      // 100ms search-reader terminate grace makes that a load-dependent
+      // event, not a rare one. Reset that a throwing teardown skipped is
+      // how one slow case fails an innocent later one: a `routesConfigured`
+      // left resolved lets `awaitRouteConfiguration` return before the next
+      // case's routes exist, and an uncleared `nativeEngineAdoption.calls`
+      // fails the priming case's `toHaveLength(1)` against a case that did
+      // nothing wrong. That misattribution is the whole subject of #1791.
       runtime = undefined;
+      if (home) {
+        rmDirSyncRetrying(home);
+      }
+      storeIntegrityVerification.start.mockClear();
+      storeIntegrityVerification.stop.mockClear();
+      enginePrerequisitePriming.calls.length = 0;
+      routeMocks.configureRuntimeRoutes.mockClear();
+      routeMocks.servicePairs.length = 0;
+      routeMocks.taskDispatches.length = 0;
+      routeMocks.deferServerFactory = false;
+      routeMocks.kitLifecycleReady = Promise.resolve();
+      routeMocks.armRoutesConfigured();
+      nativeEngineAdoption.calls.length = 0;
+      if (originalHostedRegistryFile === undefined)
+        delete process.env[hostedRegistryFileEnv];
+      else process.env[hostedRegistryFileEnv] = originalHostedRegistryFile;
     }
-    if (home) {
-      rmDirSyncRetrying(home);
-    }
-    storeIntegrityVerification.start.mockClear();
-    storeIntegrityVerification.stop.mockClear();
-    enginePrerequisitePriming.calls.length = 0;
-    routeMocks.configureRuntimeRoutes.mockClear();
-    routeMocks.servicePairs.length = 0;
-    routeMocks.taskDispatches.length = 0;
-    routeMocks.deferServerFactory = false;
-    routeMocks.kitLifecycleReady = Promise.resolve();
-    routeMocks.armRoutesConfigured();
-    nativeEngineAdoption.calls.length = 0;
-    if (originalHostedRegistryFile === undefined)
-      delete process.env[hostedRegistryFileEnv];
-    else process.env[hostedRegistryFileEnv] = originalHostedRegistryFile;
   });
 
   it('rejects an incompatible home before EventStore can create SQLite state', () => {
@@ -559,6 +586,11 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     const [adoption] = nativeEngineAdoption.calls;
     expect(adoption.signal).toBeInstanceOf(AbortSignal);
     expect(adoption.signal?.aborted).toBe(false);
+    // Two controllers are aborted three lines apart in `shutdown()`, so
+    // every assertion here stays green if the adoption window is handed the
+    // PRIMING controller. Distinguishing them is what makes the pair a
+    // coupling proof rather than an "an AbortSignal exists" proof.
+    expect(adoption.signal).not.toBe(primed.signal);
 
     await runtime.shutdown();
     runtime = undefined;
