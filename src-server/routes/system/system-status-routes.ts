@@ -789,12 +789,20 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
      *
      * `booleanProbe` already abandons a late answer, so before this the
      * `which` child outlived the answer nobody would read; the signal is what
-     * ends it. No `timeoutMs`, deliberately and separately: this refresh's
-     * budget governs how long the CACHE waits, and a ceiling on the child
-     * would additionally turn a slow host into a reported "not installed" on
-     * a surface that drives the first-run launcher. Bounding the wait and
-     * declaring an absence are different decisions and only the first one is
-     * this refresh's to make.
+     * ends it. That is the whole of what this line changes.
+     *
+     * No `timeoutMs`: a ceiling of its own would add a SECOND way for these
+     * fields to report "not installed" without a locator having said so, on
+     * a surface that drives the first-run launcher.
+     *
+     * It does not add a first one. `booleanProbe` already commits `false`
+     * when the refresh budget expires, and the snapshot below caches that for
+     * `STATUS_PREREQUISITES_CACHE_TTL_MS` — the same class of flap
+     * `reconcileExternalEngineReadiness` exists to absorb for the field
+     * beside these, and which these three have no equivalent for. That is
+     * pre-existing and is tracked separately; it is recorded here so this
+     * comment is not read as a claim that these fields only ever report an
+     * observed absence.
      */
     const cliPresence = (command: string) =>
       whichCmd(command, { signal: controller.signal });

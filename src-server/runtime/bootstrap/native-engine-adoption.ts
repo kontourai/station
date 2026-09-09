@@ -88,9 +88,14 @@ const ADOPTION_ATTEMPT_DELAYS_MS = [0, 10_000, 30_000, 90_000] as const;
  * Matched to the first backoff step deliberately: a locator that has not
  * answered by the time the next attempt would have started is not an answer
  * this window can use, and leaving it running is what gave the adoption a
- * writer the runtime could not account for at shutdown. A probe that expires
- * settles as 'absent' for this attempt and is retried by the next one, which
- * is the same disposition an honest "not on PATH yet" already gets.
+ * writer the runtime could not account for at shutdown.
+ *
+ * An expired probe settles as 'absent' for this attempt and is retried by the
+ * next one. That is the one thing 'absent' cannot distinguish: the ceiling
+ * kills the locator and `detectCliOnPath` reports the same `false` a locator
+ * that genuinely said no reports, so this window has no way to tell them
+ * apart. Recorded here rather than papered over — the retry is what limits
+ * the cost, not the label.
  */
 export const ADOPTION_PROBE_TIMEOUT_MS = 10_000;
 
@@ -124,15 +129,30 @@ export interface NativeEngineAdoptionSummary {
   /**
    * What the window OBSERVED per candidate.
    *
-   * 'absent' means a probe answered and the CLI was not on PATH. It is not a
-   * stand-in for "the window closed before this candidate got an answer" —
-   * that is 'interrupted', added in station#1815 because the abort guards
-   * make the no-answer case reachable and reporting it as absence states a
-   * host fact nothing observed.
+   * 'absent' means an UNCANCELLED probe came back falsy. It cannot separate
+   * "the locator said no" from "the ceiling killed the locator", because
+   * `detectCliOnPath` has one answer channel and collapses both into `false`;
+   * `ADOPTION_PROBE_TIMEOUT_MS` records that limit. What it does exclude is a
+   * probe the shutdown signal cancelled, whose `false` is not an answer about
+   * the host at all.
+   *
+   * 'interrupted' is that case: the window closed before this candidate got a
+   * usable answer, or got one and was stopped before it could act on it.
+   * Added in station#1815, corrected in its second review round — the first
+   * version consulted the signal only BEFORE the probe, which is a few
+   * instructions, while the window an abort actually lands in is the probe's
+   * whole duration.
+   *
+   * 'suppressed' is the screenshot containment: no probe was made, by policy.
+   * It used to report 'absent' for a host nothing looked at.
    */
   outcomes: Record<
     string,
-    NativeEngineAdoptionOutcome | 'absent' | 'error' | 'interrupted'
+    | NativeEngineAdoptionOutcome
+    | 'absent'
+    | 'error'
+    | 'interrupted'
+    | 'suppressed'
   >;
 }
 
@@ -194,7 +214,10 @@ export async function adoptDetectedNativeEngines(
   // intact, but close the adoption window before any host probe can run.
   if (detection.suppressed) {
     for (const candidate of NATIVE_ENGINE_CANDIDATES) {
-      outcomes[candidate.id] = 'absent';
+      // 'suppressed', not 'absent' (station#1815 review round 2): `detect` is
+      // called zero times here, so an absence would be a claim about a host
+      // nothing looked at.
+      outcomes[candidate.id] = 'suppressed';
     }
     return { outcomes };
   }
@@ -228,21 +251,35 @@ export async function adoptDetectedNativeEngines(
       // down.
       if (deps.signal?.aborted) break;
       try {
-        if (
-          !(await detect(candidate.cli, {
-            signal: deps.signal,
-            timeoutMs: ADOPTION_PROBE_TIMEOUT_MS,
-          }))
-        ) {
+        const found = await detect(candidate.cli, {
+          signal: deps.signal,
+          timeoutMs: ADOPTION_PROBE_TIMEOUT_MS,
+        });
+        // Consulted AFTER the probe, which is the correction the second
+        // #1815 review round forced. `detectCliOnPath` resolves `false` on
+        // abort rather than rejecting, so under an aborted signal `found` is
+        // not an answer about the host — it is the cancellation arriving
+        // through the answer channel. The guard above this `try` covers only
+        // the few instructions between candidates; an abort lands inside the
+        // `which` child for the probe's whole duration, which is where it
+        // actually happens.
+        if (deps.signal?.aborted) {
+          // A `true` here IS an observation, and the window is stopping
+          // before it can act on it — assigned rather than left to the
+          // backfill, whose `??=` could not overwrite an 'absent' this
+          // candidate was legitimately given on an earlier attempt. The later
+          // observation is the authoritative one.
+          //
+          // A falsy `found` is no observation at all, so it writes nothing
+          // and leaves any earlier attempt's genuine 'absent' standing.
+          if (found) outcomes[candidate.id] = 'interrupted';
+          break;
+        }
+        if (!found) {
           // Not on PATH (yet): leave unresolved for the next attempt.
           outcomes[candidate.id] = 'absent';
           continue;
         }
-        // The probe answered, but shutdown may have begun while it ran. A
-        // write STARTED now is the write that lands after the home runtime
-        // lease is released; the next boot re-detects and re-adopts, so
-        // stopping here costs nothing but a restart's worth of delay.
-        if (deps.signal?.aborted) break;
         const outcome = await adoptNativeEngineConnection(
           deps.configLoader,
           candidate.id,
@@ -285,13 +322,14 @@ export async function adoptDetectedNativeEngines(
       }
     }
   }
-  // An abort closes the retry window. A candidate that WAS probed keeps the
-  // absence it was observed to have — `??=` never overwrites that. What the
-  // backfill covers is a candidate the window never got an answer for: one
-  // an abort guard stopped before its probe, and (station#1815 review LOW-1)
-  // one whose probe answered `true` and was then stopped before the write.
-  // Calling either of those 'absent' would report a host fact nothing looked
-  // at, in the same field where 'absent' means a probe said no.
+  // An abort closes the retry window. A candidate that WAS observed keeps
+  // what was observed — `??=` never overwrites it, and the loop above already
+  // assigned over a stale reading where a later probe contradicted it. What
+  // is left for the backfill is a candidate this window never got a usable
+  // answer for at all: one an abort guard stopped before its probe, and one
+  // whose probe was cancelled in flight. Calling either 'absent' would report
+  // a host fact nothing looked at, in the same field where 'absent' means an
+  // uncancelled probe said no.
   const interrupted = deps.signal?.aborted === true;
   for (const candidate of NATIVE_ENGINE_CANDIDATES) {
     if (!unresolved.has(candidate.id)) continue;

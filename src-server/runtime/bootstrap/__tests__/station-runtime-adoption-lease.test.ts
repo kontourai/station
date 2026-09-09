@@ -1,10 +1,74 @@
 // @vitest-environment node
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import {
   NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS,
   StationRuntime,
 } from '../station-runtime.js';
+
+const repoRoot = join(import.meta.dirname, '../../../..');
+const source = (path: string) => readFileSync(join(repoRoot, path), 'utf-8');
+
+/**
+ * Every shutdown grace Station actually runs under, READ from its own source
+ * rather than transcribed (station#1815 review round 2).
+ *
+ * The budget's docblock used to derive itself from "the time this process
+ * has", citing the 5 s Unix stop — a quantity that does not exist, and whose
+ * assertion was wrong by 5x for the primary desktop product. Transcribing the
+ * real numbers into a comment would have the same failure mode one revision
+ * later, so they are extracted here and the relationship is what gets pinned.
+ */
+function supervisorGraceMs(): Record<string, number> {
+  const platform = source('packages/cli/src/commands/platform.ts');
+  const desktop = source('src-desktop/src/lib.rs');
+  const desktopTerminate = desktop.slice(
+    desktop.indexOf('fn terminate_desktop_child'),
+  );
+  const read = (label: string, pattern: RegExp, text: string): number => {
+    const match = pattern.exec(text);
+    if (!match?.[1]) {
+      throw new Error(
+        `${label}: '${pattern}' no longer matches its source. The grace moved, ` +
+          'or the code did — either way this table has stopped being true.',
+      );
+    }
+    return Number(match[1]);
+  };
+
+  return {
+    // `taskkill /F` is the forced form: no graceful phase at all.
+    'station-stop-windows': /'taskkill',\s*\[\s*'\/F'/.test(platform) ? 0 : NaN,
+    'desktop-quit':
+      read('desktop-quit attempts', /for _ in 0\.\.(\d+)/, desktopTerminate) *
+      read(
+        'desktop-quit interval',
+        /Duration::from_millis\((\d+)\)/,
+        desktopTerminate,
+      ),
+    'station-stop-unix': read(
+      'station-stop-unix',
+      /const deadline = Date\.now\(\) \+ (\d+);/,
+      platform,
+    ),
+    systemd:
+      read(
+        'systemd',
+        /TimeoutStopSec=(\d+)/,
+        source('packages/cli/src/commands/service-systemd.ts'),
+      ) * 1000,
+    launchd:
+      read(
+        'launchd',
+        /LAUNCHD_EXIT_TIMEOUT_SECONDS = (\d+)/,
+        source('packages/cli/src/commands/service-launchd.ts'),
+      ) * 1000,
+    // A bare SIGTERM has no supervisor and no deadline.
+    'bare-sigterm': Number.POSITIVE_INFINITY,
+  };
+}
 
 /**
  * station#1815. The runtime holds this home's runtime lease from construction
@@ -67,9 +131,17 @@ function shutdownDouble(): ShutdownDouble {
   runtime.terminalWsServer = { stop: vi.fn() };
   runtime.terminalService = { dispose: vi.fn(async () => {}) };
   runtime.configLoader = {
+    getProjectHomeDir: () => '/tmp/station-home-under-test',
     dispose: vi.fn(async () => {
       log.push('loader-disposed');
     }),
+  };
+  runtime.stationEnvironmentId = 'env-under-test';
+  // Set because `stationEnvironmentId` is: `recordRuntimeLifecycle` returns
+  // early without one, and a double that carries an identity but cannot
+  // record its own lifecycle is not a shape the runtime ever has.
+  runtime.operationalEventPublisher = {
+    append: vi.fn(() => ({ kind: 'appended' as const })),
   };
   runtime.pluginOperationalEventSubscriptions = {
     close: vi.fn(async () => ({ kind: 'closed' as const })),
@@ -199,8 +271,16 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
     // The claim has to stay the one that is derivable. Naming only a wedge
     // here would be #1814's mistake with a different subject.
     expect(message).toMatch(/contention or a wedge/);
-    expect(message).toMatch(/lease record is reaped once this process exits/);
-    expect(fields).toEqual({ budgetMs: 25 });
+    expect(message).toMatch(
+      /reaped by the next lease scan after this process is gone/,
+    );
+    // Which home, on a host running several instances.
+    expect(fields).toEqual({
+      budgetMs: 25,
+      homeDir: '/tmp/station-home-under-test',
+      environmentId: 'env-under-test',
+      leaseOwnerId: 'test-owner',
+    });
 
     // Neither claim the runtime can no longer make is made.
     expect(release).not.toHaveBeenCalled();
@@ -230,7 +310,7 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
       await vi.advanceTimersByTimeAsync(1);
       await vi.advanceTimersByTimeAsync(0);
       expect(resolved).toBe(true);
-      expect(runtime.logger.warn.mock.calls.at(-1)?.[1]).toEqual({
+      expect(runtime.logger.warn.mock.calls.at(-1)?.[1]).toMatchObject({
         budgetMs: NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS,
       });
     } finally {
@@ -239,13 +319,31 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
     expect(release).not.toHaveBeenCalled();
   });
 
-  test('claims no more time than the process is given', () => {
-    // Pinned as a literal beside the derived case above, which would follow
-    // the constant anywhere. `killProcessTree` SIGKILLs 5 s after SIGTERM
-    // (`packages/cli/src/commands/platform.ts`), so a longer wait here is a
-    // wait on time this process does not have. Raising it is a decision about
-    // that relationship, not a tuning knob.
+  test('outlasts exactly the two graces its docblock says it outlasts', () => {
+    const graces = supervisorGraceMs();
+    // A misread regex must red as a missing grace, never pass as a NaN that
+    // silently drops out of the comparison below.
+    for (const [supervisor, ms] of Object.entries(graces)) {
+      expect(`${supervisor}=${ms}`).not.toMatch(/NaN/);
+    }
+
+    // The property, computed rather than asserted: this budget does NOT fit
+    // every supervisor, and these are the ones it exceeds. Moving the budget,
+    // or any of those graces, changes this set — which is the moment the
+    // docblock's table has to be looked at again. The first version of that
+    // docblock claimed the budget WAS the grace, and this list is what made
+    // that false.
+    const outlasted = Object.entries(graces)
+      .filter(([, ms]) => ms < NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS)
+      .map(([supervisor]) => supervisor)
+      .sort();
+    expect(outlasted).toEqual(['desktop-quit', 'station-stop-windows']);
+
+    // And the literal, beside the computed case for the reason my own notes
+    // give: a test written only against the constant follows the constant
+    // anywhere.
     expect(NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS).toBe(5_000);
+    expect(graces['station-stop-unix']).toBe(5_000);
   });
 
   test('a window that already settled costs shutdown nothing', async () => {

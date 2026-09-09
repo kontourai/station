@@ -16,6 +16,7 @@ import {
   ADOPTION_PROBE_TIMEOUT_MS,
   adoptDetectedNativeEngines,
   NATIVE_ENGINE_CANDIDATES,
+  SUPPRESS_NATIVE_ENGINE_ADOPTION_ENV,
 } from '../native-engine-adoption.js';
 
 const homes: string[] = [];
@@ -244,6 +245,14 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
     // reported 'absent' either way; now that an unprobed candidate says
     // 'interrupted', the assertion below is only true if the probes really
     // ran, and this wait is what makes that so.
+    //
+    // What this case does NOT pin, and the sentence above should not be read
+    // as claiming: that the abort lands INSIDE the delay rather than at the
+    // top-of-iteration guard. Both settle promptly and produce this same
+    // summary. The #1815 round-2 reviewer injected the listener away and this
+    // case timed out, so on that host it was inside the delay and the
+    // listener was load-bearing — but that is poll granularity, not something
+    // asserted here.
     const detect = vi.fn(async () => false);
 
     const startedAt = Date.now();
@@ -255,8 +264,13 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       delaysMs: [0, 600_000],
       signal: controller.signal,
     });
-    await vi.waitFor(() =>
-      expect(detect).toHaveBeenCalledTimes(NATIVE_ENGINE_CANDIDATES.length),
+    await vi.waitFor(
+      () =>
+        expect(detect).toHaveBeenCalledTimes(NATIVE_ENGINE_CANDIDATES.length),
+      // Stated, not defaulted: the default is 1s and this wait spans a real
+      // registry load and Station-Agent materialization — file I/O, on
+      // exactly the loaded hosts that motivated replacing the sleep here.
+      { timeout: 30_000, interval: 5 },
     );
     controller.abort();
 
@@ -312,7 +326,12 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       delaysMs: [0],
       signal: controller.signal,
     });
-    await vi.waitFor(() => expect(detect).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(detect).toHaveBeenCalledTimes(1), {
+      // Stated for the same reason as the case above: the registry load and
+      // materialization ahead of the first probe are real file I/O.
+      timeout: 30_000,
+      interval: 5,
+    });
     controller.abort();
     // The real probe resolves false on abort; a detector that answers TRUE
     // anyway is the discriminating case — it proves the write is stopped by
@@ -352,23 +371,132 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       delaysMs: [0],
       signal: controller.signal,
     });
-    await vi.waitFor(() => expect(detect).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(detect).toHaveBeenCalledTimes(1), {
+      // Stated for the same reason as the case above: the registry load and
+      // materialization ahead of the first probe are real file I/O.
+      timeout: 30_000,
+      interval: 5,
+    });
     controller.abort();
-    // ABSENT, deliberately. That path carries no adoption and so passes the
-    // post-probe guard entirely — the only thing standing between an abort
-    // landing mid-attempt and two more `which` children is the check the
-    // candidate loop makes before each probe.
+    // A falsy answer, deliberately: it is the shape the real probe returns
+    // under an abort, and the shape that reaches the `continue` path on an
+    // ordinary attempt. What this case is about is the check the candidate
+    // loop makes BEFORE each probe — without it, an abort landing mid-attempt
+    // still spawns a `which` for every remaining candidate.
     answerProbe(false);
 
     const summary = await pending;
     expect(detect).toHaveBeenCalledTimes(1);
-    // The two halves of the distinction in one summary: `claude` was looked
-    // at and was not there; the other two were never looked at.
+    // All three interrupted, and for two different reasons: `claude`'s probe
+    // was cancelled in flight (its `false` is the cancellation, not an
+    // answer), and the other two were never started. The case that separates
+    // an observed absence from an unobserved one is
+    // 'keeps an earlier observed absence…' below — this one is about the
+    // guard, and the call count is what carries that.
     expect(summary.outcomes).toEqual({
-      claude: 'absent',
+      claude: 'interrupted',
       codex: 'interrupted',
       muse: 'interrupted',
     });
+  });
+
+  it('reports a probe CANCELLED in flight as interrupted, not absent (#1815)', async () => {
+    const loader = createLoader();
+    const controller = new AbortController();
+    let answerProbe!: (found: boolean) => void;
+    const probed = new Promise<boolean>((resolve) => {
+      answerProbe = resolve;
+    });
+    const detect = vi.fn(() => probed);
+
+    const pending = adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0],
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(detect).toHaveBeenCalledTimes(1), {
+      timeout: 30_000,
+      interval: 5,
+    });
+    controller.abort();
+    // FALSE, which is what the real probe does here: `detectCliOnPath`
+    // resolves false on abort rather than rejecting. This is the common
+    // shape by a wide margin — an abort lands inside the `which` child for
+    // the probe's whole duration, while the guards on either side of it are
+    // a few instructions — and the first version of this fix reported it as
+    // 'absent' for a `claude` that may well be installed.
+    answerProbe(false);
+
+    const summary = await pending;
+    expect(summary.outcomes).toEqual({
+      claude: 'interrupted',
+      codex: 'interrupted',
+      muse: 'interrupted',
+    });
+    expect(detect).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an earlier observed absence a later cancelled probe cannot correct (#1815)', async () => {
+    const loader = createLoader();
+    const controller = new AbortController();
+    let calls = 0;
+    // Attempt 1 observes all three absent. Attempt 2 finds `claude` present
+    // and is stopped before it can write — so the summary must carry the
+    // LATER observation for `claude`, which the backfill's `??=` could never
+    // have done, while `codex` and `muse` keep the absence attempt 1 really
+    // did observe.
+    const detect = vi.fn(async () => {
+      calls += 1;
+      if (calls <= NATIVE_ENGINE_CANDIDATES.length) return false;
+      controller.abort();
+      return true;
+    });
+
+    const summary = await adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0, 1],
+      signal: controller.signal,
+    });
+    expect(summary.outcomes).toEqual({
+      claude: 'interrupted',
+      codex: 'absent',
+      muse: 'absent',
+    });
+    const registry = await loadOrCreateAgentRegistry(loader);
+    expect(registry.engineConnections).toEqual([]);
+  });
+
+  it('reports the screenshot containment as suppressed, not absent (#1815)', async () => {
+    const loader = createLoader();
+    const detect = vi.fn(async () => true);
+
+    const summary = await adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0],
+      env: {
+        [SUPPRESS_NATIVE_ENGINE_ADOPTION_ENV]: '1',
+        STATION_HOME_SOURCE: '--temp-home',
+        STATION_INSTANCE_ID: 'e2e-screenshot-mes5x00-abc123',
+      },
+    });
+
+    // Zero probes were made, so an absence would be a claim about a host
+    // nothing looked at — and this path made it for all three candidates.
+    expect(detect).not.toHaveBeenCalled();
+    expect(summary.outcomes).toEqual({
+      claude: 'suppressed',
+      codex: 'suppressed',
+      muse: 'suppressed',
+    });
+    // The containment itself is unchanged: nothing was adopted.
+    const registry = await loadOrCreateAgentRegistry(loader);
+    expect(registry.engineConnections).toEqual([]);
   });
 
   it('leaves a partially adopted registry the next run completes (#1815)', async () => {

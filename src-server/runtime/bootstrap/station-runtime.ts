@@ -276,24 +276,41 @@ const AGENT_CONFIGURATION_SHUTDOWN_DRAIN_GRACE_MS = 5_000;
  * How long shutdown waits for the aborted native-engine adoption window
  * (station#1815).
  *
- * NOT a wedge threshold, and an earlier revision of this comment claimed it
- * was. The window's remaining work is an agent-registry write, and that write
- * takes two file mutation locks in sequence (`saveRegistry`), each with a
- * 10 s admission deadline of its own (`lifecycle-events.ts` `acquireGen`),
- * inside a load-CAS-save loop that retries up to 8 times. The #1815 reviewer
- * measured a completely healthy adoption against ONE ordinary lock holder at
- * 10_000 ms. No budget this shutdown can honestly claim separates contention
- * from a wedge, so expiry is not reported as either — see
+ * Two things this number is NOT, both of which earlier revisions of this
+ * comment claimed it was.
+ *
+ * It is not a wedge threshold. The window's remaining work is an
+ * agent-registry write; `saveRegistry` takes two file mutation locks in
+ * sequence, each with a 10 s admission deadline of its own
+ * (`lifecycle-events.ts` `acquireGen`), inside a load-CAS-save loop that
+ * retries up to 8 times. The #1815 reviewer measured a completely healthy
+ * adoption against ONE ordinary lock holder at 10_000 ms. So expiry cannot
+ * mean "wedged" and is not reported as such — see
  * `settleNativeEngineAdoption`.
  *
- * What the number IS derived from is the time this process actually has.
- * `killProcessTree` SIGTERMs and SIGKILLs 5 s later
- * (`packages/cli/src/commands/platform.ts`), which is also the grace
- * `self-update-watchdog` gives; waiting longer than that is waiting on time
- * the runtime does not own. Every teardown step that must complete runs
- * BEFORE this wait, so being killed inside it costs only the lease release —
- * and a dead process's lease record is reaped by the next `listLiveLeases`
- * scan anyway.
+ * Nor is it "the time this process has". There is no such quantity. The
+ * graces Station actually runs under span three orders of magnitude, and the
+ * primary desktop product gives the tightest of the non-zero ones:
+ *
+ *   `station stop` on Windows  0 s  (`taskkill /F /T`, no graceful phase)
+ *   Desktop quit               1 s  (`terminate_desktop_child`, 20 x 50 ms)
+ *   `station stop` on Unix     5 s  (`killProcessTree`)
+ *   systemd                   30 s  (`TimeoutStopSec`)
+ *   launchd                  600 s  (`ExitTimeOut`)
+ *   a bare SIGTERM       unbounded
+ *
+ * `station-runtime-adoption-lease.test.ts` reads those numbers from their
+ * own sources and pins which of them this budget outlasts, so the list above
+ * cannot quietly stop being true.
+ *
+ * What the number IS: a choice inside that range, placed where the ordinary
+ * supervised stop (5 s) can still reach the disclosure below rather than
+ * being killed silently mid-wait. Under the two tighter graces it cannot,
+ * and the protective claim that follows does not hold there either: it is
+ * only where teardown itself fits the grace that being killed inside this
+ * wait costs just the lease release — which a later `listLiveLeases` scan
+ * reaps anyway. Under a 1 s Desktop quit, teardown may not have finished at
+ * all, and that is a product-level mismatch this constant cannot fix.
  */
 export const NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS = 5_000;
 
@@ -4327,9 +4344,16 @@ export class StationRuntime {
         'time for it; the Station home runtime lease and the configuration ' +
         'loader were left in place because a registry write may still be ' +
         'using them. This is contention or a wedge — from here the two are ' +
-        'indistinguishable — and the lease record is reaped once this ' +
-        'process exits.',
-      { budgetMs },
+        'indistinguishable — and the lease record is reaped by the next ' +
+        'lease scan after this process is gone.',
+      {
+        budgetMs,
+        // Which home, on a host running several instances. Both are already
+        // resolved by this point; neither is derived here.
+        homeDir: this.configLoader?.getProjectHomeDir?.(),
+        environmentId: this.stationEnvironmentId ?? undefined,
+        leaseOwnerId: this.stationHomeRuntimeLease?.ownerId,
+      },
     );
     return false;
   }
