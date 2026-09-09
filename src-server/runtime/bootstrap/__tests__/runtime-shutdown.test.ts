@@ -88,6 +88,45 @@ describe('shutdownRuntimeServices', () => {
     expect(logger.info).toHaveBeenCalledWith('Shutdown complete');
   });
 
+  test('records an absent configLoader rather than skipping it silently (station#1815)', async () => {
+    // The parameter became optional so `StationRuntime` can dispose its own
+    // loader after the native-engine adoption window settles. Optional is one
+    // keystroke from forgotten, and a forgotten teardown step here produces
+    // no compile error and no failure — so the absence has to leave a trace.
+    // The line says "had no target here", not "delegated" and not "was not
+    // run": from inside that function a deliberate handover and an omission
+    // are the same observation, and the only production caller usually
+    // disposes its loader moments later — so a claim that the step did not
+    // run would be false on most real emissions, and unknowable to this
+    // function on the rest.
+    const logger = { info: vi.fn(), error: vi.fn(), warn: vi.fn() };
+    const configLoader = { dispose: vi.fn(async () => {}) };
+    const base = {
+      timers: [],
+      mcpConfigs: new Map(),
+      activeAgents: new Map(),
+      acpBridge: { shutdown: vi.fn(async () => {}) },
+      feedbackService: { stop: vi.fn() },
+      voiceService: { stop: vi.fn(async () => {}) },
+      terminalWsServer: { stop: vi.fn() },
+      terminalService: { dispose: vi.fn(async () => {}) },
+    };
+
+    await shutdownRuntimeServices({ ...base, logger, configLoader });
+    expect(configLoader.dispose).toHaveBeenCalledTimes(1);
+    expect(logger.info).not.toHaveBeenCalledWith(
+      'Shutdown step had no target here',
+      expect.anything(),
+    );
+
+    logger.info.mockClear();
+    await shutdownRuntimeServices({ ...base, logger });
+    expect(logger.info).toHaveBeenCalledWith(
+      'Shutdown step had no target here',
+      { step: 'configLoader.dispose' },
+    );
+  });
+
   test('awaits notification service shutdown before runtime shutdown resolves', async () => {
     let release!: () => void;
     const notificationShutdown = new Promise<void>((resolve) => {
