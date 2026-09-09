@@ -397,8 +397,15 @@ async function main() {
         screens.map((screen) => screen.id.slice('gallery/'.length)),
       ),
     );
+  const localMuse = process.env.UI_REVIEW_BACKEND === 'muse';
   const visual = await reviewScreens(screens, {
-    apiKey: process.env.OPENAI_API_KEY,
+    ...(localMuse
+      ? {
+          fetchImpl: (await import('./lib/muse-image-review.mjs'))
+            .localMuseReviewFetch,
+        }
+      : {}),
+    apiKey: localMuse ? 'local-cli' : process.env.OPENAI_API_KEY,
     model: process.env.UI_REVIEW_MODEL ?? 'gpt-5.6-sol',
     baseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
   });

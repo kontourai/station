@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
+import { museReviewResponse } from '../lib/muse-image-review.mjs';
 import {
   reviewScreens,
   summarizeGallery,
@@ -212,4 +213,32 @@ describe('usability feedback coverage and reviewer failures', () => {
       expect(result.reviewed).toEqual(['a']);
     }
   });
+});
+
+test('local Muse requires a completed terminal receipt and does not accept partial text', () => {
+  expect(() =>
+    museReviewResponse(
+      JSON.stringify({
+        payload_type: 'run.output.delta',
+        payload: { text: '{}' },
+      }),
+    ),
+  ).toThrow('did not complete');
+  expect(() =>
+    museReviewResponse(
+      JSON.stringify({
+        payload_type: 'run.terminal.failed',
+        payload: { text: '{}' },
+      }),
+    ),
+  ).toThrow('did not complete');
+  const result = museReviewResponse(
+    JSON.stringify({
+      id: 'receipt',
+      payload_type: 'run.terminal.completed',
+      payload: { text: '{"reviewed":[],"findings":[]}' },
+    }),
+  );
+  expect(result.status).toBe('completed');
+  expect(result.output[0].content[0].text).toContain('reviewed');
 });
