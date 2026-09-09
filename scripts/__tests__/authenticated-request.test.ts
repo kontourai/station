@@ -86,6 +86,19 @@ describe('authenticated E2E request fixture', () => {
     expect(get).not.toHaveBeenCalled();
   });
 
+  test('does not impose a hop-by-hop close header on UI-proxied calls', async () => {
+    const post = vi.fn().mockResolvedValue({ ok: () => true });
+    const client = createAuthenticatedE2ERequest(
+      { post } as unknown as APIRequestContext,
+      env,
+    );
+    await client.post('/api/connections', { data: { name: 'fixture' } });
+    expect(post.mock.calls[0]?.[1].headers).not.toHaveProperty('connection');
+    expect(post.mock.calls[0]?.[1].headers.authorization).toBe(
+      `Bearer ${OPERATOR_CREDENTIAL}`,
+    );
+  });
+
   test('fails closed without the runner credential', () => {
     expect(() =>
       createAuthenticatedE2ERequest({} as APIRequestContext, {
