@@ -26,5 +26,5 @@ export function isEngineProvenanceAgent(
 }
 
 /** DESIGN.md §2's band labels, spoken in one place. */
-export const ENGINE_BAND_LABEL = 'Engines on this machine';
+export const ENGINE_BAND_LABEL = 'AI apps';
 export const AUTHORED_BAND_LABEL = 'Your agents';

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { useModelCapabilities } from '../contexts/ModelCapabilitiesContext';
 import { useModels } from '../contexts/ModelsContext';
 import { isComposingKeyEvent } from '../lib/isComposingKeyEvent';
@@ -41,6 +41,7 @@ interface ModelSelectorAutocompleteProps {
   onSelect: (model: Model) => void;
   onClose: () => void;
   maxHeight?: string;
+  anchorRef?: RefObject<HTMLElement | null>;
 }
 
 export function ModelSelectorAutocomplete({
@@ -51,6 +52,7 @@ export function ModelSelectorAutocomplete({
   onSelect,
   onClose,
   maxHeight,
+  anchorRef,
 }: ModelSelectorAutocompleteProps) {
   const capabilities = useModelCapabilities();
 
@@ -131,6 +133,7 @@ export function ModelSelectorAutocomplete({
       onClose={onClose}
       emptyMessage="No models found"
       maxHeight={maxHeight}
+      anchorRef={anchorRef}
     />
   );
 }
