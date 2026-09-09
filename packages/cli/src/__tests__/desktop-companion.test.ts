@@ -23,10 +23,12 @@ function fixture() {
   const home = realpathSync(mkdtempSync(join(tmpdir(), 'station-tray-test-')));
   homes.push(home);
   mkdirSync(join(home, 'runtime'), { mode: 0o700 });
+  const executable = join(home, 'registered-app');
+  writeFileSync(executable, 'owned executable fixture', { mode: 0o700 });
   const registration = {
     version: 1 as const,
     enabled: true,
-    executable: realpathSync(process.execPath),
+    executable,
     pid: 9876543,
     birth: 'original-birth',
   };
