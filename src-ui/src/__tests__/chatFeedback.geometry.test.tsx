@@ -18,9 +18,15 @@ import { ChatDockProjectSwitcherSheet } from '../components/chat-dock/ChatDockPr
 import { ProjectSidebarHeader } from '../components/project-sidebar/ProjectSidebarHeader';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
 
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ navigate: vi.fn() }),
-}));
+vi.mock('../contexts/NavigationContext', () => {
+  // #1798 split the actions-only read out of `useNavigation`; the mock has to
+  // answer both or every consumer of the new hook throws at render.
+  const navigation = { navigate: vi.fn() };
+  return {
+    useNavigation: () => navigation,
+    useNavigationActions: () => navigation,
+  };
+});
 vi.mock('react-markdown', () => ({
   default: ({ children }: { children: string }) => <div>{children}</div>,
 }));
@@ -127,7 +133,6 @@ describe('September 8 visual feedback regressions', () => {
           appName="Station"
           homeLabel="Station Nightly"
           channelBadge="Nightly"
-          buildLabel="Built 2 hours ago"
           collapsed
           isMobile={false}
           onCloseMobile={() => {}}
