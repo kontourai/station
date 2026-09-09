@@ -168,7 +168,11 @@ compares the compiled catalog to the set byte for byte and the loose
 re-encodes it as CgBI, so it is reverted with `pngcrush` and decoded with
 `sips` first). The receipt's `catalogMatchesChannelSet`,
 `shippedIconPixelsMatchChannelSet`, and `iconSetSha256` are the outcome of
-those comparisons; the upload job refuses a staged receipt without them.
+those comparisons; the upload job refuses a staged receipt without them. The
+overlay step seeds that receipt with `channel`, `sourceSha`,
+`desktopBundleIcon`, and `desktopBundleIconSha256`: the desktop master
+`bundle.icon` named, which never reaches the IPA. The shipped icon's digest is
+`shippedIconSha256`.
 
 The sets are generated, not hand-edited: `node scripts/generate-app-icons.mjs`
 emits them from each channel's opaque square master (iOS rejects alpha; the

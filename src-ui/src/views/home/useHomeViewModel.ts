@@ -97,7 +97,7 @@ function useHomeWorkData(): HomeWorkData {
     sessions.data ?? [],
     resolveModelLabel,
   );
-  const { selectedProject } = useNavigation();
+  const selectedProject = useNavigation((state) => state.selectedProject);
   const { defaultSelection } = useNewChatSelectionModel({
     agents,
     projects,

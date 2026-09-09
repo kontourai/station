@@ -122,7 +122,11 @@ describe('useOutboundQueueSnapshot', () => {
    * `activeChatsStore` plus the conversation inventory query, and
    * `DockShellControlParity`/`DockShellProjectBinding` both record that
    * decision. The flag above is proven where it is implemented; this is what
-   * keeps the dock passing it.
+   * keeps the dock passing it. The call lives in the dock's boundary-dialogs
+   * hook (extracted from ChatDock.tsx in #1785), which is the file this pin
+   * reads: a pin on ChatDock.tsx itself went red the moment the hook moved,
+   * unnoticed by any related-set selection because nothing imports this
+   * file's subject by path.
    */
   it('is gated on a conversation at the dock call site', () => {
     const dockSource = readFileSync(

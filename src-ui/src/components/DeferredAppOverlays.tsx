@@ -24,7 +24,7 @@
  */
 
 import { useEffect } from 'react';
-import { useNavigation } from '../contexts/NavigationContext';
+import { useNavigationActions } from '../contexts/NavigationContext';
 import { OPEN_CONNECTIONS_MODAL_EVENT } from '../lib/connectionModalEvents';
 import { subscribeToTrayNavigation } from '../lib/trayNavigation';
 import { CommandPalette } from './CommandPalette';
@@ -33,7 +33,7 @@ import { HomeRecoveryBannerSource } from './notifications/HomeRecoveryBannerSour
 import { ReportProblemHost } from './report-problem/ReportProblemHost';
 
 function TrayNavigationListener() {
-  const { navigate } = useNavigation();
+  const { navigate } = useNavigationActions();
   useEffect(
     () =>
       subscribeToTrayNavigation(navigate, () =>

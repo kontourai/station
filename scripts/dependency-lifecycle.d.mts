@@ -4,7 +4,12 @@ export function inertInstallTimeout(
   platform?: NodeJS.Platform,
   env?: NodeJS.ProcessEnv,
 ): number;
-export function check(options?: { cwd?: string; bootstrap?: boolean }): unknown;
+export function check(options?: {
+  cwd?: string;
+  bootstrap?: boolean;
+  /** Test-only override of the committed allowlist policy. */
+  allowlist?: unknown;
+}): unknown;
 export function pnpmInvocation(options?: {
   cwd?: string;
   env?: NodeJS.ProcessEnv;

@@ -21,7 +21,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
-import { useNavigation } from '../../contexts/NavigationContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
 import { drainQueuedMessageOnTurnCompleted } from '../../hooks/orchestration/queueDrain';
 import { useActiveChatTranscript } from '../../hooks/orchestration/useActiveChatTranscript';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
@@ -318,7 +318,7 @@ export function ChatDockBody({
   const { apiBase } = useApiBase();
   const { updateChat, clearEphemeralMessages, addEphemeralMessage } =
     useActiveChatActions();
-  const { navigate } = useNavigation();
+  const { navigate } = useNavigationActions();
   const { user } = useAuth();
   const { activeConnection } = useConnections();
   // Stable across renders unless the saved Station or accountable display name

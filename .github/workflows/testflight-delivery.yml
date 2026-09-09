@@ -165,13 +165,15 @@ jobs:
           node scripts/ios-testflight-channel.mjs --channel '${{ inputs.channel }}' --marketing-version '${{ inputs.marketing_version }}' --bundle-version '${{ inputs.bundle_version }}' --output "$RUNNER_TEMP/tauri.ios.channel.json"
           icon=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.env.RUNNER_TEMP + "/tauri.ios.channel.json", "utf8")).bundle.icon[0]')
           test -s "src-desktop/$icon"
-          # bundle.icon only reaches desktop bundling. The iOS catalog is
-          # rebuilt from the committed per-channel set below; the derived
-          # iconSet*/catalogMatchesChannelSet/shippedIcon* fields are added by
-          # `ios-channel-icons.mjs verify` once the IPA exists (#1776).
+          # bundle.icon only reaches desktop bundling, so the receipt names it
+          # as desktopBundleIcon*: which desktop master the overlay bound, never
+          # the icon in the IPA. The iOS catalog is rebuilt from the committed
+          # per-channel set below; the derived iconSet*/catalogMatchesChannelSet/
+          # shippedIcon* fields are added by `ios-channel-icons.mjs verify`
+          # once the IPA exists (#1776).
           icon_set=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).iosIconSet);' '${{ inputs.channel }}')
           test -d "src-desktop/$icon_set"
-          printf '{"channel":"%s","sourceSha":"%s","icon":"%s","iconSha256":"%s"}\n' '${{ inputs.channel }}' '${{ inputs.source_sha }}' "$icon" "$(shasum -a 256 "src-desktop/$icon" | awk '{print $1}')" > provider-receipts/channel-icon-receipt.json
+          printf '{"channel":"%s","sourceSha":"%s","desktopBundleIcon":"%s","desktopBundleIconSha256":"%s"}\n' '${{ inputs.channel }}' '${{ inputs.source_sha }}' "$icon" "$(shasum -a 256 "src-desktop/$icon" | awk '{print $1}')" > provider-receipts/channel-icon-receipt.json
       - name: Initialize the channel-specific Xcode project
         working-directory: src-desktop
         run: |
@@ -503,7 +505,7 @@ jobs:
           --app-id '${{ steps.app_store.outputs.app_id }}'
           --bundle-version '${{ inputs.bundle_version }}'
           --deadline-seconds 1800
-      - name: Record processed provider receipt and attach the channel group
+      - name: Record processed provider receipt and channel group membership
         env:
           WORKFLOW_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
