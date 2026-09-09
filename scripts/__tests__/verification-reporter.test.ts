@@ -29,6 +29,7 @@ import {
   gcVerificationArtifacts,
   isContainedPathSuffix,
   MAX_REDACTED_ATTACHMENT_BYTES,
+  normalizeDeclaredCause,
   persistPlaywrightAttachments,
   persistVerificationOutput,
   projectVerificationArtifacts,
@@ -462,6 +463,102 @@ describe('verification reporter', () => {
       infrastructureCause: '   ',
     });
     expect(blank.firstCausalExcerpt).toBe('          Error: observer failed');
+
+    // station#1827 review item 7: the marker that says which of the two the
+    // head excerpt is. Withholding `causeStream` for a declared cause left the
+    // summary unable to say anything at all, so a declaration and a scan
+    // guess rendered identically.
+    expect(stopped.infrastructureCause).toBe('ci:fast exceeded its budget');
+    expect(stopped.causeStream).toBeUndefined();
+    expect(red.infrastructureCause).toBeUndefined();
+    expect(blank.infrastructureCause).toBeUndefined();
+
+    // The marker is additive and LOWEST priority: a cap tight enough to cut
+    // the excerpt drops the marker rather than the excerpt. That direction is
+    // the point -- a reader who loses the marker assumes the excerpt was
+    // scanned, which understates confidence, where losing the excerpt would
+    // lose the diagnostic itself.
+    //
+    // It also bounds what this file can claim about the marker's VALUE. The
+    // implementation seeds it from the already-truncated `firstCausalExcerpt`
+    // so the two can never describe one declaration differently, but sweeping
+    // every cap from 180 to 3000 bytes finds no cap where the marker survives
+    // a truncated excerpt, so that choice is unobservable here: the equality
+    // below holds under either implementation. It is a guarantee by
+    // construction, asserted as far as it can be and no further.
+    const long = `ci:fast exceeded its budget ${'x'.repeat(300)}`;
+    let markersSeen = 0;
+    let truncationsSeen = 0;
+    for (const maxBytes of [200, 260, 340, 512, 2048]) {
+      const capped = summarizeVerificationOutput({
+        ...capture,
+        terminal: { status: 'infrastructure_error', exitCode: null },
+        infrastructureCause: long,
+        maxBytes,
+      });
+      // The excerpt is the declaration at every cap -- the byte budget cuts
+      // it, it never falls back to the decoy.
+      expect(long.startsWith(capped.firstCausalExcerpt as string)).toBe(true);
+      if ((capped.firstCausalExcerpt as string) === long) {
+        markersSeen += 1;
+        expect(capped.infrastructureCause).toBe(capped.firstCausalExcerpt);
+      } else {
+        truncationsSeen += 1;
+        expect(capped.infrastructureCause).toBeUndefined();
+      }
+    }
+    // Neither half of the sweep is vacuous: caps that really truncate, and at
+    // least one that really carries the marker.
+    expect(truncationsSeen).toBeGreaterThan(0);
+    expect(markersSeen).toBeGreaterThan(0);
+  });
+
+  // station#1827 review item 2: one normalization, shared by every writer that
+  // records a declared cause, so the summary and the receipt agree by
+  // structure rather than by two writers being written carefully.
+  test('normalizes a declared cause once, idempotently, and refuses a non-declaration (station#1827)', () => {
+    const esc = String.fromCharCode(27);
+    // Escapes come off BEFORE redaction, and this is the shape that proves the
+    // order rather than merely exercising it: a token whose CHARACTER CLASS
+    // the escape breaks. `ghp_[A-Za-z0-9]{36,}` sees only 20 alphanumerics
+    // before the escape and does not match, so redacting first leaves the
+    // token intact and the later strip reassembles it into the excerpt.
+    //
+    // A `Bearer <token>` fixture does NOT discriminate here -- that pattern's
+    // `[^\s"'`,;]+` matches the escape bytes too, so it redacts either way.
+    // (Found by injecting the reversed order and watching this test pass.)
+    const split = normalizeDeclaredCause(
+      `stopped after ghp_${'A'.repeat(20)}${esc}[0m${'B'.repeat(20)}`,
+    );
+    expect(split).toContain('[REDACTED]');
+    expect(split).not.toContain('ghp_');
+    expect(split).not.toContain('B'.repeat(20));
+    expect(split).not.toContain(esc);
+
+    // Not declarations.
+    expect(normalizeDeclaredCause('   ')).toBeNull();
+    expect(normalizeDeclaredCause('')).toBeNull();
+    expect(normalizeDeclaredCause(undefined)).toBeNull();
+    expect(normalizeDeclaredCause(`${esc}[0m`)).toBeNull();
+
+    // Bounded in BYTES, codepoint-aligned, and never above the schema's own
+    // code-point wall. A surrogate pair is never cut in half.
+    for (const value of [
+      'a'.repeat(600),
+      // Space-separated so a byte cut lands immediately after a space, which
+      // is the case the post-prefix trim exists for.
+      'x '.repeat(400),
+      `e${'\u{1F600}'.repeat(400)}`,
+    ]) {
+      const once = normalizeDeclaredCause(value);
+      expect(once).not.toBeNull();
+      expect(Buffer.byteLength(once as string)).toBeLessThanOrEqual(512);
+      expect([...(once as string)].length).toBeLessThanOrEqual(512);
+      expect(once).toBe((once as string).trim());
+      // Idempotent: this is what lets the receipt writer normalize and the
+      // summarizer normalize again without the two diverging.
+      expect(normalizeDeclaredCause(once)).toBe(once);
+    }
   });
 
   // causeStream is an enum. Truncated to 's' it is a value outside its own

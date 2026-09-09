@@ -3,6 +3,8 @@ import { existsSync, renameSync } from 'node:fs';
 import { createVerificationReceipt } from './verification-receipt.mjs';
 import { redactVerificationOutput } from './verification-redaction.mjs';
 import {
+  DECLARED_CAUSE_BYTE_CAP,
+  normalizeDeclaredCause,
   persistPlaywrightAttachments,
   persistVerificationOutput,
   summarizeVerificationOutput,
@@ -43,6 +45,22 @@ function boundedSummaryEnvelope(summary) {
     // bounded like everything else here.
     ...(summary?.causeStream
       ? { causeStream: boundedText(summary.causeStream, 16) }
+      : {}),
+    // station#1827 review item 7: the positive counterpart of `causeStream`.
+    // A runner-declared cause deliberately carries no `causeStream` (the
+    // caveat that field renders would be false for it), and this allow-list
+    // is where withholding a marker turns into showing nothing at all: the
+    // envelope is what the CI annotation and the printed verdict read, so
+    // without this a declared cause rendered byte-identically to a scanned
+    // one. Bounded like every other diagnostic field here; the reporter has
+    // already normalized and byte-bounded it to DECLARED_CAUSE_BYTE_CAP.
+    ...(summary?.infrastructureCause
+      ? {
+          infrastructureCause: boundedText(
+            summary.infrastructureCause,
+            DECLARED_CAUSE_BYTE_CAP,
+          ),
+        }
       : {}),
     // station#4249 review: present ONLY when reportExecution's own reporting
     // pipeline failed (the reconcile-note catch branches below) -- this is
@@ -106,31 +124,30 @@ function boundedSummaryEnvelope(summary) {
     : envelope;
 }
 
-function primaryInterruptedCause(raw, result) {
-  if (result?.status === 'timed_out')
-    return 'verification execution timed out before terminal reporting';
-  if (result?.status === 'canceled')
-    return 'verification execution was canceled before terminal reporting';
-  if (result?.status !== 'infrastructure_error') return null;
-  const classified = raw?.infrastructureCause;
-  if (typeof classified === 'string' && classified.length > 0)
-    return `verification execution infrastructure error: ${boundedText(classified, 512)}`;
-  const message = raw?.error?.message;
-  return typeof message === 'string' && message.length > 0
-    ? `verification execution infrastructure error: ${boundedText(message, 512)}`
-    : 'verification execution ended with an infrastructure error before terminal reporting';
-}
-
 /**
- * The bounded, redacted form of the runner's own final word about why it
- * stopped, or null.
+ * The normalized form of the runner's own final word about why it stopped, or
+ * null.
  *
  * station#1827: `ciFastInfrastructureCause` (verification-execution-lifecycle)
  * already recovers the owner-final line ci:fast prints before it returns its
- * infrastructure exit code, but only `primaryInterruptedCause` above read it
+ * infrastructure exit code, but only `primaryInterruptedCause` below read it
  * -- and that is reached ONLY when reporting itself throws. On the ordinary
  * path the value was computed and dropped, so the receipt for a budget kill
  * carried no cause and the summary reported a scanned excerpt instead.
+ *
+ * TWO channels, in `primaryInterruptedCause`'s exact precedence (review item
+ * 1). `raw.error.message` is the other declaration a runner makes about its
+ * own stop -- `createOwnedRunner` returns it for a surviving owned process, an
+ * invalid-UTF-8 capture and a spawn failure, on EVERY lane, not only ci-fast
+ * -- and threading one channel while dropping the sibling would leave the
+ * ordinary path and the reconcile path disagreeing about what the runner's
+ * own final word was, which is the defect this change exists to close.
+ *
+ * `primaryInterruptedCause`'s third arm, the fixed 'ended with an
+ * infrastructure error' sentence, is deliberately NOT adopted: it is prose
+ * this module synthesizes when neither channel spoke, so promoting it would
+ * displace a real scanned excerpt with boilerplate and make the receipt claim
+ * a declaration that never happened.
  *
  * Bound to the status it explains. A cause for stopping is meaningful for an
  * `infrastructure_error` terminal and for no other: attaching it to a `failed`
@@ -139,9 +156,29 @@ function primaryInterruptedCause(raw, result) {
  */
 function ownerInfrastructureCause(raw, result) {
   if (result?.status !== 'infrastructure_error') return null;
-  const cause = raw?.infrastructureCause;
-  if (typeof cause !== 'string' || cause.length === 0) return null;
-  return boundedText(cause, 512) || null;
+  return (
+    normalizeDeclaredCause(raw?.infrastructureCause) ??
+    normalizeDeclaredCause(raw?.error?.message)
+  );
+}
+
+function primaryInterruptedCause(raw, result) {
+  if (result?.status === 'timed_out')
+    return 'verification execution timed out before terminal reporting';
+  if (result?.status === 'canceled')
+    return 'verification execution was canceled before terminal reporting';
+  if (result?.status !== 'infrastructure_error') return null;
+  // station#1827 review item 4: the declared cause embedded in this prose is
+  // resolved and normalized by the SAME function the receipt records, so the
+  // two differ only in rendering -- this branch wraps it in a sentence, and
+  // the summary's byte budget may cut it -- never in which declaration they
+  // read or in the bytes of that declaration. The precedence itself used to
+  // live here in duplicate; that duplication is what let the ordinary path
+  // drop `raw.error.message` while this path reported it.
+  const declared = ownerInfrastructureCause(raw, result);
+  return declared
+    ? `verification execution infrastructure error: ${declared}`
+    : 'verification execution ended with an infrastructure error before terminal reporting';
 }
 
 function preservesPrimaryTerminal(result) {
@@ -245,8 +282,20 @@ export function reportExecution({ raw, result, cleanup, worktree, request }) {
       summary: summarizeVerificationOutput({
         stdout: raw?.output?.stdout?.text ?? '',
         stderr: raw?.output?.stderr?.text ?? '',
-        // The same value the receipt carries, so the printed summary and the
-        // persisted receipt can never name different causes for one run.
+        // The same already-normalized value the receipt carries.
+        //
+        // What that guarantees, stated no wider than it is true (review item
+        // 2): the summary and the receipt resolve the same declaration and
+        // hold the same bytes of it. What it does NOT guarantee is identical
+        // rendering -- the reconcile branch below wraps the cause in a
+        // sentence, and the summary's byte budget can cut the excerpt shorter
+        // than the receipt's field. A reader comparing them is comparing a
+        // rendering against a record, not two independent claims.
+        //
+        // `normalizeDeclaredCause` is idempotent, so the summarizer running
+        // it again on this value is a no-op rather than a second convention:
+        // the agreement is structural, not a coincidence of both writers
+        // applying the same transforms in the same order.
         ...(infrastructureCause ? { infrastructureCause } : {}),
         // exitCode and truncated are what let the reporter tell a real
         // non-pass from a `completed` status, and a prefix-capture from a

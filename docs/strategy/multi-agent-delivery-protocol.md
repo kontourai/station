@@ -303,16 +303,31 @@ completion lane's parent capture, which folds every phase's output behind a
 phase sequence stops at the first non-passing phase, the failing phase is
 always the last region.
 
-When the excerpt came from stderr the receipt says so, in `causeStream`. Its
-**absence is the stronger claim**: the excerpt was scoped to the step that
-failed, or (station#1827) it was not scanned out of the capture at all — on an
-`infrastructure_error` whose runner named its own reason for stopping, that
-reason is the excerpt, and the receipt carries it as
-`terminal.infrastructureCause`. The field qualifies a SCANNED excerpt; a
-runner's own declaration is not one, and the sentence it renders ("picked by
-severity and position") would be false for it. Severity is ranked too — an error outranks a warning above it — after
-two blind spots that made most errors invisible to the matcher entirely
-(biome's ` FIXABLE ` tag, and format diagnostics that carry no `line:col`).
+Two fields say how the excerpt was chosen, and between them the reader is
+never left inferring it from a silence.
+
+`causeStream` qualifies a SCANNED excerpt: present (`stderr`) means the
+excerpt was ranked off a stream with no step markers rather than attributed
+to the failing step. Among scanned excerpts its **absence is the stronger
+claim** — the excerpt was scoped to the step that failed.
+
+`infrastructureCause` (station#1827) says the excerpt was not scanned at all.
+On an `infrastructure_error` whose runner named its own reason for stopping,
+that reason is the head excerpt, and this field carries it. A declaration is
+not a scan result, so it deliberately sets no `causeStream`: the sentence that
+field renders — "picked by severity and position" — would be false for it.
+The two are mutually exclusive by construction, so `causeStream`'s absence is
+read against `infrastructureCause`'s presence, never on its own.
+
+Both appear in the bounded **summary** the CLI prints and the CI annotation
+renders. The **receipt** is a separate artifact: it records
+`terminal.infrastructureCause` and does not carry `causeStream` at all, and it
+is the copy `boundedControlResult` stamps the printed verdict from, because no
+byte budget can drop it there.
+
+Severity is ranked too — an error outranks a warning above it — after two
+blind spots that made most errors invisible to the matcher entirely (biome's
+` FIXABLE ` tag, and format diagnostics that carry no `line:col`).
 
 `failingStep` is omitted rather than guessed: on a truncated capture the last
 header names a step that finished fine, and under `canceled`/`timed_out`

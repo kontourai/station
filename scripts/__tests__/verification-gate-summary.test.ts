@@ -46,14 +46,21 @@ function verdictDocument({
   counts,
   passed,
   extraSummary = {},
+  infrastructureCause,
 }: {
   stdout: string;
   stderr?: string;
   status: string;
-  exitCode: number;
+  exitCode: number | null;
   counts: Record<string, number>;
   passed: boolean;
   extraSummary?: Record<string, unknown>;
+  /**
+   * station#1827: threaded into BOTH real producers the way `reportExecution`
+   * threads it -- the summarizer's option and the receipt's terminal -- so the
+   * fixture cannot show a marker the pipeline would not have produced.
+   */
+  infrastructureCause?: string;
 }): string {
   const summary = summarizeVerificationOutput({
     stdout,
@@ -61,6 +68,7 @@ function verdictDocument({
     terminal: { status, exitCode, truncated: false },
     counts,
     cleanup,
+    ...(infrastructureCause ? { infrastructureCause } : {}),
     maxBytes: 4096,
   });
   const rendered = renderBounded({
@@ -68,7 +76,12 @@ function verdictDocument({
     request: { key: requestKey, laneId: 'full-regression' },
     summary,
     receipt: {
-      terminal: { status, exitCode, passed },
+      terminal: {
+        status,
+        exitCode,
+        passed,
+        ...(infrastructureCause ? { infrastructureCause } : {}),
+      },
       counts,
       cleanup,
       artifacts: [],
@@ -629,6 +642,63 @@ describe('verification gate summary', () => {
     expect(summary).toContain('✅ passed');
     expect(summary).toContain('Terminal status: `completed`');
     expect(summary).toContain('Disposition: `reused`');
+  });
+
+  // station#1827 review item 7. `causeStream` is deliberately withheld for a
+  // runner-declared cause -- its sentence says the excerpt "was picked by
+  // severity and position", which nothing did -- and withholding it left this
+  // renderer showing a declaration byte-identically to a scan guess. Both
+  // producers are the real ones, so the marker reaching the page proves the
+  // whole thread: summarizer option -> summary field -> bounded envelope ->
+  // rendered caveat.
+  test('says a causal excerpt was declared by the runner, not picked out of the output (station#1827)', () => {
+    const root = workspace();
+    const capture = join(root, 'ci-fast.stdout.log');
+    // The decoy the scan WOULD choose. Without it in the capture the summary
+    // would carry the declaration by default, and the test would prove nothing
+    // about precedence or about which sentence is rendered.
+    const stoppedLog = [
+      '> @kontourai/station-core@0.0.0 ci:fast',
+      '> node scripts/run-ci-fast.mjs',
+      '          Error: observer failed',
+    ].join('\n');
+    writeFileSync(
+      capture,
+      capturedStdout(
+        stoppedLog,
+        verdictDocument({
+          stdout: stoppedLog,
+          status: 'infrastructure_error',
+          exitCode: null,
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 1,
+          },
+          passed: false,
+          infrastructureCause: 'ci:fast exceeded its 12-minute feedback budget',
+        }),
+      ),
+    );
+
+    const { status, stdout, summary } = runSummary(root, [
+      '--stdout-file',
+      capture,
+    ]);
+
+    // This reporter never changes the gate step's own verdict, in either
+    // direction, and the new field must not start.
+    expect(status).toBe(0);
+    expect(summary).toContain('Causal excerpts');
+    expect(summary).toContain('ci:fast exceeded its 12-minute feedback budget');
+    expect(summary).toContain('Declared by the runner that stopped this lane');
+    // The caveat that would have been false. Absence here is now a positive
+    // statement rather than the silence it used to be.
+    expect(summary).not.toContain('picked by severity and position');
+    expect(errorAnnotations(stdout).join('\n')).toContain(
+      'ci:fast exceeded its 12-minute feedback budget',
+    );
   });
 
   // GitHub reads `%0A` as one newline; a cut landing inside it leaves a bare

@@ -181,7 +181,7 @@
           "maxLength": 1024
         },
         "infrastructureCause": {
-          "description": "The stopping runner's own final word about why this lane never reached a verdict — ci:fast's feedback-budget kill, recovered from the owner-final line it prints before returning its infrastructure exit code. Bounded and redacted like every other diagnostic excerpt. Present only on an `infrastructure_error` terminal, and only when the runner named a cause; absence means no runner-declared cause was recovered, never that the run had none.",
+          "description": "The stopping runner's own final word about why this lane never reached a verdict — ci:fast's owner-final feedback-budget line, or otherwise the message of the error the owned runner itself raised. Escape-stripped, redacted and bounded to 512 bytes by the producer; this `maxLength` counts code points and is the looser outer wall. Present when an `infrastructure_error` receipt carried a recovered runner declaration, and on no other status. Its absence says only that no declaration was recorded on this receipt — it is not evidence that the runner made none, since a run the coordinator's deadline stops is classified `timed_out` before the runner's own classification is consulted.",
           "type": "string",
           "maxLength": 512
         }

@@ -14,6 +14,9 @@ import { reportExecution } from '../lib/verification-terminal-receipt.mjs';
 
 const roots: string[] = [];
 
+/** The terminal escape byte, spelled rather than embedded in source. */
+const ESC = String.fromCharCode(27);
+
 function changedDiagnostic(provenance: Record<string, string>) {
   return {
     schemaVersion: 1,
@@ -1190,4 +1193,185 @@ test('an ordinary failing lane still reports its scanned excerpt (station#1827)'
   expect(reported.summary.causalExcerpts[0]).toBe(SCANNED_DECOY_DIAGNOSTIC);
   expect(reported.summary.causalExcerpts).not.toContain(BUDGET_CAUSE);
   expect(reported.result.infrastructureCause).toBeUndefined();
+});
+
+/**
+ * station#1827 review item 1: the OTHER channel a runner declares its own stop
+ * on. `createOwnedRunner` returns `{ status: null, error: Error(...) }` for a
+ * surviving owned process, an unreadable capture and a spawn failure, on every
+ * lane -- `primaryInterruptedCause` has always reported it, and threading only
+ * `raw.infrastructureCause` left it computed-and-dropped on the ordinary path
+ * for the same status.
+ */
+test("the owned runner's own error message is the cause when no owner-final line was printed (station#1827)", () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-sibling-'));
+  roots.push(worktree);
+  const reported = reportExecution({
+    raw: {
+      // No ci-fast attachment contract here: this shape reaches the ordinary
+      // path on ANY lane, which is the reachability the review established.
+      error: { message: 'owned verification process survived cleanup' },
+      output: {
+        stdout: { text: `${SCANNED_DECOY_DIAGNOSTIC}\n` },
+        stderr: { text: '' },
+      },
+    },
+    result: {
+      status: 'infrastructure_error',
+      exitCode: null,
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+    },
+    cleanup: { status: 'failed', survivingOwnedChildren: 0 },
+    worktree,
+    request: { key: 'a'.repeat(64) },
+  });
+
+  expect(reported.summary.reconcileNote).toBeUndefined();
+  expect(reported.summary.firstCausalExcerpt).toBe(
+    'owned verification process survived cleanup',
+  );
+  expect(reported.summary.causalExcerpts).toContain(SCANNED_DECOY_DIAGNOSTIC);
+  expect(reported.result.infrastructureCause).toBe(
+    'owned verification process survived cleanup',
+  );
+});
+
+test('the owner-final line outranks the runner error message when both spoke (station#1827)', () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-precedence-'));
+  roots.push(worktree);
+  // Both channels, different text. `primaryInterruptedCause` has always read
+  // them in this order; the ordinary path must not invert it, or the two
+  // paths would name different causes for one run again.
+  const reported = reportExecution({
+    raw: {
+      infrastructureCause: BUDGET_CAUSE,
+      error: { message: 'owned verification process survived cleanup' },
+      output: {
+        stdout: { text: `${SCANNED_DECOY_DIAGNOSTIC}\n` },
+        stderr: { text: OWNER_FINAL_STDERR },
+      },
+    },
+    result: {
+      status: 'infrastructure_error',
+      exitCode: null,
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+    },
+    cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+    worktree,
+    request: { key: 'a'.repeat(64) },
+  });
+
+  expect(reported.result.infrastructureCause).toBe(BUDGET_CAUSE);
+  expect(reported.summary.firstCausalExcerpt).toBe(BUDGET_CAUSE);
+});
+
+/**
+ * station#1827 review item 2. The comment on the summary/receipt fork promises
+ * they never name different causes; these are the two inputs that used to
+ * break it, because the reporter normalized and `boundedText` did not.
+ */
+test('the summary and the receipt hold the same normalized cause bytes (station#1827)', () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-normalize-'));
+  roots.push(worktree);
+  const run = (raw: Record<string, unknown>) =>
+    reportExecution({
+      raw: {
+        ...raw,
+        output: {
+          stdout: { text: `${SCANNED_DECOY_DIAGNOSTIC}\n` },
+          stderr: { text: '' },
+        },
+      },
+      result: {
+        status: 'infrastructure_error',
+        exitCode: null,
+        counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+      },
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      worktree,
+      request: { key: 'a'.repeat(64) },
+    });
+
+  // Whitespace-only is not a declaration. It used to reach the receipt as
+  // `"   "` while the summary named the decoy -- two artifacts, two answers.
+  const blank = run({ infrastructureCause: '   ' });
+  expect(blank.result.infrastructureCause).toBeUndefined();
+  expect(blank.summary.firstCausalExcerpt).toBe(SCANNED_DECOY_DIAGNOSTIC);
+  expect(blank.summary.infrastructureCause).toBeUndefined();
+
+  // A coloured declaration: the summary stripped the escapes, the receipt kept
+  // them. Worse, `boundedText` redacts WITHOUT stripping first, which is the
+  // ordering the reporter's own comment calls unsafe for a secret split by an
+  // escape sequence.
+  const coloured = run({
+    infrastructureCause: `${ESC}[31mci:fast exceeded its budget${ESC}[0m`,
+  });
+  expect(coloured.result.infrastructureCause).toBe(
+    'ci:fast exceeded its budget',
+  );
+  expect(coloured.result.infrastructureCause).toBe(
+    coloured.summary.firstCausalExcerpt,
+  );
+  expect(coloured.result.infrastructureCause).toBe(
+    coloured.summary.infrastructureCause,
+  );
+  expect(coloured.result.infrastructureCause).not.toContain(ESC);
+
+  // The escape-split secret the ordering exists for. The discriminating shape
+  // is a token whose CHARACTER CLASS the escape breaks: `ghp_[A-Za-z0-9]{36,}`
+  // sees 20 alphanumerics and stops, so redacting before stripping leaves the
+  // token whole and the later strip reassembles it into the receipt. A
+  // `Bearer <token>` fixture proves nothing here -- that pattern matches the
+  // escape bytes too and redacts under either order.
+  const secret = run({
+    infrastructureCause: `stopped after ghp_${'A'.repeat(20)}${ESC}[0m${'B'.repeat(20)}`,
+  });
+  expect(secret.result.infrastructureCause).toContain('[REDACTED]');
+  expect(secret.result.infrastructureCause).not.toContain('ghp_');
+  expect(secret.result.infrastructureCause).not.toContain('B'.repeat(20));
+});
+
+/**
+ * station#1827 review item 4: the reconcile branch. `primaryInterruptedCause`
+ * has always put the cause in the SUMMARY here; the branch that puts it on the
+ * preserved result -- and therefore into the canonical receipt -- had no
+ * assertion of its own, so deleting it was caught by nothing.
+ */
+test("a reporting-pipeline failure still records the runner's cause on the preserved result (station#1827)", () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-reconcile-'));
+  roots.push(worktree);
+  const reported = reportExecution({
+    raw: {
+      infrastructureCause: BUDGET_CAUSE,
+      // Forces the catch branch: a required attachment the lane could not
+      // bind. `preservesPrimaryTerminal` then keeps the primary terminal.
+      unavailableAttachments: [
+        { name: 'changed-test-diagnostics', reason: 'missing' },
+      ],
+      output: {
+        stdout: { text: `${SCANNED_DECOY_DIAGNOSTIC}\n` },
+        stderr: { text: OWNER_FINAL_STDERR },
+      },
+    },
+    result: {
+      status: 'infrastructure_error',
+      exitCode: null,
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+    },
+    cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+    worktree,
+    request: { key: 'a'.repeat(64) },
+  });
+
+  // This IS the reconcile case, which is what makes the assertion below about
+  // the branch the review found untested rather than the ordinary one.
+  expect(reported.summary.reconcileNote).toContain(
+    'required attachment unavailable',
+  );
+  expect(reported.result.infrastructureCause).toBe(BUDGET_CAUSE);
+  // The two artifacts differ only in RENDERING: this branch wraps the cause in
+  // a sentence. The declaration and its bytes are the same.
+  expect(reported.summary.firstCausalExcerpt).toBe(
+    `verification execution infrastructure error: ${BUDGET_CAUSE}`,
+  );
 });

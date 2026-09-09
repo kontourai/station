@@ -743,6 +743,61 @@ describe('verification status projection', () => {
     });
   });
 
+  // station#1827 review item 7: same idiom, sharper reason. The summarizer's
+  // own `infrastructureCause` is additive and LOWEST priority in its byte
+  // budget, so a tight cap can omit it there; the receipt's copy is subject to
+  // no budget. Stamping the printed verdict from the receipt is what keeps the
+  // marker present on exactly the runs a reader most needs it -- the long,
+  // truncated ones. The summary below deliberately omits the field to make
+  // that the only source this can be reading.
+  test('stamps summary.infrastructureCause from the receipt, not from the summary (station#1827)', () => {
+    const cause = 'ci:fast exceeded its 12-minute feedback budget';
+    const stopped = {
+      terminal: {
+        status: 'infrastructure_error',
+        exitCode: null,
+        passed: false,
+        infrastructureCause: cause,
+      },
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      artifacts: [],
+      request: { key: 'k' },
+    };
+
+    const bounded = boundedControlResult({
+      disposition: 'executed',
+      request: { key: 'k', laneId: 'ci-fast' },
+      receipt: stopped,
+      summary: {
+        terminal: 'infrastructure_error',
+        counts: stopped.counts,
+        firstCausalExcerpt: cause,
+      },
+    });
+    expect(bounded.summary).toMatchObject({
+      passed: false,
+      infrastructureCause: cause,
+    });
+
+    // A receipt that recorded no declaration must not gain one here: absence
+    // is a claim of its own, and this is a rendering, not a derivation.
+    const scanned = boundedControlResult({
+      disposition: 'executed',
+      request: { key: 'k', laneId: 'ci-fast' },
+      receipt: {
+        ...stopped,
+        terminal: { ...stopped.terminal, infrastructureCause: undefined },
+      },
+      summary: {
+        terminal: 'infrastructure_error',
+        counts: stopped.counts,
+        firstCausalExcerpt: '          Error: observer failed',
+      },
+    });
+    expect(scanned.summary.infrastructureCause).toBeUndefined();
+  });
+
   // station#3584 review item 1: summarizeVerificationOutput
   // (verification-reporter.mjs) never emits `passed`, in any version. Before
   // this fix, an executed-run's rendered summary for a drifted run showed

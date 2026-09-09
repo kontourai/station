@@ -346,7 +346,21 @@ export function renderSummary({ document, unparseableReason, sourcePath }) {
     // claim (the excerpt was scoped to the step that failed) and rendering
     // nothing in that case is correct. Rendering nothing in EITHER case, which
     // is what this did, states the stronger claim for both.
-    if (summary.causeStream === 'stderr')
+    //
+    // station#1827 review item 7: absence stopped being a two-way claim when
+    // a runner-declared stop cause was allowed to head the list. That cause
+    // is deliberately given no `causeStream` -- the sentence below says the
+    // excerpt "was picked by severity and position", and nothing picked it --
+    // so the two branches here are the two things absence used to mean, now
+    // said out loud. They are mutually exclusive by construction: the
+    // reporter withholds `causeStream` for exactly the case that sets
+    // `infrastructureCause`.
+    if (typeof summary.infrastructureCause === 'string')
+      lines.push(
+        'Declared by the runner that stopped this lane, not selected from its output: the first excerpt is the stopping component naming its own reason. Any excerpts after it were found by the scan.',
+        '',
+      );
+    else if (summary.causeStream === 'stderr')
       lines.push(
         'Chosen from stderr, unscoped: no step marker attributes this line to the failing step, so it was picked by severity and position.',
         '',

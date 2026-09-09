@@ -214,15 +214,51 @@ count source.
 
 When the RUNNER stops a lane rather than a check failing it, the receipt
 records the runner's own final word in `terminal.infrastructureCause`
-(station#1827). ci:fast prints a structured owner-final line before it returns
-its infrastructure exit code; the lifecycle recovers that line's payload, and
-it is now persisted (bounded to 512 characters and redacted like every other
-excerpt) instead of being computed and dropped on the ordinary reporting path.
-Both the producer and the schema bind it to `infrastructure_error`, the one
-status it explains — a receipt cannot carry an infrastructure explanation for a
-lane that reached a verdict. Its absence means no runner-declared cause was
-recovered, never that the run had none. The field is additive and optional, so
-it needed no `schemaVersion` bump; a reader that ignores it is unaffected.
+(station#1827). Two channels feed it, in this order: the payload of the
+structured owner-final line ci:fast prints before it returns its
+infrastructure exit code, and otherwise the message of the error the owned
+runner itself raised (a surviving owned process, an unreadable capture, a
+spawn failure — every lane, not only ci:fast). Both were previously computed
+and dropped on the ordinary reporting path. What is never recorded is the
+fixed "ended with an infrastructure error" sentence `reportExecution`
+synthesizes when neither channel spoke: that is prose about the absence of a
+declaration, not a declaration.
+
+Both the producer and the schema bind the field to `infrastructure_error`, the
+one status it explains — a receipt cannot carry an infrastructure explanation
+for a lane that reached a verdict.
+
+**Read its absence narrowly.** The field is present when an
+`infrastructure_error` receipt carried a recovered runner declaration. Absent,
+it says only that: no declaration was recorded on this receipt. It is not
+evidence that the runner made none. A run stopped by the coordinator's
+deadline is classified `timed_out` before the runner's own classification is
+consulted, so a declaration can exist and go unrecorded — deliberately, since
+the reconcile path reports a timeout-specific cause there and never reads this
+one, and admitting it on both would put the two paths back into disagreement.
+
+The value is bounded to **512 bytes**, codepoint-aligned, by the one
+normalization every writer shares (`normalizeDeclaredCause` in
+`scripts/lib/verification-reporter.mjs`: strip terminal escapes, redact, trim,
+byte-bound). The schema's `maxLength: 512` counts **code points**, so it is a
+looser outer wall that a byte-bounded value can never reach; where the two
+differ, the byte bound is the binding one.
+
+`schemaVersion` stays 3, and that is a deliberate trade rather than a free
+addition. `terminal` is `additionalProperties: false`, so an older checkout's
+validator accepts the version and then rejects the document: a reader that
+ignores the field is unaffected, a reader that **validates** the receipt is
+not. Every in-tree validation site fails closed — the three reuse/join sites
+in `scripts/lib/verification-coordinator.mjs` return `null` or throw, the
+retention guard in `scripts/lib/verification-reporter.mjs` marks the receipt
+protected-and-ambiguous rather than collectable, and
+`validateChangedVerificationReceipt` in `scripts/run-changed-verification.mjs`
+returns the rejection as an error. None of them can round a rejected receipt
+up to a pass, so an older checkout's worst case is a redundant re-run, and
+receipts are worktree-scoped rather than shared across checkouts. Do not read
+the `causalExcerpts` precedent below as covering this: that addition is
+explicitly justified by those fields living OUTSIDE the validated receipt,
+which is not true here.
 
 The terminal status vocabulary is closed. `failed`, `infrastructure_error`,
 `canceled`, `timed_out`, `rejected`, `parser_error`, and `provisional` never pass.
@@ -522,19 +558,21 @@ needs to be able to tell which one produced a given receipt's entries:
    pipeline, not a claim about the underlying command's output.
 3. **The runner-declared case** (station#1827). On an `infrastructure_error`
    whose runner named its own reason for stopping — ci:fast's owner-final
-   budget line — that reason is `causalExcerpts[0]` and `firstCausalExcerpt`,
-   ahead of anything the scan found. It is not synthesized: the line was
-   written to the run's own stderr, and the entry is its payload with the
-   owner prefix removed. What distinguishes it from case 1 is not where the
-   bytes came from but how they were selected — structurally, from a prefix
-   the runner owns, rather than by matching a diagnostic shape. The scanned
-   excerpts are still reported, ranked after it. What identifies this case is
-   the canonical receipt: `terminal.infrastructureCause` is present exactly
-   when a runner declared a cause, and the head excerpt is that same text
-   (possibly cut shorter by the summary's own byte budget). The summary alone
-   cannot separate case 3 from case 1 — an `infrastructure_error` whose scan
-   found an excerpt looks the same — which is the reason the cause is
-   persisted on the receipt rather than left in the transient summary.
+   budget line, or the owned runner's own error message — that reason is
+   `causalExcerpts[0]` and `firstCausalExcerpt`, ahead of anything the scan
+   found. It is not synthesized: the declaration was written to the run's own
+   stderr, or raised by the runner about its own stop. What distinguishes it
+   from case 1 is not where the bytes came from but how they were selected —
+   structurally, from a channel the runner owns, rather than by matching a
+   diagnostic shape. The scanned excerpts are still reported, ranked after it.
+   The summary says which case it is in `summary.infrastructureCause`: present
+   means the head excerpt is a declaration, and the same text is on the
+   canonical receipt as `terminal.infrastructureCause`. That marker is
+   additive and lowest-priority in the summary's byte budget, so a very tight
+   cap can omit it there — which understates confidence rather than
+   overstating it, and the receipt copy is never subject to that budget. The
+   printed verdict (`boundedControlResult` in `scripts/run-verification.mjs`)
+   therefore stamps the marker from the receipt, not from the summary.
 
 Case 2 is identifiable in the summary itself: it always also carries a
 `reconcileNote` field (the same bounded diagnostic text `causalExcerpts`

@@ -1781,6 +1781,29 @@ describe('verification receipt JSON schema (Ajv)', () => {
     });
     expect(red.terminal.infrastructureCause).toBeUndefined();
     expect(validate(red), JSON.stringify(validate.errors, null, 2)).toBe(true);
+
+    // station#1827 review item 8: this producer's own backstop bound is
+    // sliced by CODE POINTS, the unit the schema's `maxLength` counts.
+    // `String.prototype.slice` counts UTF-16 code units and would cut the
+    // 512th astral character in half, leaving a lone surrogate no reader can
+    // render -- and a value the schema would still accept.
+    const astral = createVerificationReceipt({
+      request: buildRequest(),
+      status: 'infrastructure_error',
+      exitCode: null,
+      counts: infrastructureCounts,
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      before: provenance,
+      after: provenance,
+      infrastructureCause: '\u{1F600}'.repeat(600),
+    });
+    const bounded = astral.terminal.infrastructureCause as string;
+    expect([...bounded]).toHaveLength(512);
+    expect(bounded).toBe([...bounded].join(''));
+    expect(bounded.codePointAt(bounded.length - 2)).toBe(0x1f600);
+    expect(validate(astral), JSON.stringify(validate.errors, null, 2)).toBe(
+      true,
+    );
   });
 
   it('does NOT enforce passed === executed — that equality is a runtime guard only', () => {

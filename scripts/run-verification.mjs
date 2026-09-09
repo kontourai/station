@@ -118,6 +118,19 @@ export function boundedControlResult(result) {
         ...(result.receipt.terminal?.indeterminate === true
           ? { indeterminate: true }
           : {}),
+        // station#1827 review item 7: same idiom, same reason. A
+        // runner-declared stop cause deliberately carries no `causeStream`,
+        // so without a positive marker the printed verdict shows it
+        // byte-identically to an excerpt a scan guessed at. Stamped from the
+        // receipt because that is the copy no byte budget can drop -- the
+        // summarizer's own field is additive and lowest-priority, so a tight
+        // cap can omit it there while the receipt still records it.
+        //
+        // Diagnostic only: `passed` above is the verdict, and this sits
+        // beside it without feeding it.
+        ...(typeof result.receipt.terminal?.infrastructureCause === 'string'
+          ? { infrastructureCause: result.receipt.terminal.infrastructureCause }
+          : {}),
       },
     };
   if (Array.isArray(result?.jobs)) {
@@ -350,6 +363,18 @@ function tailFallback(bounded, stdoutTail) {
             // supports, exactly the trade the reporter refuses at its own cap.
             ...(bounded.summary?.causeStream
               ? { causeStream: bounded.summary.causeStream }
+              : {}),
+            // station#1827: the same rule for the positive marker. This
+            // repeats the excerpt's own bytes, which is the one place in this
+            // envelope that costs the tail something real (at most
+            // DECLARED_CAUSE_BYTE_CAP, against an 8 KiB cap that the tail
+            // then shrinks to fit). It is still the right trade for exactly
+            // the reason the caveat above is: an excerpt carried without the
+            // field that says how it was selected reads as a scanned guess,
+            // and a truncated document is where a reader is least able to go
+            // look for themselves.
+            ...(typeof bounded.summary?.infrastructureCause === 'string'
+              ? { infrastructureCause: bounded.summary.infrastructureCause }
               : {}),
           }
         : {}),

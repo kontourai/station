@@ -240,6 +240,55 @@ function longestUtf8Prefix(text, maxBytes) {
   return result;
 }
 
+/**
+ * The maximum size of a runner-declared stop cause, in BYTES. The receipt
+ * schema's `maxLength: 512` counts code points, so a value bounded here can
+ * never exceed it (every code point costs at least one byte); the byte bound
+ * is the binding one and the schema is a looser outer wall.
+ */
+export const DECLARED_CAUSE_BYTE_CAP = 512;
+
+/**
+ * The one normalization of a runner-declared stop cause, for every writer that
+ * records one (station#1827 review item 2).
+ *
+ * Returns null for anything that is not a non-empty declaration, so a caller
+ * can use it as the whole admission test as well as the transform. A blank
+ * declaration is not a cause: promoting one would displace the scanned excerpt
+ * with nothing at all, which is worse than the wrong excerpt this change
+ * exists to remove.
+ *
+ * The order is fixed and not interchangeable. Escapes come off BEFORE the
+ * redaction boundary for the reason `summarizeVerificationOutput` states about
+ * its own captures: a secret SPLIT by an escape sequence is not a token the
+ * redactor can recognise while the escape sits in the middle of it, and
+ * redacting first would reconstitute exactly that secret. `boundedText` in
+ * `verification-terminal-receipt.mjs` redacts without stripping, which is why
+ * the receipt cannot simply reuse it for this value.
+ *
+ * It exists as one exported function rather than two matching local
+ * transforms because `reportExecution` promises the printed summary and the
+ * persisted receipt never name different causes for one run. Two writers
+ * agreeing because both were written carefully is a coincidence; one function
+ * is a structure. It is idempotent, so a caller handed an already-normalized
+ * value gets it back unchanged.
+ */
+export function normalizeDeclaredCause(
+  value,
+  { maxBytes = DECLARED_CAUSE_BYTE_CAP } = {},
+) {
+  if (typeof value !== 'string' || value.length === 0) return null;
+  // Trimmed again AFTER the byte prefix: cutting inside a longer declaration
+  // can land immediately after a space, and a value that still needed
+  // trimming would not survive a second pass unchanged -- which is the whole
+  // property the two writers rely on.
+  const normalized = longestUtf8Prefix(
+    redactVerificationOutput(withoutAnsi(value)).trim(),
+    maxBytes,
+  ).trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 function semanticCandidate(summary, semantic, value) {
   return semantic.key === 'slowItems'
     ? { ...summary, slowItems: [value] }
@@ -434,8 +483,15 @@ function stderrFailLine(stderrLines) {
 /**
  * Every `FAIL` line in the same scope `stderrFailLine` chose from, with that
  * winner at index 0 -- the ordering discipline `findAllCausalDiagnostics`
- * already uses, so `causalExcerpts[0]` and `firstCausalExcerpt` can never
- * disagree.
+ * already uses, so this list's head is the same excerpt the singular scan
+ * would have chosen from the same evidence.
+ *
+ * That is a statement about the SCAN, not about the summary's final head
+ * (station#1827). Since #1827 `firstCausalExcerpt` can be a runner-declared
+ * cause that no scan tier here ever returns, so the agreement of
+ * `causalExcerpts[0]` with `firstCausalExcerpt` is maintained by the assembly
+ * site in `summarizeVerificationOutput`, which seeds the list from
+ * `summary.firstCausalExcerpt` itself -- not by this function's ordering.
  */
 function stderrFailLines(stderrLines) {
   const winner = stderrFailLine(stderrLines);
@@ -568,9 +624,18 @@ function findAllCausalDiagnostics(
  * before a generic diagnostic) and, at whichever tier wins, returns every
  * excerpt that tier observed rather than only the first. Because each branch
  * here calls the exact singular helper the caller also calls, branch
- * selection can never diverge from `firstCausalExcerpt`'s own -- the two are
- * derived from the same evidence, so `causalExcerpts[0]` and
- * `firstCausalExcerpt` describe the same excerpt whenever both exist.
+ * selection can never diverge from the SCANNED half of `firstCausalExcerpt`'s
+ * chain -- the two are derived from the same evidence.
+ *
+ * That is now the whole of the claim (station#1827 review item 6). It used to
+ * conclude that `causalExcerpts[0]` and `firstCausalExcerpt` therefore
+ * describe the same excerpt, and invited a caller to build `causalExcerpts`
+ * straight from this list. Both stopped being safe when a runner-declared
+ * stop cause was allowed to outrank the scan: on an `infrastructure_error`
+ * that carried one, `firstCausalExcerpt` is a value NO tier here returns.
+ * The head agreement is preserved by the assembly site, which seeds the list
+ * with `summary.firstCausalExcerpt` and then appends from this one. A caller
+ * that takes this list's own head instead would silently drop the cause.
  *
  * Deliberately returns only what this one execution's captured output
  * actually contains. It cannot see -- and does not guess at -- a check that
@@ -864,17 +929,13 @@ export function summarizeVerificationOutput({
   // up a structured claim. The scan stays the second line, never the only
   // one -- the excerpts it found are still reported, ranked below this.
   //
-  // Trimmed, and admitted only when something survives the trim: a blank
-  // declaration is not a cause, and promoting one would displace the scanned
-  // excerpt with nothing at all -- strictly worse than the wrong excerpt this
-  // change exists to remove.
-  const declaredCause =
-    typeof infrastructureCause === 'string'
-      ? redactVerificationOutput(withoutAnsi(infrastructureCause)).trim()
-      : '';
+  // Normalized through `normalizeDeclaredCause`, the SAME function the
+  // terminal-receipt module runs before it puts the value on the receipt, so
+  // the summary and the receipt name one cause structurally rather than by
+  // both writers happening to transform it the same way.
   const ownerFinalCause =
-    terminal.status === 'infrastructure_error' && declaredCause
-      ? declaredCause
+    terminal.status === 'infrastructure_error'
+      ? normalizeDeclaredCause(infrastructureCause)
       : null;
   const firstCausalExcerpt =
     ownerFinalCause ??
@@ -1066,6 +1127,41 @@ export function summarizeVerificationOutput({
     };
     if (!fitsSummary(candidate, maxBytes)) break;
     summary.slowItems = candidate.slowItems;
+  }
+  // station#1827 review item 7: the marker that says HOW the head excerpt was
+  // selected. `causeStream` is withheld for a runner-declared cause (its
+  // rendered sentence would be false), and withholding it left nothing at all
+  // -- a declared cause rendered byte-identically to a scanned one in the CI
+  // annotation and the printed verdict.
+  //
+  // Additive and lowest-priority, like `causalExcerpts` below: it never
+  // displaces the excerpt it qualifies. That direction is deliberate and is
+  // the OPPOSITE of `causeStream`'s. Dropping `causeStream` under a tight cap
+  // manufactured the stronger claim, so it takes its budget first; dropping
+  // this one leaves a reader assuming the excerpt was scanned, which is the
+  // weaker claim. An understated diagnostic is a safe cut; an overstated one
+  // is not. The receipt's own `terminal.infrastructureCause` is never subject
+  // to this budget, and `boundedControlResult` stamps the printed verdict from
+  // there, so the marker survives a tight cap where a reader needs it most.
+  // Its value is deliberately `summary.firstCausalExcerpt` -- the
+  // ALREADY-TRUNCATED field, not the raw cause -- for the same reason
+  // `causalExcerpts` seeds its head from it below: two fields in one summary
+  // describing the same declaration must not hold different text.
+  //
+  // Stated honestly, that is a guarantee by construction and not one this
+  // suite can currently observe. Sweeping every cap from 180 to 3000 bytes
+  // finds NO cap at which the marker is present while the excerpt was cut --
+  // `promoteSemantic` spends the remaining budget on the excerpt, so a cap
+  // tight enough to truncate it is already too tight for this field. Written
+  // this way anyway: the alternative depends on that allocation order staying
+  // as it is, and a field added above could make the two diverge silently.
+  if (ownerFinalCause && summary.firstCausalExcerpt) {
+    const candidate = {
+      ...summary,
+      infrastructureCause: summary.firstCausalExcerpt,
+    };
+    if (fitsSummary(candidate, maxBytes))
+      summary.infrastructureCause = summary.firstCausalExcerpt;
   }
   // station#4249: `causalExcerpts` is additive and strictly lower-priority
   // than every field above -- it is appended last and never displaces an

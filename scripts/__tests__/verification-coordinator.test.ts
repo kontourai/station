@@ -780,6 +780,13 @@ describe('verification coordinator', () => {
       expect(killed.receipt.terminal.status).toBe('infrastructure_error');
       expect(killed.receipt.terminal.infrastructureCause).toBe(cause);
       expect(killed.summary.firstCausalExcerpt).toBe(cause);
+      // station#1827 review item 7: the bounded summary ENVELOPE is a
+      // separate allow-list from the summarizer's own object, and it is what
+      // the CI annotation and the printed verdict read. A field the reporter
+      // computes but the envelope drops reaches no reader -- the exact way
+      // `causeStream` was lost once already.
+      expect(killed.summary.infrastructureCause).toBe(cause);
+      expect(killed.summary.causeStream).toBeUndefined();
       // The published bytes, not only the returned object: the canonical
       // receipt is what a later reader opens, and it carried no cause at all.
       const canonical = JSON.parse(
