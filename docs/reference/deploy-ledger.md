@@ -28,6 +28,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-09T02:49:16Z | nightly-desktop | 0.1.11-nightly.2443.1 | `a7935a4` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/34301435508) |
 | 2026-09-09T02:49:10Z | nightly-android | 0.1.11-nightly.2443.1 | `a7935a4` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/34301435508) |
 | 2026-09-09T02:43:48Z | nightly-npm | 0.6.0-nightly.2443.34301435508 | `a7935a4` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/34301435508) |
 | 2026-09-08T17:23:06Z | nightly-desktop | 0.1.11-nightly.2442.5 | `fd2c04e` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/34252063142) |
@@ -62,6 +63,17 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-09T02:49:16Z · nightly-desktop · 0.1.11-nightly.2443.1
+
+- Ship SHA: `a7935a4cf5297db2eea11364badf96f8ce1d106b`
+- Artifact built at: `2026-09-09T02:14:34.403Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 34301435508)
+
+### Changelog
+
+> Changelog slice omitted: previous ship SHA fd2c04e is not reachable in this repository's history, so no commit range exists to derive.
 
 ## 2026-09-09T02:49:10Z · nightly-android · 0.1.11-nightly.2443.1
 
