@@ -3252,6 +3252,7 @@ export class OrchestrationService {
     sessionId: string;
     startRequired: boolean;
     resumeCursor?: unknown;
+    resumeModel?: string;
     transcriptSeed?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
   }> {
