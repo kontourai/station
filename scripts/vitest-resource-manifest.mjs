@@ -428,6 +428,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/release-workflow.test.ts',
   // #1776: runs the pinned tauri-cli `icon` fan-out twice as a real child
   // process to prove the committed iOS channel sets are byte-reproducible.
+  // #1797 adds two more runs for the desktop `.icns`, whose writer was the
+  // one output that disagreed with itself between runs.
   'scripts/__tests__/generate-app-icons.test.ts',
   // #1776: on macOS, runs xcrun pngcrush + sips to prove the shipped-icon
   // pixel comparison catches a wrong channel through Apple's CgBI re-encode.
