@@ -1204,9 +1204,16 @@ export const PATH_READ_PIN_BOUNDARY_TEST =
  * derived edge carries a bare repository path as its pattern, so a pin on one
  * of these would be a second edge and the validator would throw — failing the
  * whole selector and blaming the E2E contract edge for a new test's read
- * call. These paths already carry a committed boundary, so skipping them
- * costs the pin edge and not the coverage; the existence gate still reports
- * such a pin.
+ * call.
+ *
+ * Skipping is the only way to keep the manifest valid, and it is a real
+ * coverage hole, not a free one: the pin edge is dropped, so the PINNING TEST
+ * IS NOT SCHEDULED either. What the path keeps is its committed boundary — an
+ * e2e lane, or that edge's fixed test list — which does not include the suite
+ * that reads the file's text. The existence check is what survives: the scan
+ * still reports the pin, so a move of the file still reds the boundary gate.
+ * The same applies forward: adding a path that has a derived edge today to
+ * `E2E_CONTRACT_BOUNDARIES` silently removes its pin edge.
  */
 const UNIQUE_IMPACT_PATTERNS = Object.freeze(
   new Set([
@@ -1222,8 +1229,9 @@ const UNIQUE_IMPACT_PATTERNS = Object.freeze(
  * never ran) or, when the spec imports `node:child_process`, a fatal
  * resource-classification error on an ordinary source change. The repo
  * schedules `tests/` through the `verify-e2e-full` lane instead, which a
- * supplemental edge may not carry. `PIN_SCAN_ROOTS` already omits `tests`;
- * this keeps the invariant true if that ever changes.
+ * supplemental edge may not carry. `PIN_SCAN_ROOTS` deliberately DOES include
+ * `tests`, so those pins are still existence-checked; this filter is what
+ * keeps them out of the argv. Scheduling them properly is #1817.
  */
 const VITEST_INELIGIBLE_TEST = /^tests\//;
 

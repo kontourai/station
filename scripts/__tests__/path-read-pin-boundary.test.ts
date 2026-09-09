@@ -31,23 +31,30 @@
  *    below against `packages/cli/src/cli.ts`, the path where it happened.
  *
  * WHAT THIS GATE DOES NOT COVER. The scan is a partial derivation: 142 test
- * files read by path with a module anchor and it reports 79. A pin reached
- * through a helper parameter (`const read = (p) => readFileSync(join(UI_SRC,
- * p))`, at least 14 files, hiding `ChatDockHeader.tsx`, `DockShell.tsx` and
- * `ProjectLayoutRenderer.tsx`) or written as a cwd-relative literal is not
- * seen at all. A green run here is evidence about the pins the scanner
- * reports, not about the class; `path-read-pin-scan.mjs` carries the full
- * statement of the gap.
+ * files read by path with a module anchor and it reports 80. Both figures are
+ * derived and asserted below, so the fraction cannot go stale in prose. A pin
+ * reached through a helper parameter (`const read = (p) =>
+ * readFileSync(join(UI_SRC, p))`, at least 14 files, hiding
+ * `ChatDockHeader.tsx`, `DockShell.tsx` and `ProjectLayoutRenderer.tsx`) or
+ * written as a cwd-relative literal is not seen at all. A green run here is
+ * evidence about the pins the scanner reports, not about the class;
+ * `path-read-pin-scan.mjs` carries the full statement of the gap.
+ *
+ * A Playwright pin under `tests/` is SEEN and existence-checked but never
+ * scheduled — Vitest excludes `tests/**` and the specs are not in the
+ * resource manifest. Scheduling them is #1817.
  *
  * The scanner's own rules are exercised against literal sources so that the
  * repository-wide assertions above cannot be the only thing holding them up.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   invertPathReadPins,
+  listSuiteFiles,
+  readsFileByPath,
   scanPathReadPins,
   scanPathReadPinsInSource,
 } from '../lib/path-read-pin-scan.mjs';
@@ -68,6 +75,26 @@ const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const entries = scanPathReadPins({ root: ROOT });
 const pins = invertPathReadPins(entries);
 const derived = pathReadPinEdges({ root: ROOT });
+
+/**
+ * The disclosure fraction, re-measure and update BOTH docblocks when this
+ * reds. `PATH_READING_SUITES` counts suites the scanner could in principle
+ * resolve a pin in; `REPORTED_SUITES` counts the ones it does.
+ */
+const PATH_READING_SUITES = 142;
+const REPORTED_SUITES = 80;
+
+/** The two Playwright pins: seen and existence-checked, never scheduled. */
+const E2E_PINS = Object.freeze([
+  {
+    pin: 'packages/cli/src/cli.ts',
+    spec: 'tests/plugin-dev-hot-reload.spec.ts',
+  },
+  {
+    pin: 'src-ui/src/app-shell/destination-registry.ts',
+    spec: 'tests/mobile-surface-sweep.spec.ts',
+  },
+]);
 
 function selectedTests(paths: string[], manifest?: unknown): string[] {
   return selectChangedVerification(paths, manifest as never)
@@ -91,6 +118,37 @@ describe('path-read pins are discovered', () => {
     expect(dockPin?.tests).toContain(
       'src-ui/src/__tests__/useOutboundQueueSnapshot.test.tsx',
     );
+  });
+
+  it('states the coverage fraction it actually has', () => {
+    // A count-ratchet reason string goes stale silently; this one cannot.
+    // Both docblocks quote these figures and both are checked against the
+    // live derivation.
+    const reading = listSuiteFiles(ROOT).filter((file) =>
+      readsFileByPath(readFileSync(join(ROOT, file), 'utf8')),
+    );
+    expect(
+      reading.length,
+      'suites that read by path moved: re-measure and update the WHAT THIS ' +
+        'DOES NOT SEE paragraph in path-read-pin-scan.mjs and this file',
+    ).toBe(PATH_READING_SUITES);
+    expect(
+      entries.length,
+      'reported pinning suites moved: same paragraphs',
+    ).toBe(REPORTED_SUITES);
+    const disclosure = readFileSync(
+      join(ROOT, 'scripts/lib/path-read-pin-scan.mjs'),
+      'utf8',
+    );
+    expect(disclosure).toContain(
+      `${PATH_READING_SUITES} test files read by path`,
+    );
+    expect(disclosure).toContain(`this reports ${REPORTED_SUITES}`);
+    const self = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+    expect(self).toContain(
+      `${PATH_READING_SUITES} test\n * files read by path`,
+    );
+    expect(self).toContain(`it reports ${REPORTED_SUITES}`);
   });
 
   it('finds a pin the read call site alone cannot resolve', () => {
@@ -166,10 +224,18 @@ describe('derived pin edges only add to selection', () => {
     }
   });
 
-  it('adds the pinning test for every pin', () => {
+  it('adds every schedulable pinning test for every pin', () => {
     for (const { pin, tests } of pins) {
       const selected = selectedTests([pin], built);
-      for (const test of tests) expect(selected, pin).toContain(test);
+      for (const test of tests) {
+        // A `tests/` spec is deliberately omitted (#1817); everything Vitest
+        // can run must be there.
+        if (test.startsWith('tests/')) {
+          expect(selected, `${pin} -> ${test}`).not.toContain(test);
+          continue;
+        }
+        expect(selected, pin).toContain(test);
+      }
     }
   });
 
@@ -210,15 +276,27 @@ describe('a scheduled pin has to be runnable', () => {
 
   it('never schedules a Playwright spec', () => {
     // `selection.tests` is handed to Vitest, which excludes `tests/**`, so a
-    // spec here is a target the receipt names and nothing runs. Two specs pin
-    // source today (`plugin-dev-hot-reload`, `mobile-surface-sweep`).
+    // spec here is a target the receipt names and nothing runs.
     for (const edge of derived)
       for (const test of edge.tests ?? [])
         expect(test.startsWith('tests/'), `${edge.pattern} -> ${test}`).toBe(
           false,
         );
-    for (const { test } of entries)
-      expect(test.startsWith('tests/'), test).toBe(false);
+  });
+
+  it('still existence-checks the pins only a Playwright spec makes', () => {
+    // Not scheduling them is the trade; not SEEING them would give up the
+    // property #1807 exists for. If `cli.ts` or `destination-registry.ts`
+    // moves, the boundary gate reds at fast-checks instead of the spec
+    // breaking at e2e time.
+    for (const { pin, spec } of E2E_PINS) {
+      const found = pins.find((entry: { pin: string }) => entry.pin === pin);
+      expect(found?.tests, pin).toContain(spec);
+      expect(
+        entries.some(({ test }: { test: string }) => test === spec),
+        spec,
+      ).toBe(true);
+    }
   });
 
   it('drops a Playwright pin rather than scheduling it', () => {
@@ -278,9 +356,21 @@ describe('a scheduled pin has to be runnable', () => {
   });
 
   it('pins the boundary test path itself', () => {
-    // Every derived edge names this constant. If the file is renamed without
-    // it, `escalateUnavailableExplicitTests` escalates every pinned path to
-    // `test-full` instead of running the pin.
+    // Every derived edge names this constant. Existence alone is too weak: a
+    // rename that repoints it at any other existing test passes while all 108
+    // pins schedule the wrong file. If it points nowhere,
+    // `escalateUnavailableExplicitTests` escalates every pinned path to
+    // `test-full`, which nobody reads as a defect.
+    expect(
+      PATH_READ_PIN_BOUNDARY_TEST,
+      'PATH_READ_PIN_BOUNDARY_TEST in scripts/test-impact-manifest.mjs must ' +
+        'name this file; every derived pin edge schedules it',
+    ).toBe(
+      fileURLToPath(import.meta.url)
+        .slice(ROOT.length)
+        .replace(/\\/g, '/')
+        .replace(/^\//, ''),
+    );
     expect(existsSync(join(ROOT, PATH_READ_PIN_BOUNDARY_TEST))).toBe(true);
   });
 });
@@ -325,6 +415,45 @@ describe('the derivation cannot produce an invalid manifest', () => {
         /impact manifest invalid/,
       );
     }
+  });
+
+  it('skips every committed pattern a uniqueness rule protects', () => {
+    // The skip set and the validator's uniqueness rules are two hand-written
+    // lists; iterating the same two constants the skip set is built from
+    // cannot notice a NEW uniqueness rule keyed on some other pattern, which
+    // would reintroduce the throw in full. Derive the property instead: add a
+    // supplemental duplicate for every committed pattern and see which ones
+    // the validator refuses.
+    const patterns = [
+      ...new Set(
+        TEST_IMPACT_MANIFEST.map(({ pattern }: { pattern: string }) => pattern),
+      ),
+    ].sort();
+    const refused = patterns.filter(
+      (pattern) =>
+        validateTestImpactManifest([
+          ...TEST_IMPACT_MANIFEST,
+          {
+            pattern,
+            supplemental: true,
+            tests: ['scripts/__tests__/x.test.ts'],
+          },
+        ] as never).length > 0,
+    );
+    expect(refused.sort()).toEqual([...uniquePatterns].sort());
+    for (const pattern of refused)
+      expect(
+        pathReadPinEdges({
+          root: ROOT,
+          entries: [
+            {
+              test: 'scripts/__tests__/verification-lanes.test.ts',
+              pins: [pattern],
+            },
+          ],
+        }),
+        `${pattern} is refused by the validator but not skipped`,
+      ).toEqual([]);
   });
 
   it('validates the live derived manifest', () => {
@@ -479,13 +608,27 @@ describe('the scanner resolves only what it can justify', () => {
       "readFileSync(join(__dirname, '..', '..', '..', 'src-desktop', 'gen', 'schemas', 'd.json'));",
       "readFileSync(join(__dirname, '..', '..', '..', '.kontourai', 'verification-output', 'x.json'));",
       "readFileSync(join(__dirname, '..', '..', '..', 'playwright-report', 'index.html'));",
-      "readFileSync(join(__dirname, '..', 'app.generated.ts'));",
+      "readFileSync(join(__dirname, '..', '..', '..', 'packages', 'basis-pane', 'src', 'app.generated.ts'));",
+      "readFileSync(join(__dirname, '..', '..', '..', '.station-dependency-install', 'x.json'));",
     ];
     for (const source of generated) expect(scan(source), source).toEqual([]);
-    // False-positive control: an ordinary tracked source beside them resolves.
+    // False-positive controls. `.gitignore` generates only
+    // `packages/basis-pane/src/*.generated.ts` and only `src-desktop/gen/
+    // schemas/`; widening either drops TRACKED files, and a dropped pin loses
+    // its edge and its existence check together, silently.
     expect(scan("readFileSync(join(__dirname, '..', 'App.tsx'));")).toEqual([
       'src-ui/src/App.tsx',
     ]);
+    expect(
+      scan(
+        "readFileSync(join(__dirname, '..', '..', '..', 'packages', 'shared', 'src', 'channel-ports.generated.ts'));",
+      ),
+    ).toEqual(['packages/shared/src/channel-ports.generated.ts']);
+    expect(
+      scan(
+        "readFileSync(join(__dirname, '..', '..', '..', 'src-desktop', 'gen', 'android', 'app', 'build.gradle.kts'));",
+      ),
+    ).toEqual(['src-desktop/gen/android/app/build.gradle.kts']);
   });
 
   it('does not pin a fixture or the pinning file itself', () => {

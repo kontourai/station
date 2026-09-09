@@ -30,8 +30,11 @@
  *
  * WHAT THIS DOES NOT SEE. The scan is a partial derivation, not a census of
  * path-read pins, and it must not be read as one. 142 test files read by path
- * with a module anchor; this reports 79. Two idioms account for most of the
- * remainder, and both are missed by construction rather than by accident:
+ * with a module anchor; this reports 80. Both figures are asserted by
+ * `path-read-pin-boundary.test.ts`, which derives them from `listSuiteFiles`
+ * and `readsFileByPath` — a stale fraction in this paragraph is a red test,
+ * not a footnote. Two idioms account for most of the remainder, and both are
+ * missed by construction rather than by accident:
  *
  * - A HELPER PARAMETER. `const read = (p) => readFileSync(join(UI_SRC, p))`
  *   called with a literal never puts that literal syntactically inside an
@@ -62,24 +65,31 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const TEST_FILE_PATTERN = /(?:^|\/)[^/]+\.(?:test|spec)\.[cm]?[jt]sx?$/;
 
 /**
- * Roots that hold Vitest suites.
+ * Roots that hold suites, including `tests/` — Playwright's.
  *
- * `tests/` is deliberately absent. A Playwright spec there can read source by
- * path, but a pin is only useful if the selector can SCHEDULE the pinning
- * test, and `selection.tests` is fed straight to Vitest — which
- * `vitest.config.ts` excludes `tests/**` from. A spec importing
- * `node:child_process` would additionally fail the resource-classification
- * preflight (Playwright specs are never in `vitest-resource-manifest.mjs`),
- * turning an ordinary source change into an infrastructure error. The repo
+ * A Playwright spec reads source by path exactly as a Vitest suite does
+ * (`tests/mobile-surface-sweep.spec.ts` pins
+ * `src-ui/src/app-shell/destination-registry.ts`,
+ * `tests/plugin-dev-hot-reload.spec.ts` pins `packages/cli/src/cli.ts`), so
+ * the scan SEES those pins and the existence gate checks them: a move of
+ * either file reds at `fast-checks` rather than at e2e time.
+ *
+ * What they do not get is SELECTION. `selection.tests` is fed straight to
+ * Vitest, which excludes `tests/**`, so a spec scheduled here would be
+ * dropped in silence while the receipt named it; and a spec importing
+ * `node:child_process` fails the resource-classification preflight, because
+ * Playwright specs are never in `vitest-resource-manifest.mjs`. The repo
  * schedules `tests/` through the `verify-e2e-full` LANE, and a supplemental
- * edge may not carry a lane, so a Playwright pin has no correct expression
- * here. Their pins are therefore out of scope for this mechanism.
+ * edge may not carry a lane. `pathReadPinEdges` therefore filters `tests/`
+ * out of the edges it builds, deliberately: scheduling an e2e pin is #1817,
+ * and this module stops at seeing it.
  */
 export const PIN_SCAN_ROOTS = Object.freeze([
   'packages',
   'scripts',
   'src-server',
   'src-ui',
+  'tests',
 ]);
 
 /**
@@ -107,7 +117,6 @@ const EXCLUDED_DIRECTORIES = Object.freeze(
     '.surface',
     '__fixtures__',
     '__snapshots__',
-    'binaries',
     'coverage',
     'event_persistence',
     'fixtures',
@@ -119,10 +128,25 @@ const EXCLUDED_DIRECTORIES = Object.freeze(
   ]),
 );
 
-/** Generated roots `.gitignore` names that are not a bare directory name. */
+/**
+ * Generated locations `.gitignore` names by PATH rather than by directory
+ * name. Each entry is the gitignore line, not a widening of it: excluding all
+ * of `src-desktop/gen/` would drop the tracked Tauri android and apple
+ * scaffolding, and excluding every `*.generated.*` would drop three tracked
+ * files (`packages/shared/src/channel-ports.generated.ts` among them). A
+ * dropped pin loses its edge AND its existence check with no diagnostic, so
+ * over-reach here is not the safe direction.
+ *
+ * `.station-dependency-record-` is a prefix rather than a directory name
+ * because `.gitignore` writes it as a wildcard directory,
+ * `.station-dependency-record-<id>`.
+ */
 const EXCLUDED_PATH_PREFIXES = Object.freeze([
+  '.station-dependency-install/',
+  '.station-dependency-record-',
   'docs/audits/',
-  'src-desktop/gen/',
+  'src-desktop/binaries/',
+  'src-desktop/gen/schemas/',
 ]);
 
 /** Build output roots: `dist`, `dist-ui`, `dist-server-<name>`, and friends. */
@@ -130,8 +154,13 @@ function isBuildOutputSegment(segment) {
   return segment === 'dist' || segment.startsWith('dist-');
 }
 
-/** Generated sources, e.g. `packages/basis-pane/src/*.generated.ts`. */
-const GENERATED_FILE_PATTERN = /\.generated\.[cm]?[jt]sx?$/;
+/**
+ * Generated sources, and only where `.gitignore` generates them:
+ * `packages/basis-pane/src/*.generated.ts`. The prefix above carries the
+ * directory half of that rule.
+ */
+const GENERATED_FILE_PATTERN =
+  /^packages\/basis-pane\/src\/[^/]*\.generated\.[cm]?[jt]sx?$/;
 
 /** Pure `node:path` helpers plus the URL bridge. */
 const PATH_HELPERS = Object.freeze(
@@ -191,7 +220,15 @@ function isExcludedPath(relativePath) {
     );
 }
 
-function listTestFiles(root, scanRoots) {
+/**
+ * Every suite file under `scanRoots`, repo-relative and sorted. Exported so
+ * the coverage fraction in the disclosure below can be DERIVED by the
+ * boundary gate rather than restated by hand.
+ */
+export function listSuiteFiles(
+  root = process.cwd(),
+  scanRoots = PIN_SCAN_ROOTS,
+) {
   const found = [];
   const walk = (absolute) => {
     let entries;
@@ -813,7 +850,7 @@ export function scanPathReadPins({
   readSource = (absolute) => readFileSync(absolute, 'utf8'),
   testFiles,
 } = {}) {
-  const files = testFiles ?? listTestFiles(root, scanRoots);
+  const files = testFiles ?? listSuiteFiles(root, scanRoots);
   const entries = [];
   for (const repoPath of files) {
     let source;
