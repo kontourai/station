@@ -256,7 +256,7 @@ describe('changelog slice derivation', () => {
     expect(slice.note).toMatch(/not reachable in this repository/);
   });
 
-  it('fails loudly, naming fetch-depth, when the predecessor is missing only because the checkout is shallow', () => {
+  it('fails loudly, naming fetch-depth, when the predecessor is missing and the checkout is shallow', () => {
     const execGit = (args: string[]): string => {
       if (args[0] === 'cat-file') {
         throw new Error(`fatal: Not a valid object name ${A_SHA}^{commit}`);

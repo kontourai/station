@@ -394,8 +394,10 @@ describe('one-revision native promotion contract', () => {
     // this job must hold that history. A shallow checkout here records an
     // empty changelog on every native row, and the workflow cannot be
     // exercised before merge, so the depth is pinned against its text.
-    expect(record.steps?.[0]?.uses).toContain('actions/checkout');
-    expect(record.steps?.[0]?.with?.['fetch-depth']).toBe(0);
+    const recordCheckout = record.steps?.find((step) =>
+      step.uses?.startsWith('actions/checkout@'),
+    );
+    expect(recordCheckout?.with?.['fetch-depth']).toBe(0);
     expect(record.if).toBe(
       '$' +
         "{{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.protected-finalize.result == 'success' }}",

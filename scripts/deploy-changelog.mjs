@@ -222,7 +222,7 @@ export function deriveChangelogSlice({
     // settles the question, where a recorded empty slice silently ends it.
     if (isShallowRepository(execGit)) {
       throw new Error(
-        `changelog slice cannot be derived: previous ship SHA ${previousSha.slice(0, 7)} is absent and this checkout is shallow, so it may simply be unfetched rather than gone. Deepen this checkout and retry — in CI that is \`fetch-depth: 0\` on the job that records the ledger.`,
+        `changelog slice cannot be derived: previous ship SHA ${previousSha.slice(0, 7)} is absent and this checkout is shallow, so it may simply be unfetched rather than gone. Deepen this checkout and retry; in CI that is \`fetch-depth: 0\` on the job that records the ledger.`,
       );
     }
     return {
