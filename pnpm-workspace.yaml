@@ -18,6 +18,7 @@ allowBuilds:
   esbuild@0.25.12: true
   cpu-features@0.0.10: false
   esbuild@0.28.1: true
+  esbuild@0.28.2: true
   fsevents@2.3.3: true
   libxmljs2@0.37.0: false
   node-pty@1.1.0: true
