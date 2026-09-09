@@ -312,9 +312,18 @@ vi.mock('../bootstrap/engine-prerequisite-priming.js', () => ({
  */
 const nativeEngineAdoption = vi.hoisted(() => ({
   calls: [] as Array<{ signal?: AbortSignal }>,
+  /**
+   * Per-case override for the window's own promise (station#1815 round-4).
+   *
+   * The default settles immediately, which is what every case but the boot
+   * one wants. The boot case needs it PENDING, because the seam it pins —
+   * the runtime retaining that promise rather than discarding it — is
+   * invisible against a promise that is already resolved.
+   */
+  result: undefined as Promise<{ outcomes: object }> | undefined,
   adoptDetectedNativeEngines: (options: { signal?: AbortSignal }) => {
     nativeEngineAdoption.calls.push(options);
-    return Promise.resolve({ outcomes: {} });
+    return nativeEngineAdoption.result ?? Promise.resolve({ outcomes: {} });
   },
 }));
 vi.mock('../bootstrap/native-engine-adoption.js', async (importOriginal) => {
@@ -466,6 +475,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       routeMocks.kitLifecycleReady = Promise.resolve();
       routeMocks.armRoutesConfigured();
       nativeEngineAdoption.calls.length = 0;
+      nativeEngineAdoption.result = undefined;
       if (originalHostedRegistryFile === undefined)
         delete process.env[hostedRegistryFileEnv];
       else process.env[hostedRegistryFileEnv] = originalHostedRegistryFile;
@@ -555,6 +565,12 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         region: 'eu-west-1',
       }),
     );
+    // Held open so the retained promise is observably PENDING after boot and
+    // shutdown has something real to wait on. Released below.
+    let landAdoption!: () => void;
+    nativeEngineAdoption.result = new Promise((resolve) => {
+      landAdoption = () => resolve({ outcomes: {} });
+    });
     runtime = new StationRuntime({
       projectHomeDir: home,
       port: TEST_PORT,
@@ -594,13 +610,43 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     const [adoption] = nativeEngineAdoption.calls;
     expect(adoption.signal).toBeInstanceOf(AbortSignal);
     expect(adoption.signal?.aborted).toBe(false);
+    // The seam the whole of station#1815 rests on, and the one a verifier
+    // found unpinned: boot must RETAIN the window's promise, because
+    // `shutdown()` waits on that field before it disposes the loader and
+    // releases the home runtime lease. Reverting this one line to
+    // `void adoptDetectedNativeEngines({…})` restores the original defect
+    // exactly — the settle finds nothing pending and returns at once — and
+    // it left all 42 related files green, because every lease case sets the
+    // field by hand on a prototype double. This assertion is the one that
+    // reds for that reversion; the ordering assertions below are a weaker
+    // second look, since a fast enough teardown could beat their slack.
+    const retained = (
+      runtime as unknown as { nativeEngineAdoptionSettled?: Promise<unknown> }
+    ).nativeEngineAdoptionSettled;
+    expect(retained).toBeInstanceOf(Promise);
     // Two controllers are aborted three lines apart in `shutdown()`, so
     // every assertion here stays green if the adoption window is handed the
     // PRIMING controller. Distinguishing them is what makes the pair a
     // coupling proof rather than an "an AbortSignal exists" proof.
     expect(adoption.signal).not.toBe(primed.signal);
 
-    await runtime.shutdown();
+    let shutdownResolved = false;
+    const shutdown = runtime.shutdown().then(() => {
+      shutdownResolved = true;
+    });
+    // The window is held open, so a shutdown that waits for it cannot have
+    // finished. Slack only helps a defect show itself here — a shutdown that
+    // is NOT waiting has a real cold-boot teardown to get through, and more
+    // time only makes it likelier to have finished — so this can never pass
+    // by luck the other way.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(shutdownResolved).toBe(false);
+    // Aborted long before the wait, at the top of `shutdown()`, which is what
+    // lets the wait be bounded at all.
+    expect(adoption.signal?.aborted).toBe(true);
+
+    landAdoption();
+    await shutdown;
     runtime = undefined;
     // …and closed by shutdown, so the priming cannot wait on work the runtime
     // no longer has a use for. (It does not kill a probe child already

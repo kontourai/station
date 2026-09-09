@@ -63,14 +63,19 @@ export async function shutdownRuntimeServices({
   sshEnvironmentService?: { shutdown(): Promise<void> };
   /**
    * Optional since station#1815. Omitting it is a HANDOVER, not a skip, and
-   * the omission is logged below so it cannot become one by accident.
+   * the omission is logged below. That makes it RECORDED, not
+   * distinguishable: a caller who forgot the parameter emits the identical
+   * line, and two independent readers flagged an earlier version of this
+   * sentence for implying otherwise. The line is a trace to follow, not a
+   * detector.
    *
    * `StationRuntime` disposes its own loader after the native-engine adoption
    * window has settled. The reason is narrower than an earlier version of
    * this comment claimed: it is NOT that `ConfigLoader.dispose` documents a
-   * live-writer hazard — it documents the cost of its deferred watcher close
-   * and an ordering rule for a caller that DELETES the watched tree — and the
-   * adoption's registry half does not reach the loader at all
+   * live-writer hazard — it documents the cost of its deferred watcher close,
+   * and the ordering rule for a caller that DELETES the watched tree lives on
+   * `whenWatcherClosed`, not on `dispose` — and the adoption's registry half
+   * does not reach the loader at all
    * (`saveAgentRegistry` takes only `getProjectHomeDir()` and writes through
    * the module-level `saveRegistry`). What the loader IS is the write handle
    * for the other half: `materializeEngineAgent` and `materializeStationAgent`
@@ -213,10 +218,17 @@ export async function shutdownRuntimeServices({
   if (configLoader) {
     await attempt('configLoader.dispose', () => configLoader.dispose());
   } else {
-    // Named in the record rather than skipped in silence: without this a
-    // caller that simply forgot the parameter would lose a teardown step with
-    // no compile error and no trace of it ever having been expected.
-    logger.info('Shutdown step delegated to the caller', {
+    // Recorded rather than skipped in silence: without this a caller that
+    // simply forgot the parameter would lose a teardown step with no compile
+    // error and no trace of it ever having been expected. It does not
+    // separate that caller from a deliberate handover, and cannot.
+    //
+    // The message says only what is observable here. A deliberate handover
+    // and an omission look identical from inside this function — the
+    // parameter is absent, and that is all it knows — so calling it
+    // "delegated" would tell the very reader this line exists for exactly the
+    // wrong thing.
+    logger.info('Shutdown step had no target and was not run', {
       step: 'configLoader.dispose',
     });
   }

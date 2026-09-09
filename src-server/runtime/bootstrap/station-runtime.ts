@@ -283,7 +283,8 @@ const AGENT_CONFIGURATION_SHUTDOWN_DRAIN_GRACE_MS = 5_000;
  * agent-registry write; `saveRegistry` takes two file mutation locks in
  * sequence, each with a 10 s admission deadline of its own
  * (`lifecycle-events.ts` `acquireGen`), inside a load-CAS-save loop that
- * retries up to 8 times. The #1815 reviewer measured a completely healthy
+ * retries up to 8 times — and each of those iterations re-enters
+ * `loadOrCreateAgentRegistry`, which has an 8-attempt loop of its own. The #1815 reviewer measured a completely healthy
  * adoption against ONE ordinary lock holder at 10_000 ms. So expiry cannot
  * mean "wedged" and is not reported as such — see
  * `settleNativeEngineAdoption`.
@@ -300,17 +301,28 @@ const AGENT_CONFIGURATION_SHUTDOWN_DRAIN_GRACE_MS = 5_000;
  *   a bare SIGTERM       unbounded
  *
  * `station-runtime-adoption-lease.test.ts` reads those numbers from their
- * own sources and pins which of them this budget outlasts, so the list above
- * cannot quietly stop being true.
+ * own sources and pins which of them can reach the disclosure below, so the
+ * list above cannot quietly stop being true.
  *
- * What the number IS: a choice inside that range, placed where the ordinary
- * supervised stop (5 s) can still reach the disclosure below rather than
- * being killed silently mid-wait. Under the two tighter graces it cannot,
- * and the protective claim that follows does not hold there either: it is
- * only where teardown itself fits the grace that being killed inside this
- * wait costs just the lease release — which a later `listLiveLeases` scan
- * reaps anyway. Under a 1 s Desktop quit, teardown may not have finished at
- * all, and that is a product-level mismatch this constant cannot fix.
+ * WHICH SUPERVISORS SEE THE DISCLOSURE. The grace starts at SIGTERM and this
+ * wait is deliberately last, so reaching `settleNativeEngineAdoption`'s
+ * warning needs `grace > budget` strictly — and even that is only necessary,
+ * not sufficient, because teardown consumes an unmeasured part of the grace
+ * first. `station stop` on Unix gives exactly this budget, so the kill always
+ * lands inside the wait: an operator who stops Station during a contended
+ * adoption write gets the lease correctly withheld and NO line saying why.
+ * That leaves systemd, launchd and a bare signal as the only supervisors
+ * under which the disclosure can appear. An earlier revision of this comment
+ * claimed the Unix stop as one of them; it never was.
+ *
+ * What the number IS, then: not a wedge threshold, not "the time this process
+ * has", and not a disclosure guarantee. It is large enough that the
+ * uncontended write — the overwhelmingly common one, milliseconds against a
+ * home this process can write — always finishes, so an ordinary shutdown
+ * releases the lease properly; and small enough that an unsupervised caller
+ * is not blocked on a wedged writer indefinitely. Its relationship to the
+ * supervisor graces is a mismatch this constant cannot fix, and raising it
+ * would only move which supervisors kill the process mid-wait.
  */
 export const NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS = 5_000;
 
@@ -4290,6 +4302,15 @@ export class StationRuntime {
     // this wait sat at the TOP of teardown a stop inside the adoption window
     // meant none of it ran at all. The two steps that DO depend on the window
     // are the two below, so they are the only ones behind the wait.
+    //
+    // One dependency in the other direction, which an earlier version of this
+    // comment claimed away (round-4 verifier): `shutdownRuntimeServices`
+    // above CLEARS `this.timers`, the same array the adoption window pushes
+    // its inter-attempt timer into. That is a no-op today only because
+    // `shutdown()` aborts the window before any of this is reached and the
+    // window's own abort listener clears its timer, so the array holds an
+    // already-cleared handle. Move or drop that abort and every shutdown
+    // burns the whole budget and reports the window as still running.
     if (await this.settleNativeEngineAdoption()) {
       try {
         await this.configLoader.dispose();

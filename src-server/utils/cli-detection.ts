@@ -3,8 +3,15 @@ import { execFile } from 'node:child_process';
 export interface CliDetectionOptions {
   /**
    * Cancels the probe. The locator child is killed and detection resolves
-   * `false` — a probe nobody is waiting for any more is not an installation.
-   * An already-aborted signal never spawns at all.
+   * `false`; an already-aborted signal never spawns at all.
+   *
+   * That `false` is NOT a statement about the host. This function has one
+   * answer channel and no way to widen it without changing every caller, so
+   * "the locator said no" and "you cancelled me" arrive identically — and a
+   * caller that needs to tell them apart must consult the signal it passed,
+   * as `adoptDetectedNativeEngines` does after each probe. A caller that
+   * passes no signal cannot reach the case at all, which is why
+   * `/api/system/status` needs no such concept.
    */
   signal?: AbortSignal;
   /**
@@ -21,6 +28,9 @@ export interface CliDetectionOptions {
  * native-engine adoption must agree on what "installed" means, so both use
  * this helper. Non-empty stdout is required — a locator exiting 0 with no
  * path (shell-wrapper edge cases) is not an installation.
+ *
+ * `true` is therefore always a host fact. `false` is only a host fact when
+ * the probe was neither cancelled nor killed by `timeoutMs`; see `signal`.
  *
  * station#1815 added `options`. Adoption runs this against the host PATH and
  * then WRITES what it finds into the agent registry, so the runtime has to be

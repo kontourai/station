@@ -255,7 +255,6 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
     // asserted here.
     const detect = vi.fn(async () => false);
 
-    const startedAt = Date.now();
     const pending = adoptDetectedNativeEngines({
       configLoader: loader,
       logger: silentLogger,
@@ -270,12 +269,20 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       // Stated, not defaulted: the default is 1s and this wait spans a real
       // registry load and Station-Agent materialization — file I/O, on
       // exactly the loaded hosts that motivated replacing the sleep here.
-      { timeout: 30_000, interval: 5 },
+      // Below vitest's own 30s `testTimeout`, deliberately: a value equal to
+      // it can never fire first, and the diagnostic this wait was given
+      // ("the probes never ran") would be unreachable.
+      { timeout: 10_000, interval: 5 },
     );
+    // The span starts HERE, not at the call. Everything before the abort —
+    // the registry load, the Station-Agent materialization, three probes — is
+    // setup, and folding it into a promptness bound both inflates the bound
+    // and lets setup cost be attributed to the abort listener.
+    const abortedAt = Date.now();
     controller.abort();
 
     const summary = await pending;
-    expect(Date.now() - startedAt).toBeLessThan(5_000);
+    expect(Date.now() - abortedAt).toBeLessThan(5_000);
     expect(summary.outcomes).toEqual({
       claude: 'absent',
       codex: 'absent',
@@ -327,9 +334,9 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       signal: controller.signal,
     });
     await vi.waitFor(() => expect(detect).toHaveBeenCalledTimes(1), {
-      // Stated for the same reason as the case above: the registry load and
-      // materialization ahead of the first probe are real file I/O.
-      timeout: 30_000,
+      // Stated for the same reason as the case above, and below vitest's own
+      // 30s `testTimeout` so it can actually fire first.
+      timeout: 10_000,
       interval: 5,
     });
     controller.abort();
@@ -353,51 +360,6 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
     expect(registry.engineConnections).toEqual([]);
     // And no further candidate started a probe of its own under the abort.
     expect(detect).toHaveBeenCalledTimes(1);
-  });
-
-  it('stops before probing the next candidate once aborted (#1815)', async () => {
-    const loader = createLoader();
-    const controller = new AbortController();
-    let answerProbe!: (found: boolean) => void;
-    const probed = new Promise<boolean>((resolve) => {
-      answerProbe = resolve;
-    });
-    const detect = vi.fn(() => probed);
-
-    const pending = adoptDetectedNativeEngines({
-      configLoader: loader,
-      logger: silentLogger,
-      detect,
-      delaysMs: [0],
-      signal: controller.signal,
-    });
-    await vi.waitFor(() => expect(detect).toHaveBeenCalledTimes(1), {
-      // Stated for the same reason as the case above: the registry load and
-      // materialization ahead of the first probe are real file I/O.
-      timeout: 30_000,
-      interval: 5,
-    });
-    controller.abort();
-    // A falsy answer, deliberately: it is the shape the real probe returns
-    // under an abort, and the shape that reaches the `continue` path on an
-    // ordinary attempt. What this case is about is the check the candidate
-    // loop makes BEFORE each probe — without it, an abort landing mid-attempt
-    // still spawns a `which` for every remaining candidate.
-    answerProbe(false);
-
-    const summary = await pending;
-    expect(detect).toHaveBeenCalledTimes(1);
-    // All three interrupted, and for two different reasons: `claude`'s probe
-    // was cancelled in flight (its `false` is the cancellation, not an
-    // answer), and the other two were never started. The case that separates
-    // an observed absence from an unobserved one is
-    // 'keeps an earlier observed absence…' below — this one is about the
-    // guard, and the call count is what carries that.
-    expect(summary.outcomes).toEqual({
-      claude: 'interrupted',
-      codex: 'interrupted',
-      muse: 'interrupted',
-    });
   });
 
   it('reports a probe CANCELLED in flight as interrupted, not absent (#1815)', async () => {

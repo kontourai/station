@@ -88,11 +88,14 @@ describe('shutdownRuntimeServices', () => {
     expect(logger.info).toHaveBeenCalledWith('Shutdown complete');
   });
 
-  test('names an omitted configLoader in the record rather than skipping it silently (station#1815)', async () => {
+  test('records an absent configLoader rather than skipping it silently (station#1815)', async () => {
     // The parameter became optional so `StationRuntime` can dispose its own
     // loader after the native-engine adoption window settles. Optional is one
     // keystroke from forgotten, and a forgotten teardown step here produces
-    // no compile error and no failure — so the handover has to leave a trace.
+    // no compile error and no failure — so the absence has to leave a trace.
+    // The line says "had no target", not "delegated": from inside that
+    // function a deliberate handover and an omission are the same
+    // observation, and the reader it exists for is the one who forgot.
     const logger = { info: vi.fn(), error: vi.fn(), warn: vi.fn() };
     const configLoader = { dispose: vi.fn(async () => {}) };
     const base = {
@@ -109,14 +112,14 @@ describe('shutdownRuntimeServices', () => {
     await shutdownRuntimeServices({ ...base, logger, configLoader });
     expect(configLoader.dispose).toHaveBeenCalledTimes(1);
     expect(logger.info).not.toHaveBeenCalledWith(
-      'Shutdown step delegated to the caller',
+      'Shutdown step had no target and was not run',
       expect.anything(),
     );
 
     logger.info.mockClear();
     await shutdownRuntimeServices({ ...base, logger });
     expect(logger.info).toHaveBeenCalledWith(
-      'Shutdown step delegated to the caller',
+      'Shutdown step had no target and was not run',
       { step: 'configLoader.dispose' },
     );
   });

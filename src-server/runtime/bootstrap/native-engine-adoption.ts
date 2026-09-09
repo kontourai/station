@@ -85,9 +85,11 @@ const ADOPTION_ATTEMPT_DELAYS_MS = [0, 10_000, 30_000, 90_000] as const;
 /**
  * Ceiling for one candidate's PATH probe (station#1815).
  *
- * Matched to the first backoff step deliberately: a locator that has not
- * answered by the time the next attempt would have started is not an answer
- * this window can use, and leaving it running is what gave the adoption a
+ * Sized against the first backoff step, not equal to an attempt's duration:
+ * candidates are probed SEQUENTIALLY, so an attempt in which all three expire
+ * takes three ceilings before the next delay even begins. What the ceiling
+ * bounds is one locator, and what it is for is that a locator nobody will
+ * read the answer of must not stay alive — that is what gave the adoption a
  * writer the runtime could not account for at shutdown.
  *
  * An expired probe settles as 'absent' for this attempt and is retried by the
@@ -142,6 +144,17 @@ export interface NativeEngineAdoptionSummary {
    * version consulted the signal only BEFORE the probe, which is a few
    * instructions, while the window an abort actually lands in is the probe's
    * whole duration.
+   *
+   * Two edges of that split, recorded rather than closed. An abort landing
+   * between a probe RESOLVING and the loop reading the signal turns a genuine
+   * uncancelled absence into 'interrupted', so the first sentence above
+   * describes a superset: everything called 'absent' came from an uncancelled
+   * falsy probe, but not every uncancelled falsy probe is called 'absent'.
+   * That is the conservative direction — it withholds a claim, it never
+   * invents one. And with an EMPTY delay list the loop never runs, so the
+   * backfill's 'absent' branch is reachable with nothing having looked at the
+   * host at all; no production caller passes one, and `deps.delaysMs` exists
+   * only for tests.
    *
    * 'suppressed' is the screenshot containment: no probe was made, by policy.
    * It used to report 'absent' for a host nothing looked at.
@@ -244,11 +257,24 @@ export async function adoptDetectedNativeEngines(
     }
     for (const candidate of NATIVE_ENGINE_CANDIDATES) {
       if (!unresolved.has(candidate.id)) continue;
-      // station#1815: per CANDIDATE, not only per attempt. The outer guard
-      // runs once for all three, so an abort landing mid-attempt used to let
-      // the remaining candidates each start a fresh probe and a fresh
-      // registry write under a runtime that was already tearing the home
-      // down.
+      // Defence in depth, and deliberately untested — say so rather than let
+      // a reader assume a case covers it (station#1815 round-4 verifier).
+      //
+      // What it covers is the one window neither the abort inside a probe nor
+      // the check after one reaches: an abort landing during the PREVIOUS
+      // candidate's registry write, so the loop arrives here already
+      // cancelled. With the shipped detector that window is unobservable —
+      // `detectCliOnPath` short-circuits on an aborted signal before it
+      // spawns, so no locator child starts either way and the check below the
+      // probe then breaks the loop with the same outcomes and the same call
+      // count. The verifier ran both shapes against the real detector and got
+      // byte-identical results.
+      //
+      // It is therefore a guard against an INJECTED detector that ignores its
+      // signal, which is every test double in this file and no shipped path.
+      // A case for it would assert a hypothetical, so there is none; what
+      // keeps it here is that `deps.detect` is a public seam and the cost is
+      // one comparison.
       if (deps.signal?.aborted) break;
       try {
         const found = await detect(candidate.cli, {
@@ -276,7 +302,10 @@ export async function adoptDetectedNativeEngines(
           break;
         }
         if (!found) {
-          // Not on PATH (yet): leave unresolved for the next attempt.
+          // An uncancelled falsy answer. Not "not on PATH" — see the summary
+          // docblock: this window cannot tell a locator that said no from one
+          // the ceiling killed. Left unresolved either way, so the next
+          // attempt can still find it.
           outcomes[candidate.id] = 'absent';
           continue;
         }

@@ -800,9 +800,9 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
      * `STATUS_PREREQUISITES_CACHE_TTL_MS` — the same class of flap
      * `reconcileExternalEngineReadiness` exists to absorb for the field
      * beside these, and which these three have no equivalent for. That is
-     * pre-existing and is tracked separately; it is recorded here so this
-     * comment is not read as a claim that these fields only ever report an
-     * observed absence.
+     * pre-existing and is tracked in station#1832; it is recorded here so
+     * this comment is not read as a claim that these fields only ever report
+     * an observed absence.
      */
     const cliPresence = (command: string) =>
       whichCmd(command, { signal: controller.signal });

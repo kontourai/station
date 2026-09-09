@@ -12,6 +12,35 @@ const repoRoot = join(import.meta.dirname, '../../../..');
 const source = (path: string) => readFileSync(join(repoRoot, path), 'utf-8');
 
 /**
+ * One Rust function's body, bounded at its closing brace.
+ *
+ * Slicing to end-of-file instead — which this helper did until the #1815
+ * round-4 review — makes "the first millisecond literal after the name" match
+ * whatever comes next once the real one moves. The reviewer executed the
+ * likeliest refactor, hoisting the poll interval to a named constant above
+ * the function, and the extractor silently read a 3 s literal from an
+ * unrelated function ninety-five lines further down while the test stayed
+ * green: a self-checking mechanism certifying a number its own docblock
+ * contradicts.
+ */
+function rustFunctionBody(text: string, name: string): string {
+  const start = text.indexOf(`fn ${name}`);
+  const open = text.indexOf('{', start);
+  if (start < 0 || open < 0) {
+    throw new Error(`${name}: no longer present in its source.`);
+  }
+  let depth = 0;
+  for (let index = open; index < text.length; index += 1) {
+    if (text[index] === '{') depth += 1;
+    else if (text[index] === '}') {
+      depth -= 1;
+      if (depth === 0) return text.slice(open, index + 1);
+    }
+  }
+  throw new Error(`${name}: unbalanced braces; the extractor cannot bound it.`);
+}
+
+/**
  * Every shutdown grace Station actually runs under, READ from its own source
  * rather than transcribed (station#1815 review round 2).
  *
@@ -23,9 +52,9 @@ const source = (path: string) => readFileSync(join(repoRoot, path), 'utf-8');
  */
 function supervisorGraceMs(): Record<string, number> {
   const platform = source('packages/cli/src/commands/platform.ts');
-  const desktop = source('src-desktop/src/lib.rs');
-  const desktopTerminate = desktop.slice(
-    desktop.indexOf('fn terminate_desktop_child'),
+  const desktopTerminate = rustFunctionBody(
+    source('src-desktop/src/lib.rs'),
+    'terminate_desktop_child',
   );
   const read = (label: string, pattern: RegExp, text: string): number => {
     const match = pattern.exec(text);
@@ -319,31 +348,41 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
     expect(release).not.toHaveBeenCalled();
   });
 
-  test('outlasts exactly the two graces its docblock says it outlasts', () => {
+  test('kills the wait before its disclosure under exactly three supervisors', () => {
     const graces = supervisorGraceMs();
     // A misread regex must red as a missing grace, never pass as a NaN that
-    // silently drops out of the comparison below.
+    // silently drops out of the comparisons below.
     for (const [supervisor, ms] of Object.entries(graces)) {
       expect(`${supervisor}=${ms}`).not.toMatch(/NaN/);
     }
 
-    // The property, computed rather than asserted: this budget does NOT fit
-    // every supervisor, and these are the ones it exceeds. Moving the budget,
-    // or any of those graces, changes this set — which is the moment the
-    // docblock's table has to be looked at again. The first version of that
-    // docblock claimed the budget WAS the grace, and this list is what made
-    // that false.
-    const outlasted = Object.entries(graces)
-      .filter(([, ms]) => ms < NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS)
+    // The relation the docblock's operative sentence asserts, computed.
+    //
+    // The grace starts at SIGTERM and the settle is deliberately LAST, so the
+    // wait begins somewhere after zero and ends at that offset plus the
+    // budget. Reaching the warning therefore requires `grace > budget`
+    // STRICTLY. The previous version of this case filtered on `<` and so
+    // discarded the one boundary that mattered: `station stop` on Unix gives
+    // exactly the budget, the kill always lands inside the wait, and the
+    // docblock claimed that supervisor as one that reaches the disclosure.
+    const cannotReachDisclosure = Object.entries(graces)
+      .filter(([, ms]) => ms <= NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS)
       .map(([supervisor]) => supervisor)
       .sort();
-    expect(outlasted).toEqual(['desktop-quit', 'station-stop-windows']);
+    expect(cannotReachDisclosure).toEqual([
+      'desktop-quit',
+      'station-stop-unix',
+      'station-stop-windows',
+    ]);
+    // And the boundary itself, named: equality is the case the strict
+    // comparison exists for, and a `<` here would pass while it held.
+    expect(graces['station-stop-unix']).toBe(
+      NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS,
+    );
 
-    // And the literal, beside the computed case for the reason my own notes
-    // give: a test written only against the constant follows the constant
-    // anywhere.
+    // The literal, beside the computed case for the reason my own notes give:
+    // a test written only against the constant follows the constant anywhere.
     expect(NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS).toBe(5_000);
-    expect(graces['station-stop-unix']).toBe(5_000);
   });
 
   test('a window that already settled costs shutdown nothing', async () => {
