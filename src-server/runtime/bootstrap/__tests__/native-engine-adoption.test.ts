@@ -13,6 +13,7 @@ import {
 } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import {
+  ADOPTION_PROBE_TIMEOUT_MS,
   adoptDetectedNativeEngines,
   NATIVE_ENGINE_CANDIDATES,
 } from '../native-engine-adoption.js';
@@ -255,6 +256,69 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       codex: 'absent',
       muse: 'absent',
     });
+  });
+
+  it('carries the shutdown signal and a probe ceiling into every probe (#1815)', async () => {
+    const loader = createLoader();
+    const controller = new AbortController();
+    const detect = vi.fn(async () => false);
+
+    await adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0],
+      signal: controller.signal,
+    });
+
+    // Without the signal reaching `detectCliOnPath` there is no way to end a
+    // probe already running, and shutdown's only options were to hang or to
+    // stop waiting and release the home under it.
+    expect(detect).toHaveBeenCalledTimes(NATIVE_ENGINE_CANDIDATES.length);
+    for (const call of detect.mock.calls as unknown as Array<
+      [string, { signal?: AbortSignal; timeoutMs?: number } | undefined]
+    >) {
+      expect(call[1]?.signal).toBe(controller.signal);
+      expect(call[1]?.timeoutMs).toBe(ADOPTION_PROBE_TIMEOUT_MS);
+    }
+  });
+
+  it('does not adopt a probe that answered after the abort (#1815)', async () => {
+    const loader = createLoader();
+    const controller = new AbortController();
+    let answerProbe!: (found: boolean) => void;
+    const probed = new Promise<boolean>((resolve) => {
+      answerProbe = resolve;
+    });
+    // One probe, held open. The abort lands while it is in flight, which is
+    // exactly the window the runtime could not account for.
+    const detect = vi.fn(() => probed);
+
+    const pending = adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0],
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(detect).toHaveBeenCalledTimes(1));
+    controller.abort();
+    // The real probe resolves false on abort; a detector that answers TRUE
+    // anyway is the discriminating case — it proves the write is stopped by
+    // the adoption's own guard and not merely by the probe's answer.
+    answerProbe(true);
+
+    const summary = await pending;
+    expect(summary.outcomes).toEqual({
+      claude: 'absent',
+      codex: 'absent',
+      muse: 'absent',
+    });
+    // The observable is the WRITE, not a timer: nothing reached the registry.
+    const registry = await loadOrCreateAgentRegistry(loader);
+    expect(registry.engineConnections).toEqual([]);
+    // And no further candidate started a probe of its own under the abort.
+    expect(detect).toHaveBeenCalledTimes(1);
   });
 
   it('never throws when the registry write fails; settles as error', async () => {

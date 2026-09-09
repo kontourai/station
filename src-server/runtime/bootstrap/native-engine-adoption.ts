@@ -22,7 +22,10 @@ import {
   type NativeEngineAdoptionOutcome,
 } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
-import { detectCliOnPath } from '../../utils/cli-detection.js';
+import {
+  type CliDetectionOptions,
+  detectCliOnPath,
+} from '../../utils/cli-detection.js';
 import { errorMessage } from '../../utils/error-message.js';
 
 export const NATIVE_ENGINE_CANDIDATES = [
@@ -65,10 +68,10 @@ export function nativeEngineAdoptionSuppressed(
 
 export function nativeEngineAdoptionDetection(
   env: NodeJS.ProcessEnv,
-  detect: (cli: string) => Promise<boolean>,
+  detect: NativeEngineDetect,
 ): {
   suppressed: boolean;
-  detect: (cli: string) => Promise<boolean>;
+  detect: NativeEngineDetect;
 } {
   if (!nativeEngineAdoptionSuppressed(env)) {
     return { suppressed: false, detect };
@@ -78,6 +81,23 @@ export function nativeEngineAdoptionDetection(
 
 /** Backoff between detection attempts; ~2.2 minutes total window. */
 const ADOPTION_ATTEMPT_DELAYS_MS = [0, 10_000, 30_000, 90_000] as const;
+
+/**
+ * Ceiling for one candidate's PATH probe (station#1815).
+ *
+ * Matched to the first backoff step deliberately: a locator that has not
+ * answered by the time the next attempt would have started is not an answer
+ * this window can use, and leaving it running is what gave the adoption a
+ * writer the runtime could not account for at shutdown. A probe that expires
+ * settles as 'absent' for this attempt and is retried by the next one, which
+ * is the same disposition an honest "not on PATH yet" already gets.
+ */
+export const ADOPTION_PROBE_TIMEOUT_MS = 10_000;
+
+export type NativeEngineDetect = (
+  cli: string,
+  options?: CliDetectionOptions,
+) => Promise<boolean>;
 
 export interface NativeEngineAdoptionDeps {
   configLoader: ConfigLoader;
@@ -94,7 +114,7 @@ export interface NativeEngineAdoptionDeps {
    * settles instead of stranding on a cleared timer.
    */
   signal?: AbortSignal;
-  detect?: (cli: string) => Promise<boolean>;
+  detect?: NativeEngineDetect;
   delaysMs?: readonly number[];
   /** Injectable only so containment is unit-testable without process globals. */
   env?: NodeJS.ProcessEnv;
@@ -189,12 +209,28 @@ export async function adoptDetectedNativeEngines(
     }
     for (const candidate of NATIVE_ENGINE_CANDIDATES) {
       if (!unresolved.has(candidate.id)) continue;
+      // station#1815: per CANDIDATE, not only per attempt. The outer guard
+      // runs once for all three, so an abort landing mid-attempt used to let
+      // the remaining candidates each start a fresh probe and a fresh
+      // registry write under a runtime that was already tearing the home
+      // down.
+      if (deps.signal?.aborted) break;
       try {
-        if (!(await detect(candidate.cli))) {
+        if (
+          !(await detect(candidate.cli, {
+            signal: deps.signal,
+            timeoutMs: ADOPTION_PROBE_TIMEOUT_MS,
+          }))
+        ) {
           // Not on PATH (yet): leave unresolved for the next attempt.
           outcomes[candidate.id] = 'absent';
           continue;
         }
+        // The probe answered, but shutdown may have begun while it ran. A
+        // write STARTED now is the write that lands after the home runtime
+        // lease is released; the next boot re-detects and re-adopts, so
+        // stopping here costs nothing but a restart's worth of delay.
+        if (deps.signal?.aborted) break;
         const outcome = await adoptNativeEngineConnection(
           deps.configLoader,
           candidate.id,

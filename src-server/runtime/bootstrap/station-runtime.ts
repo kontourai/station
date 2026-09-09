@@ -8,6 +8,7 @@ import {
 } from '../../services/plugins/plugin-activation-composition.js';
 import { createLocalPluginInstallationHost } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 /**
  * VoltAgent runtime integration for Station
@@ -272,6 +273,18 @@ const AGENT_CONFIGURATION_ACTIVATION_DEADLINE_MS = 10_000;
 const AGENT_CONFIGURATION_SHUTDOWN_DRAIN_GRACE_MS = 5_000;
 
 /**
+ * How long shutdown waits for the aborted native-engine adoption window
+ * (station#1815).
+ *
+ * It covers a cancelled locator child and at most one agent-registry write
+ * already in progress — both of which finish in milliseconds on a home this
+ * process can write. It is generous by two orders of magnitude so that its
+ * expiry is a statement about a wedged writer and not, as in station#1814, a
+ * statement about how busy the host is.
+ */
+const NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS = 10_000;
+
+/**
  * The configuration generation a reload prepared against. Every publication
  * gate re-captures it and refuses to commit if any component moved — see
  * `assertAgentConfigurationRevisions`.
@@ -522,6 +535,33 @@ export class StationRuntime {
   private reconciliationChurnWindowStartMs = 0;
   private reconciliationChurnCount = 0;
   private readonly nativeEngineAdoptionAbort = new AbortController();
+  /**
+   * The in-flight adoption window, held so shutdown can wait for it
+   * (station#1815).
+   *
+   * Aborting the signal above ends the retry SCHEDULE. It says nothing about
+   * a PATH probe or an agent-registry write already running, and this runtime
+   * owns the home's runtime lease until shutdown releases it — so releasing
+   * on the abort alone handed the home away with a writer still live. Live
+   * symptom (#1791): `STATION_HOME_RESET_REQUIRED` and `ENOENT: rename` out
+   * of the adoption, minutes after the case that started it had ended.
+   */
+  private nativeEngineAdoptionSettled?: Promise<unknown>;
+  /**
+   * How long shutdown waits for that window after aborting it.
+   *
+   * Not a health verdict, and deliberately not the shape station#1814
+   * describes: cancellation has already been signalled and every step of the
+   * window now honours it (`detectCliOnPath` kills its locator child on the
+   * signal, and the candidate loop stops before starting a probe or a write),
+   * so what remains is at most one registry write already in progress.
+   * Expiry therefore means a writer is wedged, not that the host is slow.
+   *
+   * Assignable only so the expiry path is provable without a ten-second wall
+   * clock in a test.
+   */
+  private nativeEngineAdoptionShutdownBudgetMs =
+    NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS;
   /**
    * station#1586 (item 6, fix round M2): aborted on shutdown so the boot-time
    * prerequisite priming settles instead of outliving the runtime, exactly
@@ -3244,11 +3284,21 @@ export class StationRuntime {
     // under load, and a lost race must not strand the registry empty. The
     // catalog reads the registry live, so adopted agents appear on the next
     // /api/agents request without a reload.
-    void adoptDetectedNativeEngines({
+    // Retained rather than discarded (station#1815): shutdown releases this
+    // home's runtime lease, and it may only do that once this window's last
+    // registry write has finished or been cancelled.
+    this.nativeEngineAdoptionSettled = adoptDetectedNativeEngines({
       configLoader: this.configLoader,
       logger: this.logger,
       timers: this.timers,
       signal: this.nativeEngineAdoptionAbort.signal,
+    }).catch((error: unknown) => {
+      // Documented never to throw. If it ever does, the rejection is observed
+      // HERE, where it can be attributed, rather than surfacing unowned on
+      // some later tick against whatever is running then.
+      this.logger.warn('Native engine adoption window failed', {
+        error: errorMessage(error),
+      });
     });
 
     // station#1586 (item 6): warm the Claude executable resolution and its
@@ -4072,10 +4122,16 @@ export class StationRuntime {
 
   private async shutdownAfterConfigurationDrain(): Promise<void> {
     this.recordRuntimeLifecycle('stopping');
+    const failures: unknown[] = [];
+    // Before anything else is torn down: the adoption window writes the agent
+    // registry through this runtime's ConfigLoader, so every teardown step
+    // below — the loader's own dispose included — is a step taken under a
+    // possible writer until this settles.
+    const adoptionUnsettled = await this.settleNativeEngineAdoption();
+    if (adoptionUnsettled) failures.push(adoptionUnsettled);
     await this.drainConfigurationQueues();
     const mcpUiFrameServer = this.mcpUiFrameServer;
     const consentListener = this.consentListener;
-    const failures: unknown[] = [];
     if (this.runtimeSearch) {
       const retirement = await this.runtimeSearch.close();
       if (retirement.state !== 'closed')
@@ -4216,6 +4272,34 @@ export class StationRuntime {
         'Runtime shutdown cleanup was incomplete.',
       );
     }
+  }
+
+  /**
+   * Wait for the aborted native-engine adoption window to finish.
+   *
+   * Returns the condition to report if it did not, rather than throwing:
+   * an unsettled window must not stop the rest of the teardown, and it must
+   * not be swallowed either. Landing it in `failures` also holds the home
+   * runtime lease, which is the honest state — the runtime cannot say this
+   * home is free while it cannot account for its own writer. Retention costs
+   * a blocked maintenance lease (`acquireStationHomeMaintenanceLease` refuses
+   * while any live lease exists) and nothing else: `gracefulShutdown` exits
+   * on the rejection, and the next lease scan reaps a record whose process is
+   * gone. What an operator gets is a non-zero exit naming the condition
+   * instead of a home reported free while a writer was still in it.
+   */
+  private async settleNativeEngineAdoption(): Promise<Error | undefined> {
+    const pending = this.nativeEngineAdoptionSettled;
+    if (!pending) return undefined;
+    const budgetMs =
+      this.nativeEngineAdoptionShutdownBudgetMs ??
+      NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS;
+    if (await awaitSettlementWithin(pending, budgetMs)) return undefined;
+    return new Error(
+      `Native engine adoption did not settle within ${budgetMs}ms of its ` +
+        'shutdown abort; the Station home runtime lease was retained ' +
+        'because a registry write may still be in flight.',
+    );
   }
 
   private recordRuntimeLifecycle(phase: 'ready' | 'stopping'): void {
