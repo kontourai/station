@@ -59,7 +59,7 @@ async function waitForAttachedSession(): Promise<void> {
     .toBe('read-only-attached');
 }
 
-test('follows an external Codex rollout and explains unavailable independent continuation', async ({
+test('follows an external Codex rollout and offers independent continuation', async ({
   page,
 }) => {
   const codexHome = process.env.CODEX_HOME;
@@ -140,10 +140,8 @@ test('follows an external Codex rollout and explains unavailable independent con
     await expect(initialAnswer).toBeInViewport();
     await expect(
       detail.getByRole('button', { name: 'Continue in Station' }),
-    ).toBeDisabled();
-    await expect(detail).toContainText(
-      'independent continuation is not available yet',
-    );
+    ).toBeEnabled();
+    await expect(detail).toContainText('Continue from this history.');
 
     const appended = recordsForTurn(
       'second',
@@ -153,21 +151,8 @@ test('follows an external Codex rollout and explains unavailable independent con
     await expect(detail).toContainText('Appended Codex activity is visible.', {
       timeout: 15_000,
     });
-    const rejected = await authenticatedE2EFetch(
-      `${API}/api/orchestration/commands`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'adoptSession',
-          sourceThreadId: threadId,
-        }),
-      },
-    );
-    expect(rejected.ok).toBe(false);
-    expect(JSON.stringify(await rejected.json())).toContain(
-      'independent continuation is not available yet',
-    );
+    // Discovery does not launch or mutate the provider session. Native fork
+    // execution is covered by the provider-backed continuation journey.
     expect(readFileSync(sourcePath, 'utf8')).toBe(initial + appended);
     await page.setViewportSize({ width: 320, height: 720 });
     const mobileContinue = detail.getByRole('button', {
@@ -180,7 +165,7 @@ test('follows an external Codex rollout and explains unavailable independent con
     ).toBeVisible();
     await expect(
       detail.getByRole('button', { name: 'Continue in Station' }),
-    ).toBeDisabled();
+    ).toBeEnabled();
   } finally {
     await authenticatedE2EFetch(`${API}/api/projects/${slug}`, {
       method: 'DELETE',
@@ -406,9 +391,7 @@ test.describe
       await expect(page).toHaveURL(/\/$/);
 
       const detail = page.getByTestId('session-detail');
-      await expect(detail).toContainText(
-        'Following terminal session · Read only',
-      );
+      await expect(detail).toContainText('Started in Claude Code · Read only');
       await expect(detail).toContainText('Inspect the workspace');
       await expect(detail).toContainText('The workspace is ready.');
       await expect(
@@ -494,7 +477,7 @@ test('adopts an attached session into a linked Flow child without reopening afte
     `/?surface=activity&session=${encodeURIComponent(ATTACHED_MOBILE_THREAD_ID)}`,
   );
   const detail = page.getByTestId('session-detail');
-  await expect(detail).toContainText('Following terminal session · Read only');
+  await expect(detail).toContainText('Started in Claude Code · Read only');
   const continueButton = page.getByRole('button', {
     name: 'Continue in Station',
   });

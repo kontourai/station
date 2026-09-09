@@ -7049,6 +7049,36 @@ describe('lifecycle build + restart ergonomics', () => {
   // is made to fail immediately (`execSync` throws on the first build step,
   // `npm run basis:mcp:generate`), which is enough: the prune runs before the build starts, so
   // a swept orphan proves the call site is present without running a real build.
+  it('preserves the build error when candidate cleanup is busy', async () => {
+    ensureDir(TEST_CWD);
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const cleanup = vi.fn(() => {
+      throw Object.assign(new Error('busy directory'), { code: 'ENOTEMPTY' });
+    });
+    const { lifecycle } = await loadLifecycleModule({
+      fsOverrides: { rmSync: cleanup },
+      childProcessMock: {
+        execSync: vi.fn(() => {
+          throw new Error('original build failure');
+        }),
+      },
+    });
+    try {
+      await expect(
+        lifecycle.buildApplication({ instanceId: 'cleanupbusy' }),
+      ).rejects.toThrow('original build failure');
+      expect(cleanup).toHaveBeenCalledWith(
+        expect.stringContaining('cleanupbusy-'),
+        expect.objectContaining({ recursive: true, maxRetries: 3 }),
+      );
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining('Build cleanup deferred:'),
+      );
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
   it('buildApplication prunes stale candidates before the build runs (station#1867)', async () => {
     ensureDir(TEST_CWD);
     const candidates = join(TEST_CWD, '.station', 'build-candidates');
