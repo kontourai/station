@@ -435,6 +435,19 @@ test('file measurement keeps zero-duration scroll marks ordered across epoch con
   }
 });
 
+test('identifies the missing task product mark without exposing arbitrary error text', () => {
+  for (const kind of ['input', 'apply', 'commit']) {
+    expect(
+      productMarkFailureCode(new Error(`task-${kind} product mark timed out`)),
+    ).toBe(`PRODUCT_TASK_${kind.toUpperCase()}_TIMEOUT`);
+  }
+  expect(
+    productMarkFailureCode(
+      new Error('task-private-secret product mark timed out'),
+    ),
+  ).toBe('PRODUCT_MARK_TIMEOUT');
+});
+
 test('classifies every 100k measurement stage without retaining volatile driver output', () => {
   expect(
     productMarkFailureCode(

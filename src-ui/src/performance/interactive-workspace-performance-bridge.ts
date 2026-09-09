@@ -44,6 +44,7 @@ interface BatchTiming {
 
 interface BatchObserver {
   next(): Promise<BatchTiming>;
+  latest(): BatchTiming | undefined;
   close(): void;
 }
 interface FilePreviewFetchObserver {
@@ -103,6 +104,7 @@ interface ProductMarkObserver {
     afterEpochMs: number;
   }): Promise<RemoteCursorCommitMark>;
   latestTaskCommit(): TaskEditorCommitMark | undefined;
+  latestTaskApply(): TaskDocumentApplyMark | undefined;
   reconnectStrategy(input: {
     taskId: string;
     strategy: 'delta' | 'snapshot' | 'gap';
@@ -456,6 +458,23 @@ export async function measureInteractiveWorkspace(
           ],
           ...(error instanceof ClosedCollaborationFailure
             ? { driverFailure: error.receipt }
+            : {}),
+          ...(fixture.id === 'remote-apply'
+            ? {
+                remoteApplyFailure: {
+                  acceptedEpochMs: batches.latest()?.acceptedAt ?? null,
+                  appliedEpochMs:
+                    marks.latestTaskApply()?.appliedEpochMs ?? null,
+                  committedEpochMs:
+                    marks.latestTaskCommit()?.committedEpochMs ?? null,
+                  applyMatchesTask: marks.latestTaskApply()?.taskId === taskId,
+                  commitMatchesTask:
+                    marks.latestTaskCommit()?.taskId === taskId,
+                  applyMatchesCommitRevision:
+                    marks.latestTaskApply()?.workingRevision ===
+                    marks.latestTaskCommit()?.workingRevision,
+                },
+              }
             : {}),
           counts: {
             failures: 1,
@@ -1373,6 +1392,7 @@ async function measureRemoteApply(
 
 function observeBatchFetches(): BatchObserver {
   const original = window.fetch;
+  let latestTiming: BatchTiming | undefined;
   const waiters: Array<{
     resolve(timing: BatchTiming): void;
     reject(error: Error): void;
@@ -1410,6 +1430,7 @@ function observeBatchFetches(): BatchObserver {
         ingressAt: receipt.ingressEpochMs,
         acceptedAt: receipt.acceptedEpochMs,
       };
+      latestTiming = timing;
       const waiter = waiters.shift();
       if (waiter) waiter.resolve(timing);
       else queued.push(timing);
@@ -1424,6 +1445,7 @@ function observeBatchFetches(): BatchObserver {
     }
   };
   return {
+    latest: () => latestTiming,
     next: () => {
       const error = errors.shift();
       if (error) return Promise.reject(error);
@@ -1705,6 +1727,7 @@ export function observeProductMarks(
         'remote-cursor-commit',
       ),
     latestTaskCommit: () => taskCommits.latest(),
+    latestTaskApply: () => taskApplies.latest(),
     reconnectStrategy: (input) =>
       namedProductMark(
         reconnectStrategies.take(
@@ -2122,6 +2145,8 @@ export function productMarkFailureCode(error: unknown): string {
   if (reconnectDriver) return `PRODUCT_RECONNECT_DRIVER_${reconnectDriver[1]!}`;
   if (message.includes('task-input product'))
     return 'PRODUCT_TASK_INPUT_TIMEOUT';
+  if (message.includes('task-apply product'))
+    return 'PRODUCT_TASK_APPLY_TIMEOUT';
   if (message.includes('task-commit product'))
     return 'PRODUCT_TASK_COMMIT_TIMEOUT';
   if (message.includes('diff-commit product'))
