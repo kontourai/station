@@ -355,23 +355,28 @@ export function renderSummary({ document, unparseableReason, sourcePath }) {
     // said out loud. They are mutually exclusive by construction: the
     // reporter withholds `causeStream` for exactly the case that sets
     // `infrastructureCause`.
-    // station#1827 fix round 2. Two clauses came out of the first version.
+    // station#1827, and this sentence has been wrong twice in opposite ways.
     //
-    // "Any excerpts after it were found by the scan" was false on the
-    // reconcile path, where the second excerpt is the `reconcileNote` this
-    // pipeline synthesized about its own failure. Sourcing the marker from
-    // the summary now keeps that path out of this branch entirely, but the
-    // sentence should not depend on that to be true, so the clause is gone.
+    // Round 3 deleted its two scoping clauses because "anything after it was
+    // found by the scan" is false on the reconcile path -- where the second
+    // excerpt is the `reconcileNote` the pipeline synthesized about its own
+    // failure. But the SAME commit made the marker absent on that path, so
+    // this branch cannot be reached there; the scope was removed to fix a
+    // case the commit had already made unreachable, and the unscoped sentence
+    // it left sits above a block that renders EVERY excerpt. On the case that
+    // is actually taken it therefore said, of a line the scan picked out of
+    // the lane's stdout, that it was not selected from the lane's output --
+    // the branch's own defect class, on the surface the branch exists to fix.
     //
-    // "the stopping component naming its own reason" claimed a provenance the
-    // value does not always have: the other channel is `raw.error.message`,
-    // which is whatever rejected the execute call -- a harness assertion from
-    // `onSpawn` or an injected phase runner included. The child may never have
-    // spoken. The sentence now attributes it to the runner layer, which is
-    // true of both channels, and says which they are.
+    // So both scopes are back: the claim is about the FIRST entry, and the
+    // rest are accounted for rather than left under it. What stays from round
+    // 3 is the provenance wording -- the second channel is whatever rejected
+    // the execution, a harness assertion from `onSpawn` or an injected phase
+    // runner included, so the sentence attributes the record to the runner
+    // layer and never to the stopping command itself.
     if (typeof summary.infrastructureCause === 'string')
       lines.push(
-        "Recorded by the verification runner as why this lane stopped — the stopping command's own owner-final line, or the error the runner raised about it — not selected from the lane's output.",
+        "The first excerpt was recorded by the verification runner as why this lane stopped — the stopping command's own owner-final line, or the error the runner raised about it — rather than selected from the lane's output. Any excerpts below it were found by scanning that output.",
         '',
       );
     else if (summary.causeStream === 'stderr')

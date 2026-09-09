@@ -267,6 +267,19 @@ function withoutPartialRedactionMarker(text) {
 }
 
 /**
+ * The most redaction passes `normalizeDeclaredCause` will run before it refuses
+ * to record a cause at all.
+ *
+ * Each pass can only replace a token with `[REDACTED]`, so the loop shrinks the
+ * bounded prefix's unredacted content monotonically and converges in one or two
+ * passes on every corpus swept for station#1827. The cap exists so a shape
+ * nobody has constructed cannot spin, and its exhaustion is a REFUSAL rather
+ * than a best effort: a value whose end still matches a secret pattern is not
+ * one to persist into a receipt that CI uploads as an artifact.
+ */
+const MAX_DECLARED_CAUSE_REDACTION_PASSES = 8;
+
+/**
  * The one derivation of a runner-declared stop cause. Every consumer is handed
  * the string this returns; nothing recomputes it (station#1827 fix round 2).
  *
@@ -276,61 +289,81 @@ function withoutPartialRedactionMarker(text) {
  * with nothing at all, which is worse than the wrong excerpt this change
  * exists to remove.
  *
+ * ## This function is the redaction boundary for this value
+ *
+ * Neither channel feeding it is redacted upstream -- not the lifecycle's
+ * owner-final extraction, not `raw.error.message` -- and the result lands in
+ * the canonical receipt, which CI uploads as an artifact and nothing redacts
+ * downstream. Every guarantee below exists because there is no second chance.
+ *
  * ## Why this is called once and never re-applied
  *
- * It is NOT idempotent, and the delta review of the first fix round proved it
- * with the case that matters: bounding after redacting can move a token-shaped
- * fragment to end-of-string, where `verification-redaction.mjs`'s
- * `$`-anchored partial-token rules match on a LATER pass but could not on the
- * first. Nine offsets in a 53-wide sweep of `'a'*n + 'ghp_ABCDEFG …'` changed
- * under a second pass, three of them by splitting the replacement.
+ * It is not idempotent, and the delta review of the first fix round proved it:
+ * a bound can move a token-shaped fragment to end-of-string, where
+ * `verification-redaction.mjs`'s `$`-anchored partial-token rules match on a
+ * later pass but could not on an earlier one.
  *
  * The answer is structural rather than a proof of idempotence: `reportExecution`
  * calls this once and threads the result to the summarizer and to the receipt,
  * so there is no second derivation to agree with. Do not reintroduce one.
  *
- * ## The order, which is fixed and not interchangeable
+ * ## The order, and which class each step is for
  *
- * Escapes come off BEFORE the redaction boundary for the reason
- * `summarizeVerificationOutput` states about its own captures: a secret SPLIT
- * by an escape sequence is not a token the redactor can recognise while the
- * escape sits in the middle of it, and redacting first would reconstitute it.
- * (`boundedText` in `verification-terminal-receipt.mjs` redacts without
- * stripping, which is why the receipt cannot simply reuse it for this value.)
+ * 1. **Strip escapes**, before anything else. A secret SPLIT by an escape
+ *    sequence is not a token the redactor can recognise while the escape sits
+ *    in the middle of it, so redacting first would reconstitute it. (This is
+ *    also why the receipt cannot reuse `boundedText` in
+ *    `verification-terminal-receipt.mjs`, which redacts without stripping.)
+ * 2. **Redact the COMPLETE text**, before any bound. This pass is for the
+ *    classes that need a whole structure to match: an encoded JSON layer
+ *    (`redactEncodedJsonStrings` has to parse it, and the key matchers stop at
+ *    a backslash, so half a layer matches nothing), a PEM block, a full-length
+ *    token. Round 3 bounded first and leaked a complete `apiKey` value out of
+ *    a JSON layer the cut had halved -- into the receipt.
+ * 3. **Bound**, then trim, then **redact again**. The second pass is for the
+ *    class the first cannot see: whatever the CUT created. Those `$`-anchored
+ *    partial-token rules only fire on the string's real end, so a token the
+ *    bound left partial is invisible until after the cut. Round 1 had only
+ *    this pass and leaked partial tokens; round 3 had only the other and
+ *    leaked whole ones. Both are needed; neither order alone dominates.
+ * 4. **Loop until the end stops changing.** Redaction can lengthen what it
+ *    rewrites, so a value that grows past the bound is cut again -- and that
+ *    cut, plus the trim that follows it, can expose a token the previous pass
+ *    never saw. Round 3 cut once and did not re-scan, which is how a trailing
+ *    `ghp_…` survived 92 inputs in a structured sweep. Re-scanning after every
+ *    cut is the only form that closes it, because each cut makes a new end.
  *
- * The BOUND then comes before redaction, which the first round had backwards.
- * Those `$`-anchored rules exist precisely to catch a token the surrounding
- * cut left partial, and they can only fire on the string's real end -- so
- * cutting afterwards both defeated them and produced the non-idempotence
- * above. Redaction can lengthen what it rewrites, so a value that grows past
- * the bound is cut back, never through a replacement marker.
+ * ## What it guarantees, and what it refuses
  *
- * What that guarantees: at most `maxBytes` bytes, codepoint-aligned, no
- * trailing partial marker, and any token left partial by the FIRST cut
- * redacted. What it does not: a value whose redaction grew past the bound is
- * cut a second time, and that second cut is not itself re-scanned, so a token
- * prefix it exposes stays. Reaching that needs a redacted secret before the
- * bound and a token prefix at the shifted cut.
+ * At most `maxBytes` bytes, codepoint-aligned; no trailing partial `[REDACTED]`
+ * marker; and an end that the redactor, run on exactly that string, does not
+ * change -- which is the property "no unredacted token at the end" reduces to.
+ * A value that cannot be brought to that state within
+ * `MAX_DECLARED_CAUSE_REDACTION_PASSES` is refused (null) rather than recorded.
  */
 export function normalizeDeclaredCause(
   value,
-  { maxBytes = DECLARED_CAUSE_BYTE_CAP } = {},
+  {
+    maxBytes = DECLARED_CAUSE_BYTE_CAP,
+    // Overridable so the refusal path is reachable by a test with a real
+    // input rather than a synthetic one: every corpus swept converges in at
+    // most two passes, so the production cap alone can never exercise it.
+    maxPasses = MAX_DECLARED_CAUSE_REDACTION_PASSES,
+  } = {},
 ) {
   if (typeof value !== 'string' || value.length === 0) return null;
-  // Trimmed AFTER the bound as well as before it, and that second trim has to
-  // precede redaction: a cut landing one character past a token leaves
-  // `…ghp_ABCDEFG ` , whose real end is a space, and the `$`-anchored rules
-  // then see no token at all. Trimming afterwards would re-expose it. (Found
-  // by sweeping this function's own guarantees, not by review.)
-  const bounded = longestUtf8Prefix(withoutAnsi(value).trim(), maxBytes).trim();
-  const redacted = redactVerificationOutput(bounded);
-  const normalized =
-    Buffer.byteLength(redacted) <= maxBytes
-      ? redacted
-      : withoutPartialRedactionMarker(
-          longestUtf8Prefix(redacted, maxBytes),
-        ).trim();
-  return normalized.length > 0 ? normalized : null;
+  const boundAndTrim = (text) =>
+    withoutPartialRedactionMarker(longestUtf8Prefix(text, maxBytes)).trim();
+  // Pass 1 sees the whole text; the loop's pass sees each end the bound makes.
+  let candidate = boundAndTrim(
+    redactVerificationOutput(withoutAnsi(value).trim()),
+  );
+  for (let attempt = 0; attempt < maxPasses; attempt += 1) {
+    const redacted = redactVerificationOutput(candidate);
+    if (redacted === candidate) return candidate.length > 0 ? candidate : null;
+    candidate = boundAndTrim(redacted);
+  }
+  return null;
 }
 
 function semanticCandidate(summary, semantic, value) {

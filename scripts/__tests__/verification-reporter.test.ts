@@ -482,10 +482,19 @@ describe('verification reporter', () => {
     // assertion that pins "no second derivation" directly, rather than
     // through a consequence of it.
     //
-    // Pinning it through non-idempotence no longer works: the same round
-    // reordered `normalizeDeclaredCause` so the bound precedes redaction, and
-    // that made it idempotent over ~300k randomised inputs, so re-normalizing
-    // here is now a silent no-op. Two changes, one of which hides the other.
+    // Pinning it through non-idempotence does not work, and round 4 corrected
+    // why. The recorded reason was that a reorder had made the function
+    // idempotent over ~300k randomised inputs; that was false -- the function
+    // is not idempotent, its own docblock says so, and a structured sweep
+    // finds inputs where it is not. The randomised corpus simply never built
+    // one, because it contained no growth-producing redaction upstream of a
+    // token, which is the whole discriminating shape (the same blind spot the
+    // no-token-at-the-end sweep below had).
+    //
+    // The real reason the injection passed is narrower and duller: the
+    // FIXTURE value was one the normalizer returns unchanged, so re-deriving
+    // it was a no-op on that input whatever the function's general behaviour.
+    // A value the normalizer WOULD change is therefore the discriminator.
     // A value the normalizer WOULD change is therefore the only discriminator
     // left -- and it is the truer statement anyway, because the contract is
     // "uses what it is given", not "happens to agree with a second pass".
@@ -589,27 +598,78 @@ describe('verification reporter', () => {
     const partialMarker = /\[R(?:E(?:D(?:A(?:C(?:T(?:E)?)?)?)?)?)?$/;
     const tokenTail =
       /(?:gh[pousr]_[A-Za-z0-9]*|github_pat_[A-Za-z0-9_]*|\bsk-[A-Za-z0-9_-]*|(?:AKIA|ASIA)[0-9A-Z]*)$/;
+    //
+    // Round-4 review, M2: this corpus was padding plus ONE token, which never
+    // makes redaction grow the value, so the growth branch -- cut back, strip
+    // the marker fragment, trim -- was never entered and the assertion was
+    // correct and powerless. 92 inputs violated the very property it states.
+    // A growth-producing redaction UPSTREAM of the trailing token is the
+    // entire discriminating case, so the sweep now carries one, and trailing
+    // words after the token so a cut can land just past `<token> `.
     let cutInsideToken = 0;
-    for (let pad = 480; pad <= 520; pad += 1) {
+    let grewPastBound = 0;
+    for (let pad = 200; pad <= 520; pad += 4) {
       for (const token of [
-        'ghp_ABCDEFG and more text after it',
-        'github_pat_ABCDEFGHIJ and more',
-        'sk-ABCDEFGHIJ and more',
-        'AKIAABCDEFG and more',
+        'ghp_ABCDEFG',
+        'github_pat_ABCDEFGHIJ',
+        'sk-ABCDEFGHIJ',
+        'AKIAABCDEFG',
+        'ghp_ABCDEFGHIJKLMNOPQRSTUV',
       ]) {
-        const raw = `${'a'.repeat(pad)}${token}`;
-        const value = normalizeDeclaredCause(raw) as string;
-        expect(value).not.toBeNull();
-        expect(Buffer.byteLength(value)).toBeLessThanOrEqual(512);
-        expect(value).not.toMatch(tokenTail);
-        if (!value.endsWith('[REDACTED]'))
-          expect(value).not.toMatch(partialMarker);
-        // Not vacuous: these offsets really do cut inside the token region.
-        if (Buffer.byteLength(raw) > 512 && value.endsWith('[REDACTED]'))
-          cutInsideToken += 1;
+        for (const growth of [0, 1, 4, 16]) {
+          const prefix = 'Bearer s '.repeat(growth);
+          const raw = `${prefix}${'a'.repeat(pad)} ${token} and more trailing words here`;
+          const value = normalizeDeclaredCause(raw) as string;
+          expect(value).not.toBeNull();
+          expect(Buffer.byteLength(value)).toBeLessThanOrEqual(512);
+          expect(value).not.toMatch(tokenTail);
+          if (!value.endsWith('[REDACTED]'))
+            expect(value).not.toMatch(partialMarker);
+          // Not vacuous, in both directions: offsets that cut inside the
+          // token, and offsets where redaction grows the value past the bound
+          // and the growth branch runs.
+          if (Buffer.byteLength(raw) > 512 && value.endsWith('[REDACTED]'))
+            cutInsideToken += 1;
+          if (growth > 0 && value.includes('[REDACTED]')) grewPastBound += 1;
+        }
       }
     }
     expect(cutInsideToken).toBeGreaterThan(0);
+    expect(grewPastBound).toBeGreaterThan(0);
+
+    // Round-4 review, H2: this function is the redaction BOUNDARY for the
+    // declared cause -- neither channel is redacted upstream and the value
+    // lands in a receipt CI uploads as an artifact. Round 3 bounded before
+    // redacting, which halves an encoded JSON layer; nothing then matches the
+    // escaped form, because the key matchers stop at the backslash. The whole
+    // secret survived, not a fragment. Swept because it depends on where the
+    // cut lands.
+    const encodedSecret = 'hunter2hunter2hunter2';
+    let encodedCarried = 0;
+    for (let pad = 350; pad <= 560; pad += 1) {
+      for (const layers of [1, 2]) {
+        let payload = JSON.stringify({ apiKey: encodedSecret });
+        for (let depth = 0; depth < layers; depth += 1)
+          payload = JSON.stringify({ data: payload });
+        const value = normalizeDeclaredCause(
+          `${'a'.repeat(pad)} ${payload}`,
+        ) as string;
+        expect(value).not.toContain(encodedSecret);
+        if (value?.includes('apiKey')) encodedCarried += 1;
+      }
+    }
+    // Not vacuous: the layer really does reach the bounded value at these
+    // offsets, redacted rather than absent.
+    expect(encodedCarried).toBeGreaterThan(0);
+
+    // The refusal path. Every corpus swept converges in at most two passes, so
+    // the production cap cannot reach it; driving the cap down to one on an
+    // input that genuinely needs two exercises the real branch with a real
+    // value. A cause whose end still matches a secret pattern is not one to
+    // persist, so the function records nothing rather than its best effort.
+    const needsTwoPasses = `${'Bearer s '.repeat(16)}${'b'.repeat(200)} ghp_ABCDEFGHIJKLMNOPQRSTUV and more trailing words here`;
+    expect(normalizeDeclaredCause(needsTwoPasses)).not.toBeNull();
+    expect(normalizeDeclaredCause(needsTwoPasses, { maxPasses: 1 })).toBeNull();
 
     // Bounded in BYTES, codepoint-aligned, and never above the schema's own
     // code-point wall. A surrogate pair is never cut in half.
@@ -624,7 +684,8 @@ describe('verification reporter', () => {
       const once = normalizeDeclaredCause(value) as string;
       expect(once).not.toBeNull();
       expect(Buffer.byteLength(once)).toBeLessThanOrEqual(512);
-      expect([...once]).toHaveLength(Math.min([...once].length, 512));
+      // Round-4 review, L2: the line that used to sit here compared the value
+      // against a minimum of itself and 512, which is true for every string.
       expect([...once].length).toBeLessThanOrEqual(512);
       expect(once).toBe(once.trim());
     }

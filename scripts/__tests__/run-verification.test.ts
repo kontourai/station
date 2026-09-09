@@ -551,6 +551,74 @@ describe('verification status projection', () => {
     }
   });
 
+  // station#1827 round-4 review, L1: the previous verifier specified this and
+  // it was still uncovered. `tailFallback` is a SECOND envelope builder, with
+  // its own allow-list, reached only when the ordinary rendering is over the
+  // 8 KiB control cap -- exactly the largest, least readable runs, where a
+  // reader is least able to go and look for themselves. A marker carried in
+  // the ordinary path and dropped here would say "scanned" on those runs.
+  test('carries the declared-cause marker into the over-cap tail fallback (station#1827)', () => {
+    const worktree = mkdtempSync(join(tmpdir(), 'station-1827-overcap-'));
+    const key = 'e'.repeat(64);
+    const cause = 'ci:fast exceeded its 12-minute feedback budget';
+    try {
+      const persisted = persistVerificationOutput({
+        root: worktree,
+        requestKey: key,
+        // Escaped to eight bytes each in JSON, so the ordinary envelope is
+        // comfortably past the cap and the fallback is the path taken.
+        stdout: '\u0000'.repeat(8 * 1024),
+      });
+      const rendered = renderBounded({
+        disposition: 'executed',
+        request: { key, laneId: 'ci-fast' },
+        receipt: {
+          request: { key, worktree },
+          terminal: {
+            status: 'infrastructure_error',
+            exitCode: null,
+            passed: false,
+            infrastructureCause: cause,
+          },
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 1,
+          },
+          cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+          artifacts: persisted.artifacts,
+        },
+        summary: {
+          terminal: 'infrastructure_error',
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 0,
+            infrastructureErrors: 1,
+          },
+          firstCausalExcerpt: cause,
+          infrastructureCause: cause,
+        },
+      });
+
+      expect(Buffer.byteLength(rendered)).toBeLessThanOrEqual(8 * 1024);
+      const parsed = JSON.parse(rendered);
+      // The fallback really was taken -- otherwise this asserts nothing about
+      // that builder's allow-list.
+      expect(parsed.truncated).toBe(true);
+      expect(typeof parsed.summary.failedCheckRedactedStdoutTail).toBe(
+        'string',
+      );
+      // The excerpt and the field that says how it was selected travel
+      // together or not at all.
+      expect(parsed.summary.firstCausalExcerpt).toBe(cause);
+      expect(parsed.summary.infrastructureCause).toBe(cause);
+    } finally {
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
   test('keeps submit limited to the non-evidence full-regression surface', () => {
     expect(parseVerificationCommand(['submit', 'full-regression'])).toEqual({
       command: 'submit',

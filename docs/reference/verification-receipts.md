@@ -248,14 +248,23 @@ the reconcile path reports a timeout-specific cause there and never reads this
 one, and admitting it on both would put the two paths back into disagreement.
 
 The value is derived **once**, by `normalizeDeclaredCause` in
-`scripts/lib/verification-reporter.mjs` — strip terminal escapes, trim, bound
-to **512 bytes** codepoint-aligned, then redact — and `reportExecution` hands
-that one string to both the summary and the receipt. Nothing recomputes it.
-That ordering matters twice: escapes come off before redaction so a secret
-split by one is still recognisable, and the bound comes before redaction so
-the redactor's partial-token rules see the string's real end. Re-deriving the
-value is what made the two artifacts disagree in the first place, and the
-function is deliberately not idempotent-by-proof; it is called once instead.
+`scripts/lib/verification-reporter.mjs`, and `reportExecution` hands that one
+string to both the summary and the receipt. Re-deriving it is what made the
+two artifacts disagree in the first place; the function is deliberately not
+idempotent-by-proof, it is called once instead.
+
+**That function is the redaction boundary for this value.** Neither channel is
+redacted upstream, and the result lands in a receipt CI uploads as an
+artifact, so it runs three steps for three different classes: strip terminal
+escapes first (a secret split by one is not a token the redactor can see);
+redact the **complete** text before any bound (an encoded JSON layer has to be
+parseable, and half of one matches nothing — bounding first leaked a whole
+`apiKey` value); then bound, trim, and redact **again** (the redactor's
+`$`-anchored partial-token rules only fire on the string's real end, so a
+token the bound left partial is invisible until after the cut). Redaction can
+lengthen what it rewrites, so the last two steps repeat until the end stops
+changing — every cut makes a new end. A value that cannot be brought to a
+redaction-stable state is refused rather than recorded.
 
 The schema's `maxLength: 512` counts **code points**, so it is a looser outer
 wall that a byte-bounded value can never reach; where the two differ, the byte
@@ -585,10 +594,15 @@ needs to be able to tell which one produced a given receipt's entries:
 
    The summary says which case it is in `summary.infrastructureCause`: present
    means the head excerpt beside it is a declaration. Its value is that same
-   head excerpt, so the two can never describe one declaration differently —
-   and both are a **prefix** of the receipt's `terminal.infrastructureCause`,
-   not necessarily equal to it, because the summary's byte budget may have cut
-   the excerpt shorter. The receipt holds the full derivation.
+   head excerpt, so the two can never describe one declaration differently.
+   Whenever the marker is present those two and the receipt's
+   `terminal.infrastructureCause` are the **same bytes** — the marker only
+   survives the summary's byte budget when the excerpt was not cut, and the
+   bounded envelope re-redacts every field it carries, which is a no-op on a
+   value the normalizer produced because that function stops only on a value
+   redaction leaves unchanged. When the marker is absent, the excerpt may be a
+   budget-truncated prefix that the envelope re-redacts, and no such claim is
+   made about it.
 
    The marker is additive and lowest-priority in that budget, so a very tight
    cap omits it — which understates confidence rather than overstating it.

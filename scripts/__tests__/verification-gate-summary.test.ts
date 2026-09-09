@@ -141,6 +141,46 @@ function runSummary(
   return { status: result.status, stdout: result.stdout ?? '', summary };
 }
 
+/**
+ * The prose between the "Causal excerpts" heading and the fenced block, which
+ * is the caveat that qualifies the excerpts (station#1827 round-4 review, H1).
+ *
+ * Reading it out of the page is what makes the assertions about it properties
+ * rather than page-wide phrase searches: a sentence rendered somewhere else,
+ * or a reworded restatement of the same claim, cannot satisfy them.
+ */
+function causalExcerptCaveat(summary: string): string {
+  const lines = summary.split('\n');
+  const heading = lines.findIndex((line) =>
+    line.startsWith('### Causal excerpts'),
+  );
+  if (heading < 0) return '';
+  const fence = lines.findIndex(
+    (line, index) => index > heading && line.startsWith('```'),
+  );
+  return lines
+    .slice(heading + 1, fence < 0 ? undefined : fence)
+    .join('\n')
+    .trim();
+}
+
+/** The excerpt lines inside that fenced block, in rendered order. */
+function causalExcerptBlock(summary: string): string[] {
+  const lines = summary.split('\n');
+  const heading = lines.findIndex((line) =>
+    line.startsWith('### Causal excerpts'),
+  );
+  if (heading < 0) return [];
+  const open = lines.findIndex(
+    (line, index) => index > heading && line.startsWith('```'),
+  );
+  if (open < 0) return [];
+  const close = lines.findIndex(
+    (line, index) => index > open && line.startsWith('```'),
+  );
+  return lines.slice(open + 1, close < 0 ? undefined : close);
+}
+
 function errorAnnotations(stdout: string): string[] {
   return stdout.split('\n').filter((line) => line.startsWith('::error'));
 }
@@ -703,19 +743,34 @@ describe('verification gate summary', () => {
     // direction, and the new field must not start.
     expect(status).toBe(0);
     expect(summary).toContain('Causal excerpts');
-    expect(summary).toContain('ci:fast exceeded its 12-minute feedback budget');
-    expect(summary).toContain('Recorded by the verification runner');
-    // station#1827 fix round 2, L6: the sentence must not claim the stopping
-    // COMMAND spoke. The other channel is whatever rejected the execution --
-    // a harness assertion or an injected phase runner included -- so the
-    // provenance it may assert is the runner layer, not the child.
-    expect(summary).not.toContain('naming its own reason');
-    // L3: and it must not characterise the excerpts after the head, which are
-    // synthesized rather than scanned on the reconcile path.
-    expect(summary).not.toContain('found by the scan');
-    // The caveat that would have been false. Absence here is now a positive
-    // statement rather than the silence it used to be.
-    expect(summary).not.toContain('picked by severity and position');
+
+    // The fixture is only discriminating if the block really does hold BOTH
+    // provenances. Assert that before asserting anything about the caveat.
+    const block = causalExcerptBlock(summary);
+    expect(block[0]).toContain(
+      'ci:fast exceeded its 12-minute feedback budget',
+    );
+    expect(block.slice(1).join('\n')).toContain('Error: observer failed');
+
+    // Round-4 review, H1: these were phrase pins over the WHOLE page, so a
+    // reworded restatement of the same falsehood passed them -- and one of
+    // them forbade the scoping whose absence was the defect. They are now
+    // properties of the caveat paragraph itself, read from between the
+    // heading and the fenced block, so nothing elsewhere on the page can
+    // satisfy them.
+    const caveat = causalExcerptCaveat(summary);
+    // Scoped to the head, because the entry below it is a scan result and
+    // "not selected from the lane's output" is false of that one.
+    expect(caveat).toMatch(/first excerpt/i);
+    // And the rest are accounted for rather than left under the claim.
+    expect(caveat).toMatch(/scan/i);
+    // The provenance it may assert is the runner layer, never the stopping
+    // command: the other channel is whatever rejected the execution, a
+    // harness assertion or an injected phase runner included.
+    expect(caveat).not.toMatch(/naming its own reason|stopping component/i);
+    // The scanned-excerpt caveat would be false here, and its absence is now
+    // a positive statement rather than the silence it used to be.
+    expect(caveat).not.toMatch(/severity and position/i);
     expect(errorAnnotations(stdout).join('\n')).toContain(
       'ci:fast exceeded its 12-minute feedback budget',
     );

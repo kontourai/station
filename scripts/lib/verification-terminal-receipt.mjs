@@ -3,7 +3,6 @@ import { existsSync, renameSync } from 'node:fs';
 import { createVerificationReceipt } from './verification-receipt.mjs';
 import { redactVerificationOutput } from './verification-redaction.mjs';
 import {
-  DECLARED_CAUSE_BYTE_CAP,
   normalizeDeclaredCause,
   persistPlaywrightAttachments,
   persistVerificationOutput,
@@ -52,15 +51,32 @@ function boundedSummaryEnvelope(summary) {
     // is where withholding a marker turns into showing nothing at all: the
     // envelope is what the CI annotation and the printed verdict read, so
     // without this a declared cause rendered byte-identically to a scanned
-    // one. Bounded like every other diagnostic field here; the reporter has
-    // already normalized and byte-bounded it to DECLARED_CAUSE_BYTE_CAP.
-    ...(summary?.infrastructureCause
-      ? {
-          infrastructureCause: boundedText(
-            summary.infrastructureCause,
-            DECLARED_CAUSE_BYTE_CAP,
-          ),
-        }
+    // one.
+    //
+    // Gated on the EXCERPT as well as on itself (round-4 review, L4). The
+    // marker is a claim about the head excerpt, so it may not appear beside
+    // an absent one. The summarizer applies that rule at its end; today it is
+    // the only producer, so this gate is unreachable -- but this allow-list
+    // is what a second producer would reach, and an allow-list that carries a
+    // field without its own rule is where the rule gets lost.
+    //
+    // `boundedText` re-redacts, which round 4 keeps deliberately. It is a
+    // no-op on a value `normalizeDeclaredCause` produced, because that
+    // function's exit condition IS redaction-stability, so the marker here is
+    // byte-identical to the receipt's field rather than a fourth derivation
+    // of it. What it buys is that an unnormalized value cannot reach a
+    // rendering even if a future caller breaks the summarizer's verbatim
+    // contract -- the persisted receipt is the copy with no such backstop.
+    //
+    // Bounded with the SAME number as `firstCausalExcerpt` above, deliberately
+    // and not by coincidence: the two fields carry the same text whenever both
+    // are present, so a bound that applied to one and not the other would cut
+    // them to different lengths and reintroduce the divergence this field was
+    // added to remove. It is not `DECLARED_CAUSE_BYTE_CAP` -- that is the
+    // normalizer's own cap, and if it were ever raised above this one the
+    // marker would survive whole while the excerpt beside it was cut.
+    ...(summary?.infrastructureCause && summary?.firstCausalExcerpt
+      ? { infrastructureCause: boundedText(summary.infrastructureCause, 512) }
       : {}),
     // station#4249 review: present ONLY when reportExecution's own reporting
     // pipeline failed (the reconcile-note catch branches below) -- this is
@@ -136,12 +152,20 @@ function boundedSummaryEnvelope(summary) {
  * carried no cause and the summary reported a scanned excerpt instead.
  *
  * TWO channels, in `primaryInterruptedCause`'s exact precedence (review item
- * 1). `raw.error.message` is the other declaration a runner makes about its
- * own stop -- `createOwnedRunner` returns it for a surviving owned process, an
- * invalid-UTF-8 capture and a spawn failure, on EVERY lane, not only ci-fast
- * -- and threading one channel while dropping the sibling would leave the
- * ordinary path and the reconcile path disagreeing about what the runner's
- * own final word was, which is the defect this change exists to close.
+ * 1). `raw.error.message` is the message of whatever REJECTED the execution,
+ * on every lane and not only ci-fast, and threading one channel while dropping
+ * the sibling would leave the ordinary path and the reconcile path disagreeing
+ * about what the runner's own final word was -- the defect this exists to
+ * close.
+ *
+ * That second channel is a catch-all and its provenance is weaker than the
+ * first (round-4 review, L6). Most often it is the owned runner diagnosing
+ * itself -- a surviving owned process, an unreadable capture, a spawn failure
+ * -- but it also carries a harness assertion raised in `onSpawn` while the
+ * child was being adopted, or an error from an injected phase runner, where
+ * the stopping command never spoke at all. Nothing downstream may therefore
+ * say the CHILD named this; the rendered sentence attributes it to the runner
+ * layer, which is true of both channels.
  *
  * `primaryInterruptedCause`'s third arm, the fixed 'ended with an
  * infrastructure error' sentence, is deliberately NOT adopted: it is prose
@@ -293,11 +317,21 @@ export function reportExecution({ raw, result, cleanup, worktree, request }) {
         // two artifacts named different causes for one run. The summarizer
         // now uses what it is given, and this is the only derivation.
         //
-        // What that guarantees, stated no wider than it is true: every
-        // rendering of this cause is a PREFIX of the receipt's field. The
-        // summary's byte budget can cut the excerpt shorter, and the
-        // reconcile branch below wraps it in a sentence. A reader comparing
-        // them is comparing renderings against one record, not two claims.
+        // What that guarantees, restated after round 4 found the earlier
+        // wording too wide. "Every rendering is a PREFIX of the receipt's
+        // field" was false: `boundedSummaryEnvelope` re-redacts through
+        // `boundedText`, which is a fourth transform, and on a value whose
+        // end was not redaction-stable it produced something that was not a
+        // prefix at all.
+        //
+        // True as of round 4, and for a reason rather than by luck: whenever
+        // the MARKER is present the excerpt was not budget-truncated, so all
+        // of receipt field, summary marker and envelope marker are the same
+        // bytes -- `normalizeDeclaredCause` exits only on a value redaction
+        // leaves unchanged, which makes the envelope's pass a no-op. When the
+        // marker is absent the excerpt may be a budget-truncated prefix that
+        // the envelope re-redacts, and no claim is made about it. The
+        // reconcile branch below separately wraps the cause in a sentence.
         ...(infrastructureCause ? { infrastructureCause } : {}),
         // exitCode and truncated are what let the reporter tell a real
         // non-pass from a `completed` status, and a prefix-capture from a
