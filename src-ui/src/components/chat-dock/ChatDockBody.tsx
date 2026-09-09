@@ -349,6 +349,7 @@ export function ChatDockBody({
   // but it is the only one of the two that may not claim anything is wrong
   // (#1582 E3/B6).
   const readOnlyOpen = openPhase === 'read-only';
+  const busyOpen = openPhase === 'busy';
   const resolvingOpen = openPhase === 'resolving';
   const transcript = useActiveChatTranscript(apiBase, activeSession);
   /*
@@ -425,8 +426,20 @@ export function ChatDockBody({
   // rendered as themselves below.
   const claimsServerSession =
     activeSession.orchestrationSessionStarted === true;
+  // The inventory can omit an unloaded child. An authorized point-read of
+  // this exact child is stronger evidence than absence from that list.
+  const openResolution = activeSession.conversationOpenState;
+  const currentChildKnown =
+    openResolution?.status === 'resolved' &&
+    openResolution.currentSessionId ===
+      (activeSession.currentSessionId ??
+        activeSession.conversationId ??
+        activeSession.id);
   const sessionRecordMissing =
-    claimsServerSession && activeOrchestrationSessionRead === 'absent';
+    claimsServerSession &&
+    activeOrchestrationSessionRead === 'absent' &&
+    !activeSession.conversationOpenPending &&
+    !currentChildKnown;
   const sessionRecordPending =
     claimsServerSession && activeOrchestrationSessionRead === 'pending';
   const sessionRecordUnreadable =
@@ -1241,7 +1254,7 @@ export function ChatDockBody({
         input={chatInput.input}
         attachments={chatInput.attachments}
         textareaRef={chatInput.textareaRef}
-        disabled={!agent || readOnlyOpen || resolvingOpen}
+        disabled={!agent || readOnlyOpen || resolvingOpen || busyOpen}
         isSending={isExecutionActive}
         turnInFlight={isTurnInFlight(activeSession)}
         stopPending={!!activeSession.stopPending}
@@ -1272,7 +1285,9 @@ export function ChatDockBody({
           activeSession.providerOptions
         }
         secondaryActions={
-          readOnlyOpen || resolvingOpen ? undefined : secondaryActions
+          readOnlyOpen || resolvingOpen || busyOpen
+            ? undefined
+            : secondaryActions
         }
         agentLabel={
           agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
@@ -1299,7 +1314,7 @@ export function ChatDockBody({
         sendBlockedReason={
           readOnlyOpen
             ? 'This conversation is available read-only. Retry resolution or start a new chat.'
-            : resolvingOpen
+            : resolvingOpen || busyOpen
               ? // The banner above already says this; repeating the SENTENCE
                 // under the composer is what made one ordinary reload read as
                 // three separate problems. `undefined` leaves the composer

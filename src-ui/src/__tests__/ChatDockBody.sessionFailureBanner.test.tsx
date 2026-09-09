@@ -809,10 +809,15 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       recoveryActions: [] as const,
     };
     const { rerender } = renderDock({
+      orchestrationSession: null,
+      read: 'absent',
       session: buildSession({
+        currentSessionId: base.currentSessionId,
+        orchestrationSessionStarted: true,
         conversationOpenState: { ...base, canContinue: false },
       }),
     });
+    expect(screen.queryByTestId('chat-dock-session-record-missing')).toBeNull();
     expect(chatInputPropsMock.current?.disabled).toBe(true);
     rerender(
       <QueryClientProvider client={new QueryClient()}>

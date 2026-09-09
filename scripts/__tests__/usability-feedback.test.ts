@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import {
   reviewScreens,
+  summarizeGallery,
   summarizeJourneys,
   validateVisualReview,
 } from '../usability-feedback.mjs';
@@ -70,6 +71,39 @@ describe('usability feedback coverage and reviewer failures', () => {
         ['a'],
       ),
     ).toThrow();
+  });
+  test('gallery-only coverage rejects missing, duplicate, and failed captures', () => {
+    const capture = {
+      schemaVersion: 1,
+      expected: 2,
+      selection: ['one'],
+      screens: [{ name: 'one', file: 'one.png', ok: true }],
+    };
+    expect(summarizeGallery(capture, ['one.png']).status).toBe('PASS');
+    expect(summarizeGallery(capture, []).status).toBe('FAIL');
+    expect(
+      summarizeGallery(
+        {
+          ...capture,
+          selection: null,
+          screens: [
+            { name: 'one', file: 'one.png', ok: true },
+            { name: 'two', file: 'one.png', ok: true },
+          ],
+        },
+        ['one.png', 'two.png'],
+      ).status,
+    ).toBe('FAIL');
+    expect(
+      summarizeGallery({ ...capture, selection: null }, ['one.png']).status,
+    ).toBe('FAIL');
+    expect(
+      summarizeGallery(
+        { ...capture, screens: [{ name: 'one', file: 'one.png', ok: false }] },
+        ['one.png'],
+      ).status,
+    ).toBe('FAIL');
+    expect(summarizeGallery(null, []).status).toBe('NOT_VERIFIED');
   });
   test('missing credentials never call a provider or imply review', async () => {
     const fetchImpl = vi.fn();

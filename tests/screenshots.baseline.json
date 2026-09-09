@@ -74,6 +74,18 @@
       "sha256": "b351c7f3e43a967d8e0485c68da7140d663a377de52b83331163d27ee1dfc87d"
     },
     {
+      "name": "mobile-access-request-error-320",
+      "width": 320,
+      "height": 844,
+      "sha256": "3462245625c137f17fc31eef8772248448b0d328b489e7053a509184496463cb"
+    },
+    {
+      "name": "mobile-access-request-error-390",
+      "width": 390,
+      "height": 844,
+      "sha256": "ba65574002ecf5bb108ec57b45d55a5378419a439aaf9e0b5435af72e624fab2"
+    },
+    {
       "name": "mobile-agent-editor",
       "width": 390,
       "height": 844,
@@ -108,6 +120,18 @@
       "width": 390,
       "height": 844,
       "sha256": "7566db583e009c8c58504e1f0515de6f436f0e23e87d62ef462f6a1ec7e85b3e"
+    },
+    {
+      "name": "mobile-http-consent-320",
+      "width": 320,
+      "height": 844,
+      "sha256": "95f086be0d0337f82da48a56fd52ea513f71a3cf81824faccccb10347148eb64"
+    },
+    {
+      "name": "mobile-http-consent-390",
+      "width": 390,
+      "height": 844,
+      "sha256": "ba0fe9f11ea40f7d4f8b351106b50429563c0bb140613335d9bc978779a4e5ac"
     },
     {
       "name": "mobile-onboarding-setup",

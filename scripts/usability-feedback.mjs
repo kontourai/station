@@ -68,6 +68,39 @@ export function summarizeJourneys(walkthrough, journeys) {
   return checks;
 }
 
+export function summarizeGallery(capture, files) {
+  if (
+    capture?.schemaVersion !== 1 ||
+    !Array.isArray(capture.screens) ||
+    !capture.screens.length ||
+    !Number.isInteger(capture.expected) ||
+    capture.expected < 1
+  )
+    return {
+      name: 'Screenshot captures',
+      status: 'NOT_VERIFIED',
+      detail: 'Missing or incomplete capture manifest.',
+    };
+  const expected = Array.isArray(capture.selection) ? capture.selection : null;
+  const names = capture.screens.map((screen) => screen.name);
+  const complete =
+    names.length === (expected?.length ?? capture.expected) &&
+    new Set(names).size === names.length &&
+    new Set(capture.screens.map((screen) => screen.file)).size ===
+      files.length &&
+    (!expected || new Set(expected).size === expected.length) &&
+    (!expected || expected.every((name) => names.includes(name))) &&
+    capture.screens.every(
+      (screen) => screen.ok === true && files.includes(screen.file),
+    ) &&
+    files.length === capture.screens.length;
+  return {
+    name: 'Screenshot captures',
+    status: complete ? 'PASS' : 'FAIL',
+    detail: `${files.length} images; ${expected ? 'explicit subset' : 'full gallery'}; ${complete ? 'capture manifest accounted for' : 'failed or missing captures'}. This checks capture coverage, not runtime journeys.`,
+  };
+}
+
 export function validateVisualReview(value, screenIds) {
   if (
     !value ||
@@ -265,6 +298,7 @@ export function renderFeedback(report) {
     `# Station usability feedback`,
     '',
     `Revision: ${report.revision}`,
+    `Scope: ${report.mode ?? 'journeys-and-images'}`,
     '',
     '| Check | Result | Evidence |',
     '| --- | --- | --- |',
@@ -300,6 +334,7 @@ export function renderFeedback(report) {
 async function main() {
   const input = resolve(process.argv[2] ?? 'test-results');
   const output = resolve(process.argv[3] ?? 'test-results/usability-feedback');
+  const galleryOnly = process.argv.includes('--gallery-only');
   const revision = process.env.GITHUB_SHA ?? process.env.UI_AUDIT_REVISION;
   if (!/^[a-f0-9]{40}$/.test(revision ?? ''))
     throw new Error('Set UI_AUDIT_REVISION to the captured commit.');
@@ -314,37 +349,54 @@ async function main() {
     readJson(join(input, 'fresh-home-walkthrough/summary.json')),
     readJson(join(input, 'core-loop-journeys/summary.json')),
   );
-  checks.push({
-    name: 'UI geometry and component sweep',
-    status:
-      process.env.UI_SWEEP_RESULT === 'success'
-        ? 'PASS'
-        : process.env.UI_SWEEP_RESULT === 'failure'
-          ? 'FAIL'
-          : 'NOT_VERIFIED',
-    detail: process.env.UI_SWEEP_RESULT ?? 'No sweep result supplied.',
-  });
-  const gallery = join(input, 'fresh-home-walkthrough/gallery');
-  const screens = existsSync(gallery)
-    ? readdirSync(gallery, { withFileTypes: true })
-        .filter((e) => e.isFile() && e.name.endsWith('.png'))
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map((e) => {
-          const bytes = readFileSync(join(gallery, e.name));
-          if (
-            bytes.length > 10_000_000 ||
-            !bytes
-              .subarray(0, 8)
-              .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-          )
-            throw new Error('Invalid or oversized screenshot.');
-          return {
-            id: e.name,
-            bytes,
-            sha256: createHash('sha256').update(bytes).digest('hex'),
-          };
-        })
-    : [];
+  if (galleryOnly) checks.length = 0;
+  if (!galleryOnly)
+    checks.push({
+      name: 'UI geometry and component sweep',
+      status:
+        process.env.UI_SWEEP_RESULT === 'success'
+          ? 'PASS'
+          : process.env.UI_SWEEP_RESULT === 'failure'
+            ? 'FAIL'
+            : 'NOT_VERIFIED',
+      detail: process.env.UI_SWEEP_RESULT ?? 'No sweep result supplied.',
+    });
+  const screens = (
+    galleryOnly
+      ? [['gallery', join(input, 'gallery')]]
+      : [
+          ['walkthrough', join(input, 'fresh-home-walkthrough/gallery')],
+          ['core-loop', join(input, 'core-loop-journeys/gallery')],
+        ]
+  ).flatMap(([prefix, gallery]) =>
+    existsSync(gallery)
+      ? readdirSync(gallery, { withFileTypes: true })
+          .filter((e) => e.isFile() && e.name.endsWith('.png'))
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((e) => {
+            const bytes = readFileSync(join(gallery, e.name));
+            if (
+              bytes.length > 10_000_000 ||
+              !bytes
+                .subarray(0, 8)
+                .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+            )
+              throw new Error('Invalid or oversized screenshot.');
+            return {
+              id: `${prefix}/${e.name}`,
+              bytes,
+              sha256: createHash('sha256').update(bytes).digest('hex'),
+            };
+          })
+      : [],
+  );
+  if (galleryOnly)
+    checks.push(
+      summarizeGallery(
+        readJson(join(input, 'gallery/capture.json')),
+        screens.map((screen) => screen.id.slice('gallery/'.length)),
+      ),
+    );
   const visual = await reviewScreens(screens, {
     apiKey: process.env.OPENAI_API_KEY,
     model: process.env.UI_REVIEW_MODEL ?? 'gpt-5.6-sol',
@@ -352,6 +404,7 @@ async function main() {
   });
   const report = {
     revision,
+    mode: galleryOnly ? 'gallery-only' : 'journeys-and-images',
     checks,
     screenshots: screens.map(({ id, sha256 }) => ({ id, sha256 })),
     visual,

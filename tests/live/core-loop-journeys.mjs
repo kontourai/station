@@ -529,6 +529,68 @@ async function journeyMultiTurnContinuity(page, note, shared) {
     agentSlug,
   };
 
+  // Observe the actual dock during the follow-up; a final reply alone cannot
+  // catch a read-only error which appears and then recovers (#1792).
+  await page.evaluate(
+    ({ conversationId, sessionId, agentSlug }) => {
+      sessionStorage.setItem(
+        'activeChats',
+        JSON.stringify([
+          {
+            sessionId,
+            conversationId,
+            agentSlug,
+            title: 'Follow-up UI audit',
+            executionMode: 'external',
+            provider: 'claude',
+            providerOptions: {},
+            orchestrationSessionStarted: true,
+            ephemeralMessages: [],
+            inputHistory: [],
+          },
+        ]),
+      );
+    },
+    {
+      conversationId: turn1.conversationId,
+      sessionId: turn1.sessionId,
+      agentSlug,
+    },
+  );
+  await page.goto(
+    `${UI_ORIGIN}/?chat=${encodeURIComponent(turn1.conversationId)}&dock=open`,
+  );
+  await page
+    .locator('.chat-messages')
+    .first()
+    .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS });
+  await page.evaluate(() => {
+    const records = [];
+    const dock = document
+      .querySelector('.chat-messages')
+      ?.closest('[aria-label="Chat dock"]');
+    if (!dock)
+      throw new Error('Follow-up audit could not find the mounted chat dock.');
+    const observe = () => {
+      const text = dock.textContent ?? '';
+      if (
+        /is read.only|available read.only|could not prove a writable|Session record missing/i.test(
+          text,
+        ) &&
+        records.length < 10
+      )
+        records.push(text.slice(-4000));
+    };
+    const observer = new MutationObserver(observe);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    window.__stationFollowupUiAudit = { records, observer };
+    observe();
+  });
+
   const turn2 = await continueConversation(
     page,
     turn1.conversationId,
@@ -549,6 +611,34 @@ async function journeyMultiTurnContinuity(page, note, shared) {
     expectedBySession.get(turn2Session),
   );
   note('turn 2 answered in the same conversation');
+  await poll(
+    'the follow-up composer to become writable again',
+    SETTLE_TIMEOUT_MS,
+    () =>
+      page
+        .getByPlaceholder(/^Type a message/)
+        .isEnabled()
+        .catch(() => false),
+  );
+  const transientErrors = await page.evaluate(() => {
+    const audit = window.__stationFollowupUiAudit;
+    audit.observer.disconnect();
+    delete window.__stationFollowupUiAudit;
+    return audit.records;
+  });
+  mkdirSync(join(OUTPUT_ROOT, 'gallery'), { recursive: true });
+  await page.screenshot({
+    path: join(OUTPUT_ROOT, 'gallery', 'followup-completed.png'),
+  });
+  writeFileSync(
+    join(OUTPUT_ROOT, 'followup-ui-observations.json'),
+    JSON.stringify({ transientErrors }, null, 2),
+  );
+  assert(
+    transientErrors.length === 0,
+    `Follow-up flashed a read-only error ${transientErrors.length} time(s); see followup-ui-observations.json`,
+  );
+  note('mounted dock showed no transient read-only error during turn 2');
 
   // Deterministically exercise the #765 A1 continuation path: stop the live
   // session so turn 3 must reserve a child session and resume from the
