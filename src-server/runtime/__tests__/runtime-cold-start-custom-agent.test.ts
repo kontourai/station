@@ -619,14 +619,12 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     // it left all 42 related files green, because every lease case sets the
     // field by hand on a prototype double. This assertion is the one that
     // reds for that reversion; the ordering assertion below is a weaker
-    // second look, and weak in two specific ways. A teardown SLOWER than its
-    // slack hides the defect, because an unfixed shutdown that has not
-    // finished yet looks exactly like a fixed one that is waiting — the
-    // earlier version of this sentence had that backwards. And the flag it
-    // reads is set only on fulfilment, so a shutdown that REJECTS there
-    // reads identically to one still pending and the assertion passes
-    // saying nothing, on a path this file's own teardown comment calls
-    // load-dependent rather than rare.
+    // second look, in one specific way. A teardown SLOWER than its slack
+    // hides the defect, because an unfixed shutdown that has not finished
+    // yet looks exactly like a fixed one that is waiting. (An earlier
+    // revision had that backwards, and also named a second weakness — a
+    // rejection reading as pending — which the three-state flag below
+    // removes.)
     const retained = (
       runtime as unknown as { nativeEngineAdoptionSettled?: Promise<unknown> }
     ).nativeEngineAdoptionSettled;
@@ -637,19 +635,20 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     // coupling proof rather than an "an AbortSignal exists" proof.
     expect(adoption.signal).not.toBe(primed.signal);
 
-    let shutdownSettled: 'pending' | 'fulfilled' | 'rejected' = 'pending';
+    let shutdownSettled: 'pending' | 'fulfilled' | `rejected: ${string}` =
+      'pending';
     // Owned here, not left dangling across the assertions below: a shutdown
     // that rejects while nothing is attached is an unhandled rejection with
     // no owner, and this file exists because one case's leftovers get
-    // attributed to another. Recorded as three states rather than a boolean
-    // so a rejection cannot read as "still waiting".
+    // attributed to another. Recorded as a state rather than a boolean so a
+    // rejection cannot read as "still waiting", and carrying its reason so
+    // that a red reports what went wrong rather than only that something did.
     const shutdown = runtime.shutdown().then(
       () => {
         shutdownSettled = 'fulfilled';
       },
       (error: unknown) => {
-        shutdownSettled = 'rejected';
-        return error;
+        shutdownSettled = `rejected: ${String(error)}`;
       },
     );
     try {
@@ -665,10 +664,12 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       expect(adoption.signal?.aborted).toBe(true);
     } finally {
       // In a `finally` because everything above can throw, and the cost of
-      // landing it only on the straight-line path was executed: the harness's
-      // own teardown re-awaits this same promise, burns the whole budget,
-      // and emits the PRODUCTION disclosure line into the log a reader is
-      // diagnosing the red from — then skips the loader dispose, leaves the
+      // landing it only on the straight-line path was executed. The shutdown
+      // started above is already in flight and never settles, which is
+      // sufficient on its own — the teardown's own `shutdown()` call joins
+      // the same promise and adds nothing observable. It burns the whole
+      // budget and emits the PRODUCTION disclosure line into the log a reader
+      // is diagnosing the red from, then skips the loader dispose, leaves the
       // lease unreleased, and removes a home whose configuration watcher is
       // still open.
       landAdoption();

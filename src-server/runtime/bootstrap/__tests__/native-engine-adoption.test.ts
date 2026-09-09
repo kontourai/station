@@ -35,6 +35,24 @@ afterEach(() => {
 const silentLogger = { info: vi.fn(), warn: vi.fn() };
 
 /**
+ * How long the cases below wait for a probe to be invoked (station#1815).
+ *
+ * Stated rather than defaulted, and below vitest's own 30s `testTimeout` so
+ * it can fire FIRST: a wait equal to the framework's deadline can only ever
+ * be reported as "the test timed out", never as "the probes never ran",
+ * which is the diagnostic these waits exist to give.
+ *
+ * The number is also, coincidentally, the file mutation lock's admission
+ * deadline — which sits INSIDE the registry work every one of these waits
+ * spans. A single contended admission would make the wait fire first and
+ * blame the probes for lock contention. Not reachable in this file, because
+ * every case takes its own fresh home from `createLoader`, and recorded here
+ * rather than at one call site because it is a property of the value, not of
+ * whichever wait happens to carry the note.
+ */
+const PROBE_WAIT_MS = 10_000;
+
+/**
  * A `station` record as an OLDER build left it — carrying an engine binding.
  *
  * It has to be written to disk directly: since archive#3662 delta H3 the
@@ -272,15 +290,8 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       // Below vitest's own 30s `testTimeout`, deliberately: a value equal to
       // it can never fire first, and the diagnostic this wait was given
       // ("the probes never ran") would be unreachable.
-      //
-      // Ten seconds is also, coincidentally, the file mutation lock's
-      // admission deadline — which sits INSIDE the registry work these waits
-      // are waiting through. A single contended admission would therefore
-      // make the wait fire first and blame the probes for lock contention.
-      // Not reachable here, because every case gets its own fresh home from
-      // `createLoader`, and recorded so the coincidence is not rediscovered
-      // as a mystery.
-      { timeout: 10_000, interval: 5 },
+      // See `PROBE_WAIT_MS` for why the number itself deserves a note.
+      { timeout: PROBE_WAIT_MS, interval: 5 },
     );
     // The span starts HERE, not at the call. Everything before the abort —
     // the registry load, the Station-Agent materialization, three probes — is
@@ -342,9 +353,7 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       signal: controller.signal,
     });
     await vi.waitFor(() => expect(detect).toHaveBeenCalledTimes(1), {
-      // Stated for the same reason as the case above, and below vitest's own
-      // 30s `testTimeout` so it can actually fire first.
-      timeout: 10_000,
+      timeout: PROBE_WAIT_MS,
       interval: 5,
     });
     controller.abort();
@@ -370,6 +379,64 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
     expect(detect).toHaveBeenCalledTimes(1);
   });
 
+  it('elides the next candidate probe when the abort lands during a write (#1815)', async () => {
+    const loader = createLoader();
+    const controller = new AbortController();
+    // The window the loop's pre-probe check covers on its own: candidate 1's
+    // probe answered and was NOT aborted, so the post-probe check let it
+    // through, and the abort lands inside the registry write that probe
+    // authorised. By the time the loop reaches candidate 2 the check before
+    // its probe is the only one left.
+    //
+    // Hermetic, which three earlier rounds of this comment claimed it could
+    // not be. The detector mirrors the shipped one in the only respect that
+    // matters here — `detectCliOnPath` resolves falsy WITHOUT spawning when
+    // its signal is already aborted — so candidate 2 takes exactly the path a
+    // host with the CLI installed takes. What is injected is the "yes, it is
+    // installed" answer, not the control flow.
+    const detect = vi.fn(
+      async (_cli: string, options?: { signal?: AbortSignal }) =>
+        !options?.signal?.aborted,
+    );
+    // `materializeEngineAgent` is the only caller of `listAgents` on this
+    // path, so the abort lands once, inside a real await, after candidate 1's
+    // connection write has begun.
+    const abortingDuringWrite = new Proxy(loader, {
+      get(target, prop, receiver) {
+        if (prop === 'listAgents') {
+          return async () => {
+            controller.abort();
+            return await loader.listAgents();
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as ConfigLoader;
+
+    const summary = await adoptDetectedNativeEngines({
+      configLoader: abortingDuringWrite,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0],
+      signal: controller.signal,
+    });
+
+    // The whole observable difference. Without the pre-probe check candidate 2
+    // is probed, its detector returns falsy because the signal is aborted, and
+    // the post-probe check then breaks — so the outcomes below are identical
+    // either way and the call count is the only thing that moves.
+    expect(detect).toHaveBeenCalledTimes(1);
+    expect(summary.outcomes).toEqual({
+      claude: 'adopted',
+      codex: 'interrupted',
+      muse: 'interrupted',
+    });
+    // Candidate 1's write completed: the check stops the NEXT candidate, it
+    // does not abandon a write already under way.
+    const registry = await loadOrCreateAgentRegistry(loader);
+    expect(registry.engineConnections.map((c) => c.id)).toEqual(['claude']);
+  });
+
   it('reports a probe CANCELLED in flight as interrupted, not absent (#1815)', async () => {
     const loader = createLoader();
     const controller = new AbortController();
@@ -387,10 +454,7 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       signal: controller.signal,
     });
     await vi.waitFor(() => expect(detect).toHaveBeenCalledTimes(1), {
-      // Stated, and below vitest's own 30s `testTimeout` so it can fire
-      // first: a wait equal to the framework's deadline can only ever be
-      // reported as "the test timed out", never as "the probes never ran".
-      timeout: 10_000,
+      timeout: PROBE_WAIT_MS,
       interval: 5,
     });
     controller.abort();

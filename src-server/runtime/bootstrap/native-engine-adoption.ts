@@ -259,27 +259,19 @@ export async function adoptDetectedNativeEngines(
     }
     for (const candidate of NATIVE_ENGINE_CANDIDATES) {
       if (!unresolved.has(candidate.id)) continue;
-      // Load-bearing on the shipped path, and deliberately untested — say
-      // both, because an earlier version of this comment said the first was
-      // false and that is what a future reader would use to delete the guard
-      // (station#1815 rounds 4 and 5).
+      // Covers the one window neither the abort inside a probe nor the check
+      // after one reaches: an abort landing during the PREVIOUS candidate's
+      // registry write, so the loop arrives here already cancelled.
       //
-      // What it covers is the one window neither the abort inside a probe nor
-      // the check after one reaches: an abort landing during the PREVIOUS
-      // candidate's registry write, so the loop arrives here already
-      // cancelled. Run against the REAL detector in that window, with the
-      // guard and without it: the outcomes are identical — `detectCliOnPath`
-      // short-circuits on an aborted signal, so no locator child is spawned
-      // either way and the check below the probe breaks the loop — but the
-      // detector is INVOKED once with the guard and twice without, once more
-      // per remaining candidate.
-      //
-      // Why there is no case for it: reaching this window needs a candidate
-      // whose probe answers true and whose write then runs, which against the
-      // shipped detector means a CLI genuinely installed on the host running
-      // the suite. That is not hermetic. Every case here injects `deps.detect`
-      // instead, and an injected detector reaches this line by a different
-      // route than the one being claimed.
+      // What removing it does, measured, in
+      // 'elides the next candidate probe when the abort lands during a write':
+      // outcomes identical, no locator child spawned either way, and the
+      // detector invoked twice instead of once. ONE extra call, not one per
+      // remaining candidate — the check below the probe breaks the loop as
+      // soon as that call returns. So the effect is observable and
+      // outcome-neutral, which is the whole of it; three earlier revisions of
+      // this comment characterised that as either nothing or as
+      // load-bearing, and both readings outran the measurement.
       if (deps.signal?.aborted) break;
       try {
         const found = await detect(candidate.cli, {

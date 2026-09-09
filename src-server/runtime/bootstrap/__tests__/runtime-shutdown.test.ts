@@ -95,9 +95,10 @@ describe('shutdownRuntimeServices', () => {
     // no compile error and no failure — so the absence has to leave a trace.
     // The line says "had no target here", not "delegated" and not "was not
     // run": from inside that function a deliberate handover and an omission
-    // are the same observation, and the only production caller disposes its
-    // loader moments later — so a claim that the step did not run would be
-    // false on every real emission.
+    // are the same observation, and the only production caller usually
+    // disposes its loader moments later — so a claim that the step did not
+    // run would be false on most real emissions, and unknowable to this
+    // function on the rest.
     const logger = { info: vi.fn(), error: vi.fn(), warn: vi.fn() };
     const configLoader = { dispose: vi.fn(async () => {}) };
     const base = {

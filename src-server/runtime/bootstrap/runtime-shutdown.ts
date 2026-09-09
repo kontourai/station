@@ -224,10 +224,13 @@ export async function shutdownRuntimeServices({
     // separate that caller from a deliberate handover, and cannot.
     //
     // "here", not "was not run": the only production caller omits this
-    // parameter and disposes its loader moments later, so a line claiming
-    // the step did not run would assert something untrue on every real
-    // emission. What this function can derive is that it was given no
-    // target.
+    // parameter and USUALLY disposes its loader moments later, so a line
+    // claiming the step did not run would assert something untrue on most
+    // real emissions — not all, because that dispose is itself conditional
+    // on the adoption window settling and is deliberately skipped when the
+    // budget expires, which pairs this line with the expiry warning a few
+    // seconds later. Either way the claim is not this function's to make.
+    // What it can derive is that it was given no target.
     //
     // The message says only what is observable here. A deliberate handover
     // and an omission look identical from inside this function — the
