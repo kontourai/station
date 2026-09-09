@@ -1,5 +1,32 @@
 [
   {
+    "timestampUtc": "2026-09-09T14:00:51Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2443.2",
+    "sha": "49cfa59dd6d037208595040721e0e7bbff114840",
+    "artifactBuiltAt": "2026-09-09T13:21:32.047Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34355735437",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 34355735437)"
+    ],
+    "changelog": {
+      "previousSha": "a7935a4cf5297db2eea11364badf96f8ce1d106b",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": "Changelog slice omitted: previous ship SHA a7935a4 is not reachable in this repository's history, so no commit range exists to derive.",
+      "commitCount": 0
+    }
+  },
+  {
     "timestampUtc": "2026-09-09T13:52:04Z",
     "channel": "nightly-npm",
     "version": "0.6.0-nightly.2443.34355735437",
