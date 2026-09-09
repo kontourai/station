@@ -223,7 +223,21 @@ test.describe('Agents readiness board at 390x844', () => {
     const expanded = await dock.boundingBox();
     expect(expanded!.height).toBeGreaterThan(200);
     const action = agentRowAction(page, BROKEN_NAME).first();
-    await action.scrollIntoViewIfNeeded();
+    // Exercise the reader's scroll path, rather than CDP's nearest-edge
+    // alignment, which can leave a fractional border at the clipping edge.
+    const list = await page.locator('.split-pane__list').first().boundingBox();
+    await page.mouse.move(
+      list!.x + list!.width / 2,
+      list!.y + list!.height / 2,
+    );
+    await page.mouse.wheel(0, 2000);
+    await expect
+      .poll(async () => {
+        const row = await action.boundingBox();
+        const dock = await page.locator('#chat-dock').boundingBox();
+        return row!.y + row!.height <= dock!.y;
+      })
+      .toBe(true);
     const box = await action.boundingBox();
     const dockBox = await dock.boundingBox();
     expect(box!.y + box!.height).toBeLessThanOrEqual(dockBox!.y);
