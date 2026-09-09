@@ -101,7 +101,7 @@ describe('agents view helpers', () => {
     );
     expect(markup).toContain('Not set up');
     expect(markup).toContain('Ready');
-    expect(markup).toContain('Needs: a model connection');
+    expect(markup).not.toContain('Needs: a model connection');
     expect(markup).toContain('Enable');
     expect(markup).toContain('Chat');
     expect(markup).toContain('Connect');

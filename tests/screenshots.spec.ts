@@ -1461,6 +1461,15 @@ const SCREENS: Screen[] = [
     title: 'Developer telemetry',
     path: '/developer/telemetry',
     viewport: DESKTOP,
+    afterGoto: async (page) => {
+      const toggles = page.locator(
+        '.event-filter.active, .live-mode-toggle.active',
+      );
+      await expect(toggles).toHaveCount(6);
+      for (const toggle of await toggles.all()) {
+        expect(await contrastRatio(toggle)).toBeGreaterThanOrEqual(4.5);
+      }
+    },
   },
   { name: 'profile', title: 'Profile', path: '/profile', viewport: DESKTOP },
   {
