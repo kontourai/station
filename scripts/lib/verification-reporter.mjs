@@ -340,7 +340,7 @@ const MAX_DECLARED_CAUSE_REDACTION_PASSES = 8;
  * the canonical receipt, which CI uploads as an artifact and nothing redacts
  * downstream. Every guarantee below exists because there is no second chance.
  *
- * ## Called once, and separately safe to re-apply
+ * ## Called once, and unsafe to re-apply
  *
  * Two different statements, which earlier rounds ran together (round-5 review,
  * L1).
@@ -384,18 +384,30 @@ const MAX_DECLARED_CAUSE_REDACTION_PASSES = 8;
  *    bound left partial is invisible until after the cut. Round 1 had only
  *    this pass and leaked partial tokens; round 3 had only the other and
  *    leaked whole ones. Both are needed; neither order alone dominates.
- * 4. **Repeat 3 until the value stops changing.** Redaction can lengthen what
- *    it rewrites, so a value that grows past the bound is cut again -- and
- *    that cut, plus the trim that follows it, can expose a token the previous
- *    pass never saw. Round 3 cut once and did not re-scan, which is how a
+ * 4. **Repeat 3 until the redactor has nothing left to remove.** That is not
+ *    the same as until the value stops changing -- see the exit condition
+ *    below, whose second arm stops on a value the redactor would still append
+ *    a marker byte to.
+ *
+ *    Redaction can lengthen what it rewrites, so a value that grows past the
+ *    bound is cut again -- and that cut, plus the trim that follows it, can
+ *    expose a token the previous pass never saw. Round 3 cut once and did not re-scan, which is how a
  *    trailing `ghp_...` survived 92 inputs in a structured sweep. Re-scanning
  *    after every cut is the only form that closes it, because each cut makes
  *    a new end.
  *
  * ## The exit condition, and why it is not "redaction changes nothing"
  *
- * The loop stops when redacting AND re-bounding leaves the value untouched --
- * a fixed point of the whole step, not of the redactor alone.
+ * The loop stops on either of two conditions, and they are not the same one.
+ *
+ * ARM ONE: redacting AND re-bounding leaves the value untouched -- a fixed
+ * point of the whole step, not of the redactor alone.
+ *
+ * ARM TWO: redacting changes nothing OUTSIDE a redaction marker. This one
+ * stops on a value that is deliberately NOT a fixed point, which is why this
+ * function is not idempotent and why no consumer may re-apply it. It exists
+ * because growth no bound cancels -- `{"apiKey":123}` at fourteen bytes --
+ * would otherwise spin to a silent refusal (round-6 review, M2).
  *
  * Round 4 tested the redactor alone and did not converge on a shape three of
  * its own comments said could not exist (round-5 review, H1): once a value
@@ -448,6 +460,13 @@ const MAX_DECLARED_CAUSE_REDACTION_PASSES = 8;
  * explained why it is scoped -- two halves of one commit contradicting each
  * other (round-7 review). Editing a runner's own words is the worse failure of
  * the two, so the scope stays and the sentence is corrected.
+ *
+ * One real transform survives downstream, and it is exotic enough to scope
+ * rather than to chase: the plain-text redaction pass strips control
+ * characters the escape stripper does not, so a cause containing one is not
+ * copied byte-for-byte by a surface that re-redacts. Every surface that
+ * carries the DECLARED cause takes it verbatim; the caveat applies to the
+ * other excerpt entries beside it.
  *
  * That is a statement about the REDACTOR'S RECALL, not about the value being
  * free of credentials. Anything `verification-redaction.mjs` does not match,

@@ -25,11 +25,17 @@ function boundedText(value, maxBytes = 256) {
 }
 
 function boundedSummaryEnvelope(summary) {
-  // The declared cause, taken VERBATIM and used for both fields that carry it
-  // below. Nothing here re-derives it, and that is the whole point.
+  // The declared cause, taken VERBATIM and used for all THREE fields below
+  // that carry it -- the marker, the excerpt, and the head of the excerpt
+  // list. Nothing here re-derives it, and that is the whole point.
   //
-  // Every previous shape of these three lines re-derived, and every one of
-  // them made a rendering disagree with the record it renders. `boundedText`
+  // Round 7 fixed two of the three and left the list, which is the copy the
+  // page actually shows (round-8 review, H1): `causalExcerptsOf` prefers the
+  // list over the single field. Two fields agreeing while the rendered one
+  // does not is the defect wearing a disguise.
+  //
+  // Every previous shape of these lines re-derived, and every one of them
+  // made a rendering disagree with the record it renders. `boundedText`
   // redacts once without the marker strip or the trim, so it appended nine
   // bytes ending in a truncated `[REDACTED` the receipt did not have.
   // Re-running `normalizeDeclaredCause` looked safe on the argument that the
@@ -113,11 +119,32 @@ function boundedSummaryEnvelope(summary) {
     // bounded-per-item treatment. Capped at 32 entries (matching
     // recoveredFailures below) so a run with an unusually large number of
     // distinct failing checks cannot blow the envelope's own byte cap.
+    //
+    // The HEAD is exempt from that treatment when it is the declared cause,
+    // and this is the third field carrying that string rather than a third
+    // opinion about it (round-8 review, H1). Round 7 stopped the two fields
+    // above re-deriving and left this one running `boundedText`, which redacts
+    // -- so the list's head came out a byte longer inside the marker than the
+    // receipt. That is the copy the page shows: `causalExcerptsOf` in
+    // `verification-gate-summary.mjs` PREFERS the list and only falls back to
+    // the single field, so the fenced block and every error annotation
+    // rendered the re-derived value directly beneath the sentence saying the
+    // first excerpt was recorded by the runner. The tail fallback, which
+    // carries the single field and not the list, then rendered different bytes
+    // than the untruncated document for the same run.
+    //
+    // Every other entry keeps `boundedText`: those are scanned excerpts, which
+    // have been through no derivation of their own and are the values that
+    // pass most needs to see.
     ...(Array.isArray(summary?.causalExcerpts) && summary.causalExcerpts.length
       ? {
           causalExcerpts: summary.causalExcerpts
             .slice(0, 32)
-            .map((excerpt) => boundedText(excerpt, 512)),
+            .map((excerpt, index) =>
+              index === 0 && declaredCause && excerpt === declaredCause
+                ? excerpt
+                : boundedText(excerpt, 512),
+            ),
         }
       : {}),
     ...(summary?.finalTally

@@ -329,9 +329,11 @@ annotation renders, and both reach every rendering from there — neither is
 re-stamped from anywhere else, which is what keeps the pair consistent. The
 **receipt** is a separate artifact: it records `terminal.infrastructureCause`
 as the durable full-length record and carries no `causeStream` at all. Where
-a rendering shows the marker it shows the same bytes the receipt holds, because
-every surface copies one derived value rather than deriving its own; a
-rendering with no summary carries no marker at all.
+a rendering shows the declared cause — as the marker, as the excerpt, or as the
+head of the excerpt list the annotations are built from — it shows the same
+bytes the receipt holds, because each of those three surfaces copies the one
+derived value rather than deriving its own. A rendering with no summary carries
+no marker at all.
 
 Severity is ranked too — an error outranks a warning above it — after two
 blind spots that made most errors invisible to the matcher entirely (biome's

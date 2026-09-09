@@ -266,8 +266,12 @@ parseable, and half of one matches nothing — bounding first leaked a whole
 `$`-anchored partial-token rules only fire on the string's real end, so a
 token the bound left partial is invisible until after the cut). Redaction can
 lengthen what it rewrites, so the last two steps repeat until the value stops
-changing — every cut makes a new end. A value that cannot be brought to a
-fixed point is refused rather than recorded.
+changing — every cut makes a new end. They stop on either of two conditions:
+the whole step leaving the value untouched, or redaction changing nothing
+outside a redaction marker. The second stops on a value that is deliberately
+not a fixed point, which is why the function is not idempotent and why no
+consumer re-applies it. A value neither condition can reach is refused rather
+than recorded.
 
 Two limits on what that boundary is worth, both real and neither closed here.
 

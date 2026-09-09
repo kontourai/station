@@ -830,6 +830,12 @@ describe('verification coordinator', () => {
       expect(persisted).not.toContain('123');
       expect(cycling.summary.infrastructureCause).toBe(persisted);
       expect(cycling.summary.firstCausalExcerpt).toBe(persisted);
+      // The THIRD field carrying the same string, and the one the page
+      // actually shows: `causalExcerptsOf` prefers this list over the single
+      // field, so the fenced block and every error annotation render its head
+      // (round-8 review, H1). Two fields agreeing while the rendered one does
+      // not is the defect wearing a disguise.
+      expect(cycling.summary.causalExcerpts[0]).toBe(persisted);
       // The published bytes, not only the returned object: the canonical
       // receipt is what a later reader opens, and it carried no cause at all.
       const canonical = JSON.parse(

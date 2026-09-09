@@ -487,8 +487,9 @@ describe('verification reporter', () => {
     // why. The recorded reason was that a reorder had made the function
     // idempotent over ~300k randomised inputs; that was false OF ROUND 4 --
     // a structured sweep found inputs where it was not. (Round 5's exit
-    // condition made every accepted value a fixed point, so it IS idempotent
-    // here; the assertion below relies on that and the design does not.) The
+    // condition made every accepted value a fixed point -- which round 6 then
+    // stopped being true by adding an arm that exits when the value is NOT
+    // one, and round 7 removed the last consumer that depended on it.) The
     // round-4 randomised corpus simply never built
     // one, because it contained no growth-producing redaction upstream of a
     // token, which is the whole discriminating shape (the same blind spot the
@@ -604,13 +605,18 @@ describe('verification reporter', () => {
     // the injection that defeats that fix passed against it. An assertion is
     // only as wide as its pattern.
     const partialMarker = /\[R(?:E(?:D(?:A(?:C(?:T(?:E(?:D)?)?)?)?)?)?)?$/;
-    // Every canonical class `verification-redaction.mjs` carries, in the
-    // truncated form a bound leaves. Round 7: this listed four of them, and
-    // the corpus below was drawn from the same four -- detector and fixtures
-    // sharing a blind spot is how a sweep reports zero without having looked.
-    // `Bearer`/`Basic` and a URL credential are the classes it omitted.
+    // The canonical classes `verification-redaction.mjs` carries that CAN be
+    // left partial at an end. Round 7 added `Bearer`/`Basic` here, and both
+    // discriminate -- deleting either rule from the redactor gives 16 and 19
+    // hits.
+    //
+    // It also added a URL-credential clause, which round 8 removes: that form
+    // is rewritten mid-string, before any bound, so an end-anchored pattern
+    // can never see it, and the clause gave zero hits while 191 outputs
+    // carried the raw secret. A rule that cannot fire is not coverage. The
+    // assertion that does cover it is below, on the values themselves.
     const tokenTail =
-      /(?:gh[pousr]_[A-Za-z0-9]*|github_pat_[A-Za-z0-9_]*|\bsk-[A-Za-z0-9_-]*|(?:AKIA|ASIA)[0-9A-Z]*|\b(?:Bearer|Basic)\s+(?!\[REDACTED\]$)\S*|:\/\/[^\s/@:]+:[^\s/@]*)$/i;
+      /(?:gh[pousr]_[A-Za-z0-9]*|github_pat_[A-Za-z0-9_]*|\bsk-[A-Za-z0-9_-]*|(?:AKIA|ASIA)[0-9A-Z]*|\b(?:Bearer|Basic)\s+(?!\[REDACTED\]$)\S*)$/i;
     //
     // Round-4 review, M2: this corpus was padding plus ONE token, which never
     // makes redaction grow the value, so the growth branch -- cut back, strip
@@ -641,6 +647,18 @@ describe('verification reporter', () => {
           expect(value).not.toBeNull();
           expect(Buffer.byteLength(value)).toBeLessThanOrEqual(512);
           expect(value).not.toMatch(tokenTail);
+          // The end-anchored pattern above cannot speak for a class that is
+          // rewritten mid-string, so the three fixtures added in round 7 are
+          // checked on their contents instead. They are fully redacted at
+          // baseline, unlike the four short tokens beside them, which survive
+          // by design -- the redactor's full-token rules need 36, 20 and 16
+          // characters and these are shorter.
+          for (const secret of [
+            'abcdefghijklmnop',
+            'Zm9vOmJhcjpiYXo=',
+            'hunter2hunter2',
+          ])
+            if (token.includes(secret)) expect(value).not.toContain(secret);
           if (!value.endsWith('[REDACTED]'))
             expect(value).not.toMatch(partialMarker);
           // Not vacuous, in both directions: offsets that cut inside the
@@ -651,8 +669,11 @@ describe('verification reporter', () => {
           // Round-7 review: this used to test `value.includes('[REDACTED]')`,
           // which the `Bearer s` prefix guarantees whenever `growth > 0` --
           // so it counted every growth iteration rather than the condition it
-          // names. The condition is that redaction pushed the value PAST the
-          // bound, which is what makes the growth branch run at all.
+          // names. It now counts inputs whose redaction lands over the bound,
+          // which is a real condition and does discriminate; most of what it
+          // counts, though, is inputs that were already over the bound before
+          // redaction rather than pushed past it BY redaction, so read it as
+          // "the growth branch ran" and not as "redaction caused the cut".
           if (
             growth > 0 &&
             Buffer.byteLength(redactVerificationOutput(raw)) > 512
