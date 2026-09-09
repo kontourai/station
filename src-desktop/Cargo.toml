@@ -79,7 +79,7 @@ tauri-plugin-opener = "=2.5.4"
 # functionally inert plugin, which is honest-inertness policy, not a second
 # crash guard.
 notify-rust = "=4.18.0"
-tauri-plugin-updater = "=2.10.1"
+tauri-plugin-updater = "=2.11.0"
 # The one JS-reachable way to relaunch the process after an update installs.
 # Config-free, so unlike the updater plugin above it is always registered.
 tauri-plugin-process = "=2.3.1"
