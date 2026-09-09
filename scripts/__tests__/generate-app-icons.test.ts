@@ -1,10 +1,10 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  COMMITTED_ICNS,
   IOS_ICON_SET_CHANNELS,
   iosIconSetDir,
   ROUNDED_MASTER,
@@ -90,6 +90,20 @@ function writeIcns(members: { type: string; body: Buffer }[]) {
   return out;
 }
 
+/**
+ * Every `.icns` Git tracks. The set the generator must leave byte-identical
+ * is derived from the repository rather than declared here, so adding a
+ * channel does not quietly leave its icon out of the pin.
+ */
+const trackedIcns = execFileSync('git', ['ls-files', '*.icns'], {
+  cwd: root,
+  encoding: 'utf8',
+  windowsHide: true,
+})
+  .split('\n')
+  .filter(Boolean)
+  .sort();
+
 const memberDigest = (icns: Buffer) =>
   parseIcnsMembers(icns)
     .map(
@@ -108,8 +122,8 @@ describe('desktop .icns determinism (#1797)', () => {
       ROUNDED_MASTER,
       mkdtempSync(join(tmpdir(), 'station-icns-b-')),
     );
-    // Before the canonicalization these two differed on ~2.07M of 2.07M
-    // bytes: same members, same bodies, random sequence.
+    // Before the canonicalization two runs differed on 2,066,287 of the
+    // file's 2,074,696 bytes -- same members, same bodies, random sequence.
     expect(
       first.equals(second),
       'two runs of tauri icon on one master disagree',
@@ -122,12 +136,20 @@ describe('desktop .icns determinism (#1797)', () => {
     ).toBe(true);
   }, 120_000);
 
+  it('covers every tracked .icns, not a list someone remembered to extend', () => {
+    // Discovery, so a channel added later is pinned without editing this
+    // file -- and an empty or failed `git ls-files` must not read as "all
+    // four are canonical".
+    expect(trackedIcns).toContain('src-desktop/icons/icon.icns');
+    expect(trackedIcns.length).toBeGreaterThanOrEqual(4);
+  });
+
   // The dev/beta/nightly masters are rendered in-memory from the artwork and
   // never committed, so the pin for their icns is that they already hold the
   // canonical order the generator now writes: a regeneration that produces
   // the same members produces the same bytes.
-  it.each(COMMITTED_ICNS)('holds %s in canonical member order', (path) => {
-    const committed = readFileSync(path);
+  it.each(trackedIcns)('holds %s in canonical member order', (path) => {
+    const committed = readFileSync(resolve(root, path));
     expect(
       canonicalizeIcns(committed).equals(committed),
       `${path} would be rewritten by a regeneration`,

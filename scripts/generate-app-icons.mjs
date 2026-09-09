@@ -433,23 +433,15 @@ function tauriIcon(source, outDir) {
 }
 
 /**
- * Fan a rounded master out to `outDir` and return the `.icns` bytes the
- * desktop set is copied from. Exported so the byte-stability test reaches the
- * real `tauri icon` seam -- the one that is not deterministic on its own --
- * rather than a fixture of what it once wrote.
+ * Fan a rounded master out to `outDir` and return the `.icns` bytes that run
+ * emitted. Exported so the byte-stability test reaches the real `tauri icon`
+ * seam -- the one that is not deterministic on its own -- rather than a
+ * fixture of what it once wrote.
  */
 export function readDesktopIcns(roundedMaster, outDir) {
   tauriIcon(roundedMaster, outDir);
   return readFileSync(join(outDir, 'icon.icns'));
 }
-
-/** The committed `.icns` files a regeneration must leave byte-identical. */
-export const COMMITTED_ICNS = Object.freeze([
-  join(ICONS_DIR, 'icon.icns'),
-  join(ICONS_DIR, 'dev', 'icon.icns'),
-  join(ICONS_DIR, 'beta', 'icon.icns'),
-  join(ICONS_DIR, 'nightly', 'icon.icns'),
-]);
 
 /** The rounded master the committed `src-desktop/icons/icon.icns` comes from. */
 export const ROUNDED_MASTER = join(BRAND_DIR, 'icon-1024.png');
