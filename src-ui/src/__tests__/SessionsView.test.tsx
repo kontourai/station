@@ -1099,9 +1099,9 @@ describe('SessionsView', () => {
     renderView();
 
     const starter = screen.getByTestId('delegated-task-starter');
-    expect(starter.textContent).toContain('Start a resumable worker');
+    expect(starter.textContent).toContain('Ask an AI app to work on something');
     fireEvent.click(
-      within(starter).getByRole('button', { name: 'Delegate worker' }),
+      within(starter).getByRole('button', { name: 'Start a task' }),
     );
 
     expect(
@@ -1146,7 +1146,7 @@ describe('SessionsView', () => {
     function openLauncher() {
       const starter = screen.getByTestId('delegated-task-starter');
       const trigger = within(starter).getByRole('button', {
-        name: 'Delegate worker',
+        name: 'Start a task',
       });
       trigger.focus();
       fireEvent.click(trigger);

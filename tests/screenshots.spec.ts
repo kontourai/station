@@ -1290,7 +1290,7 @@ const SCREENS: Screen[] = [
       await expect(tab).toHaveAttribute('aria-selected', 'true');
       for (const control of [
         tab,
-        page.getByRole('button', { name: 'Delegate worker', exact: true }),
+        page.getByRole('button', { name: 'Start a task', exact: true }),
       ]) {
         await expect(control).toBeVisible();
         expect(

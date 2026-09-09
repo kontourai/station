@@ -105,8 +105,7 @@ export function DelegatedTaskCoordinator({
     >
       <header className="sessions-coordinator__header">
         <div>
-          <p className="sessions-coordinator__eyebrow">Delegated work</p>
-          {/*
+            {/*
             station#3227 C1: this was `humanizeId(taskId ?? threadId)`, and
             `humanizeId` is a NO-OP on a content-derived thread id — so a
             delegated session with no `taskId` put a raw hash in this heading
@@ -243,18 +242,17 @@ export function DelegatedTaskStarter({
       aria-labelledby="delegated-task-starter-title"
     >
       <div className="split-pane__secondary-copy">
-        <p className="sessions-coordinator__eyebrow">Delegated work</p>
-        <h3 id="delegated-task-starter-title">Hand off a bounded task</h3>
+        <h3 id="delegated-task-starter-title">Start a task</h3>
       </div>
       <p className="sessions-coordinator__notice split-pane__secondary-copy">
-        Start a resumable worker on this Station or a saved SSH environment.
+        Ask an AI app to work on something. Follow its progress here.
       </p>
       <div className="sessions-coordinator__actions">
         <Button
           variant="primary"
           onClick={(event) => onDelegate(event.currentTarget)}
         >
-          Delegate worker
+          Start a task
         </Button>
       </div>
     </section>
