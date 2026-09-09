@@ -169,7 +169,7 @@ describe('public documentation admission', () => {
       publicDocsHygieneFindings(
         [{ source: 'guides/ok.md' }],
         () =>
-          'The values 100.64 and 100.127 are ordinary numeric prose; 100.63.255.255, 100.128.0.0, fe7f::1, fec0::1, 203.0.113.7, and the colonless ship SHA fd2c04e8632d40e6e9c53dd13a558a1764375800 are public controls.',
+          'The values 100.64 and 100.127 are ordinary numeric prose; 100.63.255.255, 100.128.0.0, fe7f::1, fec0::1, fd:, RFD:, fdisk, fd2c04e, fd2c04e8632d40e6e9c53dd13a558a1764375800, and 203.0.113.7 are public controls.',
       ),
     ).toEqual([]);
   });

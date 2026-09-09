@@ -1,4 +1,11 @@
-import { cpSync, existsSync, lstatSync, readlinkSync, rmSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  readlinkSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
@@ -311,8 +318,19 @@ vi.mock('node:fs', async (importOriginal) => {
     rmSync: vi.fn(),
     cpSync: vi.fn(),
     writeFileSync: vi.fn(),
-    // Alias removal now uses the canonical atomic writer. This unit fixture
-    // mocks its staging write too, so publishing must not touch real /tmp.
+    // Alias removal now uses the canonical atomic writer
+    // (`writeJsonDurably`), which stages through a descriptor rather than a
+    // path: stub the whole open/fsync/close/rename sequence, not just the
+    // rename, or the commit escapes this fixture and writes to real /tmp.
+    openSync: vi.fn(() => 3),
+    // `fsyncDirectorySync` fstats the descriptor `openSync` returned. That 3
+    // is fabricated, so without this stub the real syscall runs against
+    // whatever this worker happens to hold at fd 3 -- the test's outcome
+    // would depend on the runner's fd table, and an EBADF there would
+    // surface as an unrelated 500 from the uninstall transaction.
+    fstatSync: vi.fn(() => ({ isDirectory: () => true })),
+    fsyncSync: vi.fn(),
+    closeSync: vi.fn(),
     renameSync: vi.fn(),
   };
 });
@@ -1414,6 +1432,17 @@ describe('Plugin Routes', () => {
       '/tmp/project/plugins/demo',
       expect.anything(),
     );
+    // The route's job here is to drop the alias, and nothing asserted that:
+    // the fixture proved the DIRECTORY was removed while the published
+    // document went unexamined. `writeJsonDurably` writes through the
+    // descriptor `openSync` returned, so the staged bytes are the first
+    // argument's payload.
+    const published = vi
+      .mocked(writeFileSync)
+      .mock.calls.filter((call) => call[0] === 3)
+      .at(-1);
+    expect(published, 'no alias document was published').toBeDefined();
+    expect(JSON.parse(String(published?.[1]))).toEqual({});
   });
 
   test('refuses an alias collision without deleting the rejected directory', async () => {
