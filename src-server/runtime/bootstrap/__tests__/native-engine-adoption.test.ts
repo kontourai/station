@@ -321,6 +321,34 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
     expect(detect).toHaveBeenCalledTimes(1);
   });
 
+  it('stops before probing the next candidate once aborted (#1815)', async () => {
+    const loader = createLoader();
+    const controller = new AbortController();
+    let answerProbe!: (found: boolean) => void;
+    const probed = new Promise<boolean>((resolve) => {
+      answerProbe = resolve;
+    });
+    const detect = vi.fn(() => probed);
+
+    const pending = adoptDetectedNativeEngines({
+      configLoader: loader,
+      logger: silentLogger,
+      detect,
+      delaysMs: [0],
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(detect).toHaveBeenCalledTimes(1));
+    controller.abort();
+    // ABSENT, deliberately. That path carries no adoption and so passes the
+    // post-probe guard entirely — the only thing standing between an abort
+    // landing mid-attempt and two more `which` children is the check the
+    // candidate loop makes before each probe.
+    answerProbe(false);
+
+    await pending;
+    expect(detect).toHaveBeenCalledTimes(1);
+  });
+
   it('never throws when the registry write fails; settles as error', async () => {
     const loader = createLoader();
     const broken = new Proxy(loader, {
