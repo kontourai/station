@@ -24,6 +24,7 @@ import {
   createVerificationReceipt,
   createVerificationRequest,
 } from '../lib/verification-receipt.mjs';
+import { redactVerificationOutput } from '../lib/verification-redaction.mjs';
 import {
   captureBoundedOutput,
   gcVerificationArtifacts,
@@ -484,9 +485,11 @@ describe('verification reporter', () => {
     //
     // Pinning it through non-idempotence does not work, and round 4 corrected
     // why. The recorded reason was that a reorder had made the function
-    // idempotent over ~300k randomised inputs; that was false -- the function
-    // is not idempotent, its own docblock says so, and a structured sweep
-    // finds inputs where it is not. The randomised corpus simply never built
+    // idempotent over ~300k randomised inputs; that was false OF ROUND 4 --
+    // a structured sweep found inputs where it was not. (Round 5's exit
+    // condition made every accepted value a fixed point, so it IS idempotent
+    // here; the assertion below relies on that and the design does not.) The
+    // round-4 randomised corpus simply never built
     // one, because it contained no growth-producing redaction upstream of a
     // token, which is the whole discriminating shape (the same blind spot the
     // no-token-at-the-end sweep below had).
@@ -595,7 +598,12 @@ describe('verification reporter', () => {
     // Three properties, on every offset: within the byte bound, no unredacted
     // token fragment at the end, and never a partial `[REDACTED]` (a cut
     // inside the replacement reads as content, not as a redaction).
-    const partialMarker = /\[R(?:E(?:D(?:A(?:C(?:T(?:E)?)?)?)?)?)?$/;
+    // Every proper prefix of `[REDACTED]`, INCLUDING the nine-character
+    // `[REDACTED`. Round 4 wrote this regex stopping at `[REDACTE`, so it
+    // could not see the one shape round 6's fragment-strip fix is about, and
+    // the injection that defeats that fix passed against it. An assertion is
+    // only as wide as its pattern.
+    const partialMarker = /\[R(?:E(?:D(?:A(?:C(?:T(?:E(?:D)?)?)?)?)?)?)?$/;
     const tokenTail =
       /(?:gh[pousr]_[A-Za-z0-9]*|github_pat_[A-Za-z0-9_]*|\bsk-[A-Za-z0-9_-]*|(?:AKIA|ASIA)[0-9A-Z]*)$/;
     //
@@ -696,12 +704,48 @@ describe('verification reporter', () => {
         expect(resolved).not.toBeNull();
         expect(resolved).not.toContain('SECRETVALUE0123456789');
         expect(Buffer.byteLength(resolved as string)).toBeLessThanOrEqual(cap);
-        if ((resolved as string).includes('[REDACTED]'))
+        // Round-6 review, L2: this used to count values merely CONTAINING a
+        // marker, which most of the corpus does -- it could not notice the
+        // fixture drifting out of the class it exists to hold it in. The
+        // discriminating count is the oscillating one: values the redactor
+        // would still rewrite, which are exactly the ones round 4 refused.
+        if (redactVerificationOutput(resolved as string) !== resolved)
           cycleShapesResolved += 1;
       }
     }
-    // Not vacuous: these offsets really are the ones that redact and re-bound.
+    // Not vacuous: the sweep really does contain the oscillating class.
     expect(cycleShapesResolved).toBeGreaterThan(0);
+
+    // Round-6 review, M2: the unquoted-JSON-value form of the same cycle. This
+    // one is fourteen bytes -- far below any bound -- so nothing ever cancels
+    // the bracket the redactor appends each pass, and round 5's at-cap fix
+    // could not reach it. Refused forever before this round, silently.
+    expect(normalizeDeclaredCause('{"apiKey":123}')).toBe(
+      '{"apiKey":[REDACTED]}',
+    );
+    // And the variant where the growth is at a bound, so the far end loses a
+    // byte per pass too and the collapsed forms are a prefix rather than
+    // equal. Both arms of the convergence test are needed; neither shape
+    // resolves under the other's arm alone.
+    expect(
+      normalizeDeclaredCause('yyyyy {"password":[1,2],"b":"c"}', {
+        maxBytes: 40,
+      }),
+    ).not.toBeNull();
+
+    // Round-6 review, M3: one strip can uncover another, and so can the trim
+    // between them. A cut inside `... [REDACTED [REDACTED]` used to leave
+    // `... [REDACTED` -- a partial marker, persisted into the receipt as text
+    // that reads like a redaction and is not one -- on 30 of 483 straddling
+    // inputs.
+    for (let pad = 480; pad <= 500; pad += 1) {
+      const straddling = normalizeDeclaredCause(
+        `${'f'.repeat(pad)} [REDACTED ghp_${'A'.repeat(40)}`,
+      ) as string;
+      expect(straddling).not.toBeNull();
+      if (!straddling.endsWith('[REDACTED]'))
+        expect(straddling).not.toMatch(partialMarker);
+    }
 
     // Round-5 review, L3: the partial-marker strip runs only when the bound
     // actually cut. Applied unconditionally it edited a declaration the runner

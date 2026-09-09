@@ -788,14 +788,20 @@ describe('verification coordinator', () => {
       expect(killed.summary.infrastructureCause).toBe(cause);
       expect(killed.summary.causeStream).toBeUndefined();
 
-      // station#1827 round-5 review, L2: the envelope is where the marker and
-      // the excerpt were derived through DIFFERENT transforms, and on one
-      // class they disagreed by a byte. This cause is in that class -- it ends
-      // an offset whose value is 503 bytes rather than exactly 512: the
-      // redactor would rewrite its trailing `{"apiKey":"` and grow it, and a
-      // value sitting exactly on the cap would have that growth cut straight
-      // back off, so the two derivations would agree by accident. `force`
-      // because the request key is unchanged.
+      // station#1827: the envelope is where the marker and the excerpt were
+      // derived through DIFFERENT transforms, and on this class they
+      // disagreed -- the round-4 envelope rendered nine extra bytes ending in
+      // a truncated `[REDACTED` where the receipt held none, so the page
+      // showed a redaction the record did not have.
+      //
+      // This is the test that reaches the envelope: `coordinateVerification`
+      // publishes, so `cycling.summary` IS `boundedSummaryEnvelope`'s output
+      // rather than the summarizer's. The fixture's value is 503 bytes rather
+      // than exactly 512, deliberately: the redactor would rewrite its
+      // trailing `{"apiKey":"` and grow it, and a value sitting on the cap
+      // would have that growth cut straight back off, so both derivations
+      // would agree by accident. `force` because the request key is
+      // unchanged.
       const cycling = await coordinateVerification({
         laneId: 'ci-fast',
         root: temp.root,

@@ -267,6 +267,42 @@ function withoutPartialRedactionMarker(text) {
 }
 
 /**
+ * `text` trimmed, with any trailing partial `[REDACTED]` spelling removed --
+ * repeatedly, to a fixed point.
+ *
+ * One strip can uncover another, and so can the trim between them (round-6
+ * review, M3). A cut landing one byte inside `... [REDACTED [REDACTED]` leaves
+ * `... [REDACTED [REDACTED`; stripping once gives `... [REDACTED ` and the
+ * trim then exposes `... [REDACTED`, which is a partial marker again. Doing
+ * each step once left that shape on 30 of 483 straddling inputs, persisted
+ * into the canonical receipt as text that reads like a redaction and is not
+ * one -- the exact thing this file's docblock calls the one shape a bound must
+ * never emit. Every iteration strictly shortens, so this terminates.
+ */
+function withoutTrailingMarkerFragments(text) {
+  let result = text.trim();
+  for (;;) {
+    const stripped = withoutPartialRedactionMarker(result).trim();
+    if (stripped === result) return result;
+    result = stripped;
+  }
+}
+
+/**
+ * `text` with every run of redaction-marker spelling collapsed to one marker,
+ * for COMPARISON only -- never for anything that is stored.
+ *
+ * `[REDACTED]`, `[REDACTED]]`, `[REDACTED]]]` all become `[REDACTED]`, so two
+ * strings that differ only in how many closing brackets trail a marker compare
+ * equal. Nothing else is touched, which is what makes the comparison safe:
+ * removing a secret changes text OUTSIDE a marker run, so a value that lost
+ * one can never compare equal to the value that still has it.
+ */
+function withMarkerRunsCollapsed(text) {
+  return text.replaceAll(/\[REDACTED\]\]*/g, REDACTED);
+}
+
+/**
  * The most passes `normalizeDeclaredCause` will run before it refuses to
  * record a cause at all.
  *
@@ -365,22 +401,40 @@ const MAX_DECLARED_CAUSE_REDACTION_PASSES = 8;
  * scanned excerpt. The instability there is between two spellings of a
  * redaction marker, not between a secret and its replacement.
  *
- * The weaker-looking condition is safe, and for a structural reason rather
- * than an empirical one. Bounding, marker-stripping and trimming only ever
- * remove a SUFFIX, so for the re-bounded value to equal the previous one the
- * redactor's output must agree with it byte for byte over its whole length --
- * that is, redaction only APPENDED. Removing a secret never appends: every
- * replacement differs from the matched text at its first byte (`ghp_...`
- * against `[REDACTED]`, `Bearer x` against `Bearer [REDACTED]`), so the
- * outputs diverge at that offset and no suffix removal can bring them back
- * together. The only prefix-preserving growth the redactor has is completing a
- * marker it had already written.
+ * The weaker-looking condition is safe, for a reason about the redactor's
+ * replacements rather than about this loop.
+ *
+ * Round 5 justified it by claiming every replacement differs from the matched
+ * text at its FIRST byte, and offered `Bearer x` against `Bearer [REDACTED]`
+ * as the example -- which agrees on seven (round-6 review, M1). Most rules are
+ * prefix-preserving by construction: the JSON-key rule re-emits the key, the
+ * nested rule re-emits key and separator, the contextual rule re-emits the
+ * boundary, the trailing-URL rule keeps the scheme. The paragraph cited a
+ * counterexample to itself as evidence.
+ *
+ * The property that does carry the argument is weaker and holds: a
+ * replacement is never a STRICT EXTENSION of the text it matched unless what
+ * it matched was a prefix of the redaction marker -- which carries nothing.
+ * Enumerating 114,399 strings over an alphabet built from marker, JSON and
+ * token characters finds exactly three distinct prefix-preserving appended
+ * suffixes (`REDACTED]`, `EDACTED]`, `[REDACTED]"`), every one of them
+ * completing a marker the redactor had already begun. So growth that leaves
+ * the earlier text intact is always bracket accounting, never a secret being
+ * taken out: removing a secret rewrites it IN PLACE, and the outputs diverge
+ * at that offset.
+ *
+ * Bounding and marker-stripping remove a suffix. Trimming can also remove a
+ * leading prefix, so "only a suffix" is not universal -- 500,000 fuzz inputs
+ * found no way to exploit that and the leading whitespace is gone before the
+ * loop begins, but the sentence should not be read as an invariant.
  *
  * ## What it guarantees, what it does not, and what it refuses
  *
  * At most `maxBytes` bytes, codepoint-aligned; no trailing partial
- * `[REDACTED]` marker; and a value that survives its own transformation, which
- * by the argument above means the redactor found nothing left to remove in it.
+ * `[REDACTED]` marker, however many strips and trims it takes to reach that;
+ * and a value the redactor, run on exactly it, changes only inside a redaction
+ * marker -- which by the argument above means there was nothing left for it to
+ * remove.
  *
  * That is a statement about the REDACTOR'S RECALL, not about the value being
  * free of credentials. Anything `verification-redaction.mjs` does not match,
@@ -408,6 +462,12 @@ const MAX_DECLARED_CAUSE_REDACTION_PASSES = 8;
  *    exit condition above accepts marker-spelling instability rather than
  *    treating it as a reason to refuse.
  *
+ *    No corpus swept now reaches it: 20,640 JSON-shaped inputs across five
+ *    caps refuse none, where round 5 refused 72 of them and round 6's first
+ *    two attempts at the fix refused 31 and 22. If this exit fires again it
+ *    will be on a shape nobody here has seen, and it should be read as a
+ *    defect in this function rather than as the system working.
+ *
  * An independent verification of the round-4 tree traced every intermediate of
  * all 22 oscillating cases it found and confirmed no secret appears in any of
  * them, and that the refusal's fallback is exactly `main`'s behaviour. So the
@@ -433,16 +493,47 @@ export function normalizeDeclaredCause(
   // the sole remaining source of this function's non-idempotence.
   const boundAndTrim = (text) => {
     const bounded = longestUtf8Prefix(text, maxBytes);
-    return (
-      bounded === text ? bounded : withoutPartialRedactionMarker(bounded)
-    ).trim();
+    return bounded === text
+      ? bounded.trim()
+      : withoutTrailingMarkerFragments(bounded);
   };
   let candidate = boundAndTrim(
     redactVerificationOutput(withoutAnsi(value).trim()),
   );
   for (let attempt = 0; attempt < maxPasses; attempt += 1) {
-    const next = boundAndTrim(redactVerificationOutput(candidate));
-    if (next === candidate) return candidate.length > 0 ? candidate : null;
+    const redacted = redactVerificationOutput(candidate);
+    const next = boundAndTrim(redacted);
+    // Two arms, and both are load-bearing. Each closes a period-1 cycle the
+    // other cannot see, and every one of these was a silent refusal before it
+    // was closed -- the resolver falling through and the receipt going back to
+    // naming a scanned excerpt.
+    //
+    // The first is round 5's: the whole STEP is a fixed point. That covers a
+    // marker whose growth the bound cancels exactly, including the dangling
+    // `{"apiKey":"` an at-cap cut leaves, which the redactor fills with a
+    // marker and the bound removes again.
+    //
+    // The second compares the candidate against its own redaction, BEFORE
+    // re-bounding, with marker runs collapsed. That covers growth no bound
+    // ever cancels: an UNQUOTED JSON value redacts to a marker, after which
+    // the JSON-key rule's value class stops at the closing bracket and every
+    // pass appends one more. `{"apiKey":123}` is fourteen bytes, so the first
+    // arm never fires and round 5 refused it forever (round-6 review, M2).
+    //
+    // Two weaker forms of the second arm were tried and rejected first.
+    // Comparing the RE-BOUNDED value and allowing a prefix relation accepted
+    // 23 values ending in an unredacted `ghp_ABC` -- round 1's leak,
+    // readmitted, because a tail losing a byte per pass looks like
+    // convergence. Gating that on "this pass cut nothing" removed the leak but
+    // left 31 refusals at the production cap, where growth and cut coincide.
+    // Comparing before the bound keeps the bound out of the question entirely:
+    // a secret still to be removed shows up as a difference OUTSIDE a marker
+    // run, and collapsing cannot hide it.
+    if (
+      next === candidate ||
+      withMarkerRunsCollapsed(redacted) === withMarkerRunsCollapsed(candidate)
+    )
+      return candidate.length > 0 ? candidate : null;
     candidate = next;
   }
   return null;
@@ -1096,8 +1187,11 @@ export function summarizeVerificationOutput({
   // caller normalizes once through `normalizeDeclaredCause` and hands the same
   // string here and to the receipt writer, so the two artifacts hold one
   // value rather than two derivations that have to agree. Re-normalizing here
-  // is what made them disagree: that function is not idempotent, and its own
-  // doc comment says why.
+  // is what made them disagree: at that time the function was not idempotent,
+  // and re-running it moved the value. It is idempotent on this branch -- its
+  // exit condition makes every accepted value a fixed point -- but that is a
+  // property of the function, not a licence to re-derive here: one derivation
+  // is the design, and it does not depend on the other's behaviour.
   //
   // The admission test is deliberately shape-only. A `.trim()` or a redaction
   // pass here would be a second derivation wearing the clothes of a safety

@@ -347,26 +347,27 @@ export function renderSummary({ document, unparseableReason, sourcePath }) {
     // nothing in that case is correct. Rendering nothing in EITHER case, which
     // is what this did, states the stronger claim for both.
     //
-    // station#1827 review item 7: absence stopped being a two-way claim when
-    // a runner-declared stop cause was allowed to head the list. That cause
-    // is deliberately given no `causeStream` -- the sentence below says the
-    // excerpt "was picked by severity and position", and nothing picked it --
-    // so the two branches here are the two things absence used to mean, now
-    // said out loud. They are mutually exclusive by construction: the
-    // reporter withholds `causeStream` for exactly the case that sets
+    // station#1827: absence stopped being a two-way claim when a
+    // runner-declared stop cause was allowed to head the list. That cause is
+    // deliberately given no `causeStream` -- the sentence in the second branch
+    // says the excerpt "was picked by severity and position", and nothing
+    // picked it -- so these two branches are the two things absence used to
+    // mean, now said out loud. They are mutually exclusive by construction:
+    // the reporter withholds `causeStream` for exactly the case that sets
     // `infrastructureCause`.
-    // station#1827, and this sentence has been wrong twice in opposite ways.
     //
-    // Round 3 deleted its two scoping clauses because "anything after it was
-    // found by the scan" is false on the reconcile path -- where the second
-    // excerpt is the `reconcileNote` the pipeline synthesized about its own
-    // failure. But the SAME commit made the marker absent on that path, so
-    // this branch cannot be reached there; the scope was removed to fix a
-    // case the commit had already made unreachable, and the unscoped sentence
-    // it left sits above a block that renders EVERY excerpt. On the case that
-    // is actually taken it therefore said, of a line the scan picked out of
-    // the lane's stdout, that it was not selected from the lane's output --
-    // the branch's own defect class, on the surface the branch exists to fix.
+    // The declared-cause sentence itself has been wrong twice, in opposite
+    // ways. Round 3 deleted its two scoping clauses because "anything after
+    // it was found by the scan" is false on the reconcile path -- where the
+    // second excerpt is the `reconcileNote` the pipeline synthesized about
+    // its own failure. But the SAME commit made the marker absent on that
+    // path, so this branch cannot be reached there; the scope was removed to
+    // fix a case the commit had already made unreachable, and the unscoped
+    // sentence it left sits above a block that renders EVERY excerpt. On the
+    // case that is actually taken it therefore said, of a line the scan
+    // picked out of the lane's stdout, that it was not selected from the
+    // lane's output -- the branch's own defect class, on the surface the
+    // branch exists to fix.
     //
     // So both scopes are back: the claim is about the FIRST entry, and the
     // rest are accounted for rather than left under it. What stays from round

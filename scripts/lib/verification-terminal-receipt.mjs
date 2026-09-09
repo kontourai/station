@@ -24,23 +24,27 @@ function boundedText(value, maxBytes = 256) {
 }
 
 function boundedSummaryEnvelope(summary) {
-  // The declared cause, resolved ONCE for both fields that carry it below
-  // (round-5 review). They hold the same text by construction, so deriving
-  // them separately -- `boundedText` for one, this for the other -- put a
-  // one-byte redaction-marker difference between two fields of one document
-  // on 9 of 621 offsets in the shape that produces it. One value, two slots.
+  // The declared cause, resolved ONCE for both fields that carry it below.
+  // They hold the same text by construction, so deriving them separately --
+  // `boundedText` for one, this for the other -- made them disagree on 9 of
+  // 621 offsets in the shape that produces it: the round-4 envelope rendered
+  // NINE extra bytes ending in a truncated `[REDACTED` where the receipt held
+  // none, so the page showed a redaction the record did not have. One value,
+  // two slots.
   //
-  // `normalizeDeclaredCause` rather than `boundedText`: it is provably
-  // identity on its own output (that output is by construction a fixed point
-  // of the exact pipeline it runs), so the rendered marker stays
-  // byte-identical to the receipt's field, while still being a real redaction
-  // pass for a value that never went through it. `boundedText` redacts once
-  // without the marker strip or the trim, which is what appended the byte.
+  // `normalizeDeclaredCause` rather than `boundedText`: it is identity on its
+  // own output (that output is by construction a fixed point of the exact
+  // pipeline it runs), so the rendered marker stays byte-identical to the
+  // receipt's field, while still being a real redaction pass for a value that
+  // never went through one. `boundedText` redacts once without the marker
+  // strip or the trim, which is what appended those bytes.
   //
-  // Gated on the marker MATCHING its excerpt, not merely on both being
-  // present. The marker is a claim about the head excerpt; a producer whose
-  // two fields disagree has no claim this allow-list can render, so it
-  // renders none.
+  // The equality gate is DEFENSIVE, not a response to anything observed: the
+  // summarizer is the only producer and sets both fields from one value, so
+  // across 7,175 combinations the two never disagreed and this gate never
+  // fired. It is here because a second producer would reach this allow-list,
+  // and a marker is a claim about the head excerpt -- one that disagrees with
+  // its excerpt is a claim this cannot render, so it renders none.
   const declaredCause =
     summary?.infrastructureCause &&
     summary.infrastructureCause === summary.firstCausalExcerpt
@@ -320,26 +324,24 @@ export function reportExecution({ raw, result, cleanup, worktree, request }) {
         //
         // The first round threaded a normalized value here and let the
         // summarizer normalize it again, which read as belt-and-braces and
-        // was not: `normalizeDeclaredCause` is not idempotent, so a cause
-        // whose bound landed on a token prefix came back different, and the
-        // two artifacts named different causes for one run. The summarizer
-        // now uses what it is given, and this is the only derivation.
+        // was not: at the time `normalizeDeclaredCause` was not idempotent, so
+        // a cause whose bound landed on a token prefix came back different and
+        // the two artifacts named different causes for one run. It IS
+        // idempotent now -- its exit condition makes every accepted value a
+        // fixed point -- but the design does not rest on that: the summarizer
+        // uses what it is given, and this is the only derivation.
         //
-        // What that guarantees, restated after round 4 found the earlier
-        // wording too wide. "Every rendering is a PREFIX of the receipt's
-        // field" was false: `boundedSummaryEnvelope` re-redacts through
-        // `boundedText`, which is a fourth transform, and on a value whose
-        // end was not redaction-stable it produced something that was not a
-        // prefix at all.
+        // What that guarantees, stated no wider than it is true. Whenever the
+        // MARKER is present the excerpt was not budget-truncated, and
+        // `boundedSummaryEnvelope` resolves both of its fields from this one
+        // value through a function that is identity on it -- so receipt
+        // field, summary marker and envelope marker are the same bytes.
         //
-        // True as of round 4, and for a reason rather than by luck: whenever
-        // the MARKER is present the excerpt was not budget-truncated, so all
-        // of receipt field, summary marker and envelope marker are the same
-        // bytes -- `normalizeDeclaredCause` exits only on a value redaction
-        // leaves unchanged, which makes the envelope's pass a no-op. When the
-        // marker is absent the excerpt may be a budget-truncated prefix that
-        // the envelope re-redacts, and no claim is made about it. The
-        // reconcile branch below separately wraps the cause in a sentence.
+        // When the marker is ABSENT the excerpt may be a budget-truncated
+        // prefix that the envelope re-redacts through `boundedText`, and no
+        // such claim is made about it. The reconcile branch below separately
+        // wraps the cause in a sentence, which is a rendering of the same
+        // declaration rather than a second one.
         ...(infrastructureCause ? { infrastructureCause } : {}),
         // exitCode and truncated are what let the reporter tell a real
         // non-pass from a `completed` status, and a prefix-capture from a

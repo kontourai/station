@@ -250,8 +250,9 @@ one, and admitting it on both would put the two paths back into disagreement.
 The value is derived **once**, by `normalizeDeclaredCause` in
 `scripts/lib/verification-reporter.mjs`, and `reportExecution` hands that one
 string to both the summary and the receipt. Re-deriving it is what made the
-two artifacts disagree in the first place; the function is deliberately not
-idempotent-by-proof, it is called once instead.
+two artifacts disagree in the first place. It is called once by design; that
+its exit condition also happens to make it idempotent is a property the
+rendering path uses, not one the design leans on.
 
 **That function is the redaction boundary for this value.** Neither channel is
 redacted upstream, and the result lands in a receipt CI uploads as an

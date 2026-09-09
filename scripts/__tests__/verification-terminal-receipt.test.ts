@@ -1386,22 +1386,23 @@ test("a reporting-pipeline failure still records the runner's cause on the prese
 });
 
 /**
- * station#1827 round-5 review, L2 and the M1 invariant it protects.
+ * station#1827: `reportExecution` hands ONE string to the result and to the
+ * summarizer, on the class where a second derivation would visibly differ.
  *
- * `boundedSummaryEnvelope` used to derive the marker and the excerpt through
- * different transforms -- `boundedText` for one, a re-normalization for the
- * other -- and on this class they disagreed by one byte, because the redactor
- * keeps re-completing a marker the bound keeps cutting. Nothing asserted the
- * equality the comment called deliberate, so nothing caught it.
+ * Round 6 corrected this docblock. It used to be about
+ * `boundedSummaryEnvelope`, which this test never reaches -- the envelope has
+ * one call site, inside the publish path, and nothing here calls it. Three
+ * assertions satisfied by a literal assignment upstream cannot have power
+ * over a function they do not execute, and would have passed against the
+ * round-4 envelope unchanged. That coverage lives in
+ * `verification-coordinator.test.ts`, where the summary genuinely IS the
+ * envelope; this test covers the seam it can actually reach.
  *
- * `pad = 491` is a production-cap offset in that class, and deliberately one
- * whose value is 503 bytes rather than exactly 512: the redactor would rewrite
- * its trailing `{"apiKey":"` and grow it, and at 512 the envelope's own bound
- * would cut that growth straight back off, hiding the difference. An offset
- * that lands on the cap makes this assertion pass under either derivation --
- * which is how the first version of it let the injection through. Three
- * copies of one declaration -- receipt field, summary marker, summary excerpt
- * -- must be the same bytes.
+ * `pad = 491` is still the right fixture for it: the value is 503 bytes and
+ * the redactor would rewrite its trailing `{"apiKey":"` and grow it, so any
+ * re-derivation between the result and the summary shows up. An offset
+ * landing exactly on the cap would have that growth cut straight back off and
+ * agree under either derivation.
  */
 test('the receipt, the marker and the excerpt hold one declaration byte for byte (station#1827)', () => {
   const worktree = mkdtempSync(join(tmpdir(), 'station-1827-one-value-bytes-'));
