@@ -316,12 +316,12 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
     expect(result.current.imageAttachmentRefusal).toBeUndefined();
   });
 
-  test('an engine that declares no image path refuses the paste with its own reason', () => {
+  test('Muse permits images when its live adapter advertises delivery', () => {
     queryState.agentConnections = [
       {
         id: 'muse',
         name: 'Muse Code',
-        capabilities: ['agent-runtime'],
+        capabilities: ['agent-runtime', 'image-input'],
         config: { engineId: 'muse', executionClass: 'external' },
         type: 'muse',
       },
@@ -341,10 +341,8 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
       },
     );
 
-    expect(result.current.modelSupportsAttachments).toBe(false);
-    expect(result.current.imageAttachmentRefusal).toBe(
-      'Muse Code runs a text-only prompt and cannot see images.',
-    );
+    expect(result.current.modelSupportsAttachments).toBe(true);
+    expect(result.current.imageAttachmentRefusal).toBeUndefined();
     queryState.agentConnections = [];
   });
 

@@ -773,13 +773,12 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // `execution-target-resolver.ts`.
     modelSelection: { state: 'session', channel: 'flag' },
     toolPolicy: { state: 'unsupported', adapterModule: 'muse-adapter' },
-    // `buildMuseExecArgs` spawns `muse exec` with a text prompt and nothing
-    // else; the adapter never reads `input.attachments` and declares no
-    // `image-input`, so orchestration refuses the turn rather than dropping
-    // the image.
+    // Image bytes are validated and staged until the owned process exits;
+    // each path is passed through the CLI's repeatable --image option.
     imageInput: {
-      state: 'unsupported',
-      reason: 'Muse Code runs a text-only prompt and cannot see images.',
+      state: 'session',
+      channel: 'native-content',
+      basis: 'declared',
     },
     // One prompt is bound to one muse process; there is no live input channel.
     midTurnSteer: false,
