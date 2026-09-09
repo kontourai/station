@@ -89,12 +89,17 @@ describe('detectCliOnPath', () => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(
-      detectCliOnPath('codex', { signal: controller.signal }),
-    ).resolves.toBe(false);
-    // Not merely "killed immediately": `execFile` with an aborted signal still
-    // creates the child first, and the caller of an aborted probe is a runtime
-    // that has already begun tearing its home down.
+    const detected = await detectCliOnPath('codex', {
+      signal: controller.signal,
+    });
+
+    // Asserted before the answer, deliberately. "Resolved false" would also
+    // hold for a locator that ran and was killed — the mock here does not
+    // honour a signal, so only this assertion discriminates. `execFile` with
+    // an aborted signal still creates the child before killing it, and the
+    // caller of an aborted probe is a runtime that has already begun tearing
+    // its home down.
     expect(child.execFile).not.toHaveBeenCalled();
+    expect(detected).toBe(false);
   });
 });
