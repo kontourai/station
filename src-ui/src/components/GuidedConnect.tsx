@@ -60,7 +60,7 @@ export function GuidedConnect({
             <code>{destination}</code>
             <p>
               {isLocal
-                ? 'Open the Station desktop app to continue on this computer.'
+                ? 'Connect your browser through the Station app.'
                 : 'Ask this Station to approve access for your browser. Confirm the request on the computer running it.'}
             </p>
             {isLocal && (
@@ -69,7 +69,7 @@ export function GuidedConnect({
                   className="guided-connect__action guided-connect__action--primary"
                   href={browserHandoff}
                 >
-                  Open Station
+                  Connect with Station
                 </a>
                 <small>
                   Don't have the app?{' '}

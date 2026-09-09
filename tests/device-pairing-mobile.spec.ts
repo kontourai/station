@@ -575,7 +575,7 @@ for (const width of [320, 1280]) {
       await expect(local).not.toContainText('Installed app');
       await expect(local).not.toContainText('Nightly');
       const open = local.getByRole('link', {
-        name: 'Open Station',
+        name: 'Connect with Station',
         exact: true,
       });
       await expect(open).toHaveAttribute(
@@ -591,6 +591,15 @@ for (const width of [320, 1280]) {
           () => document.documentElement.scrollWidth <= innerWidth,
         ),
       ).toBe(true);
+      const installHelp = await local
+        .getByText("Don't have the app?")
+        .boundingBox();
+      const requestButton = await local
+        .getByRole('button', { name: 'Request access' })
+        .boundingBox();
+      expect(
+        requestButton!.y - (installHelp!.y + installHelp!.height),
+      ).toBeGreaterThanOrEqual(16);
       await page.screenshot({
         path: testInfo.outputPath(`connect-production-${width}.png`),
         fullPage: true,

@@ -121,6 +121,9 @@
   color: var(--text-secondary);
   margin-top: 10px;
 }
+.guided-connect__destination small + .guided-connect__action {
+  margin-top: 16px;
+}
 .guided-connect__alternatives {
   display: flex;
   gap: 10px;

@@ -61,7 +61,9 @@ describe('GuidedConnect', () => {
     expect(screen.queryByText('Installed app')).toBeNull();
     expect(screen.queryByText('Station Nightly')).toBeNull();
     expect(
-      screen.getByRole('link', { name: 'Open Station' }).getAttribute('href'),
+      screen
+        .getByRole('link', { name: 'Connect with Station' })
+        .getAttribute('href'),
     ).toBe('station-stable://open-browser');
     expect(
       screen.getByRole('link', { name: 'Get Station' }).getAttribute('href'),
@@ -71,7 +73,9 @@ describe('GuidedConnect', () => {
   test('does not offer desktop app installation inside the native app', () => {
     native.isTauri = true;
     render(<GuidedConnect />);
-    expect(screen.queryByRole('link', { name: 'Open Station' })).toBeNull();
+    expect(
+      screen.queryByRole('link', { name: 'Connect with Station' }),
+    ).toBeNull();
     expect(screen.queryByRole('link', { name: 'Get Station' })).toBeNull();
   });
 
