@@ -52,6 +52,9 @@ even when an assertion fails. Wait for the owned lifecycle signal within the
 test's existing overall budget instead of adding an unrelated polling deadline.
 Cached data alone does not prove that a refresh succeeded; cover failed refreshes
 and subsequent recovery when asserting readiness or performance marks.
+Record both ends of a reference timing interval through the same clock
+representation. Keep the ordering validator strict; epoch conversion can lose
+precision even when both values came from the same browser clock.
 Exercise read-only POST routes through the global HTTP middleware as well as
 their route handler. They must not broadcast data-change invalidations: doing
 so makes an active query refetch itself. Keep positive controls for real writes,

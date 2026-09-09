@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { afterEach, expect, test, vi } from 'vitest';
+import referenceContract from '../../../../scripts/fixtures/interactive-workspace/performance-contract.json';
 import {
   foregroundAttributionForPersistedHostDocumentRestoration,
   foregroundAttributionForProductMark,
@@ -326,6 +327,112 @@ test('replays a persisted host restoration mark observed before the measure list
       source: 'browser-longtask',
     }),
   ]);
+});
+
+test('file measurement keeps zero-duration scroll marks ordered across epoch conversion', async () => {
+  vi.spyOn(performance, 'now').mockReturnValue(24317.900000095367);
+  vi.spyOn(performance, 'timeOrigin', 'get').mockReturnValue(1_700_000_000_000);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response('{}')),
+  );
+  document.body.innerHTML = `<textarea data-station-performance-surface="task-editor" data-station-task-id="task-1" data-station-working-revision="swsr-v1:${'a'.repeat(64)}"></textarea>
+    <div data-station-performance-surface="workspace-file-preview" data-station-project-slug="demo"></div>
+    <button>Inspect worktree diff</button>`;
+  const surface = document.querySelector<HTMLDivElement>(
+    '[data-station-performance-surface="workspace-file-preview"]',
+  )!;
+  Object.defineProperty(surface, 'scrollHeight', { value: 1000 });
+  surface.addEventListener('scroll', () =>
+    emitFilePreviewScrollPerformanceMark({
+      projectSlug: 'demo',
+      path: 'file.txt',
+      scrollTop: surface.scrollTop,
+      scrolledEpochMs: browserEpochMs(),
+      committedEpochMs: browserEpochMs(),
+    }),
+  );
+  document.querySelector('button')!.addEventListener('click', () =>
+    emitDiffCommitPerformanceMark({
+      workingDir: '/fixture/workspace',
+      patchBytes: 1,
+      fileCount: 1,
+      committedEpochMs: browserEpochMs(),
+    }),
+  );
+  const refresh = async (event: Event) => {
+    await window.fetch('/api/projects/demo/file-preview', {
+      method: 'POST',
+      body: JSON.stringify({ path: 'file.txt' }),
+    });
+    emitFilePreviewCommitPerformanceMark({
+      projectSlug: 'demo',
+      path: 'file.txt',
+      sizeBytes: 199999,
+      lineCount: 100000,
+      renderedLineCount: 2000,
+      refreshNonce: (event as CustomEvent<{ nonce: string }>).detail.nonce,
+      committedEpochMs: browserEpochMs(),
+    });
+  };
+  window.addEventListener('station:performance:file-preview-refresh', refresh);
+  window.__stationInteractiveWorkspacePerformanceDriver = async (command) => {
+    if (command.kind !== 'prepare-100k-corpus')
+      throw new Error('Unexpected driver action');
+    return {
+      kind: 'prepared',
+      path: 'file.txt',
+      corpusId: referenceContract.fixtureCorpus.id,
+      sha256: referenceContract.fixtureCorpus.sha256,
+      lineCount: 100000,
+      rebuilt: command.phase === 'cold',
+    };
+  };
+  try {
+    const definition = referenceContract.fixtures.find(
+      (entry) => entry.id === 'open-100k-lines',
+    )!;
+    const fixture = {
+      id: definition.id,
+      workloads: definition.workloads,
+      measurementPhases: {
+        cold: definition.measurementPhases.cold!,
+        warm: definition.measurementPhases.warm!,
+      },
+    };
+    const result = await measureInteractiveWorkspace(
+      {
+        sampling: { warmups: 0, samples: 1 },
+        fixtureCorpus: referenceContract.fixtureCorpus,
+        fixtures: [fixture],
+      },
+      'task-1',
+    );
+    const measurements = Reflect.get(
+      result.observations[0]!,
+      'measurements',
+    ) as Array<{
+      phases: Record<
+        string,
+        { actions: Array<{ kind: string; marks: Record<string, number> }> }
+      >;
+    }>;
+    expect(measurements).toHaveLength(1);
+    for (const phase of ['cold', 'warm']) {
+      const scroll = measurements[0]!.phases[phase]!.actions.find(
+        (entry) => entry.kind === 'scroll',
+      )!;
+      expect(scroll.marks.scrollRenderedAt).toBeGreaterThanOrEqual(
+        scroll.marks.scrollStartedAt!,
+      );
+    }
+  } finally {
+    window.removeEventListener(
+      'station:performance:file-preview-refresh',
+      refresh,
+    );
+    delete window.__stationInteractiveWorkspacePerformanceDriver;
+  }
 });
 
 test('classifies every 100k measurement stage without retaining volatile driver output', () => {
