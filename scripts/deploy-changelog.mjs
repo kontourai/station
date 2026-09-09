@@ -152,6 +152,22 @@ export function groupChangelogSlice({ commits, githubRepo }) {
 }
 
 /**
+ * Whether this checkout is shallow. A probe failure is not evidence of
+ * shallowness, so it falls back to `false` and lets the caller take the
+ * disclosed-empty path rather than invent a cause.
+ */
+function isShallowRepository(execGit) {
+  try {
+    return (
+      String(execGit(['rev-parse', '--is-shallow-repository'])).trim() ===
+      'true'
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The Git-backed derivation. `execGit` is injected so tests and callers with
  * pre-captured log output never spawn a process.
  */
@@ -200,6 +216,17 @@ export function deriveChangelogSlice({
         : (error?.stderr?.toString?.() ?? '');
     const failureText = `${stderr}\n${error?.message ?? ''}`;
     if (!/Not a valid object name/.test(failureText)) throw error;
+    // A shallow checkout is the one cause worth failing on rather than
+    // disclosing: the predecessor exists upstream and was simply never
+    // fetched, so recording "not reachable in this repository's history"
+    // would send the reader looking for a rewritten repository that is fine.
+    // Naming the knob here is the point — the remedy is in the workflow job,
+    // not in the tree the reader is standing in.
+    if (isShallowRepository(execGit)) {
+      throw new Error(
+        `changelog slice cannot be derived: previous ship SHA ${previousSha.slice(0, 7)} is absent because this checkout is shallow, not because the history is gone. Give the job that records the ledger \`fetch-depth: 0\`.`,
+      );
+    }
     return {
       previousSha,
       groups: Object.fromEntries(CHANGELOG_GROUP_ORDER.map((g) => [g, []])),

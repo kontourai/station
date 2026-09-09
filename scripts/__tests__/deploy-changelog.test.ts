@@ -232,6 +232,7 @@ describe('changelog slice derivation', () => {
       if (args[0] === 'cat-file') {
         throw new Error(`fatal: Not a valid object name ${A_SHA}^{commit}`);
       }
+      if (args[1] === '--is-shallow-repository') return 'false\n';
       throw new Error(
         `unexpected git call after failed probe: ${args.join(' ')}`,
       );
@@ -243,11 +244,53 @@ describe('changelog slice derivation', () => {
       githubRepo: 'kontourai/station',
       execGit,
     });
-    expect(calls).toEqual([['cat-file', '-e', `${A_SHA}^{commit}`]]);
+    // The disclosure is only earned once shallowness is ruled out.
+    expect(calls).toEqual([
+      ['cat-file', '-e', `${A_SHA}^{commit}`],
+      ['rev-parse', '--is-shallow-repository'],
+    ]);
     expect(slice.previousSha).toBe(A_SHA);
     expect(slice.commitCount).toBe(0);
     for (const group of CHANGELOG_GROUP_ORDER)
       expect(slice.groups[group]).toEqual([]);
+    expect(slice.note).toMatch(/not reachable in this repository/);
+  });
+
+  it('fails loudly, naming fetch-depth, when the predecessor is missing only because the checkout is shallow', () => {
+    const execGit = (args: string[]): string => {
+      if (args[0] === 'cat-file') {
+        throw new Error(`fatal: Not a valid object name ${A_SHA}^{commit}`);
+      }
+      if (args[1] === '--is-shallow-repository') return 'true\n';
+      throw new Error(`unexpected git call: ${args.join(' ')}`);
+    };
+    expect(() =>
+      deriveChangelogSlice({
+        repoRoot: '.',
+        previousSha: A_SHA,
+        sha: B_SHA,
+        githubRepo: 'kontourai/station',
+        execGit,
+      }),
+    ).toThrow(/checkout is shallow[\s\S]*fetch-depth: 0/);
+  });
+
+  it('still discloses rather than throwing when the shallowness probe itself fails', () => {
+    const execGit = (args: string[]): string => {
+      if (args[0] === 'cat-file') {
+        throw new Error(`fatal: Not a valid object name ${A_SHA}^{commit}`);
+      }
+      // A probe that cannot run is not evidence of shallowness.
+      throw new Error('fatal: not a git repository');
+    };
+    const slice = deriveChangelogSlice({
+      repoRoot: '.',
+      previousSha: A_SHA,
+      sha: B_SHA,
+      githubRepo: 'kontourai/station',
+      execGit,
+    });
+    expect(slice.commitCount).toBe(0);
     expect(slice.note).toMatch(/not reachable in this repository/);
   });
 
