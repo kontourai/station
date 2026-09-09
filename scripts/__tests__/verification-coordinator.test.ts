@@ -787,6 +787,36 @@ describe('verification coordinator', () => {
       // `causeStream` was lost once already.
       expect(killed.summary.infrastructureCause).toBe(cause);
       expect(killed.summary.causeStream).toBeUndefined();
+
+      // station#1827 round-5 review, L2: the envelope is where the marker and
+      // the excerpt were derived through DIFFERENT transforms, and on one
+      // class they disagreed by a byte. This cause is in that class -- it ends
+      // an offset whose value is 503 bytes rather than exactly 512: the
+      // redactor would rewrite its trailing `{"apiKey":"` and grow it, and a
+      // value sitting exactly on the cap would have that growth cut straight
+      // back off, so the two derivations would agree by accident. `force`
+      // because the request key is unchanged.
+      const cycling = await coordinateVerification({
+        laneId: 'ci-fast',
+        root: temp.root,
+        cwd: worktree,
+        force: true,
+        collectProvenance: () => stable,
+        runner: async () => ({
+          status: 80,
+          infrastructureError: true,
+          infrastructureCause: `${'x'.repeat(491)} {"apiKey":"SECRETVALUE0123456789","b":"c"}`,
+          output: {
+            stdout: { text: '          Error: observer failed\n' },
+            stderr: { text: '' },
+          },
+        }),
+      });
+      const persisted = cycling.receipt.terminal.infrastructureCause;
+      expect(persisted).toMatch(/\{"apiKey":"$/);
+      expect(persisted).not.toContain('SECRETVALUE0123456789');
+      expect(cycling.summary.infrastructureCause).toBe(persisted);
+      expect(cycling.summary.firstCausalExcerpt).toBe(persisted);
       // The published bytes, not only the returned object: the canonical
       // receipt is what a later reader opens, and it carried no cause at all.
       const canonical = JSON.parse(

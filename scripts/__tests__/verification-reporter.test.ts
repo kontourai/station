@@ -662,14 +662,67 @@ describe('verification reporter', () => {
     // offsets, redacted rather than absent.
     expect(encodedCarried).toBeGreaterThan(0);
 
-    // The refusal path. Every corpus swept converges in at most two passes, so
-    // the production cap cannot reach it; driving the cap down to one on an
-    // input that genuinely needs two exercises the real branch with a real
-    // value. A cause whose end still matches a secret pattern is not one to
+    // The three null exits, which are not the same exit (round-5 addendum).
+    // Only the third loses something a runner said.
+    expect(normalizeDeclaredCause(undefined)).toBeNull();
+    expect(normalizeDeclaredCause(`${esc}[0m${esc}[31m  `)).toBeNull();
+    //
+    // The refusal. No corpus swept reaches the production cap, so driving the
+    // cap down to one on an input that genuinely needs two exercises the real
+    // branch with a real value. A value still being rewritten is not one to
     // persist, so the function records nothing rather than its best effort.
     const needsTwoPasses = `${'Bearer s '.repeat(16)}${'b'.repeat(200)} ghp_ABCDEFGHIJKLMNOPQRSTUV and more trailing words here`;
     expect(normalizeDeclaredCause(needsTwoPasses)).not.toBeNull();
     expect(normalizeDeclaredCause(needsTwoPasses, { maxPasses: 1 })).toBeNull();
+
+    // Round-5 review, H1: round 4 exited on "the redactor changes nothing",
+    // which a value ending `{"apiKey":[REDACTED]]` never satisfies -- the
+    // JSON-key rule's value class stops at the first `]`, so redaction appends
+    // one byte, the bound removes it, and the next pass is byte-identical.
+    // Eleven of 621 offsets PER CAP, at every cap including the production
+    // one, refused a cause whose secret had already been removed; and a
+    // refusal is silent, so the receipt went back to naming a scanned excerpt.
+    //
+    // The exit condition is now the fixed point of the whole step -- redact
+    // AND re-bound -- so an instability confined to a marker's spelling
+    // resolves instead of spinning. Swept, because a single offset proves
+    // nothing about a boundary condition.
+    let cycleShapesResolved = 0;
+    for (const cap of [40, 64, 128, 256, 512]) {
+      for (let pad = 0; pad <= 40; pad += 1) {
+        const cycling = `${'x'.repeat(pad)} {"apiKey":"SECRETVALUE0123456789","b":"c"}`;
+        const resolved = normalizeDeclaredCause(cycling, { maxBytes: cap });
+        // Never refused, and never carrying what it was asked to remove.
+        expect(resolved).not.toBeNull();
+        expect(resolved).not.toContain('SECRETVALUE0123456789');
+        expect(Buffer.byteLength(resolved as string)).toBeLessThanOrEqual(cap);
+        if ((resolved as string).includes('[REDACTED]'))
+          cycleShapesResolved += 1;
+      }
+    }
+    // Not vacuous: these offsets really are the ones that redact and re-bound.
+    expect(cycleShapesResolved).toBeGreaterThan(0);
+
+    // Round-5 review, L3: the partial-marker strip runs only when the bound
+    // actually cut. Applied unconditionally it edited a declaration the runner
+    // made -- an open bracket is a proper prefix of `[REDACTED]`.
+    expect(normalizeDeclaredCause('ci:fast stopped at step [')).toBe(
+      'ci:fast stopped at step [',
+    );
+
+    // Re-applying the function to its own output is identity, which is what
+    // `boundedSummaryEnvelope` relies on to keep a rendering byte-identical to
+    // the receipt. It holds by construction -- the output is a fixed point of
+    // the pipeline -- and is asserted here because the envelope's correctness
+    // depends on it, not because the design does.
+    for (const seed of [
+      `${'x'.repeat(18)} {"apiKey":"SECRETVALUE0123456789","b":"c"}`,
+      needsTwoPasses,
+      'ci:fast exceeded its 12-minute feedback budget',
+    ]) {
+      const once = normalizeDeclaredCause(seed) as string;
+      expect(normalizeDeclaredCause(once)).toBe(once);
+    }
 
     // Bounded in BYTES, codepoint-aligned, and never above the schema's own
     // code-point wall. A surrogate pair is never cut in half.

@@ -303,8 +303,12 @@ completion lane's parent capture, which folds every phase's output behind a
 phase sequence stops at the first non-passing phase, the failing phase is
 always the last region.
 
-Two fields say how the excerpt was chosen, and between them the reader is
-never left inferring it from a silence.
+Two fields say how the excerpt was chosen. Between them a reader usually does
+not have to infer it from a silence — but the declared-cause field is additive
+and lowest priority in the summary's byte budget, so a tight enough cap
+renders an excerpt with neither field present. No such cap was reachable at
+the production one, so treat this as a caveat on the pair rather than a hole
+anyone has walked into.
 
 `causeStream` qualifies a SCANNED excerpt: present (`stderr`) means the
 excerpt was ranked off a stream with no step markers rather than attributed

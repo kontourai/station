@@ -1386,6 +1386,53 @@ test("a reporting-pipeline failure still records the runner's cause on the prese
 });
 
 /**
+ * station#1827 round-5 review, L2 and the M1 invariant it protects.
+ *
+ * `boundedSummaryEnvelope` used to derive the marker and the excerpt through
+ * different transforms -- `boundedText` for one, a re-normalization for the
+ * other -- and on this class they disagreed by one byte, because the redactor
+ * keeps re-completing a marker the bound keeps cutting. Nothing asserted the
+ * equality the comment called deliberate, so nothing caught it.
+ *
+ * `pad = 491` is a production-cap offset in that class, and deliberately one
+ * whose value is 503 bytes rather than exactly 512: the redactor would rewrite
+ * its trailing `{"apiKey":"` and grow it, and at 512 the envelope's own bound
+ * would cut that growth straight back off, hiding the difference. An offset
+ * that lands on the cap makes this assertion pass under either derivation --
+ * which is how the first version of it let the injection through. Three
+ * copies of one declaration -- receipt field, summary marker, summary excerpt
+ * -- must be the same bytes.
+ */
+test('the receipt, the marker and the excerpt hold one declaration byte for byte (station#1827)', () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-one-value-bytes-'));
+  roots.push(worktree);
+  const reported = reportExecution({
+    raw: {
+      infrastructureCause: `${'x'.repeat(491)} {"apiKey":"SECRETVALUE0123456789","b":"c"}`,
+      output: {
+        stdout: { text: `${SCANNED_DECOY_DIAGNOSTIC}\n` },
+        stderr: { text: '' },
+      },
+    },
+    result: {
+      status: 'infrastructure_error',
+      exitCode: null,
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+    },
+    cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+    worktree,
+    request: { key: 'a'.repeat(64) },
+  });
+
+  const persisted = reported.result.infrastructureCause as string;
+  // The fixture is only discriminating if it really is in that class.
+  expect(persisted).toMatch(/\{"apiKey":"$/);
+  expect(persisted).not.toContain('SECRETVALUE0123456789');
+  expect(reported.summary.infrastructureCause).toBe(persisted);
+  expect(reported.summary.firstCausalExcerpt).toBe(persisted);
+});
+
+/**
  * station#1827 fix round 2, M1. The delta review's case: bounding after
  * redacting can move a token-shaped fragment to end-of-string, where
  * `verification-redaction.mjs`'s `$`-anchored partial-token rules match on a

@@ -24,6 +24,28 @@ function boundedText(value, maxBytes = 256) {
 }
 
 function boundedSummaryEnvelope(summary) {
+  // The declared cause, resolved ONCE for both fields that carry it below
+  // (round-5 review). They hold the same text by construction, so deriving
+  // them separately -- `boundedText` for one, this for the other -- put a
+  // one-byte redaction-marker difference between two fields of one document
+  // on 9 of 621 offsets in the shape that produces it. One value, two slots.
+  //
+  // `normalizeDeclaredCause` rather than `boundedText`: it is provably
+  // identity on its own output (that output is by construction a fixed point
+  // of the exact pipeline it runs), so the rendered marker stays
+  // byte-identical to the receipt's field, while still being a real redaction
+  // pass for a value that never went through it. `boundedText` redacts once
+  // without the marker strip or the trim, which is what appended the byte.
+  //
+  // Gated on the marker MATCHING its excerpt, not merely on both being
+  // present. The marker is a claim about the head excerpt; a producer whose
+  // two fields disagree has no claim this allow-list can render, so it
+  // renders none.
+  const declaredCause =
+    summary?.infrastructureCause &&
+    summary.infrastructureCause === summary.firstCausalExcerpt
+      ? normalizeDeclaredCause(summary.infrastructureCause)
+      : null;
   const envelope = {
     terminal: summary?.terminal ?? 'infrastructure_error',
     counts: summary?.counts ?? null,
@@ -32,7 +54,10 @@ function boundedSummaryEnvelope(summary) {
       ? { failingStep: boundedText(summary.failingStep, 128) }
       : {}),
     ...(summary?.firstCausalExcerpt
-      ? { firstCausalExcerpt: boundedText(summary.firstCausalExcerpt, 512) }
+      ? {
+          firstCausalExcerpt:
+            declaredCause ?? boundedText(summary.firstCausalExcerpt, 512),
+        }
       : {}),
     // station#1471 review: this allow-list silently dropped `causeStream`, so
     // the caveat the reporter computes -- "that excerpt was chosen by severity
@@ -60,24 +85,7 @@ function boundedSummaryEnvelope(summary) {
     // is what a second producer would reach, and an allow-list that carries a
     // field without its own rule is where the rule gets lost.
     //
-    // `boundedText` re-redacts, which round 4 keeps deliberately. It is a
-    // no-op on a value `normalizeDeclaredCause` produced, because that
-    // function's exit condition IS redaction-stability, so the marker here is
-    // byte-identical to the receipt's field rather than a fourth derivation
-    // of it. What it buys is that an unnormalized value cannot reach a
-    // rendering even if a future caller breaks the summarizer's verbatim
-    // contract -- the persisted receipt is the copy with no such backstop.
-    //
-    // Bounded with the SAME number as `firstCausalExcerpt` above, deliberately
-    // and not by coincidence: the two fields carry the same text whenever both
-    // are present, so a bound that applied to one and not the other would cut
-    // them to different lengths and reintroduce the divergence this field was
-    // added to remove. It is not `DECLARED_CAUSE_BYTE_CAP` -- that is the
-    // normalizer's own cap, and if it were ever raised above this one the
-    // marker would survive whole while the excerpt beside it was cut.
-    ...(summary?.infrastructureCause && summary?.firstCausalExcerpt
-      ? { infrastructureCause: boundedText(summary.infrastructureCause, 512) }
-      : {}),
+    ...(declaredCause ? { infrastructureCause: declaredCause } : {}),
     // station#4249 review: present ONLY when reportExecution's own reporting
     // pipeline failed (the reconcile-note catch branches below) -- this is
     // the field a reader checks to tell that case apart from an ordinary

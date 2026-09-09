@@ -267,15 +267,23 @@ function withoutPartialRedactionMarker(text) {
 }
 
 /**
- * The most redaction passes `normalizeDeclaredCause` will run before it refuses
- * to record a cause at all.
+ * The most passes `normalizeDeclaredCause` will run before it refuses to
+ * record a cause at all.
  *
- * Each pass can only replace a token with `[REDACTED]`, so the loop shrinks the
- * bounded prefix's unredacted content monotonically and converges in one or two
- * passes on every corpus swept for station#1827. The cap exists so a shape
- * nobody has constructed cannot spin, and its exhaustion is a REFUSAL rather
- * than a best effort: a value whose end still matches a secret pattern is not
- * one to persist into a receipt that CI uploads as an artifact.
+ * This cap is a backstop, and the reason it is not also a claim is that round
+ * 4 made that claim and was wrong. It said each pass shrinks unredacted
+ * content monotonically, so only an unconstructed shape could spin -- and the
+ * first sweep of the next review constructed one, at every cap including the
+ * production one, on 11 of 621 offsets: a period-1 cycle between two spellings
+ * of a redaction marker, shrinking nothing. Round 5 removed that cycle by
+ * changing the exit condition rather than by raising this number, and every
+ * corpus swept since converges in one pass or two (12,271 and 149 of 12,420).
+ *
+ * What is claimed here is only that: no corpus has reached this cap. Not that
+ * none can. Exhaustion is a REFUSAL rather than a best effort -- a value still
+ * being rewritten is not one to persist into a receipt CI uploads as an
+ * artifact -- and a refusal is silent, so it costs the run its declared cause
+ * and returns the receipt to naming a scanned excerpt.
  */
 const MAX_DECLARED_CAUSE_REDACTION_PASSES = 8;
 
@@ -296,16 +304,24 @@ const MAX_DECLARED_CAUSE_REDACTION_PASSES = 8;
  * the canonical receipt, which CI uploads as an artifact and nothing redacts
  * downstream. Every guarantee below exists because there is no second chance.
  *
- * ## Why this is called once and never re-applied
+ * ## Called once, and separately safe to re-apply
  *
- * It is not idempotent, and the delta review of the first fix round proved it:
- * a bound can move a token-shaped fragment to end-of-string, where
- * `verification-redaction.mjs`'s `$`-anchored partial-token rules match on a
- * later pass but could not on an earlier one.
+ * Two different statements, which earlier rounds ran together (round-5 review,
+ * L1).
  *
- * The answer is structural rather than a proof of idempotence: `reportExecution`
- * calls this once and threads the result to the summarizer and to the receipt,
- * so there is no second derivation to agree with. Do not reintroduce one.
+ * The DESIGN does not rely on idempotence: `reportExecution` calls this once
+ * and threads the result to the summarizer and to the receipt, so there is no
+ * second derivation to agree with. Round 1 shipped two derivations of one
+ * declaration and they disagreed. Do not reintroduce one.
+ *
+ * Re-APPLYING it to its own output is nevertheless identity, and by
+ * construction rather than by measurement: what this returns is a fixed point
+ * of the exact pipeline it runs, so a second call reproduces the first call's
+ * loop exit immediately. `boundedSummaryEnvelope` depends on that to keep a
+ * rendering byte-identical to the receipt, which is a different thing from the
+ * design depending on it. What is NOT true is idempotence of the underlying
+ * redactor -- it appends to values ending in a re-completable marker, which is
+ * the whole subject of the exit condition below.
  *
  * ## The order, and which class each step is for
  *
@@ -326,42 +342,108 @@ const MAX_DECLARED_CAUSE_REDACTION_PASSES = 8;
  *    bound left partial is invisible until after the cut. Round 1 had only
  *    this pass and leaked partial tokens; round 3 had only the other and
  *    leaked whole ones. Both are needed; neither order alone dominates.
- * 4. **Loop until the end stops changing.** Redaction can lengthen what it
- *    rewrites, so a value that grows past the bound is cut again -- and that
- *    cut, plus the trim that follows it, can expose a token the previous pass
- *    never saw. Round 3 cut once and did not re-scan, which is how a trailing
- *    `ghp_…` survived 92 inputs in a structured sweep. Re-scanning after every
- *    cut is the only form that closes it, because each cut makes a new end.
+ * 4. **Repeat 3 until the value stops changing.** Redaction can lengthen what
+ *    it rewrites, so a value that grows past the bound is cut again -- and
+ *    that cut, plus the trim that follows it, can expose a token the previous
+ *    pass never saw. Round 3 cut once and did not re-scan, which is how a
+ *    trailing `ghp_...` survived 92 inputs in a structured sweep. Re-scanning
+ *    after every cut is the only form that closes it, because each cut makes
+ *    a new end.
  *
- * ## What it guarantees, and what it refuses
+ * ## The exit condition, and why it is not "redaction changes nothing"
  *
- * At most `maxBytes` bytes, codepoint-aligned; no trailing partial `[REDACTED]`
- * marker; and an end that the redactor, run on exactly that string, does not
- * change -- which is the property "no unredacted token at the end" reduces to.
- * A value that cannot be brought to that state within
- * `MAX_DECLARED_CAUSE_REDACTION_PASSES` is refused (null) rather than recorded.
+ * The loop stops when redacting AND re-bounding leaves the value untouched --
+ * a fixed point of the whole step, not of the redactor alone.
+ *
+ * Round 4 tested the redactor alone and did not converge on a shape three of
+ * its own comments said could not exist (round-5 review, H1): once a value
+ * ends `{"apiKey":[REDACTED]]`, the JSON-key rule's value class stops at the
+ * first `]`, so redaction appends one byte, the bound removes it, and the next
+ * pass is byte-identical. Eleven of 621 offsets per cap, at every cap
+ * including the production one, refused a cause whose secret had already been
+ * removed -- and a refusal is silent, so the receipt went back to naming a
+ * scanned excerpt. The instability there is between two spellings of a
+ * redaction marker, not between a secret and its replacement.
+ *
+ * The weaker-looking condition is safe, and for a structural reason rather
+ * than an empirical one. Bounding, marker-stripping and trimming only ever
+ * remove a SUFFIX, so for the re-bounded value to equal the previous one the
+ * redactor's output must agree with it byte for byte over its whole length --
+ * that is, redaction only APPENDED. Removing a secret never appends: every
+ * replacement differs from the matched text at its first byte (`ghp_...`
+ * against `[REDACTED]`, `Bearer x` against `Bearer [REDACTED]`), so the
+ * outputs diverge at that offset and no suffix removal can bring them back
+ * together. The only prefix-preserving growth the redactor has is completing a
+ * marker it had already written.
+ *
+ * ## What it guarantees, what it does not, and what it refuses
+ *
+ * At most `maxBytes` bytes, codepoint-aligned; no trailing partial
+ * `[REDACTED]` marker; and a value that survives its own transformation, which
+ * by the argument above means the redactor found nothing left to remove in it.
+ *
+ * That is a statement about the REDACTOR'S RECALL, not about the value being
+ * free of credentials. Anything `verification-redaction.mjs` does not match,
+ * this does not remove -- and one such gap is known: the plain-text matcher
+ * shields a nested key behind a non-secret outer key, because the outer key's
+ * value match consumes it (station#1835, pre-existing and shared with the
+ * stdout/stderr redaction on `main`). Step 2 also widens what is ELIGIBLE for
+ * the receipt: redaction shortens what it rewrites, so bytes past `maxBytes`
+ * in the input can be pulled inside the bound, where bounding first would have
+ * discarded them. That is a real regression against a bound-first order for
+ * the #1835 class, accepted because in aggregate this order leaks less (3,421
+ * against 4,153 in the reviewer's sweep) and closes the encoded-JSON classes
+ * entirely. It is a trade, not an absence of one.
+ *
+ * ## Three ways this returns null, and only one of them loses anything
+ *
+ * 1. **Not a declaration.** A non-string or an empty one never was a cause.
+ * 2. **Nothing survived normalization.** An input that is entirely escape
+ *    sequences or whitespace converges to the empty string. Also not a cause.
+ * 3. **The loop ran out of passes.** This is the only exit that discards
+ *    something a runner said. It is deliberately fail-closed -- a value still
+ *    being rewritten is not one to persist -- but it is silent: the resolver
+ *    falls through and the receipt goes back to naming a scanned excerpt,
+ *    which is the outcome this whole change exists to remove. That is why the
+ *    exit condition above accepts marker-spelling instability rather than
+ *    treating it as a reason to refuse.
+ *
+ * An independent verification of the round-4 tree traced every intermediate of
+ * all 22 oscillating cases it found and confirmed no secret appears in any of
+ * them, and that the refusal's fallback is exactly `main`'s behaviour. So the
+ * class this now accepts was measured safe by someone who was not looking for
+ * a reason to accept it.
  */
 export function normalizeDeclaredCause(
   value,
   {
     maxBytes = DECLARED_CAUSE_BYTE_CAP,
     // Overridable so the refusal path is reachable by a test with a real
-    // input rather than a synthetic one: every corpus swept converges in at
-    // most two passes, so the production cap alone can never exercise it.
+    // input rather than a synthetic one. No corpus swept has reached the
+    // production cap, which is not the same as no input being able to -- see
+    // the constant's own comment for what happened last time that was stated
+    // as a certainty.
     maxPasses = MAX_DECLARED_CAUSE_REDACTION_PASSES,
   } = {},
 ) {
   if (typeof value !== 'string' || value.length === 0) return null;
-  const boundAndTrim = (text) =>
-    withoutPartialRedactionMarker(longestUtf8Prefix(text, maxBytes)).trim();
-  // Pass 1 sees the whole text; the loop's pass sees each end the bound makes.
+  // The partial-marker strip runs ONLY when the bound actually cut something
+  // (round-5 review, L3). Applied unconditionally it edits a declaration the
+  // runner made -- a cause legitimately ending in `[` lost it -- and it was
+  // the sole remaining source of this function's non-idempotence.
+  const boundAndTrim = (text) => {
+    const bounded = longestUtf8Prefix(text, maxBytes);
+    return (
+      bounded === text ? bounded : withoutPartialRedactionMarker(bounded)
+    ).trim();
+  };
   let candidate = boundAndTrim(
     redactVerificationOutput(withoutAnsi(value).trim()),
   );
   for (let attempt = 0; attempt < maxPasses; attempt += 1) {
-    const redacted = redactVerificationOutput(candidate);
-    if (redacted === candidate) return candidate.length > 0 ? candidate : null;
-    candidate = boundAndTrim(redacted);
+    const next = boundAndTrim(redactVerificationOutput(candidate));
+    if (next === candidate) return candidate.length > 0 ? candidate : null;
+    candidate = next;
   }
   return null;
 }
