@@ -1667,7 +1667,7 @@ fn ensure_mobile_profile_store_genesis(path: &std::path::Path) -> Result<(), Str
             false
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
-        Err(error) => return Err(format!("read mobile Station profiles: {error}")),
+        Err(error) => return Err(format!("read saved Stations on this device: {error}")),
     };
     if missing && marker_exists {
         return Err("saved mobile Station metadata is missing after initialization; refusing to recreate it".into());
