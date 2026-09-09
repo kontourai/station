@@ -1,9 +1,10 @@
 /** Deterministic, deliberately narrow reducer for the two issue handoff labels. */
 import { NEEDS_MAINTAINER, NEEDS_REPORTER } from './lifecycle-labels.mjs';
 
-// Re-exported so existing importers keep working; the names live in a leaf
-// module that `label-manifest.mjs` also imports, so neither file has to import
-// the other and be evaluated mid-cycle (#1312).
+// Re-exported so existing importers keep working. The names live in an
+// import-free leaf that `label-manifest.mjs` also reads; that arrangement
+// outlived the cycle it was built for (#1312), which this file's dropped
+// policy import had closed.
 export { NEEDS_MAINTAINER, NEEDS_REPORTER };
 export const LIFECYCLE_LABELS = Object.freeze([
   NEEDS_MAINTAINER,

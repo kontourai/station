@@ -10,9 +10,12 @@ of the explicit non-actionable dispositions: `blocked`, `epic`,
 issue. This makes an omitted disposition fail immediately, including on a
 newly opened issue; there is no grandfathered backlog ceiling or grace period.
 
-`P1` is the actionable queue. Nothing derives it: a `bug` label no longer
-implies `P1`, and no label implies any priority. Priority is a triage judgement
-recorded by whoever triages, and the gate below is what requires one to arrive.
+`P1` is the actionable queue. A `bug` label no longer implies `P1`, and no
+label implies any priority: priority is a triage judgement recorded by whoever
+triages, and the gate below is what requires one to arrive. Specific
+automation may still choose a priority for the issues it opens — the main-red
+tracker in `.github/workflows/main-health.yml` files itself as `bug` and `P1`
+— but that is its own triage decision, not a rule derived from a label.
 
 The queue is uncapped. `maxActionableP1` is `null`; the ceiling check is
 retained and still enforces any policy that sets one, so re-capping is a
