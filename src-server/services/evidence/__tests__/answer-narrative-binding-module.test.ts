@@ -457,4 +457,30 @@ describe('AnswerNarrativeBindingModule', () => {
       state: 'available',
     });
   });
+
+  // The index is compact JSON with no trailing newline. A store's file IS its
+  // format, and a round-trip test cannot see a re-indent.
+  test('publishes a compact index with no trailing newline', async () => {
+    const root = home();
+    const module = new AnswerNarrativeBindingModule(
+      root,
+      { read: async () => answer },
+      owner(),
+    );
+
+    await module.publish(
+      'session-a',
+      'turn-a',
+      publication('publish-a', 0),
+      authority,
+      () => true,
+    );
+
+    const text = readFileSync(
+      join(root, 'answer-narrative-bindings', 'index.json'),
+      'utf8',
+    );
+    expect(text).toBe(JSON.stringify(JSON.parse(text)));
+    expect(text).not.toContain('\n');
+  });
 });

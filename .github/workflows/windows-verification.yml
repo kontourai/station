@@ -4,6 +4,32 @@ name: Windows Verification
 # The complete Windows corpus remains a failing diagnostic tracked by #1420.
 # Browser E2E also remains outside this lane; full browser coverage belongs to
 # CI Extended on Ubuntu.
+#
+# Its run steps look like a duplicate of windows-pr-verification.yml's, and
+# they deliberately are not one. Three things depend on this lane existing
+# separately. The first two are pinned by tests in
+# ci-workflow-contract.test.ts; the third is branch-ruleset state, which no
+# test in this repository asserts:
+#
+#   1. main-health.yml watches this workflow by NAME and files a P1 when it
+#      fails on main. The PR lane runs on pull_request_target and merge_group,
+#      both of which complete BEFORE the merge; nothing else reports a
+#      post-merge Windows failure.
+#   2. It runs on the physical `kontour-windows` host and holds the capacity
+#      lease that container-smoke.yml's admission wait is sized against. The
+#      PR lane runs on an ephemeral GitHub-hosted `windows-latest`, which is a
+#      different machine, a different toolchain state, and no lease.
+#   3. The required check is the PR lane's ("Windows PR portable floor"); this
+#      job's name is not required, so its verdict is advisory-on-main rather
+#      than blocking-on-merge. Those are different jobs, not two copies of
+#      one. Read this one from the ruleset
+#      (`gh api repos/kontourai/station/rules/branches/main`), not from a
+#      test: required-check identity lives there, and nothing here mirrors it.
+#
+# The `if: github.event_name != 'pull_request'` below is defence in depth for
+# a self-hosted runner, not dead code: this workflow declares no pull_request
+# trigger today (pinned), and the guard is what keeps candidate code off the
+# physical host if one is ever added.
 on:
   workflow_dispatch:
   push:
