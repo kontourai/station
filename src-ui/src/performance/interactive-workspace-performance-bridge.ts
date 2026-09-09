@@ -1044,7 +1044,7 @@ async function measure100kFile(
       else warmNetworkFetched &&= true;
       const editableAt = timeline(commit.committedEpochMs);
       // Product marks travel through epoch milliseconds; use the same
-      // conversion for the start so sub-millisecond rounding cannot invert it.
+      // conversion for the start so sub-millisecond rounding cannot reverse it.
       const scrollStartedAt = Math.max(timeline(browserEpochMs()), editableAt);
       const scroll = await measure100kStage('SCROLL_FILE', async () => {
         const scrollMark = marks.filePreviewScroll({

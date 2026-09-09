@@ -55,6 +55,10 @@ and subsequent recovery when asserting readiness or performance marks.
 Record both ends of a reference timing interval through the same clock
 representation. Keep the ordering validator strict; epoch conversion can lose
 precision even when both values came from the same browser clock.
+For bundle growth, compare emitted rules as well as source imports. Tailwind
+scans text, including comments and fixtures, so a prose-only change can emit an
+unused utility. Attribute the generated rule before changing a CSS ceiling;
+remove accidental utility generation instead of charging it to a feature.
 Exercise read-only POST routes through the global HTTP middleware as well as
 their route handler. They must not broadcast data-change invalidations: doing
 so makes an active query refetch itself. Keep positive controls for real writes,
