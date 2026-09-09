@@ -78,6 +78,65 @@ jobs:
     ).toEqual([]);
   });
 
+  // The shapes a regex over the body alone missed silently. Each names a
+  // module the registry never approved; the gate must refuse rather than skip.
+  it.each([
+    [
+      'a template segment',
+      'const n = "x"; await import(`${process.env.GITHUB_WORKSPACE}/scripts/${n}.mjs`);',
+    ],
+    [
+      'string concatenation',
+      "await import(process.env.GITHUB_WORKSPACE + '/scripts/' + 'x' + '.mjs');",
+    ],
+    ['a repo-relative literal', "await import('./scripts/x.mjs');"],
+  ])('refuses %s, which it cannot resolve to an owner', (_label, body) => {
+    const findings = findingsForWorkflow(`name: Synthetic
+on: { workflow_dispatch: {} }
+jobs:
+  act:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@0000000000000000000000000000000000000000
+        with:
+          script: |
+            ${body}
+`);
+    // Exactly one refusal. A repo-relative literal also trips the path scan,
+    // which is correct but is not the property under test here.
+    expect(
+      findings.filter((finding) =>
+        finding.includes('this gate cannot resolve'),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('allows a bare package specifier, which loads no repository file', () => {
+    expect(
+      findingsForWorkflow(`name: Synthetic
+on: { workflow_dispatch: {} }
+jobs:
+  act:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@0000000000000000000000000000000000000000
+        with:
+          script: |
+            const { readFile } = await import('node:fs/promises');
+            await readFile('x');
+`),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ['a module outside scripts/', 'packages/evil/index.mjs'],
+    ['a non-.mjs extension', 'scripts/not-a-trust-root.js'],
+  ])('flags %s, which the path scan alone let through', (_label, module) => {
+    expect(findingsForWorkflow(workflow(module))).toEqual([
+      `.github/workflows/synthetic.yml runs '${module}' inside a github-script step, so it must be an approved narrow trust root.`,
+    ]);
+  });
+
   it('does not police a plain node subprocess, which holds no token', () => {
     expect(
       findingsForWorkflow(`name: Synthetic

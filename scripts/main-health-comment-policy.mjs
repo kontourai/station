@@ -282,11 +282,23 @@ export function parseMainHealthState(body) {
  * A human comment is never state, however exactly it reproduces the marker —
  * quote-reply copies it verbatim, and the caller edits whatever this returns.
  *
- * The check is `user.type`, not a login: the workflow's identity can
- * legitimately change (a GitHub App or PAT instead of the default token), and
- * a login pin that goes stale would make the tracker forget its state and
- * comment on every run — noisy rather than harmful, but avoidable. `type`
- * separates bots from people, which is the property that matters here.
+ * The check is `user.type`, not a login, so swapping the default token for a
+ * GitHub App does not strand the state: an installation token's comments are
+ * still `type: "Bot"`, where a login pin would go stale and make the tracker
+ * forget its state and comment on every run. That is only true for tokens
+ * GitHub attributes to a bot. A PAT is attributed to the human account that
+ * issued it, `type: "User"`, so running this workflow under a PAT would put
+ * the tracker's own comments outside the trust boundary and it would comment
+ * on every red run — noisy, never silent, but worth knowing before changing
+ * the token.
+ *
+ * `type === 'Bot'` also trusts EVERY bot, not just this workflow's own: any
+ * installed App whose comment reproduced the marker unquoted could become the
+ * anchor. The residual is small rather than closed — quote stripping removes
+ * the copy-by-quote path, and this is the only workflow in the repository that
+ * comments on issues at all — so it takes a third-party App echoing issue text
+ * verbatim. Naming the boundary here beats letting the next reader assume it
+ * is tighter than it is.
  *
  * @param {{id?: unknown, body?: unknown, user?: {type?: unknown}}[]} comments
  * @returns {{commentId: number, state: MainHealthState} | null}
@@ -306,6 +318,14 @@ export function findLastRecordedState(comments = []) {
  * The comment body is a pure function of the run being reported and the state
  * it carries, so a silent run can regenerate it in place: same comment, no
  * notification, but the newest run link and an honest count.
+ *
+ * The trade: regenerating REPLACES the whole body, so anything a human
+ * appended by editing the bot's comment is discarded on the next silent run.
+ * (Editing does not change `comment.user`, so the comment stays the anchor.)
+ * An earlier draft patched only the marker and preserved surrounding text, at
+ * the cost of leaving the visible run link up to 24h stale. Reply on the issue
+ * rather than editing this comment; GitHub's edit history keeps the original
+ * either way.
  *
  * @param {{workflowName: string, runUrl: string, headSha: string}} run
  * @param {MainHealthState} state
@@ -382,7 +402,10 @@ export function decideMainHealthComment({
    */
   const comment = (reason, lead) => {
     const state = {
-      lead,
+      // Normalized on the way in as well as out (`parseMainHealthState`), so
+      // the round trip is symmetric by construction and not by the leads
+      // happening to be normalization-stable literals.
+      lead: normalizeFailureLabel(lead),
       failures: current.slice(0, MAX_TRACKED_FAILURES),
       failureCount: current.length,
       digest,

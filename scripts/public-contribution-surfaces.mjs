@@ -313,14 +313,36 @@ function validateCodeowners(source, root, exists, findings) {
  * token unless one is passed to it explicitly, and most of those scripts are
  * ordinary build steps. The privilege here comes from sharing the process.
  *
- * This reads the parsed step rather than the raw file, so it does not depend
- * on how the import is spelled; any `scripts/*.mjs` named inside a
- * github-script body counts, including in a comment. Over-strict is the
- * correct direction for a trust gate.
+ * Two checks, because a path a gate cannot read is not a path it can approve:
+ *
+ * 1. Every `import()`/`require()` in a github-script body must name either a
+ *    literal path under `${process.env.GITHUB_WORKSPACE}` — the shape both
+ *    call sites use today — or a bare package specifier, which loads no
+ *    repository file and so raises no ownership question. A computed
+ *    specifier (a template segment, string concatenation) is REFUSED rather
+ *    than skipped, because the registry cannot follow it; that refusal is the
+ *    only thing standing between this gate and a module loaded under a name
+ *    assembled at runtime.
+ * 2. Any literal `scripts/**.mjs` named anywhere in the body must be a trust
+ *    root, comments included.
+ *
+ * Together these also cover a path outside `scripts/` and a non-`.mjs`
+ * extension, each of which the second check alone missed silently.
+ * Over-strict is the correct direction for a trust gate: a false positive
+ * costs one line in the registry, a false negative is unowned privileged code.
+ *
+ * Still NOT covered: a github-script step reached through a composite action
+ * (`uses: ./.github/actions/...`), since this walks workflow steps only. No
+ * composite action exists in this repository today.
  */
 const GITHUB_SCRIPT_ACTION = 'actions/github-script@';
 const SCRIPT_MODULE_REFERENCE =
   /(scripts\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\.mjs)/g;
+const MODULE_LOAD_CALL = /\b(?:import|require)\s*\(([^)]*)\)/g;
+/** A quoted literal with no interpolation and no escapes. */
+const LITERAL_SPECIFIER = /^(['"`])([^'"`$\\]*)\1$/;
+const WORKSPACE_MODULE_PATH =
+  /^`\$\{process\.env\.GITHUB_WORKSPACE\}\/([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*)`$/;
 
 function validateWorkflowImportedModules(root, read, list, findings) {
   const directory = resolve(root, '.github/workflows');
@@ -346,7 +368,28 @@ function validateWorkflowImportedModules(root, read, list, findings) {
         if (!String(step?.uses ?? '').startsWith(GITHUB_SCRIPT_ACTION))
           continue;
         const script = String(step?.with?.script ?? '');
-        for (const [, module] of script.matchAll(SCRIPT_MODULE_REFERENCE)) {
+        const modules = new Set();
+        for (const [, specifier] of script.matchAll(MODULE_LOAD_CALL)) {
+          const argument = specifier.trim();
+          const workspace = WORKSPACE_MODULE_PATH.exec(argument);
+          if (workspace) {
+            modules.add(workspace[1]);
+            continue;
+          }
+          // A bare literal (`node:fs`, a package name) loads no repository
+          // file, so it carries no ownership question — that is dependency
+          // review's ground, not CODEOWNERS'. Anything else is either a
+          // repo-relative path in a shape this gate cannot resolve to a file,
+          // or a specifier computed at runtime.
+          const literal = LITERAL_SPECIFIER.exec(argument);
+          if (literal && !/^[./]/.test(literal[2])) continue;
+          findings.push(
+            `.github/workflows/${entry} loads a module inside a github-script step from a specifier this gate cannot resolve (${argument || 'empty'}); use a literal path under GITHUB_WORKSPACE so its ownership can be checked.`,
+          );
+        }
+        for (const [, module] of script.matchAll(SCRIPT_MODULE_REFERENCE))
+          modules.add(module);
+        for (const module of [...modules].sort()) {
           if (trusted.has(module)) continue;
           findings.push(
             `.github/workflows/${entry} runs '${module}' inside a github-script step, so it must be an approved narrow trust root.`,
