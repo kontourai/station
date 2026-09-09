@@ -11,7 +11,7 @@
       "name": "agent-editor-not-runnable",
       "width": 1440,
       "height": 900,
-      "sha256": "6c365afc5521176b9bd325a70f457ad6aa9a206c2c1bfb39d2499727bdc260b4"
+      "sha256": "04f70b5e6960f45b6fac833ff94c5654d9c9a366ce9c554ecc9c341a9ba65cb4"
     },
     {
       "name": "agents",
@@ -47,7 +47,7 @@
       "name": "connections-knowledge",
       "width": 1440,
       "height": 900,
-      "sha256": "252cc747b9ae0b4fa3e3c34dcbf4f58160874090f76ac62c6db6009fae65add5"
+      "sha256": "4d714a4d64511d46819b92bae66673575d64639d97ef2ceb54fa7961a8e4e9a2"
     },
     {
       "name": "connections-models",
@@ -101,7 +101,7 @@
       "name": "mobile-agent-editor-save-footer",
       "width": 390,
       "height": 844,
-      "sha256": "0d1803b9743436ebc30d160e772f44cad0c55526ca16e982fd48442d7974768b"
+      "sha256": "57086e5ace15dee0ace215c44764deff53a20b0ca91823bd34faadf11f8ac9c7"
     },
     {
       "name": "mobile-agents",
@@ -191,7 +191,7 @@
       "name": "overlay-agent-actions-menu",
       "width": 1440,
       "height": 900,
-      "sha256": "9fca33a6e3083cba35cfabcbc524ae864fb8862928360b91e249f70c65b651c7"
+      "sha256": "8f2f796d0cd515d95fa9d3b9a4ba4f41c02cc735b7381172587cb0e89504315d"
     },
     {
       "name": "overlay-command-palette-results",
