@@ -708,12 +708,12 @@ export function SessionsView({
         onDeselect={() => selectWithIntent(null)}
         onSearch={setSearch}
         searchValue={search}
-        searchPlaceholder="Search sessions…"
+        searchPlaceholder="Search conversations…"
         loading={isLoading}
         error={sessionsError}
         onRetry={() => void refetch()}
         listEmptyTitle="Nothing has run yet"
-        listEmptyDescription="Agent sessions appear here as they run on this host."
+        listEmptyDescription="Your conversations and tasks will appear here."
         listFilteredEmptyNoun="sessions"
         collectionEmpty={projectFiltered.length === 0}
         /* The only thing above the rows is the active project filter, and only

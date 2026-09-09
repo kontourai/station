@@ -1599,7 +1599,9 @@ const SCREENS: Screen[] = [
     },
     afterGoto: async (page) => {
       try {
-        await page.getByPlaceholder('Search sessions…').fill('missing-session');
+        await page
+          .getByPlaceholder('Search conversations…')
+          .fill('missing-session');
         // The margin here covers the read-model fetch's own latency (>6s
         // wall-clock has been observed under host load — that signal is
         // archive#4466, not something this timeout fixes); a repeat-500

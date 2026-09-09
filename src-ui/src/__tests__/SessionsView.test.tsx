@@ -2780,7 +2780,7 @@ describe('SessionsView', () => {
     });
     await waitFor(() => expect(refetchSessions).toHaveBeenCalledTimes(1));
 
-    fireEvent.change(screen.getByPlaceholderText('Search sessions…'), {
+    fireEvent.change(screen.getByPlaceholderText('Search conversations…'), {
       target: { value: 'station' },
     });
     expect(screen.queryByTestId('session-detail')).toBeNull();
@@ -3279,7 +3279,7 @@ describe('SessionsView', () => {
     }
 
     function search(query: string) {
-      fireEvent.change(screen.getByPlaceholderText('Search sessions…'), {
+      fireEvent.change(screen.getByPlaceholderText('Search conversations…'), {
         target: { value: query },
       });
     }
@@ -4361,7 +4361,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
 
     expect(screen.getByText('Nothing has run yet')).toBeTruthy();
     expect(
-      screen.getByText('Agent sessions appear here as they run on this host.'),
+      screen.getByText('Your conversations and tasks will appear here.'),
     ).toBeTruthy();
     expect(container.textContent).not.toMatch(/\bSessions\b/);
   });
