@@ -329,7 +329,8 @@ annotation renders, and both reach every rendering from there — neither is
 re-stamped from anywhere else, which is what keeps the pair consistent. The
 **receipt** is a separate artifact: it records `terminal.infrastructureCause`
 as the durable full-length record and carries no `causeStream` at all. Where
-a rendering shows the marker, it shows the same bytes the receipt holds; a
+a rendering shows the marker it shows the same bytes the receipt holds, because
+every surface copies one derived value rather than deriving its own; a
 rendering with no summary carries no marker at all.
 
 Severity is ranked too — an error outranks a warning above it — after two

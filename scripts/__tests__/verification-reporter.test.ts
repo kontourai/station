@@ -604,8 +604,13 @@ describe('verification reporter', () => {
     // the injection that defeats that fix passed against it. An assertion is
     // only as wide as its pattern.
     const partialMarker = /\[R(?:E(?:D(?:A(?:C(?:T(?:E(?:D)?)?)?)?)?)?)?$/;
+    // Every canonical class `verification-redaction.mjs` carries, in the
+    // truncated form a bound leaves. Round 7: this listed four of them, and
+    // the corpus below was drawn from the same four -- detector and fixtures
+    // sharing a blind spot is how a sweep reports zero without having looked.
+    // `Bearer`/`Basic` and a URL credential are the classes it omitted.
     const tokenTail =
-      /(?:gh[pousr]_[A-Za-z0-9]*|github_pat_[A-Za-z0-9_]*|\bsk-[A-Za-z0-9_-]*|(?:AKIA|ASIA)[0-9A-Z]*)$/;
+      /(?:gh[pousr]_[A-Za-z0-9]*|github_pat_[A-Za-z0-9_]*|\bsk-[A-Za-z0-9_-]*|(?:AKIA|ASIA)[0-9A-Z]*|\b(?:Bearer|Basic)\s+(?!\[REDACTED\]$)\S*|:\/\/[^\s/@:]+:[^\s/@]*)$/i;
     //
     // Round-4 review, M2: this corpus was padding plus ONE token, which never
     // makes redaction grow the value, so the growth branch -- cut back, strip
@@ -623,6 +628,11 @@ describe('verification reporter', () => {
         'sk-ABCDEFGHIJ',
         'AKIAABCDEFG',
         'ghp_ABCDEFGHIJKLMNOPQRSTUV',
+        // The three classes the detector above used to omit, so the corpus
+        // and the detector are no longer drawn from one list.
+        'Bearer abcdefghijklmnop',
+        'Basic Zm9vOmJhcjpiYXo=',
+        'https://user:hunter2hunter2@example.test/path',
       ]) {
         for (const growth of [0, 1, 4, 16]) {
           const prefix = 'Bearer s '.repeat(growth);
@@ -638,7 +648,16 @@ describe('verification reporter', () => {
           // and the growth branch runs.
           if (Buffer.byteLength(raw) > 512 && value.endsWith('[REDACTED]'))
             cutInsideToken += 1;
-          if (growth > 0 && value.includes('[REDACTED]')) grewPastBound += 1;
+          // Round-7 review: this used to test `value.includes('[REDACTED]')`,
+          // which the `Bearer s` prefix guarantees whenever `growth > 0` --
+          // so it counted every growth iteration rather than the condition it
+          // names. The condition is that redaction pushed the value PAST the
+          // bound, which is what makes the growth branch run at all.
+          if (
+            growth > 0 &&
+            Buffer.byteLength(redactVerificationOutput(raw)) > 512
+          )
+            grewPastBound += 1;
         }
       }
     }
@@ -723,10 +742,15 @@ describe('verification reporter', () => {
     expect(normalizeDeclaredCause('{"apiKey":123}')).toBe(
       '{"apiKey":[REDACTED]}',
     );
-    // And the variant where the growth is at a bound, so the far end loses a
-    // byte per pass too and the collapsed forms are a prefix rather than
-    // equal. Both arms of the convergence test are needed; neither shape
-    // resolves under the other's arm alone.
+    // And the same class at a bound, where the far end loses a byte per pass
+    // as well. Round 7 corrected what this comment used to claim about it: the
+    // collapsed forms are EQUAL here, not a prefix, so this is a second
+    // arm-two shape rather than the arm-one shape it implied, and deleting
+    // arm one still resolves it.
+    //
+    // Arm one is load-bearing -- deleting it refuses 180 of 48,240 inputs in
+    // a JSON-shaped sweep across five caps -- but what pins it is the cycle
+    // sweep below, not this line.
     expect(
       normalizeDeclaredCause('yyyyy {"password":[1,2],"b":"c"}', {
         maxBytes: 40,
@@ -754,11 +778,18 @@ describe('verification reporter', () => {
       'ci:fast stopped at step [',
     );
 
-    // Re-applying the function to its own output is identity, which is what
-    // `boundedSummaryEnvelope` relies on to keep a rendering byte-identical to
-    // the receipt. It holds by construction -- the output is a fixed point of
-    // the pipeline -- and is asserted here because the envelope's correctness
-    // depends on it, not because the design does.
+    // Re-applying the function to its own output is NOT identity, and this
+    // pins that rather than its opposite (round-7 review, H1 and M2).
+    //
+    // The version here until round 7 asserted identity, and said the
+    // envelope's correctness depended on it. Both halves were wrong: arm two
+    // returns the candidate at the moment the redactor still wants to append
+    // to it, so a second call starts from the appended form -- and all three
+    // of that assertion's seeds exit by arm ONE, where re-derivation happens
+    // to be identity, so it could not have seen the class it was written for.
+    // The envelope no longer re-derives at all; nothing does.
+    //
+    // Arm-one values: a second call reproduces them.
     for (const seed of [
       `${'x'.repeat(18)} {"apiKey":"SECRETVALUE0123456789","b":"c"}`,
       needsTwoPasses,
@@ -766,6 +797,15 @@ describe('verification reporter', () => {
     ]) {
       const once = normalizeDeclaredCause(seed) as string;
       expect(normalizeDeclaredCause(once)).toBe(once);
+    }
+    // Arm-two values: a second call MOVES them, by a byte inside the marker.
+    // This is the fact every consumer has to respect, so it is asserted as a
+    // fact rather than left as an argument.
+    for (const seed of ['{"apiKey":123}', 'ci:fast stopped: {"apiKey":123}']) {
+      const once = normalizeDeclaredCause(seed) as string;
+      expect(once).not.toBeNull();
+      expect(normalizeDeclaredCause(once)).not.toBe(once);
+      expect(normalizeDeclaredCause(once)).toBe(`${once.slice(0, -1)}]}`);
     }
 
     // Bounded in BYTES, codepoint-aligned, and never above the schema's own

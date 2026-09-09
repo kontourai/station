@@ -796,12 +796,17 @@ describe('verification coordinator', () => {
       //
       // This is the test that reaches the envelope: `coordinateVerification`
       // publishes, so `cycling.summary` IS `boundedSummaryEnvelope`'s output
-      // rather than the summarizer's. The fixture's value is 503 bytes rather
-      // than exactly 512, deliberately: the redactor would rewrite its
-      // trailing `{"apiKey":"` and grow it, and a value sitting on the cap
-      // would have that growth cut straight back off, so both derivations
-      // would agree by accident. `force` because the request key is
-      // unchanged.
+      // rather than the summarizer's.
+      //
+      // The cause is deliberately an ARM-TWO value (round-7 review): a short
+      // unquoted JSON value, well under the cap, so no bound is involved at
+      // all. `normalizeDeclaredCause` accepts it while the redactor still
+      // wants to append a bracket, which means re-deriving it MOVES it --
+      // `{"apiKey":[REDACTED]}` on the receipt becoming
+      // `{"apiKey":[REDACTED]]}` on the page. The previous fixture here was an
+      // at-cap value that exits by arm one, where every re-derivation is
+      // identity, so it could not reach the class it was written for.
+      // `force` because the request key is unchanged.
       const cycling = await coordinateVerification({
         laneId: 'ci-fast',
         root: temp.root,
@@ -811,7 +816,7 @@ describe('verification coordinator', () => {
         runner: async () => ({
           status: 80,
           infrastructureError: true,
-          infrastructureCause: `${'x'.repeat(491)} {"apiKey":"SECRETVALUE0123456789","b":"c"}`,
+          infrastructureCause: 'ci:fast stopped: {"apiKey":123}',
           output: {
             stdout: { text: '          Error: observer failed\n' },
             stderr: { text: '' },
@@ -819,8 +824,10 @@ describe('verification coordinator', () => {
         }),
       });
       const persisted = cycling.receipt.terminal.infrastructureCause;
-      expect(persisted).toMatch(/\{"apiKey":"$/);
-      expect(persisted).not.toContain('SECRETVALUE0123456789');
+      // The fixture is only discriminating if it really is in that class: the
+      // secret is gone, and the value is one a second derivation would move.
+      expect(persisted).toBe('ci:fast stopped: {"apiKey":[REDACTED]}');
+      expect(persisted).not.toContain('123');
       expect(cycling.summary.infrastructureCause).toBe(persisted);
       expect(cycling.summary.firstCausalExcerpt).toBe(persisted);
       // The published bytes, not only the returned object: the canonical

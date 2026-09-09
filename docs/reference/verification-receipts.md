@@ -250,9 +250,11 @@ one, and admitting it on both would put the two paths back into disagreement.
 The value is derived **once**, by `normalizeDeclaredCause` in
 `scripts/lib/verification-reporter.mjs`, and `reportExecution` hands that one
 string to both the summary and the receipt. Re-deriving it is what made the
-two artifacts disagree in the first place. It is called once by design; that
-its exit condition also happens to make it idempotent is a property the
-rendering path uses, not one the design leans on.
+two artifacts disagree in the first place. It is called once, and nothing
+downstream re-applies it: the function is not idempotent — its convergence
+test accepts a value the redactor would still append a marker character to —
+so a consumer that re-derived would move its copy away from the receipt's,
+which is what happened twice before this was settled.
 
 **That function is the redaction boundary for this value.** Neither channel is
 redacted upstream, and the result lands in a receipt CI uploads as an
@@ -617,13 +619,12 @@ needs to be able to tell which one produced a given receipt's entries:
    means the head excerpt beside it is a declaration. Its value is that same
    head excerpt, so the two can never describe one declaration differently.
    Whenever the marker is present those two and the receipt's
-   `terminal.infrastructureCause` are the **same bytes** — the marker only
-   survives the summary's byte budget when the excerpt was not cut, and the
-   bounded envelope re-redacts every field it carries, which is a no-op on a
-   value the normalizer produced because that function stops only on a value
-   redaction leaves unchanged. When the marker is absent, the excerpt may be a
-   budget-truncated prefix that the envelope re-redacts, and no such claim is
-   made about it.
+   `terminal.infrastructureCause` are the **same bytes**, because nothing
+   recomputes them: the marker only survives the summary's byte budget when
+   the excerpt was not cut, and the bounded envelope copies the value into
+   both of its fields verbatim rather than re-deriving it. When the marker is
+   absent, the excerpt may be a budget-truncated prefix that the envelope
+   re-redacts, and no such claim is made about it.
 
    The marker is additive and lowest-priority in that budget, so a very tight
    cap omits it — which understates confidence rather than overstating it.

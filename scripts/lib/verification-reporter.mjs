@@ -350,14 +350,20 @@ const MAX_DECLARED_CAUSE_REDACTION_PASSES = 8;
  * second derivation to agree with. Round 1 shipped two derivations of one
  * declaration and they disagreed. Do not reintroduce one.
  *
- * Re-APPLYING it to its own output is nevertheless identity, and by
- * construction rather than by measurement: what this returns is a fixed point
- * of the exact pipeline it runs, so a second call reproduces the first call's
- * loop exit immediately. `boundedSummaryEnvelope` depends on that to keep a
- * rendering byte-identical to the receipt, which is a different thing from the
- * design depending on it. What is NOT true is idempotence of the underlying
- * redactor -- it appends to values ending in a re-completable marker, which is
- * the whole subject of the exit condition below.
+ * Re-applying it to its own output is NOT identity, and cannot be made so
+ * while the second exit arm below exists. That arm returns the candidate at
+ * the moment the redactor still wants to append to it -- which is exactly the
+ * moment the value is not a fixed point -- so a second call starts from the
+ * appended form and returns that instead. At the production cap 2,453 of
+ * 8,415 accepted values leave by that arm and all 2,453 move under a second
+ * call (round-7 review, H1).
+ *
+ * Rounds 5 and 6 each claimed the opposite and each let a consumer re-derive
+ * on the strength of it, and each time the rendering ended up carrying marker
+ * bytes the receipt did not have. There is one derivation. Nothing downstream
+ * re-applies this -- not as a safety net, not as a bound, not as a no-op --
+ * because a transform that is a no-op on today's outputs is a defect waiting
+ * for the next change to the exit condition.
  *
  * ## The order, and which class each step is for
  *
@@ -430,11 +436,18 @@ const MAX_DECLARED_CAUSE_REDACTION_PASSES = 8;
  *
  * ## What it guarantees, what it does not, and what it refuses
  *
- * At most `maxBytes` bytes, codepoint-aligned; no trailing partial
- * `[REDACTED]` marker, however many strips and trims it takes to reach that;
- * and a value the redactor, run on exactly it, changes only inside a redaction
- * marker -- which by the argument above means there was nothing left for it to
- * remove.
+ * At most `maxBytes` bytes, codepoint-aligned. A value the redactor, run on
+ * exactly it, changes only inside a redaction marker -- which by the argument
+ * above means there was nothing left for it to remove.
+ *
+ * And no trailing partial `[REDACTED]` marker THAT THE BOUND CREATED, however
+ * many strips and trims it takes to reach that. Scoped deliberately, and the
+ * scope matters: the strip runs only on a value the bound actually cut, so a
+ * declaration the runner itself ended in `[REDACTED` or `[` keeps it. Round 6
+ * stated this guarantee unscoped while the same file's implementation comment
+ * explained why it is scoped -- two halves of one commit contradicting each
+ * other (round-7 review). Editing a runner's own words is the worse failure of
+ * the two, so the scope stays and the sentence is corrected.
  *
  * That is a statement about the REDACTOR'S RECALL, not about the value being
  * free of credentials. Anything `verification-redaction.mjs` does not match,
@@ -1187,11 +1200,12 @@ export function summarizeVerificationOutput({
   // caller normalizes once through `normalizeDeclaredCause` and hands the same
   // string here and to the receipt writer, so the two artifacts hold one
   // value rather than two derivations that have to agree. Re-normalizing here
-  // is what made them disagree: at that time the function was not idempotent,
-  // and re-running it moved the value. It is idempotent on this branch -- its
-  // exit condition makes every accepted value a fixed point -- but that is a
-  // property of the function, not a licence to re-derive here: one derivation
-  // is the design, and it does not depend on the other's behaviour.
+  // is what made them disagree, and it still would: the function is not
+  // idempotent -- its second exit arm returns a value the redactor would
+  // still append to -- so re-running it here would move the summary's copy
+  // away from the receipt's. One derivation is the design, and it does not
+  // rest on the function having any particular behaviour under a second
+  // application.
   //
   // The admission test is deliberately shape-only. A `.trim()` or a redaction
   // pass here would be a second derivation wearing the clothes of a safety

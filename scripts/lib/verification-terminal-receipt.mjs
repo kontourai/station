@@ -3,6 +3,7 @@ import { existsSync, renameSync } from 'node:fs';
 import { createVerificationReceipt } from './verification-receipt.mjs';
 import { redactVerificationOutput } from './verification-redaction.mjs';
 import {
+  DECLARED_CAUSE_BYTE_CAP,
   normalizeDeclaredCause,
   persistPlaywrightAttachments,
   persistVerificationOutput,
@@ -24,31 +25,40 @@ function boundedText(value, maxBytes = 256) {
 }
 
 function boundedSummaryEnvelope(summary) {
-  // The declared cause, resolved ONCE for both fields that carry it below.
-  // They hold the same text by construction, so deriving them separately --
-  // `boundedText` for one, this for the other -- made them disagree on 9 of
-  // 621 offsets in the shape that produces it: the round-4 envelope rendered
-  // NINE extra bytes ending in a truncated `[REDACTED` where the receipt held
-  // none, so the page showed a redaction the record did not have. One value,
-  // two slots.
+  // The declared cause, taken VERBATIM and used for both fields that carry it
+  // below. Nothing here re-derives it, and that is the whole point.
   //
-  // `normalizeDeclaredCause` rather than `boundedText`: it is identity on its
-  // own output (that output is by construction a fixed point of the exact
-  // pipeline it runs), so the rendered marker stays byte-identical to the
-  // receipt's field, while still being a real redaction pass for a value that
-  // never went through one. `boundedText` redacts once without the marker
-  // strip or the trim, which is what appended those bytes.
+  // Every previous shape of these three lines re-derived, and every one of
+  // them made a rendering disagree with the record it renders. `boundedText`
+  // redacts once without the marker strip or the trim, so it appended nine
+  // bytes ending in a truncated `[REDACTED` the receipt did not have.
+  // Re-running `normalizeDeclaredCause` looked safe on the argument that the
+  // function is identity on its own output -- and stopped being so the moment
+  // the loop grew an arm that exits when the value is NOT a fixed point, which
+  // is precisely when the next value differs. At the production cap 2,453 of
+  // 8,415 accepted values leave by that arm, and all 2,453 come back a byte
+  // longer inside the marker: `{"apiKey":[REDACTED]}` on the receipt,
+  // `{"apiKey":[REDACTED]]}` on the page (round-7 review, H1).
   //
-  // The equality gate is DEFENSIVE, not a response to anything observed: the
-  // summarizer is the only producer and sets both fields from one value, so
-  // across 7,175 combinations the two never disagreed and this gate never
-  // fired. It is here because a second producer would reach this allow-list,
-  // and a marker is a claim about the head excerpt -- one that disagrees with
-  // its excerpt is a claim this cannot render, so it renders none.
+  // There is one derivation, in `normalizeDeclaredCause`, and `reportExecution`
+  // hands its result to the summary and to the receipt. A consumer that
+  // transforms it again is a second derivation whatever the transform is, and
+  // a second derivation is what this branch exists to remove. A producer that
+  // puts an unnormalized value in this field is a defect at the producer; the
+  // receipt copy has no backstop either, and giving one to only the rendering
+  // is exactly how the two came to disagree.
+  //
+  // Two conditions, both cheap and neither a transform. The equality gate is
+  // DEFENSIVE -- the summarizer is the only producer and sets both fields from
+  // one value, so across 7,175 combinations it never fired -- and the bound
+  // check is what a verbatim copy owes this allow-list, where every other
+  // field is bounded. Failing either renders no marker rather than a repaired
+  // one, and `firstCausalExcerpt` falls back to its ordinary treatment.
   const declaredCause =
     summary?.infrastructureCause &&
-    summary.infrastructureCause === summary.firstCausalExcerpt
-      ? normalizeDeclaredCause(summary.infrastructureCause)
+    summary.infrastructureCause === summary.firstCausalExcerpt &&
+    Buffer.byteLength(summary.infrastructureCause) <= DECLARED_CAUSE_BYTE_CAP
+      ? summary.infrastructureCause
       : null;
   const envelope = {
     terminal: summary?.terminal ?? 'infrastructure_error',
@@ -327,15 +337,15 @@ export function reportExecution({ raw, result, cleanup, worktree, request }) {
         // was not: at the time `normalizeDeclaredCause` was not idempotent, so
         // a cause whose bound landed on a token prefix came back different and
         // the two artifacts named different causes for one run. It IS
-        // idempotent now -- its exit condition makes every accepted value a
-        // fixed point -- but the design does not rest on that: the summarizer
-        // uses what it is given, and this is the only derivation.
+        // still is not, and the design does not rest on it being so: the
+        // summarizer uses what it is given, and this is the only derivation.
         //
         // What that guarantees, stated no wider than it is true. Whenever the
         // MARKER is present the excerpt was not budget-truncated, and
-        // `boundedSummaryEnvelope` resolves both of its fields from this one
-        // value through a function that is identity on it -- so receipt
-        // field, summary marker and envelope marker are the same bytes.
+        // `boundedSummaryEnvelope` copies this one value into both of its
+        // fields without transforming it -- so receipt field, summary marker
+        // and envelope marker are the same bytes because nothing recomputed
+        // them, not because a recomputation happened to agree.
         //
         // When the marker is ABSENT the excerpt may be a budget-truncated
         // prefix that the envelope re-redacts through `boundedText`, and no
