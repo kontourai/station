@@ -158,7 +158,7 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     expect(turnProvenanceCard).toContain('{shareContent}');
   });
 
-  test('hover-only footer collapse preserves keyboard access and touch targets', () => {
+  test('hover-only footer reveal reserves space and preserves keyboard access', () => {
     const hover = atRule(chatCss, '@media (hover: hover)');
     const resting = rule(hover, '.turn-footer__actions');
     const restored = rule(
@@ -168,11 +168,9 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     const touchRating = rule(chatCss, '.turn-footer__actions .message__rating');
     const hoverRating = rule(hover, '.turn-footer__actions .message__rating');
 
-    expect(resting).toContain('height: 0');
-    expect(resting).toContain('overflow: hidden');
+    expect(resting).not.toMatch(/(?:height|display|overflow):/);
     expect(resting).toContain('pointer-events: none');
-    expect(restored).toContain('height: auto');
-    expect(restored).toContain('overflow: visible');
+    expect(restored).not.toMatch(/(?:height|display|overflow):/);
     expect(restored).toContain('pointer-events: auto');
     expect(hoverRating).toContain('min-height: 0');
     expect(touchRating).toContain('min-height: 44px');

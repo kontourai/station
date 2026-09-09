@@ -2,6 +2,7 @@ import {
   createAccessEndpoint,
   createDirectHttpAccessMethod,
   defaultStorage,
+  httpDevelopmentOrigin,
   type SavedConnection,
   type StationHandshakeIdentity,
   type StorageAdapter,
@@ -55,7 +56,10 @@ export interface VerifiedStationProfilePairing {
   nextCredentialRef?: StationProfileCredentialRef;
 }
 
-function normalizedPairingEndpoint(value: string): string {
+function normalizedPairingEndpoint(
+  value: string,
+  developmentHttpOrigin?: string,
+): string {
   let url: URL;
   try {
     url = new URL(value);
@@ -70,7 +74,9 @@ function normalizedPairingEndpoint(value: string): string {
     /^127(?:\.\d{1,3}){3}$/.test(url.hostname);
   if (
     (url.protocol !== 'http:' && url.protocol !== 'https:') ||
-    (url.protocol === 'http:' && !strictLoopbackHttp) ||
+    (url.protocol === 'http:' &&
+      !strictLoopbackHttp &&
+      developmentHttpOrigin !== url.origin) ||
     url.username ||
     url.password ||
     url.pathname !== '/' ||
@@ -87,7 +93,12 @@ function normalizedPairingEndpoint(value: string): string {
 function credentialBearingEndpointIsSafe(profile: StationProfile): boolean {
   if (!profile.credentialRef) return true;
   try {
-    return normalizedPairingEndpoint(profile.endpoint) === profile.endpoint;
+    return (
+      normalizedPairingEndpoint(
+        profile.endpoint,
+        profile.developmentHttpOrigin,
+      ) === profile.endpoint
+    );
   } catch {
     return false;
   }
@@ -324,8 +335,10 @@ export class NativeStationProfileStorage
         retainedProfile.credentialRef?.kind === retained?.credentialRef.kind &&
         retainedProfile.credentialRef?.id === retained?.credentialRef.id &&
         retainedProfile.environmentId === retained?.environmentId &&
-        normalizedPairingEndpoint(retainedProfile.endpoint) ===
-          retained?.exactOrigin,
+        normalizedPairingEndpoint(
+          retainedProfile.endpoint,
+          retainedProfile.developmentHttpOrigin,
+        ) === retained?.exactOrigin,
     );
     if (!preservesBinding) this.activeRequestBinding = undefined;
     this.profileStore = store;
@@ -473,7 +486,12 @@ export class NativeStationProfileStorage
     }
     const matches = this.profileStore.profiles.filter((profile) => {
       try {
-        return normalizedPairingEndpoint(profile.endpoint) === exactOrigin;
+        return (
+          normalizedPairingEndpoint(
+            profile.endpoint,
+            profile.developmentHttpOrigin,
+          ) === exactOrigin
+        );
       } catch {
         return false;
       }
@@ -528,7 +546,10 @@ export class NativeStationProfileStorage
     second: StationProfile,
   ): boolean {
     try {
-      const secondEndpoint = normalizedPairingEndpoint(second.endpoint);
+      const secondEndpoint = normalizedPairingEndpoint(
+        second.endpoint,
+        second.developmentHttpOrigin,
+      );
       const secondUrl = new URL(secondEndpoint);
       const host = secondUrl.hostname;
       const strictLoopbackHttp =
@@ -538,7 +559,10 @@ export class NativeStationProfileStorage
           /^127(?:\.\d{1,3}){3}$/.test(host));
       return (
         strictLoopbackHttp &&
-        normalizedPairingEndpoint(first.endpoint) === secondEndpoint
+        normalizedPairingEndpoint(
+          first.endpoint,
+          first.developmentHttpOrigin,
+        ) === secondEndpoint
       );
     } catch {
       return false;
@@ -644,7 +668,10 @@ export class NativeStationProfileStorage
     this.values.set(ACTIVE_KEY, connectionId);
     if (!profile.credentialRef) return false;
     try {
-      const exactOrigin = normalizedPairingEndpoint(profile.endpoint);
+      const exactOrigin = normalizedPairingEndpoint(
+        profile.endpoint,
+        profile.developmentHttpOrigin,
+      );
       const result = await this.bridge.invoke<unknown>(
         'station_profile_authorize_active',
         { profileName: profile.name },
@@ -756,7 +783,11 @@ export class NativeStationProfileStorage
         'Refusing to persist an unverified Station pairing identity.',
       );
     }
-    const endpoint = normalizedPairingEndpoint(pairing.endpoint);
+    const developmentHttpOrigin = httpDevelopmentOrigin(pairing.endpoint);
+    const endpoint = normalizedPairingEndpoint(
+      pairing.endpoint,
+      developmentHttpOrigin,
+    );
     for (let attempt = 0; attempt < 3; attempt += 1) {
       // Never mutate from the bootstrap snapshot: a CLI can add or select a
       // profile while Desktop is open. Re-read within every explicit mutation,
@@ -813,6 +844,7 @@ export class NativeStationProfileStorage
           createdAt: now,
         }),
         endpoint,
+        developmentHttpOrigin,
         credentialRef: nextRef,
         environmentId: pairing.handshake.environmentId,
         clientInstanceId: pairing.clientInstanceId,
@@ -949,7 +981,10 @@ export class NativeStationProfileStorage
 
       this.replaceProfileStore(nextStore);
       const connectionId = profileConnectionId(updatedProfile);
-      const exactOrigin = normalizedPairingEndpoint(updatedProfile.endpoint);
+      const exactOrigin = normalizedPairingEndpoint(
+        updatedProfile.endpoint,
+        updatedProfile.developmentHttpOrigin,
+      );
       const result = await this.bridge.invoke<unknown>(
         'station_profile_authorize_active',
         { profileName: updatedProfile.name },

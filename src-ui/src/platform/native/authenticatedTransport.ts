@@ -1,3 +1,7 @@
+import {
+  httpDevelopmentOrigin,
+  isCleartextNonLoopback,
+} from '@kontourai/station-connect';
 /**
  * Desktop's authenticated HTTP bridge.  The WebView receives response bytes
  * and status only; the selected Station's bearer is resolved by Rust for each
@@ -62,6 +66,11 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
     authorityGuard?.();
     const request = input instanceof Request ? input : undefined;
     const url = request?.url ?? String(input);
+    if (isCleartextNonLoopback(url) && !httpDevelopmentOrigin(url)) {
+      throw new Error(
+        'HTTP permission was removed for this Station. Use HTTPS or allow this address in connection settings.',
+      );
+    }
     const headers = new Headers(request?.headers);
     new Headers(init?.headers).forEach((value, key) => headers.set(key, value));
     const requestId = randomCorrelationId();

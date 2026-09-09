@@ -82,7 +82,8 @@
     "./plugin-tree-digest": "./src/plugin-tree-digest.ts",
     "./knowledge-root-identity": "./src/knowledge-root-identity.ts",
     "./cloud-move": "./src/cloud-move.ts",
-    "./workspace-package": "./src/workspace-package.ts"
+    "./workspace-package": "./src/workspace-package.ts",
+    "./environment-security-record": "./src/environment-security-record.ts"
   },
   "publishConfig": {
     "access": "public"

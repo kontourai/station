@@ -551,7 +551,7 @@ describe('device pairing panels', () => {
     // The CLI fallback is closed by default — it is the fallback, not the
     // instruction.
     const disclosure = screen
-      .getByText('Approve from the Station instead')
+      .getByText('Approve using a terminal')
       .closest('details');
     expect(disclosure).not.toBeNull();
     expect((disclosure as HTMLDetailsElement).open).toBe(false);
@@ -843,7 +843,51 @@ describe('device pairing panels', () => {
     ).toBeNull();
   });
 
-  test('native request-access to an unreachable host keeps the existing error copy', async () => {
+  test('direct HTTP requests require consent and do not duplicate an in-flight request', async () => {
+    const pendingRequest = deferred<Response>();
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockReturnValueOnce(pendingRequest.promise);
+    render(
+      <JoinDevicePairingPanel
+        initialMode="direct"
+        originIsStation={false}
+        directEndpoint="http://100.64.0.21:3492"
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'Request access' });
+    fireEvent.click(button);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: 'Allow an unencrypted connection',
+      }),
+    );
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(
+      screen
+        .getByRole('button', { name: 'Sending request…' })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+    await act(async () =>
+      pendingRequest.resolve(response({ error: 'rate_limited' }, 429)),
+    );
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Too many access requests',
+    );
+    expect(
+      screen
+        .getByRole('button', { name: 'Try again' })
+        .hasAttribute('disabled'),
+    ).toBe(false);
+    localStorage.removeItem('station-http-development:http://100.64.0.21:3492');
+  });
+
+  test('native request-access explains an unreachable host and offers retry', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
       new TypeError('network unavailable'),
     );
@@ -863,10 +907,12 @@ describe('device pairing panels', () => {
 
     expect(
       await screen.findByText(
-        'This Station could not create an access request. Try again.',
+        'Could not reach the Station at that address. Check that it is running and that this device can reach it.',
       ),
     ).toBeTruthy();
     expect(document.body.textContent).not.toContain('network unavailable');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
   test('defaults the device name from userAgentData high-entropy values while staying editable', async () => {
@@ -1880,14 +1926,32 @@ describe('device pairing panels', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  test('manual entry nudges away from raw http but not from https', async () => {
+  test('manual HTTP entry requires an explicit exception for the exact origin', async () => {
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
     const address = screen.getByLabelText('Station server address');
-    const hint = /Connecting over http to a raw address/i;
+    const hint = /Messages sent this way are not encrypted/i;
 
     fireEvent.change(address, { target: { value: 'http://192.168.1.9:3141' } });
     expect(await screen.findByText(hint)).toBeTruthy();
+    const request = screen.getByRole('button', { name: 'Request access' });
+    expect(request.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: 'Allow an unencrypted connection',
+      }),
+    );
+    expect(request.hasAttribute('disabled')).toBe(false);
+    fireEvent.change(address, { target: { value: 'http://192.168.1.9:3142' } });
+    expect(request.hasAttribute('disabled')).toBe(true);
+    fireEvent.change(address, { target: { value: 'http://192.168.1.9:3141' } });
+    expect(request.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: 'Allow an unencrypted connection',
+      }),
+    );
+    expect(request.hasAttribute('disabled')).toBe(true);
 
     fireEvent.change(address, {
       target: { value: 'https://station.foo.ts.net' },
@@ -2143,7 +2207,7 @@ describe('device pairing panels', () => {
       );
 
       expect((await screen.findByRole('alert')).textContent).toBe(expected);
-      expect(screen.getByText(/other device receives/i)).toBeTruthy();
+      expect(screen.getByText(/You can approve it here/i)).toBeTruthy();
     },
   );
 
@@ -2192,10 +2256,42 @@ describe('device pairing panels', () => {
       );
 
       expect((await screen.findByRole('alert')).textContent).toBe(
-        'This Station could not create a pairing code. Check the connection, then try again.',
+        'Could not create a pairing code. Check the connection and try again.',
       );
       expect(document.body.textContent).not.toContain('network unavailable');
       expect(document.body.textContent).not.toContain('not-json');
     },
   );
+});
+
+test('pending approval counts down from its saved expiry without announcing every tick', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-09-08T20:00:00Z'));
+  vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise(() => {}));
+  savePendingExchange({
+    endpoint: window.location.origin,
+    offerId: 'timer-offer',
+    proof: 'timer-proof',
+    requestId: 'timer-request',
+    expiresAt: Date.now() + 300_000,
+    expectedEnvironmentId: 'timer-environment',
+    browserSession: true,
+    requestKind: 'direct',
+  });
+  const view = render(
+    <JoinDevicePairingPanel
+      initialMode="direct"
+      onPaired={vi.fn()}
+      onCancel={vi.fn()}
+    />,
+  );
+  expect(screen.getByText('Expires in 5m 00s').getAttribute('aria-live')).toBe(
+    'off',
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(screen.getByText('Expires in 4m 59s')).toBeTruthy();
+  view.unmount();
+  vi.useRealTimers();
 });

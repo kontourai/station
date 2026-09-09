@@ -88,6 +88,9 @@ describe('#749 conversation open controller', () => {
   // and failed both block writes, and only one of them is a failure.
   test('the phase separates a don-t-know-yet from a verdict', () => {
     expect(conversationOpenPhase({})).toBe('writable');
+    const busy = { ...resolved(false), continuationPending: true };
+    expect(conversationOpenPhase({ conversationOpenState: busy })).toBe('busy');
+    expect(conversationCanMutate({ conversationOpenState: busy })).toBe(false);
     expect(conversationOpenPhase({ conversationOpenPending: true })).toBe(
       'resolving',
     );

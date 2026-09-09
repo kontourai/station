@@ -73,6 +73,7 @@ import {
   type EffectiveModelSource,
   isSessionExecutionActive,
 } from '../../utils/execution';
+import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
 import {
   buildHomeTaskItems,
   chatTaskSessionId,
@@ -85,6 +86,7 @@ import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { ContextPercentage } from '../conversation-stats/ConversationStats';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkillShortcutRegistrar } from '../SkillShortcutRegistrar';
+import { SkeletonBlock } from '../state';
 import {
   ActiveWorkContextFrame,
   ActiveWorkModalBoundary,
@@ -270,6 +272,7 @@ const loadConversationBoundaryDialogs = () =>
     default: module.ConversationBoundaryDialogs,
   }));
 
+const loadImportedConversationPane = () => import('./ImportedConversationPane');
 const loadConversationOpenRecoveryNotice = () =>
   import('./ConversationOpenRecoveryNotice').then((module) => ({
     default: module.ConversationOpenRecoveryNotice,
@@ -650,6 +653,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   const { setDeviceSetting } = useDeviceSettingsActions();
   const {
+    importedSessionId,
+    setImportedSessionId,
+    onOpenInboxSession,
     newChatRequestEpoch,
     setShowNewChatModal,
     isHistoryOpen,
@@ -893,6 +899,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionModel: activeSession?.model,
     agentDefaultModel: agentDefaultModelId,
   });
+  const importedSession = orchestrationSessions.find(
+    (session) => session.threadId === importedSessionId,
+  );
+  const importedTitle = importedSession
+    ? sessionTitle(importedSession)
+    : 'Conversation';
+  const importedOrigin = importedSession
+    ? `Started in ${displayProvider(importedSession)}`
+    : 'Started in another app';
   const activeChatModelLabel = chatModelLabel(
     activeChatModelId,
     effectiveModels,
@@ -910,17 +925,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setIsDelegationLauncherOpen(false);
   }, [activeSessionId]);
 
-  // #1298: revealing Activity is a dock-owned navigation seam —
-  // collapse a maximized dock first so the destination is actually visible.
-  // Same stabilization reason as the toggles in `useChatDockOverlays`: this
-  // used to be an inline closure at the `ChatDockInboxPanel` call site.
-  const onOpenInboxSession = useCallback(
-    (threadId: string) => {
-      collapseDockForNavigation();
-      showSurface('activity', { session: threadId });
-    },
-    [collapseDockForNavigation, showSurface],
-  );
   const openChatSettings = useCallback(
     () => setShowChatSettings(true),
     [setShowChatSettings],
@@ -1036,7 +1040,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
 
   const commandLauncherEnabled = Boolean(
-    isPaneOpen &&
+    !importedSessionId &&
+      isPaneOpen &&
       conversationCanMutate &&
       activeSession?.projectSlug &&
       activeSession.status !== 'sending',
@@ -1138,8 +1143,29 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       setActiveSessionId,
     });
   const focusSessionInPane = useCallback(
-    (sessionId: string) => focusSession(sessionId, !isFullscreenPlacement),
-    [focusSession, isFullscreenPlacement],
+    (sessionId: string) => {
+      setImportedSessionId(null);
+      focusSession(sessionId, !isFullscreenPlacement);
+    },
+    [focusSession, isFullscreenPlacement, setImportedSessionId],
+  );
+  const closeImportedSession = useCallback(
+    () => setImportedSessionId(null),
+    [setImportedSessionId],
+  );
+  const openImportedSessionInPane = useCallback(
+    (threadId: string) => {
+      onOpenInboxSession(threadId);
+      if (!isFullscreenPlacement && !isDockOpen)
+        setDockState(true, isDockMaximized);
+    },
+    [
+      onOpenInboxSession,
+      isFullscreenPlacement,
+      isDockOpen,
+      setDockState,
+      isDockMaximized,
+    ],
   );
   // A conversation-row click is an explicit choice of the project context in
   // which the person wants to continue.  Keep that intent at this UI seam:
@@ -1248,6 +1274,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // inherits the dock's own binding by default, so both the real session and
   // the badge agree from the start.
   const openNewChatDirect = useCallback(() => {
+    setImportedSessionId(null);
     const direct = selectDirectNewChatAgent(
       selectChatReadyAgents({ agents, agentConnections }),
     );
@@ -1278,6 +1305,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     projectSlug,
     projects,
     setShowNewChatModal,
+    setImportedSessionId,
   ]);
   const openConversationInScopedPane = useCallback(
     (
@@ -1343,20 +1371,24 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     async (...args: Parameters<typeof openConversationInScopedPane>) => {
       const opened = await openConversationInScopedPane(...args);
       const targetProjectSlug = args[2];
+      if (opened) setImportedSessionId(null);
       if (opened && targetProjectSlug) setActiveProjectSlug(targetProjectSlug);
       return opened;
     },
-    [openConversationInScopedPane, setActiveProjectSlug],
+    [openConversationInScopedPane, setActiveProjectSlug, setImportedSessionId],
   );
   const openConversationForDock = useCallback(
     async (
       conversation: ConversationOpenRecovery['conversation'] | string,
       isCurrent?: () => boolean,
+      keepReader = false,
     ) => {
       const controller = await loadConversationOpenController();
-      return controller.openConversationForDock(conversation, {
+      const opened = await controller.openConversationForDock(conversation, {
         apiBase,
-        open: openUserSelectedConversationInScopedPane,
+        open: keepReader
+          ? openConversationInScopedPane
+          : openUserSelectedConversationInScopedPane,
         projectName: (slug) =>
           projects.find((project) => project.slug === slug)?.name,
         findTab: (conversationId) =>
@@ -1369,9 +1401,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         setRecovery: setConversationOpenRecovery,
         isCurrent,
       });
+      if (keepReader && opened) setImportedSessionId(null);
+      return opened;
     },
     [
       apiBase,
+      openConversationInScopedPane,
+      setImportedSessionId,
       openUserSelectedConversationInScopedPane,
       projects,
       updateChat,
@@ -1532,10 +1568,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         });
         return;
       }
-      if (threadId) {
-        collapseDockForNavigation();
-        showSurface('activity', { session: threadId });
-      }
+      if (threadId) openImportedSessionInPane(threadId);
     };
     const unregisterOpenChatsNavigation = openChatsStore.registerNavigation({
       focus: focusChat,
@@ -1584,6 +1617,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     focusSessionInPane,
     navigate,
     openWorkItemConversationInScopedPane,
+    openImportedSessionInPane,
     openConversationForDock,
     allSessions,
     routeToScopedChatProject,
@@ -1715,8 +1749,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // registered by `chrome` (`useDockShellChrome`), not here.
   useChatDockKeyboardShortcuts({
     sessions,
-    activeSessionId,
-    activeSession,
+    activeSessionId: importedSessionId ? null : activeSessionId,
+    activeSession: importedSessionId ? null : activeSession,
+    onCloseCurrent: importedSessionId ? closeImportedSession : undefined,
     onNewChat: openNewChatDirect,
     setShowSessionPicker,
     focusSession: focusSessionInPane,
@@ -1750,7 +1785,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   return (
     <>
       <SkillShortcutRegistrar
-        hasContext={Boolean(activeSessionId && activeSessionForHook)}
+        hasContext={Boolean(
+          !importedSessionId && activeSessionId && activeSessionForHook,
+        )}
         onRun={useCallback(
           (target: { cmd: string; name: string }) => {
             void chatInput.handleCommandSelect({
@@ -1778,7 +1815,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               { display: 'contents' }
         }
         enabled={isChatPaneFileDropEnabled({
-          hasAttachmentOwner: activeSessionForHook !== null,
+          hasAttachmentOwner:
+            !importedSessionId && activeSessionForHook !== null,
           isPaneOpen,
           isCollapsedDragPreview,
         })}
@@ -1825,12 +1863,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // (`app-toolbar-connection`) are two controls whose accessible
               // name starts "Manage Stations".
               showConnection={isMobileToolbarHidden}
-              sessionTitle={activeSession?.title || 'Chat'}
+              sessionTitle={
+                importedSessionId
+                  ? importedTitle
+                  : activeSession?.title || 'Chat'
+              }
               // station#3309: same identity the desktop header leads with,
               // from the same session-committed slug — artwork only when the
               // catalog resolved this agent, identicon from the slug otherwise.
               agentIdentity={
-                activeSession
+                !importedSessionId && activeSession
                   ? {
                       name: activeChatAgent?.name ?? activeSession.agentName,
                       slug: activeSession.agentSlug,
@@ -1844,8 +1886,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // value and stays reachable via the same trigger, rather than
               // losing the affordance entirely.
               projectSwitcher={{
-                projectSlug: dockProjectSlug ?? '',
-                projectName: dockBadgeProjectName ?? 'No project',
+                projectSlug: importedSessionId
+                  ? (importedSession?.projectSlug ?? '')
+                  : (dockProjectSlug ?? ''),
+                projectName: importedSessionId
+                  ? (projects.find(
+                      (project) =>
+                        project.slug === importedSession?.projectSlug,
+                    )?.name ??
+                    importedSession?.projectSlug ??
+                    'No project')
+                  : (dockBadgeProjectName ?? 'No project'),
                 projects,
                 onOpenProject: handleSelectProject,
                 onSwitchProject: handleSwitchProject,
@@ -1936,7 +1987,24 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           ) : (
             <ChatDockHeader
               chatIdentity={
-                activeSession ? (
+                importedSessionId ? (
+                  <ChatDockActiveIdentity
+                    session={{
+                      id: importedSessionId,
+                      title: importedTitle,
+                      agentName: importedSession
+                        ? displayProvider(importedSession)
+                        : 'Conversation',
+                    }}
+                    originLabel={importedOrigin}
+                    originProvider={importedSession?.provider}
+                    onClose={() => setImportedSessionId(null)}
+                    onDetails={() => {
+                      collapseDockForNavigation();
+                      showSurface('activity', { session: importedSessionId });
+                    }}
+                  />
+                ) : activeSession ? (
                   <ChatDockActiveIdentity
                     session={activeSession}
                     agent={activeChatAgent}
@@ -1955,8 +2023,21 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 // `dockProjectSlug` is null.
                 !isMobile ? (
                   <ChatDockProjectContext
-                    projectSlug={dockProjectSlug}
-                    projectName={dockBadgeProjectName}
+                    projectSlug={
+                      importedSessionId
+                        ? (importedSession?.projectSlug ?? null)
+                        : dockProjectSlug
+                    }
+                    projectName={
+                      importedSessionId
+                        ? (projects.find(
+                            (project) =>
+                              project.slug === importedSession?.projectSlug,
+                          )?.name ??
+                          importedSession?.projectSlug ??
+                          null)
+                        : dockBadgeProjectName
+                    }
                     // station#4525 review HIGH-2 (blocking): these three
                     // facts are truth about the SESSION actually on screen
                     // and never gate on the badge — station#1146 fixed this
@@ -1975,9 +2056,21 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     // prop survives as `directoryTitle`'s subject — so the
                     // derivation still has a reader, and a wrong one would now
                     // be a wrong tooltip rather than a wrong line of text.
-                    workingDirectory={dockProjectContextDirectory}
-                    gitStatus={scopedProjectSlug ? undefined : gitStatus}
-                    sessionProjectMismatchLabel={sessionProjectMismatchLabel}
+                    workingDirectory={
+                      importedSessionId
+                        ? (importedSession?.cwd ?? null)
+                        : dockProjectContextDirectory
+                    }
+                    gitStatus={
+                      importedSessionId || scopedProjectSlug
+                        ? undefined
+                        : gitStatus
+                    }
+                    sessionProjectMismatchLabel={
+                      importedSessionId
+                        ? undefined
+                        : sessionProjectMismatchLabel
+                    }
                     projects={projects}
                     onSelectProject={handleSelectProject}
                     onSwitchProject={handleSwitchProject}
@@ -2014,7 +2107,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               canMaximize={chrome.canMaximize}
               showMaximizeShortcut={chrome.ownsMaximizeShortcut}
               surfaceShortcutId={chrome.surfaceShortcutId}
-              moreActions={dockMoreActions}
+              moreActions={importedSessionId ? [] : dockMoreActions}
               // #3309: the tab strip's controls fold into the header — one
               // chrome bar, every reclaimed pixel is transcript space. Only
               // while the pane is open; the collapsed bar stays minimal.
@@ -2034,12 +2127,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       isInboxOpen,
                       onToggleInbox: toggleInbox,
                       backgroundTasksTriggerRef,
-                      backgroundTasksRunningCount,
+                      backgroundTasksRunningCount: importedSessionId
+                        ? 0
+                        : backgroundTasksRunningCount,
                       isBackgroundTasksOpen,
                       onToggleBackgroundTasks: () =>
                         setIsBackgroundTasksOpen((open) => !open),
                       sessionInventory:
-                        !conversationOpenRecovery && inventoryExecutionId
+                        !importedSessionId &&
+                        !conversationOpenRecovery &&
+                        inventoryExecutionId
                           ? {
                               hostId: sessionInventoryHostId,
                               chatStoreId: inventoryChatStoreId!,
@@ -2057,6 +2154,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   : undefined
               }
               contextMeter={
+                !importedSessionId &&
                 (isPaneOpen || isCollapsedDragPreview) &&
                 activeSession?.conversationId &&
                 openChatItems.some(
@@ -2102,12 +2200,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         exiting: inboxPresence.exiting,
                         items: taskItems,
                         agents,
-                        activeChatSessionId: activeSessionId,
+                        activeChatSessionId:
+                          importedSessionId ?? activeSessionId,
                         openChatSessionIds: openInboxChatSessionIds,
                         onFocusChat: focusUserSelectedSessionInPane,
                         onOpenConversation:
                           openUserSelectedConversationInScopedPane,
-                        onOpenSession: onOpenInboxSession,
+                        onOpenSession: openImportedSessionInPane,
                         onCloseChat: removeSession,
                         onAcknowledgeConversation: acknowledgeTaskConversation,
                         onOpenHistory: openInboxHistory,
@@ -2117,36 +2216,39 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       pending={null}
                     />
                   )}
-                {activeWorkPanel && activeSession?.projectSlug && !isMobile && (
-                  <ActiveWorkContextFrame
-                    panel={activeWorkPanel}
-                    isMobile={false}
-                    session={activeSession}
-                    gitStatus={gitStatus}
-                    canOpenFiles={!!sessionCodingLayout}
-                    onClose={() => setActiveWorkPanel(null)}
-                    onOpenFile={(file) => {
-                      if (sessionCodingLayout) {
-                        setLayout(
-                          activeSession.projectSlug!,
-                          sessionCodingLayout.slug,
-                          {
-                            openFilePreviewIntent: {
-                              projectSlug: activeSession.projectSlug!,
-                              path: file,
+                {activeWorkPanel &&
+                  !importedSessionId &&
+                  activeSession?.projectSlug &&
+                  !isMobile && (
+                    <ActiveWorkContextFrame
+                      panel={activeWorkPanel}
+                      isMobile={false}
+                      session={activeSession}
+                      gitStatus={gitStatus}
+                      canOpenFiles={!!sessionCodingLayout}
+                      onClose={() => setActiveWorkPanel(null)}
+                      onOpenFile={(file) => {
+                        if (sessionCodingLayout) {
+                          setLayout(
+                            activeSession.projectSlug!,
+                            sessionCodingLayout.slug,
+                            {
+                              openFilePreviewIntent: {
+                                projectSlug: activeSession.projectSlug!,
+                                path: file,
+                              },
                             },
-                          },
-                        );
+                          );
+                        }
+                      }}
+                      onOpenProjectContext={() =>
+                        setProject(activeSession.projectSlug!)
                       }
-                    }}
-                    onOpenProjectContext={() =>
-                      setProject(activeSession.projectSlug!)
-                    }
-                  />
-                )}
+                    />
+                  )}
                 <div className="chat-dock__conversation-surface">
                   <div ref={sessionInventoryMountRef} />
-                  {conversationOpenRecovery ? (
+                  {conversationOpenRecovery && !importedSessionId ? (
                     <LazyBoundary
                       load={loadConversationOpenRecoveryNotice}
                       componentProps={{
@@ -2166,7 +2268,33 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }
                     />
                   ) : null}
-                  {!conversationOpenRecovery ? (
+                  {importedSessionId ? (
+                    <LazyBoundary
+                      key={importedSessionId}
+                      load={loadImportedConversationPane}
+                      componentProps={{
+                        threadId: importedSessionId,
+                        apiBase,
+                        chatFontSize,
+                        originLabel: importedOrigin,
+                        showOrigin: isMobile,
+                        onDetails: () => {
+                          collapseDockForNavigation();
+                          showSurface('activity', {
+                            session: importedSessionId,
+                          });
+                        },
+                        onContinueInDock: (
+                          id: string,
+                          isCurrent: () => boolean,
+                        ) => openConversationForDock(id, isCurrent, true),
+                      }}
+                      pending={
+                        <SkeletonBlock count={1} label="Opening conversation" />
+                      }
+                    />
+                  ) : null}
+                  {!conversationOpenRecovery && !importedSessionId ? (
                     <ChatDockContentArea
                       onNewChat={handleStartNewChatWithMessage}
                       onRetryConversationOpen={retryActiveConversationOpen}
@@ -2321,7 +2449,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               tasks: taskItems,
               agents,
               openChatSessionIds: openInboxChatSessionIds,
-              activeChatSessionId: activeSessionId,
+              activeChatSessionId: importedSessionId ?? activeSessionId,
               visualViewportStyle: visualViewport.style,
               triggerRef:
                 taskSwitcherMode === 'activity'
@@ -2340,30 +2468,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 setIsBackgroundTasksOpen(true);
               },
               onOpenSession: (threadId) => {
-                if (isFullscreenPlacement) {
-                  showSurface('activity', { session: threadId });
-                  return;
-                }
-                // Sessions must remain usable on a phone, so the dock closes.
-                // Reviewer correction (#945 HIGH): a prior version of this
-                // handler routed around `setDockState` to leave `maximize` in
-                // the URL while closing, on the theory that the mobile bottom
-                // dock's inline height guard (`!isDockOpen` checked before
-                // `isDockMaximized`) made a closed-but-maximized URL state safe
-                // here. That is false — the mobile `@media (max-width: 768px)`
-                // rule for `.chat-dock.is-maximized` (index.css, "Maximized dock
-                // on a phone") matches on `is-maximized` alone, independent of
-                // `is-collapsed`, and sets `height: ... !important`, which beats
-                // the plain (non-`!important`) inline style. A closed dock with
-                // `maximize=true` still gets forced to full visual-viewport
-                // height while its body is omitted (`isDockOpen` false below) —
-                // the #795 blank full-height shell, reachable on mobile after
-                // all. `setDockState`'s "a closed dock is never maximized"
-                // invariant stays universal; the maximize preference survives
-                // this round trip through `lastDockMaximized` (navigation-store)
-                // instead, which `focusSession` already reads on the way back in.
-                setDockState(false, isDockMaximized);
-                showSurface('activity', { session: threadId });
+                setIsTaskSwitcherOpen(false);
+                openImportedSessionInPane(threadId);
               },
             }}
             pending={null}

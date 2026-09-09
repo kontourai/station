@@ -596,7 +596,9 @@ jobs:
           fi
           node scripts/apply-android-channel-icons.mjs "$icon_channel"
       - name: Apply native credential bootstrap to the channel namespace
-        run: node scripts/apply-android-native-bootstrap.mjs
+        run: |
+          node scripts/apply-android-native-bootstrap.mjs
+          node scripts/apply-android-network-policy.mjs
       # Must run AFTER init (which generates gen/android) and BEFORE the build
       # that packages its assets. The preflight-staged manifest already binds
       # the verified tag ref, SHA, and one sampled timestamp, so this writer
@@ -664,6 +666,7 @@ jobs:
       - name: Verify Android package version and platform signatures
         run: |
           apk=$(find src-desktop/gen/android/app/build/outputs/apk/universal/release -name '*.apk' -print -quit)
+          aapt dump xmltree "$apk" AndroidManifest.xml | grep -E 'android:usesCleartextTraffic.*0xffffffff'
           aapt dump badging "$apk" | grep -F "versionName='$RELEASE_VERSION'"
           aapt dump badging "$apk" | grep -F "versionCode='$ANDROID_VERSION_CODE'"
           aapt dump badging "$apk" | grep -F "package: name='$ANDROID_PACKAGE_NAME'"

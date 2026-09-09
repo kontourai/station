@@ -303,11 +303,41 @@ completion lane's parent capture, which folds every phase's output behind a
 phase sequence stops at the first non-passing phase, the failing phase is
 always the last region.
 
-When the excerpt came from stderr the receipt says so, in `causeStream`. Its
-**absence is the stronger claim**: the excerpt was scoped to the step that
-failed. Severity is ranked too — an error outranks a warning above it — after
-two blind spots that made most errors invisible to the matcher entirely
-(biome's ` FIXABLE ` tag, and format diagnostics that carry no `line:col`).
+Two fields say how the excerpt was chosen. Between them a reader usually does
+not have to infer it from a silence — but the declared-cause field is additive
+and lowest priority in the summary's byte budget, so a tight enough cap
+renders an excerpt with neither field present. No such cap was reachable at
+the production one, so treat this as a caveat on the pair rather than a hole
+anyone has walked into.
+
+`causeStream` qualifies a SCANNED excerpt: present (`stderr`) means the
+excerpt was ranked off a stream with no step markers rather than attributed
+to the failing step. Among scanned excerpts its **absence is the stronger
+claim** — the excerpt was scoped to the step that failed.
+
+`infrastructureCause` (station#1827) says the excerpt was not scanned at all.
+On an `infrastructure_error` where the verification runner recorded its own
+reason for stopping, that reason is the head excerpt and this field carries
+it. A declaration is not a scan result, so it deliberately sets no
+`causeStream`: the sentence that field renders — "picked by severity and
+position" — would be false for it. The two are mutually exclusive because one
+computation decides both, in `summarizeVerificationOutput`, so `causeStream`'s
+absence can be read against `infrastructureCause`'s presence.
+
+Both are fields of the bounded **summary** the CLI prints and the CI
+annotation renders, and both reach every rendering from there — neither is
+re-stamped from anywhere else, which is what keeps the pair consistent. The
+**receipt** is a separate artifact: it records `terminal.infrastructureCause`
+as the durable full-length record and carries no `causeStream` at all. Where
+a rendering shows the declared cause — as the marker, as the excerpt, or as the
+head of the excerpt list the annotations are built from — it shows the same
+bytes the receipt holds, because each of those three surfaces copies the one
+derived value rather than deriving its own. A rendering with no summary carries
+no marker at all.
+
+Severity is ranked too — an error outranks a warning above it — after two
+blind spots that made most errors invisible to the matcher entirely (biome's
+` FIXABLE ` tag, and format diagnostics that carry no `line:col`).
 
 `failingStep` is omitted rather than guessed: on a truncated capture the last
 header names a step that finished fine, and under `canceled`/`timed_out`

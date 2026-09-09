@@ -57,11 +57,15 @@ function MessageContentComponent({
       ),
     );
 
-  const renderToolCall = (part: MessageContentPart, index: number) => (
+  const renderToolCall = (
+    part: MessageContentPart,
+    index: number,
+    expanded = false,
+  ) => (
     <ToolCallDisplay
       key={index}
       toolCall={part as any}
-      showDetails={showToolDetails}
+      showDetails={expanded || showToolDetails}
       onApprove={
         isStreamingMessage && part.needsApproval
           ? (action) => onToolApproval?.(part, action)

@@ -70,6 +70,7 @@ import {
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
   PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
@@ -1192,6 +1193,15 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       match: 'exact',
       capability: 'public',
       reason: 'public challenge proof',
+    },
+    {
+      id: 'public:pairing-local-access',
+      transport: 'http',
+      method: 'POST',
+      prefix: PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
+      match: 'exact',
+      capability: 'public',
+      reason: 'direct-loopback owner-secret access review',
     },
     {
       id: 'public:pairing-local-grant',

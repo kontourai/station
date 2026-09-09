@@ -291,7 +291,7 @@ export function firstRunEngineRowLabel(option: FirstRunEngineOption): string {
     case 'detected_connect':
       return `Connect and set up ${option.name}`;
     case 'enabled':
-      return `Ready — ${option.name}`;
+      return `Set up — ${option.name}`;
     case 'available':
       return `Enable ${option.name}`;
     default:

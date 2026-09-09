@@ -348,6 +348,7 @@ export async function createTaskFromProject(
   const branchLabel = page.locator(
     '.project-page__git-section .project-page__section-label',
   );
+  await expect(branchLabel).toBeVisible({ timeout: 15_000 });
   // The branch icon is an SVG, not part of the label's text contract.
   const escapedBranch = branch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   await expect(branchLabel).toHaveText(

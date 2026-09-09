@@ -1,4 +1,8 @@
 #!/usr/bin/env tsx
+import {
+  mintLocalBrowserToken,
+  runOpenCommand,
+} from './commands/local-browser.js';
 
 /**
  * @kontourai/station-cli — Unified CLI for Station
@@ -21,10 +25,8 @@
  * pinned exitCode / stdout-stderr semantics.
  */
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH } from '@kontourai/station-contracts/environment-security';
 import {
   TaskToolResultRequestError,
   TaskUserInputReferenceRequestError,
@@ -462,6 +464,7 @@ const INDIVIDUAL_COMMANDS = [
   'import',
   'stations',
   'target',
+  'open',
   'triage',
   'registry',
 ] as const;
@@ -564,38 +567,7 @@ async function probeInstance(serverPort: number): Promise<boolean> {
  * loopback. Any failure returns null so the opener falls back to opening the
  * browser without a token — never a hard error on the launch path.
  */
-async function mintBootstrapTokenForOpener(
-  serverPort: number,
-  home: string | undefined,
-  deviceName: string,
-): Promise<string | null> {
-  const secretPath = join(
-    home ?? PROJECT_HOME,
-    'runtime',
-    'local-grant.secret',
-  );
-  let secret: string;
-  try {
-    secret = readFileSync(secretPath, 'utf8');
-  } catch {
-    return null;
-  }
-  const response = await fetchWithTimeout(
-    `http://127.0.0.1:${serverPort}${PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ secret, deviceName }),
-    },
-  );
-  if (!response?.ok) return null;
-  try {
-    const body = (await response.json()) as { token?: unknown };
-    return typeof body.token === 'string' ? body.token : null;
-  } catch {
-    return null;
-  }
-}
+const mintBootstrapTokenForOpener = mintLocalBrowserToken;
 
 /**
  * Builds a lifecycle arg list from the default-command options.
@@ -791,6 +763,7 @@ function buildProgram(
     await runStationsCommand(rawArgs);
   });
   register('target', (rawArgs) => runTargetCommand(rawArgs));
+  register('open', (rawArgs) => runOpenCommand(rawArgs));
   register('triage', async (rawArgs) => {
     await runTriageCommand(rawArgs, {
       collectSourceDoctorReport: dependencies.collectTriageDoctorReport,
@@ -800,6 +773,10 @@ function buildProgram(
   });
   register('dev', (rawArgs) => runDevCommand(rawArgs));
   register('doctor', async (rawArgs) => {
+    if (isBundledDistribution()) {
+      await runTargetCommand(rawArgs.filter((arg) => arg !== '--json'));
+      return;
+    }
     if (rawArgs.includes('--migrate-playbooks')) {
       await runPlaybookMigrationReport(rawArgs, dependencies);
       return;

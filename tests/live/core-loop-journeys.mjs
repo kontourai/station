@@ -39,6 +39,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
+import { foldUsageEvents } from '../../packages/shared/src/usage-fold.ts';
+import { acceptedTurnReply } from './helpers/accepted-turn-reply.mjs';
 import {
   api,
   apiOk,
@@ -374,7 +376,13 @@ async function dumpSessionControlStates(page, label) {
   }
 }
 
-async function startConversation(page, agentSlug, message, workspace) {
+async function startConversation(
+  page,
+  agentSlug,
+  message,
+  workspace,
+  modelOverride,
+) {
   const { status, payload } = await dispatchWithCatalogSettle(
     page,
     '/api/orchestration/chat',
@@ -383,6 +391,7 @@ async function startConversation(page, agentSlug, message, workspace) {
         environment: { kind: 'current' },
         agent: agentSlug,
         ...(workspace ? { workspace } : {}),
+        ...(modelOverride ? { model: { override: modelOverride } } : {}),
       },
       message,
     },
@@ -398,7 +407,7 @@ async function startConversation(page, agentSlug, message, workspace) {
     typeof conversationId === 'string' && typeof sessionId === 'string',
     `foreground handle missing conversationId/sessionId: ${JSON.stringify(payload)?.slice(0, 400)}`,
   );
-  return { conversationId, sessionId };
+  return { conversationId, sessionId, turnId: data?.providerTurnId };
 }
 
 async function continueConversation(page, conversationId, message) {
@@ -415,6 +424,7 @@ async function continueConversation(page, conversationId, message) {
   return {
     conversationId: data?.conversationId ?? conversationId,
     sessionId: data?.sessionId,
+    turnId: data?.providerTurnId,
   };
 }
 
@@ -453,7 +463,7 @@ function messageText(message) {
  * whether the turn never started, is still streaming, or completed into a
  * projection this suite is misreading.
  */
-async function awaitAssistantReplies(page, threadId, count) {
+async function awaitAssistantReplies(page, threadId, count, turnId) {
   const deadline = Date.now() + TURN_TIMEOUT_MS;
   let lastSummary = 'no observation yet';
   while (Date.now() < deadline) {
@@ -468,10 +478,18 @@ async function awaitAssistantReplies(page, threadId, count) {
     }
     const assistants = messages.filter(
       (message) =>
-        message.role === 'assistant' && messageText(message).trim().length > 0,
+        message.role === 'assistant' && messageText(message).trim() === 'ACK',
     );
-    lastSummary = `${messages.length} message(s), ${assistants.length} non-empty assistant`;
-    if (assistants.length >= count) return;
+    lastSummary = `${messages.length} message(s), ${assistants.length} expected assistant reply`;
+    const detail = envelopeData(
+      await apiOk(
+        page,
+        'GET',
+        `/api/orchestration/sessions/${encodeURIComponent(threadId)}`,
+      ),
+    );
+    const completed = acceptedTurnReply(detail?.events ?? [], turnId, 'ACK');
+    if (assistants.length >= count && completed) return detail;
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_000));
   }
   // Timed out — say what the event store actually holds for this session.
@@ -510,6 +528,8 @@ async function journeyMultiTurnContinuity(page, note, shared) {
     page,
     agentSlug,
     'Reply with the single word ACK and nothing else.',
+    undefined,
+    process.env.CORE_LOOP_MODEL_OVERRIDE ?? 'default',
   );
   note(
     `turn 1 accepted: conversation=${turn1.conversationId} session=${turn1.sessionId}`,
@@ -518,8 +538,20 @@ async function journeyMultiTurnContinuity(page, note, shared) {
   // engine session accumulate in that session's transcript; a turn that
   // lands a child session starts a fresh count there.
   const expectedBySession = new Map([[turn1.sessionId, 1]]);
-  await awaitAssistantReplies(page, turn1.sessionId, 1);
+  const firstDetail = await awaitAssistantReplies(
+    page,
+    turn1.sessionId,
+    1,
+    turn1.turnId,
+  );
   note('turn 1 answered');
+  const firstModel =
+    firstDetail?.session?.reportedModel ?? firstDetail?.session?.model;
+  assert(
+    typeof firstModel === 'string' && firstModel.length > 0,
+    'First turn model was not reported',
+  );
+  note(`turn 1 model: ${firstModel}`);
   // Published for journey 2's chat-surface assert as soon as a transcript
   // exists — the later continuity asserts refine THIS journey's verdict but
   // must not withhold a perfectly usable conversation from journey 2.
@@ -528,6 +560,68 @@ async function journeyMultiTurnContinuity(page, note, shared) {
     sessionId: turn1.sessionId,
     agentSlug,
   };
+
+  // Observe the actual dock during the follow-up; a final reply alone cannot
+  // catch a read-only error which appears and then recovers (#1792).
+  await page.evaluate(
+    ({ conversationId, sessionId, agentSlug }) => {
+      sessionStorage.setItem(
+        'activeChats',
+        JSON.stringify([
+          {
+            sessionId,
+            conversationId,
+            agentSlug,
+            title: 'Follow-up UI audit',
+            executionMode: 'external',
+            provider: 'claude',
+            providerOptions: {},
+            orchestrationSessionStarted: true,
+            ephemeralMessages: [],
+            inputHistory: [],
+          },
+        ]),
+      );
+    },
+    {
+      conversationId: turn1.conversationId,
+      sessionId: turn1.sessionId,
+      agentSlug,
+    },
+  );
+  await page.goto(
+    `${UI_ORIGIN}/?chat=${encodeURIComponent(turn1.conversationId)}&dock=open`,
+  );
+  await page
+    .locator('.chat-messages')
+    .first()
+    .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS });
+  await page.evaluate(() => {
+    const records = [];
+    const dock = document
+      .querySelector('.chat-messages')
+      ?.closest('[aria-label="Chat dock"]');
+    if (!dock)
+      throw new Error('Follow-up audit could not find the mounted chat dock.');
+    const observe = () => {
+      const text = dock.textContent ?? '';
+      if (
+        /is read.only|available read.only|could not prove a writable|Session record missing/i.test(
+          text,
+        ) &&
+        records.length < 10
+      )
+        records.push(text.slice(-4000));
+    };
+    const observer = new MutationObserver(observe);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    window.__stationFollowupUiAudit = { records, observer };
+    observe();
+  });
 
   const turn2 = await continueConversation(
     page,
@@ -543,12 +637,64 @@ async function journeyMultiTurnContinuity(page, note, shared) {
     turn2Session,
     (expectedBySession.get(turn2Session) ?? 0) + 1,
   );
-  await awaitAssistantReplies(
+  const secondDetail = await awaitAssistantReplies(
     page,
     turn2Session,
     expectedBySession.get(turn2Session),
+    turn2.turnId,
   );
   note('turn 2 answered in the same conversation');
+  const secondModel =
+    secondDetail?.session?.reportedModel ?? secondDetail?.session?.model;
+  assert(
+    secondModel === firstModel,
+    `Continuation changed model without an override: ${firstModel} -> ${secondModel}`,
+  );
+  note(`turn 2 retained model: ${secondModel}`);
+  const nativeCursor = secondDetail?.session?.resumeCursor;
+  if (typeof nativeCursor === 'string' && /^[0-9a-f-]{36}$/i.test(nativeCursor))
+    note(`native session receipt: ${nativeCursor}`);
+  const usage = foldUsageEvents(
+    (secondDetail?.events ?? []).filter(
+      (event) => event.turnId === turn2.turnId,
+    ),
+  );
+  note(
+    `follow-up usage: ${JSON.stringify({
+      uncachedInput: usage.inputTokens,
+      output: usage.outputTokens,
+      cacheRead: usage.cacheReadTokens,
+      cacheWrite: usage.cacheWriteTokens,
+    })}`,
+  );
+  await poll(
+    'the follow-up composer to become writable again',
+    SETTLE_TIMEOUT_MS,
+    () =>
+      page
+        .getByPlaceholder(/^Type a message/)
+        .isEnabled()
+        .catch(() => false),
+  );
+  const transientErrors = await page.evaluate(() => {
+    const audit = window.__stationFollowupUiAudit;
+    audit.observer.disconnect();
+    delete window.__stationFollowupUiAudit;
+    return audit.records;
+  });
+  mkdirSync(join(OUTPUT_ROOT, 'gallery'), { recursive: true });
+  await page.screenshot({
+    path: join(OUTPUT_ROOT, 'gallery', 'followup-completed.png'),
+  });
+  writeFileSync(
+    join(OUTPUT_ROOT, 'followup-ui-observations.json'),
+    JSON.stringify({ transientErrors }, null, 2),
+  );
+  assert(
+    transientErrors.length === 0,
+    `Follow-up flashed a read-only error ${transientErrors.length} time(s); see followup-ui-observations.json`,
+  );
+  note('mounted dock showed no transient read-only error during turn 2');
 
   // Deterministically exercise the #765 A1 continuation path: stop the live
   // session so turn 3 must reserve a child session and resume from the
@@ -624,6 +770,7 @@ async function journeyMultiTurnContinuity(page, note, shared) {
     page,
     turn3Session,
     expectedBySession.get(turn3Session),
+    turn3.turnId,
   );
   note('turn 3 answered after stop/resume — cursor-backed continuation held');
 
@@ -712,7 +859,7 @@ async function journeyProjectDeepLinkReload(note, shared) {
     'Reply with the single word ACK and nothing else.',
     { kind: 'project', projectSlug },
   );
-  await awaitAssistantReplies(shared.mainPage, turn.sessionId, 1);
+  await awaitAssistantReplies(shared.mainPage, turn.sessionId, 1, turn.turnId);
   note(`project conversation ${turn.conversationId} answered`);
 
   const context = await shared.newMainContext();

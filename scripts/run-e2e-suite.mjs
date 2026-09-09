@@ -1494,7 +1494,10 @@ export async function startWithPortRetry({
  * because the OS free-port check and the CLI's registry rejection both stand
  * in front of any actual bind.
  */
-export function portBiasJitter(random = Math.random) {
+export function portBiasJitter(random = Math.random, suite = '') {
+  // The gallery renders its host address. Prefer a stable address on its
+  // isolated CI renderer; free-port allocation and overlap retries still run.
+  if (suite === 'screenshot') return 0;
   const MAX_JITTER_BLOCKS = 16;
   return Math.floor(random() * (MAX_JITTER_BLOCKS + 1)) * 30;
 }
@@ -1938,7 +1941,7 @@ async function main() {
   const codexConfigDir = mkdtempSync(join(tmpdir(), `${instance}-codex-`));
   const suitePorts = E2E_SUITE_PORTS[suite];
   // station#1177: de-herd concurrent sessions off the shared preferred block.
-  const jitter = portBiasJitter();
+  const jitter = portBiasJitter(Math.random, suite);
   const preferredPorts = {
     server: suitePorts.server + jitter,
     ui: suitePorts.ui + jitter,

@@ -6,7 +6,7 @@ import type {
   StationProfile,
   StationProfileStore,
 } from '@kontourai/station-contracts';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   NativeStationProfileStorage,
   savedConnectionFromStationProfile,
@@ -1392,6 +1392,40 @@ describe('NativeStationProfileStorage', () => {
   it('refuses corrupt metadata rather than substituting browser-local Stations', async () => {
     const { storage } = storageWithProfileStore({ nope: true });
     await expect(storage.hydrate()).rejects.toThrow('corrupt, unsupported');
+  });
+
+  it('persists the exact approved HTTP origin with its native credential reference', async () => {
+    const endpoint = 'http://station.example.test';
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) =>
+        key === `station-http-development:${endpoint}` ? 'allowed' : null,
+    });
+    try {
+      const { currentStore, storage } = storageWithKeyring();
+      await storage.hydrate();
+      await storage.commitVerifiedPairing({
+        connectionId: 'station-profile:kontour',
+        name: 'kontour',
+        endpoint,
+        credentialHandle: 'handle-refreshed',
+        nextCredentialRef: hostRef('host-ref-refreshed'),
+        clientInstanceId: CLIENT_INSTANCE_ID,
+        handshake: {
+          environmentId: 'environment-confirmed',
+          authentication: { scheme: 'bearer', protocolVersion: 1 },
+        },
+      });
+      expect(currentStore().profiles[0]).toMatchObject({
+        endpoint,
+        developmentHttpOrigin: endpoint,
+        configurationState: 'configured',
+      });
+      expect(
+        savedConnectionFromStationProfile(currentStore().profiles[0]).url,
+      ).toBe(endpoint);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('rejects non-loopback HTTP before writing a pairing credential', async () => {

@@ -799,7 +799,7 @@ describe('OrchestrationService', () => {
     expect(result.status).toBe('accepted');
     // A metadata-derived binding would make this exact server association conflict.
     expect(
-      eventStore.bindProjectTaskRoomExecution({
+      await eventStore.bindProjectTaskRoomExecution({
         projectId: 'real-project',
         taskId: 'real-task',
         sessionId: threadId,

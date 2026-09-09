@@ -29,7 +29,7 @@
  *   rather than a guessed one.
  *
  * WHAT THIS DOES NOT SEE. The scan is a partial derivation, not a census of
- * path-read pins, and it must not be read as one. 143 test files read by path
+ * path-read pins, and it must not be read as one. 144 test files read by path
  * with a module anchor; this reports 80. Both figures are asserted by
  * `path-read-pin-boundary.test.ts`, which derives them from `listSuiteFiles`
  * and `readsFileByPath` — a stale fraction in this paragraph is a red test,

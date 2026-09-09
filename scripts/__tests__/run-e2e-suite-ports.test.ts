@@ -1600,6 +1600,11 @@ describe('classifyStartFailure (#1177)', () => {
 });
 
 describe('portBiasJitter (#1177)', () => {
+  test('keeps screenshot addresses stable without changing other suites', () => {
+    expect(portBiasJitter(() => 0.1, 'screenshot')).toBe(0);
+    expect(portBiasJitter(() => 0.9, 'screenshot')).toBe(0);
+    expect(portBiasJitter(() => 0.5, 'product')).toBe(240);
+  });
   test('is a whole number of 30-port blocks within the bounded band', () => {
     for (const seed of [0, 0.1, 0.5, 0.99, 0.999999]) {
       const jitter = portBiasJitter(() => seed);

@@ -39,8 +39,8 @@ describe('engine capability matrix', () => {
       basis: 'declared',
     });
     expect(externalSessionContinuationSupport('codex')).toMatchObject({
-      state: 'unsupported',
-      reason: expect.any(String),
+      state: 'native',
+      basis: 'declared',
     });
     expect(externalSessionContinuationSupport('future-engine')).toMatchObject({
       state: 'unknown',
@@ -853,12 +853,11 @@ describe('built-in engines resolve to their own matrix (#2301)', () => {
 });
 
 describe('resolveComposerImageSupport (station#3344)', () => {
-  test('an engine whose cell declares no image path refuses with the cell reason', () => {
+  test('Muse declares its delivered image path while unknown engines refuse', () => {
     expect(
       resolveComposerImageSupport(ENGINE_CAPABILITY_MATRICES.muse),
     ).toEqual({
-      attachable: false,
-      refusal: 'Muse Code runs a text-only prompt and cannot see images.',
+      attachable: true,
     });
     expect(
       resolveComposerImageSupport(UNKNOWN_EXTERNAL_ENGINE_MATRIX).attachable,

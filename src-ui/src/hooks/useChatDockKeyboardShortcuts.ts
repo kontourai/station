@@ -32,6 +32,7 @@ interface DerivedSession {
 }
 
 interface UseChatDockKeyboardShortcutsOptions {
+  onCloseCurrent?: () => void;
   sessions: DerivedSession[];
   activeSessionId: string | null;
   activeSession: DerivedSession | null;
@@ -57,6 +58,7 @@ interface UseChatDockKeyboardShortcutsOptions {
  */
 export function useChatDockKeyboardShortcuts({
   sessions,
+  onCloseCurrent,
   activeSessionId,
   activeSession,
   onNewChat,
@@ -84,6 +86,10 @@ export function useChatDockKeyboardShortcuts({
     ['cmd'],
     'Close tab',
     useCallback(() => {
+      if (onCloseCurrent) {
+        onCloseCurrent();
+        return;
+      }
       if (activeSessionId && sessions.length > 1) {
         const currentIndex = sessions.findIndex(
           (s) => s.id === activeSessionId,
@@ -93,7 +99,7 @@ export function useChatDockKeyboardShortcuts({
         if (nextSession) focusSession(nextSession.id);
         removeChat(activeSessionId);
       }
-    }, [activeSessionId, sessions, focusSession, removeChat]),
+    }, [activeSessionId, sessions, focusSession, removeChat, onCloseCurrent]),
   );
 
   // Session switching shortcuts (⌘1-9)

@@ -675,6 +675,184 @@ describe('verification coordinator', () => {
     }
   });
 
+  test('the canonical receipt carries the ci-fast budget kill cause, not a scanned excerpt (station#1827)', async () => {
+    const temp = fixture();
+    const worktree = join(temp.root, 'ci-fast-budget-cause');
+    mkdirSync(worktree);
+    const stable = boundCoordinatorProvenance(worktree, 'ci-fast-budget-cause');
+    const request = createVerificationRequest('ci-fast', stable);
+    // A digest-bound, coherent changed-verification diagnostic is what makes
+    // `reportExecution` take its ORDINARY path for a ci-fast owner: without
+    // it the required attachment is unavailable and reporting throws into the
+    // catch branch, which is the only path that ever surfaced this cause.
+    const diagnosticRoot = join(worktree, '.kontourai/test-impact');
+    mkdirSync(diagnosticRoot, { recursive: true });
+    const diagnostic = {
+      schemaVersion: 1,
+      kind: 'station-test-changed-diagnostics',
+      complete: true,
+      incompleteReasons: [],
+      base: 'origin/main',
+      mergeBase: 'base-sha',
+      changedPathCount: 1,
+      provenance: {
+        repositoryId: stable.repositoryId,
+        headSha: stable.headSha,
+        workspaceDigest: stable.workspaceDigest,
+        environmentDigest: stable.environmentDigest,
+        dependencyDigest: stable.dependencyDigest,
+      },
+      selection: {
+        relatedPathCount: 1,
+        exactTestCount: 0,
+        deferredLanes: [],
+        escalated: false,
+      },
+      counts: {
+        executed: 1,
+        passed: 1,
+        failed: 0,
+        skipped: 0,
+        todo: 0,
+        infrastructureErrors: 0,
+        parserErrors: 0,
+        emptyReports: 0,
+      },
+      executions: [
+        {
+          kind: 'related',
+          exitCode: 0,
+          infrastructureError: false,
+          counts: { executed: 1, passed: 1, failed: 0, skipped: 0, todo: 0 },
+          failedTests: [],
+          failureIdentityCount: 0,
+          omittedFailureIdentities: 0,
+          failureIdentitiesComplete: true,
+        },
+      ],
+    };
+    const diagnosticContents = `${JSON.stringify(diagnostic)}\n`;
+    writeFileSync(
+      join(diagnosticRoot, 'changed-diagnostics.json'),
+      diagnosticContents,
+    );
+    writeFileSync(
+      join(diagnosticRoot, 'changed-verification.json'),
+      `${JSON.stringify({
+        request: { laneId: 'test-changed' },
+        provenance: { before: diagnostic.provenance },
+        artifacts: [
+          {
+            path: '.kontourai/test-impact/changed-diagnostics.json',
+            sha256: createHash('sha256')
+              .update(diagnosticContents)
+              .digest('hex'),
+          },
+        ],
+      })}\n`,
+    );
+    const cause = 'ci:fast exceeded its 12-minute feedback budget';
+    try {
+      const killed = await coordinateVerification({
+        laneId: 'ci-fast',
+        root: temp.root,
+        cwd: worktree,
+        collectProvenance: () => stable,
+        runner: async () => ({
+          status: 80,
+          infrastructureError: true,
+          infrastructureCause: cause,
+          output: {
+            // The decoy: a line a PASSING test prints on purpose, and the
+            // one the scan reported as the cause on PR #1787. Without it in
+            // the capture this test cannot tell "we surfaced the runner's
+            // own cause" from "nothing else was there to pick".
+            stdout: { text: '          Error: observer failed\n' },
+            stderr: {
+              text: `[station-ci-fast-owner-final] ${cause}\n`,
+            },
+          },
+        }),
+      });
+      expect(killed.receipt.terminal.status).toBe('infrastructure_error');
+      expect(killed.receipt.terminal.infrastructureCause).toBe(cause);
+      expect(killed.summary.firstCausalExcerpt).toBe(cause);
+      // station#1827 review item 7: the bounded summary ENVELOPE is a
+      // separate allow-list from the summarizer's own object, and it is what
+      // the CI annotation and the printed verdict read. A field the reporter
+      // computes but the envelope drops reaches no reader -- the exact way
+      // `causeStream` was lost once already.
+      expect(killed.summary.infrastructureCause).toBe(cause);
+      expect(killed.summary.causeStream).toBeUndefined();
+
+      // station#1827: the envelope is where the marker and the excerpt were
+      // derived through DIFFERENT transforms, and on this class they
+      // disagreed -- the round-4 envelope rendered nine extra bytes ending in
+      // a truncated `[REDACTED` where the receipt held none, so the page
+      // showed a redaction the record did not have.
+      //
+      // This is the test that reaches the envelope: `coordinateVerification`
+      // publishes, so `cycling.summary` IS `boundedSummaryEnvelope`'s output
+      // rather than the summarizer's.
+      //
+      // The cause is deliberately an ARM-TWO value (round-7 review): a short
+      // unquoted JSON value, well under the cap, so no bound is involved at
+      // all. `normalizeDeclaredCause` accepts it while the redactor still
+      // wants to append a bracket, which means re-deriving it MOVES it --
+      // `{"apiKey":[REDACTED]}` on the receipt becoming
+      // `{"apiKey":[REDACTED]]}` on the page. The previous fixture here was an
+      // at-cap value that exits by arm one, where every re-derivation is
+      // identity, so it could not reach the class it was written for.
+      // `force` because the request key is unchanged.
+      const cycling = await coordinateVerification({
+        laneId: 'ci-fast',
+        root: temp.root,
+        cwd: worktree,
+        force: true,
+        collectProvenance: () => stable,
+        runner: async () => ({
+          status: 80,
+          infrastructureError: true,
+          infrastructureCause: 'ci:fast stopped: {"apiKey":123}',
+          output: {
+            stdout: { text: '          Error: observer failed\n' },
+            stderr: { text: '' },
+          },
+        }),
+      });
+      const persisted = cycling.receipt.terminal.infrastructureCause;
+      // The fixture is only discriminating if it really is in that class: the
+      // secret is gone, and the value is one a second derivation would move.
+      expect(persisted).toBe('ci:fast stopped: {"apiKey":[REDACTED]}');
+      expect(persisted).not.toContain('123');
+      expect(cycling.summary.infrastructureCause).toBe(persisted);
+      expect(cycling.summary.firstCausalExcerpt).toBe(persisted);
+      // The THIRD field carrying the same string, and the one the page
+      // actually shows: `causalExcerptsOf` prefers this list over the single
+      // field, so the fenced block and every error annotation render its head
+      // (round-8 review, H1). Two fields agreeing while the rendered one does
+      // not is the defect wearing a disguise.
+      expect(cycling.summary.causalExcerpts[0]).toBe(persisted);
+      // The published bytes, not only the returned object: the canonical
+      // receipt is what a later reader opens, and it carried no cause at all.
+      const canonical = JSON.parse(
+        readFileSync(
+          join(
+            worktree,
+            '.kontourai',
+            'verification-receipts',
+            `${request.key}.canonical.json`,
+          ),
+          'utf8',
+        ),
+      );
+      expect(canonical.terminal.infrastructureCause).toBe(cause);
+      expect(canonical.terminal.reconcileNote).toBeUndefined();
+    } finally {
+      temp.remove();
+    }
+  });
+
   test('holds the artifact mutation fence until an owned writer settles', async () => {
     const temp = fixture();
     const worktree = join(temp.root, 'writer-worktree');

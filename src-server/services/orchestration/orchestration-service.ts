@@ -199,6 +199,7 @@ import {
 import {
   ConversationLineage,
   canResolveConversationContinuation,
+  isConversationContinuationControlEligible,
 } from './conversation-lineage.js';
 import {
   type ConversationOpenResolver,
@@ -1772,6 +1773,9 @@ export class OrchestrationService {
           // does not become writable merely because the selected Agent has a
           // provider today.
           canContinue: canResolveConversationContinuation(detail),
+          continuationPending:
+            detail.session.hasActiveTurn === true &&
+            isConversationContinuationControlEligible(detail),
         };
       },
       reportUnavailable: (error) =>
@@ -3248,6 +3252,7 @@ export class OrchestrationService {
     sessionId: string;
     startRequired: boolean;
     resumeCursor?: unknown;
+    resumeModel?: string;
     transcriptSeed?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
   }> {
@@ -3962,7 +3967,7 @@ export class OrchestrationService {
         },
       },
       launchPolicy: {
-        assertStartAllowed: (input, context, internal) => {
+        assertStartAllowed: async (input, context, internal) => {
           if (
             this.options.requireTenantExecutionContext?.() &&
             !context.tenantExecutionContext
@@ -3983,12 +3988,15 @@ export class OrchestrationService {
               throw new Error(
                 'Room execution binding is unavailable in hosted mode.',
               );
-            const bound = this.options.eventStore?.bindProjectTaskRoomExecution(
-              {
+            const bound =
+              await this.options.eventStore?.bindProjectTaskRoomExecution({
                 ...internal.roomExecutionBinding,
                 sessionId: input.threadId,
-              },
-            );
+              });
+            if (this.options.requireTenantExecutionContext?.())
+              throw new Error(
+                'Room execution binding is unavailable in hosted mode.',
+              );
             if (bound?.kind !== 'bound')
               throw new Error(
                 'Room execution binding is unavailable; the provider was not started.',
@@ -4259,16 +4267,18 @@ export class OrchestrationService {
    * route handling a client-supplied command body.
    */
   /** Server-only Task reservation admission, before any assignment/provider effect. */
-  claimTaskDispatchBoundary(input: {
+  async claimTaskDispatchBoundary(input: {
     projectId: string;
     taskId: string;
     sessionId: string;
-  }): ReturnType<SessionTurnBoundaryAuthority['claimTaskDispatch']> {
+  }): Promise<ReturnType<SessionTurnBoundaryAuthority['claimTaskDispatch']>> {
     if (
       this.options.requireTenantExecutionContext?.() ||
-      this.options.eventStore?.bindProjectTaskRoomExecution(input).kind !==
-        'bound'
+      (await this.options.eventStore?.bindProjectTaskRoomExecution(input))
+        ?.kind !== 'bound'
     )
+      return { kind: 'unavailable' };
+    if (this.options.requireTenantExecutionContext?.())
       return { kind: 'unavailable' };
     return this.sessionStartBoundaries.claimTaskDispatch(
       input.sessionId,

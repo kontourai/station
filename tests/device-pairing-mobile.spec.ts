@@ -343,7 +343,7 @@ async function expectPhoneDeclined(page: Page): Promise<void> {
  */
 async function expectPhoneCanRequestAgain(page: Page): Promise<void> {
   await expect(
-    page.getByRole('dialog').getByRole('button', { name: 'Request access' }),
+    page.getByRole('dialog').getByRole('button', { name: 'Try again' }),
   ).toBeVisible();
 }
 
@@ -456,7 +456,7 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
   const pairingRequestResponse = phone.waitForResponse((response) =>
     new URL(response.url()).pathname.endsWith('/pairing/access-request'),
   );
-  await phone.getByRole('button', { name: 'Request access' }).click();
+  await phone.getByRole('button', { name: 'Try again' }).click();
   const pairingRequest = (await (await pairingRequestResponse).json()) as {
     offerId: string;
     proof: string;
@@ -563,4 +563,47 @@ test('pairs once, survives a phone browser restart, and revokes independently', 
   ).toHaveCount(0);
   await hostContext.close();
   await phoneContext.close();
+});
+
+test('unpaired mobile tour displays every step and returns to connection setup', async ({
+  browser,
+  baseURL,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    storageState: { cookies: [], origins: [] },
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto(baseURL!);
+    await page.getByRole('button', { name: 'See how Station works' }).click();
+    const sample = page.getByTestId('unpaired-sample-workspace');
+    await expect(sample).toBeVisible();
+    for (let step = 1; step <= 4; step++) {
+      const coachmark = page.getByTestId('first-run-coachmark');
+      await expect(coachmark).toContainText(`Step ${step} of 4`);
+      await expect(
+        sample.locator('[data-first-run-anchor]').first(),
+      ).toBeVisible();
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await coachmark
+        .getByRole('button', {
+          name: step === 4 ? 'Done' : 'Next',
+          exact: true,
+        })
+        .click();
+    }
+    await expect(page.getByTestId('first-run-coachmark')).toHaveCount(0);
+    await page
+      .getByRole('button', { name: 'Connect your Station', exact: true })
+      .first()
+      .click();
+    await expect(sample).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
 });

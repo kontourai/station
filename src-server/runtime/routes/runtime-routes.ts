@@ -41,6 +41,7 @@ import {
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
   PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
@@ -4622,6 +4623,54 @@ export function configureDevicePairingPublicRoutes(
       return c.json({ error: 'local_grant_forbidden' }, 403);
     }
     return c.json({ ready: true });
+  });
+  app.post(PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH, async (c) => {
+    if (
+      !localGrantSecret ||
+      !isDirectLoopbackCaller(c) ||
+      c.req.header('forwarded') ||
+      c.req.header('x-forwarded-for') ||
+      c.req.header('x-forwarded-host')
+    )
+      return c.json({ error: 'local_grant_forbidden' }, 403);
+    if (new URL(c.req.url).search)
+      return c.json({ error: 'invalid_request' }, 400);
+    const body = await readPairingJson(c.req.raw, ['secret', 'action']);
+    if (
+      !body ||
+      typeof body.secret !== 'string' ||
+      !['list', 'approve', 'deny'].includes(String(body.action)) ||
+      (body.action !== 'list' &&
+        (typeof body.requestId !== 'string' || body.requestId.length > 128)) ||
+      (body.action === 'list' && body.requestId !== undefined)
+    )
+      return c.json({ error: 'invalid_request' }, 400);
+    if (!timingSafeSecretEqual(body.secret, localGrantSecret))
+      return c.json({ error: 'local_grant_forbidden' }, 403);
+    try {
+      if (body.action === 'list')
+        return c.json({ requests: pairing.listRequests() });
+      const requestId = body.requestId as string;
+      const result =
+        body.action === 'approve'
+          ? pairing.confirmRequest(requestId, { kind: 'local-grant' })
+          : pairing.denyRequest(requestId);
+      options.audit?.({
+        event:
+          body.action === 'approve'
+            ? 'station.pairing.approved'
+            : 'station.pairing.refused',
+        approver: 'local-grant',
+        source: result.source,
+        timestamp: Date.now(),
+      });
+      return c.json(result);
+    } catch (error) {
+      return c.json(
+        { error: pairingErrorCode(error) },
+        pairingErrorStatus(error),
+      );
+    }
   });
   app.post(PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH, async (c) => {
     if (new URL(c.req.url).search) {

@@ -7,7 +7,7 @@ const SEED_STORAGE = `
     window.sessionStorage.setItem('station:e2e-onboarding-test-initialized', '1');
   }
   window.localStorage.setItem('station-connect-connections', JSON.stringify([
-    { id: 'c1', name: 'Dev Server', url: 'http://localhost:3242', lastConnected: ${Date.now()} }
+    { id: 'c1', name: 'Dev Server', url: window.location.origin, lastConnected: ${Date.now()} }
   ]));
   window.localStorage.setItem('station-connect-connections-active', 'c1');
 `;

@@ -1010,6 +1010,8 @@ export type ConversationOpenResolution =
       };
       /** Computed from the current Session control/lifecycle facts. */
       canContinue: boolean;
+      /** Continuation is temporarily blocked only by the current active turn. */
+      continuationPending?: boolean;
       answerability: RequestAnswerability;
       recoveryActions: readonly [];
     }

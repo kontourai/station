@@ -2280,12 +2280,43 @@ export class EventStore {
     return row ? { ...row } : undefined;
   }
 
-  bindProjectTaskRoomExecution(input: {
+  async bindProjectTaskRoomExecution(input: {
     projectId: string;
     taskId: string;
     sessionId: string;
-  }): { kind: 'bound' | 'conflict' | 'unavailable' } {
-    return bindProjectTaskRoomExecution(this.db, input);
+  }): Promise<{ kind: 'bound' | 'conflict' | 'unavailable' }> {
+    const deadline = performance.now() + SQLITE_BUSY_TIMEOUT_MS;
+    let backoff = 2;
+    for (;;) {
+      let result: ReturnType<typeof bindProjectTaskRoomExecution>;
+      let priorTimeout = SQLITE_BUSY_TIMEOUT_MS;
+      try {
+        const prior = this.db.prepare('PRAGMA busy_timeout').get() as {
+          timeout?: number;
+        };
+        if (Number.isSafeInteger(prior.timeout) && prior.timeout! >= 0)
+          priorTimeout = prior.timeout!;
+        // Room workers hold their write transaction while the main thread
+        // revalidates authorization. A synchronous SQLite wait here prevents
+        // that authorization from running. Retry only lock contention, with
+        // the same total budget, and yield so the worker can finish.
+        this.db.exec('PRAGMA busy_timeout = 0');
+        result = bindProjectTaskRoomExecution(this.db, input);
+      } catch {
+        return { kind: 'unavailable' };
+      } finally {
+        try {
+          this.db.exec(`PRAGMA busy_timeout = ${priorTimeout}`);
+        } catch {}
+      }
+      if (result.kind !== 'busy') return { kind: result.kind };
+      const remaining = deadline - performance.now();
+      if (remaining <= 0) return { kind: 'unavailable' };
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, Math.min(backoff, remaining)),
+      );
+      backoff = Math.min(backoff * 2, 64);
+    }
   }
 
   /** Private working-state worker over this exact orchestration SQLite file. */

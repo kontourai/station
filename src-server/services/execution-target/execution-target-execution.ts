@@ -292,6 +292,8 @@ export interface ExecutionTargetExecutionDependencies
     startRequired: boolean;
     /** Server-owned cursor copied only from the predecessor Session. */
     resumeCursor?: unknown;
+    /** Concrete model observed on the same-engine predecessor. */
+    resumeModel?: string;
     /** Bounded provider-neutral transcript fallback when no cursor exists. */
     transcriptSeed?: string;
     /** Explicit one-shot context policy, never inferred from a restart. */
@@ -538,6 +540,21 @@ export async function executeForegroundMessage(
         )
       : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
+  const resumeModel =
+    continuation && 'resumeModel' in continuation
+      ? continuation.resumeModel
+      : undefined;
+  // A resumed conversation must not silently adopt a newly resolved Agent
+  // default. Caller overrides still win; Station-resolved model connections
+  // and adapters without resume overrides keep their existing authority path.
+  const inheritResumeModel =
+    continuation?.resumeCursor !== undefined &&
+    resumeModel &&
+    !input.target.model?.override?.trim() &&
+    resolved.modelLaunchPlan.kind === 'engine-selected' &&
+    deps.getProviderAdapter(resolved.provider)?.metadata.modelLaunch
+      ?.overrideAtResume === true;
+  const startModelId = inheritResumeModel ? resumeModel : resolved.modelId;
   const conversationProjectSlug =
     binding?.projectSlug ??
     (resolved.workspace?.kind === 'project'
@@ -604,7 +621,7 @@ export async function executeForegroundMessage(
         ...(conversationWorkspaceIsolation
           ? { workspaceIsolation: conversationWorkspaceIsolation }
           : {}),
-        ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
+        ...(startModelId ? { modelId: startModelId } : {}),
         ...(continuation?.resumeCursor !== undefined
           ? { resumeCursor: continuation.resumeCursor }
           : {}),

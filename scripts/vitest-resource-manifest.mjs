@@ -712,6 +712,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // `@playwright/test` to measure real cascade-resolved layout (sibling
   // toolbar control x-offsets across connection states).
   'src-ui/src/__tests__/HeaderActions.connection-reflow.test.tsx',
+  'src-ui/src/__tests__/chatFeedback.geometry.test.tsx',
+  'src-ui/src/__tests__/ImportedConversationPane.test.tsx',
   // station#4474 H1 (review round): same shape again — launches a real
   // Chromium via `@playwright/test` to measure real cascade-resolved
   // layout (a marker's y-offset across the isFetching flip).

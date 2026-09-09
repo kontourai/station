@@ -151,6 +151,7 @@ export class ConversationLineage {
     sessionId: string;
     startRequired: boolean;
     resumeCursor?: unknown;
+    resumeModel?: string;
     transcriptSeed?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
   }> {
@@ -936,7 +937,7 @@ function continuationLaunchContext(
   requested: { provider: EngineId; connectionId?: string },
   messages: readonly ConversationMessage[],
   resumeSupported?: boolean,
-): { resumeCursor?: unknown; transcriptSeed?: string } {
+): { resumeCursor?: unknown; resumeModel?: string; transcriptSeed?: string } {
   const sourceConnectionId = [...detail.events].reverse().flatMap((event) => {
     if (
       event.method !== 'session.started' &&
@@ -981,7 +982,14 @@ function continuationLaunchContext(
     cursorBackedByTranscript &&
     !cursorDisprovenByEngine &&
     resumeSupported !== false
-    ? { resumeCursor: detail.session.resumeCursor }
+    ? {
+        resumeCursor: detail.session.resumeCursor,
+        ...((detail.session.reportedModel ?? detail.session.model)
+          ? {
+              resumeModel: detail.session.reportedModel ?? detail.session.model,
+            }
+          : {}),
+      }
     : { transcriptSeed: continuationTranscriptSeed(messages) };
 }
 

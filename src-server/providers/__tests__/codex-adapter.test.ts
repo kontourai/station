@@ -4224,3 +4224,52 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
     await adapter.stopAll();
   });
 });
+
+test('external adoption forks the native thread and records its distinct child before returning', async () => {
+  const process = new FakeCodexProcess();
+  const getAppHomeEnv = vi.fn(async () => ({ CODEX_HOME: '/wrong-profile' }));
+  const adapter = new CodexAdapter({
+    processFactory: () => process,
+    getAppHomeEnv,
+  });
+  const onProviderChildCreated = vi.fn();
+  const pending = adapter.adoptSession(
+    {
+      provider: 'codex',
+      threadId: 'adopted-thread',
+      sourceSessionId: 'source-thread',
+      sourceKind: 'codex-rollout',
+      cwd: '/fixture/project',
+    },
+    { onProviderChildCreated },
+  );
+  await flushIo();
+  process.stdout.write(`${JSON.stringify({ id: '1', result: {} })}\n`);
+  await flushIo();
+  const call = process.stdin.lines
+    .map(parseLine)
+    .find((line) => line.method === 'thread/fork');
+  expect(call.params).toMatchObject({
+    threadId: 'source-thread',
+    cwd: '/fixture/project',
+    ephemeral: false,
+  });
+  expect(getAppHomeEnv).not.toHaveBeenCalled();
+  process.stdout.write(
+    `${JSON.stringify({ id: '2', result: { thread: { id: 'forked-thread' }, model: 'gpt-test' } })}\n`,
+  );
+  expect(await pending).toMatchObject({
+    resumeCursor: { codexThreadId: 'forked-thread' },
+  });
+  expect(onProviderChildCreated).toHaveBeenCalledWith({
+    codexThreadId: 'forked-thread',
+  });
+  const cleanup = adapter.discardSession('adopted-thread');
+  await flushIo();
+  expect(process.stdin.lines.map(parseLine).at(-1)).toMatchObject({
+    method: 'thread/archive',
+    params: { threadId: 'forked-thread' },
+  });
+  process.stdout.write(`${JSON.stringify({ id: '3', result: {} })}\n`);
+  await cleanup;
+});

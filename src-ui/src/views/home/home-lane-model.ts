@@ -154,6 +154,7 @@ export interface LaneInputs<T extends HomeWorkItem = HomeLaneItem> {
 
 export interface LanePartition<T extends HomeWorkItem = HomeLaneItem> {
   active: T[];
+  external?: T[];
   recentlyFinished: T[];
   snoozed: T[];
   settled: T[];
@@ -166,6 +167,7 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
   terminalSince,
 }: LaneInputs<T>): LanePartition<T> {
   const active: T[] = [];
+  const external: T[] = [];
   const recentlyFinished: T[] = [];
   const snoozed: T[] = [];
   const settled: T[] = [];
@@ -181,6 +183,10 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
     const wakeAt = snoozedUntil.get(item.id);
     if (wakeAt !== undefined && wakeAt > now) {
       snoozed.push(item);
+      continue;
+    }
+    if (item.controlMode === 'read-only-attached') {
+      external.push(item);
       continue;
     }
     if (isTerminalLifecycle(item.lifecycleLabel)) {
@@ -214,7 +220,13 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
     active.push(item);
   }
 
-  return { active, recentlyFinished, snoozed, settled };
+  return {
+    active,
+    recentlyFinished,
+    snoozed,
+    settled,
+    ...(external.length ? { external } : {}),
+  };
 }
 
 /**

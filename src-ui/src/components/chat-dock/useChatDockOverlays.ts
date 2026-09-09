@@ -13,6 +13,7 @@ import {
   type DeviceSettingsActions,
   useDeviceSettings,
 } from '../../contexts/DeviceSettingsContext';
+import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useExitTransition } from '../../hooks/useExitTransition';
 import type { ActiveWorkPanel } from './ActiveWorkContextFrame';
 import { CHAT_DOCK_INBOX_EXIT_MS } from './chat-dock-utils';
@@ -40,10 +41,29 @@ export function useChatDockOverlays({
   setDeviceSetting: DeviceSettingsActions['setDeviceSetting'];
   setShowNewChatModalState: (open: boolean) => void;
 }) {
+  const [importedSessionId, setImportedSessionId] = useState<string | null>(
+    null,
+  );
+  const regionModel = useRegionModelOptional();
+  const incoming = regionModel?.surfaceIntents.chat;
+  const consumeIntent = regionModel?.consumeSurfaceIntent;
+  useEffect(() => {
+    if (!incoming?.session) return;
+    setImportedSessionId(incoming.session);
+    consumeIntent?.('chat', incoming.token);
+  }, [incoming, consumeIntent]);
+  // An imported conversation occupies the same reading surface as an owned chat.
+  const onOpenInboxSession = useCallback(
+    (threadId: string) => setImportedSessionId(threadId),
+    [],
+  );
   const [newChatRequestEpoch, setNewChatRequestEpoch] = useState(0);
   const setShowNewChatModal = useCallback(
     (open: boolean) => {
-      if (open) setNewChatRequestEpoch((epoch) => epoch + 1);
+      if (open) {
+        setImportedSessionId(null);
+        setNewChatRequestEpoch((epoch) => epoch + 1);
+      }
       setShowNewChatModalState(open);
     },
     [setShowNewChatModalState],
@@ -127,6 +147,9 @@ export function useChatDockOverlays({
   const closeHistory = useCallback(() => setIsHistoryOpen(false), []);
 
   return {
+    importedSessionId,
+    setImportedSessionId,
+    onOpenInboxSession,
     newChatRequestEpoch,
     setShowNewChatModal,
     isHistoryOpen,

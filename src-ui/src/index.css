@@ -3465,6 +3465,14 @@ button:hover {
   white-space: nowrap;
 }
 
+.chat-dock__active-identity-origin {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 auto;
+  min-width: min(165px, 35%);
+}
+
 /* #1552 D3: quiet until the row is engaged.
  *
  * `opacity: 0` + `pointer-events: none`, NOT `display: none` or `visibility:
@@ -9507,4 +9515,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      `.session-history-controls__more`'s own override of the same base. */
   padding: 6px 12px;
   font-size: var(--text-sm);
+}
+
+.elapsed-wait {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-inline-start: 8px;
 }

@@ -55,7 +55,7 @@ describe('LocalUiSessionGate (station#2093)', () => {
     renderGate(<ProtectedDataProbe onMount={protectedMount} />);
 
     await screen.findByRole('heading', {
-      name: 'Connect to your Station host',
+      name: 'Connect to Station',
     });
     expect(
       screen.getByRole('button', { name: 'Pair with a code' }),
@@ -122,7 +122,7 @@ describe('LocalUiSessionGate (station#2093)', () => {
     expect(screen.getByRole('alert').textContent).toMatch(
       /host process is down or recovering/i,
     );
-    expect(screen.queryByText('Connect to your Station host')).toBeNull();
+    expect(screen.queryByText('Connect to Station')).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Pair with a code' }),
     ).toBeNull();
