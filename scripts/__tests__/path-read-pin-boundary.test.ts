@@ -30,7 +30,7 @@
  *    naming a target that never ran, or into a red gate. Both are asserted
  *    below against `packages/cli/src/cli.ts`, the path where it happened.
  *
- * WHAT THIS GATE DOES NOT COVER. The scan is a partial derivation: 143 test
+ * WHAT THIS GATE DOES NOT COVER. The scan is a partial derivation: 144 test
  * files read by path with a module anchor and it reports 80. Both figures are
  * derived and asserted below, so the fraction cannot go stale in prose. A pin
  * reached through a helper parameter (`const read = (p) =>
@@ -81,7 +81,7 @@ const derived = pathReadPinEdges({ root: ROOT });
  * reds. `PATH_READING_SUITES` counts suites the scanner could in principle
  * resolve a pin in; `REPORTED_SUITES` counts the ones it does.
  */
-const PATH_READING_SUITES = 143;
+const PATH_READING_SUITES = 144;
 const REPORTED_SUITES = 80;
 
 /** The two Playwright pins: seen and existence-checked, never scheduled. */
