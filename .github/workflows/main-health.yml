@@ -17,10 +17,17 @@ on:
     types: [completed]
 
 permissions:
+  # `actions: read` is what listJobsForWorkflowRun needs. Both jobs call it —
+  # close-after-success to refuse a skip-bearing green, report-failure to name
+  # the failing step — and until now it worked only because this repository is
+  # public. An undeclared permission that happens to work is a dependency on
+  # something nobody wrote down; it would start failing the day the repository
+  # went private, in a workflow whose whole job is noticing failure.
+  actions: read
   # `contents: read` buys exactly one thing: checking out the default branch
   # so report-failure can call scripts/main-health-comment-policy.mjs. It is
-  # workflow-level, so close-after-success inherits a read grant it never
-  # uses. No write scope beyond issues is granted.
+  # workflow-level, so close-after-success inherits two read grants it does
+  # not use. No write scope beyond issues is granted.
   contents: read
   issues: write
 
@@ -31,7 +38,13 @@ jobs:
     concurrency:
       group: main-health-${{ github.event.workflow_run.name }}
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    # 5, not the 2 this job used to take: the budget now also covers an
+    # actions/checkout of the monorepo, the paginated jobs lookup, and the
+    # tracker's own comment history, on top of the issue scan it always ran.
+    # A longer bound only delays a genuinely hung run; the tracker is created,
+    # reopened and labelled before any of that work, so a timeout partway
+    # through leaves the tracker correct and costs one comment.
+    timeout-minutes: 5
     steps:
       # The comment policy is a module, not inline script, so its five cases
       # are unit-testable without a workflow_run event

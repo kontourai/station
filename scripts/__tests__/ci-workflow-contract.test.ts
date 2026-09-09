@@ -289,9 +289,15 @@ describe('CI verification workflow contracts', () => {
     // scope added to this privileged workflow_run handler is a visible edit
     // here and not a silently passing absence check.
     expect(parsedMainHealth?.permissions).toEqual({
+      actions: 'read',
       contents: 'read',
       issues: 'write',
     });
+    // Only report-failure grew: it checks out and reads the tracker's comment
+    // history. close-after-success does the same work it always did, so the
+    // asymmetry is deliberate and pinned as such.
+    expect(failureJob).toContain('timeout-minutes: 5');
+    expect(successJob).toContain('timeout-minutes: 2');
     expect(failureJob).toContain(
       "github.event.workflow_run.conclusion == 'failure'",
     );
