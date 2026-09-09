@@ -13,6 +13,34 @@ recovery and its evidence boundary live in [Recover a desktop
 start](../user/native-recovery.md) and [Native shell
 verification](native-shell-verification.md).
 
+## Desktop companion lifecycle
+
+When the desktop attaches to its verified local service, it records its current
+executable and process birth identity in an owner-only
+`runtime/desktop-companion.json` file in that service's home. The service's
+existing supervisor checks that registration after proving its own backend is
+still alive. It restores a missing tray with `--tray-only`, using that exact
+executable, Station root, and runtime home. It does not scan installed apps,
+select another channel, or create a second backend. Startup retries back off
+from 30 seconds to five minutes; a tray failure does not tear down the service.
+
+Background launches leave the main window hidden. A normal app launch or an
+explicit window action still reveals it through the existing startup-readiness
+authority. Closing the main window keeps the tray alive. Explicitly choosing
+Quit pauses automatic tray restoration for the current service run; opening
+the app or restarting the service enables it again. After logout, the next
+service run can therefore restore the tray. Station does not fight a deliberate
+quit. The separately installed service
+continues running, as before.
+
+A service with no desktop registration stays headless. Linux restoration requires the service’s graphical-session environment
+(`DISPLAY` or `WAYLAND_DISPLAY`). A headless/lingering service without those
+values does not launch GUI processes. Stopping the service stops its
+companion supervision, but does not close a desktop app the user may be using.
+Native process birth and the private registration must be verifiable before
+restoration: a reused PID is not treated as the original tray, while ambiguous
+liveness does not justify launching a duplicate.
+
 ## Health states
 
 | State | Meaning | Poll cadence | Actions |
@@ -23,7 +51,10 @@ verification](native-shell-verification.md).
 | Unhealthy | A timeout, DNS/error, partial response, non-200 response, or identity mismatch occurred | 10 seconds | Start, Stop, Open Station UI |
 
 The tray reads `/api/system/identity` on the manifest server port and
-`/__station/identity` on the manifest UI port. It intentionally gives a
+`/__station/identity` on the manifest UI port. If API identity requires
+authentication, it uses the existing owner-only local-grant startup proof,
+binding the API to the selected home, environment, instance, and UI boot. A
+401/403 alone never establishes health, and this proof mints no credential. It intentionally gives a
 conservative health display: it verifies the instance ID but does not replace
 the CLI's full SHA/boot-ID health proof. Use `station service status --json` as
 the authoritative diagnosis.

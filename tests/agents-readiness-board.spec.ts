@@ -213,6 +213,52 @@ test.describe('Agents readiness board at 390x844', () => {
     await waitForAgentRemoved(authenticatedRequest, BROKEN_SLUG);
   });
 
+  test('the last agent action remains reachable above an open empty chat dock', async ({
+    page,
+  }) => {
+    await page.goto('/agents?dock=open');
+    await waitForAgentsRail(page);
+    const dock = page.locator('#chat-dock');
+    await expect(dock).toBeVisible();
+    const expanded = await dock.boundingBox();
+    expect(expanded!.height).toBeGreaterThan(200);
+    const action = agentRowAction(page, BROKEN_NAME).first();
+    // Exercise the reader's scroll path, rather than CDP's nearest-edge
+    // alignment, which can leave a fractional border at the clipping edge.
+    const list = await page.locator('.split-pane__list').first().boundingBox();
+    await page.mouse.move(
+      list!.x + list!.width / 2,
+      list!.y + list!.height / 2,
+    );
+    await page.mouse.wheel(0, 2000);
+    await expect
+      .poll(async () => {
+        const row = await action.boundingBox();
+        const dock = await page.locator('#chat-dock').boundingBox();
+        return row!.y + row!.height <= dock!.y;
+      })
+      .toBe(true);
+    const box = await action.boundingBox();
+    const dockBox = await dock.boundingBox();
+    expect(box!.y + box!.height).toBeLessThanOrEqual(dockBox!.y);
+    expect(
+      await action.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          box.x + box.width / 2,
+          box.y + box.height / 2,
+        );
+        return hit === element || element.contains(hit);
+      }),
+    ).toBe(true);
+    await page
+      .getByRole('button', { name: 'Collapse chat', exact: true })
+      .click();
+    await expect
+      .poll(async () => (await dock.boundingBox())!.height)
+      .toBeLessThan(expanded!.height / 2);
+  });
+
   test('both bands, the one fixing verb, and a 44px action survive the phone', async ({
     page,
     authenticatedRequest,

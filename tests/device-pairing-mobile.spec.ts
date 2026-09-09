@@ -556,3 +556,58 @@ test('unpaired mobile tour displays every step and returns to connection setup',
     await context.close();
   }
 });
+
+for (const width of [320, 1280]) {
+  test(`production app entry has an honest setup fallback at ${width}px`, async ({
+    browser,
+    baseURL,
+  }, testInfo) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      storageState: { cookies: [], origins: [] },
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(baseURL!);
+      const local = page.getByRole('region', { name: 'Current Station' });
+      await expect(local).toBeVisible();
+      await expect(local.getByRole('combobox')).toHaveCount(0);
+      await expect(local).not.toContainText('Installed app');
+      await expect(local).not.toContainText('Nightly');
+      const open = local.getByRole('link', {
+        name: 'Connect with Station',
+        exact: true,
+      });
+      await expect(open).toHaveAttribute(
+        'href',
+        'station-stable://open-browser',
+      );
+      await expect(
+        local.getByRole('link', { name: 'Get Station' }),
+      ).toHaveAttribute('href', 'https://station.kontourai.io/#start');
+      expect((await open.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      const installHelp = await local
+        .getByText("Don't have the app?")
+        .boundingBox();
+      const requestButton = await local
+        .getByRole('button', { name: 'Request access' })
+        .boundingBox();
+      expect(
+        requestButton!.y - (installHelp!.y + installHelp!.height),
+      ).toBeGreaterThanOrEqual(16);
+      await page.screenshot({
+        path: testInfo.outputPath(`connect-production-${width}.png`),
+        fullPage: true,
+      });
+      await local.getByRole('button', { name: 'Request access' }).click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+    } finally {
+      await context.close();
+    }
+  });
+}
