@@ -9,6 +9,7 @@ import {
   type TurnProvenanceUsage,
 } from '@kontourai/station-contracts/turn-provenance';
 import {
+  cacheInclusivePromptTokens,
   cacheInclusiveTotalTokens,
   providerPromptCacheInclusivity,
 } from '@kontourai/station-shared/usage-fold';
@@ -180,6 +181,9 @@ function usageText(
   provider?: string,
 ): string | null {
   const parts: string[] = [];
+  const totalInput = cacheInclusivePromptTokens(provider, usage);
+  if (totalInput !== undefined)
+    parts.push(`${exactTokenCount(totalInput)} total input`);
   if (usage.inputTokens !== undefined) {
     const inputLabel =
       providerPromptCacheInclusivity(provider) === 'disjoint'
@@ -188,7 +192,12 @@ function usageText(
     parts.push(`${exactTokenCount(usage.inputTokens)} ${inputLabel}`);
   }
   if (usage.outputTokens !== undefined) parts.push(`${usage.outputTokens} out`);
-  if (usage.totalTokens !== undefined) {
+  const redundantTotal =
+    totalInput !== undefined &&
+    usage.inputTokens !== undefined &&
+    usage.outputTokens !== undefined &&
+    usage.totalTokens === usage.inputTokens + usage.outputTokens;
+  if (usage.totalTokens !== undefined && !redundantTotal) {
     // archive#4196: for a provider DECLARED 'disjoint', its reported total is
     // input + output and excludes the cache fields named beside it — calling
     // that figure "total" in the same sentence contradicts the collapsed

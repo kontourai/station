@@ -272,15 +272,15 @@ function RecentWorkError({ onViewActivity }: { onViewActivity: () => void }) {
 /**
  * #1536 C2: Home offered three ways to start a chat with no session — the
  * "Start direct chat" action card, this button, and the dock's own "Start a
- * chat". The card and the dock control both stay; this states the fact and
- * points at the card rather than being a third door to the same room.
+ * chat". The card and the dock control both stay; the empty state explains
+ * what will appear without claiming an engine is ready.
  */
 function RecentWorkEmpty() {
   return (
     <Empty
       variant="prominent"
-      label="Ready for your first direct chat"
-      description="Use Start direct chat above, or open a local project to create a durable Task."
+      label="No recent work yet"
+      description="Your chats and project work will appear here."
     />
   );
 }

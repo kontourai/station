@@ -1274,6 +1274,39 @@ interface Screen {
 }
 
 const SCREENS: Screen[] = [
+  {
+    name: 'mobile-activity-compact',
+    title: 'Mobile — Activity controls in a short dock',
+    path: '/?surface=activity',
+    viewport: MOBILE,
+    waitFor: '.sessions-axis-tabs',
+    afterGoto: async (page) => {
+      const tab = page.getByRole('tab', { name: 'By origin', exact: true });
+      await tab.click();
+      await expect(tab).toHaveAttribute('aria-selected', 'true');
+      for (const control of [
+        tab,
+        page.getByRole('button', { name: 'Delegate worker', exact: true }),
+      ]) {
+        await expect(control).toBeVisible();
+        expect(
+          await control.evaluate((node) => {
+            const box = node.getBoundingClientRect();
+            return (
+              box.top >= 0 &&
+              box.bottom <= window.innerHeight &&
+              node.contains(
+                document.elementFromPoint(
+                  box.x + box.width / 2,
+                  box.y + box.height / 2,
+                ),
+              )
+            );
+          }),
+        ).toBe(true);
+      }
+    },
+  },
   ...[320, 390].flatMap((width): Screen[] => [
     {
       name: `mobile-http-consent-${width}`,
@@ -2640,6 +2673,26 @@ test('build gallery — capture key screens', async ({ page }) => {
               undefined,
               { timeout: 20_000 },
             );
+            // Route-only captures must not inherit a drawer opened by an
+            // earlier scenario. Surface stress cases opt in through their URL.
+            const requestedState = new URL(
+              screen.path,
+              'http://gallery.invalid',
+            );
+            if (requestedState.searchParams.get('surface') !== 'activity') {
+              const hideActivity = page.getByRole('button', {
+                name: 'Hide Activity',
+                exact: true,
+              });
+              if (await hideActivity.count()) await hideActivity.click();
+            }
+            if (requestedState.searchParams.get('dock') !== 'open') {
+              const collapseChat = page.getByRole('button', {
+                name: 'Collapse chat',
+                exact: true,
+              });
+              if (await collapseChat.count()) await collapseChat.click();
+            }
             if (screen.waitFor) {
               await page.waitForSelector(screen.waitFor, { timeout: 10_000 });
             }
