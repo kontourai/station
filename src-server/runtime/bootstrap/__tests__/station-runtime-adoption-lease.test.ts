@@ -134,9 +134,37 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
     runtime.nativeEngineAdoptionSettled = new Promise<void>(() => {});
     runtime.nativeEngineAdoptionShutdownBudgetMs = 25;
 
-    await expect(runtime.shutdown()).rejects.toThrow(
-      /Native engine adoption did not settle within 25ms .* lease was retained/s,
-    );
+    // Fake timers so the ONE thing this case cannot observe any other way —
+    // that the bound fires at the value it was given — is settled by advancing
+    // exactly that far, not by out-waiting it. Nothing else on this double's
+    // teardown path depends on a timer firing. Under a real clock a bound
+    // widened by a defect is indistinguishable from a slow host until the
+    // runner's own deadline expires, which reports a timeout rather than the
+    // condition.
+    vi.useFakeTimers();
+    try {
+      let outcome: unknown = 'still waiting on the adoption window';
+      void runtime.shutdown().then(
+        (value: unknown) => {
+          outcome = value ?? 'resolved without reporting the condition';
+        },
+        (error: unknown) => {
+          outcome = error;
+        },
+      );
+      // Exactly the budget. A bound that has been widened leaves `outcome`
+      // untouched and this case names that, rather than expiring on the
+      // runner's deadline with a timeout that says nothing.
+      await vi.advanceTimersByTimeAsync(25);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(outcome).toBeInstanceOf(Error);
+      expect((outcome as Error).message).toMatch(
+        /Native engine adoption did not settle within 25ms .* lease was retained/s,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
     expect(release).not.toHaveBeenCalled();
     expect(log).toEqual([]);
     // The rest of the teardown still ran — an unaccounted writer must not
