@@ -1824,6 +1824,52 @@ describe('Starter clean-install suite routing', () => {
 // Review LOW: pin the loop behavior itself, not just the classifier —
 // advancement, cleanup, fatal termination, and exhaustion diagnostics.
 describe('startWithPortRetry (#1177 review round 1)', () => {
+  test.each(['fresh', 'stale', 'other-port', 'truncated-tail'])(
+    'daemon log evidence: %s',
+    async (kind) => {
+      cleanupRoot = mkdtempSync(join(tmpdir(), 'station-start-log-'));
+      const logPath = join(cleanupRoot, 'station.log');
+      const collision = 'Port 3242 is already in use or unavailable.';
+      writeFileSync(logPath, kind === 'stale' ? collision : 'previous run\n');
+      let attempts = 0;
+      const stopInstance = vi.fn(async () => {});
+      const deps = {
+        label: 'log-evidence',
+        logPath,
+        preferredPorts: { server: 3242, ui: 5274 },
+        maxAttempts: 2,
+        pickServerPort: async (port: number) => port,
+        pickUiPort: async (port: number) => port,
+        startInstance: async () => {
+          attempts += 1;
+          if (attempts === 2) return { code: 0, output: '' };
+          if (kind !== 'stale') {
+            writeFileSync(
+              logPath,
+              `${'x'.repeat(20_000)}\n${kind === 'other-port' ? 'Port 9999 is already in use or unavailable.' : kind === 'truncated-tail' ? `${collision}\n${'x'.repeat(20_000)}` : collision}`,
+              { flag: 'a' },
+            );
+          }
+          return { code: 1, output: 'Station failed to start' };
+        },
+        stopInstance,
+        warn: vi.fn(),
+      };
+      if (kind === 'fresh') {
+        await expect(startWithPortRetry(deps)).resolves.toEqual({
+          serverPort: 3272,
+          uiPort: 5304,
+        });
+        expect(stopInstance).toHaveBeenCalledOnce();
+      } else {
+        await expect(startWithPortRetry(deps)).rejects.toThrow(
+          'not a port collision',
+        );
+        expect(stopInstance).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   function harness(outputs: Array<{ code: number; output: string }>) {
     const calls: Array<{ serverPort: number; uiPort: number }> = [];
     const stops: number[] = [];

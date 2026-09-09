@@ -1,13 +1,16 @@
 import { spawn, spawnSync } from 'node:child_process';
 import {
   chmodSync,
+  closeSync,
   existsSync,
   linkSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -1400,6 +1403,14 @@ export async function startWithPortRetry({
     const serverPort = await pickServerPort(serverBias);
     const uiPort = await pickUiPort(uiBias, serverPort);
 
+    // The daemon writes bind errors to its own log, not necessarily CLI stdout.
+    // Snapshot each attempt so a previous attempt cannot authorize a retry.
+    let priorLog;
+    try {
+      priorLog = statSync(logPath);
+    } catch {
+      // A first start commonly has no log yet.
+    }
     const result = await startInstance(serverPort, uiPort);
     if (result.code === 0) {
       onStarted({
@@ -1412,14 +1423,45 @@ export async function startWithPortRetry({
       return { serverPort, uiPort };
     }
 
-    const failureKind = classifyStartFailure(result.output, serverPort);
+    let output = result.output;
+    let descriptor;
+    try {
+      const current = statSync(logPath);
+      const start =
+        priorLog &&
+        priorLog.ino === current.ino &&
+        priorLog.dev === current.dev &&
+        current.size >= priorLog.size
+          ? priorLog.size
+          : 0;
+      const offset = Math.max(start, current.size - 16_384);
+      const bytes = Buffer.alloc(current.size - offset);
+      descriptor = openSync(logPath, 'r');
+      const count = readSync(descriptor, bytes, 0, bytes.length, offset);
+      const freshLog = bytes.subarray(0, count).toString('utf8');
+      // Only the selected port's explicit bind failure is sufficient here.
+      // Generic daemon errors remain fatal; the CLI classifier owns its other
+      // documented retry signals.
+      if (
+        freshLog.includes(
+          `Port ${serverPort} is already in use or unavailable.`,
+        )
+      ) {
+        output += `\n${freshLog}`;
+      }
+    } catch {
+      // Missing/unreadable daemon evidence cannot authorize a retry.
+    } finally {
+      if (descriptor !== undefined) closeSync(descriptor);
+    }
+    const failureKind = classifyStartFailure(output, serverPort);
     if (failureKind === 'fatal') {
       throw new Error(
         `./station start failed for ${label} (exit ${result.code}) — not a port collision; aborting.` +
           renderE2EStartupFailureTail(result.output, logPath),
       );
     }
-    lastFailure = { kind: failureKind, output: result.output };
+    lastFailure = { kind: failureKind, output };
     warn(
       failureKind === 'port-overlap'
         ? `[e2e] ports ${serverPort}/${uiPort} overlap a live Station instance — ` +
