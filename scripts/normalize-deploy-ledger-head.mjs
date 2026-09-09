@@ -18,7 +18,14 @@ import {
 } from './deploy-ledger.mjs';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
-const GENERATED_LEDGER_SUBJECT =
+/**
+ * The one subject shape every ledger commit-back must use. Exported so the
+ * workflow pins can bind each `--commit-subject` to it: a writer that
+ * drifts from this shape (the cohort's `record finalized …` subjects did,
+ * #1802) produces commits that never peel, and an idle main then rebuilds
+ * the cohort every night.
+ */
+export const GENERATED_LEDGER_SUBJECT =
   /^docs\(ledger\): record (?:nightly-android|nightly-npm|nightly-desktop|stable-desktop|stable-npm) .+ from run [1-9][0-9]*$/;
 const GENERATED_LEDGER_PATHS = new Set([
   DEPLOY_LEDGER_JSON_PATH,
