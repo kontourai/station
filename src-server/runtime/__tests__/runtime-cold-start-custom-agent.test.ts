@@ -619,12 +619,9 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     // it left all 42 related files green, because every lease case sets the
     // field by hand on a prototype double. This assertion is the one that
     // reds for that reversion; the ordering assertion below is a weaker
-    // second look, in one specific way. A teardown SLOWER than its slack
-    // hides the defect, because an unfixed shutdown that has not finished
-    // yet looks exactly like a fixed one that is waiting. (An earlier
-    // revision had that backwards, and also named a second weakness — a
-    // rejection reading as pending — which the three-state flag below
-    // removes.)
+    // second look, in one specific way: a teardown SLOWER than its slack
+    // hides the defect, because an unfixed shutdown that has not finished yet
+    // looks exactly like a fixed one that is waiting.
     const retained = (
       runtime as unknown as { nativeEngineAdoptionSettled?: Promise<unknown> }
     ).nativeEngineAdoptionSettled;
@@ -665,13 +662,13 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     } finally {
       // In a `finally` because everything above can throw, and the cost of
       // landing it only on the straight-line path was executed. The shutdown
-      // started above is already in flight and never settles, which is
-      // sufficient on its own — the teardown's own `shutdown()` call joins
-      // the same promise and adds nothing observable. It burns the whole
-      // budget and emits the PRODUCTION disclosure line into the log a reader
-      // is diagnosing the red from, then skips the loader dispose, leaves the
-      // lease unreleased, and removes a home whose configuration watcher is
-      // still open.
+      // started above is already in flight and settles only when the budget
+      // expires, which is sufficient on its own — `shutdown()` memoizes, so
+      // the teardown's own call joins that same promise and adds nothing
+      // observable. It burns the whole budget and emits the PRODUCTION
+      // disclosure line into the log a reader is diagnosing the red from,
+      // then skips the loader dispose, leaves the lease unreleased, and
+      // removes a home whose configuration watcher is still open.
       landAdoption();
     }
     await shutdown;

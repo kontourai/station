@@ -388,19 +388,30 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
     // authorised. By the time the loop reaches candidate 2 the check before
     // its probe is the only one left.
     //
-    // Hermetic, which three earlier rounds of this comment claimed it could
-    // not be. The detector mirrors the shipped one in the only respect that
-    // matters here — `detectCliOnPath` resolves falsy WITHOUT spawning when
-    // its signal is already aborted — so candidate 2 takes exactly the path a
-    // host with the CLI installed takes. What is injected is the "yes, it is
-    // installed" answer, not the control flow.
+    // Hermetic, which three earlier rounds of the guard's comment claimed it
+    // could not be, on the argument that reaching this window needs a CLI
+    // genuinely installed on the host. It does not: `deps.detect` is injected,
+    // so no host tool can supply the answer whatever is on PATH.
+    //
+    // What the injected detector must do is mirror the shipped one in the one
+    // respect this window turns on — `detectCliOnPath` resolves falsy when its
+    // signal is already aborted — so candidate 2 takes the same path it would
+    // on a host that has the CLI. What is injected is the "yes, it is
+    // installed" answer, not the control flow. An earlier attempt at this case
+    // returned a bare `true` instead, which is why it looked contrived and was
+    // withdrawn.
     const detect = vi.fn(
       async (_cli: string, options?: { signal?: AbortSignal }) =>
         !options?.signal?.aborted,
     );
     // `materializeEngineAgent` is the only caller of `listAgents` on this
     // path, so the abort lands once, inside a real await, after candidate 1's
-    // connection write has begun.
+    // connection write has returned and while its agent materialization is
+    // still running. Deterministic, not tuned to an instant.
+    //
+    // Forwards with the proxy as receiver, like the `never throws when the
+    // registry write fails` proxy below it. Safe because `ConfigLoader` has no
+    // private fields; if that changes, both change together.
     const abortingDuringWrite = new Proxy(loader, {
       get(target, prop, receiver) {
         if (prop === 'listAgents') {
@@ -431,10 +442,17 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
       codex: 'interrupted',
       muse: 'interrupted',
     });
-    // Candidate 1's write completed: the check stops the NEXT candidate, it
-    // does not abandon a write already under way.
+    // Candidate 1's writes completed: the check stops the NEXT candidate, it
+    // does not abandon a write already under way. Both halves are asserted,
+    // because the connection write had already RETURNED when the abort
+    // landed — the write actually under way was the agent materialization,
+    // and asserting only the connection would not have covered the sentence
+    // above it.
     const registry = await loadOrCreateAgentRegistry(loader);
     expect(registry.engineConnections.map((c) => c.id)).toEqual(['claude']);
+    await expect(loader.loadAgent('claude')).resolves.toMatchObject({
+      execution: { agentConnectionId: 'claude' },
+    });
   });
 
   it('reports a probe CANCELLED in flight as interrupted, not absent (#1815)', async () => {

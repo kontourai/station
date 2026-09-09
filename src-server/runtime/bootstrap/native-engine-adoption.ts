@@ -265,13 +265,18 @@ export async function adoptDetectedNativeEngines(
       //
       // What removing it does, measured, in
       // 'elides the next candidate probe when the abort lands during a write':
-      // outcomes identical, no locator child spawned either way, and the
-      // detector invoked twice instead of once. ONE extra call, not one per
-      // remaining candidate — the check below the probe breaks the loop as
-      // soon as that call returns. So the effect is observable and
-      // outcome-neutral, which is the whole of it; three earlier revisions of
-      // this comment characterised that as either nothing or as
-      // load-bearing, and both readings outran the measurement.
+      // outcomes identical, and the detector invoked twice instead of once.
+      // ONE extra call, not one per remaining candidate — the check below the
+      // probe breaks the loop as soon as that call returns. That extra call
+      // spawns nothing, which is a property of `detectCliOnPath` and is
+      // pinned where it lives, in cli-detection's
+      // 'never starts a locator for a caller that has already given up'; the
+      // case named above injects `deps.detect` and so cannot observe it.
+      //
+      // So the effect is observable and outcome-neutral, which is the whole
+      // of it; three earlier revisions of this comment characterised that as
+      // either nothing or as load-bearing, and both readings outran the
+      // measurement.
       if (deps.signal?.aborted) break;
       try {
         const found = await detect(candidate.cli, {
