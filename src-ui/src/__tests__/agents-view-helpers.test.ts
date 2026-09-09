@@ -85,7 +85,7 @@ describe('agents view helpers', () => {
     // band is contiguous — the rail prints a header on every change of
     // `section`, so interleaved rows would print a heading twice.
     expect(items.map((item) => item.section)).toEqual([
-      'Engines on this machine',
+      'AI apps',
       'Your agents',
       'Your agents',
     ]);

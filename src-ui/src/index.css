@@ -8710,7 +8710,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    ════════════════════════════════════════════════════════════════════════ */
 
 .chat-dock__mobile-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(80px, 28%) minmax(0, 1fr);
   align-items: center;
   gap: var(--space-1);
   /* 12px of horizontal padding is a deliberate grab margin: the bar is the
@@ -8919,8 +8920,26 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   text-align: left;
 }
 
+.chat-dock__mobile-leading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
 .chat-dock__mobile-project {
-  flex: 0 1 34%;
+  flex: 1 1 0;
+  min-width: 44px;
+}
+
+.chat-dock__mobile-identity {
+  justify-content: center;
+  min-width: 0;
+  text-align: center;
+}
+
+.chat-dock__mobile-overflow-trigger {
+  justify-self: end;
 }
 
 .chat-dock__mobile-project-lines,
@@ -8932,6 +8951,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   justify-content: center;
   gap: 0;
   min-width: 0;
+}
+
+.chat-dock__mobile-identity .chat-dock__mobile-identity-lines {
+  align-items: center;
 }
 
 .chat-dock__mobile-identity:hover,

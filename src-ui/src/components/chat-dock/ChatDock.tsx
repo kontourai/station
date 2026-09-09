@@ -2588,15 +2588,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             hasImmutableProjectScope && projectSlug
               ? projects.filter((project) => project.slug === projectSlug)
               : projects,
-          // station#4525 Phase 3 / review MED-3: the New Chat modal's own
-          // project step defaults to the dock's shell-owned binding when
-          // one is set (it agrees with what the header badge shows, unlike
-          // the pre-station#4525 route-level "currently viewed project"
-          // default, which the dock's New button is reachable without ever
-          // having visited) — but for a user who has never bound one, this
-          // restores that pre-fix `useActiveProject` fallback rather than
-          // leaving the picker unbound. A fork confirmation always wins
-          // outright. See `resolveNewChatModalDefaultProjectSlug`.
+          // Use the project shown by this dock, including explicit No project.
+          // A fork keeps its own source project.
           activeProjectSlug: resolveNewChatModalDefaultProjectSlug({
             forkProjectSlug: forkSource?.projectSlug,
             hasImmutableProjectScope,
