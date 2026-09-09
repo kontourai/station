@@ -1,10 +1,26 @@
 name: Scheduled dependency advisory floor
 
-# PRs scan changed dependency inputs; this independent daily scan detects newly
+# PRs scan changed dependency inputs; this independent scan detects newly
 # disclosed advisories even when all committed dependency inputs are unchanged.
+#
+# Four slots a day rather than one (tracked on #1753). A registry-side change
+# reds the floor for every dependency-touching PR from the moment it publishes,
+# with no commit to attribute it to: a newly disclosed advisory, or an existing advisory's affected range
+# narrowing until a ledger residual is unused (the policy fails on an unused
+# record by design). On 2026-09-08 four such changes landed after that day's
+# scan had already run green at 12:55Z, and each was found by whichever pull
+# request gated next. The ledger's approaching-expiry warning cannot see
+# either shape — it reads `expires` dates, not what the registry reports.
+#
+# A failing run files and updates one tracker through main-health.yml, which
+# watches this workflow by name and closes the tracker on the next green run.
 on:
   schedule:
-    - cron: '23 8 * * *'
+    # Offset from the hour, which GitHub delays hardest, and kept on the
+    # former daily slot's minute. Every six hours bounds the exposure above
+    # to one interval; delivery of a scheduled run is itself late by hours
+    # under load, so this is a nominal cadence, not a detection deadline.
+    - cron: '23 2,8,14,20 * * *'
   workflow_dispatch:
 
 permissions:
@@ -30,7 +46,7 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: npm run dependencies:ci
-      # This daily run is the reliable place an approaching approval expiry
+      # This scheduled run is the reliable place an approaching approval expiry
       # surfaces: the policy emits a ::warning:: annotation for every
       # exception or residual within 14 days of its `expires` date, so a
       # maintainer sees the reminder in the run summary before the floor

@@ -16,6 +16,7 @@ import {
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
+import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it, vi } from 'vitest';
 import {
   describeFailure,
@@ -42,15 +43,22 @@ import {
   degradableLifecycleCapability,
   evaluateLifecyclePolicy,
   expectedLifecyclePurls,
+  isAllowlistPackagePath,
   platformMatches,
   prepareLifecycleArtifacts,
+  readLifecycleImporters,
   readLifecycleLocks,
   readNodePtyPrebuildManifest,
   stageNodePtyPrebuild,
+  validateAllowlist,
   verifyArtifact,
   verifyNodePtyHandshake,
 } from '../lib/dependency-lifecycle-policy.mjs';
-import { readPnpmWorkspace } from '../lib/pnpm-lockfile.mjs';
+import {
+  readPnpmLockfile,
+  readPnpmLockfileImporters,
+  readPnpmWorkspace,
+} from '../lib/pnpm-lockfile.mjs';
 import {
   classifyDependencySpec,
   findWorkspaceDependencyProblems,
@@ -457,6 +465,235 @@ describe('dependency lifecycle policy', () => {
         '\n',
       ),
     ).toContain(message);
+  });
+
+  // #1718: the inventory records `<importer>/node_modules/<pkg>` for every
+  // pnpm workspace importer, so the allowlist must be able to name exactly
+  // those paths — and nothing outside the lockfile's importer keys.
+  describe('workspace-importer package paths (#1718)', () => {
+    const importers = new Set([
+      'examples/builder-delivery-viewer',
+      'packages/cli',
+    ]);
+    const accepted = [
+      'node_modules/esbuild',
+      'node_modules/@scope/pkg/node_modules/esbuild',
+      'examples/builder-delivery-viewer/node_modules/esbuild',
+      'packages/cli/node_modules/@scope/pkg',
+      'examples/builder-delivery-viewer/node_modules/a/node_modules/b',
+    ];
+    const rejected = [
+      [
+        'importer absent from the lockfile',
+        'examples/other/node_modules/esbuild',
+      ],
+      ['root importer spelled as a prefix', './node_modules/esbuild'],
+      ['parent traversal', '../x'],
+      ['parent traversal under an importer', 'packages/cli/../node_modules/x'],
+      ['absolute path', '/abs'],
+      ['absolute node_modules path', '/node_modules/esbuild'],
+      [
+        'non-importer prefix below an importer',
+        'packages/cli/src/node_modules/x',
+      ],
+      ['bare package name', 'esbuild'],
+      ['empty segment', 'node_modules//esbuild'],
+      ['trailing slash', 'node_modules/esbuild/'],
+      ['scope container without a package', 'node_modules/@scope'],
+      ['backslash separator', 'node_modules\\esbuild'],
+      ['backslash inside a prefix segment', 'packages\\cli/node_modules/x'],
+      [
+        'non-package directory inside a chain',
+        'node_modules/a/foo/node_modules/b',
+      ],
+      ['deep non-importer prefix', 'a/b/c/d/node_modules/x'],
+      ['importer without a package chain', 'packages/cli'],
+      ['trailing whitespace', 'node_modules/esbuild '],
+      ['embedded NUL', 'node_modules/esb\0uild'],
+      [
+        'over the length cap',
+        `node_modules/${'a'.repeat(513 - 'node_modules/'.length)}`,
+      ],
+      ['empty string', ''],
+    ] as const;
+
+    it.each(accepted.map((path) => [path]))('accepts %s', (path) => {
+      expect(isAllowlistPackagePath(path, importers)).toBe(true);
+    });
+
+    it.each(rejected)('rejects %s', (_name, path) => {
+      expect(isAllowlistPackagePath(path, importers)).toBe(false);
+    });
+
+    it('caps path length at exactly 512 characters', () => {
+      const at = `node_modules/${'a'.repeat(512 - 'node_modules/'.length)}`;
+      expect(at).toHaveLength(512);
+      expect(isAllowlistPackagePath(at, importers)).toBe(true);
+      expect(isAllowlistPackagePath(`${at}a`, importers)).toBe(false);
+    });
+
+    it('accepts an importer-prefixed path only when that importer is supplied', () => {
+      const path = 'examples/builder-delivery-viewer/node_modules/esbuild';
+      expect(isAllowlistPackagePath(path, new Set())).toBe(false);
+      expect(isAllowlistPackagePath(path, new Set(['packages/cli']))).toBe(
+        false,
+      );
+      expect(isAllowlistPackagePath(path, new Set(['.']))).toBe(false);
+      expect(isAllowlistPackagePath(path, importers)).toBe(true);
+    });
+
+    it('threads the importer set through validateAllowlist and evaluateLifecyclePolicy', () => {
+      const nested = structuredClone(policy);
+      const esbuild = nested.entries.find(
+        (entry: any) => entry.path === 'node_modules/esbuild',
+      );
+      esbuild.path = 'examples/builder-delivery-viewer/node_modules/esbuild';
+      const withImporters = validateAllowlist(nested, { importers });
+      expect(withImporters.join('\n')).not.toContain('invalid package path');
+      const withoutImporters = validateAllowlist(nested);
+      expect(withoutImporters.join('\n')).toContain(
+        'has an invalid package path: expected node_modules/<package> or <workspace importer>/node_modules/<package>',
+      );
+      // The full evaluation carries the same set into validation; the entry is
+      // then merely stale for this machine's inventory, never malformed.
+      const findings = evaluateLifecyclePolicy({
+        allowlist: nested,
+        nodes,
+        importers,
+      });
+      expect(findings.join('\n')).not.toContain('invalid package path');
+      expect(findings.join('\n')).toContain(
+        'stale allowlist entry: pnpm-lock.yaml:examples/builder-delivery-viewer/node_modules/esbuild',
+      );
+    });
+
+    it('validates the same path set through the published JSON schema', () => {
+      const schema = JSON.parse(
+        readFileSync(
+          resolve(root, 'schemas/dependency-lifecycle-allowlist.schema.json'),
+          'utf8',
+        ),
+      );
+      const validate = new Ajv2020({ allErrors: true, strict: false }).compile(
+        schema,
+      );
+      const template = policy.entries.find(
+        (entry: any) => entry.path === 'node_modules/esbuild',
+      );
+      const withPath = (path: string) => ({
+        schemaVersion: 1,
+        entries: [{ ...template, path }],
+      });
+      for (const path of accepted)
+        expect(validate(withPath(path)), path).toBe(true);
+      // The schema cannot know the lockfile's importers; it enforces the
+      // structural half and the policy validator enforces membership, which
+      // is what separates a non-importer prefix from an importer.
+      const membershipOnly = new Set([
+        'importer absent from the lockfile',
+        'non-importer prefix below an importer',
+        'deep non-importer prefix',
+      ]);
+      for (const [name, path] of rejected) {
+        if (membershipOnly.has(name)) continue;
+        expect(validate(withPath(path)), `${name}: ${path}`).toBe(false);
+      }
+      expect(validate(policy)).toBe(true);
+    });
+
+    it('reads the committed lockfile importers identically with and without the YAML parser', () => {
+      const parsed = new Set(Object.keys(readPnpmLockfile(root).importers));
+      expect(readPnpmLockfileImporters(root)).toEqual(parsed);
+      expect(readLifecycleImporters(root)).toEqual(parsed);
+      expect(parsed.has('examples/builder-delivery-viewer')).toBe(true);
+      expect(parsed.has('.')).toBe(true);
+    });
+
+    it('reads a lockfile the pinned pnpm wrote, including dependency-less importers', () => {
+      // Generated by pnpm 11.25.0 (`install --lockfile-only --offline`) for a
+      // workspace whose root and `packages/empty` have no dependencies:
+      // pnpm writes those inline as `<dir>: {}` and never emits an empty
+      // `dependencies:` section, so a reader keyed on bare `<dir>:` lines
+      // would silently drop them and the agreement check would then reject
+      // the whole repository (#1718 review).
+      const lock = readFileSync(
+        resolve(
+          root,
+          'scripts/__tests__/fixtures/pnpm-lock/workspace-importers.pnpm-lock.yaml',
+        ),
+        'utf8',
+      );
+      expect(lock).toContain('\n  .: {}\n');
+      expect(lock).toContain('\n  packages/empty: {}\n');
+      expect(lock).not.toMatch(/dependencies: \{\}/);
+      const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-importers-'));
+      try {
+        writeFileSync(resolve(fixtureRoot, 'pnpm-lock.yaml'), lock);
+        const expected = new Set(['.', 'examples/viewer', 'packages/empty']);
+        expect(
+          new Set(Object.keys(readPnpmLockfile(fixtureRoot).importers)),
+        ).toEqual(expected);
+        expect(readPnpmLockfileImporters(fixtureRoot)).toEqual(expected);
+        expect(readLifecycleImporters(fixtureRoot)).toEqual(expected);
+      } finally {
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('reads quoted, CRLF, and empty block importer maps without the YAML parser', () => {
+      const read = (text: string) => () => text;
+      expect(
+        readPnpmLockfileImporters(
+          root,
+          read(
+            "lockfileVersion: '9.0'\r\n\r\nimporters:\r\n\r\n  .: {}\r\n\r\n  'examples/@odd':\r\n    dependencies:\r\n      x:\r\n        specifier: 1.0.0\r\n        version: 1.0.0\r\n\r\n  packages/cli: {}\r\n\r\npackages:\r\n  x@1.0.0:\r\n    resolution: {integrity: sha512-x}\r\n",
+          ),
+        ),
+      ).toEqual(new Set(['.', 'examples/@odd', 'packages/cli']));
+      expect(() =>
+        readPnpmLockfileImporters(
+          root,
+          read(
+            "lockfileVersion: '9.0'\nimporters:\n  .: {}\n  packages/cli: [x]\npackages: {}\n",
+          ),
+        ),
+      ).toThrow('unsupported inline value');
+      expect(
+        readPnpmLockfileImporters(
+          root,
+          read("lockfileVersion: '9.0'\nimporters: {}\npackages: {}\n"),
+        ),
+      ).toEqual(new Set());
+      expect(() =>
+        readPnpmLockfileImporters(
+          root,
+          read("lockfileVersion: '9.0'\nimporters: {'.': {}}\npackages: {}\n"),
+        ),
+      ).toThrow('unsupported shape');
+      expect(() =>
+        readPnpmLockfileImporters(
+          root,
+          read("lockfileVersion: '9.0'\npackages: {}\n"),
+        ),
+      ).toThrow('no importers map');
+    });
+
+    it('fails closed when the bootstrap and full importer readers disagree', () => {
+      const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-importers-'));
+      try {
+        // A comment shaped like a key: the YAML parser drops it, the
+        // dependency-free reader would otherwise record it as an importer.
+        writeFileSync(
+          resolve(fixtureRoot, 'pnpm-lock.yaml'),
+          "lockfileVersion: '9.0'\n\nimporters:\n\n  .: {}\n\n  # packages/ghost:\n\npackages: {}\n",
+        );
+        expect(() => readLifecycleImporters(fixtureRoot)).toThrow(
+          'importers differ between the bootstrap and full readers: only in full parse []; only in bootstrap reader [# packages/ghost]',
+        );
+      } finally {
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    });
   });
 
   it('requires reviewed artifact and decision metadata', () => {

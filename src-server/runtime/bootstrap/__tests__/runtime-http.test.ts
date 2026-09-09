@@ -7,10 +7,25 @@ import {
 } from '../../../security/runtime-request-security.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import type { Logger } from '../../../utils/logger.js';
+import { RouteError } from '../../../utils/route-error.js';
 import {
   configureRuntimeHttp,
   resolveRuntimeCorsOrigin,
 } from '../runtime-http.js';
+
+function createCapturingLogger(): Logger {
+  return {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    trace: vi.fn(),
+    fatal: vi.fn(),
+    child: vi.fn().mockReturnThis(),
+    setLevel: vi.fn(),
+    getLevel: vi.fn(() => 'info' as const),
+  } as unknown as Logger;
+}
 
 describe('resolveRuntimeCorsOrigin', () => {
   const originalAllowedOrigins = process.env.ALLOWED_ORIGINS;
@@ -244,6 +259,238 @@ describe('resolveRuntimeCorsOrigin', () => {
       'GET /gone 404 <ms> origin=none',
       'POST /write 200 <ms> origin=none',
     ]);
+  });
+
+  test('answers a RouteError with its own status, code, details, and a correlation id', async () => {
+    const logger = createCapturingLogger();
+    const app = new Hono();
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit: vi.fn() } as unknown as EventBus,
+    } as Parameters<typeof configureRuntimeHttp>[0]);
+    app.get('/missing', () => {
+      throw new RouteError(404, 'Workflow not found', {
+        code: 'workflow_not_found',
+        details: { workflowId: 'build.ts' },
+      });
+    });
+    app.get('/bare', () => {
+      throw new RouteError(409, 'Workflow already exists');
+    });
+
+    const response = await app.request('http://station.test/missing');
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      // A string, at the top level, exactly where every existing client
+      // reader looks for it today.
+      error: 'Workflow not found',
+      code: 'workflow_not_found',
+      details: { workflowId: 'build.ts' },
+      correlationId: expect.any(String),
+    });
+
+    // Absent, not present-and-undefined: a client reading `'code' in body`
+    // must not see a key the route never set.
+    const bare = await app.request('http://station.test/bare');
+    expect(bare.status).toBe(409);
+    const bareBody = (await bare.json()) as Record<string, unknown>;
+    expect(Object.keys(bareBody).sort()).toEqual([
+      'correlationId',
+      'error',
+      'success',
+    ]);
+  });
+
+  test("a RouteError's message is still sanitized on its way out", async () => {
+    const logger = createCapturingLogger();
+    const app = new Hono();
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit: vi.fn() } as unknown as EventBus,
+    } as Parameters<typeof configureRuntimeHttp>[0]);
+    // A reviewed literal with an interpolated half — the shape a route
+    // actually writes. The route vouched for the sentence; nobody vouched
+    // for the path the service put inside it.
+    const secretPath = `/Users/${'someone'}/station/agents/private/workflows/build.ts`;
+    app.get('/leaky', () => {
+      throw new RouteError(400, `Could not read ${secretPath}`);
+    });
+
+    const response = await app.request('http://station.test/leaky');
+    const body = (await response.json()) as { error: string };
+
+    expect(response.status).toBe(400);
+    expect(body.error).not.toContain('someone');
+    expect(body.error).not.toContain('/station/agents/private');
+    expect(body.error).toContain('Could not read');
+    // The sanitizer's own marker, not merely "the string changed".
+    expect(body.error).toBe('Could not read [REDACTED_PATH]');
+    // The log line carries the same redacted text, not the original.
+    const warned = vi.mocked(logger.warn).mock.calls.at(-1)?.[1] as {
+      clientMessage: string;
+    };
+    expect(warned.clientMessage).toBe(body.error);
+  });
+
+  test("a RouteError's details are redacted, not copied through", async () => {
+    const logger = createCapturingLogger();
+    const app = new Hono();
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit: vi.fn() } as unknown as EventBus,
+    } as Parameters<typeof configureRuntimeHttp>[0]);
+    // `details` is structure, so the boundary's free-text sanitizer cannot
+    // reach into it. Nested on purpose: a shallow pass would leave the
+    // second row untouched.
+    app.get('/detailed', () => {
+      throw new RouteError(400, 'Validation failed', {
+        details: {
+          fieldErrors: { token: [`ghp_${'A'.repeat(36)}`] },
+          context: {
+            source: `/Users/${'someone'}/station/agents/planner/build.ts`,
+          },
+          attempts: 3,
+        },
+      });
+    });
+
+    const response = await app.request('http://station.test/detailed');
+    const body = (await response.json()) as {
+      details: {
+        fieldErrors: { token: string[] };
+        context: { source: string };
+        attempts: number;
+      };
+    };
+    const rendered = JSON.stringify(body);
+
+    expect(response.status).toBe(400);
+    expect(rendered).not.toContain('ghp_');
+    expect(rendered).not.toContain('someone');
+    expect(body.details.context.source).toBe('[REDACTED_PATH]');
+    // Structure and non-string values survive: this redacts, it does not
+    // flatten the object a client is meant to read.
+    expect(body.details.attempts).toBe(3);
+    expect(Object.keys(body.details).sort()).toEqual([
+      'attempts',
+      'context',
+      'fieldErrors',
+    ]);
+  });
+
+  test('a 4xx RouteError logs at warn; a 5xx logs at error with the sanitized cause', async () => {
+    const logger = createCapturingLogger();
+    const app = new Hono();
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit: vi.fn() } as unknown as EventBus,
+    } as Parameters<typeof configureRuntimeHttp>[0]);
+    app.get('/refused', () => {
+      throw new RouteError(400, 'Missing param: slug', {
+        code: 'missing_param',
+      });
+    });
+    const unsafeUrl = `https://${'provider'}.example.test/private/path?${'token'}=secret-value`;
+    app.get('/broken', () => {
+      throw new RouteError(503, 'Layout storage is unavailable', {
+        cause: new Error(`engine stderr: ${unsafeUrl}`),
+      });
+    });
+
+    const refused = await app.request('http://station.test/refused');
+    expect(refused.status).toBe(400);
+    // The caller's fault is not an operator incident. This is the assertion
+    // that fails if the branch is inverted or dropped.
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith('Route error', {
+      correlationId: expect.any(String),
+      status: 400,
+      code: 'missing_param',
+      clientMessage: 'Missing param: slug',
+    });
+
+    const broken = await app.request('http://station.test/broken');
+    const brokenBody = (await broken.json()) as {
+      error: string;
+      correlationId: string;
+    };
+    expect(broken.status).toBe(503);
+    expect(brokenBody.error).toBe('Layout storage is unavailable');
+    expect(logger.error).toHaveBeenCalledTimes(1);
+    const [message, context] = vi.mocked(logger.error).mock.calls[0] as [
+      string,
+      { correlationId: string; error: { message: string } },
+    ];
+    expect(message).toBe('Route error');
+    expect(context.correlationId).toBe(brokenBody.correlationId);
+    // The operator keeps the underlying failure...
+    expect(context.error.message).toContain('engine stderr');
+    // ...and the caller never sees it, in either direction.
+    expect(JSON.stringify(context)).not.toContain('secret-value');
+    expect(JSON.stringify(brokenBody)).not.toContain('engine stderr');
+  });
+
+  test('a RouteError outranks the auth allow-list even when its message matches one', async () => {
+    const logger = createCapturingLogger();
+    const app = new Hono();
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit: vi.fn() } as unknown as EventBus,
+    } as Parameters<typeof configureRuntimeHttp>[0]);
+    // `isAuthError` substring-matches this text, and it is a key of the
+    // allow-list's own map, so mapping RouteError after the allow-list
+    // rewrites this 403 into a 401 that drops the code. The route named its
+    // answer; a text match on ours does not get to overrule it.
+    app.get('/scope', () => {
+      throw new RouteError(403, 'unauthorized', {
+        code: 'insufficient_project_scope',
+      });
+    });
+
+    const response = await app.request('http://station.test/scope');
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: 'unauthorized',
+      code: 'insufficient_project_scope',
+      correlationId: expect.any(String),
+    });
+  });
+
+  test('a RouteError whose cause the sanitizer rejects still answers its own status', async () => {
+    const logger = createCapturingLogger();
+    const app = new Hono();
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit: vi.fn() } as unknown as EventBus,
+    } as Parameters<typeof configureRuntimeHttp>[0]);
+    const malformed = new Error('placeholder');
+    // `sanitizeError` rejects a non-string message with a TypeError. Thrown
+    // out of `onError`, that would lose the response entirely.
+    Object.defineProperty(malformed, 'message', { value: 42 });
+    app.get('/unsanitizable', () => {
+      throw new RouteError(502, 'Upstream engine failed', {
+        cause: malformed,
+      });
+    });
+
+    const response = await app.request('http://station.test/unsanitizable');
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      error: 'Upstream engine failed',
+    });
+    expect(logger.fatal).toHaveBeenCalledWith(
+      'Route error sanitizer rejected an error shape',
+      expect.objectContaining({ status: 502 }),
+    );
   });
 
   test('contains an unexpected external error behind a generic correlated envelope', async () => {

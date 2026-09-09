@@ -3,20 +3,9 @@
  * owner-qualified retained Flow Agents narrative. Retained bytes remain with
  * Flow Agents; this index contains only identity, CAS, and local authority.
  */
-import { createHash, randomUUID } from 'node:crypto';
-import {
-  closeSync,
-  constants as fsConstants,
-  fsyncSync,
-  lstatSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  unlinkSync,
-  writeSync,
-} from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import { lstatSync, mkdirSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import {
   STATION_FLOW_AGENTS_PROJECT_NARRATIVE_OWNER,
   type StationAnswerNarrativePublishInput,
@@ -28,6 +17,7 @@ import {
   type StationAnswerBinding,
 } from '@kontourai/station-contracts/task-basis';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
+import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import type { ContributionRead } from '@kontourai/surface/basis';
 import type { SessionAnswerBasisQueryOutcome } from '../orchestration/session-query-module.js';
@@ -589,11 +579,21 @@ export class AnswerNarrativeBindingModule {
     }
   }
   private writeIndex(index: Index) {
-    atomicWrite(
-      this.indexPath,
-      Buffer.from(JSON.stringify(index)),
-      MAX_INDEX_BYTES,
-    );
+    // The cap and the error contract belong to this module, not to a private
+    // copy of the temp/fsync/rename sequence: the shared writer reports real
+    // errno failures, and every failure here is still an unavailable
+    // narrative. `indent: null` + no trailing newline keeps the index's
+    // existing compact document byte for byte.
+    if (Buffer.byteLength(JSON.stringify(index), 'utf8') > MAX_INDEX_BYTES)
+      throw unavailable();
+    try {
+      writeJsonDurably(this.indexPath, index, {
+        indent: null,
+        trailingNewline: false,
+      });
+    } catch {
+      throw unavailable();
+    }
   }
 }
 
@@ -858,39 +858,4 @@ function unavailable() {
 }
 function notFound() {
   return new AnswerNarrativeNotFoundError('Narrative not found');
-}
-function atomicWrite(path: string, bytes: Buffer, max: number) {
-  if (bytes.length > max) throw unavailable();
-  const temporary = join(dirname(path), `.${randomUUID()}.tmp`);
-  let fd: number | undefined;
-  try {
-    fd = openSync(
-      temporary,
-      fsConstants.O_WRONLY |
-        fsConstants.O_CREAT |
-        fsConstants.O_EXCL |
-        (fsConstants.O_NOFOLLOW ?? 0),
-      0o600,
-    );
-    let offset = 0;
-    while (offset < bytes.length) {
-      const wrote = writeSync(fd, bytes, offset, bytes.length - offset, offset);
-      if (wrote <= 0) throw new Error('short');
-      offset += wrote;
-    }
-    fsyncSync(fd);
-    closeSync(fd);
-    fd = undefined;
-    renameSync(temporary, path);
-  } catch {
-    throw unavailable();
-  } finally {
-    if (fd !== undefined)
-      try {
-        closeSync(fd);
-      } catch {}
-    try {
-      unlinkSync(temporary);
-    } catch {}
-  }
 }

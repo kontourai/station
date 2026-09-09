@@ -291,6 +291,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/shared/src/__tests__/workspace-package.test.ts',
   'packages/cli/src/__tests__/cloud.test.ts',
   'packages/cli/src/__tests__/cloud-project-import.test.ts',
+  'packages/cli/src/__tests__/cloud-project-import-durability.test.ts',
   // Bounded disposable npm-shaped children; no registry/network calls.
   'scripts/__tests__/dependency-audit-diagnostics.test.ts',
   // station#1085: builds throwaway git checkouts and drives `git` through
@@ -332,6 +333,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // never executed is unproven. Bounded and single-shot; also builds the
   // fixture with real `git init`/`git add`.
   'scripts/__tests__/ui-glyph-coverage-gate.cli.test.ts',
+  // #1780: runs the native cohort decide CLI as a real child process against
+  // a throwaway git repository whose checkout ledger and origin/main ledger
+  // disagree, because the property under test is WHICH ref the script reads
+  // and its exit status when that ref is missing or malformed. Bounded,
+  // single-shot children; the fixture is built with real `git init`/`commit`.
+  'scripts/__tests__/nightly-cohort-decide.cli.test.ts',
   // station#928: the placement-vocabulary ratchet enumerates its scan scope
   // through one single-shot `git ls-files` for the same reason as
   // gate-scope.test.ts above — the scope must be what git tracks, not a
@@ -434,6 +441,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // reason content-integrity-gate.test.ts does — every one of those guardrails
   // scopes itself with `git ls-files` or `git grep`.
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts',
+  // The same argument for the rest of them: every gate `verify:static:raw`
+  // composes that no test had ever executed now runs here as a real child
+  // process — against a known-bad fixture tree where one is affordable, and
+  // against this repository where it is not. Bounded single-shot spawns, no
+  // wall-clock assertions.
+  'scripts/__tests__/guardrail-process-boundary.test.ts',
   // station#1398 security review, M-5: the content-integrity gate's own test
   // builds throwaway git repos and drives `git grep` through `execFileSync`,
   // because the scan is `git grep` over TRACKED files and a fixture written
