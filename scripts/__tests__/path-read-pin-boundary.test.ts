@@ -14,15 +14,30 @@
  *    A rename or delete of a pinned file reds this test, naming the pinning
  *    test and the path it can no longer read — instead of surfacing as a
  *    broad selection on somebody else's pull request days later.
- * 2. ADDITIONS ONLY. The derived edges never shrink what selection already
- *    produced: for every pinned path the lanes, related paths, and escalation
- *    flag are byte-identical and only the test list grows. This matters
- *    because of the #1563/#1613 hazard in `selectChangedVerification` — an
- *    ordinary edge that names `tests` sets `hasExplicitBoundary`, which
- *    SUPPRESSES the generic `related` edge for the same path and cancels the
- *    `ci-fast` escalation an escalation path is entitled to. A pin edge built
- *    that way would trade the whole related suite for one pinning test: a
- *    narrowing dressed as a fix. `supplemental` is what prevents it.
+ * 2. ADDITIONS ONLY, IN THE SELECTOR'S RETURN VALUE. For every pinned path
+ *    the lanes, related paths, and escalation flag are byte-identical and
+ *    only the test list grows. This matters because of the #1563/#1613 hazard
+ *    in `selectChangedVerification` — an ordinary edge that names `tests`
+ *    sets `hasExplicitBoundary`, which SUPPRESSES the generic `related` edge
+ *    for the same path and cancels the `ci-fast` escalation an escalation
+ *    path is entitled to. A pin edge built that way would trade the whole
+ *    related suite for one pinning test: a narrowing dressed as a fix.
+ *    `supplemental` is what prevents it.
+ *
+ *    A larger selection is not automatically a larger RUN, and this file says
+ *    so where it can: a scheduled test that Vitest refuses, or that fails the
+ *    resource-classification preflight, converts the addition into a receipt
+ *    naming a target that never ran, or into a red gate. Both are asserted
+ *    below against `packages/cli/src/cli.ts`, the path where it happened.
+ *
+ * WHAT THIS GATE DOES NOT COVER. The scan is a partial derivation: 142 test
+ * files read by path with a module anchor and it reports 79. A pin reached
+ * through a helper parameter (`const read = (p) => readFileSync(join(UI_SRC,
+ * p))`, at least 14 files, hiding `ChatDockHeader.tsx`, `DockShell.tsx` and
+ * `ProjectLayoutRenderer.tsx`) or written as a cwd-relative literal is not
+ * seen at all. A green run here is evidence about the pins the scanner
+ * reports, not about the class; `path-read-pin-scan.mjs` carries the full
+ * statement of the gap.
  *
  * The scanner's own rules are exercised against literal sources so that the
  * repository-wide assertions above cannot be the only thing holding them up.
@@ -39,10 +54,14 @@ import {
 import { selectChangedVerification } from '../run-changed-verification.mjs';
 import {
   buildTestImpactManifest,
+  E2E_CONTRACT_BOUNDARIES,
   PATH_READ_PIN_BOUNDARY_TEST,
   pathReadPinEdges,
+  TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
   TEST_IMPACT_MANIFEST,
+  validateTestImpactManifest,
 } from '../test-impact-manifest.mjs';
+import { partitionVitestResourceSubset } from '../vitest-resource-manifest.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -123,7 +142,7 @@ describe('derived pin edges only add to selection', () => {
       expect(edge.supplemental, edge.pattern).toBe(true);
       expect(edge.related, edge.pattern).toBeUndefined();
       expect(edge.lanes, edge.pattern).toBeUndefined();
-      expect(edge.tests.length, edge.pattern).toBeGreaterThan(0);
+      expect(edge.tests?.length ?? 0, edge.pattern).toBeGreaterThan(0);
       expect(edge.tests, edge.pattern).toContain(PATH_READ_PIN_BOUNDARY_TEST);
     }
   });
@@ -183,6 +202,164 @@ describe('derived pin edges only add to selection', () => {
     expect(
       selection.tests.map(({ path: test }: { path: string }) => test),
     ).toContain('scripts/__tests__/vitest-teardown-race.test.ts');
+  });
+});
+
+describe('a scheduled pin has to be runnable', () => {
+  const built = buildTestImpactManifest({ root: ROOT });
+
+  it('never schedules a Playwright spec', () => {
+    // `selection.tests` is handed to Vitest, which excludes `tests/**`, so a
+    // spec here is a target the receipt names and nothing runs. Two specs pin
+    // source today (`plugin-dev-hot-reload`, `mobile-surface-sweep`).
+    for (const edge of derived)
+      for (const test of edge.tests ?? [])
+        expect(test.startsWith('tests/'), `${edge.pattern} -> ${test}`).toBe(
+          false,
+        );
+    for (const { test } of entries)
+      expect(test.startsWith('tests/'), test).toBe(false);
+  });
+
+  it('drops a Playwright pin rather than scheduling it', () => {
+    // Known-bad: hand the derivation a scan entry naming a spec. The pin has
+    // one pinning test and it is ineligible, so no edge is produced at all.
+    const edges = pathReadPinEdges({
+      root: ROOT,
+      entries: [
+        {
+          test: 'tests/plugin-dev-hot-reload.spec.ts',
+          pins: ['packages/cli/src/cli.ts'],
+        },
+        {
+          test: 'src-ui/src/__tests__/useOutboundQueueSnapshot.test.tsx',
+          pins: ['packages/cli/src/cli.ts'],
+        },
+      ],
+    });
+    expect(edges).toHaveLength(1);
+    expect(edges[0].tests).toEqual([
+      PATH_READ_PIN_BOUNDARY_TEST,
+      'src-ui/src/__tests__/useOutboundQueueSnapshot.test.tsx',
+    ]);
+    expect(
+      pathReadPinEdges({
+        root: ROOT,
+        entries: [
+          {
+            test: 'tests/plugin-dev-hot-reload.spec.ts',
+            pins: ['packages/cli/src/cli.ts'],
+          },
+        ],
+      }),
+    ).toEqual([]);
+  });
+
+  it('leaves packages/cli/src/cli.ts selecting a runnable set', () => {
+    // The live break: `tests/plugin-dev-hot-reload.spec.ts` imports
+    // `node:child_process` and no Playwright spec is in the Vitest resource
+    // manifest, so the resource plan raised an infrastructure error and
+    // `run-ci-fast` (which tolerates only exit 3) went red for every pull
+    // request touching this file.
+    const selected = selectedTests(['packages/cli/src/cli.ts'], built);
+    expect(selected.length).toBeGreaterThan(0);
+    expect(() =>
+      partitionVitestResourceSubset(selected, { root: ROOT }),
+    ).not.toThrow();
+  });
+
+  it('keeps every scheduled pin inside the Vitest resource plan', () => {
+    const scheduled = [
+      ...new Set(derived.flatMap((edge) => [...(edge.tests ?? [])])),
+    ].sort();
+    expect(() =>
+      partitionVitestResourceSubset(scheduled, { root: ROOT }),
+    ).not.toThrow();
+  });
+
+  it('pins the boundary test path itself', () => {
+    // Every derived edge names this constant. If the file is renamed without
+    // it, `escalateUnavailableExplicitTests` escalates every pinned path to
+    // `test-full` instead of running the pin.
+    expect(existsSync(join(ROOT, PATH_READ_PIN_BOUNDARY_TEST))).toBe(true);
+  });
+});
+
+describe('the derivation cannot produce an invalid manifest', () => {
+  const uniquePatterns = [
+    ...E2E_CONTRACT_BOUNDARIES,
+    TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern,
+  ];
+
+  it('derives no edge for a pattern the validator requires to be unique', () => {
+    for (const pattern of uniquePatterns) {
+      const entries = [
+        {
+          test: 'scripts/__tests__/verification-lanes.test.ts',
+          pins: [pattern],
+        },
+      ];
+      expect(pathReadPinEdges({ root: ROOT, entries }), pattern).toEqual([]);
+      expect(
+        validateTestImpactManifest(
+          buildTestImpactManifest({ root: ROOT, entries }),
+        ),
+        pattern,
+      ).toEqual([]);
+    }
+  });
+
+  it('known-bad: the naive edge for those patterns is rejected', () => {
+    // Proves the skip is load-bearing. Without it the validator throws inside
+    // `selectChangedVerification`, failing the whole gate and naming the E2E
+    // contract edge rather than the test that added the read call.
+    for (const pattern of uniquePatterns) {
+      const naive = [
+        ...TEST_IMPACT_MANIFEST,
+        { pattern, supplemental: true, tests: ['scripts/__tests__/x.test.ts'] },
+      ] as never;
+      expect(validateTestImpactManifest(naive).join(' '), pattern).toContain(
+        pattern,
+      );
+      expect(() => selectChangedVerification([pattern], naive)).toThrow(
+        /impact manifest invalid/,
+      );
+    }
+  });
+
+  it('validates the live derived manifest', () => {
+    expect(
+      validateTestImpactManifest(buildTestImpactManifest({ root: ROOT })),
+    ).toEqual([]);
+  });
+
+  it('known-bad: a supplemental edge carrying lanes or related is rejected', () => {
+    // scripts/AGENTS.md: new policy needs a known-bad catch test and a
+    // false-positive control. Both shapes would be silently ignored by
+    // `selectChangedVerification`, so a reader would believe a lane was
+    // scheduled that never was.
+    const base = {
+      pattern: 'src-ui/src/App.tsx',
+      supplemental: true,
+      tests: ['scripts/__tests__/x.test.ts'],
+    };
+    const withEdge = (edge: unknown) =>
+      validateTestImpactManifest([...TEST_IMPACT_MANIFEST, edge] as never);
+    const rejection =
+      'supplemental impact edge may only add tests: src-ui/src/App.tsx';
+    expect(withEdge({ ...base, lanes: ['ci-fast'] })).toEqual([rejection]);
+    expect(withEdge({ ...base, related: true })).toEqual([rejection]);
+    // False-positive controls: the tests-only supplemental edge, and an
+    // ORDINARY edge carrying exactly those fields, are both accepted.
+    expect(withEdge(base)).toEqual([]);
+    expect(
+      withEdge({
+        pattern: base.pattern,
+        related: true,
+        lanes: ['ci-fast'],
+        tests: base.tests,
+      }),
+    ).toEqual([]);
   });
 });
 
@@ -289,6 +466,26 @@ describe('the scanner resolves only what it can justify', () => {
         readSource: () => "import App from '../App';\nrender(<App />);\n",
       }),
     ).toEqual([]);
+  });
+
+  it('does not pin a generated or gitignored path', () => {
+    // A pin is reported whether or not its target exists, so a resolved path
+    // under a generated root would pass for whoever built it and red the
+    // existence gate on a clean checkout — with a message telling the reader
+    // to chase a rename that never happened.
+    const generated = [
+      "readFileSync(join(__dirname, '..', '..', '..', 'dist-ui', 'index.html'));",
+      "readFileSync(join(__dirname, '..', '..', '..', 'dist-server-nightly', 'x.mjs'));",
+      "readFileSync(join(__dirname, '..', '..', '..', 'src-desktop', 'gen', 'schemas', 'd.json'));",
+      "readFileSync(join(__dirname, '..', '..', '..', '.kontourai', 'verification-output', 'x.json'));",
+      "readFileSync(join(__dirname, '..', '..', '..', 'playwright-report', 'index.html'));",
+      "readFileSync(join(__dirname, '..', 'app.generated.ts'));",
+    ];
+    for (const source of generated) expect(scan(source), source).toEqual([]);
+    // False-positive control: an ordinary tracked source beside them resolves.
+    expect(scan("readFileSync(join(__dirname, '..', 'App.tsx'));")).toEqual([
+      'src-ui/src/App.tsx',
+    ]);
   });
 
   it('does not pin a fixture or the pinning file itself', () => {

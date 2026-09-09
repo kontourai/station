@@ -424,12 +424,14 @@ export function selectChangedVerification(
         matches(edge.pattern, path) &&
         (edge.whenAll?.every((required) => changed.has(required)) ?? true),
     );
-    // A SUPPLEMENTAL edge only ever adds tests. It is deliberately invisible
-    // to the boundary, escalation, and related decisions below, so a derived
-    // edge (`pathReadPinEdges`, #1807) cannot trade a broader selection for a
-    // narrower one: naming `tests` would otherwise set `hasExplicitBoundary`
-    // and suppress the generic `related` edge for the same path, which is how
-    // an explicit list silently DROPS the related suites (#1563, #1613).
+    // A SUPPLEMENTAL edge only ever adds to `tests`: it is invisible to the
+    // boundary, escalation, and related decisions below, so a derived edge
+    // (`pathReadPinEdges`, #1807) cannot trade a broader selection for a
+    // narrower one. Naming `tests` on an ordinary edge would set
+    // `hasExplicitBoundary`, suppressing the generic `related` edge for the
+    // same path, which is how an explicit list silently DROPS the related
+    // suites (#1563, #1613). This says nothing about whether the added test
+    // can run — `pathReadPinEdges` owns that.
     const boundaryEdges = edges.filter((edge) => !edge.supplemental);
     // Added before every branch below: a supplemental test is additive even
     // where the path escalates, and naming it in the receipt is the point.

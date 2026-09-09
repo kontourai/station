@@ -28,9 +28,32 @@
  *   resolve (a temp directory, a helper's return value) contributes no pin
  *   rather than a guessed one.
  *
- * The scan is the authority: `scripts/test-impact-manifest.mjs` derives its
- * pin edges from it at gate time, so a new pin cannot be forgotten and a
- * deleted pin cannot linger.
+ * WHAT THIS DOES NOT SEE. The scan is a partial derivation, not a census of
+ * path-read pins, and it must not be read as one. 142 test files read by path
+ * with a module anchor; this reports 79. Two idioms account for most of the
+ * remainder, and both are missed by construction rather than by accident:
+ *
+ * - A HELPER PARAMETER. `const read = (p) => readFileSync(join(UI_SRC, p))`
+ *   called with a literal never puts that literal syntactically inside an
+ *   anchored expression, so nothing resolves. At least 14 files use this
+ *   form, and the pins it hides include `ChatDockHeader.tsx`,
+ *   `DockShell.tsx` and `ProjectLayoutRenderer.tsx` — the same directory and
+ *   the same family of file as the #1785 incident this module exists to
+ *   prevent recurring.
+ * - A CWD-RELATIVE LITERAL. `readFileSync('src-ui/src/…')` is refused
+ *   because an unanchored path is not a repository fact for this evaluator,
+ *   and refusing it is what keeps `resolve('a/b')` from being read as a repo
+ *   path.
+ *
+ * Those pins are no worse off than before this module existed, but they are
+ * NOT covered: a green `path-read-pin-boundary` gate is evidence about the 79,
+ * not about the class. Closing the helper form needs real intra-file
+ * dataflow.
+ *
+ * The scan is the authority for the pins it does report:
+ * `scripts/test-impact-manifest.mjs` derives its pin edges from it at gate
+ * time, so a reported pin cannot be forgotten and a deleted one cannot
+ * linger.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -39,36 +62,76 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const TEST_FILE_PATTERN = /(?:^|\/)[^/]+\.(?:test|spec)\.[cm]?[jt]sx?$/;
 
 /**
- * Roots that hold suites. `tests/` is Playwright's; a spec there can pin
- * source exactly as a unit test can.
+ * Roots that hold Vitest suites.
+ *
+ * `tests/` is deliberately absent. A Playwright spec there can read source by
+ * path, but a pin is only useful if the selector can SCHEDULE the pinning
+ * test, and `selection.tests` is fed straight to Vitest — which
+ * `vitest.config.ts` excludes `tests/**` from. A spec importing
+ * `node:child_process` would additionally fail the resource-classification
+ * preflight (Playwright specs are never in `vitest-resource-manifest.mjs`),
+ * turning an ordinary source change into an infrastructure error. The repo
+ * schedules `tests/` through the `verify-e2e-full` LANE, and a supplemental
+ * edge may not carry a lane, so a Playwright pin has no correct expression
+ * here. Their pins are therefore out of scope for this mechanism.
  */
 export const PIN_SCAN_ROOTS = Object.freeze([
   'packages',
   'scripts',
   'src-server',
   'src-ui',
-  'tests',
 ]);
 
 /**
  * Never scanned, never pinned. `fixtures` holds deliberate copies (including
  * the known-bad guardrail inputs) whose whole point is that they are data
- * rather than the source under test; the build outputs are generated.
+ * rather than the source under test.
+ *
+ * The rest are roots `.gitignore` generates. A pin is reported whether or not
+ * its target exists, so a resolved path under a generated root would pass on
+ * the machine that built it and red the existence gate on a clean checkout —
+ * with a message prescribing the wrong remedy.
  */
 const EXCLUDED_DIRECTORIES = Object.freeze(
   new Set([
+    '.amazonq',
+    '.fallow',
+    '.flow',
+    '.flow-agents',
     '.git',
+    '.kiro',
+    '.kontour',
+    '.kontourai',
+    '.omx',
+    '.station',
+    '.surface',
     '__fixtures__',
     '__snapshots__',
+    'binaries',
     'coverage',
-    'dist',
-    'dist-server',
+    'event_persistence',
     'fixtures',
     'node_modules',
+    'playwright-report',
+    'qa-reports',
     'target',
     'test-results',
   ]),
 );
+
+/** Generated roots `.gitignore` names that are not a bare directory name. */
+const EXCLUDED_PATH_PREFIXES = Object.freeze([
+  'docs/audits/',
+  'src-desktop/gen/',
+]);
+
+/** Build output roots: `dist`, `dist-ui`, `dist-server-<name>`, and friends. */
+function isBuildOutputSegment(segment) {
+  return segment === 'dist' || segment.startsWith('dist-');
+}
+
+/** Generated sources, e.g. `packages/basis-pane/src/*.generated.ts`. */
+const GENERATED_FILE_PATTERN = /\.generated\.[cm]?[jt]sx?$/;
 
 /** Pure `node:path` helpers plus the URL bridge. */
 const PATH_HELPERS = Object.freeze(
@@ -117,9 +180,15 @@ const WRITE_CALLS = Object.freeze(
 );
 
 function isExcludedPath(relativePath) {
+  if (GENERATED_FILE_PATTERN.test(relativePath)) return true;
+  if (EXCLUDED_PATH_PREFIXES.some((prefix) => relativePath.startsWith(prefix)))
+    return true;
   return relativePath
     .split('/')
-    .some((segment) => EXCLUDED_DIRECTORIES.has(segment));
+    .some(
+      (segment) =>
+        EXCLUDED_DIRECTORIES.has(segment) || isBuildOutputSegment(segment),
+    );
 }
 
 function listTestFiles(root, scanRoots) {
@@ -134,7 +203,11 @@ function listTestFiles(root, scanRoots) {
     for (const entry of entries) {
       const child = join(absolute, entry.name);
       if (entry.isDirectory()) {
-        if (EXCLUDED_DIRECTORIES.has(entry.name) || entry.name.startsWith('.'))
+        if (
+          EXCLUDED_DIRECTORIES.has(entry.name) ||
+          isBuildOutputSegment(entry.name) ||
+          entry.name.startsWith('.')
+        )
           continue;
         walk(child);
         continue;
