@@ -3457,3 +3457,66 @@ test('sidebar overflow opens the real mobile chat collection', async ({
   await sheet.getByRole('button', { name: 'Close task switcher' }).click();
   await expect(sheet).not.toBeVisible();
 });
+
+for (const width of [320, 431]) {
+  test(`chat layout audit centers its title and keeps slash commands usable at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await mockChatShell(page);
+    await page.goto('/?dock=open');
+    await dismissSetupLauncher(page);
+    await page
+      .getByRole('button', { name: 'Start a chat', exact: true })
+      .last()
+      .click();
+    const modal = page.getByRole('dialog', { name: 'New Chat' });
+    await expect(modal).toBeVisible();
+    await modal.locator('[data-agent-slug="claude"]').first().click();
+    const input = page.locator('textarea[placeholder*="Type a message"]');
+    await expect(input).toBeVisible();
+    const header = page.getByTestId('chat-dock-mobile-header');
+    const outer = (await header.boundingBox())!;
+    const identity = (await header
+      .getByRole('button', { name: /^Switch task/ })
+      .boundingBox())!;
+    expect(
+      Math.abs(identity.x + identity.width / 2 - (outer.x + outer.width / 2)),
+    ).toBeLessThanOrEqual(1);
+    const title = (await header
+      .locator('.chat-dock__mobile-title-text')
+      .boundingBox())!;
+    expect(
+      Math.abs(title.x + title.width / 2 - (outer.x + outer.width / 2)),
+    ).toBeLessThanOrEqual(1);
+    await input.fill('/');
+    const menu = page.getByRole('listbox', { name: 'Suggestions' });
+    await expect(menu).toBeVisible();
+    const box = (await menu.boundingBox())!;
+    expect(box.height).toBeGreaterThanOrEqual(160);
+    expect(box.y).toBeGreaterThanOrEqual(8);
+    const first = menu.getByRole('option').first();
+    const firstBox = (await first.boundingBox())!;
+    expect(firstBox.y).toBeGreaterThanOrEqual(box.y);
+    expect(
+      await first.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return element.contains(
+          document.elementFromPoint(
+            rect.x + rect.width / 2,
+            rect.y + rect.height / 2,
+          ),
+        );
+      }),
+    ).toBe(true);
+    await input.fill('/stats');
+    await expect(menu.getByText('Platform', { exact: true })).toBeVisible();
+    await menu.getByRole('option').click();
+    await expect(
+      page.getByText('Messages: 0. No usage recorded yet.', { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText('No conversation ID available.')).toHaveCount(
+      0,
+    );
+  });
+}

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { type RefObject, useMemo } from 'react';
 import type { SlashCommand } from '../../hooks/useSlashCommands';
 import { AutocompleteSelector } from '../AutocompleteSelector';
 
@@ -8,6 +8,7 @@ interface SlashCommandSelectorProps {
   onSelect: (command: SlashCommand) => void;
   onClose: () => void;
   maxHeight?: string;
+  anchorRef?: RefObject<HTMLElement | null>;
 }
 
 export function SlashCommandSelector({
@@ -16,6 +17,7 @@ export function SlashCommandSelector({
   onSelect,
   onClose,
   maxHeight,
+  anchorRef,
 }: SlashCommandSelectorProps) {
   // Filter and map commands to AutocompleteItem format
   const items = useMemo(() => {
@@ -55,6 +57,7 @@ export function SlashCommandSelector({
       onClose={onClose}
       emptyMessage="No commands found"
       maxHeight={maxHeight}
+      anchorRef={anchorRef}
     />
   );
 }

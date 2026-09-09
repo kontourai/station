@@ -840,7 +840,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expect
       .poll(() => new URL(page.url()).searchParams.get('dock'))
       .toBe('open');
-    await expect(page.getByText('No active session')).toBeVisible();
+    await expect(page.getByText('No chat open')).toBeVisible();
 
     const advertisedIdentity = await page
       .getByRole('button', { name: /Start direct chat/i })

@@ -647,7 +647,7 @@ test('new chat selected and hovered rows meet contrast in light and dark themes'
     await expect(station).toHaveClass(/new-chat-modal__agent--selected/);
     // Clearing the filter resets the index to 0 (`NewChatModal.tsx:544-548`),
     // and index 0 is Station: with no Recent group both rows sit in the one
-    // "Engines on this machine" band in `/api/agents` order
+    // "AI apps" band in `/api/agents` order
     // (`new-chat-modal-utils.ts:512-517, 575-582`).
     await search.fill('');
     await expect(page.locator('.new-chat-modal__agent')).toHaveCount(2);
@@ -1120,7 +1120,7 @@ test('new chat shows Station when the Station Agent matches the capability set',
   // puts Station in the engine band, and the row's accessible name is
   // "<name> <readiness state>" (`AgentReadinessCell.tsx:71`).
   const dialog = page.getByRole('dialog', { name: 'New Chat' });
-  await expect(dialog.getByText('Engines on this machine')).toBeVisible();
+  await expect(dialog.getByText('AI apps')).toBeVisible();
   await expect(dialog.getByText('Your agents')).toHaveCount(0);
   await expect(
     dialog.getByRole('button', { name: 'Station Ready' }),

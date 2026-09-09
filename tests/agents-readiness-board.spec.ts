@@ -231,6 +231,13 @@ test.describe('Agents readiness board at 390x844', () => {
     const box = await agentRowAction(page, BROKEN_NAME).first().boundingBox();
     expect(box, 'the repair action has no layout box at 390').toBeTruthy();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390 - 16);
+    const heading = await page.locator('.page-frame__header').boundingBox();
+    expect(heading!.height).toBeLessThanOrEqual(160);
+    const search = await page
+      .getByPlaceholder('Search agents...')
+      .boundingBox();
+    expect(search!.x).toBe(16);
 
     const noHorizontalScroll = await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,

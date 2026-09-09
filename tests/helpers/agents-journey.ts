@@ -15,7 +15,7 @@ import type { AuthenticatedE2ERequest } from './authenticated-request';
  */
 
 /** DESIGN.md §2 band labels, as `src-ui/src/components/agent-provenance.ts` spells them. */
-export const ENGINE_BAND_LABEL = 'Engines on this machine';
+export const ENGINE_BAND_LABEL = 'AI apps';
 export const AUTHORED_BAND_LABEL = 'Your agents';
 
 /**
