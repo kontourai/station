@@ -1,4 +1,6 @@
+import { createServer } from 'node:http';
 import type { APIRequestContext } from '@playwright/test';
+import { request as playwrightRequest } from '@playwright/test';
 import { describe, expect, test, vi } from 'vitest';
 import {
   authenticatedE2EFetch,
@@ -13,6 +15,41 @@ const env = {
 };
 
 describe('authenticated E2E request fixture', () => {
+  test('uses fresh sockets for fixture writes and does not retry an ambiguous reset', async () => {
+    const sockets = new Set();
+    let writes = 0;
+    const server = createServer((req, res) => {
+      sockets.add(req.socket);
+      writes += 1;
+      if (req.url === '/reset') req.socket.destroy();
+      else res.end('ok');
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === 'string')
+      throw new Error('Missing test listener');
+    const url = `http://127.0.0.1:${address.port}`;
+    const context = await playwrightRequest.newContext();
+    try {
+      const client = createAuthenticatedE2ERequest(context, {
+        ...env,
+        PW_API_BASE_URL: url,
+      });
+      expect((await client.post(`${url}/first`)).ok()).toBe(true);
+      expect((await client.post(`${url}/second`)).ok()).toBe(true);
+      expect(sockets.size).toBe(2);
+      await expect(client.post(`${url}/reset`)).rejects.toThrow(
+        /ECONNRESET|socket hang up/,
+      );
+      expect(writes).toBe(3);
+    } finally {
+      await context.dispose();
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
   test('adds the operator bearer only to an explicitly authenticated call', async () => {
     const get = vi.fn().mockResolvedValue({ ok: () => true });
     const authenticated = createAuthenticatedE2ERequest(
@@ -30,6 +67,7 @@ describe('authenticated E2E request fixture', () => {
         headers: {
           accept: 'application/json',
           authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+          connection: 'close',
         },
       },
     );

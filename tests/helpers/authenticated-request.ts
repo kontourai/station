@@ -46,6 +46,10 @@ export function createAuthenticatedE2ERequest(
     }
     const headers = new Headers(options.headers);
     headers.set('Authorization', authorization.Authorization);
+    // Fixture calls are separated by browser journeys, beyond the server's
+    // idle socket lifetime. Do not reuse an idle connection for a mutation:
+    // a reset has ambiguous write status and must not trigger a blind retry.
+    headers.set('Connection', 'close');
     return request[method](url, {
       ...options,
       headers: Object.fromEntries(headers.entries()),
