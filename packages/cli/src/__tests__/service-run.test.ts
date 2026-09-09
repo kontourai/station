@@ -115,8 +115,10 @@ function makeSupervisor(options: {
     return 1 as never;
   });
   const publishServiceLiveness = vi.fn();
+  const desktopCompanion = { check: vi.fn() };
   const supervision = superviseService(lifecycle, {
     collect: options.collect as never,
+    desktopCompanion,
     exit,
     needsBuildForInstance: options.needsBuildForInstance,
     // Hermetic: the real publisher writes to `lifecycle.baseDir`, a shared
@@ -144,6 +146,7 @@ function makeSupervisor(options: {
   };
   return {
     exit,
+    desktopCompanion,
     publishServiceLiveness,
     pendingTicks: () => ticks.length,
     runTick,
@@ -155,6 +158,21 @@ function makeSupervisor(options: {
 }
 
 describe('service supervisor', () => {
+  test('maintains the desktop companion only while its owned service remains alive', async () => {
+    const collect = vi
+      .fn()
+      .mockResolvedValue(instanceStatus(okChild(11), okChild(12)));
+    const supervisor = makeSupervisor({ collect });
+    await supervisor.supervision;
+    expect(supervisor.desktopCompanion.check).toHaveBeenCalledTimes(1);
+    await supervisor.runTick();
+    expect(supervisor.desktopCompanion.check).toHaveBeenCalledTimes(2);
+    collect.mockResolvedValue({ found: false });
+    await supervisor.runTick();
+    expect(supervisor.desktopCompanion.check).toHaveBeenCalledTimes(2);
+    expect(supervisor.stop).toHaveBeenCalled();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });

@@ -1,7 +1,7 @@
 //! Native desktop tray for the selected Station sidecar or attached service.
 
 use crate::service_state::{
-    discover_manifest_for_runtime, probe_service, resolve_station_home_for_channel, service_action,
+    discover_manifest_for_runtime, probe_service_with_local_proof, resolve_station_home_for_channel, service_action,
     service_command_is_trusted, ResolvedLocalService, ServiceAction, ServiceHealth,
     ServiceManifest,
 };
@@ -292,8 +292,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
                 // The durable per-user service intentionally outlives Desktop.
                 // A desktop-owned sidecar does not: its teardown is idempotent
                 // and deliberately has no service-control path.
-                crate::teardown_sidecar(app);
-                app.exit(0)
+                crate::desktop_companion::request_quit(app)
             }
             _ => {}
         })
@@ -944,7 +943,12 @@ fn tray_context(app: &AppHandle) -> TrayContext {
         service.as_ref().map(|service| &service.manifest),
     );
     let has_trusted_manifest = trusted_manifest.is_some();
-    let endpoint_health = trusted_manifest.map(|manifest| probe_service(Some(manifest)));
+    let endpoint_health = trusted_manifest.map(|manifest| probe_service_with_local_proof(Some(manifest), &|boot_id| {
+        let Some(state) = app.try_state::<crate::DesktopServerState>() else { return false; };
+        let Ok(api_base) = station_api_origin(manifest) else { return false; };
+        let ticket = crate::startup_readiness::StartupTicket { generation: 0, instance_id: manifest.instance_id.clone(), boot_id: boot_id.to_owned(), api_base };
+        crate::prove_bundled_startup_identity(&state.supervisor.context.launch, &ticket).is_ok()
+    }));
     let snapshot = tray_backend_snapshot(&status, &owner, trusted_manifest, endpoint_health);
     TrayContext {
         snapshot,
@@ -1626,6 +1630,7 @@ fn run_service_action(app: &AppHandle, action: ServiceAction, service: ResolvedL
 fn update_once(app: &AppHandle) -> ServiceHealth {
     let state = app.state::<TrayState>().inner().clone();
     let context = tray_context(app);
+    crate::desktop_companion::register(app, context.service.as_ref());
     let access_target = context.snapshot.api_origin.clone().map(|origin| crate::local_access_watch::Target {
         origin,
         home: context.service.as_ref().map(|service| service.base_dir.clone()).unwrap_or_else(|| station_home(app)),
