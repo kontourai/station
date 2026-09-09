@@ -38,6 +38,12 @@
  * **No production scan is narrowed by one byte.** The first `describe` block
  * below pins that.
  *
+ * The scratch-repo harness itself now lives in
+ * `helpers/guardrail-scratch.ts`, shared with
+ * `guardrail-process-boundary.test.ts` rather than copied into it — a
+ * byte-identical second copy of a mechanism is how one copy gets fixed and
+ * the other keeps the bug.
+ *
  * The scratch repo also receives a copy of the guardrail script itself, so
  * `import.meta.url`-relative baselines resolve to a *fixture* baseline rather
  * than the repo's real one. A fixture bound to the production ceiling would
@@ -54,19 +60,16 @@
  * Without it, a fixture that fails because the scratch repo is malformed, or
  * because a scope pin threw, is indistinguishable from the guardrail biting.
  */
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import {
-  copyFileSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { DOCS_TRUTH_GATE_LANES } from '../docs-truth-gate-aggregate.mjs';
 import {
@@ -91,121 +94,13 @@ import {
   S4_DEFERRED_EXCLUSIONS,
 } from '../state-primitives-ratchet.mjs';
 import { TYPECHECK_LANES } from '../typecheck-aggregate.mjs';
+import { runGuardrail, scratchRepo } from './helpers/guardrail-scratch.js';
 
 const FIXTURE_ROOT = 'scripts/__tests__/fixtures/guardrail-known-bad';
 
 /** Read a checked-in fixture source, dropping only the `.fixture` suffix. */
 function fixture(gate: string, name: string): string {
   return readFileSync(join(FIXTURE_ROOT, gate, name), 'utf8');
-}
-
-interface ScratchOptions {
-  /** Guardrail script basename under `scripts/`, e.g. `state-primitives-ratchet.mjs`. */
-  script: string;
-  /** Sibling modules the script imports from `scripts/lib/`. */
-  libs?: string[];
-  /**
-   * Further production scripts under `scripts/` the case needs to execute —
-   * `check-dist-freshness.mjs` is only half a story without the
-   * `write-dist-stamp.mjs` that a real build runs. Copied under the same
-   * byte-equality assertion as `script`.
-   */
-  extraScripts?: string[];
-  /** Repo-relative path -> content, materialised and committed. */
-  files: Record<string, string | Buffer>;
-  /**
-   * Skip `git init`/`add`/`commit`. Only for guardrails that do not scope
-   * themselves with git — `ui-bundle-budget.mjs` reads a build directory
-   * straight off the filesystem, so a repo would be scaffolding noise (and
-   * committing its incompressible asset fixtures upsets text-oriented commit
-   * hooks). Defaults to a real repo, which is what the other four need.
-   */
-  git?: boolean;
-}
-
-/**
- * A throwaway git repo carrying the guardrail and a tree for it to walk.
- *
- * It has to be a real git repo: every one of these guardrails scopes itself
- * with `git ls-files` or `git grep`, so a loose directory would prove nothing
- * about what runs in `verify:static`.
- */
-function scratchRepo({
-  script,
-  libs = [],
-  extraScripts = [],
-  files,
-  git: useGit = true,
-}: ScratchOptions): string {
-  const dir = mkdtempSync(join(tmpdir(), 'station-guardrail-fixture-'));
-  const git = (...args: string[]) =>
-    execFileSync('git', args, {
-      cwd: dir,
-      encoding: 'utf8',
-      windowsHide: true,
-    });
-
-  mkdirSync(join(dir, 'scripts', 'lib'), { recursive: true });
-  copyFileSync(join('scripts', script), join(dir, 'scripts', script));
-  // The executed bytes must be the production guardrail's, or fault-injecting
-  // the real script would not reach this fixture and the binding is fiction.
-  expect(readFileSync(join(dir, 'scripts', script), 'utf8')).toBe(
-    readFileSync(join('scripts', script), 'utf8'),
-  );
-  for (const lib of libs) {
-    copyFileSync(join('scripts', 'lib', lib), join(dir, 'scripts', 'lib', lib));
-  }
-  for (const extra of extraScripts) {
-    copyFileSync(join('scripts', extra), join(dir, 'scripts', extra));
-    expect(readFileSync(join(dir, 'scripts', extra), 'utf8')).toBe(
-      readFileSync(join('scripts', extra), 'utf8'),
-    );
-  }
-
-  for (const [name, content] of Object.entries(files)) {
-    const target = join(dir, name);
-    mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, content);
-  }
-
-  if (useGit) {
-    git('init', '-q');
-    git('config', 'user.email', 'guardrail@test.invalid');
-    git('config', 'user.name', 'guardrail fixture');
-    git('config', 'core.hooksPath', '/dev/null');
-    git('add', '-A');
-    git('commit', '-q', '--no-verify', '-m', 'fixture');
-  }
-  return dir;
-}
-
-interface GuardrailResult {
-  status: number | null;
-  stdout: string;
-  stderr: string;
-  /** Both streams, because the guardrails split FAIL/OK across them. */
-  output: string;
-}
-
-function runGuardrail(
-  dir: string,
-  script: string,
-  env: Record<string, string> = {},
-): GuardrailResult {
-  const result = spawnSync(process.execPath, [join('scripts', script)], {
-    cwd: dir,
-    encoding: 'utf8',
-    windowsHide: true,
-    env: { ...process.env, ...env },
-  });
-  const stdout = result.stdout ?? '';
-  const stderr = result.stderr ?? '';
-  return {
-    status: result.status,
-    stdout,
-    stderr,
-    output: `${stdout}${stderr}`,
-  };
 }
 
 // ---------------------------------------------------------------------------
