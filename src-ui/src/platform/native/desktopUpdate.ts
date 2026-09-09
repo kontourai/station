@@ -31,6 +31,7 @@ export type DesktopUpdateOutcome =
       status: 'update-available';
       version: string;
       install: () => Promise<void>;
+      dispose: () => Promise<void>;
     }
   | { status: 'no-update' }
   | { status: 'check-failed' };
@@ -38,15 +39,34 @@ export type DesktopUpdateOutcome =
 export async function checkForDesktopUpdate(): Promise<DesktopUpdateOutcome> {
   try {
     const { check } = await import('@tauri-apps/plugin-updater');
-    const update = await check();
+    const update = await check({ timeout: 15_000 });
     if (!update) return { status: 'no-update' };
+    let installing: Promise<void> | undefined;
+    let disposed = false;
     return {
       status: 'update-available',
       version: update.version,
-      async install() {
-        await update.downloadAndInstall();
-        const { relaunch } = await import('@tauri-apps/plugin-process');
-        await relaunch();
+      install() {
+        if (disposed)
+          return Promise.reject(
+            new Error('Check for updates again before installing.'),
+          );
+        installing ??= (async () => {
+          await update.downloadAndInstall();
+          const { relaunch } = await import('@tauri-apps/plugin-process');
+          await relaunch();
+        })().finally(() => {
+          installing = undefined;
+        });
+        return installing;
+      },
+      async dispose() {
+        if (disposed) return;
+        disposed = true;
+        // Navigation or another check may discard the result during download.
+        // Keep the native handle alive until that installation has settled.
+        await installing?.catch(() => undefined);
+        await update.close();
       },
     };
   } catch (error) {

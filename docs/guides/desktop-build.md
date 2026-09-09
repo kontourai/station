@@ -18,6 +18,9 @@ update channel. A GitHub DMG must not require a local Git checkout or a fabricat
 
 When changing update controls, test native check failures, retries, installation
 failure without restart, and desktop-only routing alongside server update tests.
+Release native update handles when checks are replaced or their UI unmounts,
+including late check responses. An active installation retains its handle until
+the operation settles.
 An HTTP-successful release feed or mocked plugin test does not prove installation
 and restart of a packaged app; retain that runtime verification separately.
 

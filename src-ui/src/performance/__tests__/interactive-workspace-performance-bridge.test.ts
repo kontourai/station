@@ -1,5 +1,9 @@
 /** @vitest-environment jsdom */
 
+import {
+  formatInteractiveWorkspaceBatchTiming,
+  INTERACTIVE_WORKSPACE_TIMING_RESPONSE_HEADER,
+} from '@shared/interactive-workspace-performance-timing';
 import { afterEach, expect, test, vi } from 'vitest';
 import referenceContract from '../../../../scripts/fixtures/interactive-workspace/performance-contract.json';
 import {
@@ -433,6 +437,89 @@ test('file measurement keeps zero-duration scroll marks ordered across epoch con
     );
     delete window.__stationInteractiveWorkspacePerformanceDriver;
   }
+});
+
+test('matches remote apply by revision while retaining unqualified clock evidence unchanged', async () => {
+  const before = `swsr-v1:${'a'.repeat(64)}`;
+  const after = `swsr-v1:${'b'.repeat(64)}`;
+  const epoch = browserEpochMs();
+  document.body.innerHTML = `<p role="status">Shared document saved.</p>
+    <textarea data-station-performance-surface="task-editor" data-station-task-id="task-1" data-station-working-revision="${before}">base</textarea>
+    <button disabled>Join room</button><button>Announce work</button><button>Leave room</button><button>Save shared document</button>`;
+  const editor = document.querySelector('textarea')!;
+  editor.addEventListener('input', () =>
+    emitTaskInputPerformanceMark({
+      taskId: 'task-1',
+      workingRevision: before,
+      text: editor.value,
+      enteredEpochMs: epoch,
+      exitedEpochMs: epoch,
+    }),
+  );
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => {
+      editor.dataset.stationWorkingRevision = after;
+      emitTaskDocumentApplyPerformanceMark({
+        taskId: 'task-1',
+        workingRevision: after,
+        appliedEpochMs: epoch + 19,
+      });
+      emitTaskCommitPerformanceMark({
+        taskId: 'task-1',
+        workingRevision: after,
+        text: editor.value,
+        committedEpochMs: epoch + 21,
+      });
+      return new Response('{}', {
+        headers: {
+          [INTERACTIVE_WORKSPACE_TIMING_RESPONSE_HEADER]:
+            formatInteractiveWorkspaceBatchTiming({
+              taskId: 'task-1',
+              ingressEpochMs: epoch + 1,
+              acceptedEpochMs: epoch + 20,
+            })!,
+        },
+      });
+    }),
+  );
+  document.querySelectorAll('button')[3]!.addEventListener('click', () => {
+    void window.fetch('/api/tasks/task-1/room/batches', { method: 'POST' });
+  });
+  const fixture = referenceContract.fixtures.find(
+    (entry) => entry.id === 'remote-apply',
+  )!;
+  const result = await measureInteractiveWorkspace(
+    {
+      sampling: { warmups: 0, samples: 1 },
+      fixtureCorpus: referenceContract.fixtureCorpus,
+      fixtures: [
+        {
+          id: fixture.id,
+          workloads: fixture.workloads,
+          measurementPhases: { measured: fixture.measurementPhases.measured! },
+        },
+      ],
+    },
+    'task-1',
+  );
+  const measurements = Reflect.get(
+    result.observations[0]!,
+    'measurements',
+  ) as Array<{
+    phases: {
+      measured: {
+        actions: Array<{ kind: string; marks: Record<string, number> }>;
+      };
+    };
+  }>;
+  expect(measurements).toHaveLength(1);
+  const apply = measurements[0]!.phases.measured.actions.find(
+    (entry) => entry.kind === 'authoritative-document-apply',
+  )!;
+  // Capture the real mark instead of timing out or clamping the negative
+  // interval. The unchanged reference validator must reject this clock evidence.
+  expect(apply.marks.appliedAt).toBeLessThan(apply.marks.applyStartedAt!);
 });
 
 test('identifies the missing task product mark without exposing arbitrary error text', () => {

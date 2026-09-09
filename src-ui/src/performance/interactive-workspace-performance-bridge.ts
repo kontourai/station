@@ -1310,14 +1310,18 @@ async function measureRemoteApply(
     const accepted = await timing;
     if (accepted.taskId !== taskId)
       throw new Error('Batch timing Task identity changed');
-    const applied = await marks.taskApply({
-      taskId,
-      afterEpochMs: accepted.acceptedAt,
-    });
     const commit = await marks.taskCommit({
       taskId,
       text: desired,
       notWorkingRevision: workingRevision,
+      afterEpochMs: input.exitedEpochMs,
+    });
+    // Select the observed operation by revision and the browser's own clock.
+    // A server/browser clock disagreement belongs in timing validation; it
+    // must not discard an emitted mark and masquerade as a missing UI update.
+    const applied = await marks.taskApply({
+      taskId,
+      workingRevision: commit.workingRevision,
       afterEpochMs: input.exitedEpochMs,
     });
     if (commit.committedEpochMs < accepted.acceptedAt)

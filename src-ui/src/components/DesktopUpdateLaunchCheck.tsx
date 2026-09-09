@@ -48,12 +48,19 @@ export function DesktopUpdateLaunchCheck() {
   useEffect(() => {
     if (!isDesktop) return;
     let active = true;
+    let dispose: (() => Promise<void>) | undefined;
     void checkForDesktopUpdate().then((outcome) => {
-      if (!active || outcome.status !== 'update-available') return;
+      if (outcome.status !== 'update-available') return;
+      if (!active) {
+        void outcome.dispose().catch(console.debug);
+        return;
+      }
+      dispose = outcome.dispose;
       setAvailable({ version: outcome.version, install: outcome.install });
     });
     return () => {
       active = false;
+      void dispose?.().catch(console.debug);
     };
   }, [isDesktop]);
 

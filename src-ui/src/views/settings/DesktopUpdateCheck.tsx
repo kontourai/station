@@ -1,12 +1,39 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
 import { Button } from '../../components/Button';
-import { checkForDesktopUpdate } from '../../platform/native/desktopUpdate';
+import {
+  checkForDesktopUpdate,
+  type DesktopUpdateOutcome,
+} from '../../platform/native/desktopUpdate';
 
 /** Explicit checks report failures; the automatic launch check stays quiet. */
 export function DesktopUpdateCheck() {
+  const owned = useRef<Extract<
+    DesktopUpdateOutcome,
+    { status: 'update-available' }
+  > | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      void owned.current?.dispose().catch(console.debug);
+      owned.current = null;
+    };
+  }, []);
   const check = useQuery({
     queryKey: ['desktop-update', 'manual'],
-    queryFn: checkForDesktopUpdate,
+    queryFn: async ({ signal }) => {
+      const result = await checkForDesktopUpdate();
+      const available = result.status === 'update-available' ? result : null;
+      if (!mounted.current || signal.aborted) {
+        await available?.dispose();
+      } else {
+        void owned.current?.dispose().catch(console.debug);
+        owned.current = available;
+      }
+      return result;
+    },
     enabled: false,
     retry: false,
     gcTime: 0,
