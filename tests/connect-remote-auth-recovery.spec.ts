@@ -283,6 +283,7 @@ for (const fixture of [
     expect(statusAuthorizations).toEqual([]);
     expect(pluginAuthorizations).toEqual([]);
     const actionBox = await pairingAction.boundingBox();
+    expect(actionBox?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     expect(actionBox?.x).toBeGreaterThanOrEqual(0);
     expect(actionBox && actionBox.x + actionBox.width).toBeLessThanOrEqual(
       fixture.viewport.width,
@@ -790,7 +791,7 @@ test('local same-origin startup requires an explicit credential', async ({
 
     await page.goto('/');
     await expect(
-      page.getByRole('heading', { name: 'Connect to your Station host' }),
+      page.getByRole('heading', { name: 'Connect to Station' }),
     ).toBeVisible();
     expect(await context.cookies()).toEqual([]);
     expect(identityRequests).toEqual([{ authorization: null, cookie: null }]);

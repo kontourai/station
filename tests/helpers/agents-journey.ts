@@ -387,6 +387,11 @@ export async function sendComposerTurn(
   await composer.fill(text);
   await composer.press('Enter');
   await expect(
-    page.locator('#chat-dock, #chat-workspace-pane').getByText(expected),
+    page
+      .locator(
+        '#chat-dock .message.assistant, #chat-workspace-pane .message.assistant',
+      )
+      .filter({ hasText: expected })
+      .last(),
   ).toBeVisible({ timeout });
 }

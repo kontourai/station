@@ -1468,7 +1468,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     .click();
   await expect(textarea).toHaveValue('return to this draft');
   await expect(page.locator('.chat-input__model-name')).toHaveText(
-    'model-selected',
+    'Model Selected',
   );
 
   await switcher.click();
@@ -1508,7 +1508,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     page.getByRole('button', { name: /^Switch project/ }),
   ).toContainText('Default');
   await expect(page.locator('.chat-input__model-name')).toHaveText(
-    'model-selected',
+    'Model Selected',
   );
 
   await page.setViewportSize({ width: 320, height: 568 });

@@ -490,13 +490,13 @@ test.describe('First-run engines chapter (station#3027)', () => {
       await expect(row.locator('.first-run-engines__note')).toHaveCount(0);
     }
 
-    // enabled — visibly idempotent: named as ready, carrying the Agent that
+    // enabled — visibly idempotent: named as set up, carrying the Agent that
     // already exists, and with NO control at all. A disabled checkbox would
     // drop that sentence out of the tab order.
     const enabled = engineRow(page, 'gemini-cli');
     await expect(enabled).toHaveAttribute('data-state', 'enabled');
     await expect(enabled.locator('input')).toHaveCount(0);
-    await expect(enabled).toContainText('Ready — Gemini CLI');
+    await expect(enabled).toContainText('Set up — Gemini CLI');
     await expect(enabled).toContainText(
       'Already set up as “Gemini CLI Agent”.',
     );

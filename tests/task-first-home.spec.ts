@@ -1221,6 +1221,10 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await installVisualViewportFixture(page);
     await mockTaskFirstHome(page);
     await page.goto('/?surface=activity');
+    await page
+      .getByRole('region', { name: 'Activity', exact: true })
+      .getByRole('button', { name: 'Expand dock region to workspace' })
+      .click();
 
     await page
       .getByRole('button', {

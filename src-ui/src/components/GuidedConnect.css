@@ -52,6 +52,7 @@
 
 .guided-connect__action {
   width: 100%;
+  min-height: 44px;
   padding: 12px 16px;
   border-radius: 10px;
   border: 1px solid var(--border-primary);
@@ -164,4 +165,16 @@ a.guided-connect__action {
   display: block;
   text-align: center;
   text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .guided-connect {
+    padding: 16px;
+  }
+  .guided-connect__inner {
+    gap: 12px;
+  }
+  .guided-connect__destination {
+    padding: 16px;
+  }
 }

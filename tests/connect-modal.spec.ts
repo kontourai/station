@@ -258,7 +258,12 @@ test.describe('Connection Manager Modal', () => {
     await page
       .getByPlaceholder('https://station.example.ts.net')
       .fill('http://10.0.0.5:3141');
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    const add = page.getByRole('button', { name: 'Add', exact: true });
+    await expect(add).toBeDisabled();
+    await page
+      .getByRole('checkbox', { name: 'Allow an unencrypted connection' })
+      .check();
+    await add.click();
 
     // The pre-save handshake is actually in flight — this button label is
     // exclusively driven by that check, not by the unrelated post-add probe.
@@ -374,7 +379,12 @@ test.describe('Connection Manager Modal', () => {
     await page
       .getByPlaceholder('https://station.example.ts.net')
       .fill('http://203.0.113.5:3141');
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    const add = page.getByRole('button', { name: 'Add', exact: true });
+    await expect(add).toBeDisabled();
+    await page
+      .getByRole('checkbox', { name: 'Allow an unencrypted connection' })
+      .check();
+    await add.click();
 
     // Back out of the authorize step this add now continues into (archive#986) —
     // switching to an already-saved connection does not require completing
@@ -440,7 +450,12 @@ test.describe('Connection Manager Modal', () => {
     await page
       .getByPlaceholder('https://station.example.ts.net')
       .fill('http://delete-me:3141');
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    const add = page.getByRole('button', { name: 'Add', exact: true });
+    await expect(add).toBeDisabled();
+    await page
+      .getByRole('checkbox', { name: 'Allow an unencrypted connection' })
+      .check();
+    await add.click();
 
     // Back out of the authorize step this add now continues into (archive#986).
     await page

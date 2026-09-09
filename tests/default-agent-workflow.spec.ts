@@ -530,12 +530,14 @@ test.describe('Default agent workflow', () => {
       // (`src-ui/src/slashCommands/builtins.ts:70-115`), and with no custom
       // commands and no command skills seeded it says so.
       ['/commands', /No commands defined/],
-      ['/stats', /No conversation ID available/],
+      ['/stats', /Messages: 0\. No usage recorded yet\./],
     ] as const) {
       await textarea.fill(command);
       await sendButton.click();
       await expect(page.locator('body')).toContainText(matcher);
     }
+
+    expect(executionRequests).toHaveLength(0);
 
     await textarea.fill('say hi in 3 words');
     await sendButton.click();
