@@ -239,6 +239,7 @@ describe('runScreenshotCaptureSequence', () => {
     const hadDocument = 'document' in globals;
     const previousDocument = globals.document;
     globals.document = {
+      documentElement: { getBoundingClientRect: () => ({}) },
       fonts: {
         get ready() {
           readyReads += 1;
@@ -262,12 +263,20 @@ describe('runScreenshotCaptureSequence', () => {
     // Pins the probe independently of the sequence, so a change to either is
     // visible on its own.
     let readyReads = 0;
+    const order: string[] = [];
     const globals = globalThis as { document?: unknown };
     const hadDocument = 'document' in globals;
     const previousDocument = globals.document;
     globals.document = {
+      documentElement: {
+        getBoundingClientRect: () => {
+          order.push('layout');
+          return {};
+        },
+      },
       fonts: {
         get ready() {
+          order.push('fonts');
           readyReads += 1;
           return Promise.resolve('settled');
         },
@@ -280,5 +289,6 @@ describe('runScreenshotCaptureSequence', () => {
       else delete globals.document;
     }
     expect(readyReads).toBe(1);
+    expect(order).toEqual(['layout', 'fonts']);
   });
 });

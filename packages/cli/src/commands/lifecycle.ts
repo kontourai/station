@@ -2961,7 +2961,19 @@ export async function buildApplication(
     throw error;
   } finally {
     if (!preserveCandidateRoot) {
-      rmSync(candidate.root, { recursive: true, force: true });
+      try {
+        rmSync(candidate.root, {
+          recursive: true,
+          force: true,
+          maxRetries: 3,
+          retryDelay: 100,
+        });
+      } catch {
+        // Cleanup must neither hide the original build failure nor turn an
+        // already promoted build into a failed start. Keep the directory for
+        // the next same-instance sweep and make that outcome visible.
+        console.warn(`Build cleanup deferred: ${candidate.root}`);
+      }
     }
   }
 }

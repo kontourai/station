@@ -56,16 +56,12 @@ describe('GuidedConnect', () => {
   test('renders the first-run welcome copy without error framing', () => {
     render(<GuidedConnect />);
 
-    expect(screen.getByText('Connect to your Station host')).toBeTruthy();
+    expect(screen.getByText('Connect to Station')).toBeTruthy();
     expect(
-      screen.getByText(
-        'Station runs on your computer or server. Connect this device to start working with your agents.',
-      ),
+      screen.getByText('Choose the computer where you want to work.'),
     ).toBeTruthy();
     expect(
-      screen.getByText(
-        "On the same network? Use your host's IP address, not localhost.",
-      ),
+      screen.getByRole('region', { name: 'Another Station' }),
     ).toBeTruthy();
     expect(screen.queryByTestId('connection-manager')).toBeNull();
   });

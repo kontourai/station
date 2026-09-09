@@ -78,6 +78,7 @@ tauri-plugin-opener = "=2.5.4"
 # choice: a pubkey with no endpoints deserializes fine and would register a
 # functionally inert plugin, which is honest-inertness policy, not a second
 # crash guard.
+notify-rust = "=4.18.0"
 tauri-plugin-updater = "=2.10.1"
 # The one JS-reachable way to relaunch the process after an update installs.
 # Config-free, so unlike the updater plugin above it is always registered.

@@ -66,6 +66,36 @@ function baseProps(
 }
 
 describe('AgentEditorBasicTab', () => {
+  test('keeps the agent ID out of the name label and behind advanced details', () => {
+    render(<AgentEditorBasicTab {...baseProps()} />);
+    expect(screen.getByRole('textbox', { name: 'Name *' })).toBeTruthy();
+    const id = screen.getByLabelText('Agent ID') as HTMLInputElement;
+    expect(id.closest('details')?.open).toBe(false);
+    expect(id.value).toBe('agent-one');
+  });
+
+  test('reveals ID validation errors and preserves locked editing', () => {
+    render(
+      <AgentEditorBasicTab
+        {...baseProps({
+          locked: true,
+          validationErrors: { slug: 'Choose a unique ID.' },
+        })}
+      />,
+    );
+    const id = screen.getByLabelText('Agent ID') as HTMLInputElement;
+    expect(id.closest('details')?.open).toBe(true);
+    expect(id.disabled).toBe(true);
+    expect(screen.getByText('Choose a unique ID.')).toBeTruthy();
+  });
+
+  test('existing agent IDs remain read-only', () => {
+    render(<AgentEditorBasicTab {...baseProps({ isCreating: false })} />);
+    expect(
+      (screen.getByLabelText('Agent ID') as HTMLInputElement).readOnly,
+    ).toBe(true);
+  });
+
   /**
    * archive#3721 moved the engine question out of this tab: it renders
    * identity fields and project ownership only, and the Engine `<select>`

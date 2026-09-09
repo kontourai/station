@@ -46,6 +46,27 @@ describe('ConversationOpenResolver', () => {
     });
   });
 
+  it('reports an active-turn wait without granting continuation', async () => {
+    const resolver = createConversationOpenResolver({
+      currentSessionId: () => 'busy-child',
+      readCurrent: vi.fn().mockResolvedValue({
+        sessionId: 'busy-child',
+        messages: [],
+        answerability: { answerable: true },
+        canContinue: false,
+        continuationPending: true,
+      }),
+    });
+    await expect(
+      resolver.resolve({ conversation, authority }),
+    ).resolves.toMatchObject({
+      status: 'resolved',
+      canContinue: false,
+      continuationPending: true,
+      recoveryActions: [],
+    });
+  });
+
   it('does not invent a writable session when the lineage current child is absent', async () => {
     const resolver = createConversationOpenResolver({
       currentSessionId: () => 'released-conversation:session:missing',

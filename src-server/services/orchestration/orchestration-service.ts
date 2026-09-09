@@ -199,6 +199,7 @@ import {
 import {
   ConversationLineage,
   canResolveConversationContinuation,
+  isConversationContinuationControlEligible,
 } from './conversation-lineage.js';
 import {
   type ConversationOpenResolver,
@@ -1772,6 +1773,9 @@ export class OrchestrationService {
           // does not become writable merely because the selected Agent has a
           // provider today.
           canContinue: canResolveConversationContinuation(detail),
+          continuationPending:
+            detail.session.hasActiveTurn === true &&
+            isConversationContinuationControlEligible(detail),
         };
       },
       reportUnavailable: (error) =>
@@ -3248,6 +3252,7 @@ export class OrchestrationService {
     sessionId: string;
     startRequired: boolean;
     resumeCursor?: unknown;
+    resumeModel?: string;
     transcriptSeed?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
   }> {

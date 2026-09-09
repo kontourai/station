@@ -25,9 +25,10 @@ import {
   resolveSessionExecutionSummary,
   runtimeCatalogVisibleModels,
 } from '../../utils/execution';
-import type {
-  ModelProviderOption,
-  SelectableModel,
+import {
+  type ModelProviderOption,
+  modelIdentityLabel,
+  type SelectableModel,
 } from '../../utils/modelCapabilities';
 
 type ModelOption = { id: string; name: string };
@@ -56,7 +57,7 @@ function ensureActiveModelOption(
   return [
     {
       id: currentModelId,
-      name: currentModelId,
+      name: modelIdentityLabel(currentModelId),
       providerId,
       providerName,
       providerType,

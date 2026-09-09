@@ -893,7 +893,7 @@ export function ConnectionManagerModalContent({
             {defaultMutationError}
           </div>
         )}
-        {selectionError && (
+        {selectionError && panel !== 'request-access' && (
           <div
             role="status"
             className="station-connect-row__meta station-connect-row__meta--warning"

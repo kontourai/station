@@ -56,6 +56,9 @@ export default defineConfig({
             '--hide-scrollbars',
             '--disable-partial-raster',
             '--disable-skia-runtime-opts',
+            // Keep SVG edge blending on one raster path. Repeated hosted
+            // captures otherwise differed by one RGB unit on icon edges.
+            '--disable-gpu-rasterization',
             '--use-gl=angle',
             '--use-angle=swiftshader',
           ],

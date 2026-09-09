@@ -27,7 +27,7 @@ export function liveCollaboratorSummary(
   publishing: number,
 ): string {
   if (connectedClients === 1 && publishing === 0)
-    return 'Just you on this host';
+    return 'Only you are connected';
   return `${connectedClients} client${connectedClients === 1 ? '' : 's'}, ${publishing} publishing live work`;
 }
 

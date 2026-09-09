@@ -344,11 +344,11 @@ pub fn spawned_station_root(
     // "the same directory" and withhold a root that may be genuinely
     // different, silently handing the child one derived from its own home.
     let same = match (
-        lexical_absolute(station_root),
-        lexical_absolute(station_home),
+        canonical_path_through_existing_ancestor(station_root),
+        canonical_path_through_existing_ancestor(station_home),
     ) {
         (Ok(root), Ok(home)) => root == home,
-        _ => station_root == station_home,
+        _ => false,
     };
     if same {
         return None;
@@ -461,6 +461,20 @@ fn same_or_descendant(path: &Path, parent: &Path) -> bool {
 /// Existing ancestors are canonicalized before comparison so symlink aliases
 /// cannot bypass the same boundary.
 pub fn admit_station_runtime_home_for_root(home: &Path, root: &Path) -> Result<PathBuf, String> {
+    let explicit_root = env::var_os("STATION_ROOT").filter(|value| !value.to_string_lossy().trim().is_empty());
+    let explicit_home = env::var_os("STATION_HOME").filter(|value| !value.to_string_lossy().trim().is_empty());
+    // Match the TypeScript admission contract: equality is legitimate only
+    // when the root was derived from this explicitly selected runtime home.
+    let derived = explicit_root.is_none() && explicit_home.as_ref().is_some_and(|value| {
+        match (canonical_path_through_existing_ancestor(Path::new(value)), canonical_path_through_existing_ancestor(home)) {
+            (Ok(configured), Ok(selected)) => configured == selected,
+            _ => false,
+        }
+    });
+    admit_station_runtime_home_with_root(home, root, derived)
+}
+
+fn admit_station_runtime_home_with_root(home: &Path, root: &Path, root_derived_from_home: bool) -> Result<PathBuf, String> {
     let lexical_home = lexical_absolute(home)?;
     let lexical_root = lexical_absolute(root)?;
     match fs::symlink_metadata(&lexical_home) {
@@ -505,7 +519,7 @@ pub fn admit_station_runtime_home_for_root(home: &Path, root: &Path) -> Result<P
             }
         }
     }
-    if same_or_descendant(&root, &home) {
+    if same_or_descendant(&root, &home) && !(root_derived_from_home && home == root) {
         return Err("runtime home is the shared Station root or an ancestor of it".into());
     }
     for name in ["config", "cache", "installs"] {
@@ -2005,5 +2019,31 @@ mod tests {
         assert_eq!(entries[0], node_dir);
         assert!(entries.contains(&PathBuf::from("C:\\Tools")));
         assert!(!entries.contains(&PathBuf::from("C:\\Windows\\System32")));
+    }
+}
+
+#[cfg(test)] mod standalone_home_tests {
+    use super::*;
+    #[test] fn only_explicitly_self_rooted_homes_can_equal_the_root() {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().join("standalone");
+        assert!(admit_station_runtime_home_with_root(&home, &home, true).is_ok());
+        assert!(admit_station_runtime_home_with_root(&home, &home, false).is_err());
+        assert!(admit_station_runtime_home_for_root(&home, &home).is_err());
+        assert!(admit_station_runtime_home_with_root(directory.path(), &home, true).is_err());
+    }
+}
+
+#[cfg(all(test, unix))] mod spawned_root_alias_tests {
+    use super::*;
+    #[test] fn a_parent_alias_does_not_turn_a_derived_root_into_an_explicit_root() {
+        let directory = tempfile::tempdir().unwrap();
+        let real = directory.path().join("real");
+        std::fs::create_dir_all(real.join("home")).unwrap();
+        let alias = directory.path().join("alias");
+        std::os::unix::fs::symlink(&real, &alias).unwrap();
+        let home = real.join("home").canonicalize().unwrap();
+        assert_eq!(spawned_station_root(&alias.join("home"), &home, None), None);
+        assert!(spawned_station_root(&alias.join("home"), &home, Some(alias.join("home").into_os_string())).is_some());
     }
 }

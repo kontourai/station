@@ -185,7 +185,19 @@ function input(operation: Operation): Record<string, unknown> {
 
 function redactedCode(
   error: unknown,
-): 'REGISTRY_UNTRUSTED' | 'INVALID_INPUT' | 'OPERATION_FAILED' {
+):
+  | 'REGISTRY_UNTRUSTED'
+  | 'INVALID_INPUT'
+  | 'HOME_SCHEMA_INCOMPATIBLE'
+  | 'OPERATION_FAILED' {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    (error.code === 'STATION_HOME_RESET_REQUIRED' ||
+      error.code === 'STATION_HOME_SCHEMA_DOWNGRADE')
+  )
+    return 'HOME_SCHEMA_INCOMPATIBLE';
   const message = error instanceof Error ? error.message : '';
   if (message === 'invalid input') return 'INVALID_INPUT';
   if (

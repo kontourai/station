@@ -1,13 +1,8 @@
-import { useConnections } from '@kontourai/station-connect';
 import { lazy } from 'react';
 // Deep import, not the barrel: this file is in the eager shell chunk, and
 // the barrel also reaches `PageEyebrowTrail`, which only lazy route views use.
 import { PageFrame } from '../components/page-frame/PageFrame';
 import { ErrorState, SkeletonList } from '../components/state';
-import {
-  shouldRenderSetupLauncher,
-  useOnboardingSetupState,
-} from '../contexts/onboarding-setup-store';
 import type { AgentSummary, NavigationView } from '../types';
 import { resolvePageFrame } from './page-frame-registry';
 import { RoutePendingSkeleton } from './RoutePendingSkeleton';
@@ -480,34 +475,13 @@ function AppViewContentBody({
   return null;
 }
 
-/**
- * `project-new` is the one genuinely-first-run coincidence (zero connections
- * AND zero projects): the first-run `SetupLauncher` already covers the full
- * screen with its own backdrop, so stacking `NewProjectModal` behind it is a
- * second, redundant overlay (archive#191). Suppressing it here only changes
- * behavior for this view; a later, non-blocking banner (e.g. the user's only
- * connection gets disabled mid-session on some other view) is untouched and
- * still renders its normal content underneath.
- */
+/** A setup reminder is nonblocking; it cannot suppress explicit project creation. */
 function ProjectNewViewGate({
   onReturnToOutlet,
 }: {
   /** Closing the modal is a dismissal: back to `/`'s occupant (#1523). */
   onReturnToOutlet: () => void;
 }) {
-  const { activeConnection } = useConnections();
-  const { visible, content } = useOnboardingSetupState();
-  const setupLauncherVisible = shouldRenderSetupLauncher({
-    credentialRequired: activeConnection?.credentialState === 'required',
-    setupVisible: visible,
-    setupContent: content,
-    pathname: window.location.pathname,
-  });
-
-  if (setupLauncherVisible) {
-    return null;
-  }
-
   return (
     <NewProjectModal
       isOpen
