@@ -291,6 +291,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/shared/src/__tests__/workspace-package.test.ts',
   'packages/cli/src/__tests__/cloud.test.ts',
   'packages/cli/src/__tests__/cloud-project-import.test.ts',
+  'packages/cli/src/__tests__/cloud-project-import-durability.test.ts',
   // Bounded disposable npm-shaped children; no registry/network calls.
   'scripts/__tests__/dependency-audit-diagnostics.test.ts',
   // station#1085: builds throwaway git checkouts and drives `git` through
@@ -332,6 +333,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // never executed is unproven. Bounded and single-shot; also builds the
   // fixture with real `git init`/`git add`.
   'scripts/__tests__/ui-glyph-coverage-gate.cli.test.ts',
+  // #1780: runs the native cohort decide CLI as a real child process against
+  // a throwaway git repository whose checkout ledger and origin/main ledger
+  // disagree, because the property under test is WHICH ref the script reads
+  // and its exit status when that ref is missing or malformed. Bounded,
+  // single-shot children; the fixture is built with real `git init`/`commit`.
+  'scripts/__tests__/nightly-cohort-decide.cli.test.ts',
   // station#928: the placement-vocabulary ratchet enumerates its scan scope
   // through one single-shot `git ls-files` for the same reason as
   // gate-scope.test.ts above — the scope must be what git tracks, not a

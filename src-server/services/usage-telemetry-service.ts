@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto';
-import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import { redactDeep } from '@kontourai/station-shared/redaction';
 import { usageTelemetryOutcomes } from '../telemetry/metrics.js';
 import { errorMessage } from '../utils/error-message.js';
@@ -141,13 +141,18 @@ export class UsageTelemetryService {
     const configDir = join(this.options.homeDir, 'config');
     await mkdir(configDir, { recursive: true, mode: 0o700 });
     await chmod(configDir, 0o700);
-    const replacement = `${this.disclosurePath}.${randomUUID()}.tmp`;
-    await writeFile(
-      replacement,
-      `${JSON.stringify({ acknowledgedAt: new Date().toISOString(), inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION })}\n`,
-      { encoding: 'utf8', mode: 0o600, flag: 'wx' },
+    // The shared publisher owns the temporary (removed on failure, which the
+    // hand-rolled pair here did not do), the data fsync and the directory
+    // fsync. The options keep the receipt's existing compact-plus-newline
+    // document byte for byte.
+    await publishJsonFileWithOwnedLock(
+      this.disclosurePath,
+      {
+        acknowledgedAt: new Date().toISOString(),
+        inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+      },
+      { indent: null, trailingNewline: true },
     );
-    await rename(replacement, this.disclosurePath);
     await chmod(this.disclosurePath, 0o600);
     // A changed inventory stops emission: otherwise new fields could leave before disclosure.
     await this.loadDisclosureReceipt();

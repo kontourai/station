@@ -157,8 +157,22 @@ column and, on every row it writes, a note per `NOT_VERIFIED` or
 `NOT_PUBLISHED` platform and an `ios:` note carrying the TestFlight job
 result (iOS has no ledger channel of its own). The rolling Android marker `refs/tags/nightly` moves only when the
 receipt says Android published; macOS binds its own `nightly-desktop` tag in
-its publishing job. A night that published macOS but not Android therefore
-leaves `nightly` behind, and the next plan's decide step rebuilds the cohort.
+its publishing job, before its claim step. The next plan's decide step
+(`scripts/nightly-cohort-decide.mjs`, rule in
+`scripts/lib/nightly-cohort-decision.mjs`) therefore never treats a marker
+at the source SHA as proof of a verified ship: after peeling generated ledger
+commits, each platform counts as shipped only when its marker is at the
+source SHA **and** the deploy ledger on `origin/main` holds a row for its
+channel (`nightly-android`, `nightly-desktop`) at that SHA. The row is the
+evidence — it exists only for a platform the receipt verified — so a row
+from a `partial` night counts for the platform it names, and a marker at the
+source SHA without a row (a macOS claim that failed after the tag moved,
+#1780) rebuilds the cohort with the platform and reason in the step summary.
+A night that published macOS but not Android leaves `nightly` behind and
+rebuilds for the same reason. The ledger is read from `origin/main`, not the
+checkout, because rows land on `main` after the ship: the checkout at the
+source SHA can never contain the row for its own marker. A missing ref or
+malformed ledger fails the plan closed rather than reading as "no rows".
 A TestFlight failure reddens the Nightly run and opens the `main-health`
 tracker, but never blocks Android/macOS finality, the ledger, or the marker.
 The iOS matrix cell keeps `NOT_VERIFIED` evidence until a processed TestFlight

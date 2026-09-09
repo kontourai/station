@@ -10,9 +10,11 @@ import {
   attachInternalGroup,
   createAppStoreConnectJwt,
   receiptArtifactProvenance,
+  resolveAppStoreConnectUrl,
   selectAppResource,
   selectBuildResources,
   selectInternalGroup,
+  selectMembershipNextPage,
   selectProcessedBuildResource,
 } from '../app-store-connect-receipt.mjs';
 
@@ -369,21 +371,23 @@ describe('attachInternalGroup membership derivation (#1777)', () => {
    */
   function stubProvider(handlers: {
     group: unknown;
-    readback: () => Response;
+    readback: (url: URL) => Response;
     post?: () => Response;
   }) {
     const calls: string[] = [];
+    const urls: string[] = [];
     vi.stubGlobal('fetch', async (input: URL | string, init?: RequestInit) => {
       const url = new URL(String(input));
       const method = init?.method ?? 'GET';
       calls.push(`${method} ${url.pathname}`);
+      urls.push(`${method} ${url.href}`);
       if (method === 'GET' && url.pathname === '/v1/betaGroups')
         return jsonResponse(handlers.group);
       if (
         method === 'GET' &&
         url.pathname === '/v1/betaGroups/group-1/relationships/builds'
       )
-        return handlers.readback();
+        return handlers.readback(url);
       if (
         method === 'POST' &&
         url.pathname === '/v1/betaGroups/group-1/relationships/builds' &&
@@ -395,6 +399,7 @@ describe('attachInternalGroup membership derivation (#1777)', () => {
     let clock = 1_000_000;
     return {
       calls,
+      urls,
       hooks: {
         now: () => clock,
         sleep: async (ms: number) => {
@@ -622,5 +627,333 @@ describe('attachInternalGroup membership derivation (#1777)', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  describe('paged readback (#1782)', () => {
+    const relationship =
+      'https://api.appstoreconnect.apple.com/v1/betaGroups/group-1/relationships/builds';
+    const firstPage = `${relationship}?limit=200`;
+    const pageUrl = (index: number) =>
+      `${relationship}?cursor=p${index}&limit=200`;
+    const readbacks = (provider: { urls: string[] }) =>
+      provider.urls.filter((entry) => entry.startsWith(`GET ${relationship}`));
+
+    /**
+     * A provider whose relationship is split into pages addressed by a
+     * `cursor` query parameter, each carrying the next page in `links.next`
+     * exactly as a collection response does. `nextFor` overrides the link a
+     * page returns so a hostile or malformed link is a one-line variant.
+     */
+    function pagedReadback(
+      pages: string[][],
+      nextFor: (index: number) => unknown = (index) =>
+        index + 1 < pages.length ? pageUrl(index + 1) : undefined,
+    ) {
+      return (url: URL) => {
+        const cursor = url.searchParams.get('cursor');
+        const index = cursor === null ? 0 : Number(cursor.slice(1));
+        const page = pages[index];
+        if (!page) throw new Error(`unexpected page request ${url.href}`);
+        const next = nextFor(index);
+        return jsonResponse({
+          data: page.map((id) => ({ type: 'builds', id })),
+          links: {
+            self: url.href,
+            ...(next === undefined ? {} : { next }),
+          },
+        });
+      };
+    }
+    const filler = (count: number, prefix: string) =>
+      Array.from({ length: count }, (_, i) => `${prefix}-${i}`);
+
+    test('a build on the first page costs one request even when more pages exist', async () => {
+      const output = receiptPath();
+      const provider = stubProvider({
+        group: groupPayload(true),
+        readback: pagedReadback([
+          [...filler(199, 'old'), 'build-1'],
+          filler(200, 'older'),
+        ]),
+      });
+      try {
+        await run(output, provider.hooks);
+        expect(readbacks(provider)).toEqual([`GET ${firstPage}`]);
+        expect(readReceipt(output)).toMatchObject({
+          membership: 'automatic',
+          membershipPagesRead: 1,
+          membershipBuildsListed: 200,
+        });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    test('a build on the third page is found by following links.next twice', async () => {
+      const output = receiptPath();
+      const provider = stubProvider({
+        group: groupPayload(true),
+        readback: pagedReadback([
+          filler(200, 'a'),
+          filler(200, 'b'),
+          ['c-0', 'build-1', 'c-2'],
+        ]),
+      });
+      try {
+        await run(output, provider.hooks);
+        expect(readbacks(provider)).toEqual([
+          `GET ${firstPage}`,
+          `GET ${pageUrl(1)}`,
+          `GET ${pageUrl(2)}`,
+        ]);
+        expect(readReceipt(output)).toMatchObject({
+          membership: 'automatic',
+          membershipPagesRead: 3,
+          membershipBuildsListed: 403,
+        });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    test('the assigned path reads back across pages as well', async () => {
+      const output = receiptPath();
+      const provider = stubProvider({
+        group: groupPayload(false),
+        post: () => new Response(null, { status: 204 }),
+        readback: pagedReadback([filler(200, 'a'), ['build-1']]),
+      });
+      try {
+        await run(output, provider.hooks);
+        expect(provider.calls).toEqual([
+          'GET /v1/betaGroups',
+          'POST /v1/betaGroups/group-1/relationships/builds',
+          'GET /v1/betaGroups/group-1/relationships/builds',
+          'GET /v1/betaGroups/group-1/relationships/builds',
+        ]);
+        expect(readReceipt(output)).toMatchObject({
+          membership: 'assigned',
+          assignmentResponseStatus: 204,
+          membershipPagesRead: 2,
+          membershipBuildsListed: 201,
+        });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    test('a build absent from the first ten pages fails closed at the cap with its own text, without polling again', async () => {
+      const output = receiptPath();
+      const provider = stubProvider({
+        group: groupPayload(true),
+        // Every page links onward: the group is larger than the reader walks.
+        readback: pagedReadback(
+          Array.from({ length: 12 }, (_, i) => filler(200, `p${i}`)),
+          (index) => pageUrl(index + 1),
+        ),
+      });
+      try {
+        const failure = await run(output, provider.hooks).catch(
+          (error: Error) => error,
+        );
+        expect(failure).toBeInstanceOf(Error);
+        expect((failure as Error).message).toBe(
+          'build build-1 was not found in the first 2000 builds (10 pages) of App Store Connect beta group Station Nightly Internal (group-1) for app app-1; the group lists more pages than this reader walks',
+        );
+        expect((failure as Error).message).not.toContain('does not contain');
+        expect(readbacks(provider)).toHaveLength(10);
+        expect(() => readFileSync(output)).toThrow();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    test('a build absent from an exhausted list keeps polling to the deadline and reports what the last read covered', async () => {
+      const output = receiptPath();
+      const provider = stubProvider({
+        group: groupPayload(true),
+        readback: pagedReadback([filler(200, 'a'), ['b-0', 'b-1']]),
+      });
+      try {
+        await expect(run(output, provider.hooks)).rejects.toThrow(
+          'App Store Connect beta group Station Nightly Internal (group-1) for app app-1 does not contain build build-1 before the deadline; the last read listed 202 builds across 2 pages',
+        );
+        // Seven polls of two pages each; no poll stops short of the last page.
+        expect(readbacks(provider)).toHaveLength(14);
+        expect(() => readFileSync(output)).toThrow();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    test("a next-page link is followed only when it is this group's relationship on the provider origin", async () => {
+      const refused: Array<[string, unknown]> = [
+        [
+          'off-origin host',
+          'https://api.appstoreconnect.apple.com.evil.example/v1/betaGroups/group-1/relationships/builds?cursor=p1',
+        ],
+        [
+          'plain http',
+          'http://api.appstoreconnect.apple.com/v1/betaGroups/group-1/relationships/builds?cursor=p1',
+        ],
+        [
+          'another group',
+          'https://api.appstoreconnect.apple.com/v1/betaGroups/group-2/relationships/builds?cursor=p1',
+        ],
+        [
+          'another resource',
+          'https://api.appstoreconnect.apple.com/v1/builds?cursor=p1',
+        ],
+        [
+          'embedded credentials',
+          'https://user:secret@api.appstoreconnect.apple.com/v1/betaGroups/group-1/relationships/builds?cursor=p1',
+        ],
+        [
+          'relative path',
+          '/v1/betaGroups/group-1/relationships/builds?cursor=p1',
+        ],
+        [
+          'non-default port',
+          'https://api.appstoreconnect.apple.com:8443/v1/betaGroups/group-1/relationships/builds?cursor=p1',
+        ],
+        ['not a string', { href: pageUrl(1) }],
+      ];
+      for (const [label, next] of refused) {
+        const output = receiptPath();
+        const provider = stubProvider({
+          group: groupPayload(true),
+          readback: pagedReadback([filler(3, 'a'), ['build-1']], () => next),
+        });
+        try {
+          await expect(run(output, provider.hooks), label).rejects.toThrow(
+            'App Store Connect beta group group-1 returned a next-page link that is not https://api.appstoreconnect.apple.com/v1/betaGroups/group-1/relationships/builds; refusing to follow it',
+          );
+          // The link was never fetched and the wait did not continue.
+          expect(provider.urls, label).toEqual([
+            'GET https://api.appstoreconnect.apple.com/v1/betaGroups?filter%5Bapp%5D=app-1&filter%5Bname%5D=Station+Nightly+Internal&limit=2',
+            `GET ${firstPage}`,
+          ]);
+          expect(() => readFileSync(output), label).toThrow();
+        } finally {
+          vi.unstubAllGlobals();
+        }
+      }
+      const visited = new Set([
+        '/v1/betaGroups/group-1/relationships/builds?limit=200',
+      ]);
+      expect(
+        selectMembershipNextPage(
+          { links: { self: firstPage, next: pageUrl(1) } },
+          { groupId: 'group-1', visited },
+        ),
+      ).toBe(pageUrl(1));
+      expect(
+        selectMembershipNextPage(
+          { links: { self: firstPage } },
+          { groupId: 'group-1', visited },
+        ),
+      ).toBeNull();
+    });
+
+    test('a next-page link to a page this walk already read is a loop, refused with its own text', async () => {
+      const repeated =
+        'App Store Connect beta group group-1 links.next repeats a page already read; refusing to follow it';
+      const cases: Array<{
+        label: string;
+        nextFor: (index: number) => string;
+        requests: string[];
+      }> = [
+        {
+          // The same page under a fragment is the same page.
+          label: 'the page itself with a fragment',
+          nextFor: () => `${firstPage}#frag`,
+          requests: [`GET ${firstPage}`],
+        },
+        {
+          // p0 -> p1 -> p0 would otherwise run to the cap and be reported
+          // as a group larger than the reader walks.
+          label: 'alternating pages',
+          nextFor: (index) => (index === 0 ? pageUrl(1) : firstPage),
+          requests: [`GET ${firstPage}`, `GET ${pageUrl(1)}`],
+        },
+      ];
+      for (const { label, nextFor, requests } of cases) {
+        const output = receiptPath();
+        const provider = stubProvider({
+          group: groupPayload(true),
+          readback: pagedReadback(
+            [filler(200, 'a'), filler(200, 'b'), ['build-1']],
+            nextFor,
+          ),
+        });
+        try {
+          const failure = await run(output, provider.hooks).catch(
+            (error: Error) => error,
+          );
+          expect((failure as Error).message, label).toBe(repeated);
+          expect(readbacks(provider), label).toEqual(requests);
+          expect(() => readFileSync(output), label).toThrow();
+        } finally {
+          vi.unstubAllGlobals();
+        }
+      }
+    });
+
+    test('a build listed twice on one later page fails closed without polling again', async () => {
+      const output = receiptPath();
+      const provider = stubProvider({
+        group: groupPayload(true),
+        readback: pagedReadback([
+          filler(200, 'a'),
+          ['build-1', 'b-0', 'build-1'],
+        ]),
+      });
+      try {
+        await expect(run(output, provider.hooks)).rejects.toThrow(
+          'App Store Connect beta group group-1 lists build build-1 2 times',
+        );
+        expect(readbacks(provider)).toEqual([
+          `GET ${firstPage}`,
+          `GET ${pageUrl(1)}`,
+        ]);
+        expect(() => readFileSync(output)).toThrow();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
+});
+
+describe('resolveAppStoreConnectUrl', () => {
+  test('accepts a path or an absolute provider URL and refuses any other origin', async () => {
+    expect(resolveAppStoreConnectUrl('/v1/apps?limit=2').href).toBe(
+      'https://api.appstoreconnect.apple.com/v1/apps?limit=2',
+    );
+    expect(
+      resolveAppStoreConnectUrl(
+        'https://api.appstoreconnect.apple.com/v1/builds?cursor=x',
+      ).href,
+    ).toBe('https://api.appstoreconnect.apple.com/v1/builds?cursor=x');
+    for (const rejected of [
+      'https://evil.example/v1/apps',
+      'http://api.appstoreconnect.apple.com/v1/apps',
+      'https://user:pw@api.appstoreconnect.apple.com/v1/apps',
+      'https://api.appstoreconnect.apple.com:8443/v1/apps',
+      '//evil.example/v1/apps',
+    ]) {
+      expect(() => resolveAppStoreConnectUrl(rejected)).toThrow(
+        'App Store Connect request must stay on https://api.appstoreconnect.apple.com',
+      );
+    }
+    // The request path enforces it before any credential leaves the process.
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 200 }));
+    await expect(
+      appStoreConnectRequest(
+        'https://evil.example/v1/apps',
+        { issuerId: 'issuer', keyId: 'key', privateKey },
+        fetchImpl,
+      ),
+    ).rejects.toThrow('must stay on');
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

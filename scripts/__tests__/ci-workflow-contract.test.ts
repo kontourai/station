@@ -322,6 +322,51 @@ describe('CI verification workflow contracts', () => {
     );
   });
 
+  it('scans the advisory floor on its own sub-daily schedule, in a shape main-health can clear (#1753)', () => {
+    const document = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/dependency-advisory.yml',
+    )?.document as
+      | {
+          on?: { schedule?: unknown; workflow_dispatch?: unknown };
+          permissions?: unknown;
+          jobs?: Record<
+            string,
+            { if?: unknown; 'runs-on'?: unknown; steps?: { run?: unknown }[] }
+          >;
+        }
+      | undefined;
+
+    // Parsed values, not file text: every constant below is also named in
+    // that workflow's own comments, so a substring check over the source
+    // would stay green if the key itself changed while the prose survived.
+    //
+    // A registry-side break reds the floor for every pull request whose diff
+    // touches a dependency input (the policy narrows by range), with no
+    // commit to attribute it to — a newly disclosed advisory, or an affected
+    // range narrowing until a ledger residual is unused. Four slots a day
+    // bound how long that goes unattributed; one slot leaves it to whichever
+    // pull request gates next, which is how four such breaks were found on
+    // 2026-09-08.
+    expect(document?.on?.schedule).toEqual([{ cron: '23 2,8,14,20 * * *' }]);
+    expect(document?.on).toHaveProperty('workflow_dispatch');
+    // main-health.yml owns every issue write; a red scan here only has to be
+    // observable as a failed run on main.
+    expect(document?.permissions).toEqual({ contents: 'read' });
+
+    // main-health clears this workflow's tracker only for a run that has a
+    // successful job and NO skipped job. A second job here, or an `if:` on
+    // this one, would leave the tracker open against a floor that has since
+    // gone green.
+    const jobs = Object.entries(document?.jobs ?? {});
+    expect(jobs).toHaveLength(1);
+    const [, audit] = jobs[0];
+    expect(audit.if).toBeUndefined();
+    expect(audit['runs-on']).toBe('ubuntu-22.04');
+    expect(audit.steps?.map((step) => step.run)).toContain(
+      'npm run audit:policy',
+    );
+  });
+
   it('closes Nightly health only after terminal deliveries, despite expected recovery skips', async () => {
     const document = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/main-health.yml',

@@ -20,9 +20,18 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const refetchPlugins = vi.fn();
 const reloadRejectedPlugin = vi.fn();
 
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ navigate: vi.fn() }),
-}));
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({ navigate: vi.fn() });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 
 // Unrelated to the wiring under test and it reaches for a live connection
 // context; its own behaviour is pinned in

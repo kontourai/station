@@ -38,16 +38,25 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
   }),
 }));
 
-vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({
+vi.mock('../contexts/NavigationContext', () => {
+  // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
+  // the store, optionally through a selector) and `useNavigationActions` (the
+  // memoized actions, no subscription). This mock answers both from one value.
+  const navigation = () => ({
     setProject,
     setLayout,
     // Must be the module-level spy, not a fresh `vi.fn` per render: the
     // navigateTo assertions below inspect `navigate`, and handing the component
     // a throwaway mock made them unfalsifiable (they asserted 0 calls forever).
     navigate,
-  }),
-}));
+  });
+  return {
+    useNavigation: (
+      selector?: (state: ReturnType<typeof navigation>) => unknown,
+    ) => (selector ? selector(navigation()) : navigation()),
+    useNavigationActions: navigation,
+  };
+});
 
 import { NotificationContainer } from '../components/notifications/NotificationContainer';
 
