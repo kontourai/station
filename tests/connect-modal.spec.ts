@@ -277,8 +277,9 @@ test.describe('Connection Manager Modal', () => {
     // instead of returning to the list (archive#986) — the pairing panel names it
     // by name, not "this Station".
     await expect(
-      dialog.getByText(/Send a short-lived request to Office\./),
+      dialog.getByRole('heading', { name: 'Request Access', exact: true }),
     ).toBeVisible();
+    await expect(dialog).toContainText('Office');
     await dialog.getByRole('button', { name: 'Back' }).click();
 
     // The connection is saved and active as soon as it is added, regardless

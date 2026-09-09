@@ -334,9 +334,16 @@ test('provider-managed project ignores a stale unsupported project model even wh
   await openNewChatForViewport(page);
 
   await expect(page.getByText('New Chat')).toBeVisible({ timeout: 3000 });
-  await expect(
-    page.locator('.new-chat-modal__context-button', { hasText: 'My Project' }),
-  ).toBeVisible();
+  // Last-visited context must not silently bind a new chat. Choose the
+  // project explicitly before checking its model/engine behavior.
+  const projectContext = page.locator('.new-chat-modal__context-button');
+  await expect(projectContext).toContainText('No workspace');
+  await projectContext.click();
+  await page
+    .locator('.new-chat-modal__dropdown, .new-chat-modal__context-sheet')
+    .getByRole('button', { name: /My Project/ })
+    .click();
+  await expect(projectContext).toContainText('My Project');
   await expect(
     page.locator('.new-chat-modal__agent', { hasText: 'Station' }),
   ).toBeVisible();
@@ -382,9 +389,16 @@ test('selected project context shows Station via the global provider-managed fal
   await expect(page.getByText('New Chat')).toBeVisible({ timeout: 3000 });
   // Scope to the modal's context button — the expanded sidebar also surfaces
   // the project name now.
-  await expect(
-    page.locator('.new-chat-modal__context-button', { hasText: 'My Project' }),
-  ).toBeVisible();
+  // Last-visited context must not silently bind a new chat. Choose the
+  // project explicitly before checking its model/engine behavior.
+  const projectContext = page.locator('.new-chat-modal__context-button');
+  await expect(projectContext).toContainText('No workspace');
+  await projectContext.click();
+  await page
+    .locator('.new-chat-modal__dropdown, .new-chat-modal__context-sheet')
+    .getByRole('button', { name: /My Project/ })
+    .click();
+  await expect(projectContext).toContainText('My Project');
   const breadcrumb = page.locator(
     '.new-chat-modal__context-button .new-chat-modal__cwd-breadcrumb',
   );
