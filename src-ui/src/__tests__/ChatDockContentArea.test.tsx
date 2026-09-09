@@ -90,7 +90,7 @@ describe('ChatDockContentArea history backdrop', () => {
     renderHistoryPanel(onCloseHistory);
 
     expect(await screen.findByRole('alert')).toBeTruthy();
-    expect(screen.getByText('No active session')).toBeTruthy();
+    expect(screen.getByText('No chat open')).toBeTruthy();
     fireEvent.click(
       screen.getByRole('button', { name: 'Close conversation history' }),
     );

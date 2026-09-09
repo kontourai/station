@@ -320,7 +320,6 @@ export function ChatInputArea({
     .filter(Boolean)
     .join(' ');
   const agentAccessibleLabel = `Agent: ${agentLabel ?? 'current Agent'}. ${agentHandoffDisabled ? (agentHandoffDisabledReason ?? 'Unavailable') : 'Change Agent'}`;
-  const safeMaxHeight = Math.max(dockHeight - 200, 120);
   const isMobile = useIsMobile();
   // A turn is in flight, so this send queues behind it rather than starting
   // one. Say so in the placeholder instead of letting "Type a message" imply
@@ -514,7 +513,7 @@ export function ChatInputArea({
               }))}
               currentModel={currentModel}
               agentDefaultModel={agentDefaultModel}
-              maxHeight={`${safeMaxHeight}px`}
+              anchorRef={textareaRef}
               onSelect={onModelSelect}
               onClose={onModelClose}
             />
@@ -523,7 +522,7 @@ export function ChatInputArea({
             <SlashCommandSelector
               query={commandQuery}
               commands={slashCommands}
-              maxHeight={`${safeMaxHeight}px`}
+              anchorRef={textareaRef}
               onSelect={onCommandSelect}
               onClose={onCommandClose}
             />
