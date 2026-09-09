@@ -68,6 +68,7 @@ export function AttachedSessionDetail({
   onLoadOlder,
   session,
   onAdopted,
+  onOpenInChat,
   getSelectionIntent,
   events,
   connected,
@@ -79,6 +80,7 @@ export function AttachedSessionDetail({
   onRetryCapabilityRecovery,
   visualViewport,
 }: {
+  onOpenInChat?: () => void;
   presentation?: 'inspector' | 'chat';
   openingContinuation?: boolean;
   continuationCreated?: boolean;
@@ -336,6 +338,10 @@ export function AttachedSessionDetail({
           serverRejectedRetryRef.current
         )
           return;
+        if (presentation === 'inspector' && onOpenInChat) {
+          onOpenInChat();
+          return;
+        }
         if (presentation === 'chat') confirmedDraft.current = draft;
         adoption.mutate(getSelectionIntent());
       }}

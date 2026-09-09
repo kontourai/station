@@ -13,6 +13,7 @@ import {
   type DeviceSettingsActions,
   useDeviceSettings,
 } from '../../contexts/DeviceSettingsContext';
+import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useExitTransition } from '../../hooks/useExitTransition';
 import type { ActiveWorkPanel } from './ActiveWorkContextFrame';
 import { CHAT_DOCK_INBOX_EXIT_MS } from './chat-dock-utils';
@@ -43,6 +44,14 @@ export function useChatDockOverlays({
   const [importedSessionId, setImportedSessionId] = useState<string | null>(
     null,
   );
+  const regionModel = useRegionModelOptional();
+  const incoming = regionModel?.surfaceIntents.chat;
+  const consumeIntent = regionModel?.consumeSurfaceIntent;
+  useEffect(() => {
+    if (!incoming?.session) return;
+    setImportedSessionId(incoming.session);
+    consumeIntent?.('chat', incoming.token);
+  }, [incoming, consumeIntent]);
   // An imported conversation occupies the same reading surface as an owned chat.
   const onOpenInboxSession = useCallback(
     (threadId: string) => setImportedSessionId(threadId),

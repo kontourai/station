@@ -214,6 +214,7 @@ export function SessionsView({
   focusHint,
   intentToken,
   onFocusConsumed,
+  onOpenInChat,
 }: {
   apiBase: string;
   sessionId?: string;
@@ -230,6 +231,7 @@ export function SessionsView({
   focusHint?: 'evidence';
   intentToken?: number;
   onFocusConsumed?: () => void;
+  onOpenInChat?: (threadId: string) => void;
 }) {
   // The SSE feed is per-session, so the list itself is kept fresh by polling.
   // The query owns that poll: an interval beside it calling `refetch()` was a
@@ -799,6 +801,9 @@ export function SessionsView({
             session={selected}
             evidenceReveal={evidenceReveal}
             onTaskChanged={() => void refetch()}
+            onOpenInChat={
+              onOpenInChat ? () => onOpenInChat(selected.threadId) : undefined
+            }
             onAdopted={(child, intent) => {
               adoptedSelectionRef.current = {
                 threadId: child.threadId,

@@ -18,12 +18,14 @@ export function SessionDetail({
   session,
   onTaskChanged,
   onAdopted,
+  onOpenInChat,
   getSelectionIntent,
   evidenceReveal,
   presentation = 'inspector',
   openingContinuation,
   continuationCreated,
 }: {
+  onOpenInChat?: () => void;
   presentation?: 'inspector' | 'chat';
   openingContinuation?: boolean;
   continuationCreated?: boolean;
@@ -130,6 +132,7 @@ export function SessionDetail({
           onLoadOlder={hasMore ? loadOlder : undefined}
           session={session}
           onAdopted={onAdopted}
+          onOpenInChat={onOpenInChat}
           getSelectionIntent={getSelectionIntent}
           events={events}
           connected={connected}
