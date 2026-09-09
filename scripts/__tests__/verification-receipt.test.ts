@@ -1703,6 +1703,21 @@ describe('verification receipt JSON schema (Ajv)', () => {
       'indeterminate: false (only true is a valid value)',
       { ...passing, terminal: { ...passing.terminal, indeterminate: false } },
     ],
+    // station#1827: the cause explains one status. Bound in the schema as
+    // well as the producer so a receipt written by hand, or by a future
+    // producer, cannot stamp an infrastructure explanation onto a red.
+    [
+      'a runner-declared infrastructureCause on a failed terminal',
+      {
+        ...passing,
+        terminal: {
+          status: 'failed',
+          exitCode: 1,
+          passed: false,
+          infrastructureCause: 'ci:fast exceeded its 12-minute feedback budget',
+        },
+      },
+    ],
   ];
 
   it.each(negativeFixtures)('rejects %s', (_label, fixture) => {
@@ -1725,6 +1740,47 @@ describe('verification receipt JSON schema (Ajv)', () => {
     expect(validate(receipt), JSON.stringify(validate.errors, null, 2)).toBe(
       true,
     );
+  });
+
+  it('carries a runner-declared stop cause on an infrastructure_error receipt, and only there (station#1827)', () => {
+    const cause = 'ci:fast exceeded its 12-minute feedback budget';
+    const infrastructureCounts = {
+      executed: 1,
+      passed: 0,
+      failed: 0,
+      infrastructureErrors: 1,
+    };
+    const stopped = createVerificationReceipt({
+      request: buildRequest(),
+      status: 'infrastructure_error',
+      exitCode: null,
+      counts: infrastructureCounts,
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      before: provenance,
+      after: provenance,
+      infrastructureCause: cause,
+    });
+    expect(stopped.terminal.infrastructureCause).toBe(cause);
+    expect(validate(stopped), JSON.stringify(validate.errors, null, 2)).toBe(
+      true,
+    );
+
+    // The same argument on a status the cause does not explain is dropped by
+    // the producer rather than recorded: `failed` means a check reached a
+    // verdict, so an infrastructure explanation there would be a label
+    // nothing about the run derived.
+    const red = createVerificationReceipt({
+      request: buildRequest(),
+      status: 'failed',
+      exitCode: 1,
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      before: provenance,
+      after: provenance,
+      infrastructureCause: cause,
+    });
+    expect(red.terminal.infrastructureCause).toBeUndefined();
+    expect(validate(red), JSON.stringify(validate.errors, null, 2)).toBe(true);
   });
 
   it('does NOT enforce passed === executed — that equality is a runtime guard only', () => {

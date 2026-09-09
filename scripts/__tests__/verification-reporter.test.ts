@@ -416,6 +416,54 @@ describe('verification reporter', () => {
     expect(summary.causeStream).toBeUndefined();
   });
 
+  // station#1827: the runner's own final word wins over the scan, for the one
+  // terminal it explains and no other. Both cases below feed the SAME capture
+  // and the SAME cause, so only the terminal discriminates them -- and the
+  // capture carries an `Error:`-shaped line the scan does choose, which is
+  // what gives the first assertion any power at all.
+  test('a runner-declared cause outranks the scan only for the terminal it explains (station#1827)', () => {
+    const capture = {
+      stdout: '          Error: observer failed',
+      stderr: '[station-ci-fast-owner-final] ci:fast exceeded its budget',
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      infrastructureCause: 'ci:fast exceeded its budget',
+      maxBytes: 2048,
+    };
+    const stopped = summarizeVerificationOutput({
+      ...capture,
+      terminal: { status: 'infrastructure_error', exitCode: null },
+    });
+    expect(stopped.firstCausalExcerpt).toBe('ci:fast exceeded its budget');
+    // Ranked below, never deleted: the scan stays a second line.
+    expect(stopped.causalExcerpts).toEqual([
+      'ci:fast exceeded its budget',
+      '          Error: observer failed',
+    ]);
+    // The `causeStream` caveat says the excerpt "was picked by severity and
+    // position". Nothing picked this one, so the caveat would be false.
+    expect(stopped.causeStream).toBeUndefined();
+
+    // Same cause, same capture, a status the cause does not explain. Nothing
+    // about a `failed` lane's reporting changes.
+    const red = summarizeVerificationOutput({
+      ...capture,
+      terminal: { status: 'failed', exitCode: 1 },
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+    });
+    expect(red.firstCausalExcerpt).toBe('          Error: observer failed');
+    expect(red.causalExcerpts).toEqual(['          Error: observer failed']);
+
+    // A blank declaration is not a cause. Promoting one would displace the
+    // scanned excerpt with nothing, which is worse than the wrong excerpt.
+    const blank = summarizeVerificationOutput({
+      ...capture,
+      terminal: { status: 'infrastructure_error', exitCode: null },
+      infrastructureCause: '   ',
+    });
+    expect(blank.firstCausalExcerpt).toBe('          Error: observer failed');
+  });
+
   // causeStream is an enum. Truncated to 's' it is a value outside its own
   // vocabulary, and it was being truncated exactly that way while it sat among
   // the prose-truncating semantic classes.

@@ -179,9 +179,33 @@
         "reconcileNote": {
           "type": "string",
           "maxLength": 1024
+        },
+        "infrastructureCause": {
+          "description": "The stopping runner's own final word about why this lane never reached a verdict — ci:fast's feedback-budget kill, recovered from the owner-final line it prints before returning its infrastructure exit code. Bounded and redacted like every other diagnostic excerpt. Present only on an `infrastructure_error` terminal, and only when the runner named a cause; absence means no runner-declared cause was recovered, never that the run had none.",
+          "type": "string",
+          "maxLength": 512
         }
       },
       "allOf": [
+        {
+          "description": "A runner-declared stop cause belongs only to the status it explains.",
+          "if": {
+            "type": "object",
+            "properties": {
+              "infrastructureCause": {
+                "type": "string"
+              }
+            },
+            "required": ["infrastructureCause"]
+          },
+          "then": {
+            "properties": {
+              "status": {
+                "const": "infrastructure_error"
+              }
+            }
+          }
+        },
         {
           "if": {
             "type": "object",

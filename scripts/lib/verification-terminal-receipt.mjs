@@ -121,6 +121,29 @@ function primaryInterruptedCause(raw, result) {
     : 'verification execution ended with an infrastructure error before terminal reporting';
 }
 
+/**
+ * The bounded, redacted form of the runner's own final word about why it
+ * stopped, or null.
+ *
+ * station#1827: `ciFastInfrastructureCause` (verification-execution-lifecycle)
+ * already recovers the owner-final line ci:fast prints before it returns its
+ * infrastructure exit code, but only `primaryInterruptedCause` above read it
+ * -- and that is reached ONLY when reporting itself throws. On the ordinary
+ * path the value was computed and dropped, so the receipt for a budget kill
+ * carried no cause and the summary reported a scanned excerpt instead.
+ *
+ * Bound to the status it explains. A cause for stopping is meaningful for an
+ * `infrastructure_error` terminal and for no other: attaching it to a `failed`
+ * result would put an infrastructure explanation on an ordinary red, which is
+ * the misattribution this exists to remove, in the other direction.
+ */
+function ownerInfrastructureCause(raw, result) {
+  if (result?.status !== 'infrastructure_error') return null;
+  const cause = raw?.infrastructureCause;
+  if (typeof cause !== 'string' || cause.length === 0) return null;
+  return boundedText(cause, 512) || null;
+}
+
 function preservesPrimaryTerminal(result) {
   return (
     (result?.status === 'failed' &&
@@ -207,14 +230,24 @@ export function reportExecution({ raw, result, cleanup, worktree, request }) {
           }),
         );
     }
+    // station#1827: the cause rides the RESULT, not only the transient
+    // summary -- `publishTerminalReceipt` spreads this object into
+    // `createVerificationReceipt`, so this is what makes the runner's own
+    // final word survive into the canonical receipt a later reader opens.
+    const infrastructureCause = ownerInfrastructureCause(raw, reportedResult);
     return {
-      result: reportedResult,
+      result: infrastructureCause
+        ? { ...reportedResult, infrastructureCause }
+        : reportedResult,
       artifacts,
       outputTruncated,
       attachmentOmissions,
       summary: summarizeVerificationOutput({
         stdout: raw?.output?.stdout?.text ?? '',
         stderr: raw?.output?.stderr?.text ?? '',
+        // The same value the receipt carries, so the printed summary and the
+        // persisted receipt can never name different causes for one run.
+        ...(infrastructureCause ? { infrastructureCause } : {}),
         // exitCode and truncated are what let the reporter tell a real
         // non-pass from a `completed` status, and a prefix-capture from a
         // real exit (review of station#1871). Dropping them here is what
@@ -251,9 +284,15 @@ export function reportExecution({ raw, result, cleanup, worktree, request }) {
     // reporting problem itself stays visible via reconcileNote below.
     if (preservesPrimaryTerminal(result)) {
       const primaryCause = primaryInterruptedCause(raw, result);
+      // station#1827: `primaryCause` already put the runner's own final word
+      // in the summary on this branch; without this the canonical receipt
+      // still lost it, and a receipt that omits the cause on one path while
+      // carrying it on the other invites the reading that there was none.
+      const preservedCause = ownerInfrastructureCause(raw, result);
       const preserved = {
         ...result,
         reconcileNote,
+        ...(preservedCause ? { infrastructureCause: preservedCause } : {}),
         ...(recoverableFailures.length
           ? {
               recoveredFailures: recoverableFailures

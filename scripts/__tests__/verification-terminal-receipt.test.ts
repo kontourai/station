@@ -1080,3 +1080,114 @@ describe('reportExecution preserves genuine failures (station#4173)', () => {
     },
   );
 });
+
+/**
+ * station#1827.
+ *
+ * The literal string a PASSING knowledge-store test prints on purpose. On
+ * PR #1787 (run 34301492334) the receipt named it as the cause of a lane the
+ * ci:fast runner had killed for exceeding its feedback budget: the scan
+ * matched `/^\s*Error:\s/`, nothing matched the runner's own owner-final
+ * line, and the recovered cause was discarded on the ordinary path.
+ *
+ * It is in both fixtures below for one reason: without a line the scan WOULD
+ * have chosen, a test asserting the budget message proves only that the noise
+ * happened not to be there.
+ */
+const SCANNED_DECOY_DIAGNOSTIC = '          Error: observer failed';
+const BUDGET_CAUSE = 'ci:fast exceeded its 12-minute feedback budget';
+const OWNER_FINAL_STDERR = `[station-ci-fast-owner-final] ${BUDGET_CAUSE}\n`;
+
+/**
+ * A ci-fast owner capture shaped like the live one: a digest-bound, coherent
+ * changed-verification diagnostic (so `reportExecution` takes its ORDINARY,
+ * non-throwing path — the path that had never executed with an owner-final
+ * line present), stdout carrying the decoy, stderr ending in the owner-final
+ * line, and the cause the lifecycle recovers from it.
+ */
+function ciFastBudgetKillRaw(worktree: string) {
+  const diagnosticRoot = join(worktree, '.kontourai/test-impact');
+  mkdirSync(diagnosticRoot, { recursive: true });
+  const provenance = {
+    repositoryId: 'a'.repeat(64),
+    headSha: 'b'.repeat(40),
+    workspaceDigest: 'c'.repeat(64),
+    environmentDigest: 'd'.repeat(64),
+    dependencyDigest: 'e'.repeat(64),
+  };
+  writeChangedDiagnosticBundle(diagnosticRoot, changedDiagnostic(provenance));
+  return {
+    ...__verificationCoordinatorInternals.attachCiFastDiagnostics(
+      { lane: { id: 'ci-fast' }, before: { worktree, ...provenance } },
+      {
+        output: {
+          stdout: { text: `${SCANNED_DECOY_DIAGNOSTIC}\n` },
+          stderr: { text: OWNER_FINAL_STDERR },
+        },
+      },
+    ),
+    infrastructureCause: BUDGET_CAUSE,
+  };
+}
+
+test("the ci-fast runner's own budget cause outranks a scanned excerpt on the ordinary path (station#1827)", () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-ordinary-'));
+  roots.push(worktree);
+  const raw = ciFastBudgetKillRaw(worktree);
+  const reported = reportExecution({
+    raw,
+    result: {
+      status: 'infrastructure_error',
+      exitCode: null,
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+    },
+    cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+    worktree,
+    request: { key: 'a'.repeat(64) },
+  });
+
+  // The ordinary path, not a reporting-pipeline failure: `reconcileNote`'s
+  // absence is what says so (docs/reference/verification-receipts.md).
+  expect(reported.summary.reconcileNote).toBeUndefined();
+  expect(reported.summary.firstCausalExcerpt).toBe(BUDGET_CAUSE);
+  // The invariant this file states twice: the two fields never disagree.
+  expect(reported.summary.causalExcerpts[0]).toBe(
+    reported.summary.firstCausalExcerpt,
+  );
+  // The scanned evidence is RANKED BELOW the cause, not discarded: the scan
+  // is a second line, and demoting it must not delete it.
+  expect(reported.summary.causalExcerpts).toContain(SCANNED_DECOY_DIAGNOSTIC);
+  // The caveat `verification-gate-summary.mjs` renders for `causeStream`
+  // says the excerpt "was picked by severity and position". Nothing picked
+  // this one, so printing that sentence would be a false claim.
+  expect(reported.summary.causeStream).toBeUndefined();
+  // Persistable: `publishTerminalReceipt` spreads the RESULT into
+  // `createVerificationReceipt`, so the summary alone would leave the
+  // canonical receipt carrying no cause at all.
+  expect(reported.result.infrastructureCause).toBe(BUDGET_CAUSE);
+});
+
+test('an ordinary failing lane still reports its scanned excerpt (station#1827)', () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-failed-'));
+  roots.push(worktree);
+  // Byte-identical capture, including the owner-final line and the recovered
+  // cause. Only the terminal differs -- the cause outranks the scan for the
+  // status it explains and for no other, so a `failed` lane is unchanged.
+  const raw = ciFastBudgetKillRaw(worktree);
+  const reported = reportExecution({
+    raw,
+    result: {
+      status: 'failed',
+      exitCode: 1,
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+    },
+    cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+    worktree,
+    request: { key: 'b'.repeat(64) },
+  });
+
+  expect(reported.summary.firstCausalExcerpt).toBe(SCANNED_DECOY_DIAGNOSTIC);
+  expect(reported.summary.causalExcerpts[0]).toBe(SCANNED_DECOY_DIAGNOSTIC);
+  expect(reported.summary.causalExcerpts).not.toContain(BUDGET_CAUSE);
+  expect(reported.result.infrastructureCause).toBeUndefined();
+});

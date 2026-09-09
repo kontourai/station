@@ -354,6 +354,7 @@ export function createVerificationReceipt({
   reusableOutputs,
   recoveredFailures,
   reconcileNote,
+  infrastructureCause,
 }) {
   if (!DISPOSITIONS.has(disposition)) {
     throw new Error(`unknown receipt disposition: ${disposition}`);
@@ -408,6 +409,19 @@ export function createVerificationReceipt({
   if (boundedRecovered.length) terminal.recoveredFailures = boundedRecovered;
   if (typeof reconcileNote === 'string' && reconcileNote.length)
     terminal.reconcileNote = reconcileNote.slice(0, 1024);
+  // station#1827: the stopping runner's own final word about why this lane
+  // never reached a verdict (ci:fast's feedback-budget kill is the case that
+  // motivated it). Admitted only for the status it explains -- an
+  // `infrastructure_error` is the one terminal that means "stopped, cause
+  // known to the runner". Accepting it on any other status would let a caller
+  // stamp an infrastructure explanation onto an ordinary red, which is a
+  // label nothing derived; the schema binds the same pair independently.
+  if (
+    terminal.status === 'infrastructure_error' &&
+    typeof infrastructureCause === 'string' &&
+    infrastructureCause.length
+  )
+    terminal.infrastructureCause = infrastructureCause.slice(0, 512);
   const requiredReusableOutputs =
     resolveLane(request.laneId).reusableOutputs ?? [];
   if (

@@ -678,6 +678,128 @@ describe('verification coordinator', () => {
     }
   });
 
+  test('the canonical receipt carries the ci-fast budget kill cause, not a scanned excerpt (station#1827)', async () => {
+    const temp = fixture();
+    const worktree = join(temp.root, 'ci-fast-budget-cause');
+    mkdirSync(worktree);
+    const stable = boundCoordinatorProvenance(worktree, 'ci-fast-budget-cause');
+    const request = createVerificationRequest('ci-fast', stable);
+    // A digest-bound, coherent changed-verification diagnostic is what makes
+    // `reportExecution` take its ORDINARY path for a ci-fast owner: without
+    // it the required attachment is unavailable and reporting throws into the
+    // catch branch, which is the only path that ever surfaced this cause.
+    const diagnosticRoot = join(worktree, '.kontourai/test-impact');
+    mkdirSync(diagnosticRoot, { recursive: true });
+    const diagnostic = {
+      schemaVersion: 1,
+      kind: 'station-test-changed-diagnostics',
+      complete: true,
+      incompleteReasons: [],
+      base: 'origin/main',
+      mergeBase: 'base-sha',
+      changedPathCount: 1,
+      provenance: {
+        repositoryId: stable.repositoryId,
+        headSha: stable.headSha,
+        workspaceDigest: stable.workspaceDigest,
+        environmentDigest: stable.environmentDigest,
+        dependencyDigest: stable.dependencyDigest,
+      },
+      selection: {
+        relatedPathCount: 1,
+        exactTestCount: 0,
+        deferredLanes: [],
+        escalated: false,
+      },
+      counts: {
+        executed: 1,
+        passed: 1,
+        failed: 0,
+        skipped: 0,
+        todo: 0,
+        infrastructureErrors: 0,
+        parserErrors: 0,
+        emptyReports: 0,
+      },
+      executions: [
+        {
+          kind: 'related',
+          exitCode: 0,
+          infrastructureError: false,
+          counts: { executed: 1, passed: 1, failed: 0, skipped: 0, todo: 0 },
+          failedTests: [],
+          failureIdentityCount: 0,
+          omittedFailureIdentities: 0,
+          failureIdentitiesComplete: true,
+        },
+      ],
+    };
+    const diagnosticContents = `${JSON.stringify(diagnostic)}\n`;
+    writeFileSync(
+      join(diagnosticRoot, 'changed-diagnostics.json'),
+      diagnosticContents,
+    );
+    writeFileSync(
+      join(diagnosticRoot, 'changed-verification.json'),
+      `${JSON.stringify({
+        request: { laneId: 'test-changed' },
+        provenance: { before: diagnostic.provenance },
+        artifacts: [
+          {
+            path: '.kontourai/test-impact/changed-diagnostics.json',
+            sha256: createHash('sha256')
+              .update(diagnosticContents)
+              .digest('hex'),
+          },
+        ],
+      })}\n`,
+    );
+    const cause = 'ci:fast exceeded its 12-minute feedback budget';
+    try {
+      const killed = await coordinateVerification({
+        laneId: 'ci-fast',
+        root: temp.root,
+        cwd: worktree,
+        collectProvenance: () => stable,
+        runner: async () => ({
+          status: 80,
+          infrastructureError: true,
+          infrastructureCause: cause,
+          output: {
+            // The decoy: a line a PASSING test prints on purpose, and the
+            // one the scan reported as the cause on PR #1787. Without it in
+            // the capture this test cannot tell "we surfaced the runner's
+            // own cause" from "nothing else was there to pick".
+            stdout: { text: '          Error: observer failed\n' },
+            stderr: {
+              text: `[station-ci-fast-owner-final] ${cause}\n`,
+            },
+          },
+        }),
+      });
+      expect(killed.receipt.terminal.status).toBe('infrastructure_error');
+      expect(killed.receipt.terminal.infrastructureCause).toBe(cause);
+      expect(killed.summary.firstCausalExcerpt).toBe(cause);
+      // The published bytes, not only the returned object: the canonical
+      // receipt is what a later reader opens, and it carried no cause at all.
+      const canonical = JSON.parse(
+        readFileSync(
+          join(
+            worktree,
+            '.kontourai',
+            'verification-receipts',
+            `${request.key}.canonical.json`,
+          ),
+          'utf8',
+        ),
+      );
+      expect(canonical.terminal.infrastructureCause).toBe(cause);
+      expect(canonical.terminal.reconcileNote).toBeUndefined();
+    } finally {
+      temp.remove();
+    }
+  });
+
   test('holds the artifact mutation fence until an owned writer settles', async () => {
     const temp = fixture();
     const worktree = join(temp.root, 'writer-worktree');

@@ -688,6 +688,7 @@ export function captureBoundedOutput(
  *   terminal: { status: string, exitCode?: number | null, truncated?: boolean },
  *   counts: Record<string, number>,
  *   cleanup: { status: string, survivingOwnedChildren?: number },
+ *   infrastructureCause?: string,
  *   maxBytes?: number,
  * }} options
  *   `terminal`, `counts` and `cleanup` are required at runtime (the function
@@ -703,6 +704,7 @@ export function summarizeVerificationOutput({
   terminal,
   counts,
   cleanup,
+  infrastructureCause,
   maxBytes = DEFAULT_SUMMARY_BYTE_CAP,
 } = {}) {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 64)
@@ -838,7 +840,44 @@ export function summarizeVerificationOutput({
   // reported an ambient `SyntaxError` log line emitted by a PASSING test in
   // the same shard as the cause. Attributability still orders everything
   // else; it does not outrank a runner's own verdict.
+  //
+  // station#1827: one thing does outrank attributability, and it is not a
+  // scan result at all. When the RUNNER ITSELF stops a lane it prints a
+  // structured owner-final line naming its own reason (`ci:fast exceeded its
+  // 12-minute feedback budget`), and `ciFastInfrastructureCause` in
+  // `verification-execution-lifecycle.mjs` recovers exactly that line's
+  // payload. On the ordinary reporting path that value was computed and then
+  // discarded, so a budget kill reported whichever `Error:`-shaped line the
+  // scan happened to reach -- on PR #1787 that was `Error: observer failed`,
+  // a string a PASSING knowledge-store test prints on purpose, named as the
+  // cause of a lane nothing in that test had stopped.
+  //
+  // It wins because it is not evidence that CORRELATES with the stop: it is
+  // the stopping component naming its own reason. Deliberately admitted for
+  // exactly one terminal, `infrastructure_error` -- the one it describes.
+  // An ordinary `failed` lane's cause is still the scanned diagnostic, and
+  // every branch below it is byte-identical for every other status.
+  //
+  // It is not matched out of the capture by `isCausalDiagnostic`, and must
+  // not be: the prefix is a contract the runner owns, so reading it as one
+  // more incidental log shape would make a scan the only mechanism holding
+  // up a structured claim. The scan stays the second line, never the only
+  // one -- the excerpts it found are still reported, ranked below this.
+  //
+  // Trimmed, and admitted only when something survives the trim: a blank
+  // declaration is not a cause, and promoting one would displace the scanned
+  // excerpt with nothing at all -- strictly worse than the wrong excerpt this
+  // change exists to remove.
+  const declaredCause =
+    typeof infrastructureCause === 'string'
+      ? redactVerificationOutput(withoutAnsi(infrastructureCause)).trim()
+      : '';
+  const ownerFinalCause =
+    terminal.status === 'infrastructure_error' && declaredCause
+      ? declaredCause
+      : null;
   const firstCausalExcerpt =
+    ownerFinalCause ??
     (reportsCause ? failLineIn(scopedStdout) : undefined) ??
     (reportsCause ? stderrFailLine(stderrLines) : undefined) ??
     (failureSection >= 0
@@ -882,8 +921,19 @@ export function summarizeVerificationOutput({
   // follows. It also keeps the field out of the byte budget on a tight cap,
   // where carrying it cost the run its `finalTally`: a caveat that displaces
   // measured truth is a bad trade.
+  //
+  // station#1827: withheld for the owner-final cause even though that line
+  // did arrive on stderr, because this field is not a provenance stamp -- it
+  // is a caveat about HOW the excerpt was chosen, and the sentence
+  // `verification-gate-summary.mjs` renders for it says the excerpt "was
+  // picked by severity and position". Nothing picked the owner cause: the
+  // runner declared it. Stamping the caveat would print a false sentence;
+  // absence says the excerpt was not chosen off an unattributed stream,
+  // which is exactly true of a cause its own runner named.
   const causeStream =
-    firstCausalExcerpt && !scopedStdout.includes(firstCausalExcerpt)
+    !ownerFinalCause &&
+    firstCausalExcerpt &&
+    !scopedStdout.includes(firstCausalExcerpt)
       ? 'stderr'
       : null;
   // What this computes, stated as narrowly as it is true: the last npm step

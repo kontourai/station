@@ -212,6 +212,18 @@ with no recoverable failure evidence. Counts remain the canonical failure
 tally — `recoveredFailures` is corroborating identity, never an independent
 count source.
 
+When the RUNNER stops a lane rather than a check failing it, the receipt
+records the runner's own final word in `terminal.infrastructureCause`
+(station#1827). ci:fast prints a structured owner-final line before it returns
+its infrastructure exit code; the lifecycle recovers that line's payload, and
+it is now persisted (bounded to 512 characters and redacted like every other
+excerpt) instead of being computed and dropped on the ordinary reporting path.
+Both the producer and the schema bind it to `infrastructure_error`, the one
+status it explains — a receipt cannot carry an infrastructure explanation for a
+lane that reached a verdict. Its absence means no runner-declared cause was
+recovered, never that the run had none. The field is additive and optional, so
+it needed no `schemaVersion` bump; a reader that ignores it is unaffected.
+
 The terminal status vocabulary is closed. `failed`, `infrastructure_error`,
 `canceled`, `timed_out`, `rejected`, `parser_error`, and `provisional` never pass.
 `rejected` means the bounded host-wide completion-waiter queue declined the
@@ -485,7 +497,7 @@ coordinator, so this addition needed no `schemaVersion` bump and does not
 change the receipt's request-identity or pass/fail contract.
 
 `causalExcerpts` is a **lower bound on distinct observed failures, not a
-certified complete list**, and it draws from exactly two sources — a reader
+certified complete list**, and it draws from exactly three sources — a reader
 needs to be able to tell which one produced a given receipt's entries:
 
 1. **The ordinary case.** Every entry is a failure-shaped excerpt that
@@ -508,6 +520,21 @@ needs to be able to tell which one produced a given receipt's entries:
    still true to what is actually known (there is exactly one identified
    cause, the reporting break itself), but it is a claim ABOUT the reporting
    pipeline, not a claim about the underlying command's output.
+3. **The runner-declared case** (station#1827). On an `infrastructure_error`
+   whose runner named its own reason for stopping — ci:fast's owner-final
+   budget line — that reason is `causalExcerpts[0]` and `firstCausalExcerpt`,
+   ahead of anything the scan found. It is not synthesized: the line was
+   written to the run's own stderr, and the entry is its payload with the
+   owner prefix removed. What distinguishes it from case 1 is not where the
+   bytes came from but how they were selected — structurally, from a prefix
+   the runner owns, rather than by matching a diagnostic shape. The scanned
+   excerpts are still reported, ranked after it. What identifies this case is
+   the canonical receipt: `terminal.infrastructureCause` is present exactly
+   when a runner declared a cause, and the head excerpt is that same text
+   (possibly cut shorter by the summary's own byte budget). The summary alone
+   cannot separate case 3 from case 1 — an `infrastructure_error` whose scan
+   found an excerpt looks the same — which is the reason the cause is
+   persisted on the receipt rather than left in the transient summary.
 
 Case 2 is identifiable in the summary itself: it always also carries a
 `reconcileNote` field (the same bounded diagnostic text `causalExcerpts`

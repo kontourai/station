@@ -305,7 +305,12 @@ always the last region.
 
 When the excerpt came from stderr the receipt says so, in `causeStream`. Its
 **absence is the stronger claim**: the excerpt was scoped to the step that
-failed. Severity is ranked too — an error outranks a warning above it — after
+failed, or (station#1827) it was not scanned out of the capture at all — on an
+`infrastructure_error` whose runner named its own reason for stopping, that
+reason is the excerpt, and the receipt carries it as
+`terminal.infrastructureCause`. The field qualifies a SCANNED excerpt; a
+runner's own declaration is not one, and the sentence it renders ("picked by
+severity and position") would be false for it. Severity is ranked too — an error outranks a warning above it — after
 two blind spots that made most errors invisible to the matcher entirely
 (biome's ` FIXABLE ` tag, and format diagnostics that carry no `line:col`).
 
