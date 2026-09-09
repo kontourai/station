@@ -235,7 +235,7 @@ function ChatDockContentAreaImpl({
           // empty state carries the action itself now.
           <Empty
             variant="prominent"
-            label="No active session"
+            label="No chat open"
             action={
               <button
                 type="button"
