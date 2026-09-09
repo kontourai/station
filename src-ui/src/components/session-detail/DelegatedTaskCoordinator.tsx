@@ -105,7 +105,7 @@ export function DelegatedTaskCoordinator({
     >
       <header className="sessions-coordinator__header">
         <div>
-            {/*
+          {/*
             station#3227 C1: this was `humanizeId(taskId ?? threadId)`, and
             `humanizeId` is a NO-OP on a content-derived thread id — so a
             delegated session with no `taskId` put a raw hash in this heading
