@@ -390,6 +390,12 @@ describe('one-revision native promotion contract', () => {
     // is still granted by protected-finalize alone.
     const record = cohort.jobs?.['record-native-completion'] ?? {};
     expect(record.needs).toEqual(['protected-finalize', 'deliver-ios']);
+    // The ledger's changelog slice spans the previous ship SHA to this one, so
+    // this job must hold that history. A shallow checkout here records an
+    // empty changelog on every native row, and the workflow cannot be
+    // exercised before merge, so the depth is pinned against its text.
+    expect(record.steps?.[0]?.uses).toContain('actions/checkout');
+    expect(record.steps?.[0]?.with?.['fetch-depth']).toBe(0);
     expect(record.if).toBe(
       '$' +
         "{{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.protected-finalize.result == 'success' }}",

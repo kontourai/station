@@ -216,15 +216,13 @@ export function deriveChangelogSlice({
         : (error?.stderr?.toString?.() ?? '');
     const failureText = `${stderr}\n${error?.message ?? ''}`;
     if (!/Not a valid object name/.test(failureText)) throw error;
-    // A shallow checkout is the one cause worth failing on rather than
-    // disclosing: the predecessor exists upstream and was simply never
-    // fetched, so recording "not reachable in this repository's history"
-    // would send the reader looking for a rewritten repository that is fine.
-    // Naming the knob here is the point — the remedy is in the workflow job,
-    // not in the tree the reader is standing in.
+    // Under a shallow checkout the probe cannot tell an unfetched object from
+    // a genuinely absent one, so the disclosed note's claim about history
+    // would be a guess. Refuse instead of guessing: deepening is cheap and
+    // settles the question, where a recorded empty slice silently ends it.
     if (isShallowRepository(execGit)) {
       throw new Error(
-        `changelog slice cannot be derived: previous ship SHA ${previousSha.slice(0, 7)} is absent because this checkout is shallow, not because the history is gone. Give the job that records the ledger \`fetch-depth: 0\`.`,
+        `changelog slice cannot be derived: previous ship SHA ${previousSha.slice(0, 7)} is absent and this checkout is shallow, so it may simply be unfetched rather than gone. Deepen this checkout and retry — in CI that is \`fetch-depth: 0\` on the job that records the ledger.`,
       );
     }
     return {

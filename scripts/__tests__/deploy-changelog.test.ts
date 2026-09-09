@@ -275,6 +275,29 @@ describe('changelog slice derivation', () => {
     ).toThrow(/checkout is shallow[\s\S]*fetch-depth: 0/);
   });
 
+  it('discloses when the probe is an unknown flag echoed back by an old git', () => {
+    // git < 2.15 predates --is-shallow-repository and exits 0 echoing the flag
+    // it did not understand. That is not the string "true", so the checkout is
+    // not treated as shallow and the disclosed path is preserved.
+    const execGit = (args: string[]): string => {
+      if (args[0] === 'cat-file') {
+        throw new Error(`fatal: Not a valid object name ${A_SHA}^{commit}`);
+      }
+      if (args[1] === '--is-shallow-repository')
+        return '--is-shallow-repository\n';
+      throw new Error(`unexpected git call: ${args.join(' ')}`);
+    };
+    const slice = deriveChangelogSlice({
+      repoRoot: '.',
+      previousSha: A_SHA,
+      sha: B_SHA,
+      githubRepo: 'kontourai/station',
+      execGit,
+    });
+    expect(slice.commitCount).toBe(0);
+    expect(slice.note).toMatch(/not reachable in this repository/);
+  });
+
   it('still discloses rather than throwing when the shallowness probe itself fails', () => {
     const execGit = (args: string[]): string => {
       if (args[0] === 'cat-file') {
