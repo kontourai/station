@@ -91,7 +91,7 @@ jobs:
         with:
           node-version-file: .nvmrc
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - run: npm run dependencies:ci
