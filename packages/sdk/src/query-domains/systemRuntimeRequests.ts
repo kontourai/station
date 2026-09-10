@@ -7,7 +7,7 @@ import type {
 } from '@kontourai/station-contracts/fleet-routing-receipt';
 import { HEALTH_PROBE_TIMEOUT_MS } from '@kontourai/station-contracts/http';
 import { _getApiBase } from '../api';
-import { parseRestartExpectation } from '../core-update-restart-status';
+import { parseRestartExpectation } from '../core-update-restart-expectation';
 import type {
   AuthStatusData,
   BrandingData,
