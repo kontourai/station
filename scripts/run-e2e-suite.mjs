@@ -569,23 +569,28 @@ function readLeaseAt(path) {
 export function processIdentity(pid, runPs = spawnSync) {
   if (!Number.isInteger(pid) || pid < 1 || process.platform === 'win32')
     return null;
-  const started = runPs('ps', ['-o', 'lstart=', '-p', String(pid)], {
-    encoding: 'utf8',
-    // lstart is locale- and TZ-shaped; pin so identity is env-independent
-    // (#3049).
-    env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
-    windowsHide: true,
-  });
-  if (started.status !== 0 || !started.stdout.trim()) return null;
-  const grouped = runPs('ps', ['-o', 'pgid=', '-p', String(pid)], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
-  const pgid = Number.parseInt(grouped.stdout.trim(), 10);
+  const observed = runPs(
+    'ps',
+    ['-o', 'lstart=,pgid=,stat=', '-p', String(pid)],
+    {
+      encoding: 'utf8',
+      // lstart is locale- and TZ-shaped; pin so identity is env-independent
+      // (#3049).
+      env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
+      windowsHide: true,
+    },
+  );
+  if (observed.status !== 0) return null;
+  const identity = /^(.*?)\s+(\d+)\s+(\S+)$/.exec(observed.stdout.trim());
+  // A defunct process cannot own a live daemon, even before its parent reaps
+  // the PID. Read birth, group and state together rather than mixing probes.
+  if (!identity || identity[3].startsWith('Z')) return null;
+  const pgid = Number(identity[2]);
+  if (!Number.isInteger(pgid) || pgid <= 0) return null;
   return {
     pid,
-    processStart: started.stdout.trim(),
-    pgid: Number.isInteger(pgid) && pgid > 0 ? pgid : null,
+    processStart: identity[1].trim(),
+    pgid,
   };
 }
 
@@ -954,7 +959,12 @@ function removeExactLeaseAndOutputs(
       const info = lstatSync(target, { throwIfNoEntry: false });
       if (info?.isSymbolicLink())
         throw new Error(`refusing symlink output: ${target}`);
-      rmSync(target, { recursive: true, force: true });
+      rmSync(target, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100,
+      });
     }
   }
   const leaseInfo = lstatSync(leasePath, { throwIfNoEntry: false });

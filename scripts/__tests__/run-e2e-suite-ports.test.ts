@@ -1959,3 +1959,23 @@ describe('startWithPortRetry (#1177 review round 1)', () => {
     );
   });
 });
+
+test.runIf(process.platform !== 'win32').each(['S', 'Z'])(
+  'process identity observes %s state in one snapshot',
+  (state) => {
+    const started = 'Thu Sep 10 01:02:10 2026';
+    const runPs = vi.fn((_file, args) => ({
+      status: 0,
+      stdout:
+        args[1] === 'lstart=,pgid=,stat='
+          ? `${started} 42 ${state}\n`
+          : args[1] === 'lstart='
+            ? `${started}\n`
+            : '42\n',
+    }));
+    expect(processIdentity(42, runPs)).toEqual(
+      state === 'Z' ? null : { pid: 42, processStart: started, pgid: 42 },
+    );
+    expect(runPs).toHaveBeenCalledOnce();
+  },
+);
