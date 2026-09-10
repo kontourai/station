@@ -412,7 +412,7 @@ describe('default-agent slash commands', () => {
     }
   });
 
-  test('/stats without a conversation id reports the problem ephemerally', async () => {
+  test('/stats in a new chat reports an empty state without a server query', async () => {
     const { getCommand } = await import('../slashCommands/registry');
     const handler = getCommand('stats');
     const context = baseContext({
@@ -423,8 +423,11 @@ describe('default-agent slash commands', () => {
 
     expect(context.addEphemeralMessage).toHaveBeenCalledWith(
       's1',
-      expect.objectContaining({ content: 'No conversation ID available.' }),
+      expect.objectContaining({
+        content: 'Messages: 0. No usage recorded yet.',
+      }),
     );
+    expect(context.queryClient.fetchQuery).not.toHaveBeenCalled();
   });
 
   test('/stats omits context-window usage when the percentage is unresolved', async () => {

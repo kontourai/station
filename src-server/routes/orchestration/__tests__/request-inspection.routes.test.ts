@@ -160,6 +160,127 @@ function respondRequest(
 const READ = '/sessions/session-a/requests/request-a?eventId=opened-a';
 
 describe('exact attention request route and immediate response guard', () => {
+  test('input reply context binds the current question and declared transport capabilities', async () => {
+    const f = await fixture();
+    f.adapter.metadata.capabilities = [
+      'agent-runtime',
+      'file-input',
+      'image-input',
+    ];
+    f.store.appendEvent({
+      eventId: 'input-config',
+      provider: 'claude',
+      threadId: 'session-a',
+      method: 'session.configured',
+      sessionId: 'session-a',
+      createdAt: NOW,
+      metadata: {
+        userId: 'owner',
+        agentSlug: 'agent-a',
+        conversationId: 'conversation-a',
+        environmentId: 'environment-a',
+      },
+    });
+    f.store.appendEvent({
+      ...opened('input-a'),
+      requestType: 'input',
+      title: 'Attach the result',
+    });
+    const path = '/sessions/session-a/input-requests/request-a?eventId=input-a';
+    const response = await f.app.request(path);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: {
+        state: 'open',
+        agentId: 'agent-a',
+        conversationId: 'conversation-a',
+        capabilities: ['file-input', 'image-input'],
+        reference: { ...REFERENCE, requestEventId: 'input-a' },
+      },
+    });
+    f.setUser('another-owner');
+    expect(await (await f.app.request(path)).json()).toMatchObject({
+      data: { state: 'unavailable' },
+    });
+    f.setUser('owner');
+    f.store.appendEvent({ ...opened('input-b'), requestType: 'input' });
+    expect(await (await f.app.request(path)).json()).toMatchObject({
+      data: { state: 'unavailable' },
+    });
+    f.revoke();
+    expect((await f.app.request(path)).status).toBe(404);
+  });
+
+  test('sendTurn carries files for the exact open input and strips the guard from provider input', async () => {
+    const f = await fixture();
+    f.adapter.metadata.capabilities = ['agent-runtime', 'file-input'];
+    f.store.appendEvent({ ...opened('input-a'), requestType: 'input' });
+    const send = vi.spyOn(f.adapter, 'sendTurn');
+    await f.service.dispatch(
+      {
+        type: 'sendTurn',
+        input: {
+          threadId: 'session-a',
+          input: '',
+          expectedInputRequest: { ...REFERENCE, requestEventId: 'input-a' },
+          attachments: [
+            {
+              kind: 'file',
+              name: 'answer.txt',
+              mimeType: 'text/plain',
+              size: 2,
+              dataUrl: 'data:text/plain;base64,aGk=',
+            },
+          ],
+        },
+      },
+      { userId: 'owner' },
+    );
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][0].attachments?.[0].name).toBe('answer.txt');
+    expect(send.mock.calls[0][0]).not.toHaveProperty('expectedInputRequest');
+  });
+
+  test('sendTurn refuses a resolved input reference before the adapter receives files', async () => {
+    const f = await fixture();
+    f.adapter.metadata.capabilities = ['agent-runtime', 'file-input'];
+    f.store.appendEvent({ ...opened('input-a'), requestType: 'input' });
+    const send = vi.spyOn(f.adapter, 'sendTurn');
+    f.store.appendEvent({
+      eventId: 'input-resolved',
+      provider: 'claude',
+      threadId: 'session-a',
+      method: 'request.resolved',
+      requestId: 'request-a',
+      status: 'approved',
+      createdAt: NOW,
+    });
+    await expect(
+      f.service.dispatch(
+        {
+          type: 'sendTurn',
+          input: {
+            threadId: 'session-a',
+            input: 'Use this file',
+            expectedInputRequest: { ...REFERENCE, requestEventId: 'input-a' },
+            attachments: [
+              {
+                kind: 'file',
+                name: 'answer.txt',
+                mimeType: 'text/plain',
+                size: 2,
+                dataUrl: 'data:text/plain;base64,aGk=',
+              },
+            ],
+          },
+        },
+        { userId: 'owner' },
+      ),
+    ).rejects.toMatchObject({ code: 'request_event_changed' });
+    expect(send).not.toHaveBeenCalled();
+  });
+
   test('reads one exact authorized request, redacts values, and accepts one receipt-backed decision', async () => {
     const f = await fixture();
     const response = await f.app.request(READ);

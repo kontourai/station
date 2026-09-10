@@ -8,10 +8,10 @@
 import { cpus } from 'node:os';
 import { sleep } from '../../utils/sleep.js';
 
-export const RUNTIME_RESOURCE_POSTURE_DEGRADED_BUSY_PERCENT = 85;
-export const RUNTIME_RESOURCE_POSTURE_CRITICAL_BUSY_PERCENT = 95;
-export const RUNTIME_RESOURCE_POSTURE_CACHE_MS = 2_000;
-export const RUNTIME_RESOURCE_POSTURE_SAMPLE_GAP_MS = 500;
+const RUNTIME_RESOURCE_POSTURE_DEGRADED_BUSY_PERCENT = 85;
+const RUNTIME_RESOURCE_POSTURE_CRITICAL_BUSY_PERCENT = 95;
+const RUNTIME_RESOURCE_POSTURE_CACHE_MS = 2_000;
+const RUNTIME_RESOURCE_POSTURE_SAMPLE_GAP_MS = 500;
 
 type CpuSnapshot = ReturnType<typeof cpus>;
 type CpuTimes = { idle: number; total: number; cpuCount: number };
@@ -32,7 +32,7 @@ type RuntimeObservedPosture<TKind extends 'healthy' | 'degraded' | 'critical'> =
     busyPercent: number;
   };
 
-export type RuntimeResourcePosture =
+type RuntimeResourcePosture =
   | RuntimeObservedPosture<'healthy'>
   | RuntimeObservedPosture<'degraded'>
   | RuntimeObservedPosture<'critical'>
@@ -60,7 +60,7 @@ export interface RuntimeEngineStartLease {
   release(): void;
 }
 
-export interface RuntimeResourcePostureProbeOptions {
+interface RuntimeResourcePostureProbeOptions {
   /** Numeric diagnostic observation seam for deterministic tests. */
   sample?: () => Promise<HostPressureSample>;
   now?: () => number;

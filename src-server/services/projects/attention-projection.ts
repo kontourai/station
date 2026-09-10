@@ -41,7 +41,10 @@ import type { NotificationService } from '../notifications/notification-service.
 import type { ConversationAcknowledgementStore } from '../orchestration/conversation-acknowledgement-store.js';
 import { collectOpenRequests } from '../orchestration/open-requests.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
-import { attentionRequestReference } from '../orchestration/request-inspection.js';
+import {
+  attentionRequestReference,
+  inputRequestReference,
+} from '../orchestration/request-inspection.js';
 import {
   MAX_DESCRIPTION_LENGTH,
   presentOpenRequest,
@@ -668,6 +671,16 @@ export class AttentionProjectionService {
       sessionId: session.threadId,
       openHref: sessionOpenHref(session),
       source: { threadId: session.threadId },
+      ...(kind === 'needs_input' &&
+      openRequest &&
+      inputRequestReference(openRequest, session.threadId)
+        ? {
+            inputReference: inputRequestReference(
+              openRequest,
+              session.threadId,
+            ),
+          }
+        : {}),
       ...(requestReference ? { requestReference } : {}),
     };
   }

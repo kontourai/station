@@ -276,8 +276,11 @@ mod tests {
 pub(crate) fn browser_origin(raw: &str, scheme: &str, owned_origin: &str) -> Result<String, String> {
     let link = url::Url::parse(raw).map_err(|_| "Invalid Station link")?;
     let pairs: Vec<_> = link.query_pairs().collect();
-    if link.scheme() != scheme || link.host_str() != Some("open-browser") || !link.path().is_empty() || link.fragment().is_some() || link.port().is_some() || !link.username().is_empty() || link.password().is_some() || pairs.len() != 1 || pairs[0].0 != "origin" { return Err("Invalid Station browser handoff".into()); }
-    let origin = url::Url::parse(&pairs[0].1).map_err(|_| "Invalid browser address")?;
+    if link.scheme() != scheme || link.host_str() != Some("open-browser") || !link.path().is_empty() || link.fragment().is_some() || link.port().is_some() || !link.username().is_empty() || link.password().is_some() || !(link.query().is_none() || (pairs.len() == 1 && pairs[0].0 == "origin")) { return Err("Invalid Station browser handoff".into()); }
+    // No destination means the native app's own workspace, never the page
+    // that happened to invoke it. Explicit destinations retain their guard.
+    let requested = pairs.first().map(|pair| pair.1.as_ref()).unwrap_or(owned_origin);
+    let origin = url::Url::parse(requested).map_err(|_| "Invalid browser address")?;
     let owned = url::Url::parse(owned_origin).map_err(|_| "Station browser address unavailable")?;
     if origin.scheme() != "http" || !matches!(origin.host_str(), Some("localhost") | Some("127.0.0.1") | Some("[::1]") | Some("::1")) || origin.port_or_known_default() != owned.port_or_known_default() || !origin.username().is_empty() || origin.password().is_some() || origin.path() != "/" || origin.query().is_some() || origin.fragment().is_some() { return Err("This browser is requesting a different Station. Open the app for that instance or use its launcher link.".into()); }
     Ok(origin.origin().ascii_serialization())
@@ -292,6 +295,17 @@ pub(crate) fn open_browser(app: &AppHandle, target: &Target, origin: &str) -> Re
 
 #[cfg(test)] mod browser_tests {
  use super::*;
+ #[test] fn default_handoff_uses_only_the_apps_owned_local_workspace() {
+   let link = "station-stable://open-browser";
+   assert_eq!(browser_origin(link, "station-stable", "http://127.0.0.1:7331").unwrap(), "http://127.0.0.1:7331");
+   assert!(browser_origin(link, "station-nightly", "http://127.0.0.1:7331").is_err());
+   for owned in ["https://example.com", "http://example.com:7331", "http://127.0.0.1:7331/private", "http://user:secret@127.0.0.1:7331"] {
+     assert!(browser_origin(link, "station-stable", owned).is_err());
+   }
+   for invalid in ["station-stable://open-browser?", "station-stable://open-browser?extra=1", "station-stable://open-browser#fragment"] {
+     assert!(browser_origin(invalid, "station-stable", "http://127.0.0.1:7331").is_err());
+   }
+ }
  #[test] fn handoff_is_bound_to_the_owned_local_browser_port_and_channel() {
    assert_eq!(browser_origin("station-nightly://open-browser?origin=http%3A%2F%2Flocalhost%3A5492", "station-nightly", "http://127.0.0.1:5492").unwrap(), "http://localhost:5492");
    for url in ["station-stable://open-browser?origin=http%3A%2F%2Flocalhost%3A5492", "station-nightly://open-browser?origin=http%3A%2F%2Flocalhost%3A9999", "station-nightly://open-browser?origin=https%3A%2F%2Fevil.example", "station-nightly://open-browser?origin=http%3A%2F%2Flocalhost%3A5492&extra=1", "station-nightly://open-browser?origin=http%3A%2F%2Flocalhost%3A5492%2Felsewhere"] {

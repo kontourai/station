@@ -6,13 +6,9 @@
     "sha": "49cfa59dd6d037208595040721e0e7bbff114840",
     "artifactBuiltAt": "2026-09-09T13:20:45.758Z",
     "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34355735437",
-    "artifacts": [
-      "github-release:nightly-desktop (cohort-finalized)"
-    ],
+    "artifacts": ["github-release:nightly-desktop (cohort-finalized)"],
     "gateResult": "native cohort final receipt complete",
-    "notes": [
-      "ios: TestFlight delivery success (run 34355735437)"
-    ],
+    "notes": ["ios: TestFlight delivery success (run 34355735437)"],
     "changelog": {
       "previousSha": "a7935a4cf5297db2eea11364badf96f8ce1d106b",
       "groups": {
@@ -33,13 +29,9 @@
     "sha": "49cfa59dd6d037208595040721e0e7bbff114840",
     "artifactBuiltAt": "2026-09-09T13:21:32.047Z",
     "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34355735437",
-    "artifacts": [
-      "play-internal-aab:cohort-finalized"
-    ],
+    "artifacts": ["play-internal-aab:cohort-finalized"],
     "gateResult": "native cohort final receipt complete",
-    "notes": [
-      "ios: TestFlight delivery success (run 34355735437)"
-    ],
+    "notes": ["ios: TestFlight delivery success (run 34355735437)"],
     "changelog": {
       "previousSha": "a7935a4cf5297db2eea11364badf96f8ce1d106b",
       "groups": {
@@ -90,13 +82,9 @@
     "sha": "a7935a4cf5297db2eea11364badf96f8ce1d106b",
     "artifactBuiltAt": "2026-09-09T02:14:34.403Z",
     "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34301435508",
-    "artifacts": [
-      "github-release:nightly-desktop (cohort-finalized)"
-    ],
+    "artifacts": ["github-release:nightly-desktop (cohort-finalized)"],
     "gateResult": "native cohort final receipt complete",
-    "notes": [
-      "ios: TestFlight delivery success (run 34301435508)"
-    ],
+    "notes": ["ios: TestFlight delivery success (run 34301435508)"],
     "changelog": {
       "previousSha": "fd2c04e8632d40e6e9c53dd13a558a1764375800",
       "groups": {
@@ -117,13 +105,9 @@
     "sha": "a7935a4cf5297db2eea11364badf96f8ce1d106b",
     "artifactBuiltAt": "2026-09-09T02:12:04.311Z",
     "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34301435508",
-    "artifacts": [
-      "play-internal-aab:cohort-finalized"
-    ],
+    "artifacts": ["play-internal-aab:cohort-finalized"],
     "gateResult": "native cohort final receipt complete",
-    "notes": [
-      "ios: TestFlight delivery success (run 34301435508)"
-    ],
+    "notes": ["ios: TestFlight delivery success (run 34301435508)"],
     "changelog": {
       "previousSha": "fd2c04e8632d40e6e9c53dd13a558a1764375800",
       "groups": {
@@ -189,13 +173,9 @@
     "sha": "fd2c04e8632d40e6e9c53dd13a558a1764375800",
     "artifactBuiltAt": "2026-09-08T16:43:43.338Z",
     "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34252063142",
-    "artifacts": [
-      "github-release:nightly-desktop (cohort-finalized)"
-    ],
+    "artifacts": ["github-release:nightly-desktop (cohort-finalized)"],
     "gateResult": "native cohort final receipt complete",
-    "notes": [
-      "ios: TestFlight delivery success (run 34252063142)"
-    ],
+    "notes": ["ios: TestFlight delivery success (run 34252063142)"],
     "changelog": {
       "previousSha": "f1073fa4cefe4f46a58409e7cfd493f2d6d29228",
       "groups": {
@@ -216,13 +196,9 @@
     "sha": "fd2c04e8632d40e6e9c53dd13a558a1764375800",
     "artifactBuiltAt": "2026-09-08T16:43:50.381Z",
     "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34252063142",
-    "artifacts": [
-      "play-internal-aab:cohort-finalized"
-    ],
+    "artifacts": ["play-internal-aab:cohort-finalized"],
     "gateResult": "native cohort final receipt complete",
-    "notes": [
-      "ios: TestFlight delivery success (run 34252063142)"
-    ],
+    "notes": ["ios: TestFlight delivery success (run 34252063142)"],
     "changelog": {
       "previousSha": "9ef6da41656621fb1c4b7b8fca1e528521df127e",
       "groups": {
@@ -272,9 +248,7 @@
     "sha": "9ef6da41656621fb1c4b7b8fca1e528521df127e",
     "artifactBuiltAt": "2026-09-08T15:57:01.936Z",
     "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/34247229018",
-    "artifacts": [
-      "play-internal-aab:cohort-finalized"
-    ],
+    "artifacts": ["play-internal-aab:cohort-finalized"],
     "gateResult": "native cohort final receipt partial",
     "notes": [
       "ios: TestFlight delivery failure (run 34247229018)",
@@ -1624,9 +1598,7 @@
     "version": "0.7.0",
     "sha": "b4fe42e5cc089fc95f8f513d549d78b82f198d96",
     "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/33188020921",
-    "artifacts": [
-      "npm:@kontourai/station-shared@0.7.0 (dist-tag latest)"
-    ],
+    "artifacts": ["npm:@kontourai/station-shared@0.7.0 (dist-tag latest)"],
     "gateResult": "npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96)",
     "notes": [
       "Recorded late: published in run 33188020921 alongside station-contracts@0.7.0, but the ledger loop refused this row as a duplicate — the identity lacked the package name and three packages shared version 0.7.0 at one sha (fixed in the change carrying this row). Same run also recorded five tag-only private packages as npm ships; those fabricated rows are removed in the same change."
@@ -1643,9 +1615,7 @@
     "version": "0.7.0",
     "sha": "b4fe42e5cc089fc95f8f513d549d78b82f198d96",
     "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/33188020921",
-    "artifacts": [
-      "npm:@kontourai/station-sdk@0.7.0 (dist-tag latest)"
-    ],
+    "artifacts": ["npm:@kontourai/station-sdk@0.7.0 (dist-tag latest)"],
     "gateResult": "npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96)",
     "notes": [
       "Recorded late: published in run 33188020921 alongside station-contracts@0.7.0, but the ledger loop refused this row as a duplicate — the identity lacked the package name and three packages shared version 0.7.0 at one sha (fixed in the change carrying this row). Same run also recorded five tag-only private packages as npm ships; those fabricated rows are removed in the same change."
@@ -1662,9 +1632,7 @@
     "version": "0.7.0",
     "sha": "b4fe42e5cc089fc95f8f513d549d78b82f198d96",
     "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/33188020921",
-    "artifacts": [
-      "npm:@kontourai/station-contracts@0.7.0 (dist-tag latest)"
-    ],
+    "artifacts": ["npm:@kontourai/station-contracts@0.7.0 (dist-tag latest)"],
     "gateResult": "npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96)",
     "notes": null,
     "changelog": {

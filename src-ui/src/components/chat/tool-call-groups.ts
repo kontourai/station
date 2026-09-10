@@ -64,7 +64,7 @@ function toolNameOf(part: ToolCallLike): string {
   return '';
 }
 
-export interface ClassifiedToolCall<P extends ToolCallLike = ToolCallLike> {
+interface ClassifiedToolCall<P extends ToolCallLike = ToolCallLike> {
   part: P;
   /** Index of this call within the original content-parts array. */
   index: number;
@@ -99,7 +99,7 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
   unresolvedCount: number;
 }
 
-export type MessageBlock<P extends ToolCallLike = ToolCallLike> =
+type MessageBlock<P extends ToolCallLike = ToolCallLike> =
   | ContentPartBlock<P>
   | ToolCallGroup<P>;
 

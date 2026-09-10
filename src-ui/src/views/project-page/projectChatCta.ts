@@ -1,6 +1,6 @@
 import type { AgentData } from '../../contexts/AgentsContext';
 
-export type ProjectChatCta = {
+type ProjectChatCta = {
   /** Names the Agent the chat will actually start on. */
   headline: string;
   /** The promise, spoken only where a chat-ready Agent makes it true. */

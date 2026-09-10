@@ -52,12 +52,12 @@ const MODEL_OPTION_MAX_ENTRIES = 1000;
 const ADAPTER_ABORT_SETTLEMENT_MS = 650;
 
 /** A public connection identity paired with its canonical engine identity. */
-export type InspectedPublicConnection = {
+type InspectedPublicConnection = {
   id: EngineConnectionId;
   engineId: EngineId;
 };
 
-export type ConnectionInspectionRequest = {
+type ConnectionInspectionRequest = {
   kind: 'runtime-capability-inventory';
   signal?: AbortSignal;
   concurrency?: number;
@@ -67,7 +67,7 @@ export type ConnectionInspectionRequest = {
   allowBuiltInOnDiscoveryFailure?: boolean;
 };
 
-export type ConnectionInspectionOutcome =
+type ConnectionInspectionOutcome =
   | {
       kind: 'inspected';
       connections: AgentConnectionView[];

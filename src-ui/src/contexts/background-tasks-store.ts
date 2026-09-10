@@ -28,11 +28,8 @@ import type {
 } from '../hooks/orchestration/types';
 import type { ChatBackgroundTask } from './active-chats-state';
 
-export type BackgroundTaskKind = 'tool' | 'agent';
-export type BackgroundTaskSource =
-  | 'tool-event'
-  | 'delegate-session'
-  | 'provider-task';
+type BackgroundTaskKind = 'tool' | 'agent';
+type BackgroundTaskSource = 'tool-event' | 'delegate-session' | 'provider-task';
 export type BackgroundTaskState =
   | 'running'
   | 'completed'

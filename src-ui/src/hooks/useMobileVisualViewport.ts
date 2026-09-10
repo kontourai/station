@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-export interface MobileVisualViewportMetrics {
+interface MobileVisualViewportMetrics {
   height: number;
   offsetTop: number;
   bottomInset: number;

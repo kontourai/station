@@ -6,7 +6,7 @@ import { resolveTurnStallWindowMs } from '@kontourai/station-contracts/turn-stal
 import { orchestrationTurnStallDetections } from '../../telemetry/metrics.js';
 import { TurnStallWatchdog } from './turn-stall-watchdog.js';
 
-export interface TurnProgressTrackerDeps {
+interface TurnProgressTrackerDeps {
   /**
    * `sessionAdapters.get(threadId)?.provider` — undefined means the thread
    * has no live adapter in this process, and a stall on it is not reportable.

@@ -3,6 +3,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
+import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConversationContextBoundaryProjection } from '@kontourai/station-contracts/conversation-context-boundary';
@@ -62,6 +63,7 @@ async function provisionProjectWorktree(
 }
 
 export interface ForegroundMessageInput {
+  expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
   message: string;
   conversationId?: string;
@@ -118,7 +120,7 @@ const conversationHandoffLaunchCapabilityBrand = Symbol(
   'conversationHandoffLaunchCapability',
 );
 
-export type ConversationHandoffLaunchCapability = Readonly<{
+type ConversationHandoffLaunchCapability = Readonly<{
   conversationId: string;
   predecessorSessionId: string;
   sessionId: string;
@@ -146,7 +148,7 @@ export function createConversationHandoffLaunchCapability(
 }
 
 const conversationHandoffIntentBrand = Symbol('conversationHandoffIntent');
-export type ConversationHandoffIntent = Readonly<{
+type ConversationHandoffIntent = Readonly<{
   idempotencyKey: string;
   [conversationHandoffIntentBrand]: true;
 }>;
@@ -826,6 +828,9 @@ export async function executeForegroundMessage(
     {
       threadId: sessionId,
       input: message,
+      ...(input.expectedInputRequest
+        ? { expectedInputRequest: input.expectedInputRequest }
+        : {}),
       ...(attachments ? { attachments } : {}),
       ...(transcriptSeed || input.ambientContext
         ? {

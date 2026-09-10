@@ -79,7 +79,7 @@ export function injectConversationFeedbackContext(
  * token measurement there can never disagree about which part is
  * model-facing.
  */
-export interface AppliedChatContext {
+interface AppliedChatContext {
   input: string | ChatMessage[];
   applied: boolean;
 }
@@ -122,11 +122,9 @@ export function injectUserProfileContext(
  * copy below can rebuild exactly that path and nothing else.
  *
  * Deliberately identical to `userTextPart`'s reach: the FIRST `user` message,
- * and within it the FIRST `text` part. A user message with no `parts` ends
- * the search rather than falling through to a later user message — the
- * uncaptioned-attachment drop the appliers report as `applied: false`
- * (archive#2649) depends on that, and looking further would silently start
- * composing into a turn the old code left alone.
+ * and within it the FIRST `text` part. Never retarget a later user turn.
+ * Callers may add model-facing context to this user's file-only message;
+ * an empty or unrecognized message still receives no synthetic content.
  */
 interface UserTextPartLocation {
   readonly messageIndex: number;
@@ -174,6 +172,23 @@ function withUserTextPart(
   return messages;
 }
 
+/** Adds model-facing text only; never rewrites the authored attachment input. */
+function withAttachmentContext(
+  input: ChatMessage[],
+  context: string,
+): AppliedChatContext {
+  const index = input.findIndex((message) => message.role === 'user');
+  const message = input[index];
+  if (!message?.parts?.some((part) => part.type === 'file'))
+    return { input, applied: false };
+  const messages = input.slice();
+  messages[index] = {
+    ...message,
+    parts: [{ type: 'text', text: context }, ...message.parts],
+  };
+  return { input: messages, applied: true };
+}
+
 /**
  * archive#685: compose the UI's out-of-band ambient context (timezone, geolocation)
  * into the model-facing input only. The persisted user turn keeps the typed
@@ -196,9 +211,12 @@ export function applyAmbientContextToInput(
   }
 
   const at = locateUserTextPart(input);
-  if (at?.text === undefined) {
-    return { input, applied: false };
-  }
+  if (!at)
+    return withAttachmentContext(
+      input,
+      composeAmbientTurnText(ambientContext, ''),
+    );
+  if (at.text === undefined) return { input, applied: false };
   return {
     input: withUserTextPart(
       input,
@@ -225,9 +243,7 @@ export function applyCombinedContextToInput(
   }
 
   const at = locateUserTextPart(input);
-  if (!at) {
-    return { input, applied: false };
-  }
+  if (!at) return withAttachmentContext(input, combinedContext);
   // `at.text` is deliberately interpolated even when it is `undefined`: a
   // text part with no `text` produced the literal trailing `undefined`
   // before this change, and this is a copy change, not a behaviour change.

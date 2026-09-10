@@ -200,7 +200,7 @@ export function pendingObservationCopy(
  * `note` carries the reason whenever the displayed engine is not simply the
  * value the user picked, so the difference is stated rather than swallowed.
  */
-export interface BuiltinEngineDisplay {
+interface BuiltinEngineDisplay {
   name: string;
   note?: string;
 }

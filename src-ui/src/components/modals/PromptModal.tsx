@@ -7,7 +7,7 @@ import {
   ResponsiveSurfaceActions,
 } from '../ResponsiveDialogSurface';
 
-export interface PromptModalProps {
+interface PromptModalProps {
   isOpen: boolean;
   title: string;
   /** Label shown above the input. */

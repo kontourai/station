@@ -67,7 +67,7 @@ export function isRejectedPlugin(
   return 'status' in plugin && plugin.status === 'rejected';
 }
 
-export interface PreviewComponent {
+interface PreviewComponent {
   type: string;
   id: string;
   detail?: string;
@@ -75,7 +75,7 @@ export interface PreviewComponent {
   skippable?: boolean;
 }
 
-export interface GitInfo {
+interface GitInfo {
   hash: string;
   branch: string;
   remote?: string;

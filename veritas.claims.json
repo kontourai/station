@@ -304,24 +304,15 @@
     {
       "id": "veritas.surface",
       "claimType": "veritas-affected-surface",
-      "requiredEvidence": [
-        "policy_rule"
-      ],
-      "requiredMethods": [
-        "auditability"
-      ],
+      "requiredEvidence": ["policy_rule"],
+      "requiredMethods": ["auditability"],
       "requiresCorroboration": false,
-      "acceptanceCriteria": [
-        "veritas evidence artifact"
-      ],
+      "acceptanceCriteria": ["veritas evidence artifact"],
       "reviewAuthority": "veritas",
       "validityRule": {
         "kind": "commit"
       },
-      "stalenessTriggers": [
-        "source_ref changes",
-        "affected node changes"
-      ],
+      "stalenessTriggers": ["source_ref changes", "affected node changes"],
       "conflictRules": [
         "newer evidence for the same node supersedes older evidence"
       ],
@@ -330,14 +321,8 @@
     {
       "id": "veritas.governance-artifact",
       "claimType": "veritas-governance-artifact",
-      "requiredEvidence": [
-        "attestation",
-        "policy_rule"
-      ],
-      "requiredMethods": [
-        "auditability",
-        "attestation"
-      ],
+      "requiredEvidence": ["attestation", "policy_rule"],
+      "requiredMethods": ["auditability", "attestation"],
       "requiresCorroboration": false,
       "acceptanceCriteria": [
         "Protected Standards hash inspection",
@@ -353,24 +338,16 @@
         "authority settings hash changes",
         "attestation expiry"
       ],
-      "conflictRules": [
-        "hash drift disputes Protected Standards currency"
-      ],
+      "conflictRules": ["hash drift disputes Protected Standards currency"],
       "impactLevel": "high"
     },
     {
       "id": "veritas.evidence-check",
       "claimType": "software-evidence-check",
-      "requiredEvidence": [
-        "test_output"
-      ],
-      "requiredMethods": [
-        "validation"
-      ],
+      "requiredEvidence": ["test_output"],
+      "requiredMethods": ["validation"],
       "requiresCorroboration": false,
-      "acceptanceCriteria": [
-        "selected evidenceCheck command"
-      ],
+      "acceptanceCriteria": ["selected evidenceCheck command"],
       "reviewAuthority": "veritas",
       "validityRule": {
         "kind": "commit"

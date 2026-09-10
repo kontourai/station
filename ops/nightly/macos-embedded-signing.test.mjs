@@ -14,8 +14,8 @@ import {
   EMBEDDED_MACHO_FIND_MAX_BUFFER,
   EMBEDDED_MACHO_SEALING_DEADLINE_MS,
   embeddedMacosMachOPaths,
-  sealEmbeddedMacosMachOBounded,
   sealEmbeddedMacosMachO,
+  sealEmbeddedMacosMachOBounded,
 } from './macos-embedded-signing.mjs';
 
 const validAdhocDetails = {
@@ -189,7 +189,10 @@ test('classifies a real bounded unsigned codesign probe before timestamped re-si
   const runChild = (phase, exitCode, stderr, commandOptions = {}) =>
     runBoundedCommand(
       process.execPath,
-      ['-e', `process.stderr.write(${JSON.stringify(stderr)}); process.exit(${exitCode});`],
+      [
+        '-e',
+        `process.stderr.write(${JSON.stringify(stderr)}); process.exit(${exitCode});`,
+      ],
       {
         phase,
         timeoutMs: Math.min(commandOptions.timeoutMs ?? 500, 500),
@@ -207,7 +210,9 @@ test('classifies a real bounded unsigned codesign probe before timestamped re-si
         if (program === 'lipo') return result('arm64');
         if (program === 'codesign') {
           const postSignVerification =
-            signed && args[0] === '--verify' && !args.includes('--architecture');
+            signed &&
+            args[0] === '--verify' &&
+            !args.includes('--architecture');
           return runChild(
             phase,
             postSignVerification ? 0 : 1,
@@ -242,7 +247,10 @@ test('keeps unexpected bounded probe diagnostics terminal before signing', async
         if (program === 'lipo') return result('arm64');
         return runBoundedCommand(
           process.execPath,
-          ['-e', "process.stderr.write('sealed resource modified\\n'); process.exit(1);"],
+          [
+            '-e',
+            "process.stderr.write('sealed resource modified\\n'); process.exit(1);",
+          ],
           {
             phase,
             timeoutMs: Math.min(commandOptions.timeoutMs ?? 500, 500),

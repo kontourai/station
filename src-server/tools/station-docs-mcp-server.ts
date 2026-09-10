@@ -43,7 +43,7 @@ import {
 export const STATION_DOCS_VERSION: string = packageJson.version;
 
 /** A topic without its `body` — the shape list/search results return. */
-export interface StationDocsTopicSummary {
+interface StationDocsTopicSummary {
   id: string;
   title: string;
   summary: string;
@@ -64,7 +64,7 @@ export function findStationDocsTopic(id: string): StationDocsTopic | undefined {
   return STATION_DOCS_TOPICS.find((topic) => topic.id === wanted);
 }
 
-export interface StationDocsSearchHit extends StationDocsTopicSummary {
+interface StationDocsSearchHit extends StationDocsTopicSummary {
   /** The matched line of the topic body, or `null` when only metadata matched. */
   excerpt: string | null;
 }

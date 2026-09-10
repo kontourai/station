@@ -89,9 +89,10 @@ export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
       <SplitPaneLayout
         paneId={AGENTS_PANE_ID}
         listClassName="entrance-stagger"
+        compact
         label="agents"
         title="Agents"
-        subtitle="Who can do work here, and what each one runs on."
+        subtitle="Choose an AI app or create your own agent."
         items={listItems}
         loading={agentsLoading}
         selectedId={editorId}

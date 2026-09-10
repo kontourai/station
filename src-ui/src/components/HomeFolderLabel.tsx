@@ -8,7 +8,7 @@
  * One component on purpose: every surface that says "your home folder" says
  * it with the same words, and a future copy change lands everywhere at once.
  */
-export const HOME_FOLDER_LABEL = 'Home folder';
+const HOME_FOLDER_LABEL = 'Home folder';
 
 export function HomeFolderLabel({
   className,

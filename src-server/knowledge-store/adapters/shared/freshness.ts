@@ -7,12 +7,12 @@
  */
 import { MissingEvidenceError } from '../../errors.js';
 
-export interface FreshnessInput {
+interface FreshnessInput {
   expires_at?: string | null;
   ttl_seconds?: number | null;
 }
 
-export interface FreshnessPatch {
+interface FreshnessPatch {
   expires_at?: string;
   ttl_seconds?: number;
 }

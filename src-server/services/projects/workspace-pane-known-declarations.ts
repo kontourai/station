@@ -42,7 +42,7 @@ import {
  * placed an occurrence. Preview panes deliberately have no instances here:
  * an instance is a real placement, not a synonym for a descriptor.
  */
-export interface KnownWorkspacePaneDeclaration {
+interface KnownWorkspacePaneDeclaration {
   descriptor: WorkspacePaneDescriptor;
   /** Server-authoritative facts that must not be inferred from a renderer ref. */
   availabilityInput: WorkspacePaneAvailabilityInput;

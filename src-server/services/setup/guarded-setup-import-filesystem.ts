@@ -15,7 +15,7 @@ export type GuardedDirectoryBinding = {
   mtimeMs: number;
 };
 
-export type GuardedRead = {
+type GuardedRead = {
   bytes: Buffer;
   content: string;
   digest: string;

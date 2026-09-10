@@ -33,7 +33,7 @@ interface SelfUpdateWatchdogRunnerInput {
   deadlineMs?: number;
 }
 
-export interface WatchdogRunnerDeps {
+interface WatchdogRunnerDeps {
   writeRecord?: (
     path: string,
     record: SelfUpdateRestartRecord,

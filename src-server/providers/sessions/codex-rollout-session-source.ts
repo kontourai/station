@@ -62,7 +62,7 @@ interface MappedRecord {
   state: ParserState;
 }
 
-export interface CodexRolloutSessionSourceOptions {
+interface CodexRolloutSessionSourceOptions {
   /** Codex config directory, not its sessions child. */
   homeDir?: string;
   maxCandidates?: number;

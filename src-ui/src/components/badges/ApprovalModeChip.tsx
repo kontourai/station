@@ -30,7 +30,7 @@ const loadComposerModeSheet = () =>
     default: module.ComposerModeSheet,
   }));
 
-export interface ApprovalModeChipProps {
+interface ApprovalModeChipProps {
   /** The session's clean engine-connection identity (for example `codex`). */
   engineConnectionId?: string | null;
   /**

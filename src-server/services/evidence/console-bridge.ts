@@ -31,7 +31,7 @@ import type {
 } from '@kontourai/station-contracts/runtime-events';
 import type { PersistedRuntimeEvent } from '../orchestration/event-store.js';
 
-export interface ConsoleCrossProductRef {
+interface ConsoleCrossProductRef {
   product: string;
   kind: string;
   id: string;
@@ -39,7 +39,7 @@ export interface ConsoleCrossProductRef {
   [key: string]: unknown;
 }
 
-export interface ConsoleLink {
+interface ConsoleLink {
   from: ConsoleCrossProductRef;
   relation: string;
   to: ConsoleCrossProductRef;

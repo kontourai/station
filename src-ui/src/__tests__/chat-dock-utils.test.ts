@@ -528,9 +528,7 @@ describe('resolveNewChatModalDefaultProjectSlug (station#4525 review MED-3)', ()
     ).toBe('bound-project');
   });
 
-  // an unbound user gets the pre-archive#4525 behavior back —
-  // navigating to a project and opening New Chat preselects that project.
-  test('the ambient dock with NO binding falls back to the route-level currently-viewed project (pre-fix behavior restored)', () => {
+  test('No project in the dock remains unbound despite a previously viewed project', () => {
     expect(
       resolveNewChatModalDefaultProjectSlug({
         forkProjectSlug: undefined,
@@ -539,7 +537,7 @@ describe('resolveNewChatModalDefaultProjectSlug (station#4525 review MED-3)', ()
         dockChromeProjectSlug: null,
         routeActiveProjectSlug: 'viewed-project',
       }),
-    ).toBe('viewed-project');
+    ).toBeUndefined();
   });
 
   test('no binding and no viewed project -> undefined (genuinely unbound default)', () => {

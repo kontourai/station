@@ -37,7 +37,7 @@ import {
 } from './strands-mcp-custody.js';
 import type { CreateAgentOptions } from './voltagent-adapter.js';
 
-export interface StrandsToolLoaderState {
+interface StrandsToolLoaderState {
   mcpClients: Map<string, McpClient>;
   agentMcpClients: Map<string, string[]>;
 }

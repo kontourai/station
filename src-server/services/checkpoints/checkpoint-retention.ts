@@ -19,7 +19,7 @@ import type {
 export const CHECKPOINT_RETENTION_MAX_REFS_PER_THREAD = 400;
 export const CHECKPOINT_MUTATION_LOCK = 'checkpoint-mutations.lock';
 
-export type CheckpointRetentionResult = CheckpointRetentionAuditEvent;
+type CheckpointRetentionResult = CheckpointRetentionAuditEvent;
 type RetentionDocument = CheckpointRetentionAudit;
 type AcquireLock = typeof acquireFileMutationLockAsync;
 

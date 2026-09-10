@@ -9,6 +9,7 @@ import {
 } from '@kontourai/station-contracts/agent';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type {
+  AttentionInputReplyContext,
   AttentionRequestInspection,
   AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
@@ -266,6 +267,7 @@ import { type RecoveryDispatchAdapter } from './recovery-dispatch-adapter.js';
 import {
   inspectRequestEvent,
   RequestEventGuardError,
+  readCurrentInputRequest,
 } from './request-inspection.js';
 import { servingInstanceIdentity } from './serving-instance.js';
 import { sessionAgentStartUnavailableReason } from './session-agent-resolution.js';
@@ -473,7 +475,7 @@ export class SessionReattachConflictError extends Error {
  * typed error rather than falling through to the dormant write, which would
  * report success around a live start (the original archive#3493 lie).
  */
-export class SessionStopWhileStartingError extends Error {
+class SessionStopWhileStartingError extends Error {
   readonly code = 'session_start_in_flight';
 
   constructor(threadId: string, timeoutMs: number) {
@@ -510,7 +512,7 @@ export class SessionEndedError extends Error {
 
 export const ATTACHED_SESSION_READ_ONLY_ERROR =
   'Attached sessions are read-only.';
-export const PEER_DELEGATION_ACTIVITY_READ_ONLY_ERROR =
+const PEER_DELEGATION_ACTIVITY_READ_ONLY_ERROR =
   'Peer delegation Activity records are read-only.';
 
 /** A request authority or deliberately named process-wide aggregate scope. */
@@ -712,7 +714,7 @@ interface OrchestrationServiceOptions {
   };
 }
 
-export interface PeerDelegationActivityDispatch {
+interface PeerDelegationActivityDispatch {
   taskId: string;
   conversationId: string;
   prompt: string;
@@ -3467,6 +3469,89 @@ export class OrchestrationService {
   // bodies live in SessionEventReads (session-event-reads.ts). Flat
   // same-named forwarders keep the test Proxy's authority injection (T3)
   // and the per-method initialize() latch (T9) exactly as the bodies had.
+  inspectInputReplyContext(
+    reference: AttentionRequestReference,
+    authority: SessionReadScope,
+  ): AttentionInputReplyContext {
+    this.initialize();
+    const unavailable = (): AttentionInputReplyContext => ({
+      state: 'unavailable',
+      reference,
+    });
+    try {
+      const persisted = this.options.eventStore?.readSessionByThread(
+        reference.threadId,
+      );
+      if (persisted)
+        this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
+      const loaded = this.sessionReadModel.get(reference.threadId);
+      const session = loaded ?? persisted;
+      if (
+        !session ||
+        !this.sessionAuthz.canReadSession(reference.threadId, authority) ||
+        this.quarantinedThreads.has(reference.threadId) ||
+        this.isReadOnlyAttachedSession(reference.threadId) ||
+        this.isPeerDelegationActivityRecord(reference.threadId)
+      )
+        return unavailable();
+      const adapter = this.options.adapterRegistry.get(session.provider);
+      if (
+        !adapter ||
+        !readCurrentInputRequest(
+          this.options.eventStore,
+          reference,
+          adapter.provider,
+        )
+      )
+        return unavailable();
+      const summary = buildOrchestrationSessionSummary({
+        persisted,
+        loaded,
+        events:
+          this.options.eventStore
+            ?.listSessionProjectionEvents(reference.threadId, {
+              requestId: reference.requestId,
+            })
+            .map((event) => event.payload) ?? [],
+        answerability: this.observeAnswerability(
+          reference.threadId,
+          session.provider,
+          new Date().toISOString(),
+        ),
+      });
+      if (
+        !summary.assignedAgentSlug ||
+        !summary.conversationId ||
+        summary.answerability?.answerable !== true
+      )
+        return unavailable();
+      return {
+        state: 'open',
+        reference,
+        agentId: summary.assignedAgentSlug,
+        conversationId: summary.conversationId,
+        provider: adapter.provider,
+        engineId: engineIdForAdapter(adapter),
+        ...((summary.appliedModel ??
+        summary.reportedModel ??
+        summary.requestedModel)
+          ? {
+              modelId:
+                summary.appliedModel ??
+                summary.reportedModel ??
+                summary.requestedModel,
+            }
+          : {}),
+        capabilities: adapter.metadata.capabilities.filter(
+          (capability): capability is 'image-input' | 'file-input' =>
+            capability === 'image-input' || capability === 'file-input',
+        ),
+      };
+    } catch {
+      return unavailable();
+    }
+  }
+
   inspectAttentionRequest(
     reference: AttentionRequestReference,
     authority: SessionReadScope,
@@ -4550,8 +4635,10 @@ export class OrchestrationService {
           });
           const {
             reviewIsolation: _untrustedReviewIsolation,
+            expectedInputRequest: _expectedInputRequest,
             ...publicTurnInput
           } = command.input as ProviderSendTurnInput & {
+            expectedInputRequest?: AttentionRequestReference;
             ambientContext?: string;
           };
           // archive#895 wave C: an engine with no native systemPrompt
@@ -4771,6 +4858,24 @@ export class OrchestrationService {
                     throw new SessionEndedError();
                   }
                   const invoke = async () => {
+                    const assertInputRequestCurrent = () => {
+                      const expected = command.input.expectedInputRequest;
+                      if (
+                        expected &&
+                        (expected.threadId !== turnInput.threadId ||
+                          !readCurrentInputRequest(
+                            this.options.eventStore,
+                            expected,
+                            adapter.provider,
+                          ))
+                      ) {
+                        throw new RequestEventGuardError(
+                          'request_event_changed',
+                          'The input request could not be verified immediately before sending. Inspect the current request before retrying.',
+                        );
+                      }
+                    };
+                    assertInputRequestCurrent();
                     const begun = boundary.beginInvocation(
                       new Date().toISOString(),
                     );
@@ -4928,12 +5033,14 @@ export class OrchestrationService {
                           : undefined;
                       if (nativeForeground && !turnCorrelation)
                         throw new ForegroundInvocationUnavailableError();
-                      const sendAdapter = () =>
-                        nativeForeground
+                      const sendAdapter = () => {
+                        assertInputRequestCurrent();
+                        return nativeForeground
                           ? runWithNativeForegroundRelay(nativeForeground, () =>
                               adapter.sendTurn(turnInput),
                             )
                           : adapter.sendTurn(turnInput);
+                      };
                       if (
                         nativeTurn &&
                         internal?.nativeMemoryReadAuthority &&

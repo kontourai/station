@@ -16,7 +16,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../highlight/highlight-client', () => ({
   // Copy-button behavior is independent of highlighting; pending (never
@@ -33,8 +33,20 @@ import { markdownCodeComponents } from '../components/chat/HighlightedCodeBlock'
 
 const Code = markdownCodeComponents.code;
 
+beforeEach(() => {
+  // jsdom has no layout; the browser spec owns the tall-block boundary.
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+});
+
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   triggerHaptic.mockReset();
   Object.assign(navigator, { clipboard: undefined });

@@ -48,7 +48,7 @@ export interface ChainedReceipt {
  * take two coordinated edits instead of one `head -n -1`, and to make an
  * anchor that has been removed report `unknown` rather than `intact`.
  */
-export interface ReceiptChainAnchor {
+interface ReceiptChainAnchor {
   lastReceiptId: string;
   recordCount: number;
 }
@@ -56,7 +56,7 @@ export interface ReceiptChainAnchor {
 /** Three-state, because "we did not check" must never render as "it verified". */
 export type ReceiptChainStatus = 'intact' | 'broken' | 'unknown';
 
-export interface ReceiptChainVerdict {
+interface ReceiptChainVerdict {
   status: ReceiptChainStatus;
   brokenAtReceiptId: string | null;
   message: string;
@@ -180,7 +180,7 @@ export class HashChainedReceiptLog<TSealed extends ChainedReceipt> {
   }
 }
 
-export interface ChainedReceiptPage<TSealed extends ChainedReceipt> {
+interface ChainedReceiptPage<TSealed extends ChainedReceipt> {
   receipts: TSealed[];
   totalRecords: number;
   verdict: ReceiptChainVerdict;

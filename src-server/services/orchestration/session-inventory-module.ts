@@ -24,11 +24,11 @@ import type { SessionOutputsModule } from './session-outputs-module.js';
 import type { SessionAnswerBasisQueryOutcome } from './session-query-module.js';
 import type { SessionWorkItemModule } from './session-work-item-module.js';
 
-export type SessionInventoryReadOutcome =
+type SessionInventoryReadOutcome =
   | { status: 'found'; projection: SessionInventoryV2Projection }
   | { status: 'not-found' }
   | { status: 'unavailable' };
-export type SessionInventoryPageOutcome =
+type SessionInventoryPageOutcome =
   | { status: 'found'; page: SessionInventoryV2GroupPage }
   | { status: 'not-found' }
   | { status: 'unavailable' };
