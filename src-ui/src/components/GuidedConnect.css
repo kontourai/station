@@ -122,6 +122,9 @@
   color: var(--text-secondary);
   margin-top: 10px;
 }
+.guided-connect__destination small + .guided-connect__action {
+  margin-top: 16px;
+}
 .guided-connect__alternatives {
   display: flex;
   gap: 10px;
@@ -144,23 +147,6 @@
   flex: 1 1 180px;
 }
 
-.guided-connect__app-choice {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 12px 0;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-.guided-connect__app-choice select {
-  min-height: 44px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  padding: 8px;
-}
 a.guided-connect__action {
   display: block;
   text-align: center;

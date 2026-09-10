@@ -12,6 +12,8 @@ mod login_shell;
 mod notification_watch;
 #[cfg(not(mobile))]
 mod local_access_watch;
+#[cfg(not(mobile))]
+mod desktop_companion;
 mod pairing_deep_link_channels_generated;
 mod service_state;
 #[cfg(not(mobile))]
@@ -6368,6 +6370,8 @@ struct RegistryBridgeErrorPayload {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 enum PrepareRuntimeKind {
+    #[serde(skip)]
+    ServiceOwned,
     Absent,
     New,
     Already,
@@ -6378,6 +6382,7 @@ enum PrepareRuntimeKind {
 impl PrepareRuntimeKind {
     fn as_str(self) -> &'static str {
         match self {
+            Self::ServiceOwned => "service-owned",
             Self::Absent => "absent",
             Self::New => "new",
             Self::Already => "already",
@@ -6514,6 +6519,13 @@ fn prepare_runtime_registry_bridge(
     // Native home admission and schema preparation have already succeeded.
     if let (Ok(root), Ok(home)) = (station_root.canonicalize(), station_home.canonicalize()) {
         if root == home { return Ok(PrepareRuntimeKind::Absent); }
+    }
+    // Attaching to a live service is read-only. Its home lease must remain
+    // held; legacy migration cannot acquire maintenance while it is serving.
+    match decide_home_ownership_from_runtime(resource_dir, station_home) {
+        HomeOwnershipDecision::ServiceOwnsHome { .. } => return Ok(PrepareRuntimeKind::ServiceOwned),
+        HomeOwnershipDecision::AmbiguousOwnership | HomeOwnershipDecision::FailClosedRegistry => return Err(RegistryBridgeFailure::Untrusted),
+        HomeOwnershipDecision::SpawnSidecar => {}
     }
     let output = invoke_registry_bridge(
         resource_dir,
@@ -7045,6 +7057,18 @@ fn owner_owns_reapable_child(owner: DesktopOwner) -> bool {
 /// Window destruction is not application exit: preview and workspace pop-out
 /// windows are ordinary Station windows. Sidecar teardown is intentionally
 /// wired only from `RunEvent::Exit` below.
+#[cfg(not(mobile))]
+fn owner_after_preparation(preparation: PrepareRuntimeKind, decision: HomeOwnershipDecision) -> DesktopOwner {
+    let owner = owner_for_decision(decision);
+    if preparation == PrepareRuntimeKind::ServiceOwned {
+        // A service observed before preparation may exit before this second
+        // ownership read. Never turn that race into an unprepared sidecar.
+        adoptable_refreshed_owner(owner)
+    } else {
+        owner
+    }
+}
+
 #[cfg(not(mobile))]
 fn window_destruction_requests_sidecar_teardown() -> bool {
     false
@@ -7680,6 +7704,7 @@ fn with_native_startup_cover(
 
 #[cfg(target_os = "macos")]
 fn present_startup_recovery_surface(app: &AppHandle) {
+    if desktop_companion::background(app) { return; }
     request_native_cover(app, true);
 }
 
@@ -7690,6 +7715,7 @@ fn present_startup_recovery_surface(_app: &AppHandle) {
 
 #[cfg(not(mobile))]
 fn reveal_main_window(app: &AppHandle) {
+    if desktop_companion::background(app) { return; }
     #[cfg(target_os = "macos")]
     {
         request_native_cover(app, false);
@@ -7781,6 +7807,7 @@ pub(crate) fn main_window_activation_available(app: &AppHandle) -> bool {
 
 #[cfg(not(mobile))]
 pub(crate) fn request_main_window_activation(app: &AppHandle) -> bool {
+    desktop_companion::activate(app);
     let Some(state) = app.try_state::<DesktopServerState>() else {
         return false;
     };
@@ -9580,7 +9607,9 @@ If a stable instance is running, this launch will focus its window and exit.",
     // callback itself only brings the existing window to the user.
     #[cfg(not(mobile))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(
-        |app, _argv, _cwd| match app.get_webview_window("main") {
+        |app, argv, _cwd| {
+          if desktop_companion::background_arguments(&argv) { return; }
+          match app.get_webview_window("main") {
             Some(window) => {
                 log::info!(
                     "second launch detected; requesting main window activation '{}'",
@@ -9591,6 +9620,7 @@ If a stable instance is running, this launch will focus its window and exit.",
             None => {
                 log::warn!("second launch detected but no window exists to focus");
             }
+          }
         },
     ));
 
@@ -9657,6 +9687,12 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder
         .manage(NativeStartupBootstrap::default())
+        .manage(desktop_companion::DesktopCompanion::default())
+        .menu(desktop_companion::desktop_menu)
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == desktop_companion::QUIT_MENU_ID { desktop_companion::request_quit(app); }
+        })
+        .manage(desktop_companion::BackgroundTray(AtomicBool::new(desktop_companion::background_arguments(&std::env::args().collect::<Vec<_>>()))))
         .on_page_load(|webview, payload| {
             observe_native_startup_page(webview.app_handle(), webview.label(), payload.event());
         })
@@ -9860,7 +9896,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                     },
                 });
                 let ownership = decide_home_ownership_from_runtime(&resource_dir, &station_home);
-                let mut owner = owner_for_decision(ownership);
+                let mut owner = owner_after_preparation(preparation_kind, ownership);
                 // Reserve before the child is launched.  The shared module
                 // performs this compare-and-set under its mutation lock, so
                 // two desktops cannot both win a home-scoped sidecar slot.
@@ -9917,6 +9953,17 @@ If a stable instance is running, this launch will focus its window and exit.",
         .build(context)
         .expect("error while building tauri application")
         .run(|app, event| {
+            #[cfg(not(mobile))]
+            if let tauri::RunEvent::ExitRequested { code, api, .. } = &event {
+                if code.is_none() || *code == Some(0) {
+                    if let Err(error) = desktop_companion::pause(app) {
+                        use tauri_plugin_dialog::DialogExt;
+                        log::error!("Could not pause desktop companion: {error}");
+                        api.prevent_exit();
+                        app.dialog().message("Station could not save its background preference. Please try quitting again.").title("Could not quit Station").show(|_| {});
+                    }
+                }
+            }
             #[cfg(all(not(mobile), target_os = "macos"))]
             if let tauri::RunEvent::Reopen { .. } = event {
                 match ensure_main_window(app) {
@@ -9959,6 +10006,17 @@ If a stable instance is running, this launch will focus its window and exit.",
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn service_attachment_never_claims_an_unprepared_home_after_service_exit() {
+        assert_eq!(owner_after_preparation(PrepareRuntimeKind::ServiceOwned, HomeOwnershipDecision::SpawnSidecar), DesktopOwner::Unowned);
+        assert_eq!(owner_after_preparation(PrepareRuntimeKind::ServiceOwned, HomeOwnershipDecision::ServiceOwnsHome { id: "owned-service".into(), port: 4123 }), DesktopOwner::Service { id: "owned-service".into(), port: 4123 });
+        assert_eq!(owner_after_preparation(PrepareRuntimeKind::Absent, HomeOwnershipDecision::SpawnSidecar), DesktopOwner::Sidecar);
+        let source = include_str!("lib.rs");
+        let preparation = source.split("fn prepare_runtime_registry_bridge(").nth(1).unwrap().split("fn capture_bounded_registry_bridge_stdout").next().unwrap();
+        assert!(preparation.find("HomeOwnershipDecision::ServiceOwnsHome").unwrap() < preparation.find("\"prepareRuntime\"").unwrap());
+    }
 
     #[test]
     fn native_public_handshake_admits_only_the_exact_public_route() {

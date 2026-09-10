@@ -121,6 +121,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/shared/src/__tests__/node-http-compat.test.ts',
   // Launches Chromium to reject prompt-only evidence in the composer helper.
   'src-ui/src/__tests__/agent-composer-reply-evidence.test.ts',
+  // Launches one owned, short-lived native-companion fixture and waits for its exit.
+  'packages/cli/src/__tests__/desktop-companion.test.ts',
   // The shared observer fixture also creates real POSIX FIFOs and runs two
   // bounded Node children to prove the exact open-boundary blocking race.
   'packages/shared/src/__tests__/station-home-recovery-preflight.test.ts',
