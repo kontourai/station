@@ -6,6 +6,8 @@ import { describe, expect, it, vi } from 'vitest';
 // rather than restating it. When those were two literals they drifted (#3443
 // moved this one and left the gate's behind, taking `main` red).
 import {
+  ANDROID_BUILD_TOOLS_VERSION,
+  ANDROID_NDK_VERSION,
   CHECKOUT_ACTION,
   PNPM_SETUP_ACTION,
   REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
@@ -664,6 +666,94 @@ describe('CI verification workflow contracts', () => {
     expect(uses.filter((entry) => !entry.endsWith(PNPM_SETUP_ACTION))).toEqual(
       [],
     );
+  });
+
+  // Three lanes build Android from three separate definitions: build-android.yml
+  // verifies main, nightly-native-stage.yml signs and ships to Play, release.yml
+  // ships a tag. A toolchain revision restated per lane can therefore be right
+  // in the lane you are reading and wrong in the lane that ships. #1795 is the
+  // worked example: a bare `aapt` in build-android.yml while
+  // nightly-native-stage.yml resolved it correctly, so main was red for a day
+  // while nightly kept shipping and neither lane's state implied anything about
+  // the other's. Read the pins from the gate; do not restate them here either.
+  it('pins one Android NDK and build-tools revision across every lane', () => {
+    const seen = readWorkflowDocuments().flatMap(({ file }) => {
+      const source = readFileSync(file, 'utf8');
+      return [
+        ...[...source.matchAll(/ndk[;/]([0-9][0-9.]*)/g)].map((m) => ({
+          file,
+          kind: 'ndk',
+          value: m[1],
+        })),
+        ...[...source.matchAll(/build-tools[;/]([0-9][0-9.]*)/g)].map((m) => ({
+          file,
+          kind: 'build-tools',
+          value: m[1],
+        })),
+      ];
+    });
+    // Guards the guard: a typo in the patterns above would make this vacuous.
+    expect(seen.filter((e) => e.kind === 'ndk').length).toBeGreaterThan(0);
+
+    const expected = {
+      ndk: ANDROID_NDK_VERSION,
+      'build-tools': ANDROID_BUILD_TOOLS_VERSION,
+    } as Record<string, string>;
+    expect(
+      seen
+        .filter((entry) => entry.value !== expected[entry.kind])
+        .map((entry) => `${entry.file}: ${entry.kind} ${entry.value}`),
+    ).toEqual([]);
+  });
+
+  // A workflow that verifies `main` on push but has no pull-request trigger
+  // cannot fail before it has already landed. That is not a hypothetical
+  // shape: #1795 (bare aapt) and #1726 (jni 0.22, a breaking API change) both
+  // passed every required check and reddened main, because build-android.yml
+  // is push-only. #1726 also broke that night's Play upload.
+  //
+  // The list below is the point of this test. Adding a main-only verification
+  // lane is currently a silent decision; this makes it a declared one, and
+  // gives the next person a list to read instead of a red main to diagnose.
+  it('declares why each push-to-main workflow has no pull-request signal', () => {
+    // Reason strings are the contract. "Publishes" means there is nothing to
+    // verify before merge; "reduced PR lane" names where the PR signal lives.
+    const declared: Record<string, string> = {
+      '.github/workflows/pages.yml':
+        'publishes GitHub Pages from merged main; nothing to pre-verify',
+      '.github/workflows/publish-packages.yml':
+        'publishes released packages from merged main; nothing to pre-verify',
+      '.github/workflows/source-availability.yml':
+        'reports on merged main and files issues; observational, not a build',
+      '.github/workflows/windows-verification.yml':
+        'windows-pr-verification.yml runs the reduced portable floor on pull requests',
+      '.github/workflows/container-smoke.yml':
+        'no pull-request signal today; unfiltered on every main push (#1331 covers its host contention)',
+      '.github/workflows/build-android.yml':
+        'desktop-rust.yml type-checks the Android target on pull requests; full APK assembly stays post-merge',
+    };
+
+    const pushOnly = readWorkflowDocuments()
+      .filter(({ document }) => {
+        const on = (document as { on?: Record<string, unknown> })?.on;
+        if (!on || typeof on !== 'object') return false;
+        const push = (on as { push?: { branches?: string[] } }).push;
+        if (!push?.branches?.includes('main')) return false;
+        return !('pull_request' in on) && !('pull_request_target' in on);
+      })
+      .map(({ file }) => file);
+
+    expect(pushOnly.length).toBeGreaterThan(0);
+    expect(pushOnly.filter((file) => !declared[file])).toEqual([]);
+    // Stale entries are as misleading as missing ones: a workflow that gained a
+    // pull-request trigger should lose its exemption, not keep a reason nobody
+    // rechecks.
+    expect(
+      Object.keys(declared).filter((file) => !pushOnly.includes(file)),
+    ).toEqual([]);
+    for (const file of pushOnly) {
+      expect(declared[file].length).toBeGreaterThan(20);
+    }
   });
 
   it('classifies the complete push diff before entering independent heavy concurrency groups', () => {
