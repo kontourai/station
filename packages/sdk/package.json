@@ -44,7 +44,8 @@
     "./resource-posture": "./src/query-domains/resourcePosture.ts",
     "./spatial-board": "./src/spatial-board.ts",
     "./testing": "./src/voice/testing.ts",
-    "./voice": "./src/voice/session.ts"
+    "./voice": "./src/voice/session.ts",
+    "./input-reply": "./src/client/input-reply.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",

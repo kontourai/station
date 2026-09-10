@@ -336,6 +336,11 @@ describe('executeForegroundMessage', () => {
         conversationId: 'conversation:test',
         clientTurnId: 'client-turn-9',
         message: 'inspect this',
+        expectedInputRequest: {
+          threadId: 'conversation:test:child-2',
+          requestId: 'input-a',
+          requestEventId: 'opened-a',
+        },
         resolveAttachments,
       },
       deps,
@@ -347,7 +352,14 @@ describe('executeForegroundMessage', () => {
     });
     expect(deps.sendTurn).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ threadId: 'conversation:test:child-2' }),
+      expect.objectContaining({
+        threadId: 'conversation:test:child-2',
+        expectedInputRequest: {
+          threadId: 'conversation:test:child-2',
+          requestId: 'input-a',
+          requestEventId: 'opened-a',
+        },
+      }),
       undefined,
     );
   });

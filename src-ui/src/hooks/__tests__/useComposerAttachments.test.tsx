@@ -45,6 +45,84 @@ describe('useComposerAttachments', () => {
   });
 
   afterEach(() => vi.useRealTimers());
+
+  test('a scoped answer cancels late file preparation when its owner unmounts', async () => {
+    let finish:
+      | ((value: { attachments: FileAttachment[]; errors: string[] }) => void)
+      | undefined;
+    readChatAttachmentFiles.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const onAddAttachments = vi.fn();
+    const scope = {
+      apiBase: 'http://station.test',
+      authorityKey: 'answer-owner',
+      isCurrent: () => true,
+    };
+    const hook = renderHook(() =>
+      useComposerAttachments({
+        apiBase: scope.apiBase,
+        requestScope: scope,
+        cancelOnUnmount: true,
+        attachments: [],
+        stages: [],
+        capabilities: { images: true, files: true },
+        onAddAttachments,
+        onStagesChange: vi.fn(),
+      }),
+    );
+    let preparing: Promise<void>;
+    await act(async () => {
+      preparing = hook.result.current.selectFiles([
+        new File(['a'], 'answer.txt'),
+      ]);
+    });
+    await waitFor(() => expect(finish).toBeTypeOf('function'));
+    hook.unmount();
+    await act(async () => {
+      finish?.({ attachments: [attachment('late')], errors: [] });
+      await preparing!;
+    });
+    expect(onAddAttachments).not.toHaveBeenCalled();
+    expect(stageComposerAttachments).not.toHaveBeenCalled();
+  });
+
+  test('staging keeps the answering request authority through the shared queue', async () => {
+    const scope = {
+      apiBase: 'http://station.test',
+      authorityKey: 'answer-owner',
+      isCurrent: () => true,
+    };
+    readChatAttachmentFiles.mockResolvedValueOnce({
+      attachments: [attachment('scoped')],
+      errors: [],
+    });
+    stageComposerAttachments.mockResolvedValueOnce({
+      kind: 'staged',
+      references: [],
+    });
+    const hook = renderHook(() =>
+      useComposerAttachments({
+        apiBase: scope.apiBase,
+        requestScope: scope,
+        cancelOnUnmount: true,
+        attachments: [],
+        stages: [],
+        capabilities: { images: true, files: true },
+        onAddAttachments: vi.fn(),
+        onStagesChange: vi.fn(),
+      }),
+    );
+    await act(async () => {
+      await hook.result.current.selectFiles([new File(['a'], 'answer.txt')]);
+    });
+    await waitFor(() => expect(stageComposerAttachments).toHaveBeenCalled());
+    expect(stageComposerAttachments.mock.calls[0][5]).toBe(scope);
+  });
+
   test('cancelling either file leaves the other per-file task running', async () => {
     const first = attachment('first');
     const second = attachment('second');
