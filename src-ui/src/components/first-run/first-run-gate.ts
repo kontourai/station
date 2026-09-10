@@ -31,7 +31,7 @@ import type {
   FirstRunTransitionRequest,
 } from '@kontourai/station-contracts/config';
 
-export interface FirstRunOffer {
+interface FirstRunOffer {
   /**
    * Open the chapter without being asked. True only for a home that has never
    * answered — a deferral is a decision, and re-opening over it is how a

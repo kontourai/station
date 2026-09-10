@@ -220,7 +220,7 @@ export interface IProviderAdapterRegistry {
   onChange?(listener: () => void): () => void;
 }
 
-export type ProviderCardinality = 'singleton' | 'additive';
+type ProviderCardinality = 'singleton' | 'additive';
 
 export const PROVIDER_TYPE_META: Record<string, ProviderCardinality> = {
   auth: 'singleton',

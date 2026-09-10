@@ -25,7 +25,7 @@ const diffCommentCreateSchema = z.object({
 
 type DiffCommentCreateBody = z.infer<typeof diffCommentCreateSchema>;
 
-export interface DiffCommentRouteDeps {
+interface DiffCommentRouteDeps {
   /**
    * Resolve a project slug to its comment store file path. `undefined` means
    * the project does not exist or has no working directory (→ 404).
@@ -106,7 +106,7 @@ export function createDiffCommentRoutes(
   return app;
 }
 
-export interface DiffCommentsAggregateDeps {
+interface DiffCommentsAggregateDeps {
   /** Resolve every project's comment store path (skip projects without one). */
   listStorePaths: () => string[];
 }

@@ -121,7 +121,7 @@ export interface ProjectTaskRoomRequestAuthority {
     request: Request,
   ): Promise<RequestPrincipal | { readonly kind: 'revoked' | 'unavailable' }>;
 }
-export interface ProjectTaskRoomRuntimeDeps {
+interface ProjectTaskRoomRuntimeDeps {
   readonly taskGraph: Pick<
     { readTaskView(taskId: string): TaskRecord | null },
     'readTaskView'
@@ -245,11 +245,11 @@ interface PendingAgentLifecycle {
   readonly authorizationReceiptId: string;
 }
 
-export type ProjectTaskRoomRuntimeOutcome<T> =
+type ProjectTaskRoomRuntimeOutcome<T> =
   | T
   | { readonly kind: 'not-found' | 'unavailable' };
 
-export type ProjectTaskRoomInspectionOutcome =
+type ProjectTaskRoomInspectionOutcome =
   | {
       readonly kind: 'available';
       readonly taskId: string;
@@ -257,7 +257,7 @@ export type ProjectTaskRoomInspectionOutcome =
     }
   | { readonly kind: 'not-found' | 'denied' | 'unavailable' };
 
-export type ProjectTaskRoomSourceSealObservationOutcome =
+type ProjectTaskRoomSourceSealObservationOutcome =
   | { readonly kind: 'sealed'; readonly seal: HomeTransferClosingSeal }
   | {
       readonly kind:

@@ -39,6 +39,7 @@ import {
   useOnboardingSetupState,
 } from '../../contexts/onboarding-setup-store';
 import { useSystemStatus } from '../../hooks/useSystemStatus';
+import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { Button } from '../Button';
 import { LazyBoundary } from '../LazyBoundary';
 import { PageCallout } from '../PageCallout';
@@ -423,13 +424,15 @@ export function FirstRunHomeChapter() {
   }, [config?.firstRun?.status, writeStatus]);
 
   const complete = useCallback(
-    (destination: 'chat' | 'tour') => {
+    (destination: 'chat' | 'tour' | 'devices') => {
       decided.current = true;
       if (destination === 'tour') firstRunStore.enterChapter('tour');
       else firstRunStore.finish();
       setOpen(false);
       writeStatus('completed');
       if (destination === 'tour') requestFirstRunTour();
+      else if (destination === 'devices')
+        openConnectionsModal({ mode: 'pair-host' });
       else window.dispatchEvent(new Event('station:open-new-chat'));
     },
     [writeStatus],
@@ -562,7 +565,7 @@ export function FirstRunHomeChapter() {
                 error={saveError}
                 onComplete={async (
                   profile: UserProfileSettings | undefined,
-                  destination: 'chat' | 'tour',
+                  destination: 'chat' | 'tour' | 'devices',
                 ) => {
                   // Both exits save intentional answers before navigation. The
                   // ref also guards two activations before React disables them.

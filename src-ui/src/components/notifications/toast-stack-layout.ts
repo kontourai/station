@@ -12,7 +12,7 @@ export const TOAST_STACK_PEEK_PX = 10;
 /** Scale step applied per depth when collapsed. */
 export const TOAST_STACK_SCALE_STEP = 0.06;
 
-export type ToastStackItemLayout = {
+type ToastStackItemLayout = {
   index: number;
   /** 0 = front-most (newest). */
   depth: number;

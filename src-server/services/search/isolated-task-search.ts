@@ -33,7 +33,7 @@ export interface IsolatedTaskSearch
     signal?: AbortSignal;
   }): Promise<UnifiedSearchOpenResolution>;
 }
-export type TaskSearchTestOptions = OwnedSearchReadWorkerTestOptions;
+type TaskSearchTestOptions = OwnedSearchReadWorkerTestOptions;
 
 /** TaskGraph binds one canonical path; requests cannot select files or executable code. */
 export function createIsolatedTaskSearch(

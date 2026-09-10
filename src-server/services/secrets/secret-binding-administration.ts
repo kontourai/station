@@ -72,7 +72,7 @@ export class SecretBindingResolutionError extends Error {
 }
 
 /** The single authorization predicate for every secret-binding consumer. */
-export function secretBindingHasGrant(
+function secretBindingHasGrant(
   binding: Pick<SecretBinding, 'grants' | 'acpProviderHeaderGrants'>,
   expected: SecretBindingGrant,
 ): boolean {
@@ -488,7 +488,7 @@ export interface IntegrationSecretResolution {
   };
 }
 
-export interface SecretBindingServiceOptions {
+interface SecretBindingServiceOptions {
   now?: () => Date;
   secretRunner?: SecretRunner;
   environment?: Record<string, string | undefined>;

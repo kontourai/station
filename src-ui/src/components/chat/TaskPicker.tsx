@@ -20,7 +20,7 @@ export interface TaskPickerAdapter {
   isPending?: boolean;
 }
 
-export interface TaskPickerProps<TTarget> {
+interface TaskPickerProps<TTarget> {
   target: TTarget;
   triggerLabel: string;
   /** More precise control name when compact visible copy is enough. */

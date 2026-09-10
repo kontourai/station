@@ -1,6 +1,6 @@
 import { plainDataObject } from './bounded-json.js';
 
-export interface PlannedHomeAdmissionDatabase {
+interface PlannedHomeAdmissionDatabase {
   prepare(sql: string): {
     all(...values: Array<string | number>): unknown[];
   };
@@ -48,9 +48,7 @@ function exact(value: unknown, keys: string[]): boolean {
   );
 }
 
-export function plannedHomeAdmissionIdentifier(
-  value: unknown,
-): value is string {
+function plannedHomeAdmissionIdentifier(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     value.length > 0 &&
@@ -109,7 +107,7 @@ interface AdmissionRow {
   record_json?: unknown;
 }
 
-export function parsePlannedHomeAdmissionRow(
+function parsePlannedHomeAdmissionRow(
   row: unknown,
 ): PlannedHomeAdmissionRecord | undefined {
   if (row === undefined) return undefined;

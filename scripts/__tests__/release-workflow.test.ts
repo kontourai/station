@@ -1210,7 +1210,11 @@ describe('native release workflow topology', () => {
     expect(stableMacos.macOS.hardenedRuntime).toBe(true);
     expect(testFlightDelivery).toContain('embedded.mobileprovision');
     expect(macosArtifacts).toContain("'DMG staple validation'");
-    expect(release).toContain('apksigner verify');
+    // Names the APK signature proof by its flags rather than by `apksigner`:
+    // the binary lives in build-tools and is resolved by path, not reached
+    // through PATH (#1322). This assertion is about the proof being present,
+    // not about how the binary is spelled at the call site.
+    expect(release).toContain('verify --verbose --print-certs');
     expect(release).toContain('station-ios-simulator-verification');
   });
 

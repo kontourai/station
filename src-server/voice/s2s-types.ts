@@ -93,7 +93,7 @@ export type S2SProviderState =
   | 'processing'
   | 'speaking';
 
-export type S2SEventMap = {
+type S2SEventMap = {
   audio: (chunk: Buffer) => void;
   transcript: (t: S2STranscript) => void;
   toolUse: (e: S2SToolUseEvent) => void;

@@ -50,7 +50,7 @@ type ToolNameMapping = Map<
   }
 >;
 
-export interface RuntimeInitializationContext {
+interface RuntimeInitializationContext {
   port: number;
   host?: string;
   logger: Logger;

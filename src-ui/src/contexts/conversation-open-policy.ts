@@ -1,6 +1,6 @@
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 
-export interface ConversationOpenPolicyState {
+interface ConversationOpenPolicyState {
   conversationOpenPending?: boolean;
   conversationOpenFailed?: boolean;
   conversationOpenState?: ConversationOpenResolution;
@@ -23,11 +23,7 @@ export interface ConversationOpenPolicyState {
  * `missing-session`/`unavailable`, or denied continuation without an active-turn wait. Only that earns error
  * chrome.
  */
-export type ConversationOpenPhase =
-  | 'resolving'
-  | 'busy'
-  | 'writable'
-  | 'read-only';
+type ConversationOpenPhase = 'resolving' | 'busy' | 'writable' | 'read-only';
 
 export function conversationOpenPhase(
   state: ConversationOpenPolicyState,

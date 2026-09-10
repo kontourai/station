@@ -73,7 +73,7 @@ export function withUnreadable<T>(target: string, callback: () => T): T {
   }
 }
 
-export interface StoreFaultShape {
+interface StoreFaultShape {
   label: string;
   content: string;
   expected: 'reject as unavailable';

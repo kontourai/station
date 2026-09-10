@@ -14,7 +14,7 @@ type Session = { threadId: string; displayTitle?: string };
 type FlowRun = { run_id: string; subject: string };
 type Agent = { slug: string; name: string };
 
-export interface SpatialBoardOwnerResolverDeps {
+interface SpatialBoardOwnerResolverDeps {
   projects: { listProjects(): readonly Project[] };
   tasks: { listTasks(): readonly Task[] };
   sessions: {

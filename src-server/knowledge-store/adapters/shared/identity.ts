@@ -56,7 +56,7 @@ export function normalizeAliases(input: unknown): string[] {
   return out;
 }
 
-export interface ResolveContext {
+interface ResolveContext {
   idExists: (id: string) => boolean;
   listIds: () => Iterable<string>;
   bySlug?: Record<string, string>;

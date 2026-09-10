@@ -30,6 +30,7 @@ describe('AboutYouStep — nothing is assumed', () => {
   test.each([
     ['Start your first chat', 'chat'],
     ['Take the tour', 'tour'],
+    ['Connect another device', 'devices'],
   ] as const)('%s leaves unanswered questions absent', (label, destination) => {
     const { onComplete } = renderStep();
     fireEvent.click(screen.getByRole('button', { name: label }));
@@ -67,6 +68,7 @@ describe('AboutYouStep — the preview is the payload', () => {
   test.each([
     ['Start your first chat', 'chat'],
     ['Take the tour', 'tour'],
+    ['Connect another device', 'devices'],
   ] as const)('%s saves only answered questions', (label, destination) => {
     const { onComplete } = renderStep();
     fireEvent.click(screen.getByRole('radio', { name: 'Researcher' }));

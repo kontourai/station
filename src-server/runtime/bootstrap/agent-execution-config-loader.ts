@@ -28,7 +28,7 @@
 import { isAgentConfigNotFound } from '../../domain/config-loader-agents.js';
 
 /** The narrow slice of ConfigLoader this seam needs. */
-export interface AgentSpecSource {
+interface AgentSpecSource {
   loadAgent: (slug: string) => Promise<{ execution?: unknown } | undefined>;
 }
 

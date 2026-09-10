@@ -1,7 +1,6 @@
 import type {
   ConflictInfo,
   PermissionTier,
-  PluginComponent,
   PluginInstallationReadiness,
   PluginInstallationRevision,
   RejectedInstalledPluginRecord,
@@ -69,9 +68,15 @@ export function isRejectedPlugin(
   return 'status' in plugin && plugin.status === 'rejected';
 }
 
-export type PreviewComponent = PluginComponent;
+interface PreviewComponent {
+  type: string;
+  id: string;
+  detail?: string;
+  conflict?: { type: string; id: string; existingSource?: string };
+  skippable?: boolean;
+}
 
-export interface GitInfo {
+interface GitInfo {
   hash: string;
   branch: string;
   remote?: string;

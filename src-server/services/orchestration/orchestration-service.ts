@@ -475,7 +475,7 @@ export class SessionReattachConflictError extends Error {
  * typed error rather than falling through to the dormant write, which would
  * report success around a live start (the original archive#3493 lie).
  */
-export class SessionStopWhileStartingError extends Error {
+class SessionStopWhileStartingError extends Error {
   readonly code = 'session_start_in_flight';
 
   constructor(threadId: string, timeoutMs: number) {
@@ -512,7 +512,7 @@ export class SessionEndedError extends Error {
 
 export const ATTACHED_SESSION_READ_ONLY_ERROR =
   'Attached sessions are read-only.';
-export const PEER_DELEGATION_ACTIVITY_READ_ONLY_ERROR =
+const PEER_DELEGATION_ACTIVITY_READ_ONLY_ERROR =
   'Peer delegation Activity records are read-only.';
 
 /** A request authority or deliberately named process-wide aggregate scope. */
@@ -714,7 +714,7 @@ interface OrchestrationServiceOptions {
   };
 }
 
-export interface PeerDelegationActivityDispatch {
+interface PeerDelegationActivityDispatch {
   taskId: string;
   conversationId: string;
   prompt: string;

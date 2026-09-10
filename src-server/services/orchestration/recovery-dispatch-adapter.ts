@@ -30,14 +30,14 @@ export interface RecoveryDispatchReplay {
   signal: AbortSignal;
 }
 
-export type RecoveryDispatchOutcome =
+type RecoveryDispatchOutcome =
   | { kind: 'rejected' }
   | { kind: 'accepted'; turnId: string }
   | { kind: 'observed'; turnId: string }
   | { kind: 'indeterminate' };
 
 /** Concrete execution facts supplied at external composition. */
-export interface RecoveryDispatchExecutionAdapter {
+interface RecoveryDispatchExecutionAdapter {
   send(replay: RecoveryDispatchReplay): Promise<{ turnId: string } | undefined>;
   restartProfile(
     replay: RecoveryDispatchReplay & { credentialProfileRef: string },

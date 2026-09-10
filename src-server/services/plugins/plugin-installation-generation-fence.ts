@@ -14,7 +14,7 @@ import {
   withPluginProviderGrantPublication,
 } from './plugin-permissions.js';
 
-export interface PluginInstallationGenerationFence {
+interface PluginInstallationGenerationFence {
   readonly installed: boolean;
   readonly installationGeneration: string | null;
 }

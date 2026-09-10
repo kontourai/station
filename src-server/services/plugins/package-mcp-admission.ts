@@ -52,7 +52,7 @@ const PURPOSES = [
   'native-control',
   'strands',
 ] as const;
-export type PackageMcpPurpose = (typeof PURPOSES)[number];
+type PackageMcpPurpose = (typeof PURPOSES)[number];
 export interface PackageMcpInstallation {
   readonly journalId: string;
   readonly pluginId: string;
@@ -91,7 +91,7 @@ type Generation = {
 };
 type Journal = { version: 1; generations: Generation[] };
 type Transition = { state: 'applied' | 'stale' | 'blocked' | 'unavailable' };
-export type PackageMcpInspection =
+type PackageMcpInspection =
   | { state: 'unavailable' | 'superseded'; mutationAllowed: false }
   | {
       state: 'observed';

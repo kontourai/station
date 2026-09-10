@@ -106,7 +106,7 @@ type ExistingSession = {
  * Private composition root. Each capability owns a coherent concern; no
  * public caller can use these operations to bypass the closed command intent.
  */
-export interface SessionCommandDependencies {
+interface SessionCommandDependencies {
   receiptLedger: {
     initialize(): void;
     recordDispatch(input: OrchestrationStartSessionInput): void;

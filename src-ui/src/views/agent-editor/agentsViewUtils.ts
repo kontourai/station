@@ -459,7 +459,7 @@ export function isModelConnectionRunnable(
  * the gate exists so pressing Create is never how someone learns the engine
  * cannot answer — and it is applied AFTER the binding, never folded into it.
  */
-export type StationModelBinding =
+type StationModelBinding =
   | { kind: 'resolved'; connection: ConnectionConfig; explicit: boolean }
   | { kind: 'unresolved'; reason: string };
 

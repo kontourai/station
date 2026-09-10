@@ -309,7 +309,7 @@ function claudeContentItemId(
   return `${message.session_id}:${turnKey}:${record.contentMessageKey}:${blockIndex}`;
 }
 
-export interface ClaudeActiveTask {
+interface ClaudeActiveTask {
   taskId: string;
   toolCallId: string;
   toolName: string;

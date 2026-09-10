@@ -12,7 +12,7 @@
       "!!**/dist-server",
       "!!**/dist-ui",
       "!!**/archive",
-      "!!docs/strategy/dogfood/**/evidence/**"
+      "!!docs/strategy/dogfood/**/evidence"
     ]
   },
   "formatter": {

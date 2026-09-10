@@ -14,7 +14,7 @@ const LABELS: Record<DockMode, string> = {
 };
 
 /** The one placement chooser shared by the pointer and keyboard paths. */
-export function DockPlacementChoices({
+function DockPlacementChoices({
   availablePlacements,
   effectivePlacement,
   onSelect,

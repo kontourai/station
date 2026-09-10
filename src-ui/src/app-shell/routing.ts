@@ -672,7 +672,7 @@ export function getParentView(view: NavigationView): NavigationView | null {
   }
 }
 
-export type ManagementNavigationGroup = ManagementDestinationId;
+type ManagementNavigationGroup = ManagementDestinationId;
 
 export function getManagementNavigationGroup(
   view: NavigationView,

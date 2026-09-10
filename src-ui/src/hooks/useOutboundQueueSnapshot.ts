@@ -20,7 +20,7 @@
 import { useSyncExternalStore } from 'react';
 import type { OutboundDispatchTurn } from '../lib/outboundQueue';
 
-export interface OutboundQueueSnapshot {
+interface OutboundQueueSnapshot {
   /**
    * `pending` until the first read settles — the consumer cannot yet claim
    * the queue is empty. `error` means the read failed and `turns` is the last
@@ -49,9 +49,7 @@ export function getOutboundQueueSnapshot(): OutboundQueueSnapshot {
   return cached;
 }
 
-export function subscribeOutboundQueueSnapshot(
-  listener: () => void,
-): () => void {
+function subscribeOutboundQueueSnapshot(listener: () => void): () => void {
   listeners.add(listener);
   if (listeners.size === 1) {
     void source().then((module) => module.attachOutboundQueueSource());

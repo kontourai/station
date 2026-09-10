@@ -38,14 +38,14 @@
  * resolution that actually happens.
  */
 
-export type BedrockRegionSource =
+type BedrockRegionSource =
   | 'agent'
   | 'connection'
   | 'config'
   | 'env'
   | 'default';
 
-export interface BedrockRegionResolution {
+interface BedrockRegionResolution {
   region: string;
   source: BedrockRegionSource;
   /** The env var consulted for the `env` source, for surfaces that name it. */
@@ -65,7 +65,7 @@ export const BEDROCK_REGION_ENV_VAR = 'AWS_REGION' as const;
  */
 export const BEDROCK_REGION_DEFAULT = 'us-east-1';
 
-export interface BedrockRegionInputs {
+interface BedrockRegionInputs {
   /** `AgentSpec.region` — a per-agent override, the narrowest scope. */
   agentRegion?: string | null;
   /**

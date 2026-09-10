@@ -17,14 +17,14 @@ import {
 } from '@kontourai/station-shared/process-identity';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 
-export interface TerminableProcess {
+interface TerminableProcess {
   readonly pid?: number;
   readonly exitCode: number | null;
   readonly signalCode?: NodeJS.Signals | null;
   kill(signal?: NodeJS.Signals | number): boolean;
 }
 
-export interface ProcessTreeTerminationOptions {
+interface ProcessTreeTerminationOptions {
   graceMs?: number;
   killConfirmMs?: number;
   taskkillTimeoutMs?: number;
@@ -249,7 +249,7 @@ export const STATION_OWNED_PROCESS_REGISTRY_ENV =
   'STATION_OWNED_PROCESS_REGISTRY';
 
 /** The identity of the Station process that owns a spawned child. */
-export interface OwnedProcessOwner {
+interface OwnedProcessOwner {
   pid: number;
   instanceId: string;
   bootId: string;
@@ -258,7 +258,7 @@ export interface OwnedProcessOwner {
 }
 
 /** A registry record: one spawned child and the owner that is responsible. */
-export interface OwnedProcessRecord {
+interface OwnedProcessRecord {
   /** Schema version so a future shape change can be detected, not guessed. */
   schemaVersion: 1;
   /** The spawned child pid. For a detached child this is also its group id. */
@@ -314,7 +314,7 @@ export function resolveOwnedProcessOwner(
  */
 const REGISTRY_DIR_REQUIRED_MODE = 0o700;
 
-export type RegistryTrustReason =
+type RegistryTrustReason =
   | { kind: 'not-directory' }
   | { kind: 'foreign-owner'; ownerUid: number; ourUid: number }
   | { kind: 'too-permissive'; mode: number };
@@ -502,7 +502,7 @@ function ownerIsGone(
   return probe.identity.start !== owner.birth;
 }
 
-export interface OwnedProcessSweepResult {
+interface OwnedProcessSweepResult {
   /** Orphaned children that were group-SIGKILLed. */
   reaped: number[];
   /** Records whose child had already exited on its own. */
@@ -704,13 +704,13 @@ export async function sweepOrphanedOwnedProcesses(
   return result;
 }
 
-export interface OwnedChildHandle {
+interface OwnedChildHandle {
   proc: ChildProcess;
   /** Remove this child's registry record. Call after a graceful destroy. */
   release: () => void;
 }
 
-export interface SpawnOwnedChildOptions {
+interface SpawnOwnedChildOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   stdio?: 'ignore' | 'pipe' | 'inherit' | Array<'ignore' | 'pipe' | 'inherit'>;

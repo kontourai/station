@@ -1,4 +1,4 @@
-export interface BoundedJsonLimits {
+interface BoundedJsonLimits {
   maxBytes: number;
   maxDepth: number;
   maxItems: number;
@@ -6,7 +6,7 @@ export interface BoundedJsonLimits {
   maxKeyCodeUnits: number;
 }
 
-export type BoundedJsonMeasure =
+type BoundedJsonMeasure =
   | { ok: true; bytes: number }
   | {
       ok: false;

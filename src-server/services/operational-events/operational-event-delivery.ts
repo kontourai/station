@@ -33,7 +33,7 @@ export type OperationalEventDeliveryTransition =
   | { kind: 'invalid' }
   | { kind: 'unavailable' };
 
-export interface OperationalEventDeliveryClaim {
+interface OperationalEventDeliveryClaim {
   readonly journalSequence: number;
   readonly event: OperationalEventEnvelope;
   readonly idempotencyKey: string;
@@ -43,13 +43,13 @@ export interface OperationalEventDeliveryClaim {
   deadLetter(failureCode: string): OperationalEventDeliveryTransition;
 }
 
-export interface OperationalEventReplayGap {
+interface OperationalEventReplayGap {
   readonly requestedAfterJournalSequence: number;
   readonly earliestAvailableJournalSequence: number;
   acknowledge(): OperationalEventDeliveryTransition;
 }
 
-export interface OperationalEventDeadLetter {
+interface OperationalEventDeadLetter {
   journalSequence: number;
   eventId: string;
   idempotencyKey: string;
@@ -85,7 +85,7 @@ export type OperationalEventDeliveryOwner =
   | { id: string; pid: number; birth: string; identityKind: 'exact' }
   | { id: string; pid: number; identityKind: 'unverified' };
 
-export interface OperationalEventProcessIdentity {
+interface OperationalEventProcessIdentity {
   exact(pid: number): { pid: number; start: string } | null;
   probe(
     pid: number,
@@ -109,7 +109,7 @@ export interface OperationalEventDeliveryRecord {
   nextAttemptAt: string | null;
 }
 
-export interface OperationalEventSettlementFence {
+interface OperationalEventSettlementFence {
   settlementId: string;
   ownerId: string;
   ownerPid: number;

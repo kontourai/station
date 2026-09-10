@@ -75,7 +75,7 @@ export class AnswerAssessmentNotFoundError extends Error {}
  * separator ambiguity and keeps message IDs out of arbitrary bundle paths.
  */
 
-export type ProducerAssessmentInput = StationAnswerAssessmentPublishInput;
+type ProducerAssessmentInput = StationAnswerAssessmentPublishInput;
 
 type Record = {
   schemaVersion: 1;
@@ -97,7 +97,7 @@ type Record = {
 };
 type Index = { schemaVersion: 1; records: Record[] };
 
-export type AnswerAssessmentUpdate = StationAnswerAssessmentReceipt;
+type AnswerAssessmentUpdate = StationAnswerAssessmentReceipt;
 
 /** Private adapter input for Surface's reviewed-source Basis builder. */
 export type ReviewedSourceBasisFacts = {

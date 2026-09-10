@@ -22,7 +22,7 @@ const OPERATIONAL_EVENT_TYPE =
   /^(?:station|(?:plugin|kit)\.[a-z][a-z0-9-]*)\.[a-z][a-z0-9.-]*\/v[1-9][0-9]*$/;
 const MAX_PLUGIN_EVENT_SUBSCRIPTIONS = 16;
 
-export type PluginManifestValidationFailureCode =
+type PluginManifestValidationFailureCode =
   | 'invalid-plugin-name'
   | 'reserved-plugin-name'
   | 'missing-version'
@@ -57,9 +57,9 @@ export async function readPluginManifestFile(
   return (await readPluginManifestFileWithFormat(manifestPath)).manifest;
 }
 
-export type PluginManifestFormat = 'legacy' | 'agent-plugin-1.0';
+type PluginManifestFormat = 'legacy' | 'agent-plugin-1.0';
 
-export interface PluginManifestWithFormat {
+interface PluginManifestWithFormat {
   manifest: PluginManifest;
   format: PluginManifestFormat;
   stationExtension?: { status: 'validated' | 'disabled'; reason?: string };
@@ -243,7 +243,7 @@ function readAgentPluginManifest(
   }
 }
 
-export function parsePluginManifest(
+function parsePluginManifest(
   raw: string,
   manifestPath: string,
 ): PluginManifest {

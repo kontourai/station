@@ -32,7 +32,7 @@ import {
 } from './connection-sections';
 import { useComputerRows } from './useComputerRows';
 
-export interface ConnectionSectionSignals {
+interface ConnectionSectionSignals {
   count: (id: ConnectionSectionId) => number;
   needsAttention: (id: ConnectionSectionId) => boolean;
   /** The section `/connections` resolves to, or undefined when none needs it. */

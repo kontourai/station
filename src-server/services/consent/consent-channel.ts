@@ -26,7 +26,7 @@ import {
  */
 export const CONSENT_SESSION_COOKIE = 'station-consent';
 
-export type ConsentChannelState =
+type ConsentChannelState =
   | { readonly status: 'listening'; readonly port: number }
   | { readonly status: 'unavailable'; readonly reason: string };
 

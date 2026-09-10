@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react';
 
-export interface VirtualTranscriptRow {
+interface VirtualTranscriptRow {
   readonly id: string;
   readonly kind: string;
 }

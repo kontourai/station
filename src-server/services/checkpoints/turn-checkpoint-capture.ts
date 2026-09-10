@@ -32,14 +32,14 @@ interface CaptureIndexStore {
   ): void;
 }
 
-export interface TurnCheckpointCaptureOutcome {
+interface TurnCheckpointCaptureOutcome {
   threadId: string;
   turnId: string;
   phase: TurnCheckpointPhase;
   outcome: 'captured' | 'not_applicable' | 'skipped' | 'failed' | 'duplicate';
 }
 
-export interface TurnCheckpointCaptureCoordinatorDeps {
+interface TurnCheckpointCaptureCoordinatorDeps {
   refStore: CaptureCapableRefStore;
   indexStore: CaptureIndexStore;
   resolveWorkingDirectory: (threadId: string) => string | undefined;
