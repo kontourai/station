@@ -12,6 +12,7 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../components/ResponsiveDialogSurface';
+import { SkeletonBlock } from '../components/state';
 
 const loadImageInspector = () =>
   import('../components/ImageInspector').then((module) => ({
@@ -118,7 +119,7 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
                   setCurrent(items[currentIdx + 1]);
               },
             }}
-            pending={<p role="status">Loading image preview…</p>}
+            pending={<SkeletonBlock count={1} label="Loading image preview" />}
           />
         </ResponsiveDialogSurface>
       )}
