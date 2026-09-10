@@ -6,7 +6,17 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { ResponsiveDialogCloseButton } from '../components/ResponsiveDialogSurface';
+import { Button } from '../components/Button';
+import { LazyBoundary } from '../components/LazyBoundary';
+import {
+  ResponsiveDialogHeader,
+  ResponsiveDialogSurface,
+} from '../components/ResponsiveDialogSurface';
+
+const loadImageInspector = () =>
+  import('../components/ImageInspector').then((module) => ({
+    default: module.ImageInspector,
+  }));
 
 interface PreviewItem {
   url: string;
@@ -44,14 +54,6 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
   const canPrev = currentIdx > 0;
   const canNext = currentIdx < items.length - 1;
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') closePreview();
-    else if (e.key === 'ArrowLeft' && canPrev)
-      setCurrent(items[currentIdx - 1]);
-    else if (e.key === 'ArrowRight' && canNext)
-      setCurrent(items[currentIdx + 1]);
-  };
-
   const canPreview = (mediaType?: string) => mediaType?.startsWith('image/');
 
   // archive#3796: one memoised value per provider — a fresh object literal
@@ -66,57 +68,59 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
     <PreviewContext.Provider value={value}>
       {children}
       {current && canPreview(current.mediaType) && (
-        <div
-          className="image-preview-modal"
-          data-escape-owner
-          onClick={closePreview}
-          onKeyDown={handleKeyDown}
-          role="dialog"
-          aria-label="Preview"
-          ref={(el) => el?.focus()}
+        <ResponsiveDialogSurface
+          onClose={closePreview}
+          ariaLabel="Preview"
+          layer="dialog"
+          overlayClassName="image-preview-overlay"
+          panelClassName="image-preview-panel"
         >
-          <ResponsiveDialogCloseButton
-            className="image-preview-modal__close"
-            onClick={closePreview}
-            label="Close preview"
+          <ResponsiveDialogHeader
+            title={current.name || 'Image preview'}
+            closeLabel="Close preview"
+            onClose={closePreview}
           />
-          {canPrev && (
-            <button
-              type="button"
-              className="image-preview-modal__nav image-preview-modal__nav--prev"
-              onClick={(e) => {
-                e.stopPropagation();
-                setCurrent(items[currentIdx - 1]);
-              }}
+          {items.length > 1 && (
+            <fieldset
+              className="image-preview-navigation"
+              aria-label="Image navigation"
             >
-              ‹
-            </button>
+              <Button
+                aria-disabled={!canPrev}
+                onClick={() => {
+                  if (canPrev) setCurrent(items[currentIdx - 1]);
+                }}
+              >
+                Previous image
+              </Button>
+              <span>
+                {currentIdx + 1} / {items.length}
+              </span>
+              <Button
+                aria-disabled={!canNext}
+                onClick={() => {
+                  if (canNext) setCurrent(items[currentIdx + 1]);
+                }}
+              >
+                Next image
+              </Button>
+            </fieldset>
           )}
-          <img
-            src={current.url}
-            alt={current.name || 'Preview'}
-            className="image-preview-modal__image"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                event.currentTarget.click();
-              }
+          <LazyBoundary
+            load={loadImageInspector}
+            componentProps={{
+              src: current.url,
+              name: current.name || 'Preview',
+              onNavigate: (direction: -1 | 1) => {
+                if (direction === -1 && canPrev)
+                  setCurrent(items[currentIdx - 1]);
+                if (direction === 1 && canNext)
+                  setCurrent(items[currentIdx + 1]);
+              },
             }}
+            pending={<p role="status">Loading image preview…</p>}
           />
-          {canNext && (
-            <button
-              type="button"
-              className="image-preview-modal__nav image-preview-modal__nav--next"
-              onClick={(e) => {
-                e.stopPropagation();
-                setCurrent(items[currentIdx + 1]);
-              }}
-            >
-              ›
-            </button>
-          )}
-        </div>
+        </ResponsiveDialogSurface>
       )}
     </PreviewContext.Provider>
   );
