@@ -15,6 +15,15 @@ on:
       - 'scripts/verify-desktop-clean-checkout.mjs'
       - 'scripts/__tests__/verify-desktop-clean-checkout.test.ts'
       - 'scripts/stage-desktop-server-runtime.mjs'
+      - 'scripts/build-desktop.mjs'
+      - 'scripts/build-desktop-resources.mjs'
+      - 'scripts/build-windows-nightly.ps1'
+      - 'scripts/windows-nightly-config.mjs'
+      - 'scripts/lib/desktop-build-command.mjs'
+      - 'scripts/lib/desktop-server-runtime.mjs'
+      - 'scripts/lib/windows-nightly.mjs'
+      - 'scripts/lib/nightly-build-identity.mjs'
+      - 'scripts/lib/native-release-config.mjs'
       - 'esbuild.config.mjs'
   push:
     branches:
@@ -31,6 +40,15 @@ on:
       - 'scripts/verify-desktop-clean-checkout.mjs'
       - 'scripts/__tests__/verify-desktop-clean-checkout.test.ts'
       - 'scripts/stage-desktop-server-runtime.mjs'
+      - 'scripts/build-desktop.mjs'
+      - 'scripts/build-desktop-resources.mjs'
+      - 'scripts/build-windows-nightly.ps1'
+      - 'scripts/windows-nightly-config.mjs'
+      - 'scripts/lib/desktop-build-command.mjs'
+      - 'scripts/lib/desktop-server-runtime.mjs'
+      - 'scripts/lib/windows-nightly.mjs'
+      - 'scripts/lib/nightly-build-identity.mjs'
+      - 'scripts/lib/native-release-config.mjs'
       - 'esbuild.config.mjs'
 
 permissions:
