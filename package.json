@@ -316,7 +316,7 @@
     "@tanstack/react-query-persist-client": "^5.102.8",
     "@tanstack/react-virtual": "^3.14.10",
     "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/plugin-deep-link": "2.4.9",
+    "@tauri-apps/plugin-deep-link": "2.4.10",
     "@tauri-apps/plugin-haptics": "2.3.3",
     "@tauri-apps/plugin-notification": "2.3.3",
     "@tauri-apps/plugin-process": "2.3.1",
