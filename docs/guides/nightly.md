@@ -1,15 +1,16 @@
 # Station Nightly
 
-Station Nightly is the main-edge dogfood channel. Its configured macOS and
-Android legs consume one SHA from the shared Nightly test gate and use separate
+Station Nightly is the main-edge dogfood channel. Its macOS, Windows, and
+Android builds consume one SHA from the shared Nightly test gate and use separate
 platform delivery authorities while sharing one channel identifier:
 
 | Platform | Artifact | Identifier | Built by | Delivered by |
 | --- | --- | --- | --- | --- |
-| macOS | notarized app, DMG, updater archive | `io.kontourai.station.nightly` | `.github/workflows/nightly.yml#nightly-desktop` | rolling GitHub prerelease and signed Tauri feed |
-| Android | signed AAB/APK | `io.kontourai.station.nightly` | `.github/workflows/nightly.yml#nightly` | Play internal testing track |
+| macOS | notarized app, DMG, updater archive | `io.kontourai.station.nightly` | `.github/workflows/nightly-native-stage.yml#stage-macos` | rolling GitHub prerelease and shared signed Tauri feed |
+| Windows | MSI and signed updater archive | `io.kontourai.station.nightly` | `.github/workflows/nightly-native-stage.yml#stage-windows` | shared rolling GitHub prerelease and signed Tauri feed |
+| Android | signed AAB/APK | `io.kontourai.station.nightly` | `.github/workflows/nightly-native-stage.yml#stage-android` | Play internal testing track |
 
-Because the nightly uses its own identifier, both lanes install alongside a
+Because the nightly uses its own identifier, these channels install alongside a
 stable Station install (`io.kontourai.station`) and never touch it.
 
 ## Android nightly (Play internal testing)
