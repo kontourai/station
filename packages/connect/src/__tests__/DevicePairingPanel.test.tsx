@@ -21,8 +21,10 @@ import {
   JoinDevicePairingPanel,
 } from '../react/DevicePairingPanel';
 
-vi.mock('qrcode', () => ({
-  toCanvas: vi.fn(async () => undefined),
+vi.mock('../react/QRDisplay', () => ({
+  QRDisplay: ({ url }: { url: string }) => (
+    <div data-testid="pairing-qr" data-payload={url} />
+  ),
 }));
 
 function response(body: unknown, status = 200) {
@@ -2015,7 +2017,7 @@ describe('device pairing panels', () => {
 
   test('host creates a short-lived offer with manual fallback and no credential input', async () => {
     const offer = {
-      protocolVersion: 1,
+      protocolVersion: 1 as const,
       environmentId: 'environment-1',
       offerId: 'offer-1',
       challenge: 'challenge-1',
@@ -2052,6 +2054,23 @@ describe('device pairing panels', () => {
     );
 
     expect(await screen.findByText('PAIRME2345')).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('pairing-qr').getAttribute('data-payload'),
+      ).toMatch(/^station-stable:\/\/pair\?/),
+    );
+    fireEvent.change(screen.getByLabelText('Pairing QR destination'), {
+      target: { value: 'scanner' },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('pairing-qr').getAttribute('data-payload'),
+      ).toBe(encodeDevicePairingPayload(offer)),
+    );
+    fireEvent.change(screen.getByLabelText('Pairing QR destination'), {
+      target: { value: 'app' },
+    });
+
     expect(screen.queryByLabelText(/credential/i)).toBeNull();
     const offerCall = fetchSpy.mock.calls.find(
       ([input]) => new URL(String(input)).pathname === '/api/pairing/offers',
@@ -2068,6 +2087,22 @@ describe('device pairing panels', () => {
     fireEvent.change(screen.getByLabelText('Pairing client channel'), {
       target: { value: 'beta' },
     });
+    expect(
+      (screen.getByLabelText('Pairing QR destination') as HTMLSelectElement)
+        .value,
+    ).toBe('app');
+    expect(
+      (screen.getByLabelText('Pairing client channel') as HTMLSelectElement)
+        .value,
+    ).toBe('beta');
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('pairing-qr').getAttribute('data-payload'),
+      ).toMatch(/^station-beta:\/\/pair\?/),
+    );
+    expect(
+      screen.queryByRole('link', { name: /App Store|Google Play|beta/ }),
+    ).toBeNull();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     fireEvent.click(screen.getByRole('button', { name: 'Copy pairing link' }));
@@ -2207,7 +2242,7 @@ describe('device pairing panels', () => {
       );
 
       expect((await screen.findByRole('alert')).textContent).toBe(expected);
-      expect(screen.getByText(/You can approve it here/i)).toBeTruthy();
+      expect(screen.getByText(/then approve access here/i)).toBeTruthy();
     },
   );
 
