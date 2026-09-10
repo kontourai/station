@@ -307,6 +307,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
+    'tests/model-visibility.spec.ts',
     'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
     'tests/keyboard-shortcuts.spec.ts',
@@ -535,6 +536,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'UX audit E5 (DESIGN §3): a CLI-engine agent\'s editor renders §3.4 Model options and none of §3.3 — no Model heading, no model-connection picker, no "Add model connection" repair (Y2: nothing contradicts the chosen engine); a description edit round-trips through the PUT, the cleared pending state, a reload and a fresh API read; and at 390 the shared DetailHeader sticky footer keeps Save reachable and clickable at the bottom of a long form.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/model-visibility.spec.ts',
+    bucket: 'product',
+    surface: 'Provider model preferences',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production provider form and device preference store bundled in memory with one unused SDK query stub. Browser-local interactions prove provider bulk visibility, preserved default model, keyboard operation and phone-sized light/dark controls. No live instance or shared outputs.',
     exceptions: [],
   },
   {
