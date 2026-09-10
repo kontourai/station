@@ -2156,7 +2156,7 @@ backup manifest contents.
 ## Saved answer quotations
 
 `getAssistantQuoteSource(apiBase, sessionId, turnId, options)` from
-`@kontourai/station-sdk/client` reads a bounded completed answer through
+`@kontourai/station-sdk/quote-source` reads a bounded completed answer through
 `GET /api/orchestration/sessions/:sessionId/turns/:turnId/quote-source`.
 Pass the host-captured `requestScope` and an abort signal. The result is
 `OrchestrationQuoteSource`: exact Session/turn/message identifiers, source text,

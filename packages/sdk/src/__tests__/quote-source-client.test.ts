@@ -1,6 +1,6 @@
 import type { OrchestrationQuoteSource } from '@kontourai/station-contracts/orchestration';
 import { afterEach, expect, test, vi } from 'vitest';
-import { getAssistantQuoteSource } from '../client/orchestration';
+import { getAssistantQuoteSource } from '../client/quote-source';
 
 afterEach(() => vi.unstubAllGlobals());
 const source: OrchestrationQuoteSource = {

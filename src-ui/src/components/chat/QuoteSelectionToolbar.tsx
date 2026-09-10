@@ -1,4 +1,4 @@
-import { getAssistantQuoteSource } from '@kontourai/station-sdk/client';
+import { getAssistantQuoteSource } from '@kontourai/station-sdk/quote-source';
 import { type RefObject, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';

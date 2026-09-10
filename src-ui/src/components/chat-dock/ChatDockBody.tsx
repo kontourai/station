@@ -58,7 +58,6 @@ import { ChatEmptyState } from '../chat/ChatEmptyState';
 import { ChatInputArea } from '../chat/ChatInputArea';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
-import { SourceQuoteDrafts } from '../chat/SourceQuoteDrafts';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
 import { ConversationStats } from '../conversation-stats/ConversationStats';
 import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
@@ -73,6 +72,10 @@ import {
   retryAttachmentsFromParts,
 } from './retry-attachments';
 
+const loadSourceQuoteDrafts = () =>
+  import('../chat/SourceQuoteDrafts').then((module) => ({
+    default: module.SourceQuoteDrafts,
+  }));
 const loadChatMessageList = () =>
   import('../chat/ChatMessageList').then(({ ChatMessageList }) => ({
     default: ChatMessageList,
@@ -1209,11 +1212,18 @@ export function ChatDockBody({
             .
           </div>
         )}
-      <SourceQuoteDrafts
-        origin={apiBase}
-        quotes={chatInput.quotes}
-        onRemove={chatInput.removeQuote}
-      />
+      {chatInput.quotes.length > 0 && (
+        <LazyBoundary
+          load={loadSourceQuoteDrafts}
+          componentProps={{
+            origin: apiBase,
+            quotes: chatInput.quotes,
+            onRemove: chatInput.removeQuote,
+          }}
+          pending={<SkeletonList count={1} label="Loading quoted context" />}
+        />
+      )}
+
       <ChatInputArea
         hasQuotedContext={chatInput.quotes.length > 0}
         draftText={chatInput.quotedDraftText}

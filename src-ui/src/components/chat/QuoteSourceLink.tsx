@@ -1,4 +1,4 @@
-import { getAssistantQuoteSource } from '@kontourai/station-sdk/client';
+import { getAssistantQuoteSource } from '@kontourai/station-sdk/quote-source';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
