@@ -307,6 +307,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/banner-stack-bound.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
     'tests/code-block-actions.spec.ts',
+    'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
     'tests/keyboard-shortcuts.spec.ts',
     'tests/sidebar-geometry.spec.ts',
@@ -544,6 +545,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Production code-block frame and styles bundled in memory; browser layout drives the long-block boundary. Clipboard success/refusal is a browser-local fixture, with no OS clipboard or live Station writes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/image-preview-inspection.spec.ts',
+    bucket: 'product',
+    surface: 'Chat and workspace image previews',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real production image inspector and dialog components with browser-decoded PNG input; verifies zoom, pointer and touch pan, keyboard and gallery focus, full backdrop coverage, failure state and narrow theme/rotation geometry. Bundling is in-memory; no live Station instance or shared output writes.',
     exceptions: [],
   },
   {

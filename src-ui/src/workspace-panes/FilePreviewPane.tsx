@@ -22,6 +22,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { ImageInspector } from '../components/ImageInspector';
 import { Empty, SkeletonBlock } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
 import { langFromFilePath } from '../highlight/langFromFilePath';
@@ -797,26 +798,21 @@ function BoundedPngImage({
   path: string;
   sizeBytes?: number;
 }) {
-  const [failed, setFailed] = useState(false);
-  if (failed)
-    return (
-      <p role="alert">
-        This image passed the bounded preview checks but could not be decoded.
-      </p>
-    );
   return (
-    <figure style={{ margin: 0, height: '100%' }}>
-      <img
+    <figure
+      style={{
+        margin: 0,
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+      }}
+    >
+      <ImageInspector
+        key={dataUrl}
         src={dataUrl}
-        alt={`Preview of ${path}`}
-        onError={() => setFailed(true)}
-        style={{
-          display: 'block',
-          maxWidth: '100%',
-          maxHeight: '100%',
-          margin: '0 auto',
-          objectFit: 'contain',
-        }}
+        name={`Preview of ${path}`}
+        errorMessage="This image passed the bounded preview checks but could not be decoded."
       />
       <figcaption style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
         PNG · {sizeBytes ?? 0} bytes
