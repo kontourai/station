@@ -120,7 +120,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Real HTTP requests in isolated children exercise fatal socket-option faults.
   'packages/shared/src/__tests__/node-http-compat.test.ts',
   // Launches Chromium to reject prompt-only evidence in the composer helper.
-  'scripts/__tests__/agents-journey.test.ts',
+  'src-ui/src/__tests__/agent-composer-reply-evidence.test.ts',
   // The shared observer fixture also creates real POSIX FIFOs and runs two
   // bounded Node children to prove the exact open-boundary blocking race.
   'packages/shared/src/__tests__/station-home-recovery-preflight.test.ts',

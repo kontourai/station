@@ -1,6 +1,6 @@
 import { chromium } from '@playwright/test';
 import { expect, test } from 'vitest';
-import { sendComposerTurn } from '../../tests/helpers/agents-journey';
+import { sendComposerTurn } from '../../../tests/helpers/agents-journey';
 
 test.each([false, true])(
   'composer reply proof requires assistant output (reply=%s)',
