@@ -713,11 +713,12 @@ test('categorizes reconnect revision mismatches without retaining revisions', ()
   );
   expect(editor).not.toContain('a1b2c3d4e5f6');
   expect(render).not.toContain('0123456789ab');
-  expect(
-    reconnectDriverStage(
-      'Reconnect stage FALLBACK_SAMPLE_74 failed: document status 200; editor revision a1b2c3d4e5f6 expected a1b2c3d4e5f6; reconnect apply wait timed out; no task apply observed',
-    ),
-  ).toBe('FALLBACK_SAMPLE_74_APPLY_NO_MARK');
+  for (const status of ['200', 'none'])
+    expect(
+      reconnectDriverStage(
+        `Reconnect stage FALLBACK_SAMPLE_74 failed: document status ${status}; editor revision a1b2c3d4e5f6 expected a1b2c3d4e5f6; reconnect apply wait timed out; no task apply observed`,
+      ),
+    ).toBe('FALLBACK_SAMPLE_74_APPLY_NO_MARK');
 });
 
 test('classifies closed peer-presence stages before their outer measure wrapper', () => {

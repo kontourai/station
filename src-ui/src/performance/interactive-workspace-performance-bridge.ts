@@ -636,15 +636,6 @@ export function reconnectDriverStage(message: string): string {
   const named = /Reconnect stage ([A-Z0-9_]+) failed/.exec(message);
   if (named) {
     if (message.includes('strategy wait')) return `${named[1]}_STRATEGY`;
-    const documentStatus = /document status ([0-9]+|none)/.exec(message);
-    if (documentStatus && documentStatus[1] !== '200')
-      return `${named[1]}_DOCUMENT_${documentStatus[1]!.toUpperCase()}`;
-    if (message.includes('editor missing after reconnect'))
-      return `${named[1]}_EDITOR_MISSING`;
-    const editorRevision =
-      /editor revision ([0-9a-f]{12}) expected ([0-9a-f]{12})/.exec(message);
-    if (editorRevision && editorRevision[1] !== editorRevision[2])
-      return `${named[1]}_EDITOR_REVISION_MISMATCH`;
     if (message.includes('no task apply observed'))
       return `${named[1]}_APPLY_NO_MARK`;
     if (message.includes('latest apply belongs to another task'))
@@ -667,6 +658,16 @@ export function reconnectDriverStage(message: string): string {
     if (/latest task commit [0-9a-f]{12} expected [0-9a-f]{12}/.test(message))
       return `${named[1]}_RENDER_REVISION_MISMATCH`;
     if (message.includes('revision render wait')) return `${named[1]}_RENDER`;
+    // The observed failure phase takes precedence over incidental HTTP or DOM state.
+    const documentStatus = /document status ([0-9]+|none)/.exec(message);
+    if (documentStatus && documentStatus[1] !== '200')
+      return `${named[1]}_DOCUMENT_${documentStatus[1]!.toUpperCase()}`;
+    if (message.includes('editor missing after reconnect'))
+      return `${named[1]}_EDITOR_MISSING`;
+    const editorRevision =
+      /editor revision ([0-9a-f]{12}) expected ([0-9a-f]{12})/.exec(message);
+    if (editorRevision && editorRevision[1] !== editorRevision[2])
+      return `${named[1]}_EDITOR_REVISION_MISMATCH`;
     return named[1]!;
   }
   if (message.includes('old stream was not aborted')) return 'OLD_STREAM_ABORT';
