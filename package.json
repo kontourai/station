@@ -355,7 +355,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
-    "@biomejs/biome": "^2.5.11",
+    "@biomejs/biome": "^2.5.12",
     "@changesets/cli": "^3.0.1",
     "@cyclonedx/cyclonedx-npm": "6.0.1",
     "@kontourai/console": "^2.8.0",
