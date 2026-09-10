@@ -2,7 +2,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { copyToClipboard } from '../../lib/clipboard';
 import { triggerHaptic } from '../../platform/native/haptics';
+import { Button } from '../Button';
 import { CheckGlyph } from '../icons/Glyph';
+import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
+import './CodeBlockFrame.css';
 
 export function CodeBlockFrame({
   lang,
@@ -13,6 +16,27 @@ export function CodeBlockFrame({
   code: string;
   html: string | null;
 }) {
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [repeatActions, setRepeatActions] = useState(false);
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const viewport = body.closest<HTMLElement>('.chat-messages');
+    const measure = () => {
+      const pageHeight = viewport?.clientHeight || window.innerHeight;
+      setRepeatActions(body.getBoundingClientRect().height > pageHeight);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(body);
+    if (viewport) observer.observe(viewport);
+    window.addEventListener('resize', measure);
+    measure();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+
   // "Copied" is only ever shown for a clipboard write that resolved
   // (archive#3339, the same defect as #3317's dir-path button). Station is
   // routinely reached over plain http:// from another device, where
@@ -46,76 +70,43 @@ export function CodeBlockFrame({
     copyResetRef.current = window.setTimeout(() => setCopyState('idle'), 1500);
   }, [code]);
 
-  return (
-    <div style={{ position: 'relative', margin: '8px 0' }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '4px 12px',
-          background: '#161b22',
-          borderRadius: '6px 6px 0 0',
-          borderBottom: '1px solid #30363d',
-        }}
+  const actions = (
+    <ResponsiveSurfaceActions className="code-block-actions">
+      <span>{lang}</span>
+      <Button
+        variant="ghost"
+        onClick={() => void handleCopy()}
+        title={
+          copyState === 'failed'
+            ? 'This browser refused clipboard access — select the code to copy it manually.'
+            : 'Copy code'
+        }
       >
-        <span style={{ fontSize: '11px', color: '#8b949e' }}>{lang}</span>
-        <button
-          type="button"
-          onClick={() => {
-            void handleCopy();
-          }}
-          title={
-            copyState === 'failed'
-              ? 'This browser refused clipboard access — select the code to copy it manually.'
-              : 'Copy code'
-          }
-          style={{
-            background: 'none',
-            border: 'none',
-            color: copyState === 'failed' ? '#f85149' : '#8b949e',
-            cursor: 'pointer',
-            fontSize: '11px',
-            padding: '2px 6px',
-          }}
-        >
-          {copyState === 'copied' ? (
-            <>
-              <CheckGlyph /> Copied
-            </>
-          ) : copyState === 'failed' ? (
-            "Can't copy"
-          ) : (
-            'Copy'
-          )}
-        </button>
+        {copyState === 'copied' ? (
+          <>
+            <CheckGlyph /> Copied
+          </>
+        ) : copyState === 'failed' ? (
+          "Can't copy"
+        ) : (
+          'Copy'
+        )}
+      </Button>
+    </ResponsiveSurfaceActions>
+  );
+  return (
+    <div className="code-block-frame">
+      {actions}
+      <div ref={bodyRef} className="code-block-body">
+        {html ? (
+          <div dangerouslySetInnerHTML={{ __html: html }} />
+        ) : (
+          <pre>
+            <code>{code}</code>
+          </pre>
+        )}
       </div>
-      {html ? (
-        <div
-          style={{ fontSize: '12px', lineHeight: '1.5', overflowX: 'auto' }}
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-      ) : (
-        <pre
-          style={{
-            margin: 0,
-            padding: '12px',
-            background: '#0d1117',
-            borderRadius: '0 0 6px 6px',
-            overflowX: 'auto',
-          }}
-        >
-          <code
-            style={{
-              fontFamily: 'monospace',
-              fontSize: '12px',
-              color: '#e6edf3',
-            }}
-          >
-            {code}
-          </code>
-        </pre>
-      )}
+      {repeatActions && actions}
     </div>
   );
 }
