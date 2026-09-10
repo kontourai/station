@@ -333,6 +333,55 @@ describe('handleExtensionNotificationEvent', () => {
     expect(chat?.ephemeralMessages?.[0]?.content).toContain('Report written.');
   });
 
+  test('station#1877: a same-turn (non-backgrounded) subagent clears without announcing', () => {
+    // The registry now carries every live subagent, so a same-turn Task is
+    // present here where it previously was not. Its inline tool part already
+    // reports the completion — announcing again would double-report it.
+    handleExtensionNotificationEvent({
+      eventId: 'evt-1',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-07-23T00:00:00.000Z',
+      method: 'extension.notification',
+      namespace: 'claude-code',
+      type: 'task/registry',
+      payload: {
+        active: [
+          {
+            taskId: 'task-inline',
+            toolCallId: 'toolu-inline',
+            description: 'List station state dirs',
+            backgrounded: false,
+          },
+        ],
+      },
+    });
+
+    expect(
+      activeChatsStore.getSnapshot()[threadId]?.backgroundTasks,
+    ).toHaveLength(1);
+
+    handleExtensionNotificationEvent({
+      eventId: 'evt-2',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-07-23T00:00:01.000Z',
+      method: 'extension.notification',
+      namespace: 'claude-code',
+      type: 'task/settled',
+      payload: {
+        taskId: 'task-inline',
+        description: 'List station state dirs',
+        status: 'success',
+        summary: 'List station state dirs',
+      },
+    });
+
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    expect(chat?.backgroundTasks).toEqual([]);
+    expect(chat?.ephemeralMessages ?? []).toHaveLength(0);
+  });
+
   test('claude-code task/settled for an untracked task is silent', () => {
     handleExtensionNotificationEvent({
       eventId: 'evt-1',

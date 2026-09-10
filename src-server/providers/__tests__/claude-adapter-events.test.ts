@@ -603,7 +603,14 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
         description: 'Explore the codebase',
       }),
     });
+    // station#1877: `task_started` now publishes the live registry between
+    // the tool card and any progress, so the running subagent is renderable
+    // without waiting for the turn to go idle.
     expect(publish.mock.calls[1][0]).toMatchObject({
+      method: 'extension.notification',
+      type: 'task/registry',
+    });
+    expect(publish.mock.calls[2][0]).toMatchObject({
       method: 'tool.progress',
       toolCallId: 'toolu-1',
       message: 'Explore the codebase — Grep',
@@ -612,6 +619,73 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
       toolCallId: 'toolu-1',
       subagentType: 'Explore',
     });
+  });
+
+  test('station#1877: a subagent that starts and settles inside one active turn still publishes a live registry', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-1',
+        description: 'Investigate the failure',
+        subagent_type: 'general-purpose',
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+
+    const registries = () =>
+      publish.mock.calls
+        .map((call) => call[0])
+        .filter(
+          (event) =>
+            event.method === 'extension.notification' &&
+            event.type === 'task/registry',
+        );
+
+    // Before this fix the only registry publish hung off the transition to
+    // `idle`, so this assertion was zero and the run was invisible.
+    expect(registries()).toHaveLength(1);
+    expect(registries()[0].payload).toEqual({
+      active: [
+        {
+          taskId: 'task-1',
+          toolCallId: 'toolu-1',
+          description: 'Investigate the failure',
+          subagentType: 'general-purpose',
+          backgrounded: false,
+        },
+      ],
+    });
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'task-1',
+        status: 'completed',
+        summary: 'done',
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+
+    // The settle republishes the set it left behind — empty here — so the
+    // client clears this task instead of inferring its absence.
+    const afterSettle = registries();
+    expect(afterSettle).toHaveLength(2);
+    expect(afterSettle[1].payload).toEqual({ active: [] });
+    expect(record.activeTasks?.size ?? 0).toBe(0);
   });
 
   test('task_started with skip_transcript is suppressed entirely', () => {
@@ -674,10 +748,17 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
       } as any,
     });
 
+    // station#1877: the settle is followed by the registry snapshot it left
+    // behind, so a client tracking siblings drops only the settled task.
     expect(publish.mock.calls.map(([e]) => e.method)).toEqual([
       'tool.completed',
       'extension.notification',
+      'extension.notification',
     ]);
+    expect(publish.mock.calls[2][0]).toMatchObject({
+      type: 'task/registry',
+      payload: { active: [] },
+    });
     expect(publish.mock.calls[0][0]).toMatchObject({
       toolCallId: 'toolu-1',
       toolName: 'Task (general-purpose)',
