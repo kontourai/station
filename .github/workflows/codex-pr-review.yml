@@ -38,7 +38,7 @@ jobs:
 
       - name: Review the exact head with the selected engine
         id: review
-        uses: kontourai/flow-agents/.github/actions/codex-pr-review@b0adbb4a5defdff0b0d2c7641f1735c06dd121e8
+        uses: kontourai/flow-agents/.github/actions/codex-pr-review@9c0ea5a7a321f82b6a7c0e633a617c9df6097a6c
         env:
           # Optional OpenAI-compatible provider override (org/repo variable
           # CODEX_REVIEW_BASE_URL + secret CODEX_REVIEW_API_KEY). The Codex
@@ -111,7 +111,7 @@ jobs:
 
       - name: Record the withheld fork reviewer as NOT_VERIFIED
         id: review
-        uses: kontourai/flow-agents/.github/actions/codex-pr-review@b0adbb4a5defdff0b0d2c7641f1735c06dd121e8
+        uses: kontourai/flow-agents/.github/actions/codex-pr-review@9c0ea5a7a321f82b6a7c0e633a617c9df6097a6c
         with:
           # Engine named so the NOT_VERIFIED record carries true provenance for
           # the reviewer that was withheld; both credentials stay empty here.
