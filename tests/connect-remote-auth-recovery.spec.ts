@@ -791,7 +791,7 @@ test('local same-origin startup requires an explicit credential', async ({
 
     await page.goto('/');
     await expect(
-      page.getByRole('heading', { name: 'Connect to Station' }),
+      page.getByRole('heading', { name: 'Connect to a Station' }),
     ).toBeVisible();
     expect(await context.cookies()).toEqual([]);
     expect(identityRequests).toEqual([{ authorization: null, cookie: null }]);

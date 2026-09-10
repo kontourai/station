@@ -222,6 +222,12 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'release availability reads the terminal workflow topology directly',
   }),
   Object.freeze({
+    pattern: '.github/workflows/codex-pr-review.yml',
+    tests: Object.freeze(['scripts/__tests__/codex-review-workflow.test.ts']),
+    reason:
+      'the review-workflow contract test parses this YAML by path (#1722 red the nightly a day after its dependabot bump)',
+  }),
+  Object.freeze({
     pattern: '.github/labels.json',
     tests: Object.freeze([
       'scripts/__tests__/label-manifest.test.ts',
