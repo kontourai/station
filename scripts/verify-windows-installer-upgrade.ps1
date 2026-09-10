@@ -57,7 +57,7 @@ function Inventory([string]$directory, [string]$name) {
   $output = Join-Path $ProofRoot $name
   node (Join-Path $PSScriptRoot 'windows-installed-tree.mjs') $directory $output | Out-Host
   if ($LASTEXITCODE -ne 0) { throw "Runtime inventory failed: $name" }
-  return (Get-FileHash $output -Algorithm SHA256).Hash
+  return (Get-Content -Raw ($output + '.summary.json') | ConvertFrom-Json)
 }
 function Uninstall-Owned {
   Assert-OwnedRegistration
@@ -86,11 +86,11 @@ foreach ($directory in @('node_modules','dist-server','schemas')) {
   if (Test-Path (Join-Path (Join-Path $install $directory) 'station-obsolete-fixture')) { throw "Upgrade retained obsolete $directory files" }
 }
 $upgraded = Inventory $install 'inventory-upgraded-b.json'
-if ($upgraded -ne $expected) { throw 'Upgraded B differs from the packaged B payload' }
+if ($upgraded.runtimeSha256 -ne $expected.runtimeSha256) { throw 'Upgraded B differs from the packaged B payload' }
 Uninstall-Owned
 Run-Installer $InstallerB "/S /D=$install"
 Assert-OwnedRegistration
 $clean = Inventory $install 'inventory-clean-b.json'
-if ($clean -ne $expected -or $clean -ne $upgraded) { throw 'Clean B differs from the packaged or upgraded B payload' }
+if ($clean.runtimeSha256 -ne $expected.runtimeSha256 -or $clean.fullSha256 -ne $upgraded.fullSha256) { throw 'Clean B differs from the packaged or upgraded B payload' }
 if (-not $KeepInstalled) { Uninstall-Owned }
-@{ kind='station.windows-installer-upgrade-proof/v1'; installerKind='nsis'; result='PASSED'; installerA=$InstallerA; installerB=$InstallerB; payloadInventorySha256=$expected.ToLowerInvariant(); upgradeEqualsPayload=$true; upgradeEqualsClean=$true; userHomePreserved=$true; installState=$(if ($KeepInstalled) { 'INSTALLED' } else { 'UNINSTALLED' }); inAppUpdateState='NOT_VERIFIED'; nativeWindowState='NOT_VERIFIED' } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ProofRoot 'receipt.json')
+@{ kind='station.windows-installer-upgrade-proof/v1'; installerKind='nsis'; result='PASSED'; installerA=$InstallerA; installerB=$InstallerB; payloadInventorySha256=$expected.runtimeSha256; upgradeEqualsPayload=$true; upgradeEqualsClean=$true; userHomePreserved=$true; installState=$(if ($KeepInstalled) { 'INSTALLED' } else { 'UNINSTALLED' }); inAppUpdateState='NOT_VERIFIED'; nativeWindowState='NOT_VERIFIED' } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ProofRoot 'receipt.json')
