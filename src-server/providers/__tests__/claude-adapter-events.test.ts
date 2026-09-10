@@ -621,6 +621,128 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
     });
   });
 
+  test('station#1892: the SDK two-terminal sequence yields one settle carrying identity AND result', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-1',
+        description: 'Investigate the failure',
+        subagent_type: 'general-purpose',
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    // Terminal ONE: `task_updated` carries identity but no result.
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_updated',
+        task_id: 'task-1',
+        patch: { status: 'completed', is_backgrounded: true },
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+    // Terminal TWO: `task_notification` carries the result but, in the SDK
+    // message, no identity. Before this fix it landed in the untracked branch.
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'task-1',
+        status: 'completed',
+        summary: 'Traced it to conversationOpenController.',
+        output_file: '/tmp/agent-1.jsonl',
+        usage: { total_tokens: 5100, tool_uses: 23, duration_ms: 311000 },
+        uuid: 'u-3',
+        session_id: 's-1',
+      } as any,
+    });
+
+    const settles = publish.mock.calls
+      .map(([event]) => event)
+      .filter((event) => event.type === 'task/settled');
+    // Exactly one settle may carry a result, and it must be attributable.
+    const withResult = settles.filter(
+      (event) => event.payload.summary || event.payload.outputFile,
+    );
+    expect(withResult).toHaveLength(1);
+    expect(withResult[0].payload).toMatchObject({
+      taskId: 'task-1',
+      toolCallId: 'toolu-1',
+      description: 'Investigate the failure',
+      backgrounded: true,
+      status: 'success',
+      summary: 'Traced it to conversationOpenController.',
+      outputFile: '/tmp/agent-1.jsonl',
+      usage: { totalTokens: 5100, toolUses: 23, durationMs: 311000 },
+    });
+  });
+
+  test('station#1892: a duplicate terminal after a settle that already had a result adds nothing', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-1',
+        description: 'Quick lookup',
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    const notification = {
+      type: 'system',
+      subtype: 'task_notification',
+      task_id: 'task-1',
+      status: 'completed',
+      summary: 'done',
+      output_file: '/tmp/agent-x.jsonl',
+      session_id: 's-1',
+    };
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: { ...notification, uuid: 'u-2' } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: { ...notification, uuid: 'u-3' } as any,
+    });
+
+    const withResult = publish.mock.calls
+      .map(([event]) => event)
+      .filter(
+        (event) =>
+          event.type === 'task/settled' &&
+          (event.payload.summary || event.payload.outputFile),
+      );
+    expect(withResult).toHaveLength(1);
+  });
+
   test('station#1879: a settle carries the SDK output_file and usage', () => {
     const publish = vi.fn();
     const record = makeRecord();
