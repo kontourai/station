@@ -226,7 +226,8 @@ trust contracts.
 Windows Nightly uses Tauri's built-in NSIS installer and v2 updater artifacts.
 The same `setup.exe` serves as the initial installer and update payload; its
 `.sig` is generated and checked with the Tauri updater key. The app installs
-per user and uses the separate `io.kontourai.station.nightly` identity.
+per user and uses the separate `io.kontourai.station.nightly` identity and
+`station-nightly.exe` process name, so NSIS does not close Stable during an update.
 Station's desktop server currently requires Node 24 on the user's PATH.
 
 `nightly-native-stage.yml` builds Windows from the same source SHA and reserved

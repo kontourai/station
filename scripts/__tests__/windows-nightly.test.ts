@@ -40,6 +40,7 @@ describe('Windows Nightly', () => {
       '0.1.11-nightly.2444',
     ]);
     expect(configs[0].bundle.targets).toEqual(['nsis']);
+    expect(configs[0].mainBinaryName).toBe('station-nightly');
     expect(configs[0].bundle.windows.nsis.installMode).toBe('currentUser');
     expect(configs[0].version).toBe(version);
     expect(configs[0].identifier).toBe('io.kontourai.station.nightly');

@@ -2,7 +2,8 @@ param(
   [Parameter(Mandatory=$true)][string]$InstallerA,
   [Parameter(Mandatory=$true)][string]$InstallerB,
   [Parameter(Mandatory=$true)][string]$PayloadB,
-  [Parameter(Mandatory=$true)][string]$ProofRoot
+  [Parameter(Mandatory=$true)][string]$ProofRoot,
+  [switch]$KeepInstalled
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -28,6 +29,7 @@ function NightlyRegistrations {
   $keys = @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')
   return @(Get-ItemProperty $keys -ErrorAction SilentlyContinue | Where-Object { $displayName = $_.PSObject.Properties['DisplayName']; $displayName -and $displayName.Value -eq 'Station Nightly' })
 }
+if (@(Get-Process -Name station,station-nightly -ErrorAction SilentlyContinue).Count) { throw 'A Station process is running; the legacy test installer must not close another channel' }
 if (@(NightlyRegistrations).Count) { throw 'An existing Nightly installation belongs to the user; use an unused Nightly identity' }
 $defaultInstall = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Station Nightly'
 if (Test-Path $defaultInstall) { throw 'An unregistered default Nightly directory must be inspected before this fixture runs' }
@@ -90,5 +92,5 @@ Run-Installer $InstallerB "/S /D=$install"
 Assert-OwnedRegistration
 $clean = Inventory $install 'inventory-clean-b.json'
 if ($clean -ne $expected -or $clean -ne $upgraded) { throw 'Clean B differs from the packaged or upgraded B payload' }
-Uninstall-Owned
-@{ kind='station.windows-installer-upgrade-proof/v1'; installerKind='nsis'; result='PASSED'; installerA=$InstallerA; installerB=$InstallerB; payloadInventorySha256=$expected.ToLowerInvariant(); upgradeEqualsPayload=$true; upgradeEqualsClean=$true; userHomePreserved=$true; installState='UNINSTALLED'; inAppUpdateState='NOT_VERIFIED'; nativeWindowState='NOT_VERIFIED' } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ProofRoot 'receipt.json')
+if (-not $KeepInstalled) { Uninstall-Owned }
+@{ kind='station.windows-installer-upgrade-proof/v1'; installerKind='nsis'; result='PASSED'; installerA=$InstallerA; installerB=$InstallerB; payloadInventorySha256=$expected.ToLowerInvariant(); upgradeEqualsPayload=$true; upgradeEqualsClean=$true; userHomePreserved=$true; installState=$(if ($KeepInstalled) { 'INSTALLED' } else { 'UNINSTALLED' }); inAppUpdateState='NOT_VERIFIED'; nativeWindowState='NOT_VERIFIED' } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ProofRoot 'receipt.json')

@@ -21,7 +21,12 @@ function visit(path) {
 }
 // These are the resources the desktop runtime consumes; NSIS's own temporary
 // plugins and uninstaller are deliberately outside the runtime comparison.
-for (const name of ['station.exe', 'dist-server', 'node_modules', 'schemas'])
+for (const name of [
+  'station-nightly.exe',
+  'dist-server',
+  'node_modules',
+  'schemas',
+])
   visit(join(root, name));
 records.sort((a, b) => a.path.localeCompare(b.path, 'en'));
 writeFileSync(output, `${JSON.stringify(records)}\n`);

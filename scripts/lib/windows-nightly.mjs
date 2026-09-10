@@ -37,6 +37,7 @@ export function createWindowsNightlyConfig({
     : { createUpdaterArtifacts: false, plugins: {} };
   return {
     productName: 'Station Nightly',
+    mainBinaryName: 'station-nightly',
     identifier: 'io.kontourai.station.nightly',
     version: nightlyVersion(packageVersion, date, build),
     bundle: {
