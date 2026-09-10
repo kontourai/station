@@ -170,7 +170,6 @@ interface NativeEngineAdoptionSummary {
     | 'suppressed'
   >;
 }
-}
 
 /**
  * Fire-and-forget from startup: never throws, never blocks initialization.

@@ -40,7 +40,7 @@ const CONVERSATION_HISTORY_MAX_ENTRIES = 100;
  * be admissible for the current child rather than treating terminal lifecycle
  * as a permanent read-only state.
  */
-function isConversationContinuationControlEligible(
+export function isConversationContinuationControlEligible(
   detail: OrchestrationSessionDetail,
 ): boolean {
   const session = detail.session;

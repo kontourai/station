@@ -23,11 +23,7 @@ interface ConversationOpenPolicyState {
  * `missing-session`/`unavailable`, or denied continuation without an active-turn wait. Only that earns error
  * chrome.
  */
-type ConversationOpenPhase =
-  | 'resolving'
-  | 'busy'
-  | 'writable'
-  | 'read-only';
+type ConversationOpenPhase = 'resolving' | 'busy' | 'writable' | 'read-only';
 
 export function conversationOpenPhase(
   state: ConversationOpenPolicyState,
