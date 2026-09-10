@@ -306,6 +306,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
+    'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
     'tests/keyboard-shortcuts.spec.ts',
     'tests/sidebar-geometry.spec.ts',
@@ -533,6 +534,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'UX audit E5 (DESIGN §3): a CLI-engine agent\'s editor renders §3.4 Model options and none of §3.3 — no Model heading, no model-connection picker, no "Add model connection" repair (Y2: nothing contradicts the chosen engine); a description edit round-trips through the PUT, the cleared pending state, a reload and a fresh API read; and at 390 the shared DetailHeader sticky footer keeps Save reachable and clickable at the bottom of a long form.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/image-preview-inspection.spec.ts',
+    bucket: 'product',
+    surface: 'Chat and workspace image previews',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real production image inspector and dialog components with browser-decoded PNG input; verifies zoom, pointer and touch pan, keyboard and gallery focus, full backdrop coverage, failure state and narrow theme/rotation geometry. Bundling is in-memory; no live Station instance or shared output writes.',
     exceptions: [],
   },
   {

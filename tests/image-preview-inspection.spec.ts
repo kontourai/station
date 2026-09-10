@@ -164,7 +164,7 @@ test('pointer drag pans without dismissing and Alt+wheel preserves the pointer a
 for (const theme of ['light', 'dark']) {
   test(`narrow ${theme} preview keeps controls reachable through rotation and traps focus`, async ({
     page,
-  }) => {
+  }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await mount(page, theme);
     const panel = dialog(page);
@@ -187,7 +187,7 @@ for (const theme of ['light', 'dark']) {
     expect(image.height).toBeLessThanOrEqual(frame.height);
     expect(frame.height).toBeGreaterThan(20);
     await page.screenshot({
-      path: test.info().outputPath(`image-preview-${theme}.png`),
+      path: testInfo.outputPath(`image-preview-${theme}.png`),
     });
   });
 }
