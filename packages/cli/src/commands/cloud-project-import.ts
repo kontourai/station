@@ -5,6 +5,7 @@ import {
   StationHttpError,
 } from '@kontourai/station-sdk/client';
 import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
+import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import {
   inspectWorkspacePackage,
   unpackWorkspace,
@@ -115,6 +116,18 @@ export async function runCloudProjectImport(
       project: request,
       executionAuthorityTransferred: false,
     });
+    // The seam swallows a post-rename directory-fsync failure because the
+    // bytes are already visible to any reader, which is the right answer for
+    // a caller that only needs the value published. This record is not that:
+    // it exists so a crash or a lost reply leaves something to reconcile
+    // AGAINST, so it has to survive the crash, and its directory entry has to
+    // be durable BEFORE the remote mutation. Failing here aborts while there
+    // is still nothing to reconcile -- the guarantee the comment above claims.
+    // `orchestration-store-quarantine.ts` fsyncs its own directory after the
+    // same seam write for the same reason; the receipt written after the
+    // mutation below keeps the swallow, because by then the Project exists
+    // and refusing to print the receipt would be the lie.
+    fsyncDirectorySync(destination);
     try {
       const created = await createProject(apiBase, request, requestOptions);
       // Remote metadata corroboration only: expanding this path on the CLI

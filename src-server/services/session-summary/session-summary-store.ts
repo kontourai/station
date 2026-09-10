@@ -1,16 +1,11 @@
-import {
-  mkdir,
-  readFile,
-  rename,
-  stat,
-  unlink,
-  writeFile,
-} from 'node:fs/promises';
+import { mkdir, readFile, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   CONVERSATION_INTENT_SUMMARY_MAX_ITEMS,
   type ConversationIntentSummaryV2,
 } from '@kontourai/station-contracts/conversation-intent-summary';
+import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { redactDeep } from '@kontourai/station-shared/redaction';
 
 /** v1 shape is retained only so existing local sidecars remain readable. */
@@ -149,7 +144,7 @@ export function isStoredSessionSummary(
   );
 }
 
-export function isStoredSessionSummaryV1(
+function isStoredSessionSummaryV1(
   value: unknown,
 ): value is StoredSessionSummaryV1 {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -226,11 +221,37 @@ export class FileSessionSummaryStore {
       : null;
   }
 
+  /**
+   * Publishes a whole regenerated summary.
+   *
+   * Serialized on `${v2}.mutation`, the same capability `dismiss` and `show`
+   * take below. Regeneration itself is a whole-value publish that reads
+   * nothing, so it needs no lock to be internally consistent -- but it races
+   * the read-modify-write in `#mutateStored`, and without a shared capability
+   * a dismissal that read before this publish would overwrite it a moment
+   * after. `SessionSummaryCoordinator` does not close that: `invalidate()`
+   * bumps an epoch and `begin()` fences only the generation path, so nothing
+   * excluded a concurrent dismiss even in one process.
+   */
   async write(
     coordinate: SessionSummaryCoordinate,
     summary: StoredSessionSummary,
   ): Promise<void> {
     const path = this.v2Path(coordinate);
+    // Before the acquisition: `${path}.mutation` lives in this directory, so
+    // acquiring first fails ENOENT on a coordinate's first write.
+    await this.#ensureOwnerDirectory(coordinate);
+    const release = await acquireFileMutationLockAsync(`${path}.mutation`);
+    try {
+      await this.#publishUnderLock(coordinate, summary);
+    } finally {
+      await release();
+    }
+  }
+
+  async #ensureOwnerDirectory(
+    coordinate: SessionSummaryCoordinate,
+  ): Promise<void> {
     await mkdir(
       join(
         this.projectHomeDir,
@@ -240,7 +261,14 @@ export class FileSessionSummaryStore {
       ),
       { recursive: true },
     );
-    // A process/time nonce avoids one process's concurrent temp write overwriting another.
+  }
+
+  /** The publish half of a transaction whose caller already holds the lock. */
+  async #publishUnderLock(
+    coordinate: SessionSummaryCoordinate,
+    summary: StoredSessionSummary,
+  ): Promise<void> {
+    const path = this.v2Path(coordinate);
     const requestedBytes = Buffer.byteLength(JSON.stringify(summary), 'utf8');
     if (requestedBytes > MAX_SUMMARY_BYTES)
       throw new Error('Conversation intent summary exceeds the 32 KiB limit');
@@ -250,9 +278,10 @@ export class FileSessionSummaryStore {
     // bloat must not turn a re-entry aid into an unbounded local data sink.
     if (Buffer.byteLength(serialized, 'utf8') > MAX_SUMMARY_BYTES)
       throw new Error('Conversation intent summary exceeds the 32 KiB limit');
-    const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
-    await writeFile(temporary, serialized, 'utf8');
-    await rename(temporary, path);
+    // The shared publisher owns the uniquely-named temp, the data fsync, the
+    // rename and the directory fsync, and emits the same two-space document
+    // `serialized` was measured from above.
+    await publishJsonFileWithOwnedLock(path, safe);
     // Regeneration is the migration boundary. Once v2 is durable, its v1
     // predecessor under the active agent coordinate cannot become visible.
     if (coordinate.agentSlug) {
@@ -264,38 +293,115 @@ export class FileSessionSummaryStore {
     }
   }
 
+  /**
+   * Runs one read/derive/publish for this coordinate under `${v2}.mutation`.
+   *
+   * `mutateJsonFile`/`mutateJsonFileWithGuardedRead` are the seams for this
+   * shape, and neither fits: both publish whatever the updater returns, so
+   * "there is nothing here to dismiss" would have to be expressed as a value,
+   * and publishing the fallback would CREATE a sidecar that dismiss must
+   * never create. So this composes the same capability with the same
+   * publisher instead -- the documented purpose of
+   * `publishJsonFileWithOwnedLock` -- exactly as `SshEnvironmentProfileStore`
+   * and `NotificationService` do for their own conditional mutations. The
+   * updater is synchronous so no caller-controlled await can widen the
+   * verified read/write window while the capability is held.
+   *
+   * Creates nothing when there is nothing to change -- not the sidecar and
+   * not the owner directory. The existence check has to precede the
+   * acquisition rather than run under it, because `${path}.mutation` lives in
+   * that directory and acquiring first would create it for a coordinate that
+   * has no summary. That is safe without the capability: it is the same
+   * observation the unlocked read made before these paths shared one, and
+   * holding the lock could not improve the answer. A sidecar created after
+   * the check is a summary this request cannot have been about -- the user
+   * issued it against one that did not exist yet -- and dismissing a
+   * regeneration the user has never seen is the wrong outcome, not the
+   * missed one.
+   */
+  async #mutateStored(
+    coordinate: SessionSummaryCoordinate,
+    update: (current: StoredSessionSummary) => StoredSessionSummary | null,
+  ): Promise<void> {
+    const path = this.v2Path(coordinate);
+    if (!(await this.#exists(path))) return;
+    // The file exists, so its directory does, and `delete()` only unlinks the
+    // document -- the directory it needs for the lock cannot go away.
+    const release = await acquireFileMutationLockAsync(`${path}.mutation`);
+    try {
+      // Read INSIDE the capability. Hoisting it above the acquisition is what
+      // made these two paths lose each other's writes.
+      const current = await this.read(coordinate);
+      // A v1 record has no `version`, and dismissal is a v2-only preference.
+      if (!current || !('version' in current)) return;
+      const next = update(current);
+      if (!next) return;
+      await this.#publishUnderLock(coordinate, next);
+    } finally {
+      await release();
+    }
+  }
+
   /** Hide without deleting; Show can reverse this user preference. */
   async dismiss(coordinate: SessionSummaryCoordinate): Promise<void> {
-    const current = await this.read(coordinate);
-    if (!current || !('version' in current)) return;
-    await this.write(coordinate, {
+    await this.#mutateStored(coordinate, (current) => ({
       ...current,
       dismissedAt: new Date().toISOString(),
-    });
+    }));
   }
 
   async show(coordinate: SessionSummaryCoordinate): Promise<void> {
-    const current = await this.read(coordinate);
-    if (!current || !('version' in current) || !current.dismissedAt) return;
-    const { dismissedAt: _dismissedAt, ...summary } = current;
-    await this.write(coordinate, summary);
+    await this.#mutateStored(coordinate, (current) => {
+      if (!current.dismissedAt) return null;
+      const { dismissedAt: _dismissedAt, ...summary } = current;
+      return summary;
+    });
   }
 
-  /** Remove both generations; no old agent-keyed sidecar can resurrect. */
+  async #exists(path: string): Promise<boolean> {
+    try {
+      await stat(path);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
+  }
+
+  /**
+   * Remove both generations; no old agent-keyed sidecar can resurrect.
+   *
+   * Under the same `${v2}.mutation` capability as the three publishers: an
+   * unlock-free delete landing between `dismiss`'s locked read and its
+   * publish would resurrect the sidecar with `dismissedAt` set, which is the
+   * one mutation the capability did not cover.
+   *
+   * When no v2 document exists there is no lock to take -- the lock file
+   * would live in a directory this call must not create -- so the v1 reap
+   * runs on its own. The residual window is a `write()` that creates the v2
+   * document after this check; that is a regeneration racing a conversation
+   * deletion, unfenced before this change too, and narrowed rather than
+   * closed here.
+   */
   async delete(coordinate: SessionSummaryCoordinate): Promise<void> {
-    const paths = [
-      this.v2Path(coordinate),
-      ...(coordinate.agentSlug
-        ? [this.v1Path(coordinate as Required<SessionSummaryCoordinate>)]
-        : []),
-    ];
-    await Promise.all(
-      paths.map((path) =>
-        unlink(path).catch((error: NodeJS.ErrnoException) => {
-          if (error.code !== 'ENOENT') throw error;
-        }),
-      ),
-    );
+    const path = this.v2Path(coordinate);
+    const legacy = coordinate.agentSlug
+      ? [this.v1Path(coordinate as Required<SessionSummaryCoordinate>)]
+      : [];
+    const reap = (target: string) =>
+      unlink(target).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT') throw error;
+      });
+    if (!(await this.#exists(path))) {
+      await Promise.all(legacy.map(reap));
+      return;
+    }
+    const release = await acquireFileMutationLockAsync(`${path}.mutation`);
+    try {
+      await Promise.all([path, ...legacy].map(reap));
+    } finally {
+      await release();
+    }
   }
 }
 

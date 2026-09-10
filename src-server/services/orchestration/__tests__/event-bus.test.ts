@@ -1,6 +1,15 @@
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  captureLoggerLines,
+  stopLoggerCaptures,
+} from '../../../__test-utils__/logger-capture.js';
 import { EventBus } from '../event-bus.js';
+
+// A capture is process-wide, and every use in this file asserts BEFORE its own
+// `stop()`. Without this, one failing assertion leaks the sink — and any raised
+// debug level — into every test after it.
+afterEach(stopLoggerCaptures);
 
 describe('EventBus', () => {
   test('subscribe receives emitted events', () => {
@@ -61,7 +70,7 @@ describe('EventBus', () => {
    */
   test('a throwing listener keeps its subscription and still receives later events', () => {
     const bus = new EventBus();
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const captured = captureLoggerLines();
     const bad = vi.fn(() => {
       throw new Error('boom');
     });
@@ -80,8 +89,8 @@ describe('EventBus', () => {
 
     // Observable rather than silent: a persistently-throwing listener is
     // diagnosable, which a deleted one is not.
-    expect(warn).toHaveBeenCalled();
-    warn.mockRestore();
+    expect(captured.at('warn').length).toBeGreaterThan(0);
+    captured.stop();
   });
 
   /**
@@ -97,7 +106,7 @@ describe('EventBus', () => {
    */
   test('a persistently-throwing listener is warned about once, not once per emitted event', () => {
     const bus = new EventBus();
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const captured = captureLoggerLines();
     const bad = vi.fn(() => {
       throw new Error('poisoned listener');
     });
@@ -115,8 +124,8 @@ describe('EventBus', () => {
     expect(good).toHaveBeenCalledTimes(50);
     // The whole point: 50 identical failures inside one interval are ONE
     // warning, not fifty.
-    expect(warn).toHaveBeenCalledTimes(1);
-    warn.mockRestore();
+    expect(captured.at('warn')).toHaveLength(1);
+    captured.stop();
   });
 
   /**
@@ -126,7 +135,7 @@ describe('EventBus', () => {
    */
   test('each throwing listener gets its own warning', () => {
     const bus = new EventBus();
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const captured = captureLoggerLines();
     bus.subscribe(() => {
       throw new Error('first subsystem');
     });
@@ -138,7 +147,7 @@ describe('EventBus', () => {
       bus.emit(SERVER_EVENTS.CONFIG_CHANGED, { index });
     }
 
-    expect(warn).toHaveBeenCalledTimes(2);
-    warn.mockRestore();
+    expect(captured.at('warn')).toHaveLength(2);
+    captured.stop();
   });
 });

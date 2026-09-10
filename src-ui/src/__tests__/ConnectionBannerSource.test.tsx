@@ -758,7 +758,7 @@ describe('ConnectionBannerSource → BannerHost — blocked credential', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert.className).toMatch(/banner-host__item--blocked/);
-    expect(alert.textContent).toMatch(/Credential required/);
+    expect(alert.textContent).toMatch(/Approval needed/);
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     expect((await screen.findByRole('alert')).textContent).toMatch(
       /Automatic reconnect is paused/,
@@ -779,7 +779,7 @@ describe('ConnectionBannerSource → BannerHost — blocked credential', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert.className).not.toMatch(/banner-host__item--blocked/);
-    expect(alert.textContent).not.toMatch(/Credential required/);
+    expect(alert.textContent).not.toMatch(/Approval needed/);
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     expect((await screen.findByRole('alert')).textContent).not.toMatch(
       /Automatic reconnect is paused/,

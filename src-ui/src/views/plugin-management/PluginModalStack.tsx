@@ -10,7 +10,6 @@ import { LayoutAssignmentModal } from './LayoutAssignmentModal';
 import type { PluginMessage, PreviewData } from './types';
 
 export function PluginModalStack({
-  apiBase,
   showInstallModal,
   showFolderPicker,
   previewData,
@@ -21,6 +20,7 @@ export function PluginModalStack({
   installMessage,
   message,
   removeConfirm,
+  removalRetainsData = false,
   layoutAssignment,
   projects,
   quickProjectName,
@@ -42,7 +42,6 @@ export function PluginModalStack({
   onCreateProject,
   onAddToProjects,
 }: {
-  apiBase: string;
   showInstallModal: boolean;
   showFolderPicker: boolean;
   previewData: PreviewData | null;
@@ -53,6 +52,7 @@ export function PluginModalStack({
   installMessage: PluginMessage | null;
   message: PluginMessage | null;
   removeConfirm: string | null;
+  removalRetainsData?: boolean;
   layoutAssignment: {
     pluginName: string;
     displayName: string;
@@ -75,7 +75,7 @@ export function PluginModalStack({
   onCloseFolderPicker: () => void;
   onClosePreview: () => void;
   onToggleSkip: (key: string) => void;
-  onConfirmInstall: () => void;
+  onConfirmInstall: (dataPolicy?: 'preserve' | 'retain-and-reset') => void;
   onCancelRemove: () => void;
   onConfirmRemove: (name: string) => void;
   onCloseLayoutAssignment: () => void;
@@ -104,7 +104,6 @@ export function PluginModalStack({
     <>
       {showInstallModal && (
         <InstallPluginModal
-          apiBase={apiBase}
           installSource={installSource}
           installMessage={installMessage}
           installPending={installPending}
@@ -176,7 +175,12 @@ export function PluginModalStack({
           panelClassName="plugins__confirm"
         >
           <h3 id="remove-plugin-title">Remove Plugin</h3>
-          <p>Remove &ldquo;{removeConfirm}&rdquo;? This cannot be undone.</p>
+          <p>
+            Remove &ldquo;{removeConfirm}&rdquo; from Station?
+            {removalRetainsData
+              ? ' Its stored data and code versions will be retained.'
+              : ' This cannot be undone.'}
+          </p>
           <ResponsiveSurfaceActions className="plugins__confirm-actions">
             <button
               type="button"

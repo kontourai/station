@@ -51,6 +51,7 @@ import {
   flowRunsStarted,
 } from '../../telemetry/metrics.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { flowRunDir } from '../evidence/local-artifact-paths.js';
 import { buildSyntheticTrustBundle } from '../evidence/trust-bundle.js';
 
@@ -448,7 +449,7 @@ function translateFlowError(error: unknown, notFoundContext: string): never {
   if (translation === 'not-found') {
     // Keep Flow's own words — "not found" and "exists but is incomplete" send
     // an operator to different places, and only Flow knows which one it is.
-    const detail = error instanceof Error ? error.message : String(error);
+    const detail = errorMessage(error);
     throw new FlowRunNotFoundError(`${notFoundContext} (${detail})`, code);
   }
   if (error instanceof Error) {

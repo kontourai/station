@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { OrchestrationCommandReceipt } from '@kontourai/station-contracts/orchestration';
 import { afterEach, describe, expect, test } from 'vitest';
 import { EventStore } from '../event-store.js';
 
@@ -361,6 +362,82 @@ describe('AdoptionLedger', () => {
     );
     expect(reserved.adoption.completeCleanup().kind).toBe('applied');
     expect(ledger.reservations()).toEqual([]);
+    store.close();
+  });
+  function forkedChild() {
+    return {
+      provider: 'claude' as const,
+      threadId: 'station-child',
+      status: 'ready' as const,
+      resumeCursor: 'vendor-child',
+      continuationSourceThreadId: 'external:claude:source',
+      createdAt: '2026-07-22T00:00:01.000Z',
+      updatedAt: '2026-07-22T00:00:01.000Z',
+    };
+  }
+
+  function commandReceipt(): OrchestrationCommandReceipt {
+    return {
+      commandId: 'cmd-adopt-1',
+      threadId: 'station-child',
+      commandType: 'adoptSession',
+      status: 'accepted',
+      createdAt: '2026-07-22T00:00:01.000Z',
+    };
+  }
+
+  // The receipt is the second of the two writes `commitOwned` performs inside
+  // its own `BEGIN IMMEDIATE`, and until this test nothing exercised it: every
+  // other real-SQLite commit here passes one argument, so the receipt branch
+  // never executed and could be deleted with the suite still green.
+  test('persists the command receipt in the same commit as the child session', () => {
+    const { store, ledger } = open();
+    const reserved = ledger.reserve(input());
+    if (reserved.kind !== 'owner') throw new Error('expected owner');
+    reserved.adoption.markForking();
+    reserved.adoption.recordProviderCursor('vendor-child');
+    expect(store.readCommandReceipt('cmd-adopt-1')).toBeNull();
+
+    expect(reserved.adoption.commit(forkedChild(), commandReceipt()).kind).toBe(
+      'applied',
+    );
+
+    expect(store.readCommandReceipt('cmd-adopt-1')).toEqual(commandReceipt());
+    expect(store.readSessionByThread('station-child')).toMatchObject({
+      threadId: 'station-child',
+    });
+    expect(ledger.reservations()).toEqual([]);
+    store.close();
+  });
+
+  test('rolls back the child session too when the receipt write fails', () => {
+    const { store, ledger } = open();
+    const reserved = ledger.reserve(input());
+    if (reserved.kind !== 'owner') throw new Error('expected owner');
+    reserved.adoption.markForking();
+    reserved.adoption.recordProviderCursor('vendor-child');
+    const db = (store as unknown as { db: { prepare(sql: string): unknown } })
+      .db;
+    const prepare = db.prepare.bind(db);
+    (db as unknown as { prepare(sql: string): unknown }).prepare = (sql) => {
+      // Only the receipt INSERT fails. The child write has already landed in
+      // the transaction by then, so a surviving session row would mean the
+      // commit is not atomic across the two injected cross-group writes.
+      if (sql.includes('INTO orchestration_command_receipts')) {
+        throw new Error('injected receipt write failure');
+      }
+      return prepare(sql);
+    };
+
+    expect(() =>
+      reserved.adoption.commit(forkedChild(), commandReceipt()),
+    ).toThrow('Adoption commit rolled back');
+
+    expect(store.readSessionByThread('station-child')).toBeUndefined();
+    expect(store.readCommandReceipt('cmd-adopt-1')).toBeNull();
+    expect(ledger.reservations()).toEqual([
+      expect.objectContaining({ sourceThreadId: 'external:claude:source' }),
+    ]);
     store.close();
   });
 });

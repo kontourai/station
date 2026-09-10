@@ -7,7 +7,6 @@
 
 import type {
   SchedulerEvent,
-  SchedulerFormField,
   SchedulerProviderStats,
   SchedulerProviderStatus,
 } from '@kontourai/station-contracts/scheduler';
@@ -18,7 +17,11 @@ import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useToast } from '../contexts/ToastContext';
 
-export type { SchedulerEvent } from '@kontourai/station-contracts/scheduler';
+/** `SchedulerProviderInfo` is the provider info returned by GET /scheduler/providers. */
+export type {
+  SchedulerEvent,
+  SchedulerProviderInfo,
+} from '@kontourai/station-contracts/scheduler';
 // Re-export SDK hooks so existing imports from '../hooks/useScheduler' keep working
 export {
   useAddJob,
@@ -49,14 +52,6 @@ export interface SchedulerStatusResponse {
     string,
     SchedulerProviderStatus & { id: string; displayName: string }
   >;
-}
-
-/** Provider info returned by GET /scheduler/providers */
-export interface SchedulerProviderInfo {
-  id: string;
-  displayName: string;
-  capabilities: string[];
-  formFields?: SchedulerFormField[];
 }
 
 export function getSchedulerEventInvalidationKeys(

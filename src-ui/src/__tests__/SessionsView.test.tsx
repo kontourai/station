@@ -44,6 +44,9 @@ const adoptionIntent = vi.hoisted(() =>
   Object.freeze({ idempotencyKey: 'adopt-session-test-intent' }),
 );
 let sessions: Array<Record<string, unknown>> = [];
+// Every config this render passed to the sessions query, so the list's own
+// refresh cadence can be read from the query rather than inferred.
+const orchestrationSessionsQueryConfig = vi.hoisted(() => [] as unknown[]);
 let pairedDevices: Array<Record<string, unknown>> = [];
 let sessionsQueryError: Error | null = null;
 let feedEvents: Array<Record<string, unknown>> = [];
@@ -129,12 +132,15 @@ vi.mock('@kontourai/station-sdk', () => ({
   useProjectQuery: () => ({ data: undefined }),
   // The open-chats refactor (archive#2683) renders shared membership metadata.
   useAgentsQuery: () => ({ data: [], isLoading: false }),
-  useOrchestrationSessionsQuery: () => ({
-    data: sessions,
-    isLoading: false,
-    error: sessionsQueryError,
-    refetch: refetchSessions,
-  }),
+  useOrchestrationSessionsQuery: (config?: unknown) => {
+    orchestrationSessionsQueryConfig.push(config);
+    return {
+      data: sessions,
+      isLoading: false,
+      error: sessionsQueryError,
+      refetch: refetchSessions,
+    };
+  },
   usePairedDevicesQuery,
   usePullRequestContextQuery: () => ({ data: { available: false } }),
   usePullRequestsQuery: () => ({ data: undefined }),
@@ -821,7 +827,7 @@ describe('SessionsView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
     fireEvent.click(
-      screen.getByRole('button', { name: 'Load earlier events' }),
+      screen.getByRole('button', { name: 'Show older messages' }),
     );
 
     expect(loadOlder).toHaveBeenCalledOnce();
@@ -831,7 +837,7 @@ describe('SessionsView', () => {
     // browser chrome in a fully themed transcript (archive#3150). Pin the
     // shared treatment: a class name that matches no stylesheet is worse than
     // none, because it tells the next reader the styling is handled.
-    const more = screen.getByRole('button', { name: 'Load earlier events' });
+    const more = screen.getByRole('button', { name: 'Show older messages' });
     expect(more.className).toContain('button--secondary');
     expect(screen.getByRole('alert').textContent).toBe(
       'Update Station to view this session history.',
@@ -930,7 +936,7 @@ describe('SessionsView', () => {
     // It shares its row with the pagination button, which is what
     // `.session-history-controls`' wrap/gap exists for.
     expect(
-      screen.getByRole('button', { name: 'Load earlier events' }),
+      screen.getByRole('button', { name: 'Show older messages' }),
     ).toBeTruthy();
     expect(notice.parentElement?.className).toContain(
       'session-history-controls',
@@ -1093,9 +1099,9 @@ describe('SessionsView', () => {
     renderView();
 
     const starter = screen.getByTestId('delegated-task-starter');
-    expect(starter.textContent).toContain('Start a resumable worker');
+    expect(starter.textContent).toContain('Ask an AI app to work on something');
     fireEvent.click(
-      within(starter).getByRole('button', { name: 'Delegate worker' }),
+      within(starter).getByRole('button', { name: 'Start a task' }),
     );
 
     expect(
@@ -1140,7 +1146,7 @@ describe('SessionsView', () => {
     function openLauncher() {
       const starter = screen.getByTestId('delegated-task-starter');
       const trigger = within(starter).getByRole('button', {
-        name: 'Delegate worker',
+        name: 'Start a task',
       });
       trigger.focus();
       fireEvent.click(trigger);
@@ -2252,7 +2258,7 @@ describe('SessionsView', () => {
 
     const detail = screen.getByTestId('session-detail');
     expect(
-      within(detail).getByText('Following terminal session · Read only'),
+      within(detail).getByText('Started in Claude Code · Read only'),
     ).toBeTruthy();
     expect(within(detail).getByText('Inspect the workspace')).toBeTruthy();
     expect(within(detail).getByText('The workspace is ready.')).toBeTruthy();
@@ -2590,7 +2596,7 @@ describe('SessionsView', () => {
       within(detail).queryByRole('button', { name: 'Continue in Station' }),
     ).toBeNull();
     expect(
-      within(detail).queryByText('Following terminal session · Read only'),
+      within(detail).queryByText('Started in Claude Code · Read only'),
     ).toBeNull();
   });
 
@@ -2774,7 +2780,7 @@ describe('SessionsView', () => {
     });
     await waitFor(() => expect(refetchSessions).toHaveBeenCalledTimes(1));
 
-    fireEvent.change(screen.getByPlaceholderText('Search sessions…'), {
+    fireEvent.change(screen.getByPlaceholderText('Search conversations…'), {
       target: { value: 'station' },
     });
     expect(screen.queryByTestId('session-detail')).toBeNull();
@@ -3273,7 +3279,7 @@ describe('SessionsView', () => {
     }
 
     function search(query: string) {
-      fireEvent.change(screen.getByPlaceholderText('Search sessions…'), {
+      fireEvent.change(screen.getByPlaceholderText('Search conversations…'), {
         target: { value: query },
       });
     }
@@ -3321,7 +3327,7 @@ describe('SessionsView', () => {
       expect(headings).toEqual([]);
       expect(sectionHeadings(container)).toEqual([
         'Delegated/background work · 2',
-        'Operator sessions · 1',
+        'Conversations · 1',
       ]);
     });
 
@@ -3471,7 +3477,7 @@ describe('SessionsView', () => {
       const { container } = renderView();
 
       // Every fixture is `completed` and hours old: one lane, one heading.
-      expect(sectionHeadings(container)).toEqual(['Operator sessions · 4']);
+      expect(sectionHeadings(container)).toEqual(['Conversations · 4']);
       expect(listRows(container)).toHaveLength(4);
       expect(rowNames(container)).toEqual([
         'Beta two',
@@ -3492,6 +3498,7 @@ describe('SessionsView', () => {
         attachedSession({
           threadId: 'earlier-1',
           displayTitle: 'Long finished',
+          controlMode: 'station-owned',
           createdAt: new Date(Date.now() - 6 * 3_600_000).toISOString(),
           updatedAt: new Date(Date.now() - 6 * 3_600_000).toISOString(),
         }),
@@ -3506,6 +3513,7 @@ describe('SessionsView', () => {
         attachedSession({
           threadId: 'just-done-1',
           displayTitle: 'Finished a moment ago',
+          controlMode: 'station-owned',
           updatedAt: new Date(Date.now() - 90_000).toISOString(),
         }),
         attachedSession({
@@ -3521,7 +3529,7 @@ describe('SessionsView', () => {
 
       const { container } = renderView();
 
-      expect(sectionHeadings(container)).toEqual(['Operator sessions · 4']);
+      expect(sectionHeadings(container)).toEqual(['Conversations · 4']);
       expect(rowNames(container)).toEqual([
         'Waiting on a decision',
         'Also waiting on you',
@@ -3593,12 +3601,14 @@ describe('SessionsView', () => {
         attachedSession({
           threadId: 'canceled',
           displayTitle: 'Canceled run',
+          controlMode: 'station-owned',
           lifecycleState: 'canceled',
           updatedAt: new Date(Date.now() - 70_000).toISOString(),
         }),
         attachedSession({
           threadId: 'long-failed',
           displayTitle: 'Failed yesterday',
+          controlMode: 'station-owned',
           lifecycleState: 'failed',
           createdAt: new Date(Date.now() - 6 * 3_600_000).toISOString(),
           updatedAt: new Date(Date.now() - 6 * 3_600_000).toISOString(),
@@ -3631,7 +3641,7 @@ describe('SessionsView', () => {
       // over a short or single-lane render would pass while checking nothing.
       expect(rendered).toHaveLength(6);
       expect(new Set(rendered.map((entry) => entry.heading))).toEqual(
-        new Set(['Operator sessions']),
+        new Set(['Conversations']),
       );
 
       // The four A1 shapes, by the word each used to print.
@@ -3726,7 +3736,7 @@ describe('SessionsView', () => {
       fireEvent.click(alphaPill);
 
       expect(rowNames(container)).toEqual(['Alpha work']);
-      expect(sectionHeadings(container)).toEqual(['Operator sessions · 1']);
+      expect(sectionHeadings(container)).toEqual(['Conversations · 1']);
       const clear = screen.getByRole('button', {
         name: 'Clear the alpha project filter',
       });
@@ -4258,6 +4268,38 @@ describe('SessionsView', () => {
       await waitFor(() => expect(document.activeElement).toBe(evidenceRegion));
       expect(onFocusConsumed).toHaveBeenCalledTimes(2);
     });
+
+    /**
+     * The list is kept fresh by polling because the SSE feed is per-session.
+     * That poll belongs to the query: the interval this replaced called
+     * `refetch()` on the same cache entry from a second scheduler, so it kept
+     * firing in every state React Query pauses a `refetchInterval` for.
+     */
+    test('polls the sessions list through the query, not an interval beside it', () => {
+      orchestrationSessionsQueryConfig.length = 0;
+      const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+      try {
+        renderView();
+
+        expect(orchestrationSessionsQueryConfig.length).toBeGreaterThan(0);
+        expect(orchestrationSessionsQueryConfig[0]).toMatchObject({
+          refetchInterval: 5000,
+        });
+        // Some five-second timers in this tree belong to React Query's own
+        // `refetchInterval` machinery, so their presence proves nothing. What
+        // the removed interval did was call the list query's `refetch()`, so
+        // fire every five-second timer and assert none of them does.
+        refetchSessions.mockClear();
+        for (const [handler] of setIntervalSpy.mock.calls.filter(
+          ([, delay]) => delay === 5000,
+        )) {
+          (handler as () => void)();
+        }
+        expect(refetchSessions).not.toHaveBeenCalled();
+      } finally {
+        setIntervalSpy.mockRestore();
+      }
+    });
   });
 });
 
@@ -4319,7 +4361,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
 
     expect(screen.getByText('Nothing has run yet')).toBeTruthy();
     expect(
-      screen.getByText('Agent sessions appear here as they run on this host.'),
+      screen.getByText('Your conversations and tasks will appear here.'),
     ).toBeTruthy();
     expect(container.textContent).not.toMatch(/\bSessions\b/);
   });
@@ -4342,15 +4384,12 @@ describe('Activity presentation (sessions moved under Home)', () => {
       Array.from(container.querySelectorAll('.split-pane__section-header')).map(
         (node) => node.textContent,
       ),
-    ).toEqual(['Delegated/background work · 1', 'Operator sessions · 1']);
+    ).toEqual(['Delegated/background work · 1', 'Conversations · 1']);
     expect(screen.queryByTestId('session-detail')).toBeNull();
   });
 
-  test('groups by the current paired-device name, relabels on rename, and keeps an empty device', () => {
-    pairedDevices = [
-      { id: 'phone-1', name: 'Brian’s Pixel' },
-      { id: 'tablet-1', name: 'Travel tablet' },
-    ];
+  test('groups by recorded client without reading the operator-only device registry', () => {
+    usePairedDevicesQuery.mockClear();
     sessions = [
       activitySession({
         displayTitle: 'Phone-started review',
@@ -4364,57 +4403,12 @@ describe('Activity presentation (sessions moved under Home)', () => {
         },
       }),
     ];
-    const rendered = renderView();
-    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
-
-    expect(screen.getByText('Brian’s Pixel')).toBeTruthy();
-    expect(screen.getByText('Travel tablet')).toBeTruthy();
-    expect(
-      screen
-        .getByText('Travel tablet')
-        .classList.contains('split-pane__section-header--empty'),
-    ).toBe(true);
-
-    pairedDevices = [
-      { id: 'phone-1', name: 'Renamed phone' },
-      { id: 'tablet-1', name: 'Travel tablet' },
-    ];
-    rendered.rerenderSession();
-    expect(screen.getByText('Renamed phone')).toBeTruthy();
-    expect(screen.queryByText('Brian’s Pixel')).toBeNull();
-  });
-
-  test('reads the operator-only device inventory only while the origin axis is shown', () => {
-    // /api/pairing/devices answers 401 to a paired device's own session, and
-    // the fresh-home walkthrough counts every refused request on Activity.
-    // The inventory only names origin groups, so it must not be fetched on
-    // the default task axis at all.
-    pairedDevices = [{ id: 'phone-1', name: 'Idle phone' }];
-    usePairedDevicesQuery.mockClear();
     renderView();
-    const enabledCalls = () =>
-      usePairedDevicesQuery.mock.calls.map(
-        (call) => (call[1] as { enabled?: boolean } | undefined)?.enabled,
-      );
-    expect(enabledCalls().length).toBeGreaterThan(0);
-    expect(enabledCalls().every((enabled) => enabled === false)).toBe(true);
-
-    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
-    expect(enabledCalls().at(-1)).toBe(true);
-    expect(screen.getByText('Idle phone')).toBeTruthy();
-
+    fireEvent.click(screen.getByRole('tab', { name: 'By app' }));
+    expect(screen.getByText('Paired device · Mobile app')).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'By task' }));
-    expect(enabledCalls().at(-1)).toBe(false);
-  });
-
-  test('renders the paired-device inventory when no sessions exist', () => {
-    pairedDevices = [{ id: 'phone-1', name: 'Idle phone' }];
-    sessions = [];
-    renderView();
-    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
-
-    expect(screen.getByText('Idle phone')).toBeTruthy();
-    expect(screen.queryByText('Nothing has run yet')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'By app' }));
+    expect(usePairedDevicesQuery).not.toHaveBeenCalled();
   });
 
   test('keeps an unrecorded origin out of device groups and discloses mixed origins on the row', () => {
@@ -4435,12 +4429,12 @@ describe('Activity presentation (sessions moved under Home)', () => {
       }),
     ];
     const { container } = renderView();
-    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'By app' }));
 
-    expect(screen.getByText('Origin not recorded')).toBeTruthy();
-    const deviceHeading = screen.getByText('Brian’s Pixel');
     expect(
-      deviceHeading.classList.contains('split-pane__section-header--empty'),
+      Array.from(
+        container.querySelectorAll('.split-pane__section-header'),
+      ).some((node) => node.textContent === 'Started in Claude Code'),
     ).toBe(true);
     expect(container.textContent).toContain('No provenance session');
     expect(screen.getByText('Also driven from another origin')).toBeTruthy();
@@ -4455,9 +4449,7 @@ describe('Activity presentation (sessions moved under Home)', () => {
     fireEvent.keyDown(taskTab, { key: 'ArrowRight' });
 
     expect(
-      screen
-        .getByRole('tab', { name: 'By origin' })
-        .getAttribute('aria-selected'),
+      screen.getByRole('tab', { name: 'By app' }).getAttribute('aria-selected'),
     ).toBe('true');
     expect(screen.getByTestId('session-detail')).toBeTruthy();
   });

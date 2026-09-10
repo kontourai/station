@@ -45,7 +45,7 @@ tauri-plugin-notification = "=2.4.0"
 # shared table so capability ACL generation can resolve `haptics:*` permissions
 # on every target; `lib.rs` only `.plugin()`-inits it under `cfg(mobile)`.
 tauri-plugin-haptics = "=2.3.2"
-tauri-plugin-deep-link = "=2.4.9"
+tauri-plugin-deep-link = "=2.4.10"
 # `log` is the standard facade; the desktop shell has never emitted through it
 # before (#1899). Commodity crate, so a loose version like the other
 # non-Tauri-plugin dependencies above.
@@ -54,7 +54,7 @@ log = "0.4"
 # for a double-clicked .app with no terminal), stdout preserved for terminal
 # launches, and mobile support (android/ios "full" per its own platform
 # metadata) so this stays in the shared table rather than a desktop-only one.
-tauri-plugin-log = "=2.9.0"
+tauri-plugin-log = "=2.9.1"
 # Mirrors tauri's own (desktop-target) app_log_dir() resolution — home_dir()/
 # data_local_dir() — so the log-directory writability pre-check in run() can
 # run before an AppHandle exists (already resolved transitively by tauri
@@ -78,6 +78,7 @@ tauri-plugin-opener = "=2.5.4"
 # choice: a pubkey with no endpoints deserializes fine and would register a
 # functionally inert plugin, which is honest-inertness policy, not a second
 # crash guard.
+notify-rust = "=4.18.0"
 tauri-plugin-updater = "=2.10.1"
 # The one JS-reachable way to relaunch the process after an update installs.
 # Config-free, so unlike the updater plugin above it is always registered.
@@ -125,7 +126,7 @@ tauri-plugin-keyring-store = { version = "=0.2.0", default-features = false }
 [target."cfg(target_os = \"android\")".dependencies]
 # Android's per-UID resolver is the authority for VPN DNS (including
 # Tailscale MagicDNS); std::net::ToSocketAddrs bypasses that resolver.
-jni = "0.21"
+jni = "0.22"
 ndk-context = "0.1"
 
 [target."cfg(unix)".dependencies]

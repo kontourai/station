@@ -165,12 +165,12 @@ export const APPROVAL_MODE_UNMANAGED_CHIP_LABEL = 'Set by engine';
 export const APPROVAL_MODE_UNMANAGED_EXPLANATION =
   'Station cannot set approvals for this engine — the engine decides when to ask.';
 
-export type ApprovalModeSource =
+type ApprovalModeSource =
   | 'session override'
   | 'connection default'
   | 'adapter default';
 
-export interface EffectiveApprovalMode {
+interface EffectiveApprovalMode {
   mode: ApprovalMode;
   label: string;
   source: ApprovalModeSource;

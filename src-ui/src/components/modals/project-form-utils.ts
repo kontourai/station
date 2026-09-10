@@ -1,4 +1,4 @@
-export interface ProjectDirectoryEntry {
+interface ProjectDirectoryEntry {
   name: string;
   isDirectory: boolean;
 }

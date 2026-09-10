@@ -217,7 +217,7 @@ export function ConnectionBannerSource() {
         ? BANNER_PRIORITY.connectionBlocking
         : BANNER_PRIORITY.connectionTransient,
       tone: blocked ? 'blocked' : 'warning',
-      badge: blocked ? 'Credential required' : undefined,
+      badge: blocked ? 'Approval needed' : undefined,
       /**
        * #1132: this banner is critical chrome, so a maximized region does not
        * bury it (`BannerHost.css`). Unconditional, not `blocked ? …`: the

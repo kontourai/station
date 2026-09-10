@@ -82,7 +82,7 @@ export interface TurnCheckpointRecord {
   updatedAt: string;
 }
 
-export type ThreadCheckpointDiscovery =
+type ThreadCheckpointDiscovery =
   | { status: 'ok'; records: TurnCheckpointRecord[] }
   | { status: 'failed'; reason: 'corrupt_discovery' | 'read_failed' };
 
@@ -113,7 +113,7 @@ export type TurnCheckpointWrite = Partial<
  * could split across an await (the CAS-less RMW shape that produced
  * archive#1588/#1600/#1606 is unreachable by construction).
  */
-export interface CheckpointIndexStoreOptions {
+interface CheckpointIndexStoreOptions {
   /** Documented bound: newest N turn records per thread. Default 200. */
   maxTurnsPerThread?: number;
   /** Documented bound: newest N threads retained. Default 400. */

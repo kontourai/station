@@ -70,6 +70,7 @@ import {
   type StationHomeBackupResult,
   type StationHomeRestoreResult,
 } from '@kontourai/station-shared/station-home-archive';
+import { inspectStationHomeRecovery } from '@kontourai/station-shared/station-home-recovery-preflight';
 import {
   ensureStationHomeSchemaSync,
   stationHomeSchemaNeedsReset,
@@ -486,14 +487,34 @@ export function uiRequestHandler(deps: UiServerDeps) {
   // where esbuild's own `__name` runtime helper does not exist. Do not
   // remove that shim under the assumption that avoiding named bindings here
   // is sufficient on its own — it is not.
+  // The readiness envelope this proxy answers with whenever it is up and its
+  // sibling host is not: 503 when the upstream request errored or no internal
+  // token exists yet, 504 when the upstream request timed out (station#1654 —
+  // that path used to answer `text/plain` "Gateway Timeout", which no client
+  // could tell from any intermediary's 504).
+  //
+  // A same-function local, which is what makes it possible at all: an IMPORTED or
+  // module-scope binding would be `undefined` in the spawned `node -e` UI process
+  // this handler is serialized into, but a local of `uiRequestHandler` is carried
+  // with it — the same empirically verified property `HOP_BY_HOP_HEADERS` and
+  // `PROXY_UPSTREAM_TIMEOUT_MS` above rely on. So the bytes cannot come from
+  // `@kontourai/station-contracts`, but they need not be repeated per call site.
+  // `src-ui/src/lib/station-ui-proxy.ts` is the consumer, and
+  // `lifecycle.test.ts` pins these exact bytes on both statuses.
+  const answerHostUnavailable = (
+    res: import('node:http').ServerResponse,
+    status: number,
+  ) => {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ready: false, status: 'unavailable' }));
+  };
   const proxyToBackend = (
     req: import('node:http').IncomingMessage,
     res: import('node:http').ServerResponse,
     tenantId?: string,
   ) => {
     if (!internalApiToken) {
-      res.writeHead(503, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ready: false, status: 'unavailable' }));
+      answerHostUnavailable(res, 503);
       return;
     }
     const tailscaleIngress = trustedTailscaleIdentity(req);
@@ -604,12 +625,22 @@ export function uiRequestHandler(deps: UiServerDeps) {
         return;
       }
       if (timedOut) {
-        res.writeHead(504, { 'Content-Type': 'text/plain' });
-        res.end('Gateway Timeout');
+        // station#1654: this used to answer `text/plain` "Gateway Timeout",
+        // which is byte-identical to what any intermediary between the browser
+        // and this proxy emits — so no client could tell THIS proxy's timeout
+        // from a stranger's, and `src-ui/src/lib/station-ui-proxy.ts` had
+        // nothing to recognise. It declined the answer, the browser's session
+        // gate read a non-OK response as "this browser has no access", and a
+        // slow host was reported as a browser that needed to pair.
+        //
+        // The signal is the ENVELOPE, deliberately the same one the error path
+        // below has always sent: both statuses mean "this proxy is up, its
+        // sibling host could not answer", and the status is what separates the
+        // causes. Nothing derives a `reason` field, so there is none.
+        answerHostUnavailable(res, 504);
         return;
       }
-      res.writeHead(503, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ready: false, status: 'unavailable' }));
+      answerHostUnavailable(res, 503);
     });
     // Propagate a client-initiated disconnect upstream. `stream.pipe()`
     // only forwards data one direction — it never tears down the *source*
@@ -2896,6 +2927,16 @@ export async function buildApplication(
   };
 
   try {
+    // The Basis MCP app bundles are git-ignored build output that both
+    // bundles below resolve as ordinary modules. Generating here makes
+    // `station build` self-sufficient for every caller: most reach it without
+    // having installed at all, and the container's build stage never
+    // installed with the generator present. `upgrade()` is the exception —
+    // #1747 routed it through `npm run dependencies:install`, whose
+    // `generateBuildInputs` already wrote these bundles minutes earlier — so
+    // that one path regenerates them. The generator is deterministic and
+    // cheap, and a build step that depends on who called it would be worse.
+    runBuildStep('Basis MCP apps', 'npm run basis:mcp:generate');
     runBuildStep('Server', 'npm run build:server');
     runBuildStep('UI', 'npm run build:ui');
 
@@ -2920,7 +2961,19 @@ export async function buildApplication(
     throw error;
   } finally {
     if (!preserveCandidateRoot) {
-      rmSync(candidate.root, { recursive: true, force: true });
+      try {
+        rmSync(candidate.root, {
+          recursive: true,
+          force: true,
+          maxRetries: 3,
+          retryDelay: 100,
+        });
+      } catch {
+        // Cleanup must neither hide the original build failure nor turn an
+        // already promoted build into a failed start. Keep the directory for
+        // the next same-instance sweep and make that outcome visible.
+        console.warn(`Build cleanup deferred: ${candidate.root}`);
+      }
     }
   }
 }
@@ -4401,6 +4454,11 @@ export function homeVerify(options: CleanOptions = {}): HomeVerifyResult {
   };
 }
 
+/** Explicit target only: no default-home resolution, announcement or bootstrap. */
+export function homeRecoveryPlan(projectHome: string) {
+  return inspectStationHomeRecovery({ homeDir: projectHome });
+}
+
 export function homeBackup(
   options: HomeBackupOptions = {},
 ): StationHomeBackupResult {
@@ -4664,6 +4722,57 @@ function reportSchedulingPolicyUpgradeGuidance(stationHome?: string): void {
   }
 }
 
+/**
+ * The repository's owned dependency bootstrap, as a `npm run` script — the
+ * script interface this file already uses for `build:server`/`build:ui`.
+ *
+ * `dependencies:install` runs `scripts/dependency-lifecycle.mjs install`,
+ * which bootstraps the exact pinned pnpm, validates the lifecycle allowlist
+ * against the lockfile, stages the reviewed prebuilds, runs only the approved
+ * install hooks plus Station's own, and verifies the result. A raw
+ * `npm install` (station#1747) does none of that, and npm is not this
+ * workspace's package manager at all, so it leaves a `node_modules` the
+ * rebuild below cannot rely on.
+ *
+ * `install` rather than `ci`: `ci` is the same code path with
+ * `--frozen-lockfile`, which refuses whenever `package.json` and
+ * `pnpm-lock.yaml` disagree. That is a normal state in the developer
+ * checkouts this path serves — a packaged install never reaches here, it
+ * delegates to `install.sh` above — and `npm install` never refused for it,
+ * so `ci` would turn a working upgrade into a hard failure over a local
+ * dependency edit. The `station` launcher's cold bootstrap uses `ci` because
+ * it installs a freshly cloned checkout nobody has edited yet.
+ */
+const UPGRADE_DEPENDENCY_INSTALL_COMMAND = 'npm run dependencies:install';
+
+/**
+ * Why the pulled tree cannot run the owned installer, or `null` when it can.
+ *
+ * `git pull` can leave any tree the upstream branch happens to name, so the
+ * two things `npm run dependencies:install` needs are checked before it is
+ * spawned: the script binding and the script itself. There is no fallback —
+ * a raw `npm install` in a pinned-pnpm workspace is the defect this replaced,
+ * not a degraded mode — so the caller refuses and says which file is missing.
+ */
+function ownedDependencyInstallerUnavailable(gitRoot: string): string | null {
+  const manifestPath = join(gitRoot, 'package.json');
+  let script: unknown;
+  try {
+    script = (
+      JSON.parse(readFileSync(manifestPath, 'utf-8')) as {
+        scripts?: Record<string, unknown>;
+      }
+    ).scripts?.['dependencies:install'];
+  } catch (error) {
+    return `${manifestPath} could not be read as JSON (${error instanceof Error ? error.message : String(error)})`;
+  }
+  if (typeof script !== 'string')
+    return `${manifestPath} does not define the "dependencies:install" script`;
+  const lifecyclePath = join(gitRoot, 'scripts', 'dependency-lifecycle.mjs');
+  if (!existsSync(lifecyclePath)) return `${lifecyclePath} is missing`;
+  return null;
+}
+
 export async function upgrade(options: BuildOptions = {}): Promise<void> {
   const packagedStationHome = delegatePackagedUpgradeIfPresent();
   if (packagedStationHome !== null) {
@@ -4721,8 +4830,17 @@ export async function upgrade(options: BuildOptions = {}): Promise<void> {
   console.log('Pulling latest...');
   execSync('git pull', { cwd: gitRoot, stdio: 'inherit', windowsHide: true });
 
+  const installerUnavailable = ownedDependencyInstallerUnavailable(gitRoot);
+  if (installerUnavailable !== null) {
+    throw new Error(
+      `station upgrade cannot install dependencies: ${installerUnavailable}.\n` +
+        'The pulled tree does not carry this repository\'s owned dependency lifecycle, and a raw "npm install" is not a substitute — this workspace installs through a pinned pnpm and arms only reviewed lifecycle hooks.\n' +
+        'The pull already landed; nothing was rebuilt. Any Station instance this checkout was running was stopped for the upgrade, and the previous build is untouched, so "station start" relaunches that older build against the newly pulled sources until a rebuild succeeds. Check out a tree that carries the lifecycle and rerun "station upgrade".',
+    );
+  }
+
   console.log('\nInstalling dependencies...');
-  execSync('npm install', {
+  execSync(UPGRADE_DEPENDENCY_INSTALL_COMMAND, {
     cwd: gitRoot,
     stdio: 'inherit',
     windowsHide: true,

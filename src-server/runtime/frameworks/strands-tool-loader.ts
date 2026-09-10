@@ -37,7 +37,7 @@ import {
 } from './strands-mcp-custody.js';
 import type { CreateAgentOptions } from './voltagent-adapter.js';
 
-export interface StrandsToolLoaderState {
+interface StrandsToolLoaderState {
   mcpClients: Map<string, McpClient>;
   agentMcpClients: Map<string, string[]>;
 }
@@ -558,15 +558,19 @@ export async function loadStrandsTools(options: {
             const args = (toolDef.args || []).map((arg: string) =>
               arg === './' ? process.cwd() : arg,
             );
-            const fresh = createCustodiedStrandsClient(claim!, {
-              command: toolDef.command!,
-              args,
-              env: withStationControlRuntimeEnv(toolId, toolDef, {
-                ...(process.env as Record<string, string>),
-                ...toolDef.env,
-                ...resolvedSecrets,
-              }) as Record<string, string>,
-            });
+            const fresh = createCustodiedStrandsClient(
+              claim!,
+              {
+                command: toolDef.command!,
+                args,
+                env: withStationControlRuntimeEnv(toolId, toolDef, {
+                  ...(process.env as Record<string, string>),
+                  ...toolDef.env,
+                  ...resolvedSecrets,
+                }) as Record<string, string>,
+              },
+              toolDef,
+            );
             return { client: fresh, tools: await fresh.listTools() };
           },
         );

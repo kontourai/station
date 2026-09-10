@@ -757,7 +757,8 @@ function buildSystemRecommendation(input: {
 // chat-readiness for an external engine comes from
 // `resolveExternalEngineReadiness` (CLI resolvable AND authenticated), never
 // from this alone. Shared with native-engine adoption (archive#1575) so both agree
-// on what "installed" means.
+// on what "installed" means. Cancellation and the reason there is no ceiling
+// live with the calls, in `cliPresence` below.
 const whichCmd = detectCliOnPath;
 
 function createStatusDiscoveryCache(deps: SystemStatusDeps) {
@@ -782,6 +783,29 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
         return false;
       }
     };
+    /**
+     * The CLI-presence probes, on this refresh's own controller
+     * (station#1815).
+     *
+     * `booleanProbe` already abandons a late answer, so before this the
+     * `which` child outlived the answer nobody would read; the signal is what
+     * ends it. That is the whole of what this line changes.
+     *
+     * No `timeoutMs`: a ceiling of its own would add a SECOND way for these
+     * fields to report "not installed" without a locator having said so, on
+     * a surface that drives the first-run launcher.
+     *
+     * It does not add a first one. `booleanProbe` already commits `false`
+     * when the refresh budget expires, and the snapshot below caches that for
+     * `STATUS_PREREQUISITES_CACHE_TTL_MS` — the same class of flap
+     * `reconcileExternalEngineReadiness` exists to absorb for the field
+     * beside these, and which these three have no equivalent for. That is
+     * pre-existing and is tracked in station#1832; it is recorded here so
+     * this comment is not read as a claim that these fields only ever report
+     * an observed absence.
+     */
+    const cliPresence = (command: string) =>
+      whichCmd(command, { signal: controller.signal });
 
     refreshPromise = (async () => {
       const runtimeConnectionState = await raceWithSignal(
@@ -806,12 +830,12 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
         developerServices,
       ] = await Promise.all([
         booleanProbe(checkBedrockCredentials()),
-        booleanProbe(whichCmd('kiro-cli')),
+        booleanProbe(cliPresence('kiro-cli')),
         booleanProbe(
           deps.checkOllamaAvailability?.() ?? Promise.resolve(false),
         ),
-        booleanProbe(whichCmd('codex')),
-        booleanProbe(whichCmd('claude')),
+        booleanProbe(cliPresence('codex')),
+        booleanProbe(cliPresence('claude')),
         resolveExternalEngineReadiness(
           undefined,
           controller.signal,

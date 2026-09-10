@@ -18,7 +18,7 @@ import type { ExactAnswerAssessmentRead } from './answer-assessment-module.js';
 
 type FoundAnswer = Extract<SessionAnswerBasisQueryOutcome, { status: 'found' }>;
 
-export type ExactAnswerBasisReadOutcome =
+type ExactAnswerBasisReadOutcome =
   | {
       status: 'found';
       answer: FoundAnswer;

@@ -51,7 +51,6 @@ import {
 } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
-import { publicIdentityAgentSetView } from '../../routes/agents/runtime-agent-identity.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import {
@@ -62,6 +61,7 @@ import {
 import { RuntimeAuthFailureLimiter } from '../../security/runtime-request-security.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import { getAgentPolicyService } from '../../services/agents/agent-policy-service.js';
+import { publicIdentityAgentSetView } from '../../services/agents/runtime-agent-identity.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { ConsoleBridgeService } from '../../services/evidence/console-bridge-service.js';
@@ -247,10 +247,12 @@ export interface InitializeRuntimeDeps {
   captureAgentConfigurationRevisions?: () => {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint?: string;
   };
   onAgentConfigurationReady?: (revisions: {
     provider: number;
     appConfig: number;
+    selectedPackageFingerprint?: string;
   }) => void;
   guardDefaultAgentTools?: (tools: any[]) => any[];
   replaceTemplateVariables: (text: string, agentName?: string) => string;
@@ -738,6 +740,8 @@ export async function initializeRuntime(
   logger.debug('Bedrock model catalog initialized');
 
   await loadRuntimePluginAssets({
+    packageMcpJournal:
+      orchestrationEventStore.createPackageMcpAdmissionJournal(),
     logger,
     projectHomeDir: configLoader.getProjectHomeDir(),
     loadPluginOverrides: () => configLoader.loadPluginOverrides(),
@@ -879,14 +883,16 @@ export async function initializeRuntime(
     configurationBefore &&
     configurationAfter &&
     (configurationBefore.provider !== configurationAfter.provider ||
-      configurationBefore.appConfig !== configurationAfter.appConfig)
+      configurationBefore.appConfig !== configurationAfter.appConfig ||
+      configurationBefore.selectedPackageFingerprint !==
+        configurationAfter.selectedPackageFingerprint)
   ) {
     throw new Error(
       'Runtime configuration changed while startup agents were being constructed.',
     );
   }
-  if (configurationAfter) {
-    deps.onAgentConfigurationReady?.(configurationAfter);
+  if (configurationBefore) {
+    deps.onAgentConfigurationReady?.(configurationBefore);
   }
   stationAgentsReady = true;
 

@@ -6,11 +6,15 @@ import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import { errorMessage } from '../../utils/error-message.js';
+import { createLogger } from '../../utils/logger.js';
 import {
   type BedrockAuthConfig,
   bedrockAiSdkCredentials,
 } from './bedrock-credentials.js';
 import { resolveBedrockRegion } from './bedrock-region.js';
+
+const logger = createLogger({ name: 'bedrock' });
 
 export interface BedrockProviderOptions {
   appConfig: AppConfig;
@@ -76,10 +80,8 @@ export async function checkBedrockCredentials(): Promise<boolean> {
     // and must not print. Only a genuinely unexpected probe failure is worth
     // surfacing, and never with a stack: this runs on every startup.
     if (!isAbsentCredentials(error)) {
-      console.debug(
-        `Bedrock credential probe failed unexpectedly: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+      logger.debug(
+        `Bedrock credential probe failed unexpectedly: ${errorMessage(error)}`,
       );
     }
     return false;

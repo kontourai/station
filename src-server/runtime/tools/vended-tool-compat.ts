@@ -10,6 +10,11 @@ import type {
 } from '@kontourai/station-contracts/ui-block';
 import { uiBlockEmitted } from '../../telemetry/metrics.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
+import {
+  currentNativeExecutionWorkspace,
+  type NativeExecutionWorkspace,
+} from '../conversation/native-execution-workspace.js';
+import { currentNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
 import { acceptUIBlockProvenance } from '../conversation/ui-block-provenance.js';
 import type { ITool } from '../types.js';
 
@@ -173,7 +178,13 @@ export function createBuiltinVendedTool(
   }
 }
 
+const capturedBashSessions = new WeakMap<
+  NativeExecutionWorkspace,
+  Map<string, BashSession>
+>();
+
 class BashSession {
+  constructor(private readonly cwd = process.cwd()) {}
   private processRef: ReturnType<typeof spawn> | null = null;
   private sentinel =
     `__STATION_BASH_DONE_${Date.now()}_${Math.random().toString(36).slice(2)}__`;
@@ -184,7 +195,7 @@ class BashSession {
     }
 
     this.processRef = spawn('bash', [], {
-      cwd: process.cwd(),
+      cwd: this.cwd,
       env: childProcessEnvironment({ PS1: '', PS2: '' }),
       windowsHide: true,
     });
@@ -307,9 +318,26 @@ function createBashTool(
       command?: string;
       timeout?: number;
     }) => {
+      const workspace =
+        currentNativeExecutionWorkspace() ?? currentNativeForegroundRelay();
+      let sessions = bashSessions;
+      if (workspace) {
+        let captured = capturedBashSessions.get(workspace);
+        if (!captured) {
+          captured = new Map();
+          capturedBashSessions.set(workspace, captured);
+          const owned = captured;
+          workspace.onClose(() => {
+            for (const session of owned.values()) session.stop();
+            owned.clear();
+            capturedBashSessions.delete(workspace);
+          });
+        }
+        sessions = captured;
+      }
       if (input.mode === 'restart') {
-        bashSessions.get(agentSlug)?.stop();
-        bashSessions.set(agentSlug, new BashSession());
+        sessions.get(agentSlug)?.stop();
+        sessions.set(agentSlug, new BashSession(workspace?.workspaceRoot));
         return 'Bash session restarted';
       }
 
@@ -317,10 +345,10 @@ function createBashTool(
         throw new Error('command is required when mode is "execute"');
       }
 
-      let session = bashSessions.get(agentSlug);
+      let session = sessions.get(agentSlug);
       if (!session) {
-        session = new BashSession();
-        bashSessions.set(agentSlug, session);
+        session = new BashSession(workspace?.workspaceRoot);
+        sessions.set(agentSlug, session);
       }
 
       return session.run(
@@ -374,6 +402,11 @@ function createFileEditorTool(
       new_str?: string;
       insert_line?: number;
     }) => {
+      const workspaceRoot = (
+        currentNativeExecutionWorkspace() ?? currentNativeForegroundRelay()
+      )?.workspaceRoot;
+      if (workspaceRoot && !path.isAbsolute(input.path))
+        input = { ...input, path: path.resolve(workspaceRoot, input.path) };
       switch (input.command) {
         case 'view':
           return handleView(input.path, input.view_range);

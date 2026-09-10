@@ -18,7 +18,7 @@ export function ToolCallBatchBoundary<P extends ToolCallLike>({
   renderCall,
 }: {
   run: ToolCallRun<P>;
-  renderCall: (part: P, index: number) => ReactNode;
+  renderCall: (part: P, index: number, expanded?: boolean) => ReactNode;
 }) {
   const load = loadToolCallBatch as unknown as () => Promise<{
     default: ComponentType<ToolCallBatchProps<P>>;

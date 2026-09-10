@@ -8,6 +8,10 @@ mod android_dns;
 mod bundled_server_state;
 mod channel_ports_generated;
 mod notification_watch;
+#[cfg(not(mobile))]
+mod local_access_watch;
+#[cfg(not(mobile))]
+mod desktop_companion;
 mod pairing_deep_link_channels_generated;
 mod service_state;
 #[cfg(not(mobile))]
@@ -377,6 +381,8 @@ struct CredentialProfileStore {
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 struct CredentialProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    development_http_origin: Option<String>,
     schema_version: u8,
     name: String,
     endpoint: String,
@@ -701,6 +707,13 @@ fn credential_endpoint_uses_secure_transport(endpoint: &str) -> bool {
     }
 }
 
+fn credential_endpoint_allowed(endpoint: &str, development_origin: Option<&str>) -> bool {
+    credential_endpoint_uses_secure_transport(endpoint)
+        || (endpoint.starts_with("http://")
+            && development_origin == Some(endpoint)
+            && exact_origin(endpoint).ok().as_deref() == Some(endpoint))
+}
+
 fn parse_station_profile_store(contents: &str) -> Result<CredentialProfileStore, String> {
     let raw: serde_json::Value = serde_json::from_str(contents)
         .map_err(|error| format!("parse saved Station metadata: {error}"))?;
@@ -754,7 +767,10 @@ fn parse_station_profile_store(contents: &str) -> Result<CredentialProfileStore,
             if !references.insert(key) {
                 return Err("Station credential references must be unique".to_string());
             }
-            if !credential_endpoint_uses_secure_transport(&profile.endpoint) {
+            if !credential_endpoint_allowed(
+                &profile.endpoint,
+                profile.development_http_origin.as_deref(),
+            ) {
                 return Err(
                     "Station refuses credentials for a non-HTTPS, non-loopback endpoint"
                         .to_string(),
@@ -1311,7 +1327,10 @@ fn station_profiles_path(app: &AppHandle) -> Result<std::path::PathBuf, String> 
         .path()
         .app_config_dir()
         .map_err(|error| format!("resolve Station mobile config directory: {error}"))?;
-    secure_mobile_station_profiles_path(&app_config_dir)
+    let path = secure_mobile_station_profiles_path(&app_config_dir)?;
+    let _lock = lock_station_profiles_for_app(app, &path)?;
+    ensure_mobile_profile_store_genesis(&path)?;
+    Ok(path)
 }
 
 /// Profile metadata controls which native credentials and local service are
@@ -1447,6 +1466,9 @@ fn station_profile_store_genesis_lock_target(
 /// installer materializes its channel release before the first desktop launch.
 #[cfg(not(mobile))]
 fn station_profile_store_genesis_admissible(root: &std::path::Path) -> Result<bool, String> {
+    station_profile_store_genesis_admissible_with_schema(root, false)
+}
+fn station_profile_store_genesis_admissible_with_schema(root: &std::path::Path, fresh_schema: bool) -> Result<bool, String> {
     match std::fs::read_dir(root) {
         Ok(entries) => {
             for entry in entries {
@@ -1454,6 +1476,9 @@ fn station_profile_store_genesis_admissible(root: &std::path::Path) -> Result<bo
                 let name = entry.file_name();
                 let metadata = std::fs::symlink_metadata(entry.path())
                     .map_err(|error| format!("inspect Station install root: {error}"))?;
+                if fresh_schema && name == ".station-home-schema.json" && metadata.file_type().is_file() && !metadata.file_type().is_symlink() {
+                    continue;
+                }
                 if !metadata.file_type().is_dir() {
                     return Ok(false);
                 }
@@ -1589,7 +1614,6 @@ fn write_profile_store_genesis_marker(root: &std::path::Path) -> Result<(), Stri
     }
 }
 
-#[cfg(not(mobile))]
 fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), String> {
     #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
@@ -1628,12 +1652,60 @@ fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), Strin
     }
 }
 
+/// Mobile owns a private profile store, independent of desktop channel roots.
+/// Called under the profile lock before exposing the first empty snapshot.
+#[cfg(any(mobile, test))]
+fn ensure_mobile_profile_store_genesis(path: &std::path::Path) -> Result<(), String> {
+    let marker = path.with_file_name(".profiles-initialized");
+    let marker_exists = match std::fs::symlink_metadata(&marker) {
+        Ok(metadata) if metadata.file_type().is_file() => true,
+        Ok(_) => return Err("mobile profile initialization marker must be a regular file".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => return Err(format!("inspect mobile profile marker: {error}")),
+    };
+    let missing = match read_station_profile_store(path) {
+        Ok(contents) => {
+            parse_station_profile_store(&contents)?;
+            false
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+        Err(error) => return Err(format!("read saved Stations on this device: {error}")),
+    };
+    if missing && marker_exists {
+        return Err("saved mobile Station metadata is missing after initialization; refusing to recreate it".into());
+    }
+    if !marker_exists {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options
+            .open(&marker)
+            .map_err(|error| format!("create mobile profile marker: {error}"))?;
+        file.write_all(b"station-mobile-profiles-v1\n")
+            .map_err(|error| error.to_string())?;
+        file.sync_all().map_err(|error| error.to_string())?;
+        sync_profile_store_directory(path.parent().ok_or("mobile profile path has no parent")?)?;
+    }
+    if missing {
+        write_empty_station_profile_store(path)?;
+    }
+    Ok(())
+}
+
 /// Establish the shared profile document before a desktop runtime can create
 /// channel state.  The marker is durable before the empty document: a crash
 /// can require explicit recovery, but can never silently relabel a used root
 /// as virgin and publish a credentialless replacement over its profile set.
 #[cfg(not(mobile))]
 fn ensure_station_profile_store_genesis(app: &AppHandle, root: &std::path::Path) -> Result<(), String> {
+    ensure_station_profile_store_genesis_after_schema(app, root, false)
+}
+#[cfg(not(mobile))]
+fn ensure_station_profile_store_genesis_after_schema(app: &AppHandle, root: &std::path::Path, fresh_schema: bool) -> Result<(), String> {
     let path = root.join("config").join("profiles.json");
     ensure_station_profile_store_root(root)?;
     #[cfg(windows)]
@@ -1659,7 +1731,7 @@ fn ensure_station_profile_store_genesis(app: &AppHandle, root: &std::path::Path)
             Ok(())
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            if marker_exists || !station_profile_store_genesis_admissible(root)? {
+            if marker_exists || !station_profile_store_genesis_admissible_with_schema(root, fresh_schema)? {
                 return Err("saved Station metadata is missing from an initialized or in-progress shared root; restore profiles.json before launching Station".to_string());
             }
             let parent = path.parent().expect("profiles path has config parent");
@@ -3046,6 +3118,8 @@ fn station_native_http_cancel(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct NativePairingExchangeRequest {
+    #[serde(default)]
+    development_http_origin: Option<String>,
     endpoint: String,
     offer_id: String,
     proof: String,
@@ -3088,7 +3162,7 @@ fn validate_native_pairing_exchange_request(
         ));
     }
     let origin = exact_origin(&request.endpoint).map_err(NativeCommandError::from)?;
-    if !credential_endpoint_uses_secure_transport(&origin) {
+    if !credential_endpoint_allowed(&origin, request.development_http_origin.as_deref()) {
         return Err(NativeCommandError::new(
             "insecure_endpoint",
             "Station pairing endpoints must use HTTPS or strict loopback HTTP",
@@ -3593,7 +3667,7 @@ fn native_profile_lock_birth(app: &AppHandle, pid: u32) -> Result<Option<String>
         // An unavailable identity remains a fence during reclamation, but a
         // fresh writer must not publish a v2 record without one.
         Err(RegistryBridgeFailure::Invocation | RegistryBridgeFailure::Protocol) => Ok(None),
-        Err(RegistryBridgeFailure::Untrusted) => Ok(None),
+        Err(RegistryBridgeFailure::Untrusted | RegistryBridgeFailure::HomeSchema) => Ok(None),
     }
 }
 
@@ -4549,6 +4623,7 @@ fn reconciled_bundled_local_profile_store(
         }
     } else {
         next.profiles.push(CredentialProfile {
+            development_http_origin: None,
             schema_version: 1,
             name: owner_name.clone(),
             endpoint,
@@ -6293,6 +6368,8 @@ struct RegistryBridgeErrorPayload {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 enum PrepareRuntimeKind {
+    #[serde(skip)]
+    ServiceOwned,
     Absent,
     New,
     Already,
@@ -6303,6 +6380,7 @@ enum PrepareRuntimeKind {
 impl PrepareRuntimeKind {
     fn as_str(self) -> &'static str {
         match self {
+            Self::ServiceOwned => "service-owned",
             Self::Absent => "absent",
             Self::New => "new",
             Self::Already => "already",
@@ -6323,6 +6401,7 @@ struct PrepareRuntimeBridgeResponse {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum RegistryBridgeFailure {
     Untrusted,
+    HomeSchema,
     Protocol,
     Invocation,
 }
@@ -6399,6 +6478,7 @@ fn read_registry_bridge(
 fn registry_bridge_error(response: &RegistryBridgeReadResponse) -> RegistryBridgeFailure {
     match response.error.as_ref().map(|error| error.code.as_str()) {
         Some("REGISTRY_UNTRUSTED") => RegistryBridgeFailure::Untrusted,
+        Some("HOME_SCHEMA_INCOMPATIBLE") => RegistryBridgeFailure::HomeSchema,
         _ => RegistryBridgeFailure::Protocol,
     }
 }
@@ -6433,6 +6513,18 @@ fn prepare_runtime_registry_bridge(
     station_root: &Path,
     station_home: &Path,
 ) -> Result<PrepareRuntimeKind, RegistryBridgeFailure> {
+    // Standalone homes have no distinct shared-root legacy service to move.
+    // Native home admission and schema preparation have already succeeded.
+    if let (Ok(root), Ok(home)) = (station_root.canonicalize(), station_home.canonicalize()) {
+        if root == home { return Ok(PrepareRuntimeKind::Absent); }
+    }
+    // Attaching to a live service is read-only. Its home lease must remain
+    // held; legacy migration cannot acquire maintenance while it is serving.
+    match decide_home_ownership_from_runtime(resource_dir, station_home) {
+        HomeOwnershipDecision::ServiceOwnsHome { .. } => return Ok(PrepareRuntimeKind::ServiceOwned),
+        HomeOwnershipDecision::AmbiguousOwnership | HomeOwnershipDecision::FailClosedRegistry => return Err(RegistryBridgeFailure::Untrusted),
+        HomeOwnershipDecision::SpawnSidecar => {}
+    }
     let output = invoke_registry_bridge(
         resource_dir,
         "prepareRuntime",
@@ -6981,6 +7073,18 @@ fn owner_owns_reapable_child(owner: DesktopOwner) -> bool {
 /// Window destruction is not application exit: preview and workspace pop-out
 /// windows are ordinary Station windows. Sidecar teardown is intentionally
 /// wired only from `RunEvent::Exit` below.
+#[cfg(not(mobile))]
+fn owner_after_preparation(preparation: PrepareRuntimeKind, decision: HomeOwnershipDecision) -> DesktopOwner {
+    let owner = owner_for_decision(decision);
+    if preparation == PrepareRuntimeKind::ServiceOwned {
+        // A service observed before preparation may exit before this second
+        // ownership read. Never turn that race into an unprepared sidecar.
+        adoptable_refreshed_owner(owner)
+    } else {
+        owner
+    }
+}
+
 #[cfg(not(mobile))]
 fn window_destruction_requests_sidecar_teardown() -> bool {
     false
@@ -7616,6 +7720,7 @@ fn with_native_startup_cover(
 
 #[cfg(target_os = "macos")]
 fn present_startup_recovery_surface(app: &AppHandle) {
+    if desktop_companion::background(app) { return; }
     request_native_cover(app, true);
 }
 
@@ -7626,6 +7731,7 @@ fn present_startup_recovery_surface(_app: &AppHandle) {
 
 #[cfg(not(mobile))]
 fn reveal_main_window(app: &AppHandle) {
+    if desktop_companion::background(app) { return; }
     #[cfg(target_os = "macos")]
     {
         request_native_cover(app, false);
@@ -7717,6 +7823,7 @@ pub(crate) fn main_window_activation_available(app: &AppHandle) -> bool {
 
 #[cfg(not(mobile))]
 pub(crate) fn request_main_window_activation(app: &AppHandle) -> bool {
+    desktop_companion::activate(app);
     let Some(state) = app.try_state::<DesktopServerState>() else {
         return false;
     };
@@ -7905,6 +8012,22 @@ fn arm_startup_deadline(app: AppHandle, epoch: u64) {
             let retry_effects = transition_startup_readiness(state.inner(), startup_readiness::ReadinessInput::Retry { now_ms: 0, timeout_ms: 30_000 });
             continue_startup_readiness(&app, state.inner(), &retry_effects);
         });
+}
+
+#[cfg(not(mobile))]
+fn prepare_desktop_station_storage<S, P>(home: PathBuf, root: &Path, ensure_schema: S, ensure_profiles: P) -> Result<PathBuf, String>
+where S: FnOnce(&Path) -> Result<(), String>, P: FnOnce(bool) -> Result<(), String> {
+    if home == root {
+        // A standalone home also holds root metadata. Schema must be born
+        // first, otherwise genesis makes our own empty home look unversioned.
+        let fresh_schema = !home.join(".station-home-schema.json").exists() && station_profile_store_genesis_admissible(&home)?;
+        let prepared = prepare_desktop_station_home(home, ensure_schema)?;
+        ensure_profiles(fresh_schema)?;
+        Ok(prepared)
+    } else {
+        ensure_profiles(false)?;
+        prepare_desktop_station_home(home, ensure_schema)
+    }
 }
 
 #[cfg(not(mobile))]
@@ -9487,7 +9610,9 @@ If a stable instance is running, this launch will focus its window and exit.",
     // callback itself only brings the existing window to the user.
     #[cfg(not(mobile))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(
-        |app, _argv, _cwd| match app.get_webview_window("main") {
+        |app, argv, _cwd| {
+          if desktop_companion::background_arguments(&argv) { return; }
+          match app.get_webview_window("main") {
             Some(window) => {
                 log::info!(
                     "second launch detected; requesting main window activation '{}'",
@@ -9498,6 +9623,7 @@ If a stable instance is running, this launch will focus its window and exit.",
             None => {
                 log::warn!("second launch detected but no window exists to focus");
             }
+          }
         },
     ));
 
@@ -9564,6 +9690,12 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder
         .manage(NativeStartupBootstrap::default())
+        .manage(desktop_companion::DesktopCompanion::default())
+        .menu(desktop_companion::desktop_menu)
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == desktop_companion::QUIT_MENU_ID { desktop_companion::request_quit(app); }
+        })
+        .manage(desktop_companion::BackgroundTray(AtomicBool::new(desktop_companion::background_arguments(&std::env::args().collect::<Vec<_>>()))))
         .on_page_load(|webview, payload| {
             observe_native_startup_page(webview.app_handle(), webview.label(), payload.event());
         })
@@ -9666,7 +9798,8 @@ If a stable instance is running, this launch will focus its window and exit.",
                     // this activation bypass the main-window authority. The
                     // handler may run before setup manages readiness, so
                     // retain its activation until that authority exists.
-                    let urls = event.urls().into_iter().map(|url| url.to_string()).collect::<Vec<_>>();
+                    let urls = event.urls().into_iter().filter(|url| !tray::handle_browser_open_link(&activation_app, url.as_str())).map(|url| url.to_string()).collect::<Vec<_>>();
+                    if urls.is_empty() { return; }
                     let _ = activation_app.emit("station://pairing-deep-link", urls);
                     request_or_defer_main_window_activation(
                         &activation_app,
@@ -9691,27 +9824,19 @@ If a stable instance is running, this launch will focus its window and exit.",
                     station_root.display(),
                     station_home.display()
                 );
-                if let Err(error) = ensure_station_profile_store_genesis(&app.handle(), &station_root)
-                {
-                    exit_desktop_home_preparation_failure(
-                        app,
-                        "Station could not verify its shared saved Stations",
-                        "Station refused to recreate missing shared Station metadata. Restore the saved Stations file before launching again.",
-                        &error,
-                    );
-                    return Ok(());
-                }
-                let prepared_home = prepare_desktop_station_home(
+                let prepared_home = prepare_desktop_station_storage(
                     station_home.clone(),
+                    &station_root,
                     |home| {
-                        invoke_registry_bridge(
-                            &resource_dir,
-                            "ensureHomeSchema",
-                            serde_json::json!({ "home": home }),
-                        )
-                        .map(|_| ())
-                        .map_err(|error| format!("{error:?}"))
+                        invoke_registry_bridge(&resource_dir, "ensureHomeSchema", serde_json::json!({ "home": home }))
+                            .map(|_| ())
+                            .map_err(|error| match error {
+                                RegistryBridgeFailure::HomeSchema => "This folder contains data without a compatible Station schema. Keep it intact and select a new empty folder or restore a compatible Station home.".to_string(),
+                                RegistryBridgeFailure::Invocation => "The local Node helper could not run. Check that Node 24 is installed and available to the app.".to_string(),
+                                _ => "The local storage helper did not return a valid result. Check the desktop logs before changing this folder.".to_string(),
+                            })
                     },
+                    |fresh_schema| ensure_station_profile_store_genesis_after_schema(&app.handle(), &station_root, fresh_schema),
                 );
                 let station_home = match prepared_home {
                     Ok(home) => home,
@@ -9774,7 +9899,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                     },
                 });
                 let ownership = decide_home_ownership_from_runtime(&resource_dir, &station_home);
-                let mut owner = owner_for_decision(ownership);
+                let mut owner = owner_after_preparation(preparation_kind, ownership);
                 // Reserve before the child is launched.  The shared module
                 // performs this compare-and-set under its mutation lock, so
                 // two desktops cannot both win a home-scoped sidecar slot.
@@ -9831,6 +9956,17 @@ If a stable instance is running, this launch will focus its window and exit.",
         .build(context)
         .expect("error while building tauri application")
         .run(|app, event| {
+            #[cfg(not(mobile))]
+            if let tauri::RunEvent::ExitRequested { code, api, .. } = &event {
+                if code.is_none() || *code == Some(0) {
+                    if let Err(error) = desktop_companion::pause(app) {
+                        use tauri_plugin_dialog::DialogExt;
+                        log::error!("Could not pause desktop companion: {error}");
+                        api.prevent_exit();
+                        app.dialog().message("Station could not save its background preference. Please try quitting again.").title("Could not quit Station").show(|_| {});
+                    }
+                }
+            }
             #[cfg(all(not(mobile), target_os = "macos"))]
             if let tauri::RunEvent::Reopen { .. } = event {
                 match ensure_main_window(app) {
@@ -9844,6 +9980,17 @@ If a stable instance is running, this launch will focus its window and exit.",
             }
             #[cfg(not(mobile))]
             if let tauri::RunEvent::WindowEvent { label, event, .. } = &event {
+                if label == "main" {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        if let Some(state) = app.try_state::<DesktopServerState>() {
+                            if !state.supervisor.shutting_down.load(Ordering::SeqCst) {
+                                api.prevent_close();
+                                if let Some(window) = app.get_webview_window("main") { let _ = window.hide(); }
+                                tray::kick(app);
+                            }
+                        }
+                    }
+                }
                 if label == "main" && matches!(event, WindowEvent::Destroyed) {
                     tray::invalidate_pending_navigation(app, "main-window destruction");
                     let kick_app = app.clone();
@@ -9862,6 +10009,17 @@ If a stable instance is running, this launch will focus its window and exit.",
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn service_attachment_never_claims_an_unprepared_home_after_service_exit() {
+        assert_eq!(owner_after_preparation(PrepareRuntimeKind::ServiceOwned, HomeOwnershipDecision::SpawnSidecar), DesktopOwner::Unowned);
+        assert_eq!(owner_after_preparation(PrepareRuntimeKind::ServiceOwned, HomeOwnershipDecision::ServiceOwnsHome { id: "owned-service".into(), port: 4123 }), DesktopOwner::Service { id: "owned-service".into(), port: 4123 });
+        assert_eq!(owner_after_preparation(PrepareRuntimeKind::Absent, HomeOwnershipDecision::SpawnSidecar), DesktopOwner::Sidecar);
+        let source = include_str!("lib.rs");
+        let preparation = source.split("fn prepare_runtime_registry_bridge(").nth(1).unwrap().split("fn capture_bounded_registry_bridge_stdout").next().unwrap();
+        assert!(preparation.find("HomeOwnershipDecision::ServiceOwnsHome").unwrap() < preparation.find("\"prepareRuntime\"").unwrap());
+    }
 
     #[test]
     fn native_public_handshake_admits_only_the_exact_public_route() {
@@ -12510,6 +12668,46 @@ mod tests {
     }
 
     #[test]
+    fn development_http_permission_is_exact_origin_and_opt_in() {
+        let origin = "http://100.77.142.114:3492";
+        assert!(!credential_endpoint_allowed(origin, None));
+        assert!(credential_endpoint_allowed(origin, Some(origin)));
+        assert!(!credential_endpoint_allowed(
+            origin,
+            Some("http://100.77.142.114:3493")
+        ));
+        assert!(!credential_endpoint_allowed(
+            "http://user@host",
+            Some("http://user@host")
+        ));
+        assert!(!credential_endpoint_allowed(
+            "http://host/path",
+            Some("http://host/path")
+        ));
+        assert!(!credential_endpoint_allowed(
+            "ftp://host",
+            Some("ftp://host")
+        ));
+    }
+
+    #[test]
+    fn mobile_profile_genesis_creates_once_and_preserves_missing_data_guard() {
+        let root =
+            std::env::temp_dir().join(format!("station-mobile-genesis-{}", uuid::Uuid::new_v4()));
+        let path = secure_mobile_station_profiles_path(&root).unwrap();
+        ensure_mobile_profile_store_genesis(&path).unwrap();
+        let first = read_station_profile_store(&path).unwrap();
+        assert_eq!(parse_station_profile_store(&first).unwrap().revision, 0);
+        ensure_mobile_profile_store_genesis(&path).unwrap();
+        assert_eq!(read_station_profile_store(&path).unwrap(), first);
+        std::fs::remove_file(&path).unwrap();
+        assert!(ensure_mobile_profile_store_genesis(&path)
+            .unwrap_err()
+            .contains("refusing to recreate"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn credential_access_rejects_nonloopback_http_profiles() {
         let contents = r#"{
           "schemaVersion":1,
@@ -14880,4 +15078,30 @@ mod tests {
             );
         }
     }
+}
+
+#[cfg(all(test, not(mobile)))]
+mod standalone_storage_order_tests {
+    use super::*;
+    #[test] fn standalone_schema_is_prepared_before_profile_genesis() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("home");
+        let events = std::cell::RefCell::new(Vec::new());
+        // This helper receives an external path relative to the ambient test
+        // root; admission is independent from the callback-order assertion.
+        prepare_desktop_station_storage(home.clone(), &home, |_| { events.borrow_mut().push("schema"); Ok(()) }, |fresh| { assert!(fresh); events.borrow_mut().push("profiles"); Ok(()) }).unwrap();
+        assert_eq!(*events.borrow(), vec!["schema", "profiles"]);
+    }
+}
+
+#[cfg(all(test, not(mobile)))] mod profile_schema_birth_tests {
+ use super::*;
+ #[test] fn a_schema_marker_is_not_general_permission_to_recreate_lost_profiles() {
+   let directory = tempfile::tempdir().unwrap();
+   std::fs::write(directory.path().join(".station-home-schema.json"), "{\"schemaVersion\":2}").unwrap();
+   assert!(!station_profile_store_genesis_admissible(directory.path()).unwrap());
+   assert!(station_profile_store_genesis_admissible_with_schema(directory.path(), true).unwrap());
+   std::fs::write(directory.path().join("other-data"), "keep").unwrap();
+   assert!(!station_profile_store_genesis_admissible_with_schema(directory.path(), true).unwrap());
+ }
 }

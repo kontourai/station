@@ -8,6 +8,7 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore, PersistedRuntimeEvent } from './event-store.js';
 import {
   type RequestReplayOutcome,
@@ -28,7 +29,7 @@ function eventWindowSessionSummary(
   return publicSummary;
 }
 
-export interface SessionEventReadsDeps {
+interface SessionEventReadsDeps {
   eventStore?: EventStore;
   logger: { warn(message: string, meta?: Record<string, unknown>): void };
 
@@ -120,7 +121,7 @@ export class SessionEventReads {
         {
           threadId,
           requestId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         },
       );
       return { state: 'undetermined' };

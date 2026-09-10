@@ -336,6 +336,11 @@ describe('executeForegroundMessage', () => {
         conversationId: 'conversation:test',
         clientTurnId: 'client-turn-9',
         message: 'inspect this',
+        expectedInputRequest: {
+          threadId: 'conversation:test:child-2',
+          requestId: 'input-a',
+          requestEventId: 'opened-a',
+        },
         resolveAttachments,
       },
       deps,
@@ -347,7 +352,14 @@ describe('executeForegroundMessage', () => {
     });
     expect(deps.sendTurn).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ threadId: 'conversation:test:child-2' }),
+      expect.objectContaining({
+        threadId: 'conversation:test:child-2',
+        expectedInputRequest: {
+          threadId: 'conversation:test:child-2',
+          requestId: 'input-a',
+          requestEventId: 'opened-a',
+        },
+      }),
       undefined,
     );
   });
@@ -689,6 +701,47 @@ describe('executeForegroundMessage', () => {
       sessionId: 'conversation:existing:session:1',
     });
   });
+
+  test.each([undefined, 'explicit-new-model'])(
+    'resuming preserves the observed model unless the caller overrides it (%s)',
+    async (override) => {
+      const deps = dependencies();
+      deps.getAgent = async () => ({
+        slug: 'station',
+        available: true,
+        execution: { modelId: 'agent-default-sonnet' },
+      });
+      deps.readSessionBinding = vi.fn(async () => ({
+        environmentId: 'environment-kontour',
+        agentId: 'station',
+      }));
+      deps.resolveConversationSession = vi.fn(async () => ({
+        sessionId: 'conversation:cursor:child',
+        startRequired: true,
+        resumeCursor: 'native-cursor',
+        resumeModel: 'observed-opus',
+      }));
+      await executeForegroundMessage(
+        {
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+            ...(override ? { model: { override } } : {}),
+          },
+          conversationId: 'conversation:cursor',
+          message: 'Continue',
+        },
+        deps,
+      );
+      expect(deps.startSession).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          modelId: override ?? 'observed-opus',
+          resumeCursor: 'native-cursor',
+        }),
+      );
+    },
+  );
 
   test('uses a server-owned predecessor cursor for same-engine continuation', async () => {
     const deps = dependencies();
@@ -1270,6 +1323,7 @@ describe('executeForegroundMessage', () => {
       deps.readSessionBinding = vi.fn(async () => ({
         environmentId: 'environment-kontour',
         agentId: 'station',
+        projectSlug: 'station',
         cwd: repoPath,
         workspaceIsolation: { mode: 'worktree' as const },
         worktree: worktree!,
@@ -1299,6 +1353,7 @@ describe('executeForegroundMessage', () => {
       deps.readSessionBinding = vi.fn(async () => ({
         environmentId: 'environment-kontour',
         agentId: 'station',
+        projectSlug: 'station',
         cwd: worktree!.path,
         workspaceIsolation: { mode: 'worktree' as const },
         worktree: worktree!,
@@ -1542,6 +1597,7 @@ describe('executeForegroundMessage', () => {
       deps.readSessionBinding = vi.fn(async () => ({
         environmentId: 'environment-kontour',
         agentId: 'station',
+        projectSlug: 'station',
         ...partialBinding,
       }));
       deps.getProject = vi.fn(async (_access, slug) => ({
@@ -1574,6 +1630,7 @@ describe('executeForegroundMessage', () => {
     deps.readSessionBinding = vi.fn(async () => ({
       environmentId: 'environment-kontour',
       agentId: 'station',
+      projectSlug: 'station',
       cwd: process.cwd(),
       workspaceIsolation: { mode: 'worktree' as const },
       worktree: {
@@ -1617,6 +1674,7 @@ describe('executeForegroundMessage', () => {
     deps.readSessionBinding = vi.fn(async () => ({
       environmentId: 'environment-kontour',
       agentId: 'station',
+      projectSlug: 'station',
       cwd: `${process.cwd()}/.`,
       workspaceIsolation: { mode: 'worktree' as const },
       worktree: {

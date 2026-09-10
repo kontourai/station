@@ -51,7 +51,7 @@ const WORKING_DIRECTORY_KEY = 'workingDirectory';
 const REPO_ID_KEY = 'repoId';
 
 /** The minimum shape both helpers need; deliberately structural, not nominal. */
-export interface LayoutWorkingDirectoryShape {
+interface LayoutWorkingDirectoryShape {
   type?: string;
   config?: Record<string, unknown>;
 }

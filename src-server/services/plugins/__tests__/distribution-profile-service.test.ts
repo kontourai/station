@@ -10,9 +10,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  captureLoggerLines,
+  stopLoggerCaptures,
+} from '../../../__test-utils__/logger-capture.js';
+import {
   DistributionProfileService,
   resolveDistributionProfile,
 } from '../distribution-profile-service.js';
+
+// A capture is process-wide, and every use in this file asserts BEFORE its own
+// `stop()`. Without this, one failing assertion leaks the sink — and any raised
+// debug level — into every test after it.
+afterEach(stopLoggerCaptures);
 
 describe('DistributionProfileService', () => {
   const homes: string[] = [];
@@ -197,7 +206,7 @@ describe('DistributionProfileService', () => {
     });
   });
 
-  test('a manually relocated plugin with divergent directory and descriptor claims is recorded for fail-closed consistency checking', () => {
+  test('refuses a manually relocated plugin before publishing divergent identity claims', () => {
     // A manifest whose `name` diverges from its installed directory passes
     // the loader (panes must name the MANIFEST name), but the issuance
     // snapshot records where the code actually lives. The client consistency
@@ -226,25 +235,11 @@ describe('DistributionProfileService', () => {
         ],
       }),
     );
-    const [entry] = new DistributionProfileService(
-      projectHome,
-    ).listPluginWorkspacePaneContributions();
-    expect(entry).toEqual(
-      expect.objectContaining({
-        pluginName: 'actual-directory',
-        descriptor: expect.objectContaining({
-          provenance: { origin: 'plugin', pluginId: 'claimed-name' },
-        }),
-        contribution: expect.objectContaining({
-          version: '9.9.9',
-          sourceIdentity: expect.objectContaining({
-            id: 'actual-directory',
-            source: 'plugins/actual-directory',
-          }),
-          provenance: { origin: 'plugin', pluginId: 'actual-directory' },
-        }),
-      }),
-    );
+    expect(
+      new DistributionProfileService(
+        projectHome,
+      ).listPluginWorkspacePaneContributions(),
+    ).toEqual([]);
   });
 
   test('organization policy can hide a starter and leave another installable', () => {
@@ -346,7 +341,7 @@ describe('DistributionProfileService', () => {
         ...extra,
       }),
     );
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const debug = captureLoggerLines('debug');
     try {
       const service = new DistributionProfileService(projectHome);
 
@@ -359,14 +354,14 @@ describe('DistributionProfileService', () => {
       // The reason has to reach the operator, or "the plugin vanished" is all
       // they get. Asserted on the logged error, not assumed.
       expect(
-        debug.mock.calls.some((call) =>
-          call.some((arg) =>
-            message.test(String((arg as Error)?.message ?? arg)),
+        debug
+          .at('debug')
+          .some((line) =>
+            message.test(String((line.error as Error)?.message ?? line.msg)),
           ),
-        ),
       ).toBe(true);
     } finally {
-      debug.mockRestore();
+      debug.stop();
     }
   });
 
@@ -577,15 +572,15 @@ describe('DistributionProfileService', () => {
     const layoutLinkDir = writePlugin(projectHome, 'layout-link');
     rmSync(join(layoutLinkDir, 'layout.json'));
     symlinkSync(outsideLayout, join(layoutLinkDir, 'layout.json'));
-    const diagnostic = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const diagnostic = captureLoggerLines('debug');
 
     expect(
       new DistributionProfileService(projectHome)
         .listLayouts()
         .filter((item) => item.source === 'plugin'),
     ).toEqual([]);
-    expect(diagnostic).toHaveBeenCalledTimes(2);
-    diagnostic.mockRestore();
+    expect(diagnostic.at('debug')).toHaveLength(2);
+    diagnostic.stop();
   });
 
   test('skips a malformed plugin with a diagnostic', () => {
@@ -593,7 +588,7 @@ describe('DistributionProfileService', () => {
     const pluginDir = join(projectHome, 'plugins', 'broken-plugin');
     mkdirSync(pluginDir, { recursive: true });
     writeFileSync(join(pluginDir, 'plugin.json'), '{not-json');
-    const diagnostic = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const diagnostic = captureLoggerLines('debug');
 
     const layouts = new DistributionProfileService(projectHome).listLayouts();
     expect(layouts.some((item) => item.source === 'plugin')).toBe(false);
@@ -606,12 +601,14 @@ describe('DistributionProfileService', () => {
         }),
       ]),
     );
-    expect(diagnostic).toHaveBeenCalledWith(
-      'Failed to read installed plugin layout:',
-      'broken-plugin',
-      expect.anything(),
+    expect(diagnostic.at('debug')).toContainEqual(
+      expect.objectContaining({
+        msg: 'Failed to read installed plugin layout',
+        plugin: 'broken-plugin',
+        error: expect.anything(),
+      }),
     );
-    diagnostic.mockRestore();
+    diagnostic.stop();
   });
 
   test('rejects duplicate and unsafe profile sources without touching the network', () => {

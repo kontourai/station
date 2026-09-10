@@ -264,6 +264,58 @@ physical Windows
 workflow remains a separate post-merge hardware-reference diagnostic and does
 not replace the PR gate.
 
+### Unified usability feedback
+
+The fresh-home workflow combines its route walkthrough, core-loop receipts,
+UI sweep result, and semantic image review into one report. The implementation
+is `scripts/usability-feedback.mjs`; the workflow uploads `report.json` and
+`report.md` and updates one rolling comment on the audit batch issue.
+
+Run the existing walkthrough and core-loop commands first, then:
+
+```bash
+UI_AUDIT_REVISION=$(git rev-parse HEAD) node scripts/usability-feedback.mjs
+```
+
+Only `test-results/fresh-home-walkthrough/gallery/*.png` is sent for image
+review. Use isolated test homes, not personal desktop captures. The reviewer
+uses `OPENAI_API_KEY`, optional `OPENAI_BASE_URL`, and `UI_REVIEW_MODEL` (matching
+the repository review model by default). The hosted workflow reuses the
+repository's existing review credential. It sends four images per request,
+records their SHA-256 hashes, and requires an acknowledgement of every image.
+Missing credentials, missing artifacts, invalid output, incomplete responses,
+and unexercised journeys are `NOT_VERIFIED`. Exit 0 means all reported checks
+passed; 1 means a failure or candidate visual finding; 2 means incomplete
+coverage. Local callers must provide `UI_SWEEP_RESULT=success` only after
+actually running the UI sweep.
+
+For a local review using the installed Muse CLI and its configured provider,
+set `UI_REVIEW_BACKEND=muse`. This does not require the CI review API key.
+Muse receives only the named screenshots and review prompt; shell, file writes,
+web tools, personal context, and session logging are disabled for that run.
+The same per-image accounting and completed-response validation still apply.
+For gallery-only input, place `capture.json` and its PNGs under `<input>/gallery`:
+
+```bash
+UI_AUDIT_REVISION=<captured-commit-sha> UI_REVIEW_BACKEND=muse \
+  node scripts/usability-feedback.mjs <input> <report-directory> --gallery-only
+```
+
+The default Responses API backend remains available through `OPENAI_API_KEY`,
+`OPENAI_BASE_URL`, and `UI_REVIEW_MODEL`. Image capability and funded access
+must both be available; missing credentials or partial responses remain
+`NOT_VERIFIED`, while visible defect candidates retain `FAIL`.
+
+Image findings are candidates requiring reproduction, not permission to edit
+code or replace reference images. The exact pixel comparison remains a separate
+check against the reviewed gallery baseline below. A screenshot audit cannot
+establish model/cache continuity, device delivery, or the absence of a transient
+error between frames. Exercise those journeys and retain their separate results.
+For UI repairs, capture the failing state, add a meaningful behavior or browser
+geometry regression, fix it, and repeat the same action sequence. Include narrow
+regions inside wide windows, hover and keyboard focus, external sessions, and
+reconnection; do not merely reload the default home screen.
+
 ### Targeted screenshot capture and the baseline diff loop (station#4464)
 
 `tests/screenshots.spec.ts`'s `SCREENS` list can be captured as a named
@@ -399,10 +451,24 @@ not an implementation detail: the comparator hashes a decoded RGBA buffer with
 no threshold, so a baseline is only meaningful against the renderer that
 produced it, and that renderer has to be reproducible. `--font-sans` resolves
 to `"DM Sans", system-ui, sans-serif` and the bundled woff2 subsets cover
-latin + latin-ext only, so the glyphs the UI draws for `⌘`, `⋯`, `─`, `→`,
-`●` and `✓` come from the **host's** fonts — pinning the image by digest pins
-the rasterizer, fontconfig and that font set together. The job logs the
-Playwright build and the resolved font families for exactly this reason.
+latin + latin-ext only, so the glyphs the UI draws for `⌘`, `⋯`, `→`, `●` and
+`✓` come from the **host's** fonts — pinning the image by digest pins the
+rasterizer, fontconfig and that font set together. The job logs the Playwright
+build and the resolved font families for exactly this reason.
+
+**The render container's font set is part of the baseline.** A hash captured
+under one font set is not a claim about the UI alone; it is a claim about the
+UI as drawn by that container's fonts, and changing the image's fonts
+invalidates every baseline exactly as a product change would.
+`npm run ui-glyph-coverage:ratchet` (in `verify:static`) derives which
+codepoints that applies to, by parsing the `unicode-range` declarations out of
+`src-ui/src/fonts.css` and requiring every uncovered codepoint the UI ships to
+be declared in `scripts/ui-glyph-coverage-allowlist.json` with a reason
+(#1649). Read that allowlist as the list of glyphs the baseline is borrowing
+from the container. It does not prove any of them renders — nothing in this
+repository opens a font — only that the dependency is written down. Note that
+DM Sans is published in latin and latin-ext only, so this cannot be closed by
+re-subsetting; #1704 shrinks it by replacing the icon-shaped glyphs.
 
 Two consequences worth stating plainly:
 

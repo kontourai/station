@@ -37,7 +37,7 @@ export function restoreChatScrollAnchor(
   return true;
 }
 
-export interface ResizeReanchorGate {
+interface ResizeReanchorGate {
   /**
    * Returns true when `height` has moved far enough from the baseline
    * (the height at the last *accepted* reanchor, not merely the last

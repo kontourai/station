@@ -14,6 +14,7 @@ import type {
   SkillVariable,
 } from '@kontourai/station-contracts/catalog';
 import { parseFrontmatter } from 'agent-skills-ts-sdk';
+import { isRecord } from '../../utils/is-record.js';
 
 const SKILL_ORIGINS: readonly SkillOrigin[] = [
   'user',
@@ -23,10 +24,6 @@ const SKILL_ORIGINS: readonly SkillOrigin[] = [
   'package',
   'migrated-playbook',
 ];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 export function readSkillCommand(value: unknown): SkillCommand | undefined {
   if (!isRecord(value)) return undefined;
@@ -169,6 +166,10 @@ export function parseImportedSkillMarkdown(
   };
 }
 
+export type {
+  SkillPackageDirectoryCondition,
+  SkillPackageDirectoryReport,
+} from '../../domain/skill-paths.js';
 export {
   assertSafeProjectSlug,
   assertSafeSkillName,
@@ -178,5 +179,6 @@ export {
   isSafeSkillName,
   PROTOTYPE_AFFECTING_KEYS,
   resolveSkillDirectory,
+  skillPackageDirectoryReport,
   skillsRootDir,
 } from '../../domain/skill-paths.js';

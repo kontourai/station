@@ -20,11 +20,11 @@ import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
-import { useNavigation } from '../../contexts/NavigationContext';
+import { useMessageContextContext } from '../../contexts/MessageContextContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
 import { drainQueuedMessageOnTurnCompleted } from '../../hooks/orchestration/queueDrain';
 import { useActiveChatTranscript } from '../../hooks/orchestration/useActiveChatTranscript';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
-import { useMessageContext } from '../../hooks/useMessageContext';
 import { useShareReceiver } from '../../hooks/useShareReceiver';
 import type { SlashCommand } from '../../hooks/useSlashCommands';
 import { useSTT } from '../../hooks/useSTT';
@@ -318,7 +318,7 @@ export function ChatDockBody({
   const { apiBase } = useApiBase();
   const { updateChat, clearEphemeralMessages, addEphemeralMessage } =
     useActiveChatActions();
-  const { navigate } = useNavigation();
+  const { navigate } = useNavigationActions();
   const { user } = useAuth();
   const { activeConnection } = useConnections();
   // Stable across renders unless the saved Station or accountable display name
@@ -339,7 +339,7 @@ export function ChatDockBody({
   const { settings } = useFeatureSettings();
   const stt = useSTT();
   const tts = useTTS();
-  const { getComposedContext } = useMessageContext();
+  const { getComposedContext } = useMessageContextContext();
   // A reopened conversation retains the admission decision that opened this
   // tab. Provider/model availability today cannot convert a recovery view
   // into a writable continuation of a different child session.
@@ -349,6 +349,7 @@ export function ChatDockBody({
   // but it is the only one of the two that may not claim anything is wrong
   // (#1582 E3/B6).
   const readOnlyOpen = openPhase === 'read-only';
+  const busyOpen = openPhase === 'busy';
   const resolvingOpen = openPhase === 'resolving';
   const transcript = useActiveChatTranscript(apiBase, activeSession);
   /*
@@ -425,8 +426,20 @@ export function ChatDockBody({
   // rendered as themselves below.
   const claimsServerSession =
     activeSession.orchestrationSessionStarted === true;
+  // The inventory can omit an unloaded child. An authorized point-read of
+  // this exact child is stronger evidence than absence from that list.
+  const openResolution = activeSession.conversationOpenState;
+  const currentChildKnown =
+    openResolution?.status === 'resolved' &&
+    openResolution.currentSessionId ===
+      (activeSession.currentSessionId ??
+        activeSession.conversationId ??
+        activeSession.id);
   const sessionRecordMissing =
-    claimsServerSession && activeOrchestrationSessionRead === 'absent';
+    claimsServerSession &&
+    activeOrchestrationSessionRead === 'absent' &&
+    !activeSession.conversationOpenPending &&
+    !currentChildKnown;
   const sessionRecordPending =
     claimsServerSession && activeOrchestrationSessionRead === 'pending';
   const sessionRecordUnreadable =
@@ -941,7 +954,11 @@ export function ChatDockBody({
             // engine) otherwise sits there with no way to send it — the same
             // drain, on demand.
             onRetry: () =>
-              drainQueuedMessageOnTurnCompleted(apiBase, activeSession.id),
+              drainQueuedMessageOnTurnCompleted(
+                apiBase,
+                activeSession.id,
+                true,
+              ),
             canSteer:
               isExecutionActive &&
               !!activeSession.orchestrationProvider &&
@@ -1237,7 +1254,7 @@ export function ChatDockBody({
         input={chatInput.input}
         attachments={chatInput.attachments}
         textareaRef={chatInput.textareaRef}
-        disabled={!agent || readOnlyOpen || resolvingOpen}
+        disabled={!agent || readOnlyOpen || resolvingOpen || busyOpen}
         isSending={isExecutionActive}
         turnInFlight={isTurnInFlight(activeSession)}
         stopPending={!!activeSession.stopPending}
@@ -1268,7 +1285,9 @@ export function ChatDockBody({
           activeSession.providerOptions
         }
         secondaryActions={
-          readOnlyOpen || resolvingOpen ? undefined : secondaryActions
+          readOnlyOpen || resolvingOpen || busyOpen
+            ? undefined
+            : secondaryActions
         }
         agentLabel={
           agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
@@ -1295,7 +1314,7 @@ export function ChatDockBody({
         sendBlockedReason={
           readOnlyOpen
             ? 'This conversation is available read-only. Retry resolution or start a new chat.'
-            : resolvingOpen
+            : resolvingOpen || busyOpen
               ? // The banner above already says this; repeating the SENTENCE
                 // under the composer is what made one ordinary reload read as
                 // three separate problems. `undefined` leaves the composer

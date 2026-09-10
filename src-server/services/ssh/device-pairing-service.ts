@@ -249,7 +249,7 @@ export type PairingApproval =
   | { readonly kind: 'ui-bootstrap' }
   | { readonly kind: 'unauthenticated' };
 
-export type DeviceRevocationActor = 'operator-credential';
+type DeviceRevocationActor = 'operator-credential';
 
 /**
  * Whether an exact Station-internal caller with no pairing credential may
@@ -298,7 +298,7 @@ function unauthenticatedApprovalAllowed(offer: PairingOfferState): boolean {
   return offer.requesterPosition === 'off-box';
 }
 
-export interface DevicePairingServiceOptions {
+interface DevicePairingServiceOptions {
   homeDir: string;
   environmentId: string;
   now?: () => number;

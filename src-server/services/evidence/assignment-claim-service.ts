@@ -54,11 +54,13 @@
  * `outcome: 'failed'`, meaning the durable claim may STILL be active and the
  * caller must not mark it released; it must remain retryable.
  */
+
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   createDefaultFlowAgentsCliRunner,
   type FlowAgentsCliResult,
@@ -100,7 +102,7 @@ export interface AssignmentClaimRecord {
   audit_trail?: unknown[];
 }
 
-export interface AssignmentClaimParams {
+interface AssignmentClaimParams {
   artifactRoot: string;
   subjectId: string;
   actor: AssignmentClaimActor;
@@ -129,7 +131,7 @@ export type AssignmentClaimResult =
     }
   | { outcome: 'unavailable'; reason: string };
 
-export interface AssignmentReleaseParams {
+interface AssignmentReleaseParams {
   artifactRoot: string;
   subjectId: string;
   actor: AssignmentClaimActor;
@@ -149,12 +151,12 @@ export type AssignmentReleaseResult =
   | { outcome: 'failed'; reason: string }
   | { outcome: 'unavailable'; reason: string };
 
-export interface AssignmentStatusParams {
+interface AssignmentStatusParams {
   artifactRoot: string;
   subjectId: string;
 }
 
-export type AssignmentStatusResult =
+type AssignmentStatusResult =
   | {
       outcome: 'claimed';
       actor: AssignmentClaimActor;
@@ -167,7 +169,7 @@ interface AssignmentClaimServiceLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
 }
 
-export interface AssignmentClaimServiceOptions {
+interface AssignmentClaimServiceOptions {
   /** Root of the @kontourai/flow-agents package (the directory containing
    * `build/src/cli/`). When provided but invalid, resolution does NOT fall
    * back to auto-discovery — mirrors `FlowAgentsWorkItemProvider`'s rule. */
@@ -323,7 +325,7 @@ export class AssignmentClaimService {
       // operational-failure class as a non-zero exit — never conflated with
       // genuine package-absence, which is checked and returned above BEFORE
       // this try block runs.
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = errorMessage(error);
       this.logger?.warn('assignment-provider claim threw unexpectedly', {
         subjectId: params.subjectId,
         reason,
@@ -397,7 +399,7 @@ export class AssignmentClaimService {
         reason: `assignment-provider release failed (exit ${result.exitCode ?? 'timeout'}): ${reason}`,
       };
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = errorMessage(error);
       this.logger?.warn('assignment-provider release threw unexpectedly', {
         subjectId: params.subjectId,
         reason,
@@ -453,7 +455,7 @@ export class AssignmentClaimService {
       if (record?.status !== 'claimed') return { outcome: 'free' };
       return { outcome: 'claimed', actor: record.actor, record };
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = errorMessage(error);
       this.logger?.warn('assignment-provider status threw unexpectedly', {
         subjectId: params.subjectId,
         reason,
@@ -504,7 +506,7 @@ export class AssignmentClaimService {
     } catch (error) {
       this.logger?.warn('Failed to clean up assignment-claim temp dir', {
         tmpDir,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }

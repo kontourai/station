@@ -606,7 +606,9 @@ describe('HomeView', () => {
 
     expect(container.querySelector('.home-view__empty')).toBeNull();
     expect(container.querySelector('.empty.empty--prominent')).toBeTruthy();
-    expect(screen.getByText('Ready for your first direct chat')).toBeTruthy();
+    expect(
+      screen.getByText('Your chats and project work will appear here'),
+    ).toBeTruthy();
   });
 
   /**
@@ -621,7 +623,9 @@ describe('HomeView', () => {
     expect(
       screen.queryByRole('button', { name: 'Start your first chat' }),
     ).toBeNull();
-    expect(screen.getByText(/Use Start direct chat above/)).toBeTruthy();
+    expect(
+      screen.getByText(/Your chats and project work will appear here/),
+    ).toBeTruthy();
     // The card it names is the one that stays.
     expect(screen.getByText('Start direct chat')).toBeTruthy();
     expect(screen.getByText('Write a message and begin')).toBeTruthy();

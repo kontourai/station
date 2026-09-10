@@ -1,4 +1,13 @@
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  captureLoggerLines,
+  stopLoggerCaptures,
+} from '../../../__test-utils__/logger-capture.js';
+
+// A capture is process-wide, and every use in this file asserts BEFORE its own
+// `stop()`. Without this, one failing assertion leaks the sink — and any raised
+// debug level — into every test after it.
+afterEach(stopLoggerCaptures);
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   providerOps: { add: vi.fn() },
@@ -151,7 +160,7 @@ describe('ProviderService', () => {
   });
 
   test('does not let a revision listener fail a committed provider mutation', async () => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const captured = captureLoggerLines('debug');
     const adapter = createMockStorageAdapter();
     const svc = new ProviderService(adapter as any, async () => ({}) as any);
     const laterListener = vi.fn();
@@ -166,9 +175,12 @@ describe('ProviderService', () => {
     expect(adapter.saveProviderConnection).toHaveBeenCalled();
     expect(svc.getLaunchabilityRevision()).toBe(1);
     expect(laterListener).toHaveBeenCalledWith(1);
-    expect(debug).toHaveBeenCalledWith(
-      'Launchability revision listener failed.',
-    );
+    expect(
+      captured
+        .at('debug')
+        .some((line) => line.msg === 'Launchability revision listener failed.'),
+    ).toBe(true);
+    captured.stop();
   });
 
   test('deleteProviderConnection removes', () => {
@@ -467,11 +479,21 @@ describe('ProviderService', () => {
     ).rejects.toThrow('is not launchable for this provider');
   });
 
-  test('checkHealth returns provider health', async () => {
+  test('checkHealth reports a provider with no healthCheck as unhealthy', async () => {
     const adapter = createMockStorageAdapter();
     const svc = new ProviderService(adapter as any, async () => ({}) as any);
-    const provider = { healthCheck: vi.fn().mockResolvedValue(true) };
-    expect(await svc.checkHealth(provider as any, 'test')).toBe(true);
+
+    // The discriminating case. `checkHealth` is
+    // `(await provider.healthCheck?.()) ?? false`, and a provider that
+    // implements no probe has observed nothing -- reporting it healthy would
+    // be a health claim nothing derives. This case is what separates `?? false`
+    // from `?? true`; the assertion below only re-read a mock's own return
+    // value, which held whichever default the implementation chose.
+    expect(await svc.checkHealth({} as any, 'test')).toBe(false);
+
+    const probed = { healthCheck: vi.fn().mockResolvedValue(true) };
+    expect(await svc.checkHealth(probed as any, 'test')).toBe(true);
+    expect(probed.healthCheck).toHaveBeenCalledTimes(1);
   });
 
   describe('findDuplicateConnection (#191 R5)', () => {

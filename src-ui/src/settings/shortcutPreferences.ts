@@ -7,6 +7,10 @@
  * signature is unchanged from that era so consumers
  * (`KeyboardShortcutsContext.tsx`) need no changes.
  */
+import type {
+  ShortcutBinding,
+  ShortcutModifier,
+} from '@kontourai/station-contracts/device-settings';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
 /**
@@ -17,12 +21,7 @@ import { deviceSettingsStore } from '../lib/device-settings-store';
  */
 export const DEVICE_SETTINGS_EVENT = 'station-device-settings-changed';
 
-export type ShortcutModifier = 'cmd' | 'ctrl' | 'shift' | 'alt';
-
-export interface ShortcutBinding {
-  key: string;
-  modifiers: ShortcutModifier[];
-}
+export type { ShortcutBinding, ShortcutModifier };
 
 export type ShortcutOverrides = Record<string, ShortcutBinding | null>;
 

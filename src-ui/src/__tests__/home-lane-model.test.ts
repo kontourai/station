@@ -35,6 +35,30 @@ function item(
   };
 }
 
+describe('external conversation classification', () => {
+  it('does not promote imported history into Active now even when its persisted lifecycle says Running', () => {
+    const external = item({
+      id: 'external',
+      lifecycleLabel: 'Running',
+      updatedAt: 1000,
+      controlMode: 'read-only-attached',
+    });
+    const partition = partitionHomeWorkItems({
+      items: [external],
+      now: 2000,
+      snoozedUntil: new Map(),
+      terminalSince: new Map(),
+    });
+    expect(partition.active).toEqual([]);
+    expect(partition.external).toEqual([external]);
+    expect(
+      groupMobileActivity([external], 2000, {}).find(
+        (group) => group.id === 'external',
+      )?.items,
+    ).toEqual([external]);
+  });
+});
+
 describe('computeStableActiveOrder (AC1 ordering invariant)', () => {
   it('never reorders the active lane on status churn — only lane entry moves a row', () => {
     const now = 1_000_000;

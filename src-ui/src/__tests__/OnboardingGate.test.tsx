@@ -1562,7 +1562,7 @@ describe('OnboardingGate', () => {
     );
 
     expect(screen.getByText('App')).toBeTruthy();
-    expect(screen.queryByText('Connect to your Station host')).toBeNull();
+    expect(screen.queryByText('Connect to Station')).toBeNull();
     expect(screen.queryByText("Can't reach server")).toBeNull();
   });
 

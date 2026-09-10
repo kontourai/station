@@ -68,6 +68,7 @@ import {
   agentCapabilityUndelivered,
   sessionCwdResolution,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import type {
   CanonicalRuntimeEvent,
@@ -214,7 +215,7 @@ export function isAcpResumeCursor(value: unknown): value is AcpResumeCursor {
  * added to this parameter list and `AcpExecutionIdentity` DELIBERATELY, by
  * a human deciding it belongs in the resume identity, never by accident.
  */
-export interface AcpExecutionIdentity {
+interface AcpExecutionIdentity {
   command: string;
   args: string[];
   effectiveCwd: string;
@@ -311,7 +312,7 @@ export interface AcpAdapterOptions {
 }
 
 /** Last-known slash command surfaced by a live ACP session (aggregated across sessions in `getCommands()` — see Risks: no per-connection threadId param on the shared shape). */
-export interface AcpSlashCommand {
+interface AcpSlashCommand {
   name: string;
   description: string;
   argumentHint?: string;
@@ -366,7 +367,7 @@ function findAcpModelConfigOption(
  * maps the decision + `options` into the ACP `RequestPermissionOutcome` via
  * `mapAcpDecisionToOutcome` (acp-adapter-events.ts).
  */
-export interface AcpPendingRequest {
+interface AcpPendingRequest {
   resolve: (decision: AcpDecision) => void;
   options: PermissionOption[];
 }
@@ -542,7 +543,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     try {
       return await this.options.resolvePreToolPolicy(input);
     } catch (error) {
-      const reason = `Station pre-tool policy could not be prepared; tool execution was denied: ${error instanceof Error ? error.message : String(error)}`;
+      const reason = `Station pre-tool policy could not be prepared; tool execution was denied: ${errorMessage(error)}`;
       return async () => ({
         behavior: 'deny',
         denial: { allowed: false, reason },
@@ -1003,7 +1004,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         capabilityUndelivered.push({
           capability: 'toolServers',
           reason: 'delivery-failed',
-          detail: error instanceof Error ? error.message : String(error),
+          detail: errorMessage(error),
         });
       }
       for (const entry of capabilityUndelivered) {
@@ -1447,8 +1448,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         // must run before the ownsActiveTurn early return.
         record.quarantinedTurnIds?.delete(turnId);
         if (!this.ownsActiveTurn(input.threadId, record, turnId)) return;
-        const baseMessage =
-          error instanceof Error ? error.message : String(error);
+        const baseMessage = errorMessage(error);
         // archive#4084: a bare JSON-RPC error (e.g. -32603 "Internal error")
         // carries no actionable detail, but the engine may have already
         // sent a separate, evidenced extension notification earlier in this

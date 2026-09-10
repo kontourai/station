@@ -156,7 +156,7 @@
         "updateAuthority": "signed Tauri Nightly updater feed",
         "rollbackSource": "previous rolling prerelease asset retained by release history",
         "requiredForPromotion": true,
-        "availabilityPolicy": "atomic-native-cohort; fleet completion remains NOT_VERIFIED",
+        "availabilityPolicy": "per-platform-native-cohort; fleet completion remains NOT_VERIFIED",
         "evidence": { "kind": "deploy-ledger", "selector": "nightly-desktop" }
       },
       "windows": {
@@ -193,7 +193,7 @@
         "updateAuthority": "Google Play Internal testing track",
         "rollbackSource": "previous immutable Play version code",
         "requiredForPromotion": true,
-        "availabilityPolicy": "atomic-native-cohort; fleet completion remains NOT_VERIFIED",
+        "availabilityPolicy": "per-platform-native-cohort; fleet completion remains NOT_VERIFIED",
         "evidence": { "kind": "deploy-ledger", "selector": "nightly-android" }
       },
       "ios": {
@@ -204,8 +204,8 @@
         "publicationTarget": "TestFlight for io.kontourai.station.nightly",
         "updateAuthority": "TestFlight internal group",
         "rollbackSource": "previous processed TestFlight Nightly build",
-        "requiredForPromotion": true,
-        "availabilityPolicy": "native cohort recovery remains locked until exact-version TestFlight reconciliation succeeds; fleet completion remains NOT_VERIFIED",
+        "requiredForPromotion": false,
+        "availabilityPolicy": "independent TestFlight delivery (#1774): a failed upload reddens Nightly and is disclosed as an ios: note on the nightly-android and nightly-desktop ledger rows whenever the cohort records (an all-platform failure discloses it in the recovery receipt instead), but never blocks Android/macOS finality or writes the recovery lock; fleet completion remains NOT_VERIFIED",
         "evidence": {
           "kind": "not-verified",
           "owner": "#1016",

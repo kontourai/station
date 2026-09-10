@@ -115,18 +115,23 @@ jobs:
           esac
       - id: decide
         name: Decide one cohort rather than independent native ships
+        env:
+          NIGHTLY_REBUILD_INDEX: ${{ inputs.rebuild_index }}
         run: |
+          set -euo pipefail
           head_sha=$(git rev-parse HEAD)
           android_sha=$(git rev-parse --verify --quiet 'refs/tags/nightly^{commit}' || true)
           desktop_sha=$(git rev-parse --verify --quiet 'refs/tags/nightly-desktop^{commit}' || true)
           normalized_android_sha=$(node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$android_sha")
           normalized_desktop_sha=$(node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$desktop_sha")
-          if [ "$normalized_android_sha" = "$android_sha" ] && [ "$normalized_desktop_sha" = "$desktop_sha" ] && [ -z "${{ inputs.rebuild_index }}" ]; then
-            echo 'build=false' >> "$GITHUB_OUTPUT"
-            echo 'No native cohort is needed for this source.' >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo 'build=true' >> "$GITHUB_OUTPUT"
-          fi
+          # A marker at HEAD is not proof the platform shipped verified: macOS
+          # moves nightly-desktop before its claim step, so a failed claim
+          # leaves the marker at HEAD with no ledger row (#1780). The decision
+          # therefore requires a deploy-ledger row per platform at the marker
+          # SHA, read from origin/main (fetched in the source step): ledger
+          # rows land on main AFTER the ship, so the checkout at the source
+          # SHA can never contain the row for its own marker.
+          node scripts/nightly-cohort-decide.mjs --head-sha "$head_sha" --android-marker "$android_sha" --android-candidate "$normalized_android_sha" --desktop-marker "$desktop_sha" --desktop-candidate "$normalized_desktop_sha" --rebuild-index "$NIGHTLY_REBUILD_INDEX" --ledger-ref origin/main
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.decide.outputs.build == 'true'
         with: { node-version-file: .nvmrc }
@@ -227,7 +232,7 @@ jobs:
         # cargo rounds per night. Quoted because a flow-map comma list is
         # parsed as separate keys and the action then installs one target.
         with: { targets: 'aarch64-linux-android' }
-      - uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-desktop
           key: android-aarch64
@@ -273,6 +278,7 @@ jobs:
           node scripts/apply-android-release-signing.mjs
           node scripts/apply-android-channel-icons.mjs nightly
           node scripts/apply-android-native-bootstrap.mjs
+          node scripts/apply-android-network-policy.mjs
           node scripts/write-android-build-manifest.mjs
           keystore="$RUNNER_TEMP/station-nightly.keystore"; printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
           export TAURI_ANDROID_KEYSTORE_PATH="$keystore" NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
@@ -290,6 +296,7 @@ jobs:
           # The retained sibling APK is a separate packaging surface.
           node scripts/read-android-build-provenance.mjs cohort-android/station-nightly-universal.apk --expected src-desktop/station-client-build.json
           aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/aapt"; apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/apksigner"
+          "$aapt" dump xmltree "$apk" AndroidManifest.xml | grep -E 'android:usesCleartextTraffic.*0xffffffff'
           "$aapt" dump badging "$apk" | grep -F "package: name='io.kontourai.station.nightly'"
           node scripts/verify-android-aab-signature.mjs cohort-android/station-nightly-universal.aab "$ANDROID_UPLOAD_CERT_SHA256"
           node scripts/verify-android-apk-signature.mjs "$apk" "$ANDROID_UPLOAD_CERT_SHA256" "$apksigner"
@@ -351,7 +358,7 @@ jobs:
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-apple-darwin }
-      - uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7 # v2.9.2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-desktop
           key: macos-aarch64

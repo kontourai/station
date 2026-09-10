@@ -112,12 +112,12 @@ export interface ResponsiveDialogSurfaceProps {
   anchorRef?: RefObject<HTMLElement | null>;
 }
 
-export interface ResponsiveSurfaceActionsProps {
+interface ResponsiveSurfaceActionsProps {
   children: ReactNode;
   className?: string;
 }
 
-export interface ResponsiveDialogHeaderProps {
+interface ResponsiveDialogHeaderProps {
   /** Rendered in a `<strong>` — the sheet/dialog's own title. */
   title: ReactNode;
   /** Optional second line, rendered muted and small (e.g. "For this chat"). */
@@ -158,7 +158,7 @@ export function ResponsiveDialogHeader({
   );
 }
 
-export interface ResponsiveDialogCloseButtonProps
+interface ResponsiveDialogCloseButtonProps
   extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'children'> {
   label: string;
 }
@@ -260,6 +260,7 @@ export function ResponsiveDialogSurface({
   // detached element's all-zero rect), and observes the anchor itself — the
   // trigger can move without a window resize (sidebar collapse, content
   // reflow), matching the repo's ResizeObserver precedent.
+  const [anchorSide, setAnchorSide] = useState<'above' | 'below'>('above');
   const [anchorVars, setAnchorVars] = useState<CSSProperties | null>(null);
   useLayoutEffect(() => {
     if (isMobile || !anchorRef?.current) {
@@ -273,6 +274,9 @@ export function ResponsiveDialogSurface({
         return;
       }
       const rect = anchor.getBoundingClientRect();
+      setAnchorSide(
+        rect.top < window.innerHeight - rect.bottom ? 'below' : 'above',
+      );
       setAnchorVars({
         '--responsive-anchor-top': `${Math.round(rect.top)}px`,
         '--responsive-anchor-left': `${Math.round(rect.left)}px`,
@@ -438,6 +442,7 @@ export function ResponsiveDialogSurface({
        */
       data-no-dock-drag=""
       data-anchored={anchorVars ? '' : undefined}
+      data-anchor-side={anchorVars ? anchorSide : undefined}
       role="presentation"
       onPointerDown={(event) => {
         if (dismissible && event.target === event.currentTarget) onClose();

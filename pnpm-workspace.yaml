@@ -18,6 +18,7 @@ allowBuilds:
   esbuild@0.25.12: true
   cpu-features@0.0.10: false
   esbuild@0.28.1: true
+  esbuild@0.28.2: true
   fsevents@2.3.3: true
   libxmljs2@0.37.0: false
   node-pty@1.1.0: true
@@ -41,20 +42,21 @@ overrides:
   router>path-to-regexp: ^8.4.2
   anymatch>picomatch: ^2.3.2
   micromatch>picomatch: ^2.3.2
-  gray-matter>js-yaml: ^3.15.1
-  read-yaml-file>js-yaml: ^3.15.1
+  gray-matter>js-yaml: ^3.15.2
+  read-yaml-file>js-yaml: ^3.15.2
   readdirp>picomatch: ^2.3.2
   socket.io-parser: ^4.2.7
   minimatch@^10.0.0>brace-expansion: ^5.0.9
   brace-expansion@^2.0.2: ^2.1.4
-  js-yaml@^4.1.0: ^4.3.1
-  js-yaml@^4.1.1: ^4.3.1
+  js-yaml@^4.1.0: ^4.3.2
+  js-yaml@^4.1.1: ^4.3.2
   nanoid: ^3.3.18
   engine.io-client: ^6.6.6
   "@strands-agents/sdk>@anthropic-ai/sdk": ^0.122.0
   "@strands-agents/sdk>@opentelemetry/exporter-trace-otlp-http": ^0.221.0
   "@strands-agents/sdk>@opentelemetry/exporter-metrics-otlp-http": ^0.221.0
   "@ai-sdk/provider-utils>undici": ^6.28.0
+  "@kontourai/bearing>csv-parse": ^7.0.2
 patchedDependencies:
   "@voltagent/server-hono@2.0.14": patches/voltagent-server-hono-2.0.14.patch
 strictPeerDependencies: true

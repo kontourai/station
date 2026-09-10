@@ -59,7 +59,7 @@ async function waitForAttachedSession(): Promise<void> {
     .toBe('read-only-attached');
 }
 
-test('follows an external Codex rollout and explains unavailable independent continuation', async ({
+test('follows an external Codex rollout and offers independent continuation', async ({
   page,
 }) => {
   const codexHome = process.env.CODEX_HOME;
@@ -140,10 +140,8 @@ test('follows an external Codex rollout and explains unavailable independent con
     await expect(initialAnswer).toBeInViewport();
     await expect(
       detail.getByRole('button', { name: 'Continue in Station' }),
-    ).toBeDisabled();
-    await expect(detail).toContainText(
-      'independent continuation is not available yet',
-    );
+    ).toBeEnabled();
+    await expect(detail).toContainText('Continue from this history.');
 
     const appended = recordsForTurn(
       'second',
@@ -153,21 +151,8 @@ test('follows an external Codex rollout and explains unavailable independent con
     await expect(detail).toContainText('Appended Codex activity is visible.', {
       timeout: 15_000,
     });
-    const rejected = await authenticatedE2EFetch(
-      `${API}/api/orchestration/commands`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'adoptSession',
-          sourceThreadId: threadId,
-        }),
-      },
-    );
-    expect(rejected.ok).toBe(false);
-    expect(JSON.stringify(await rejected.json())).toContain(
-      'independent continuation is not available yet',
-    );
+    // Discovery does not launch or mutate the provider session. Native fork
+    // execution is covered by the provider-backed continuation journey.
     expect(readFileSync(sourcePath, 'utf8')).toBe(initial + appended);
     await page.setViewportSize({ width: 320, height: 720 });
     const mobileContinue = detail.getByRole('button', {
@@ -180,7 +165,7 @@ test('follows an external Codex rollout and explains unavailable independent con
     ).toBeVisible();
     await expect(
       detail.getByRole('button', { name: 'Continue in Station' }),
-    ).toBeDisabled();
+    ).toBeEnabled();
   } finally {
     await authenticatedE2EFetch(`${API}/api/projects/${slug}`, {
       method: 'DELETE',
@@ -406,9 +391,7 @@ test.describe
       await expect(page).toHaveURL(/\/$/);
 
       const detail = page.getByTestId('session-detail');
-      await expect(detail).toContainText(
-        'Following terminal session · Read only',
-      );
+      await expect(detail).toContainText('Started in Claude Code · Read only');
       await expect(detail).toContainText('Inspect the workspace');
       await expect(detail).toContainText('The workspace is ready.');
       await expect(
@@ -484,64 +467,25 @@ test.describe
     });
   });
 
-test('adopts an attached session into a linked Flow child without reopening after mobile Back', async ({
+test('opens an attached session in the normal mobile chat without adopting before Send', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   const fixture = await mockMobileAdoption(page);
-
   await page.goto(
     `/?surface=activity&session=${encodeURIComponent(ATTACHED_MOBILE_THREAD_ID)}`,
   );
   const detail = page.getByTestId('session-detail');
-  await expect(detail).toContainText('Following terminal session · Read only');
-  const continueButton = page.getByRole('button', {
-    name: 'Continue in Station',
-  });
-  await continueButton.scrollIntoViewIfNeeded();
-  await expect(continueButton).toBeInViewport();
-  expect((await continueButton.boundingBox())?.width).toBeLessThanOrEqual(304);
+  await expect(detail).toContainText('Started in Claude Code · Read only');
+  await detail.getByRole('button', { name: 'Continue in Station' }).click();
+  const composer = page.getByPlaceholder('Type a message…', { exact: true });
+  await expect(composer).toBeVisible();
+  await composer.fill('UI audit draft — do not send.');
+  expect(fixture.commands).toEqual([]);
   expect(
     await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
+      () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-
-  await continueButton.click();
-  // Exactly one adopt, for the followed thread. The command now also carries a
-  // per-intent `idempotencyKey` (`packages/sdk/src/query-domains/
-  // chatRuntimeOrchestration.ts:314-342`), whose same-intent/new-intent
-  // semantics are owned a layer down by
-  // `packages/sdk/src/__tests__/adoptOrchestrationSession.test.ts:157-180`.
-  // Asserting it is a string keeps this red if it is ever dropped from the wire
-  // without re-asserting a shape this test does not own.
-  await expect.poll(() => fixture.commands.length).toBe(1);
-  expect(fixture.commands[0]).toMatchObject({
-    type: 'adoptSession',
-    sourceThreadId: ATTACHED_MOBILE_THREAD_ID,
-  });
-  expect(fixture.commands[0]?.idempotencyKey).toEqual(expect.any(String));
-  await expect(detail).toContainText(ADOPTED_MOBILE_THREAD_ID);
-  await expect(page.getByLabel('Continue delegated task')).toBeVisible();
-
-  await expect(detail.getByText('Linked Flow')).toBeVisible();
-  await expect(detail.getByText('execute · gates: execute-gate')).toBeVisible();
-  await expect
-    .poll(fixture.flowRequestCount, { timeout: 5_000 })
-    .toBeGreaterThanOrEqual(2);
-  await expect(detail.getByText('verify · gates: acceptance')).toBeVisible();
-
-  const back = page.getByRole('button', { name: /Back to list/ });
-  await back.click();
-  await expect(detail).toHaveCount(0);
-  const requestsAfterBack = fixture.listRequestCount();
-  await expect
-    .poll(fixture.listRequestCount, { timeout: 7_000 })
-    .toBeGreaterThan(requestsAfterBack);
-  await expect(detail).toHaveCount(0);
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  await composer.fill('');
 });

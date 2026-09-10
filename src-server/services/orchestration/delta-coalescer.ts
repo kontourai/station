@@ -1,4 +1,8 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { errorMessage } from '../../utils/error-message.js';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger({ name: 'delta-coalescer' });
 
 /**
  * Batches streamed content deltas so one model token stops costing one of
@@ -50,7 +54,7 @@ interface CoalescerLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
 }
 
-export interface DeltaCoalescerOptions {
+interface DeltaCoalescerOptions {
   /**
    * How long a delta may wait for a successor. Small enough to stay
    * imperceptible in the transcript, large enough that a fast stream collapses
@@ -159,7 +163,7 @@ export class DeltaCoalescer {
       // Only reached by a caller that supplied no logger; a swallowed
       // delivery failure with nothing written anywhere is the one outcome
       // this must not have.
-      warn: (message, meta) => console.warn(message, meta),
+      warn: (message, meta) => logger.warn(message, meta),
     };
   }
 
@@ -402,7 +406,7 @@ export class DeltaCoalescer {
       this.logger.warn('Content delta could not be published', {
         method: event.method,
         threadId: event.threadId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
         ...(suppressed > 0
           ? { suppressedSincePreviousWarning: suppressed }
           : {}),

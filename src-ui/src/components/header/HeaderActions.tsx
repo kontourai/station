@@ -267,8 +267,8 @@ export function HeaderActions({
   //     not `hasRealSavedConnection`, is the right count here — an injected
   //     host connection (`cli-base`, `managed-loopback`) is not a "real saved
   //     host" but IS a second thing this chip could be pointed at.
-  //   not a sidecar: "App only" qualifies the server's lifetime — news the
-  //     user has no other route to on this surface.
+  //   Sidecar lifetime remains in the tooltip and accessible name; it does
+  //   not need a permanent banner beside a healthy single connection.
   //   an identity to fall back on: the collapsed form promises "Connected ·
   //     <name>" in its tooltip and accessible name, so it is only taken when
   //     there is a name to put there.
@@ -278,7 +278,6 @@ export function HeaderActions({
   const compactConn =
     connState === 'connected' &&
     (connections ?? []).length <= 1 &&
-    !isSidecar &&
     Boolean(connIdentity);
 
   return (

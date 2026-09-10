@@ -1,3 +1,4 @@
+import './DevicePairingPanel.css';
 import {
   DEFAULT_PAIRING_SCOPE_PRESET,
   type DevicePairingOffer,
@@ -20,6 +21,7 @@ import {
   decodeDevicePairingPayload,
   describePairingRequestFailure,
   encodeDevicePairingPayload,
+  isTransportFailure,
   loadPendingExchange,
   type PendingPairingExchange,
   requestCurrentStationAccess,
@@ -28,6 +30,7 @@ import {
   savePendingExchange,
 } from '../core/devicePairing';
 import { normalizeHostInput } from '../core/hostInput';
+import { MOBILE_APP_DOWNLOADS } from '../core/mobileAppDownloads';
 import {
   encodePairingDeepLink,
   type PairingDeepLinkChannel,
@@ -39,7 +42,10 @@ import {
   primaryBtnStyle,
   secondaryBtnStyle,
 } from './connection-manager-modal/styles';
-import { HttpsPreferenceHint } from './HttpsPreferenceHint';
+import {
+  HttpConnectionConsent,
+  useHttpConnectionConsent,
+} from './HttpConnectionConsent';
 import { QRDisplay } from './QRDisplay';
 import { QRScanner } from './QRScanner';
 
@@ -250,7 +256,16 @@ export function JoinDevicePairingPanel({
       ? loadPendingExchange(restorableEndpoint, 'direct')
       : null,
   );
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!pending) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [pending]);
   const [error, setError] = useState<string | null>(null);
+  const [requestingAccess, setRequestingAccess] = useState(false);
+  const requestInFlight = useRef(false);
   // Set while the exchange is retrying something worth waiting out, so the
   // panel says why nothing is happening instead of sitting mute.
   const [waitingOnConnection, setWaitingOnConnection] = useState(false);
@@ -375,6 +390,7 @@ export function JoinDevicePairingPanel({
   }, [directLabel, onPaired, pending]);
 
   const begin = async (offer: ScannedPairingOffer) => {
+    if (!httpConsent.allowed) return;
     setError(null);
     setWaitingOnConnection(false);
     try {
@@ -408,6 +424,7 @@ export function JoinDevicePairingPanel({
   };
 
   const beginManual = async () => {
+    if (!httpConsent.allowed) return;
     setError(null);
     setWaitingOnConnection(false);
     let endpoint: string;
@@ -479,8 +496,18 @@ export function JoinDevicePairingPanel({
   // to request access from, so neither the page origin nor a typed address
   // applies. Otherwise fall back to the existing origin/manual-entry split.
   const knowsEndpoint = Boolean(directEndpoint) || originIsStation;
+  const httpConsent = useHttpConnectionConsent(
+    reviewOffer?.endpoint ??
+      (mode === 'direct'
+        ? (directEndpoint ??
+          (originIsStation ? window.location.origin : manualEndpoint))
+        : manualEndpoint),
+  );
 
   const beginDirect = async () => {
+    if (requestInFlight.current || !httpConsent.allowed) return;
+    requestInFlight.current = true;
+    setRequestingAccess(true);
     setError(null);
     setWaitingOnConnection(false);
     try {
@@ -540,12 +567,17 @@ export function JoinDevicePairingPanel({
     } catch (requestError) {
       const status = (requestError as { status?: number }).status;
       setError(
-        status === 403
-          ? 'This Station does not allow access requests from this app address.'
-          : status === 429
-            ? 'Too many access requests. Wait a moment, then try again.'
-            : 'This Station could not create an access request. Try again.',
+        isTransportFailure(requestError)
+          ? describePairingRequestFailure(requestError)
+          : status === 403
+            ? 'This Station does not allow access requests from this app address.'
+            : status === 429
+              ? 'Too many access requests. Wait a moment, then try again.'
+              : 'Could not send your request. Check the connection and try again.',
       );
+    } finally {
+      requestInFlight.current = false;
+      setRequestingAccess(false);
     }
   };
 
@@ -553,8 +585,8 @@ export function JoinDevicePairingPanel({
     const target = directLabel || 'this Station';
     const approveCommand = `station environment access approve ${pending.requestId}`;
     return (
-      <div role="status" style={{ display: 'grid', gap: 12 }}>
-        <strong>
+      <div className="pairing-wait">
+        <strong className="pairing-wait__status" role="status">
           {waitingOnConnection
             ? `Waiting to reach ${target}…`
             : pairingStateCopy(
@@ -577,8 +609,12 @@ export function JoinDevicePairingPanel({
          * security design, not something the person reading it could act
          * on — deleted from this screen.
          */}
-        <span>
-          Approve “{deviceName}” on {target} to finish.
+        <p className="pairing-wait__instruction">
+          On <strong>{target}</strong>, approve <strong>“{deviceName}”</strong>{' '}
+          to connect this browser.
+        </p>
+        <span className="pairing-wait__timer" aria-live="off">
+          {requestExpiryLabel(pending.expiresAt, now)}
         </span>
         {pending.requestKind === 'direct' && (
           // Closed by default: this is available when no other
@@ -586,7 +622,7 @@ export function JoinDevicePairingPanel({
           // itself gets a Copy button — the wrapped monospace text beneath
           // it used to be the only way to grab it, which is unselectable on
           // a phone (station#1711).
-          <details>
+          <details className="pairing-wait__terminal">
             <summary
               style={{
                 color: 'var(--text-secondary, #999)',
@@ -597,7 +633,10 @@ export function JoinDevicePairingPanel({
                 alignItems: 'center',
               }}
             >
-              Approve from the Station instead
+              <span className="pairing-wait__chevron" aria-hidden="true">
+                ›
+              </span>
+              Approve using a terminal
             </summary>
             <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
               <div
@@ -613,9 +652,8 @@ export function JoinDevicePairingPanel({
                     minWidth: 0,
                     display: 'block',
                     padding: '6px 8px',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
+                    overflowWrap: 'anywhere',
+                    whiteSpace: 'pre-wrap',
                     border: '1px solid var(--border-primary, #333)',
                     borderRadius: 4,
                   }}
@@ -633,7 +671,7 @@ export function JoinDevicePairingPanel({
           </details>
         )}
         {pending.browserSession && (
-          <span style={{ color: 'var(--text-secondary, #999)', fontSize: 13 }}>
+          <span className="pairing-wait__help">
             After approval, this browser stays paired until you revoke it or
             clear its site data.
           </span>
@@ -662,6 +700,7 @@ export function JoinDevicePairingPanel({
     return (
       <div style={{ display: 'grid', gap: 12 }}>
         <strong>Review pairing offer</strong>
+        <HttpConnectionConsent consent={httpConsent} />
         <span style={{ color: 'var(--text-secondary, #999)', fontSize: 13 }}>
           Backend ID: {reviewOffer.environmentId}. Endpoint:{' '}
           {reviewOffer.endpoint}. Expires:{' '}
@@ -669,6 +708,7 @@ export function JoinDevicePairingPanel({
         </span>
         <button
           type="button"
+          disabled={!httpConsent.allowed}
           onClick={() => void begin(reviewOffer)}
           style={primaryBtnStyle}
         >
@@ -746,10 +786,10 @@ export function JoinDevicePairingPanel({
             }}
           >
             {directLabel
-              ? `Send a short-lived request to ${directLabel}. Approve it once from an already trusted session; this device will reconnect automatically afterward.`
+              ? `Ask to connect to ${directLabel}. Approve this device on that computer.`
               : originIsStation
-                ? 'Send a short-lived request to this Station. Approve it once from an already trusted session; this device will reconnect automatically afterward.'
-                : 'Enter your Station address, then send a short-lived access request. Approve it once from an already trusted session; this device reconnects automatically afterward.'}
+                ? 'Ask to connect. Approve this device on the computer running Station.'
+                : 'Enter the address of the computer running Station, then request access.'}
           </p>
           {!knowsEndpoint && (
             <input
@@ -762,9 +802,30 @@ export function JoinDevicePairingPanel({
               style={inputStyle}
             />
           )}
-          {!knowsEndpoint && <HttpsPreferenceHint address={manualEndpoint} />}
-          <button type="button" onClick={beginDirect} style={primaryBtnStyle}>
-            Request access
+          <HttpConnectionConsent consent={httpConsent} />
+          {directEndpoint && (
+            <details className="pairing-target">
+              <summary>Connection details</summary>
+              <span className="pairing-target__address">{directEndpoint}</span>
+            </details>
+          )}
+          {error && (
+            <div className="pairing-error" role="alert">
+              <strong>Connection request failed</strong>
+              <p>{error}</p>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={beginDirect}
+            disabled={requestingAccess || !httpConsent.allowed}
+            style={primaryBtnStyle}
+          >
+            {requestingAccess
+              ? 'Sending request…'
+              : error
+                ? 'Try again'
+                : 'Request access'}
           </button>
           <button type="button" onClick={onCancel} style={secondaryBtnStyle}>
             Back
@@ -818,7 +879,7 @@ export function JoinDevicePairingPanel({
             onChange={(event) => setManualEndpoint(event.target.value)}
             style={inputStyle}
           />
-          <HttpsPreferenceHint address={manualEndpoint} />
+          <HttpConnectionConsent consent={httpConsent} />
           <input
             aria-label="Pairing code"
             autoCapitalize="characters"
@@ -828,7 +889,12 @@ export function JoinDevicePairingPanel({
             onChange={(event) => setManualCode(event.target.value)}
             style={inputStyle}
           />
-          <button type="button" onClick={beginManual} style={primaryBtnStyle}>
+          <button
+            type="button"
+            onClick={beginManual}
+            disabled={!httpConsent.allowed}
+            style={primaryBtnStyle}
+          >
             Request access
           </button>
           <button type="button" onClick={onCancel} style={secondaryBtnStyle}>
@@ -836,7 +902,11 @@ export function JoinDevicePairingPanel({
           </button>
         </div>
       )}
-      {error && <div role="alert">{error}</div>}
+      {error && mode !== 'direct' && (
+        <div className="pairing-error" role="alert">
+          {error}
+        </div>
+      )}
     </div>
   );
 }
@@ -918,12 +988,11 @@ const SCOPE_PRESET_COPY: Record<
 > = {
   standard: {
     label: 'Standard',
-    description: 'Can read, operate, and open a terminal.',
+    description: 'Can use chats, files, and the terminal.',
   },
   'read-only': {
     label: 'Read-only',
-    description:
-      'Can view and stream state. Cannot mutate anything or open a terminal.',
+    description: 'Can view conversations and activity. Cannot make changes.',
   },
 };
 
@@ -955,6 +1024,7 @@ export function HostDevicePairingPanel({
   initialClientChannel?: Exclude<PairingDeepLinkChannel, 'dev'>;
 }) {
   const [offer, setOffer] = useState<DevicePairingOffer | null>(null);
+  const [qrTarget, setQrTarget] = useState<'app' | 'scanner'>('app');
   const [requests, setRequests] = useState<DevicePairingRequest[]>([]);
   const [devices, setDevices] = useState<PairedDevice[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -983,6 +1053,8 @@ export function HostDevicePairingPanel({
       payload ? encodePairingDeepLink({ payload, clientChannel }) : undefined,
     [clientChannel, payload],
   );
+
+  const downloads = MOBILE_APP_DOWNLOADS[clientChannel];
 
   const authenticatedFetch = useCallback(
     async (path: string, init: RequestInit = {}) =>
@@ -1183,7 +1255,7 @@ export function HostDevicePairingPanel({
       setOffer(value);
     } catch {
       setError(
-        'This Station could not create a pairing code. Check the connection, then try again.',
+        'Could not create a pairing code. Check the connection and try again.',
       );
     }
   };
@@ -1294,10 +1366,10 @@ export function HostDevicePairingPanel({
       {!offer ? (
         <>
           <p style={{ margin: 0, color: 'var(--text-secondary, #999)' }}>
-            The easiest path is to open this Station on the other device and
-            choose <strong>Request access</strong>. Create a five-minute code
-            only when that is not available. The other device receives a
-            credential only after you confirm its name here.
+            Create a code and scan it with your phone camera to open Station.
+            Review the connection on your phone, then approve access here. Both
+            devices connect to the same Station server. Your phone must be able
+            to reach its address.
           </p>
           <fieldset
             style={{
@@ -1339,20 +1411,9 @@ export function HostDevicePairingPanel({
           <button type="button" onClick={createOffer} style={primaryBtnStyle}>
             Create pairing code
           </button>
-          <details>
-            <summary
-              style={{
-                color: 'var(--text-secondary, #999)',
-                cursor: 'pointer',
-                minHeight: 44,
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              Use a different Station address
-            </summary>
+          <div>
             <label style={{ display: 'grid', gap: 6 }}>
-              Address the other device can reach
+              Station server address your phone can reach
               <input
                 aria-label="Pairing endpoint"
                 inputMode="url"
@@ -1362,14 +1423,39 @@ export function HostDevicePairingPanel({
                 style={inputStyle}
               />
             </label>
-          </details>
+            <small style={{ color: 'var(--text-secondary, #999)' }}>
+              Use this server’s LAN or tailnet address. Localhost and 127.0.0.1
+              point to the phone itself when opened there.
+            </small>
+          </div>
         </>
       ) : (
         <div style={{ display: 'grid', justifyItems: 'center', gap: 10 }}>
+          <p style={{ margin: 0, overflowWrap: 'anywhere' }}>
+            Connect to Station at <strong>{offer.endpoint}</strong>
+          </p>
+          <label style={{ display: 'grid', gap: 6, width: '100%' }}>
+            Scan with
+            <select
+              aria-label="Pairing QR destination"
+              value={qrTarget}
+              onChange={(event) =>
+                setQrTarget(event.target.value as 'app' | 'scanner')
+              }
+              style={inputStyle}
+            >
+              <option value="app">Phone camera — open Station app</option>
+              <option value="scanner">Scanner inside Station</option>
+            </select>
+          </label>
           <QRDisplay
-            url={payload}
-            size={200}
-            label="Single-use Station offer"
+            url={qrTarget === 'app' ? (pairingLink ?? payload) : payload}
+            size={240}
+            label={
+              qrTarget === 'app'
+                ? 'Open Station on your phone'
+                : 'Scan inside Station'
+            }
           />
           <div>
             Manual code: <strong>{offer.manualCode}</strong>
@@ -1381,7 +1467,7 @@ export function HostDevicePairingPanel({
             Expires {new Date(offer.expiresAt).toLocaleTimeString()}
           </small>
           <label style={{ display: 'grid', gap: 6, width: '100%' }}>
-            Open this installed Station client
+            Station app on your phone
             <select
               aria-label="Pairing client channel"
               value={clientChannel}
@@ -1397,6 +1483,35 @@ export function HostDevicePairingPanel({
               <option value="nightly">Station Nightly</option>
             </select>
           </label>
+          <section
+            aria-label="Get Station on your phone"
+            style={{ display: 'grid', gap: 8 }}
+          >
+            {downloads.ios && (
+              <a href={downloads.ios} target="_blank" rel="noopener noreferrer">
+                {clientChannel === 'stable'
+                  ? 'Download on the App Store'
+                  : 'Join the iPhone beta'}
+              </a>
+            )}
+            {downloads.android && (
+              <a
+                href={downloads.android}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {clientChannel === 'stable'
+                  ? 'Get it on Google Play'
+                  : 'Join the Android beta'}
+              </a>
+            )}
+            {!downloads.ios && !downloads.android && (
+              <small>
+                Public mobile downloads for this channel are not available yet.
+                You can pair an app you already have installed.
+              </small>
+            )}
+          </section>
           <button
             type="button"
             onClick={() =>
@@ -1407,9 +1522,10 @@ export function HostDevicePairingPanel({
             Copy pairing link
           </button>
           <small style={{ color: 'var(--text-secondary, #999)' }}>
-            The QR code remains the raw pairing payload for scanners. If no app
-            handles the copied custom scheme, install the selected channel,
-            select another channel, or paste the raw payload into Join.
+            Install the selected Station app on your phone before scanning with
+            its camera. Already in Station? Choose “Scanner inside Station”
+            above, then “Scan a QR code” on your phone. Without a camera, use
+            “Enter a pairing code” with the manual code and Station address.
           </small>
         </div>
       )}

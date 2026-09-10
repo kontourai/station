@@ -1,4 +1,13 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
+import { createPortal } from 'react-dom';
 
 export interface AutocompleteItem {
   id: string;
@@ -17,6 +26,7 @@ interface AutocompleteSelectorProps {
   onClose: () => void;
   emptyMessage?: string;
   maxHeight?: string;
+  anchorRef?: RefObject<HTMLElement | null>;
   renderIcon?: (item: AutocompleteItem) => ReactNode;
 }
 
@@ -26,6 +36,7 @@ export function AutocompleteSelector({
   onClose,
   emptyMessage = 'No results found',
   maxHeight,
+  anchorRef,
   renderIcon,
 }: AutocompleteSelectorProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -34,14 +45,69 @@ export function AutocompleteSelector({
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
+  const [popupStyle, setPopupStyle] = useState<CSSProperties>();
+  useLayoutEffect(() => {
+    const anchor = anchorRef?.current;
+    if (!anchor) return;
+    const surface = anchor.closest('.chat-input__capsule') ?? anchor;
+    const viewport = window.visualViewport;
+    const place = () => {
+      const rect = surface.getBoundingClientRect();
+      const top = viewport?.offsetTop ?? 0;
+      const left = viewport?.offsetLeft ?? 0;
+      const width = viewport?.width ?? window.innerWidth;
+      const height = viewport?.height ?? window.innerHeight;
+      const above = Math.max(0, rect.top - top - 16);
+      const below = Math.max(0, top + height - rect.bottom - 16);
+      const placeAbove = above >= 160 || above >= below;
+      const popupWidth = Math.min(rect.width, Math.max(0, width - 16));
+      setPopupStyle({
+        position: 'fixed',
+        zIndex: 'calc(var(--layer-dock, 9200) + 1)',
+        top: placeAbove ? rect.top - 8 : rect.bottom + 8,
+        left: Math.max(
+          left + 8,
+          Math.min(rect.left, left + width - popupWidth - 8),
+        ),
+        width: popupWidth,
+        right: 'auto',
+        bottom: 'auto',
+        marginBottom: 0,
+        transform: placeAbove ? 'translateY(-100%)' : undefined,
+        maxHeight: Math.min(300, placeAbove ? above : below),
+      });
+    };
+    place();
+    const observer =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place);
+    observer?.observe(surface);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    viewport?.addEventListener('resize', place);
+    viewport?.addEventListener('scroll', place);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+      viewport?.removeEventListener('resize', place);
+      viewport?.removeEventListener('scroll', place);
+    };
+  }, [anchorRef]);
+  const renderPopup = (content: ReactNode) =>
+    anchorRef
+      ? popupStyle
+        ? createPortal(content, document.body)
+        : null
+      : content;
+
   // Update refs
   selectedIndexRef.current = selectedIndex;
   itemsRef.current = items;
 
   // Reset selection when items change
   useEffect(() => {
-    setSelectedIndex(0);
-  }, []);
+    setSelectedIndex(items.length ? 0 : -1);
+  }, [items]);
 
   // Scroll selected item into view
   useEffect(() => {
@@ -96,9 +162,11 @@ export function AutocompleteSelector({
   }, [onSelect, onClose]);
 
   if (items.length === 0) {
-    return (
+    return renderPopup(
       <div
         ref={containerRef}
+        role="listbox"
+        aria-label="Suggestions"
         style={{
           position: 'absolute',
           bottom: '100%',
@@ -114,15 +182,18 @@ export function AutocompleteSelector({
           color: 'var(--text-muted)',
           fontSize: '14px',
           textAlign: 'center',
+          ...popupStyle,
         }}
       >
         {emptyMessage}
-      </div>
+      </div>,
     );
   }
 
-  return (
+  return renderPopup(
     <div
+      role="listbox"
+      aria-label="Suggestions"
       ref={containerRef}
       style={{
         position: 'absolute',
@@ -137,12 +208,15 @@ export function AutocompleteSelector({
         overflowY: 'auto',
         zIndex: 1000,
         boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.1)',
+        ...popupStyle,
       }}
     >
       {items.map((item, idx) => (
-        // biome-ignore lint/a11y/noStaticElementInteractions: mouse-only convenience; ArrowUp/ArrowDown/Enter navigate and select via the window-level listener above.
         <div
           key={item.id}
+          role="option"
+          tabIndex={-1}
+          aria-selected={idx === selectedIndex}
           ref={(el) => {
             if (el) itemRefs.current.set(idx, el);
             else itemRefs.current.delete(idx);
@@ -240,6 +314,6 @@ export function AutocompleteSelector({
           </div>
         </div>
       ))}
-    </div>
+    </div>,
   );
 }

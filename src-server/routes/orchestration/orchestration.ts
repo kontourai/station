@@ -4,6 +4,7 @@ import {
   parseStationAnswerNarrativeRemoveInput,
 } from '@kontourai/station-contracts/answer-narrative-binding';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
+import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
 import { ATTENTION_REQUEST_ID_MAX_CHARS } from '@kontourai/station-contracts/attention';
 import {
   CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES,
@@ -40,18 +41,17 @@ import {
   parseStationSessionInventoryMcpNegotiatedInput,
   STATION_SESSION_INVENTORY_MCP_V2_VERSION,
 } from '@kontourai/station-contracts/session-inventory-mcp';
+import { SESSION_LIFECYCLE_STATES } from '@kontourai/station-contracts/session-lifecycle';
 import {
   type HostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
-import { SESSION_LIFECYCLE_STATES } from '../../../packages/contracts/src/session-lifecycle.js';
 import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
 import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
-  SSE_KEEPALIVE_INTERVAL_MS,
 } from '../../constants.js';
 import {
   getTenantRequestContext,
@@ -106,7 +106,7 @@ import {
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
-import { streamSSE } from '../sse-response.js';
+import { sseKeepalive, streamSSE } from '../sse-response.js';
 
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a
@@ -384,7 +384,13 @@ export const delegateTaskSchema = z.object({
   parentTaskId: z.string().min(1).max(512).optional(),
 });
 
+const inputRequestReferenceSchema = z.object({
+  threadId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+  requestId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+  requestEventId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+});
 export const foregroundMessageObjectSchema = z.object({
+  expectedInputRequest: inputRequestReferenceSchema.optional(),
   target: executionTargetSchema,
   // An image-only turn is meaningful: the attachment is the prompt. Keep the
   // text bound, but let the object-level check below require either text or an
@@ -520,7 +526,7 @@ export const conversationHandoffSchema = foregroundMessageObjectSchema.extend({
   idempotencyKey: z.string().min(1).max(200),
 });
 
-export const conversationContextBoundarySchema = z.object({
+const conversationContextBoundarySchema = z.object({
   policy: z.enum(['continue-from-history', 'empty-next-cold-start']),
   idempotencyKey: z.string().min(1).max(200),
   expectedCurrentSessionId: z.string().min(1).max(512),
@@ -586,6 +592,7 @@ interface DelegateTaskRequest {
 }
 
 interface ForegroundMessageRequest {
+  expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
   message: string;
   conversationId?: string;
@@ -769,7 +776,7 @@ export function resolveStreamResumePlan(
  * `env`/`req.raw`/`req.header` and more, which is fine — a wider object
  * satisfies a narrower structural type).
  */
-export interface PrincipalResolutionContext {
+interface PrincipalResolutionContext {
   env: unknown;
   req: {
     raw: Request;
@@ -988,6 +995,68 @@ export function createOrchestrationRoutes(
       getTenantRequestContext(c.req.raw),
       deps.hostedTenantRegistry,
     );
+  /**
+   * One in-flight peer-delegation reconciliation per caller.
+   *
+   * `refreshDelegatedTaskActivity` builds its own read model, takes the last
+   * 20 live peer delegations and `Promise.allSettled`s a remote HTTP read per
+   * delegation, each with a 1.5s timeout
+   * (`station-control-delegation.ts`'s `refreshPeerDelegationActivity`).
+   * `GET /sessions/read-model` is polled, so awaiting that in the response
+   * path put up to 1.5s of peer network latency plus a second full read-model
+   * build in front of data the local store already had, and a slow peer
+   * stalled every subsequent poll behind its own predecessor.
+   *
+   * Keyed by userId, never shared: a poll from one caller must not suppress
+   * another caller's reconciliation, whose peer set and authority are
+   * different. The entry is cleared once the refresh settles, so a completed
+   * (or failed) refresh does not stop the next poll from starting a fresh one.
+   */
+  const delegationActivityRefreshes = new Map<string, Promise<void>>();
+  const startDelegatedTaskActivityRefresh = (userId: string): void => {
+    const refresh = deps.refreshDelegatedTaskActivity;
+    if (!refresh) return;
+    if (delegationActivityRefreshes.has(userId)) return;
+    const settled = (async () => {
+      try {
+        await refresh({ userId });
+      } catch (error) {
+        // Never rethrown, and not because a rejection would crash anything:
+        // `crash-handlers.ts`'s `unhandledRejection` listener logs and
+        // deliberately does NOT exit. Swallowing it here keeps a peer's
+        // failure out of two places it does not belong — the response, which
+        // the poll already answered from the local store, and that
+        // process-level listener, which logs at `error` and would file an
+        // ordinary 1.5s peer timeout as a server error.
+        (deps.logger.warn ?? deps.logger.debug)(
+          'Peer delegation activity refresh failed',
+          { error: error instanceof Error ? error.message : String(error) },
+        );
+      }
+    })();
+    // Install BEFORE arranging the cleanup. `refresh` can throw
+    // SYNCHRONOUSLY — the production binding at `runtime-routes.ts` resolves
+    // `readAuthorityForExecution(input.userId)` before its async body — and a
+    // synchronous throw runs the whole try/catch to completion before the
+    // async IIFE even returns. Clearing the entry from inside that body
+    // therefore deleted a key that had not been written yet, and the `set`
+    // below then installed an already-settled promise nothing would ever
+    // remove: peer reconciliation silently off for that user for the life of
+    // the process.
+    delegationActivityRefreshes.set(userId, settled);
+    const clearEntry = () => {
+      // Identity-checked so an older refresh settling can never evict the
+      // newer entry that replaced it.
+      if (delegationActivityRefreshes.get(userId) === settled) {
+        delegationActivityRefreshes.delete(userId);
+      }
+    };
+    // `then(clear, clear)` rather than `finally`: the returned promise
+    // fulfills on both paths, so even a logger double that throws inside the
+    // catch above cannot produce a second unhandled rejection here.
+    void settled.then(clearEntry, clearEntry);
+  };
+
   const toolResultUnavailable = (c: Context, status: 404 | 503 = 404) => {
     c.header('Cache-Control', 'private, no-store');
     return c.json({ success: false, error: 'Tool result unavailable' }, status);
@@ -996,6 +1065,30 @@ export function createOrchestrationRoutes(
     value.length > 0 &&
     Buffer.byteLength(value) <=
       Math.min(MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES, 1_024);
+
+  app.get('/sessions/:threadId/input-requests/:requestId', (c) => {
+    const parsed = inputRequestReferenceSchema.safeParse({
+      threadId: param(c, 'threadId'),
+      requestId: param(c, 'requestId'),
+      requestEventId: c.req.query('eventId'),
+    });
+    if (!parsed.success || deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json(
+        { success: false, error: 'Input request unavailable' },
+        404,
+      );
+    const data = orchestrationService.inspectInputReplyContext(
+      parsed.data,
+      readAuthorityFor(c),
+    );
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json(
+        { success: false, error: 'Input request unavailable' },
+        404,
+      );
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ success: true, data });
+  });
 
   app.get('/sessions/:threadId/requests/:requestId', (c) => {
     c.header('Cache-Control', 'private, no-store');
@@ -1063,11 +1156,12 @@ export function createOrchestrationRoutes(
 
   app.get('/sessions/read-model', async (c) => {
     const authority = readAuthorityFor(c);
-    if (deps.refreshDelegatedTaskActivity) {
-      await deps.refreshDelegatedTaskActivity({
-        userId: resolveActorPrincipal(deps, c).userId,
-      });
-    }
+    // Started under the caller's own principal, exactly as before, but no
+    // longer awaited: what the refresh learns is written to the local store
+    // and published by the NEXT read rather than this one. archive#847 asked
+    // that peer evidence reach Activity, not that a poll block on a peer's
+    // network round trip to do it.
+    startDelegatedTaskActivityRefresh(resolveActorPrincipal(deps, c).userId);
     const data = await orchestrationService.listSessionReadModel(authority);
     return c.json({ success: true, data });
   });
@@ -1094,6 +1188,31 @@ export function createOrchestrationRoutes(
         automaticBackground?: true;
       };
       const { principal, userId } = resolveActorPrincipal(deps, c);
+      if (body.expectedInputRequest) {
+        const context = orchestrationService.inspectInputReplyContext(
+          body.expectedInputRequest,
+          readAuthorityFor(c),
+        );
+        if (
+          deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+          context.state !== 'open' ||
+          context.conversationId !== body.conversationId ||
+          context.agentId !== body.target.agent ||
+          body.target.environment?.kind !== 'current' ||
+          body.target.workspace ||
+          body.target.model
+        ) {
+          return c.json(
+            {
+              success: false,
+              error:
+                'The input request or its conversation binding changed. Inspect the current request.',
+              code: 'input_request_changed',
+            },
+            409,
+          );
+        }
+      }
       const stagedAttachments = body.attachmentRefs as
         | StagedAttachmentReference[]
         | undefined;
@@ -2981,7 +3100,7 @@ export function createOrchestrationRoutes(
         : () => {};
       orchestrationStreamPresenceOps.add(1, { op: 'connect' });
 
-      // archive#1225 review (HIGH): `unsub`/`keepAlive` are declared here
+      // archive#1225 review (HIGH): `unsub`/`stopKeepAlive` are declared here
       // (not `const` at their original call sites) and the whole setup below
       // through the abort-wait runs inside the `try` below, so `finally` can
       // always release this connection's presence/subscription/timer no
@@ -2996,7 +3115,7 @@ export function createOrchestrationRoutes(
       // `true` and silently disable push-on-completion for that user for
       // the rest of the process lifetime.
       let unsub: (() => void) | undefined;
-      let keepAlive: ReturnType<typeof setInterval> | undefined;
+      let stopKeepAlive: (() => void) | undefined;
       try {
         // Ordering fence (R4): subscribe and buffer live events FIRST, before
         // any `await` below can yield to an event that was appended and
@@ -3191,9 +3310,7 @@ export function createOrchestrationRoutes(
           await stream.writeSSE(frame);
         }
 
-        keepAlive = setInterval(() => {
-          stream.writeSSE({ event: 'ping', data: '' }).catch(() => {});
-        }, SSE_KEEPALIVE_INTERVAL_MS);
+        stopKeepAlive = sseKeepalive(stream);
 
         try {
           await new Promise((_, reject) => {
@@ -3210,10 +3327,10 @@ export function createOrchestrationRoutes(
         // releases this connection's timer/subscription/presence exactly
         // once, instead of leaking them only on the happy path. `unsub`
         // being `undefined` (a throw before `deps.eventBus.subscribe` ran)
-        // or `keepAlive` being `undefined` (a throw before it was created)
-        // are both handled explicitly rather than relying on
+        // or `stopKeepAlive` being `undefined` (a throw before the keepalive
+        // was started) are both handled explicitly rather than relying on
         // `clearInterval(undefined)`/calling an unset function.
-        if (keepAlive !== undefined) clearInterval(keepAlive);
+        stopKeepAlive?.();
         unsub?.();
         releasePresence();
         orchestrationStreamPresenceOps.add(1, { op: 'disconnect' });

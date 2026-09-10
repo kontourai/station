@@ -48,11 +48,18 @@ export interface FontSettleTarget {
  * it actually reads the ready promise.
  */
 export function readDocumentFontsReady(): Promise<unknown> {
-  return (
+  const fontDocument = (
     globalThis as unknown as {
-      document: { fonts: { ready: Promise<unknown> } };
+      document: {
+        documentElement: { getBoundingClientRect(): unknown };
+        fonts: { ready: Promise<unknown> };
+      };
     }
-  ).document.fonts.ready;
+  ).document;
+  // Flush styles/layout first: a just-mounted control may not have requested
+  // its font yet when an already-resolved fonts.ready promise is read.
+  fontDocument.documentElement.getBoundingClientRect();
+  return fontDocument.fonts.ready;
 }
 
 /**

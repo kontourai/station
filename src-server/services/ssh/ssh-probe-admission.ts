@@ -32,7 +32,7 @@ export const SSH_PROBE_GLOBAL_LIMIT = 3;
 /** Slots held by any one credential. One human tests one connection. */
 export const SSH_PROBE_PER_PRINCIPAL_LIMIT = 1;
 
-export interface SshProbeAdmissionRefusal {
+interface SshProbeAdmissionRefusal {
   /**
    * Seconds until a slot can free. Derived from the probe's own ceiling
    * rather than chosen: telling a caller to retry sooner than a probe can
@@ -43,7 +43,7 @@ export interface SshProbeAdmissionRefusal {
   scope: 'principal' | 'global';
 }
 
-export interface SshProbeAdmissionTicket {
+interface SshProbeAdmissionTicket {
   /** Idempotent: releasing twice frees one slot, not two. */
   release(): void;
 }

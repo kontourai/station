@@ -317,6 +317,20 @@ export const CODEQL_ANALYZE_ACTION =
   'github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938';
 export const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
+/**
+ * The pinned pnpm bootstrap for `pull_request_target` router jobs.
+ *
+ * This lived as a bare literal inside `isPinnedPnpmSetup`, where it acted as an
+ * allowlist key: a step whose `uses` did not match it exactly was reported as
+ * an unreviewed custom action. That is the correct security property — an
+ * unreviewed action in a `pull_request_target` job runs beside a write-scoped
+ * token — but it also means a Dependabot bump of `pnpm/setup` can never be
+ * green, because the bump changes the workflows and nothing updates the pin
+ * (#1042, #1725). Reviewing the new SHA is the point; hunting for where it is
+ * written down is not. Landing a bump is now one deliberate edit here.
+ */
+export const PNPM_SETUP_ACTION =
+  'pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c';
 const DEPENDENCY_REVIEW_CANDIDATE_GUARD = `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`;
 const DEPENDENCY_REVIEW_PR_GUARD = `\${{ github.event_name == 'pull_request_target' }}`;
 const DEPENDENCY_REVIEW_MERGE_GROUP_GUARD = `\${{ github.event_name == 'merge_group' }}`;
@@ -1246,7 +1260,7 @@ function securityAnalysisTopologyFindings(file, jobs) {
 // before the reviewed lifecycle entrypoint gets to apply its policy.
 function isPinnedPnpmSetup(step) {
   return (
-    step?.uses === 'pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c' &&
+    step?.uses === PNPM_SETUP_ACTION &&
     step?.name === 'Setup pinned pnpm' &&
     Object.keys(step).every(
       (key) => key === 'name' || key === 'uses' || key === 'with',

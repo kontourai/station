@@ -9,8 +9,10 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { WorkflowSidecarAttachMode } from '../evidence/orchestration-workflow-sidecar.js';
 import type { RuntimeEngineStartIntent } from '../infra/resource-posture.js';
+import type { ExecutionWorkspaceBinding } from './execution-workspace-binding.js';
 import type { ForegroundInvocationAdmission } from './foreground-invocation-admission.js';
 import {
   type SessionStartBoundaryClaim,
@@ -69,6 +71,7 @@ export type SessionCommandInternalOptions = {
   roomExecutionBinding?: { projectId: string; taskId: string };
   /** Captured server-owned action admission; never accepted from public JSON. */
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
+  executionWorkspace?: ExecutionWorkspaceBinding;
   /** Server-minted correlation for an exact higher-level start claim. */
   commandId?: string;
   skipModelOptionSupportCheck?: boolean;
@@ -103,7 +106,7 @@ type ExistingSession = {
  * Private composition root. Each capability owns a coherent concern; no
  * public caller can use these operations to bypass the closed command intent.
  */
-export interface SessionCommandDependencies {
+interface SessionCommandDependencies {
   receiptLedger: {
     initialize(): void;
     recordDispatch(input: OrchestrationStartSessionInput): void;
@@ -311,9 +314,9 @@ export function createSessionCommandModule(
         receipt,
         receiptStatus: 'unavailable',
         session,
-        message: `Session started, but the accepted command receipt is unavailable: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        message: `Session started, but the accepted command receipt is unavailable: ${errorMessage(
+          error,
+        )}`,
       };
     };
     const fail = (error: unknown, rejected = false): SessionCommandOutcome => {
@@ -334,7 +337,7 @@ export function createSessionCommandModule(
         status: terminalReceipt.status,
         receipt: readback ?? terminalReceipt,
         receiptStatus: readback ? 'persisted' : 'unavailable',
-        message: error instanceof Error ? error.message : String(error),
+        message: errorMessage(error),
         ...(typeof error === 'object' &&
         error !== null &&
         typeof (error as { code?: unknown }).code === 'string'

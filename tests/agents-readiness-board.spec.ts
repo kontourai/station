@@ -127,7 +127,7 @@ test.describe('Agents readiness board', () => {
     await waitForAgentRemoved(authenticatedRequest, BROKEN_SLUG);
   });
 
-  test('the rail bands engines and authored agents, and the non-ready row carries the server sentence with one repair', async ({
+  test('the rail uses a compact status and preserves the server reason in details', async ({
     page,
     authenticatedRequest,
   }) => {
@@ -142,16 +142,13 @@ test.describe('Agents readiness board', () => {
     await expect(bands.filter({ hasText: AUTHORED_BAND_LABEL })).toHaveCount(1);
     await expect(agentRow(page, BROKEN_NAME)).toBeVisible();
 
-    // The seeded row's state is the SERVER's sentence, not a category this
-    // client invented: read the reason back off the API and require the badge
-    // to print exactly it.
+    // The compact badge names the state; opening the agent preserves the
+    // server's exact reason rather than inventing a different diagnosis.
     const record = await readCatalogRecord(authenticatedRequest, BROKEN_SLUG);
     expect(record.available).toBe(false);
     const reason = record.unavailableReason ?? '';
     expect(reason.length).toBeGreaterThan(0);
-    await expect(agentRowStatus(page, BROKEN_NAME)).toHaveText(
-      `Needs: ${reason}`,
-    );
+    await expect(agentRowStatus(page, BROKEN_NAME)).toHaveText('Not set up');
 
     // `connection-broken` is what the server reports for an engine binding it
     // cannot resolve, and `agentFixRoute` maps that to the engines page — so
@@ -165,6 +162,10 @@ test.describe('Agents readiness board', () => {
     await expect(
       agentRowAction(page, BROKEN_NAME).filter({ hasText: 'Chat' }),
     ).toHaveCount(0);
+    await agentRow(page, BROKEN_NAME).click();
+    await expect(
+      page.getByText(`Not set up: ${reason}`, { exact: true }),
+    ).toBeVisible();
   });
 
   test("a Ready row's Chat action opens a chat with that agent", async ({
@@ -212,6 +213,52 @@ test.describe('Agents readiness board at 390x844', () => {
     await waitForAgentRemoved(authenticatedRequest, BROKEN_SLUG);
   });
 
+  test('the last agent action remains reachable above an open empty chat dock', async ({
+    page,
+  }) => {
+    await page.goto('/agents?dock=open');
+    await waitForAgentsRail(page);
+    const dock = page.locator('#chat-dock');
+    await expect(dock).toBeVisible();
+    const expanded = await dock.boundingBox();
+    expect(expanded!.height).toBeGreaterThan(200);
+    const action = agentRowAction(page, BROKEN_NAME).first();
+    // Exercise the reader's scroll path, rather than CDP's nearest-edge
+    // alignment, which can leave a fractional border at the clipping edge.
+    const list = await page.locator('.split-pane__list').first().boundingBox();
+    await page.mouse.move(
+      list!.x + list!.width / 2,
+      list!.y + list!.height / 2,
+    );
+    await page.mouse.wheel(0, 2000);
+    await expect
+      .poll(async () => {
+        const row = await action.boundingBox();
+        const dock = await page.locator('#chat-dock').boundingBox();
+        return row!.y + row!.height <= dock!.y;
+      })
+      .toBe(true);
+    const box = await action.boundingBox();
+    const dockBox = await dock.boundingBox();
+    expect(box!.y + box!.height).toBeLessThanOrEqual(dockBox!.y);
+    expect(
+      await action.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          box.x + box.width / 2,
+          box.y + box.height / 2,
+        );
+        return hit === element || element.contains(hit);
+      }),
+    ).toBe(true);
+    await page
+      .getByRole('button', { name: 'Collapse chat', exact: true })
+      .click();
+    await expect
+      .poll(async () => (await dock.boundingBox())!.height)
+      .toBeLessThan(expanded!.height / 2);
+  });
+
   test('both bands, the one fixing verb, and a 44px action survive the phone', async ({
     page,
     authenticatedRequest,
@@ -224,18 +271,29 @@ test.describe('Agents readiness board at 390x844', () => {
     await expect(bands.filter({ hasText: AUTHORED_BAND_LABEL })).toHaveCount(1);
 
     const record = await readCatalogRecord(authenticatedRequest, BROKEN_SLUG);
-    await expect(agentRowStatus(page, BROKEN_NAME)).toHaveText(
-      `Needs: ${record.unavailableReason ?? ''}`,
-    );
+    await expect(agentRowStatus(page, BROKEN_NAME)).toHaveText('Not set up');
     expect(await expectOneFixingVerb(page, BROKEN_NAME)).toBe('Set up');
 
     const box = await agentRowAction(page, BROKEN_NAME).first().boundingBox();
     expect(box, 'the repair action has no layout box at 390').toBeTruthy();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390 - 16);
+    const heading = await page.locator('.page-frame__header').boundingBox();
+    expect(heading!.height).toBeLessThanOrEqual(160);
+    const search = await page
+      .getByPlaceholder('Search agents...')
+      .boundingBox();
+    expect(search!.x).toBe(16);
 
     const noHorizontalScroll = await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
     );
     expect(noHorizontalScroll).toBe(true);
+    await agentRow(page, BROKEN_NAME).click();
+    await expect(
+      page.getByText(`Not set up: ${record.unavailableReason}`, {
+        exact: true,
+      }),
+    ).toBeVisible();
   });
 });

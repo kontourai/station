@@ -3,6 +3,7 @@ import {
   type ProcessIdentityDependencies,
   probeExactProcessIdentity,
 } from '@kontourai/station-shared/process-identity';
+import { sleep } from '../../utils/sleep.js';
 import {
   emitRestartDiagnostic,
   type RestartStateWriteResult,
@@ -10,7 +11,7 @@ import {
   type SelfUpdateRestartRecord,
 } from './self-update-restart-state.js';
 
-export interface SelfUpdateWatchdogParams {
+interface SelfUpdateWatchdogParams {
   pid: number;
   port: number;
   /** Short (7-char) sha the new server must report via /api/system/status's `build.shortSha`. */
@@ -34,7 +35,7 @@ type HealthFetch = (
   signal: AbortSignal,
 ) => Promise<HealthResponse>;
 
-export interface SelfUpdateWatchdogDeps {
+interface SelfUpdateWatchdogDeps {
   fetchImpl?: HealthFetch;
   killProcess?: (pid: number, signal: NodeJS.Signals) => void;
   /** Test seam for the shared, platform-specific process-identity probe. */
@@ -80,10 +81,6 @@ function assertWatchdogPid(pid: number): void {
 }
 
 const defaultFetchImpl: HealthFetch = (url, signal) => fetch(url, { signal });
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function healthCheckUrl(host: string, port: number): string {
   return `http://${host}:${port}/api/system/status`;

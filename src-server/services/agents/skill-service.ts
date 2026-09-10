@@ -1,3 +1,5 @@
+import { errorMessage } from '../../utils/error-message.js';
+import type { PluginActivationComposition } from '../plugins/plugin-activation-composition.js';
 /**
  * Agent Skills Service — discovers, indexes, and serves skills
  * following the Agent Skills open specification (agentskills.io).
@@ -14,10 +16,11 @@ import {
   mkdir,
   readdir,
   readFile,
+  realpath,
   rename,
   writeFile,
 } from 'node:fs/promises';
-import { basename, dirname, extname, join, sep } from 'node:path';
+import { dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import type {
   GuidanceAsset,
   SkillCommand,
@@ -26,6 +29,7 @@ import type {
   SkillProvenance,
   SkillStats,
   SkillVariable,
+  SkillWriteRefusal,
 } from '@kontourai/station-contracts/catalog';
 import { skillToGuidanceAsset } from '@kontourai/station-contracts/guidance-assets';
 import {
@@ -43,9 +47,11 @@ import {
   toDisclosureInstructions,
   toDisclosurePrompt,
   toReadToolSchema,
+  validateSkillContent,
 } from 'agent-skills-ts-sdk';
 import type { ConfigLoader, SkillConfig } from '../../domain/config-loader.js';
 import { skillRecordClaimsName } from '../../domain/config-loader-storage.js';
+import type { SkillPackageDirectoryCondition } from '../../domain/skill-paths.js';
 import {
   canonicalSkillsDiscovered,
   skillActivationDuration,
@@ -73,6 +79,7 @@ import {
   readSkillVariables,
   resolveSkillDirectory,
   serializeSkillMarkdown,
+  skillPackageDirectoryReport,
   skillsRootDir,
 } from './skill-metadata.js';
 import {
@@ -187,6 +194,7 @@ function preservedFrontmatterLines(source: string): string[] {
  * has no `skill.json` to mirror into — still gets its declarations honoured.
  */
 interface RegisteredSkill extends ResolvedSkill {
+  sourceCurrent?: () => boolean;
   declaredCommand?: SkillCommand;
   declaredVariables?: SkillVariable[];
   /**
@@ -227,6 +235,17 @@ export interface SkillListing {
    * can be moved aside; a directory cannot.
    */
   servedInPlace?: true;
+  /**
+   * May Station write this package — `isSkillWritable`'s answer, projected.
+   *
+   * Required, because a reader with no decision cannot offer to save: an
+   * absent field is the shape a client would have to guess at, and every guess
+   * available to it (`source`, `origin`, `servedInPlace`) answers a DIFFERENT
+   * question (#1655).
+   */
+  writable: boolean;
+  /** Why `writable` is false; absent when it is true. */
+  writeRefusal?: SkillWriteRefusal;
 }
 
 /**
@@ -268,7 +287,159 @@ export interface SkillDetail extends Omit<SkillConfig, 'source'> {
    * one field cannot say both without the name becoming a lie for one of them.
    */
   installRecordDiagnostic?: string;
+  /** `isSkillWritable`'s answer, projected — see `SkillListing.writable`. */
+  writable: boolean;
+  /** Why `writable` is false; absent when it is true. */
+  writeRefusal?: SkillWriteRefusal;
 }
+
+/**
+ * A detail read before writability is projected onto it.
+ *
+ * `getSkill` answers from four different places (a served-in-place source, a
+ * canonical package, the install record alone, and parsed frontmatter) and the
+ * projection must reach all four. Naming the undecorated shape lets ONE exit
+ * decorate, so a fifth answer cannot be added that forgets to.
+ */
+type SkillDetailBody = Omit<SkillDetail, 'writable' | 'writeRefusal'>;
+
+/**
+ * The writability rule's answer in BOTH shapes its callers need, from one call.
+ *
+ * `refusal` is the published projection: a reason code plus prose Station owns,
+ * with the author-controlled path in its own field. `messageFragment` is the
+ * lowercase clause the write path slots into its own sentence, kept verbatim so
+ * that path's messages do not change.
+ *
+ * They travel together rather than being derived from each other, because the
+ * alternative is a caller parsing the other's prose to recover a fact the rule
+ * already knew. Nothing projects `messageFragment` into a read model: the read
+ * models take `.refusal`, explicitly.
+ */
+interface PackageOwnershipRefusal {
+  refusal: SkillWriteRefusal;
+  messageFragment: string;
+}
+
+/**
+ * Which condition a refusal SPEAKS ABOUT when several hold at once.
+ *
+ * The floor reports every condition; this decides which one the reader is told
+ * about, and the ordering is a claim about REMEDIES rather than about severity.
+ * Read it as "which of these must be fixed first, and is fixing it something
+ * this reader can actually do":
+ *
+ * 1. `unsafe-name` — renaming the skill is always possible and always
+ *    necessary, and nothing else can succeed until it happens: the resolver
+ *    refuses on the name before it looks at anything else, so advising an
+ *    install here advises something guaranteed to fail (review M1). The
+ *    assertion has always had this order; an earlier draft of THIS mapping
+ *    inverted it.
+ * 2. `unreadable` — the path cannot be followed, so no claim about which root
+ *    holds the package is safe to make.
+ * 3. `outside-writable-root` — where it sits is the problem, which outranks
+ *    what it is called: "rename the directory" changes nothing for a package in
+ *    a root Station will never write.
+ * 4. `name-mismatch` — reached only once the package is somewhere Station
+ *    writes and its path is readable, which is exactly what its remedy assumes.
+ *
+ * NOT a fallthrough. An earlier draft ended in an unconditional `return` for
+ * the name mismatch, so a fifth condition added to the union would have been
+ * published as one — silently, with a remedy telling the reader to rename a
+ * directory, and no test able to see it. That is the defect this projection
+ * exists to prevent, in the mechanism that prevents it. The `satisfies` below
+ * makes the next addition a compile error instead.
+ *
+ * The residual it does NOT close: nothing forces a new condition to take a NEW
+ * reason code. Reusing `served-in-place` or `canonical-package` compiles and
+ * keeps the uniqueness test green, because that test ranges only over
+ * `SKILL_REFUSAL_STATEMENT` while those two codes are emitted inline in
+ * `packageOwnershipRefusal` further DOWN this file — so the collision happens
+ * somewhere the test cannot see. (Reuse WITHIN the record is caught: the codes
+ * there would no longer be distinct.)
+ *
+ * What makes that worse than an unknown code: `SkillsView` already defends
+ * against a code it does not recognise — `Object.hasOwn` misses, the remedy is
+ * dropped, and the reader gets the description alone. Reuse defeats exactly
+ * that guard, because the code IS recognised: `hasOwn` hits, and a remedy
+ * written for a different condition renders with the same confidence as a
+ * right one. The safety net is not merely absent here, it is the thing being
+ * stepped around. Review rounds 8-9.
+ */
+const SKILL_CONDITION_PRECEDENCE = [
+  'unsafe-name',
+  'unreadable',
+  'outside-writable-root',
+  'name-mismatch',
+] as const satisfies readonly SkillPackageDirectoryCondition[];
+
+/**
+ * Every condition must be RANKED, not merely have a statement.
+ *
+ * `satisfies` above only proves each entry is a real condition; it does not
+ * prove the list is complete, and an unranked condition would make
+ * `worstSkillPackageCondition` return `undefined` for a non-empty condition set
+ * — which this caller reads as "writable". So the hole the exhaustive `Record`s
+ * below close for the PROSE was open here for the DECISION, and it failed
+ * toward a grant. Found by adding a fifth condition and watching the statements
+ * fail to compile while the ranking silently accepted it.
+ */
+type UnrankedCondition = Exclude<
+  SkillPackageDirectoryCondition,
+  (typeof SKILL_CONDITION_PRECEDENCE)[number]
+>;
+const _everyConditionIsRanked: UnrankedCondition extends never
+  ? true
+  : ['unranked skill package condition', UnrankedCondition] = true;
+void _everyConditionIsRanked;
+
+export function worstSkillPackageCondition(
+  conditions: readonly SkillPackageDirectoryCondition[],
+): SkillPackageDirectoryCondition | undefined {
+  const held = new Set(conditions);
+  return SKILL_CONDITION_PRECEDENCE.find((candidate) => held.has(candidate));
+}
+
+/** What Station SAYS about each condition — prose it owns, no author text. */
+export const SKILL_REFUSAL_STATEMENT = {
+  'unsafe-name': {
+    reason: 'unresolvable-name',
+    detail:
+      'Its name cannot be used as a directory name, so Station cannot work out where it would write this package.',
+  },
+  unreadable: {
+    reason: 'containment-unreadable',
+    detail:
+      'Where a write to it would land could not be determined, so Station will not write it.',
+  },
+  'outside-writable-root': {
+    reason: 'outside-writable-root',
+    detail: 'Station does not write the directory this package resolves to.',
+  },
+  'name-mismatch': {
+    reason: 'directory-name-mismatch',
+    detail:
+      "The package discovery found for it sits in a directory whose name is not this skill's name.",
+  },
+} as const satisfies Record<
+  SkillPackageDirectoryCondition,
+  Pick<SkillWriteRefusal, 'reason' | 'detail'>
+>;
+
+/** The clause the write path slots into its own sentence, kept verbatim. */
+const SKILL_REFUSAL_FRAGMENT = {
+  'unsafe-name': (_name: string, _directory: string) =>
+    'its name cannot be used as a directory name, so Station cannot work out where it would write this package',
+  unreadable: (_name: string, directory: string) =>
+    `the package Station found for it at ${directory} could not be read, so where a write would land is unknown`,
+  'outside-writable-root': (_name: string, directory: string) =>
+    `it is served from ${directory}, which is not a skills root Station writes`,
+  'name-mismatch': (name: string, directory: string) =>
+    `the package discovery found for it is ${directory}, whose directory name is not '${name}'`,
+} as const satisfies Record<
+  SkillPackageDirectoryCondition,
+  (name: string, directory: string) => string
+>;
 
 /**
  * The identity record was published but an exact cleanup could not be made
@@ -287,7 +458,10 @@ export class SkillPublicationIndeterminateError extends Error {
 export class SkillService {
   private registry = new Map<string, RegisteredSkill>();
   /** Read-only package-contributed skill roots (e.g. flow-agents, S3). */
-  private readonly canonicalSources: CanonicalSkillSource[];
+  private readonly canonicalSourceProvider: (
+    composition?: PluginActivationComposition,
+  ) => CanonicalSkillSource[];
+  private activeCanonicalSources: CanonicalSkillSource[] = [];
   /**
    * Run/outcome counters. A side store rather than `skill.json`, so read-only
    * package and plugin skills are counted too — see `skill-usage-service.ts`.
@@ -339,7 +513,11 @@ export class SkillService {
       debug: (...a: any[]) => void;
     },
     options: {
-      canonicalSources?: CanonicalSkillSource[];
+      canonicalSources?:
+        | CanonicalSkillSource[]
+        | ((
+            composition?: PluginActivationComposition,
+          ) => CanonicalSkillSource[]);
       usage?: SkillUsageService;
       /**
        * Plugin-contributed command skills, scanned IN PLACE as read-only
@@ -357,7 +535,11 @@ export class SkillService {
       >;
     } = {},
   ) {
-    this.canonicalSources = options.canonicalSources ?? [];
+    const canonicalSources = options.canonicalSources;
+    this.canonicalSourceProvider =
+      typeof canonicalSources === 'function'
+        ? canonicalSources
+        : () => canonicalSources ?? [];
     this.pluginCommandSource = options.pluginCommandSource;
     this.usage =
       options.usage ??
@@ -369,20 +551,36 @@ export class SkillService {
   async discoverSkills(
     projectHomeDir: string,
     projectSlug?: string,
+    composition?: PluginActivationComposition,
   ): Promise<void> {
     const start = Date.now();
     // Recorded BEFORE the scan, because it describes the arguments this
     // discovery runs with rather than its outcome.
     this.lastDiscoveryScope = { projectHomeDir, projectSlug };
     this.registry.clear();
+    this.activeCanonicalSources = this.canonicalSourceProvider(composition);
 
     // Canonical package sources scan FIRST so locally installed or
     // project-scoped skills override a canonical skill on name collision
     // (later registrations win in the registry map).
-    for (const source of this.canonicalSources) {
+    for (const source of this.activeCanonicalSources) {
       const before = this.registry.size;
+      // Agent Plugin sources also carry package ownership for the legacy-scan
+      // exclusion below. A recognized package without a skills directory is
+      // a valid empty source, not an unreadable canonical source warning.
+      if (
+        source.excludeOnly ||
+        (!existsSync(source.root) && source.origin === 'plugin')
+      ) {
+        continue;
+      }
       try {
-        await this.scanDirectory(source.root);
+        await this.scanDirectory(source.root, 0, {
+          maxDepth: source.immediateOnly ? 0 : 4,
+          validateAgentSkills: source.validateAgentSkills === true,
+          containmentRoot: source.containmentRoot,
+          sourceCurrent: source.isCurrent,
+        });
       } catch (e) {
         this.logger.warn('Canonical skill source scan failed', {
           source: source.label,
@@ -391,7 +589,9 @@ export class SkillService {
         });
       }
       canonicalSkillsDiscovered.add(this.registry.size - before, {
-        source: source.label,
+        source: source.label.startsWith('agent-plugin:')
+          ? 'agent-plugin'
+          : source.label,
       });
     }
 
@@ -412,7 +612,15 @@ export class SkillService {
 
     for (const dir of dirs) {
       if (!existsSync(dir)) continue;
-      await this.scanDirectory(dir);
+      await this.scanDirectory(dir, 0, {
+        excludedRoots: new Set([
+          join(projectHomeDir, 'plugins', '.generations'),
+          join(projectHomeDir, 'plugins', '.data'),
+          ...this.activeCanonicalSources
+            .filter((source) => source.origin === 'plugin')
+            .map((source) => dirname(source.root)),
+        ]),
+      });
     }
 
     // Registered LAST, against every name already taken.
@@ -459,30 +667,101 @@ export class SkillService {
     });
   }
 
-  private async scanDirectory(dir: string, depth = 0): Promise<void> {
-    if (depth > 4) return;
+  private async scanDirectory(
+    dir: string,
+    depth = 0,
+    options: {
+      maxDepth?: number;
+      validateAgentSkills?: boolean;
+      containmentRoot?: string;
+      excludedRoots?: ReadonlySet<string>;
+      sourceCurrent?: () => boolean;
+    } = {},
+  ): Promise<void> {
+    if (depth > (options.maxDepth ?? 4)) return;
     const entries = await readdir(dir, { withFileTypes: true });
 
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
-      if (entry.name === 'node_modules' || entry.name === '.git') continue;
+      if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
 
-      const skillMdPath = join(dir, entry.name, 'SKILL.md');
+      const entryDir = join(dir, entry.name);
+      if (options.excludedRoots) {
+        let excluded = options.excludedRoots.has(entryDir);
+        if (!excluded) {
+          try {
+            excluded = options.excludedRoots.has(await realpath(entryDir));
+          } catch {
+            // The ordinary scan below owns reporting unreadable directories.
+          }
+        }
+        if (excluded) continue;
+      }
+
+      const skillMdPath = join(entryDir, 'SKILL.md');
       if (existsSync(skillMdPath)) {
         try {
-          const content = await readFile(skillMdPath, 'utf-8');
+          let readableSkillPath = skillMdPath;
+          if (options.containmentRoot) {
+            const containedRoot = await realpath(options.containmentRoot);
+            const containedDirectory = await realpath(entryDir);
+            const containedManifest = await realpath(skillMdPath);
+            for (const [label, candidate] of [
+              ['skill directory', containedDirectory],
+              ['SKILL.md', containedManifest],
+            ] as const) {
+              const rel = relative(containedRoot, candidate);
+              if (
+                rel === '..' ||
+                rel.startsWith(`..${sep}`) ||
+                isAbsolute(rel)
+              ) {
+                throw new Error(`${label} resolves outside its package`);
+              }
+            }
+            const manifestInfo = await lstat(containedManifest);
+            if (!manifestInfo.isFile()) {
+              throw new Error('SKILL.md does not resolve to a regular file');
+            }
+            readableSkillPath = containedManifest;
+          }
+          const content = await readFile(readableSkillPath, 'utf-8');
           // One parse, two readers: the spec properties the SDK models, and
           // the raw frontmatter map that carries Station's own `command`/
           // `variables` declarations.
           const { metadata, body } = parseFrontmatter(content);
           const properties = frontmatterToProperties(metadata);
+          if (options.validateAgentSkills) {
+            const errors = validateSkillContent(content);
+            if (errors.length) throw new Error(errors.join('; '));
+            if (properties.name !== entry.name) {
+              throw new Error(
+                'Agent Skill name must match its immediate parent directory',
+              );
+            }
+          }
           const frontmatter = metadata as unknown as Record<string, unknown>;
 
           const links = extractResourceLinks(body);
           const resources: SkillResource[] = [];
           for (const link of links) {
-            const resourcePath = join(dir, entry.name, link.path);
+            const resourcePath = join(entryDir, link.path);
             if (existsSync(resourcePath)) {
+              if (options.containmentRoot) {
+                const containedRoot = await realpath(options.containmentRoot);
+                const containedResource = await realpath(resourcePath);
+                const rel = relative(containedRoot, containedResource);
+                if (
+                  rel === '..' ||
+                  rel.startsWith(`..${sep}`) ||
+                  isAbsolute(rel)
+                ) {
+                  this.logger.warn('Skipped out-of-package skill resource', {
+                    path: resourcePath,
+                  });
+                  continue;
+                }
+              }
               resources.push({
                 name: link.name,
                 path: link.path,
@@ -496,7 +775,8 @@ export class SkillService {
             description: properties.description,
             body,
             resources,
-            location: skillMdPath,
+            location: readableSkillPath,
+            sourceCurrent: options.sourceCurrent,
             declaredCommand: readSkillCommand(frontmatter.command),
             declaredVariables: readSkillVariables(frontmatter.variables),
           });
@@ -507,7 +787,7 @@ export class SkillService {
           });
         }
       } else {
-        await this.scanDirectory(join(dir, entry.name), depth + 1);
+        await this.scanDirectory(entryDir, depth + 1, options);
       }
     }
   }
@@ -518,7 +798,9 @@ export class SkillService {
     if (this.registry.size === 0) return '';
     if (skillNames !== undefined && skillNames.length === 0) return '';
 
-    const allSkills = Array.from(this.registry.values());
+    const allSkills = Array.from(this.registry.values()).filter(
+      (skill) => skill.sourceCurrent?.() !== false,
+    );
     const filtered =
       skillNames !== undefined
         ? allSkills.filter((s) => skillNames.includes(s.name))
@@ -546,7 +828,9 @@ export class SkillService {
     parameters: object;
     execute: (input: any) => Promise<any>;
   } | null {
-    const allSkills = Array.from(this.registry.values());
+    const allSkills = Array.from(this.registry.values()).filter(
+      (skill) => skill.sourceCurrent?.() !== false,
+    );
     const skills =
       skillNames !== undefined
         ? allSkills.filter((s) => skillNames.includes(s.name))
@@ -560,10 +844,13 @@ export class SkillService {
       parameters: schema.parametersJsonSchema,
       execute: async (input: any) => {
         const start = Date.now();
-        const result = handleSkillRead(skills, {
-          name: input.name,
-          resource: input.resource,
-        });
+        const result = handleSkillRead(
+          skills.filter((skill) => skill.sourceCurrent?.() !== false),
+          {
+            name: input.name,
+            resource: input.resource,
+          },
+        );
         skillActivations.add(1, { skill: input.name || 'unknown' });
         skillActivationDuration.record(Date.now() - start, {
           skill: input.name || 'unknown',
@@ -590,6 +877,11 @@ export class SkillService {
   listSkills(): SkillListing[] {
     const usage = this.usage.snapshot();
     const records = this.skillRecords();
+    // Resolved ONCE for the whole listing rather than per row: the writability
+    // rule reads the filesystem (`resolveSkillDirectory` follows the skills
+    // root through `realpathSync`), and every row would otherwise re-resolve
+    // the same home.
+    const projectHomeDir = this.projectHomeDir();
     // Declarations become behaviour in ONE place, across every root: a command
     // word nobody can type, or one two skills both claim, is reported disabled
     // with the reason rather than listed as enabled and doing nothing. Origin
@@ -633,6 +925,7 @@ export class SkillService {
         ...(install.legacyIds ? { legacyIds: install.legacyIds } : {}),
         ...(origin ? { origin } : {}),
         ...(s.provided ? { servedInPlace: true as const } : {}),
+        ...this.writabilityAgainstHome(s.name, projectHomeDir),
       };
     });
   }
@@ -653,79 +946,81 @@ export class SkillService {
       legacyIds?: string[];
     };
   }> {
-    return Array.from(this.registry.values()).map((skill) => {
-      if (skill.provided) {
-        // No install record exists for a skill served straight out of a
-        // plugin, so the SOURCE's own statement is the record.
+    return Array.from(this.registry.values())
+      .filter((skill) => skill.sourceCurrent?.() !== false)
+      .map((skill) => {
+        if (skill.provided) {
+          // No install record exists for a skill served straight out of a
+          // plugin, so the SOURCE's own statement is the record.
+          return {
+            skill,
+            origin: skill.provided.origin,
+            install: {
+              source: skill.provided.source,
+              path: skill.location ? dirname(skill.location) : undefined,
+              legacyIds: skill.provided.legacyIds,
+            },
+          };
+        }
+        const canonical = this.canonicalSourceFor(skill.location);
+        if (canonical) {
+          return {
+            skill,
+            origin: canonical.origin ?? ('package' as const),
+            install: {
+              version: canonical.version,
+              source: canonical.label,
+              path: skill.location ? dirname(skill.location) : undefined,
+            },
+          };
+        }
+        let version: string | undefined;
+        let source: string | undefined;
+        let path: string | undefined;
+        let provenance: SkillProvenance | undefined;
+        let legacyIds: string[] | undefined;
+        let recordedOrigin: SkillOrigin | undefined;
+        if (skill.location) {
+          const metaPath = join(dirname(skill.location), '.station-meta.json');
+          if (existsSync(metaPath)) {
+            try {
+              version = JSON.parse(readFileSync(metaPath, 'utf-8')).version;
+            } catch {}
+          }
+          const skillJsonPath = this.installRecordPath(skill.location);
+          if (existsSync(skillJsonPath)) {
+            try {
+              const config = JSON.parse(readFileSync(skillJsonPath, 'utf-8'));
+              // THE SAME rule the detail read applies: a record answers only for
+              // the name it claims. Without this the listing reported another
+              // skill's source, version and provenance for a copied-and-renamed
+              // package — and fed its `legacyIds` into `rebuildLegacyIdIndex`,
+              // so that skill's ids resolved here (#1614, and the same class as
+              // #1602's disowned-record case).
+              if (skillRecordClaimsName(config, skill.name)) {
+                source = config.source;
+                path = config.path;
+                version = config.version ?? version;
+                provenance = config.provenance;
+                legacyIds = readSkillLegacyIds(config.legacyIds);
+                recordedOrigin = readSkillOrigin(config.origin);
+              }
+            } catch {}
+          }
+          // The directory the package was FOUND in, when no record states one. A
+          // path is a fact about a package that exists, so the listing and the
+          // detail (which derives the same fallback) cannot disagree about where
+          // a recordless package sits.
+          path ??= dirname(skill.location);
+        }
         return {
           skill,
-          origin: skill.provided.origin,
-          install: {
-            source: skill.provided.source,
-            path: skill.location ? dirname(skill.location) : undefined,
-            legacyIds: skill.provided.legacyIds,
-          },
+          origin:
+            this.recordedOriginAgainstPath(recordedOrigin, skill.location) ??
+            this.deriveOrigin(skill.location, source),
+          install: { version, source, path, provenance, legacyIds },
         };
-      }
-      const canonical = this.canonicalSourceFor(skill.location);
-      if (canonical) {
-        return {
-          skill,
-          origin: 'package' as const,
-          install: {
-            version: canonical.version,
-            source: canonical.label,
-            path: skill.location ? dirname(skill.location) : undefined,
-          },
-        };
-      }
-      let version: string | undefined;
-      let source: string | undefined;
-      let path: string | undefined;
-      let provenance: SkillProvenance | undefined;
-      let legacyIds: string[] | undefined;
-      let recordedOrigin: SkillOrigin | undefined;
-      if (skill.location) {
-        const metaPath = join(dirname(skill.location), '.station-meta.json');
-        if (existsSync(metaPath)) {
-          try {
-            version = JSON.parse(readFileSync(metaPath, 'utf-8')).version;
-          } catch {}
-        }
-        const skillJsonPath = this.installRecordPath(skill.location);
-        if (existsSync(skillJsonPath)) {
-          try {
-            const config = JSON.parse(readFileSync(skillJsonPath, 'utf-8'));
-            // THE SAME rule the detail read applies: a record answers only for
-            // the name it claims. Without this the listing reported another
-            // skill's source, version and provenance for a copied-and-renamed
-            // package — and fed its `legacyIds` into `rebuildLegacyIdIndex`,
-            // so that skill's ids resolved here (#1614, and the same class as
-            // #1602's disowned-record case).
-            if (skillRecordClaimsName(config, skill.name)) {
-              source = config.source;
-              path = config.path;
-              version = config.version ?? version;
-              provenance = config.provenance;
-              legacyIds = readSkillLegacyIds(config.legacyIds);
-              recordedOrigin = readSkillOrigin(config.origin);
-            }
-          } catch {}
-        }
-        // The directory the package was FOUND in, when no record states one. A
-        // path is a fact about a package that exists, so the listing and the
-        // detail (which derives the same fallback) cannot disagree about where
-        // a recordless package sits.
-        path ??= dirname(skill.location);
-      }
-      return {
-        skill,
-        origin:
-          this.recordedOriginAgainstPath(recordedOrigin, skill.location) ??
-          this.deriveOrigin(skill.location, source),
-        install: { version, source, path, provenance, legacyIds },
-      };
-    });
+      });
   }
 
   /**
@@ -769,7 +1064,10 @@ export class SkillService {
     /** The home to read the roots off; the ambient one when a caller has none. */
     projectHomeDir?: string,
   ): SkillOrigin | undefined {
-    if (location && this.canonicalSourceFor(location)) return 'package';
+    if (location) {
+      const canonical = this.canonicalSourceFor(location);
+      if (canonical) return canonical.origin ?? 'package';
+    }
     if (location) {
       const home = projectHomeDir ?? this.projectHomeDir();
       const pluginsRoot = join(home, 'plugins');
@@ -828,37 +1126,143 @@ export class SkillService {
    * It asks WHICH ROOT holds the package, not whether its name resolves to one
    * particular directory. That comparison answered "not writable" for every
    * workspace package, because the directory it compared against was derived
-   * from a slug the caller did not have (#1619). The floor is the containment
-   * `assertSkillPackageDirectory` states, and its message is carried through
-   * verbatim rather than flattened into "Station does not own this" — a
-   * directory whose name differs from the skill's only in case is a package
-   * plainly the user's own, and telling them Station does not own it is a
-   * false explanation of a real refusal (review low).
+   * from a slug the caller did not have (#1619).
+   *
+   * The floor is `skillPackageDirectoryReport`, which names every condition that
+   * holds; this picks the one to speak about. Messages are no longer carried
+   * through from the floor verbatim — that shape could only say ONE thing, so
+   * three distinct conditions arrived wearing the same explanation. Each
+   * condition now has a statement Station owns and a remedy keyed to its reason
+   * code, and `SKILL_CONDITION_PRECEDENCE` records why the ordering is what it
+   * is: a refusal must speak about the thing the reader has to fix first, and
+   * has to be able to fix at all.
    */
   private packageOwnershipRefusal(
     name: string,
     projectHomeDir: string,
-  ): string | undefined {
+  ): PackageOwnershipRefusal | undefined {
     const registered = this.registry.get(name);
+    // A source whose generation has been retired is not a writability answer
+    // either way: nothing about the package can be trusted until discovery
+    // re-registers it, so refuse the question rather than answer it stale.
+    if (registered?.sourceCurrent?.() === false)
+      throw new Error('Skill source generation is no longer active');
     if (!registered?.location) return undefined;
     const directory = dirname(registered.location);
     if (registered.provided)
-      return `it is served in place from ${directory}, which Station does not own`;
+      return {
+        messageFragment: `it is served in place from ${directory}, which Station does not own`,
+        refusal: {
+          reason: 'served-in-place',
+          detail:
+            'A plugin serves it in place, from a directory Station does not own.',
+          packageDirectory: directory,
+        },
+      };
     if (this.canonicalSourceFor(registered.location))
-      return `it is served from the package at ${directory}, which Station does not own`;
-    // Named apart from the root failure below, because they are different
-    // facts with different remedies: a directory whose name differs from the
-    // skill's — by case, or because the frontmatter names it something else —
-    // is a package plainly the user's own, and "Station does not own this"
-    // would be a false explanation of a real refusal (review low).
-    if (basename(directory) !== name)
-      return `the package discovery found for it is ${directory}, whose directory name is not '${name}'`;
-    try {
-      assertSkillPackageDirectory(projectHomeDir, name, directory);
-      return undefined;
-    } catch {
-      return `it is served from ${directory}, which is not a skills root Station writes`;
-    }
+      return {
+        messageFragment: `it is served from the package at ${directory}, which Station does not own`,
+        refusal: {
+          reason: 'canonical-package',
+          detail: 'It is served from a package that ships read-only.',
+          packageDirectory: directory,
+        },
+      };
+    // The floor's OWN verdict, threaded out rather than re-derived. It
+    // distinguishes four conditions and an earlier draft collapsed three of
+    // them into "not a skills root Station writes", which published a false
+    // explanation twice over (review H1): a dangling link INSIDE a writable
+    // root was told it sat outside one and to install itself, and a name that
+    // can never be a directory name was told the same. Reading the conditions
+    // is the only way the projection can say which refusal this is without
+    // parsing the floor's prose.
+    //
+    // PRECEDENCE IS THIS CALLER'S, and deliberately not the assert's. Where the
+    // package sits outranks what its directory is called, because "rename the
+    // directory" is unfollowable advice for a package in a root Station will
+    // never write — the rename would change nothing (review M2). So
+    // `directory-name-mismatch` is published only once containment has
+    // succeeded, which is exactly what its docblock claims about it.
+    const report = skillPackageDirectoryReport(projectHomeDir, name, directory);
+    const condition = worstSkillPackageCondition(report.conditions);
+    if (!condition) return undefined;
+    return {
+      messageFragment: SKILL_REFUSAL_FRAGMENT[condition](name, directory),
+      refusal: {
+        ...SKILL_REFUSAL_STATEMENT[condition],
+        packageDirectory: directory,
+      },
+    };
+  }
+
+  /**
+   * The writability decision as the read models carry it, resolved the way the
+   * ROUTE resolves it.
+   *
+   * `this.projectHomeDir()` is `configLoader.getProjectHomeDir()` — the very
+   * call `createSkillRoutes`' `getProjectHomeDir` closure makes, on the same
+   * `ConfigLoader` instance (`runtime-service-bootstrap.ts` hands both the
+   * same one). A second resolution of the project root would be the same
+   * defect this projection exists to remove, one layer up.
+   *
+   * There is no scope to omit or thread: the rule takes a name and a home and
+   * asks which root holds the package, so the projection and the enforcement
+   * cannot be handed different arguments.
+   */
+  private skillWritability(name: string): {
+    writable: boolean;
+    writeRefusal?: SkillWriteRefusal;
+  } {
+    return this.writabilityAgainstHome(name, this.projectHomeDir());
+  }
+
+  /**
+   * `skillWritability` with the home resolved once, for a whole listing.
+   *
+   * The hoist is the ONLY thing saved across rows, and it is the part that was
+   * worth saving: `projectHomeDir()` resolves the skills root through
+   * `realpathSync`, and every row would otherwise redo it. The decision itself
+   * is recomputed per row on purpose. A memo lived here briefly and was
+   * deleted: the registry is keyed by name, so one listing never asks about the
+   * same name twice and it could not fire — a trip-wire throwing on any hit ran
+   * 173 tests across seven suites without one. What it did carry was a
+   * parameter a future caller could thread into the write gate, which is
+   * exactly how the round-one defect happened.
+   *
+   * MEASURED after deleting it, and stated PER ROW because that is the durable
+   * fact: 36-50us per row, WARM (25 runs after 5 warm-ups, median), and linear
+   * — per-row cost held within a few percent across 50, 100 and 200 rows, so
+   * the total is just that times the row count.
+   *
+   * The root the packages sit in moves it by about a third, and the direction is
+   * worth recording because it is not the one the mechanism suggests: rows in
+   * the WRITABLE root measured slower (44-50us) than rows outside it (36-37us),
+   * though both reach `resolveSkillDir`. Not chased further — the number is a
+   * scale check, not a budget.
+   *
+   * A bare total is what NOT to write here. The memo's own docblock claimed
+   * ~8.3ms for the writability portion with no fixture, no row count and no
+   * cache state named, and a "5ms for 100 packages" replacement repeats the
+   * defect at a different magnitude.
+   *
+   * There is no scope to keep in lockstep. The rule takes a name and a home and
+   * asks which root holds the package, so this projection and the write gate
+   * cannot be handed different arguments and cannot answer different questions.
+   * An earlier draft of this comment predicted the opposite — that a sibling
+   * change would thread a slug — which was a claim about another branch stated
+   * as fact, and it was wrong. A comment describes the tree it ships on.
+   */
+  private writabilityAgainstHome(
+    name: string,
+    projectHomeDir: string,
+  ): { writable: boolean; writeRefusal?: SkillWriteRefusal } {
+    const writeRefusal = this.packageOwnershipRefusal(
+      name,
+      projectHomeDir,
+    )?.refusal;
+    return writeRefusal
+      ? { writable: false, writeRefusal }
+      : { writable: true };
   }
 
   /**
@@ -891,9 +1295,15 @@ export class SkillService {
    * legacy id, and the scan it replaced read a `skill.json` per skill.
    */
   resolveSkillName(nameOrLegacyId: string): string | undefined {
-    if (this.registry.has(nameOrLegacyId)) return nameOrLegacyId;
+    if (
+      this.registry.get(nameOrLegacyId)?.sourceCurrent?.() !== false &&
+      this.registry.has(nameOrLegacyId)
+    )
+      return nameOrLegacyId;
     const indexed = this.legacyIdIndex.get(nameOrLegacyId);
-    return indexed !== undefined && this.registry.has(indexed)
+    return indexed !== undefined &&
+      this.registry.has(indexed) &&
+      this.registry.get(indexed)?.sourceCurrent?.() !== false
       ? indexed
       : undefined;
   }
@@ -929,39 +1339,44 @@ export class SkillService {
   }
 
   listGuidanceAssets(): GuidanceAsset[] {
-    return Array.from(this.registry.values()).map((skill) =>
-      skillToGuidanceAsset({
-        id: skill.name,
-        name: skill.name,
-        description: skill.description,
-        installed: true,
-        installedVersion: (() => {
-          if (!skill.location) return undefined;
-          const metaPath = join(dirname(skill.location), '.station-meta.json');
-          if (!existsSync(metaPath)) return undefined;
-          try {
-            return JSON.parse(readFileSync(metaPath, 'utf-8')).version;
-          } catch {
-            return undefined;
-          }
-        })(),
-        body: skill.body,
-        path: skill.location ? dirname(skill.location) : undefined,
-        resources: skill.resources.map((resource) => ({
-          name: resource.name,
-          path: resource.path,
-        })),
-        scripts: skill.resources
-          .filter((resource) => {
-            const ext = extname(resource.path);
-            return SCRIPT_EXTS.has(ext);
-          })
-          .map((resource) => ({
+    return Array.from(this.registry.values())
+      .filter((skill) => skill.sourceCurrent?.() !== false)
+      .map((skill) =>
+        skillToGuidanceAsset({
+          id: skill.name,
+          name: skill.name,
+          description: skill.description,
+          installed: true,
+          installedVersion: (() => {
+            if (!skill.location) return undefined;
+            const metaPath = join(
+              dirname(skill.location),
+              '.station-meta.json',
+            );
+            if (!existsSync(metaPath)) return undefined;
+            try {
+              return JSON.parse(readFileSync(metaPath, 'utf-8')).version;
+            } catch {
+              return undefined;
+            }
+          })(),
+          body: skill.body,
+          path: skill.location ? dirname(skill.location) : undefined,
+          resources: skill.resources.map((resource) => ({
             name: resource.name,
             path: resource.path,
           })),
-      }),
-    );
+          scripts: skill.resources
+            .filter((resource) => {
+              const ext = extname(resource.path);
+              return SCRIPT_EXTS.has(ext);
+            })
+            .map((resource) => ({
+              name: resource.name,
+              path: resource.path,
+            })),
+        }),
+      );
   }
 
   /**
@@ -976,9 +1391,22 @@ export class SkillService {
    */
   async getSkill(name: string): Promise<SkillDetail> {
     skillOps.add(1, { operation: 'get' });
+    // ONE decoration site for four answers. The writability projection is a
+    // fact about the PACKAGE, not about which of the four reads found it, so
+    // deciding it here rather than inside each branch is also the only shape
+    // in which the four cannot disagree.
+    return {
+      ...(await this.readSkillDetail(name)),
+      ...this.skillWritability(name),
+    };
+  }
+
+  private async readSkillDetail(name: string): Promise<SkillDetailBody> {
     // Canonical package skills have no installed config record — serve them
     // straight from the registry (read-only, content from the package).
     const registered = this.registry.get(name);
+    if (registered?.sourceCurrent?.() === false)
+      throw new Error('Skill source generation is no longer active');
     // A skill a SOURCE serves in place (a plugin's prompt file) has no
     // install record to load — `configLoader.loadSkill` would throw and the
     // route would answer 404 for a skill the listing shows. The source's own
@@ -1036,7 +1464,7 @@ export class SkillService {
         version: canonical.version,
         path: dirname(registered.location),
         body: registered.body,
-        origin: 'package',
+        origin: canonical.origin ?? 'package',
         ...(resolved.command ? { command: resolved.command } : {}),
         ...(resolved.commandDiagnostic
           ? { commandDiagnostic: resolved.commandDiagnostic }
@@ -1140,7 +1568,7 @@ export class SkillService {
           : {}),
       };
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = errorMessage(error);
       if (!config) {
         // No record to fall back to and a body that will not parse: there is
         // nothing this read can answer FROM. Say which failure it was rather
@@ -1163,7 +1591,7 @@ export class SkillService {
   private fromInstallRecordOnly(
     config: SkillConfig,
     declarationsDiagnostic: string,
-  ): SkillDetail {
+  ): SkillDetailBody {
     // The mirror goes through the SAME resolution frontmatter does. Returning
     // it raw let a mirrored `enabled: true` that is invalid or clashes come
     // back as an active command with no diagnostic, while the listing — which
@@ -1232,6 +1660,8 @@ export class SkillService {
   ): Promise<Pick<SkillConfig, 'command' | 'variables'>> {
     if (!existsSync(skillPath)) {
       const registered = this.registry.get(name);
+      if (registered?.sourceCurrent?.() === false)
+        throw new Error('Skill source generation is no longer active');
       return {
         command: registered?.declaredCommand,
         variables: registered?.declaredVariables,
@@ -1781,9 +2211,18 @@ export class SkillService {
     // with no discovered location is writable by definition, so this condition
     // is exactly the predicate's own — with no unreachable "or else" to
     // describe a case it cannot produce.
+    //
+    // `messageFragment`, not the projected refusal: this path states the reason
+    // in a sentence and the read models state it in a code plus prose that
+    // carries no author-controlled text. Same rule, same call, two shapes —
+    // which is the point. (The fragment does interpolate paths and the name;
+    // that is pre-existing and tracked in #1681, not introduced here.)
     const refusal = this.packageOwnershipRefusal(name, projectHomeDir);
     if (refusal) {
-      return { success: false, message: `Cannot edit '${name}': ${refusal}.` };
+      return {
+        success: false,
+        message: `Cannot edit '${name}': ${refusal.messageFragment}.`,
+      };
     }
     const current = await this.getSkill(name);
     const skillPath = join(skillDir, 'SKILL.md');
@@ -1793,7 +2232,7 @@ export class SkillService {
       try {
         parseFrontmatter(source);
       } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
+        const detail = errorMessage(error);
         throw new Error(
           `Cannot update ${name}: frontmatter parse failed: ${detail}`,
         );
@@ -2005,7 +2444,7 @@ export class SkillService {
         // silently reverted every ownership refusal to a false 404 (delta
         // review).
         reason: 'not-owned',
-        message: `Cannot remove '${name}': ${refusal}.`,
+        message: `Cannot remove '${name}': ${refusal.messageFragment}.`,
       };
     }
     return removeInstalledSkill({
@@ -2091,9 +2530,13 @@ export class SkillService {
   ): CanonicalSkillSource | null {
     if (!location) return null;
     return (
-      this.canonicalSources.find((source) =>
-        location.startsWith(source.root),
-      ) ?? null
+      this.activeCanonicalSources.find((source) => {
+        const rel = relative(source.root, location);
+        return (
+          rel === '' ||
+          (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
+        );
+      }) ?? null
     );
   }
 

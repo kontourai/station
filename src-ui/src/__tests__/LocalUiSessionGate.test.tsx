@@ -55,7 +55,7 @@ describe('LocalUiSessionGate (station#2093)', () => {
     renderGate(<ProtectedDataProbe onMount={protectedMount} />);
 
     await screen.findByRole('heading', {
-      name: 'Connect to your Station host',
+      name: 'Connect to Station',
     });
     expect(
       screen.getByRole('button', { name: 'Pair with a code' }),
@@ -68,6 +68,11 @@ describe('LocalUiSessionGate (station#2093)', () => {
       {
         credentials: 'include',
         headers: { Accept: 'application/json' },
+        // #1661: the read carries the gate's own deadline. Still the whole init
+        // object rather than `objectContaining`, so a fourth key would fail here;
+        // what the deadline DOES is driven through the gate in
+        // `LocalUiSessionGate.proxyClassification.test.tsx`.
+        signal: expect.any(AbortSignal),
       },
     );
   });
@@ -117,7 +122,7 @@ describe('LocalUiSessionGate (station#2093)', () => {
     expect(screen.getByRole('alert').textContent).toMatch(
       /host process is down or recovering/i,
     );
-    expect(screen.queryByText('Connect to your Station host')).toBeNull();
+    expect(screen.queryByText('Connect to Station')).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'Pair with a code' }),
     ).toBeNull();

@@ -30,7 +30,7 @@ function mergePages(
   );
 }
 
-export interface SessionEventWindowReader {
+interface SessionEventWindowReader {
   events: OrchestrationSequencedEvent[];
   /** Present for conversation reads when the newest lineage child is known. */
   currentSessionId?: string;

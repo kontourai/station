@@ -2,6 +2,55 @@ import { describe, expect, test } from 'vitest';
 import { buildOpenApiSpec } from '../spec.js';
 
 describe('buildOpenApiSpec', () => {
+  test('every local schema reference resolves in the generated document', () => {
+    const spec = buildOpenApiSpec();
+    const unresolved: string[] = [];
+    const visit = (value: unknown) => {
+      if (!value || typeof value !== 'object') return;
+      for (const [key, child] of Object.entries(value)) {
+        if (
+          key === '$ref' &&
+          typeof child === 'string' &&
+          child.startsWith('#/')
+        ) {
+          let target: unknown = spec;
+          for (const encoded of child.slice(2).split('/')) {
+            const part = encoded.replaceAll('~1', '/').replaceAll('~0', '~');
+            target =
+              target && typeof target === 'object'
+                ? (target as Record<string, unknown>)[part]
+                : undefined;
+          }
+          if (target === undefined) unresolved.push(child);
+        } else visit(child);
+      }
+    };
+    visit(spec);
+    expect(unresolved).toEqual([]);
+  });
+
+  test('describes retained recovery with required fresh consent and pending responses', () => {
+    const spec = buildOpenApiSpec();
+    expect(
+      spec.paths['/api/plugins/{name}/recovery-preview']!.get!.responses,
+    ).toHaveProperty('409');
+    const recovery = spec.paths['/api/plugins/{name}/recover']!.post!;
+    expect(recovery.requestBody!.content['application/json'].schema.$ref).toBe(
+      '#/components/schemas/PluginRecovery',
+    );
+    expect(Object.keys(recovery.responses)).toEqual(
+      expect.arrayContaining(['202', '409', '503']),
+    );
+    const schema = spec.components.schemas.PluginRecovery as {
+      required: string[];
+      properties: { consent: { required: string[] } };
+    };
+    expect(schema.required).toEqual(
+      expect.arrayContaining(['recoveryRevision', 'consent']),
+    );
+    expect(schema.properties.consent.required).toContain('grantRevision');
+  });
+
   test('includes the first-pass portability route set', () => {
     const spec = buildOpenApiSpec();
 

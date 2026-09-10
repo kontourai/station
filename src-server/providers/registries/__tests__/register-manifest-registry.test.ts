@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
-import { readRegistryPluginAvailability } from '../../../routes/plugins/plugin-install-shared.js';
+import { readRegistryPluginAvailability } from '../../../services/plugins/plugin-install-transaction.js';
 import { JsonManifestRegistryProvider } from '../json-manifest-registry.js';
 import { registerManifestRegistryProvider } from '../register-manifest-registry.js';
 import {

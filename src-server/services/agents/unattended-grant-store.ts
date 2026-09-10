@@ -15,12 +15,12 @@
 import { join } from 'node:path';
 import type { UnattendedPrincipal } from '../../runtime/types.js';
 import { unattendedGrantOperations } from '../../telemetry/metrics.js';
+import { isRecord } from '../../utils/is-record.js';
 import { createLogger } from '../../utils/logger.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import {
   GrantsFileStore,
   GrantsStoreUnavailableError,
-  isPlainObject,
 } from '../plugins/grants-file-store.js';
 
 const STORE_FILENAME = 'unattended-tool-grants.json';
@@ -146,12 +146,12 @@ function validateMutationInputs(
 }
 
 function shapeProblems(value: unknown): string[] {
-  if (!isPlainObject(value)) {
+  if (!isRecord(value)) {
     return ['must be an object keyed by principal-key/exact-tool'];
   }
   const problems: string[] = [];
   for (const [key, entry] of Object.entries(value)) {
-    if (!isPlainObject(entry)) {
+    if (!isRecord(entry)) {
       problems.push(`${key}: must be an object`);
       continue;
     }

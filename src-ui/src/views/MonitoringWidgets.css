@@ -571,14 +571,6 @@
   color: var(--text-primary);
 }
 
-.conversation-pill {
-  font-size: 0.65rem;
-  padding: 0.125rem 0.375rem;
-  border-radius: 3px;
-  color: white;
-  font-weight: 500;
-}
-
 .meta-item {
   display: flex;
   justify-content: space-between;
@@ -648,27 +640,9 @@
 }
 
 .event-filter.active {
-  color: white;
-}
-.event-filter[data-type="agent"].active {
-  background: var(--event-agent-start);
-  border-color: var(--event-agent-start);
-}
-.event-filter[data-type="tool"].active {
-  background: var(--event-tool-call);
-  border-color: var(--event-tool-call);
-}
-.event-filter[data-type="planning"].active {
-  background: var(--event-planning);
-  border-color: var(--event-planning);
-}
-.event-filter[data-type="reasoning"].active {
-  background: var(--event-reasoning);
-  border-color: var(--event-reasoning);
-}
-.event-filter[data-type="health"].active {
-  background: var(--event-agent-health);
-  border-color: var(--event-agent-health);
+  color: var(--text-on-accent);
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
 }
 
 .search-wrapper {
@@ -839,9 +813,9 @@
   background: var(--bg-hover);
 }
 .live-mode-toggle.active {
-  background: var(--health-success);
-  color: white;
-  border-color: var(--health-success);
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border-color: var(--accent-primary);
 }
 
 .live-dot {
@@ -942,11 +916,6 @@
   word-wrap: break-word;
   overflow-wrap: break-word;
   max-width: 100%;
-}
-
-.log-trace {
-  display: flex;
-  align-items: center;
 }
 
 .trace-pill {
@@ -1295,45 +1264,9 @@
   margin-top: 0.5rem;
 }
 
-/* ── Artifacts ── */
-
-.artifacts-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 0.5rem;
-}
-
-.artifact-item {
-  padding: 0.75rem;
-  background: var(--bg-tertiary);
-  border-radius: 4px;
-  border-left: 3px solid var(--accent-primary);
-}
-
-.artifact-header {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-  font-size: 0.75rem;
-}
-
-.artifact-type {
-  padding: 0.125rem 0.5rem;
-  background: var(--bg-primary);
-  border-radius: 3px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
 .artifact-name {
   color: var(--warning-text);
   font-weight: 500;
-}
-
-.artifact-item pre {
-  margin: 0;
-  font-size: 0.75rem;
 }
 
 /* ── Pills & badges ── */

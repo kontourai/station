@@ -153,7 +153,7 @@ registerCommand(
       if (!chatState.conversationId) {
         addEphemeralMessage(sessionId, {
           role: 'system',
-          content: 'No conversation ID available.',
+          content: `Messages: ${chatState.messages?.length ?? 0}. No usage recorded yet.`,
         });
         return;
       }

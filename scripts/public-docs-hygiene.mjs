@@ -7,8 +7,14 @@ const ABSOLUTE_DEVELOPER_PATH =
 // Match complete DNS labels: settings.local.json is not a .local host.
 const PRIVATE_HOSTNAME =
   /\b(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:internal|corp|local|lan|home\.arpa)(?![a-z0-9-]|\.[a-z0-9-])|(?:[a-z0-9-]+\.)?ts\.net|brian-media|desktop-win)\b/gi;
+// IPv6 branches require the literal's shape — a hex first group and a colon —
+// not a prefix: `(?:fc|fd)[\da-f:]+` matched every colon-free hex run starting
+// fc/fd, which is ~1 in 128 git SHAs (the deploy ledger's `fd2c04e…`).
+// The link-local branch carried the colon requirement but no bound on its
+// first group, so a short SHA leading a commit subject (`fe8abc1: fix ...`)
+// read as link-local. That group is exactly fe80-febf: four hex digits.
 const PRIVATE_IP =
-  /(?:\b(?:127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2}|169\.254(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})\b|(?:^|[^\da-f])(?:::1|(?:fc|fd)[\da-f:]+|fe[89ab][\da-f]*:[\da-f:]*)(?=$|[^\da-f]))/gi;
+  /(?:\b(?:127(?:\.\d{1,3}){3}|10(?:\.\d{1,3}){3}|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2}|169\.254(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})\b|(?:^|[^\da-f])(?:::1|(?:fc|fd)[\da-f]{2}:[\da-f:]*|fe[89ab][\da-f]:[\da-f:]*)(?=$|[^\da-f]))/gi;
 const INTERNAL_OPERATION =
   /\b(?:src-(?:server|ui)\/|scripts\/|config\/|node_modules|\.kontourai|dist-pages)\b/g;
 const SOURCE_PROVENANCE = /\b(?:derived|adapted|inspired)\s+(?:from|by)\b/gi;

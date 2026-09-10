@@ -208,15 +208,23 @@ const VERBS: Record<string, VerbSpec> = {
   },
   home: {
     group: 'Lifecycle',
-    summary: 'Verify, back up, restore, or archive a Station home',
+    summary:
+      'Inspect recovery, verify, back up, restore, or archive a Station home',
     usage: [
+      'station home recovery-plan --base=<existing-home> [--json]',
       'station home verify [--json] [options]',
       'station home backup [--output=<directory>] [options]',
       'station home restore --from=<directory> --confirm [options]',
       'station home reset --confirm [options]',
     ],
-    actions: ['verify', 'backup', 'restore', 'reset'],
+    actions: ['recovery-plan', 'verify', 'backup', 'restore', 'reset'],
     detail: [
+      '`recovery-plan` reports bounded selected-field observations only. It',
+      'requires an explicit --base or --home, writes nothing and opens no',
+      'credential/app-home, database, history or plugin payloads. It neither',
+      'migrates nor authorizes migration. Exit 2 means partial/refused inspection;',
+      'exit 0 does not prove recoverability or owner exclusion. Unknown payloads',
+      'remain unverified. No --temp-home, --confirm or mutation flags are accepted.',
       '`verify` runs an integrity check over the SQLite stores this home',
       'owns and reports each one. It opens them read-only, so it is safe to',
       'run while Station is up. Exit 1 means a store is corrupt; exit 2 means',
@@ -309,6 +317,14 @@ const VERBS: Record<string, VerbSpec> = {
       ...TARGET_FLAGS,
     ],
   },
+  open: {
+    group: 'Stations',
+    summary: 'Open an authorized browser session for a running local Station',
+    usage: ['station open [--home=<directory>] [--instance=<name>]'],
+    detail: [
+      'Uses the selected local Station home and one-time browser authorization. Never starts or stops a backend.',
+    ],
+  },
   target: {
     group: 'Stations',
     summary: 'Show the exact Station and endpoint a command will use',
@@ -334,7 +350,7 @@ const VERBS: Record<string, VerbSpec> = {
       'authorizes sending it to the fixed read-only Station issue search.',
       'When both agents are available, a TTY asks; a non-interactive shell',
       'requires --agent=codex or --agent=claude.',
-      'The packaged client does not inspect local files or run the source doctor.',
+      'The packaged client uses remote diagnostics; station doctor reports target, access and service state.',
       'Triage never repairs, changes Station state, patches source, or posts to GitHub.',
     ],
   },

@@ -143,6 +143,12 @@ export function sessionTitle(session: OrchestrationSessionSummary): string {
  * than as a real duration (see `relativeTime`'s archive#1795 guard).
  */
 export function sessionRecency(session: OrchestrationSessionSummary): number {
+  // Discovery updates the provider row without a new message. For imported
+  // history only the source event clock can describe conversation recency.
+  if (session.controlMode === 'read-only-attached')
+    return (
+      parseTimestamp(session.lastEventAt) || parseTimestamp(session.createdAt)
+    );
   return Math.max(
     parseTimestamp(session.updatedAt),
     parseTimestamp(session.lastEventAt),

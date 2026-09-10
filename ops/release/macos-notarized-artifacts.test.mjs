@@ -11,12 +11,17 @@ import { expect, test } from 'vitest';
 import {
   admitMacosAppBundle,
   assertAcceptedNotaryReceipt,
+  commandFailureExcerpt,
   createMacosNotarizedArtifacts,
   DEFAULT_COMMAND_TIMEOUT_MS,
   DMG_CREATION_COMMAND_TIMEOUT_MS,
+  DMG_CREATION_MAX_ATTEMPTS,
+  DMG_CREATION_RETRY_BACKOFF_MS,
   EMBEDDED_MACHO_COMMAND_TIMEOUT_MS,
   EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS,
+  isRetryableDmgCreationFailure,
   LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
+  MAX_COMMAND_FAILURE_EXCERPT_CHARS,
   outerAppDesignatedRequirement,
   parseMacosNotarizedArtifactsCli,
   parseReleaseDeadlineEpoch,
@@ -201,15 +206,14 @@ function withOverlappedSubmissions(
       };
       return trackSubmission(
         Promise.race([
-          dmgSubmissionStarted.then(
-            () =>
-              applicationSettlesLast
-                ? // Keep the application submission genuinely in flight past
-                  // the DMG outcome, so a removal that races it is visible.
-                  new Promise((resolve) => {
-                    setTimeout(() => resolve(settleApplication()), 20);
-                  })
-                : settleApplication(),
+          dmgSubmissionStarted.then(() =>
+            applicationSettlesLast
+              ? // Keep the application submission genuinely in flight past
+                // the DMG outcome, so a removal that races it is visible.
+                new Promise((resolve) => {
+                  setTimeout(() => resolve(settleApplication()), 20);
+                })
+              : settleApplication(),
           ),
           guard,
         ]),
@@ -805,7 +809,8 @@ test('refuses a DMG whose signed authority or designated requirement is not Kont
           return {
             status: 0,
             stdout: '',
-            stderr: 'designated => identifier "station.dmg" and cdhash H"deadbeef"',
+            stderr:
+              'designated => identifier "station.dmg" and cdhash H"deadbeef"',
           };
         return baseRun(program, args, options);
       };
@@ -1345,5 +1350,251 @@ test('keeps notary rejection terminal and fail-closed', () => {
   ).toThrow('notarytool rejected Station.app.zip.');
   expect(() => assertAcceptedNotaryReceipt('{', '/tmp/Station.dmg')).toThrow(
     'notarytool did not return JSON.',
+  );
+});
+
+const dmgPath = '/assets/station-v1.2.3-macos-aarch64.dmg';
+
+/**
+ * Replaces the fixture's `hdiutil create` outcome for the first `failures`
+ * attempts with `failure` (a ReleaseCommandError by default, the only shape
+ * the release classifies as a transient hdiutil exit) and counts attempts.
+ */
+function withFailingDmgCreation(release, { failures, failure } = {}) {
+  const baseRun = release.run;
+  const state = { attempts: 0, sleeps: [] };
+  release.run = (program, args, options) => {
+    if (program === 'hdiutil' && args[0] === 'create') {
+      state.attempts += 1;
+      if (state.attempts <= failures) {
+        baseRun(program, args, options);
+        throw (
+          failure ??
+          new ReleaseCommandError({
+            phase: options.phase,
+            program,
+            status: 1,
+            stdout: '',
+            stderr: 'hdiutil: create failed - Resource busy\n',
+          })
+        );
+      }
+    }
+    return baseRun(program, args, options);
+  };
+  release.sleep = (ms) => {
+    state.sleeps.push(ms);
+  };
+  return state;
+}
+
+test('retries a nonzero hdiutil DMG creation exit with bounded backoff and discards the partial image', async () => {
+  const release = fixture();
+  const releaseLogger = logger();
+  const state = withFailingDmgCreation(release, { failures: 2 });
+  await expect(
+    createMacosNotarizedArtifacts(release.options, {
+      ...release,
+      logger: releaseLogger,
+    }),
+  ).resolves.toMatchObject({ dmg: dmgPath });
+  expect(DMG_CREATION_MAX_ATTEMPTS).toBe(3);
+  expect(DMG_CREATION_RETRY_BACKOFF_MS).toEqual([5_000, 15_000]);
+  expect(state.attempts).toBe(3);
+  expect(state.sleeps).toEqual([5_000, 15_000]);
+  expect(release.removed).toEqual([dmgPath, dmgPath, '/scratch']);
+  const retryLines = releaseLogger.entries.filter((entry) =>
+    entry.includes('hdiutil attempt'),
+  );
+  expect(retryLines).toEqual([
+    '[macOS release] DMG creation: hdiutil attempt 1/3 failed; retrying in 5s.',
+    '[macOS release] DMG creation: hdiutil attempt 2/3 failed; retrying in 15s.',
+  ]);
+  // Only the creation phase repeats; every other phase still runs once.
+  const phases = release.calls.map(
+    ([_program, _args, options]) => options.phase,
+  );
+  expect(phases.filter((phase) => phase === 'DMG creation')).toHaveLength(3);
+  for (const phase of ['DMG staging', 'DMG signing', 'DMG mount'])
+    expect(phases.filter((candidate) => candidate === phase)).toHaveLength(1);
+});
+
+test('surfaces the phase and a stderr excerpt when hdiutil fails on its final attempt', async () => {
+  const release = fixture();
+  const releaseLogger = logger();
+  const state = withFailingDmgCreation(release, { failures: 3 });
+  await expect(
+    createMacosNotarizedArtifacts(release.options, {
+      ...release,
+      logger: releaseLogger,
+    }),
+  ).rejects.toThrow(
+    'hdiutil failed during DMG creation (exit status 1): hdiutil: create failed - Resource busy',
+  );
+  expect(state.attempts).toBe(3);
+  expect(state.sleeps).toEqual([5_000, 15_000]);
+  expect(release.removed).toEqual([dmgPath, dmgPath, dmgPath, '/scratch']);
+  expect(
+    releaseLogger.entries.filter((entry) => entry.includes('hdiutil attempt')),
+  ).toHaveLength(2);
+  expect(
+    release.calls.some(([_program, _args, options]) =>
+      options.phase.startsWith('DMG signing'),
+    ),
+  ).toBe(false);
+});
+
+test('never retries a timed-out, overflowed, or unclassified DMG creation failure', async () => {
+  const cases = [
+    new ReleaseCommandError({
+      phase: 'DMG creation',
+      program: 'hdiutil',
+      timedOut: true,
+      stderr: '',
+    }),
+    new ReleaseCommandError({
+      phase: 'DMG creation',
+      program: 'hdiutil',
+      status: 1,
+      outputTruncated: true,
+      stderr: 'x'.repeat(16),
+    }),
+    new Error('hdiutil create failed'),
+  ];
+  for (const failure of cases) {
+    const release = fixture();
+    const state = withFailingDmgCreation(release, { failures: 3, failure });
+    await expect(
+      createMacosNotarizedArtifacts(release.options, release),
+    ).rejects.toBe(failure);
+    expect(state.attempts).toBe(1);
+    expect(state.sleeps).toEqual([]);
+    expect(isRetryableDmgCreationFailure(failure)).toBe(false);
+  }
+  // The classifier is scoped to the creation phase: an hdiutil attach or
+  // detach exit is not retried through it.
+  expect(
+    isRetryableDmgCreationFailure(
+      new ReleaseCommandError({
+        phase: 'DMG mount',
+        program: 'hdiutil',
+        status: 1,
+      }),
+    ),
+  ).toBe(false);
+  expect(
+    isRetryableDmgCreationFailure(
+      new ReleaseCommandError({
+        phase: 'DMG creation',
+        program: 'hdiutil',
+        status: 1,
+      }),
+    ),
+  ).toBe(true);
+});
+
+test('creates the DMG with exactly one hdiutil invocation and no backoff on the happy path', async () => {
+  const release = fixture();
+  const state = withFailingDmgCreation(release, { failures: 0 });
+  release.sleep = () => {
+    throw new Error('the happy path must not sleep');
+  };
+  await expect(
+    createMacosNotarizedArtifacts(release.options, release),
+  ).resolves.toMatchObject({ dmg: dmgPath });
+  expect(state.attempts).toBe(1);
+  expect(release.removed).toEqual(['/scratch']);
+});
+
+test('rethrows the hdiutil failure instead of sleeping when the release deadline leaves no room to retry', async () => {
+  const release = fixture();
+  const releaseLogger = logger();
+  const state = withFailingDmgCreation(release, { failures: 3 });
+  const start = 1_700_000_000_000;
+  let clock = start;
+  const baseRun = release.run;
+  release.run = (program, args, options) => {
+    // The first backoff is 5s and cleanup grace is 10s: 14s remaining admits
+    // this attempt (more than grace) but cannot fund backoff plus grace.
+    if (program === 'ditto' && options.phase === 'DMG staging')
+      clock = start + 60_000 - 14_000;
+    return baseRun(program, args, options);
+  };
+  await expect(
+    createMacosNotarizedArtifacts(release.options, {
+      ...release,
+      deadlineMs: 60_000,
+      logger: releaseLogger,
+      now: () => clock,
+    }),
+  ).rejects.toThrow('hdiutil failed during DMG creation (exit status 1)');
+  expect(state.attempts).toBe(1);
+  expect(state.sleeps).toEqual([]);
+  expect(release.removed).toEqual([dmgPath, '/scratch']);
+  expect(releaseLogger.entries).toContain(
+    '[macOS release] DMG creation: hdiutil attempt 1/3 failed; the release deadline leaves no room to retry.',
+  );
+});
+
+test('bounds, collapses, and redacts the diagnostic excerpt on every terminal command failure', async () => {
+  expect(
+    new ReleaseCommandError({
+      phase: 'DMG creation',
+      program: 'hdiutil',
+      status: 1,
+      stdout: '',
+      stderr: '  hdiutil: create failed -\n\t Resource busy \r\n',
+    }).message,
+  ).toBe(
+    'hdiutil failed during DMG creation (exit status 1): hdiutil: create failed - Resource busy',
+  );
+  expect(
+    new ReleaseCommandError({ phase: 'DMG creation', program: 'hdiutil' })
+      .message,
+  ).toBe('hdiutil failed during DMG creation.');
+  expect(
+    new ReleaseCommandError({
+      phase: 'DMG creation',
+      program: 'hdiutil',
+      timedOut: true,
+      signal: 'SIGTERM',
+      stderr: 'still attaching',
+    }).message,
+  ).toBe('hdiutil timed out during DMG creation (SIGTERM): still attaching');
+  expect(
+    new ReleaseCommandError({
+      phase: 'default output cap',
+      program: 'node',
+      status: 0,
+      outputTruncated: true,
+      stdout: 'x'.repeat(64),
+    }).message,
+  ).toBe(
+    `node failed during default output cap (output exceeded the capture limit): ${'x'.repeat(64)}`,
+  );
+  const long = `${'a'.repeat(400)} tail-marker`;
+  const bounded = commandFailureExcerpt(long, '');
+  expect(bounded.length).toBe(MAX_COMMAND_FAILURE_EXCERPT_CHARS + 1);
+  expect(bounded.startsWith('…')).toBe(true);
+  expect(bounded.endsWith(' tail-marker')).toBe(true);
+  expect(commandFailureExcerpt('', 'stdout only')).toBe('stdout only');
+  expect(commandFailureExcerpt(undefined, undefined)).toBe('');
+  const token = `ghp_${'A'.repeat(36)}`;
+  const redacted = commandFailureExcerpt(`auth failed for ${token}`, '');
+  expect(redacted).not.toContain(token);
+  expect(redacted).toContain('[REDACTED]');
+  expect(/^[^\n\r]*$/.test(bounded)).toBe(true);
+  // A real child's terminal failure carries the excerpt through the runner.
+  await expect(
+    runBoundedCommand(
+      process.execPath,
+      [
+        '-e',
+        "process.stderr.write('first line\\nsecond line\\n'); process.exit(3);",
+      ],
+      { phase: 'excerpt fixture', logger: logger() },
+    ),
+  ).rejects.toThrow(
+    'failed during excerpt fixture (exit status 3): first line second line',
   );
 });

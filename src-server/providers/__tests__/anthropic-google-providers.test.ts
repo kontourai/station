@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  captureLoggerLines,
+  stopLoggerCaptures,
+} from '../../__test-utils__/logger-capture.js';
 import { AnthropicLLMProvider } from '../llm/anthropic-llm-provider.js';
 import { GoogleLLMProvider } from '../llm/google-llm-provider.js';
+
+// A capture is process-wide, and every use in this file asserts BEFORE its own
+// `stop()`. Without this, one failing assertion leaks the sink — and any raised
+// debug level — into every test after it.
+afterEach(stopLoggerCaptures);
 
 const originalFetch = global.fetch;
 
@@ -248,7 +257,7 @@ describe('GoogleLLMProvider', () => {
   });
 
   test('listModels returns [] when fetch throws', async () => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const captured = captureLoggerLines('debug');
     global.fetch = vi.fn(async () => {
       throw new Error('request failed: ?key=AIza-test');
     }) as unknown as typeof fetch;
@@ -262,7 +271,8 @@ describe('GoogleLLMProvider', () => {
       reason: 'request failed: ?key=AIza-test',
       reasonKind: 'unreachable',
     });
-    expect(JSON.stringify(debug.mock.calls)).not.toContain('AIza-test');
+    expect(JSON.stringify(captured.lines())).not.toContain('AIza-test');
+    captured.stop();
   });
 
   test('distinguishes a successful empty catalog from unavailable discovery', async () => {
@@ -342,7 +352,7 @@ describe('GoogleLLMProvider', () => {
   });
 
   test('rejects a non-advancing Google page token without logging the key', async () => {
-    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const captured = captureLoggerLines('debug');
     const fn = mockFetch(() => ({
       ok: true,
       json: {
@@ -367,7 +377,8 @@ describe('GoogleLLMProvider', () => {
       reasonKind: 'no-catalog',
     });
     expect(fn).toHaveBeenCalledTimes(2);
-    expect(JSON.stringify(debug.mock.calls)).not.toContain('AIza-test');
+    expect(JSON.stringify(captured.lines())).not.toContain('AIza-test');
+    captured.stop();
   });
 
   test('propagates catalog cancellation instead of reporting unavailable', async () => {

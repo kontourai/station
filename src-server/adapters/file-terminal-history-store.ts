@@ -1,7 +1,10 @@
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ITerminalHistoryStore } from '../domain/terminal-history-store.js';
+import { createLogger } from '../utils/logger.js';
 import { resolveHomeDir } from '../utils/paths.js';
+
+const logger = createLogger({ name: 'terminal-history-store' });
 
 export class FileTerminalHistoryStore implements ITerminalHistoryStore {
   private baseDir: string;
@@ -19,7 +22,7 @@ export class FileTerminalHistoryStore implements ITerminalHistoryStore {
     try {
       return await readFile(this.filePath(sessionId), 'utf8');
     } catch (e) {
-      console.debug('Failed to load terminal history:', sessionId, e);
+      logger.debug('Failed to load terminal history', { sessionId, error: e });
       return '';
     }
   }

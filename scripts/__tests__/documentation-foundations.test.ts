@@ -4,28 +4,34 @@ import { describe, expect, it } from 'vitest';
 
 const read = (file: string) => readFileSync(file, 'utf8');
 
-function manifestFields(contract: string): string[] {
+/** Read exactly one named interface, not the text up to its next neighbour. */
+function interfaceFields(text: string, name: string): string[] {
   const source = ts.createSourceFile(
-    'plugin.ts',
-    contract,
+    'contract.ts',
+    text,
     ts.ScriptTarget.Latest,
     true,
+    ts.ScriptKind.TS,
   );
-  const manifest = source.statements.find(
-    (statement): statement is ts.InterfaceDeclaration =>
-      ts.isInterfaceDeclaration(statement) &&
-      statement.name.text === 'PluginManifest',
-  );
-  if (!manifest) throw new Error('PluginManifest interface is missing');
-  return manifest.members.map((member) => {
+  const declarations = source.statements
+    .filter(ts.isInterfaceDeclaration)
+    .filter((declaration) => declaration.name.text === name);
+  if (declarations.length !== 1)
+    throw new Error(
+      `Expected one ${name} interface${declarations.length === 0 ? ' (missing)' : ''}`,
+    );
+  return declarations[0].members.map((member) => {
     if (
       !ts.isPropertySignature(member) ||
-      !member.name ||
-      !ts.isIdentifier(member.name)
+      (!ts.isIdentifier(member.name) && !ts.isStringLiteral(member.name))
     )
-      throw new Error('Unsupported PluginManifest member');
+      throw new Error(`Unsupported ${name} member`);
     return member.name.text;
   });
+}
+
+function manifestFields(contract: string): string[] {
+  return interfaceFields(contract, 'PluginManifest');
 }
 
 describe('documentation foundations', () => {
@@ -116,6 +122,36 @@ describe('documentation foundations', () => {
     );
 
     expect([...documentedFields].sort()).toEqual(contractFields.sort());
+  });
+
+  it('extracts only manifest properties across nested types and intervening rejection interfaces', () => {
+    expect(
+      interfaceFields(
+        `
+      export interface PluginManifest {
+        name: string;
+        settings?: { nested: { value: string } };
+        'entrypoint'?: string;
+      }
+      export interface PluginManifestRejection { code: string; reason: string; }
+      export interface InstalledRejectedPlugin { name: string; status: 'rejected'; recovery: unknown; }
+      export interface PluginOverrideConfig { enabled: boolean; }
+    `,
+        'PluginManifest',
+      ),
+    ).toEqual(['name', 'settings', 'entrypoint']);
+  });
+
+  it('refuses missing or merged duplicate manifest declarations instead of vacuous field parity', () => {
+    expect(() =>
+      interfaceFields('export interface Other {}', 'PluginManifest'),
+    ).toThrow('Expected one');
+    expect(() =>
+      interfaceFields(
+        'interface PluginManifest { name: string } interface PluginManifest { added: string }',
+        'PluginManifest',
+      ),
+    ).toThrow('Expected one');
   });
 
   it('extracts only direct manifest fields across nested types and adjacent interfaces', () => {

@@ -6,31 +6,37 @@ const headerStyles = readFileSync(
   path.resolve(import.meta.dirname, '../components/header/HeaderMenu.css'),
   'utf8',
 );
-const breadcrumbStyles = readFileSync(
-  path.resolve(import.meta.dirname, '../components/header/PageBreadcrumb.css'),
-  'utf8',
-);
+// Every pattern below is bounded to ONE rule body (`[^}]*` cannot cross a
+// closing brace). The `[\s\S]*` these replaced spanned the whole sheet, so a
+// declaration that had drifted OUT of the reset rule into any later rule still
+// satisfied them -- which is the only thing the assertions are here to notice.
 
 describe('header button visual resets', () => {
   test('keeps full-viewport menu dismissal buttons free of global button chrome', () => {
     expect(headerStyles).toMatch(
-      /\.header-menu__dismiss-backdrop\s*\{[\s\S]*appearance:\s*none;[\s\S]*border:\s*0;[\s\S]*border-radius:\s*0;[\s\S]*padding:\s*0;[\s\S]*background:\s*transparent;/,
+      /\.header-menu__dismiss-backdrop\s*\{[^}]*appearance:\s*none;[^}]*\}/,
     );
     expect(headerStyles).toMatch(
-      /\.header-menu__dismiss-backdrop:hover,[\s\S]*\.header-menu__dismiss-backdrop:focus,[\s\S]*\.header-menu__dismiss-backdrop:focus-visible\s*\{[\s\S]*background:\s*transparent;[\s\S]*border-color:\s*transparent;/,
+      /\.header-menu__dismiss-backdrop\s*\{[^}]*border:\s*0;[^}]*\}/,
     );
-  });
-
-  test('preserves breadcrumb text affordance without inherited button fill or rounded border', () => {
-    expect(breadcrumbStyles).toMatch(
-      /\.page-breadcrumb__link\s*\{[\s\S]*border:\s*0;[\s\S]*border-radius:\s*0;[\s\S]*background:\s*transparent;/,
+    expect(headerStyles).toMatch(
+      /\.header-menu__dismiss-backdrop\s*\{[^}]*border-radius:\s*0;[^}]*\}/,
     );
-    expect(breadcrumbStyles).toMatch(
-      /\.page-breadcrumb__link:hover,[\s\S]*\.page-breadcrumb__link:focus,[\s\S]*\.page-breadcrumb__link:focus-visible\s*\{[\s\S]*border-color:\s*transparent;[\s\S]*background:\s*transparent;/,
+    expect(headerStyles).toMatch(
+      /\.header-menu__dismiss-backdrop\s*\{[^}]*padding:\s*0;[^}]*\}/,
     );
-    expect(breadcrumbStyles).toContain('.page-breadcrumb__link:focus-visible');
-    expect(breadcrumbStyles).toContain(
-      'outline: 1px solid var(--accent-primary)',
+    expect(headerStyles).toMatch(
+      /\.header-menu__dismiss-backdrop\s*\{[^}]*background:\s*transparent;[^}]*\}/,
     );
+    const interactive =
+      /\.header-menu__dismiss-backdrop:hover,[^}]*\.header-menu__dismiss-backdrop:focus,[^}]*\.header-menu__dismiss-backdrop:focus-visible\s*\{([^}]*)\}/.exec(
+        headerStyles,
+      )?.[1];
+    expect(
+      interactive,
+      'the backdrop hover/focus/focus-visible rule',
+    ).toBeDefined();
+    expect(interactive).toContain('background: transparent;');
+    expect(interactive).toContain('border-color: transparent;');
   });
 });

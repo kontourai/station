@@ -26,7 +26,7 @@
  * spawns, still rejects normally on every platform including Windows.
  */
 
-export type DesktopUpdateOutcome =
+type DesktopUpdateOutcome =
   | {
       status: 'update-available';
       version: string;

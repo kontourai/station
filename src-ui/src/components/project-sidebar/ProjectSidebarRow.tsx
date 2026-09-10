@@ -3,7 +3,10 @@ import {
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
 import { useState } from 'react';
-import { useNavigation } from '../../contexts/NavigationContext';
+import {
+  useNavigation,
+  useNavigationActions,
+} from '../../contexts/NavigationContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { LayoutIcon } from '../icons/LayoutIcon';
 import { projectAccent } from './projectAccent';
@@ -41,7 +44,13 @@ export function ProjectSidebarRow({
   reorder?: ProjectRowReorderProps;
 }) {
   const [expanded, setExpanded] = useState(isActive);
-  const { navigate, setProject, setLayout } = useNavigation();
+  const { navigate, setProject, setLayout } = useNavigationActions();
+  // The Session Board entry's active styling is keyed to the route, so this
+  // row reads exactly one navigation field and re-renders for that alone.
+  // The store is the pathname authority (`parseUrl` canonicalizes legacy
+  // paths before any consumer sees them); reading `window.location` here
+  // instead meant depending on a whole-store subscription to refresh it.
+  const pathname = useNavigation((state) => state.pathname);
   // Sidebar rows all mount with the project list. Fetch layouts only for an
   // expanded row so a six-project boot does not create six layouts requests.
   const { data: layouts } = useProjectLayoutsQuery(project.slug, {
@@ -202,8 +211,7 @@ export function ProjectSidebarRow({
               <button
                 type="button"
                 className={`sidebar__layout-btn${
-                  isActive &&
-                  window.location.pathname.endsWith('/session-board')
+                  isActive && pathname.endsWith('/session-board')
                     ? ' sidebar__layout-btn--active'
                     : ''
                 }`}

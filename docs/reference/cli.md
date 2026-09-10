@@ -27,9 +27,7 @@ instead: `npm install -g
 @kontourai/station-cli@<version-or-published-tag>`. Use a channel dist-tag only
 after `npm view` reports it.
 
-Only the **Client** tier (see the table below) is reachable this way. A
-host-local or contributor verb invoked through the published CLI fails with
-the exact command to run instead — never a stack trace.
+The Client tier and selected host-local operations are available in the packaged CLI. Local approval reads an existing owner-only Station home and verifies the loopback listener before sending authorization; it never initializes a missing home. Source-building operations remain repository-only.
 
 ### The contributor entry point: `./station`
 
@@ -118,8 +116,9 @@ Three tiers, per [the CLI product design](../design/cli-product.md):
 | Tier | Verbs | Bundled `station` | `./station` |
 |------|-------|-------------------|-------------|
 | Client | `chat`, `agents`, `sessions`, `approvals`, `operate`, `projects`, `tasks`, `skills`, every surface verb, `registry`, `stations`, `target`, `triage`, `setup existing`/`hosted`, `config`, `checkpoints`, `export`/`import`, `plugin`, `environment access request` | yes | yes |
-| Host-local | `environment show`/`credential`/`reset`/`offer`/`access list`/`approve`/`deny`, `environment peers` | fails, naming `./station` | yes |
-| Contributor | `build`, `dev`, `doctor`, `fresh`, `home`, `link`, `service`, `shortcut`, `start`, `stop`, `upgrade` | fails, naming `./station <command>` | yes |
+| Host-local | `open`, `doctor`, `environment show`, `environment credential show`, `environment offer`, `environment access list`/`approve`/`deny`, `service status`/`start`/`stop` | yes, existing local installation required for local authority | yes |
+| Host mutation | `environment credential rotate`, `environment reset`, `environment peers`, service install/uninstall | repository launcher required | yes |
+| Contributor | `build`, `dev`, `fresh`, `home`, `link`, `shortcut`, `start`, `stop`, `upgrade` | fails, naming `./station <command>` | yes |
 
 A contributor-tier verb invoked from the bundle exits non-zero with the exact command to run instead — never a stack trace and never a partial run against whatever directory you were standing in:
 
@@ -2717,3 +2716,9 @@ repair files or transfer authority. See [restored-checkout verification](../guid
 for scratch storage, exclusions and non-atomic capture limits. `import-project`
 performs this local check before sending Project creation, and retains the import
 without attempting creation when verification fails.
+
+### Open an authorized local browser session
+
+`station open [--home=<directory>] [--instance=<name>]` opens an already-running local instance through its one-time browser authorization. Multiple live instances require an explicit selection. A failed authorization does not silently open an unpaired page, and the capability is not printed to stdout. `station doctor` in the packaged client reuses the target diagnostic report; source-checkout doctor retains its development checks.
+
+`station environment access approve <request-id> --api-base=http://127.0.0.1:<port>` requires the selected Station home (`STATION_HOME` or its saved local binding). The packaged client uses the same read-only record validation and listener challenge proof as the host. Non-interactive approval still requires `--force`; ordinary interactive use asks for confirmation.

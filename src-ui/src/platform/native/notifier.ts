@@ -18,7 +18,7 @@
  * hands the host a URL to poll; the host posts from its own thread, which
  * keeps running while the webview is paused.
  */
-export interface NativeNotifier {
+interface NativeNotifier {
   /** Whether the OS will actually show anything. */
   isAvailable(): Promise<boolean>;
   /** Ask once. Returns whether notifications may now be posted. */

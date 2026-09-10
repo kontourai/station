@@ -265,7 +265,7 @@ export function parseWorkspacePaneHostContribution(
   });
 }
 
-export type LegacyLayoutHostMigration =
+type LegacyLayoutHostMigration =
   | { readonly state: 'not-applicable' }
   | {
       readonly state: 'migrated';
@@ -441,7 +441,7 @@ export function migrateLegacyLayoutHostContribution(input: {
     : { state: 'manual-review', reasons: ['migration-result-invalid'] };
 }
 
-export interface WorkspacePaneHostAgentResolver {
+interface WorkspacePaneHostAgentResolver {
   resolveOwnPluginAgent(input: {
     owner: WorkspacePaneHostContributionOwner;
     projectId: string;
@@ -453,7 +453,7 @@ export interface WorkspacePaneHostAgentResolver {
   }): Promise<WorkspacePaneHostAgentResolution>;
 }
 
-export interface WorkspacePaneHostContributionAuthority {
+interface WorkspacePaneHostContributionAuthority {
   current(
     owner: WorkspacePaneHostContributionOwner,
   ):
@@ -461,7 +461,7 @@ export interface WorkspacePaneHostContributionAuthority {
     | Promise<{ state: 'current' | 'retired' | 'unavailable' }>;
 }
 
-export interface WorkspacePaneHostPromptLauncher {
+interface WorkspacePaneHostPromptLauncher {
   launch(input: {
     owner: WorkspacePaneHostContributionOwner;
     projectId: string;
@@ -505,7 +505,12 @@ export function createWorkspacePaneHostContribution(input: {
   if (
     !declaration ||
     !isCanonicalPluginId(input.owner.pluginId) ||
-    !/^sha256:[a-f0-9]{64}$/.test(input.owner.installationGeneration) ||
+    !input.owner.installationGeneration ||
+    input.owner.installationGeneration.length > 256 ||
+    [...input.owner.installationGeneration].some((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code <= 31 || code === 127;
+    }) ||
     !text(input.projectId, 256)
   ) {
     throw new Error('Invalid Workspace Pane host contribution composition');
@@ -617,6 +622,7 @@ export function createWorkspacePaneHostContribution(input: {
           label: action.label,
           ...(action.icon ? { icon: action.icon } : {}),
           presentation: action.presentation,
+          ...(action.intent.agent ? { agent: action.intent.agent } : {}),
           availability:
             index >= 0
               ? availableAgents[index]!.state

@@ -270,7 +270,8 @@ function buildAbortAwareHeaders(signal?: AbortSignal) {
  * NOTHING until `tool-result`, so a `delegateTask` sub-agent or a slow
  * MCP/shell tool legitimately produces zero output for well over a minute.
  * `/chat`'s SSE response now emits a periodic keepalive comment
- * (`SSE_KEEPALIVE_INTERVAL_MS`, `stream-orchestrator.ts`, server-side) — a
+ * (`CHAT_STREAM_KEEPALIVE_INTERVAL_MS`, `stream-orchestrator.ts`,
+ * server-side) — a
  * bare `:ping\n\n` line, ignored below by the exact same
  * `!line.startsWith('data: ')` guard that already skips any non-event
  * line, so it resets this watchdog (proving "still alive") without ever

@@ -1,0 +1,9 @@
+.layout-action-notice {
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+  overflow-wrap: anywhere;
+}

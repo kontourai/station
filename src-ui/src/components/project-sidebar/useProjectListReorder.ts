@@ -35,7 +35,7 @@ export function reorderedSlugs(
 }
 
 /** Which edge of a row carries the insertion marker, or none. */
-export type DropEdge = 'top' | 'bottom' | null;
+type DropEdge = 'top' | 'bottom' | null;
 
 /**
  * Where the insertion marker belongs, in the CURRENT (pre-drop) row indices.
@@ -71,7 +71,7 @@ export interface ProjectRowReorderProps {
   registerRow: (element: HTMLElement | null) => void;
 }
 
-export interface ProjectListReorderOptions {
+interface ProjectListReorderOptions {
   /**
    * Human name for a slug, used in the move announcement. Defaults to the
    * slug — a rail with no names is still better announced than not at all.

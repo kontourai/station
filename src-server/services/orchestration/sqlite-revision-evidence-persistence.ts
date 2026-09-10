@@ -5,15 +5,7 @@ import type {
   RevisionEvidencePersistenceBounds,
 } from '../../domain/revision-bound-evidence.js';
 import { MAX_REVISION_EVIDENCE_IDENTIFIER_BYTES } from '../../domain/revision-bound-evidence.js';
-
-interface SqliteDatabase {
-  exec(sql: string): void;
-  prepare(sql: string): {
-    run(...values: unknown[]): unknown;
-    get(...values: unknown[]): unknown;
-    all(...values: unknown[]): unknown[];
-  };
-}
+import type { SqliteDatabase } from './sqlite-database.js';
 
 const RESTORE_PAGE_SIZE = 32;
 const PORTABLE_PREFIX_BYTES = Buffer.byteLength(

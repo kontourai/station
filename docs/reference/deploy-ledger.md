@@ -28,6 +28,20 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-09-09T14:00:58Z | nightly-desktop | 0.1.11-nightly.2443.2 | `49cfa59` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/34355735437) |
+| 2026-09-09T14:00:51Z | nightly-android | 0.1.11-nightly.2443.2 | `49cfa59` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/34355735437) |
+| 2026-09-09T13:52:04Z | nightly-npm | 0.6.0-nightly.2443.34355735437 | `49cfa59` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/34355735437) |
+| 2026-09-09T02:49:16Z | nightly-desktop | 0.1.11-nightly.2443.1 | `a7935a4` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/34301435508) |
+| 2026-09-09T02:49:10Z | nightly-android | 0.1.11-nightly.2443.1 | `a7935a4` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/34301435508) |
+| 2026-09-09T02:43:48Z | nightly-npm | 0.6.0-nightly.2443.34301435508 | `a7935a4` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/34301435508) |
+| 2026-09-08T17:23:06Z | nightly-desktop | 0.1.11-nightly.2442.5 | `fd2c04e` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/34252063142) |
+| 2026-09-08T17:23:00Z | nightly-android | 0.1.11-nightly.2442.5 | `fd2c04e` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/34252063142) |
+| 2026-09-08T17:13:07Z | nightly-npm | 0.6.0-nightly.2442.34252063142 | `fd2c04e` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/34252063142) |
+| 2026-09-08T16:34:52Z | nightly-android | 0.1.11-nightly.2442.4 | `9ef6da4` | native cohort final receipt partial | [run](https://github.com/kontourai/station/actions/runs/34247229018) |
+| 2026-09-08T16:28:03Z | nightly-npm | 0.6.0-nightly.2442.34247229018 | `9ef6da4` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/34247229018) |
+| 2026-09-08T14:27:53Z | nightly-npm | 0.6.0-nightly.2442.34234368088 | `92b5e7b` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/34234368088) |
+| 2026-09-08T13:45:30Z | nightly-npm | 0.6.0-nightly.2442.34230188430 | `5dda86f` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/34230188430) |
+| 2026-09-08T10:24:53Z | nightly-npm | 0.6.0-nightly.2442.34211909749 | `370c33e` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/34211909749) |
 | 2026-08-30T19:57:10Z | nightly-desktop | 0.1.2-nightly.2433 | `f1073fa` | nightly test-gate success on f1073fa4cefe4f46a58409e7cfd493f2d6d29228 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33330909248) |
 | 2026-08-30T19:53:22Z | nightly-android | 0.1.2-nightly.2433 | `f1073fa` | nightly test-gate success on f1073fa4cefe4f46a58409e7cfd493f2d6d29228 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33330909248) |
 | 2026-08-30T18:20:57Z | nightly-desktop | 0.1.2-nightly.2433 | `1c23510` | nightly test-gate success on 1c235104ce09cfbc88cf42b9a529407c7949944e (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33326401200) |
@@ -52,6 +66,212 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-09-09T14:00:58Z · nightly-desktop · 0.1.11-nightly.2443.2
+
+- Ship SHA: `49cfa59dd6d037208595040721e0e7bbff114840`
+- Artifact built at: `2026-09-09T13:20:45.758Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 34355735437)
+
+### Changelog
+
+> Changelog slice omitted: previous ship SHA a7935a4 is not reachable in this repository's history, so no commit range exists to derive.
+
+## 2026-09-09T14:00:51Z · nightly-android · 0.1.11-nightly.2443.2
+
+- Ship SHA: `49cfa59dd6d037208595040721e0e7bbff114840`
+- Artifact built at: `2026-09-09T13:21:32.047Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 34355735437)
+
+### Changelog
+
+> Changelog slice omitted: previous ship SHA a7935a4 is not reachable in this repository's history, so no commit range exists to derive.
+
+## 2026-09-09T13:52:04Z · nightly-npm · 0.6.0-nightly.2443.34355735437
+
+- Ship SHA: `49cfa59dd6d037208595040721e0e7bbff114840`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2443.34355735437 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `a7935a4` ([full sha](https://github.com/kontourai/station/commit/a7935a4cf5297db2eea11364badf96f8ce1d106b)):
+
+**Other**
+
+- [#1818](https://github.com/kontourai/station/pull/1818) test(runtime): wait on the cold-start harness's own event instead of a wall clock
+- [#1788](https://github.com/kontourai/station/pull/1788) test(scripts): execute every composed guardrail, dedupe verify:static linting, pin the copied CI classify jobs
+
+## 2026-09-09T02:49:16Z · nightly-desktop · 0.1.11-nightly.2443.1
+
+- Ship SHA: `a7935a4cf5297db2eea11364badf96f8ce1d106b`
+- Artifact built at: `2026-09-09T02:14:34.403Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 34301435508)
+
+### Changelog
+
+> Changelog slice omitted: previous ship SHA fd2c04e is not reachable in this repository's history, so no commit range exists to derive.
+
+## 2026-09-09T02:49:10Z · nightly-android · 0.1.11-nightly.2443.1
+
+- Ship SHA: `a7935a4cf5297db2eea11364badf96f8ce1d106b`
+- Artifact built at: `2026-09-09T02:12:04.311Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 34301435508)
+
+### Changelog
+
+> Changelog slice omitted: previous ship SHA fd2c04e is not reachable in this repository's history, so no commit range exists to derive.
+
+## 2026-09-09T02:43:48Z · nightly-npm · 0.6.0-nightly.2443.34301435508
+
+- Ship SHA: `a7935a4cf5297db2eea11364badf96f8ce1d106b`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2443.34301435508 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `fd2c04e` ([full sha](https://github.com/kontourai/station/commit/fd2c04e8632d40e6e9c53dd13a558a1764375800)):
+
+**Features**
+
+- [#1805](https://github.com/kontourai/station/pull/1805) feat(server): one route error contract at the boundary, with the workflow routes as the template
+
+**Fixes**
+
+- [#1800](https://github.com/kontourai/station/pull/1800) fix(deps): resolve csv-parse, js-yaml and hono to their patched releases
+- [#1808](https://github.com/kontourai/station/pull/1808) fix(ui): point the outbound-queue call-site pin at the dock hook that now makes the call
+- [#1803](https://github.com/kontourai/station/pull/1803) fix(deps): let the lifecycle allowlist name workspace-importer package paths (#1718)
+- [#1804](https://github.com/kontourai/station/pull/1804) fix(scripts): derive IPv6 ULA private-ip findings from address shape, not a fc/fd prefix
+- [#1801](https://github.com/kontourai/station/pull/1801) fix(testflight): page through the internal-group membership readback (#1782)
+- [#1799](https://github.com/kontourai/station/pull/1799) fix(ios): name the overlay receipt's desktop master fields as desktopBundleIcon* (#1776)
+- [#1789](https://github.com/kontourai/station/pull/1789) fix(deps): drop the obsolete provider-utils advisory residual
+
+**CI / workflow**
+
+- [#1812](https://github.com/kontourai/station/pull/1812) ci(deps): scan the advisory floor four times a day and pin the workflow's shape
+- [#1802](https://github.com/kontourai/station/pull/1802) ci(nightly): decide a rebuild from ledger evidence, not marker position (#1780)
+
+**Other**
+
+- [#1809](https://github.com/kontourai/station/pull/1809) refactor(server): publish ten json writers through the shared durable seams, which gain a serialization option
+- [#1798](https://github.com/kontourai/station/pull/1798) perf(ui): navigation selectors and an actions-only read; delete dead entry CSS
+- [#1794](https://github.com/kontourai/station/pull/1794) refactor(orchestration): extract turn-dedup and adoption sqlite persistence from the event store
+- [#1785](https://github.com/kontourai/station/pull/1785) refactor(chat-dock): extract overlay flags and boundary dialogs, load the dialogs as one on-demand chunk
+
+## 2026-09-08T17:23:06Z · nightly-desktop · 0.1.11-nightly.2442.5
+
+- Ship SHA: `fd2c04e8632d40e6e9c53dd13a558a1764375800`
+- Artifact built at: `2026-09-08T16:43:43.338Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 34252063142)
+
+### Changelog
+
+> Changelog slice omitted: previous ship SHA f1073fa is not reachable in this repository's history, so no commit range exists to derive.
+
+## 2026-09-08T17:23:00Z · nightly-android · 0.1.11-nightly.2442.5
+
+- Ship SHA: `fd2c04e8632d40e6e9c53dd13a558a1764375800`
+- Artifact built at: `2026-09-08T16:43:50.381Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 34252063142)
+
+### Changelog
+
+> Changelog slice omitted: previous ship SHA 9ef6da4 is not reachable in this repository's history, so no commit range exists to derive.
+
+## 2026-09-08T17:13:07Z · nightly-npm · 0.6.0-nightly.2442.34252063142
+
+- Ship SHA: `fd2c04e8632d40e6e9c53dd13a558a1764375800`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2442.34252063142 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `9ef6da4` ([full sha](https://github.com/kontourai/station/commit/9ef6da41656621fb1c4b7b8fca1e528521df127e)):
+
+**Fixes**
+
+- [#1781](https://github.com/kontourai/station/pull/1781) fix(ios): ship the channel app icon and fail closed when the catalog is not derived from it (#1776)
+
+## 2026-09-08T16:34:52Z · nightly-android · 0.1.11-nightly.2442.4
+
+- Ship SHA: `9ef6da41656621fb1c4b7b8fca1e528521df127e`
+- Artifact built at: `2026-09-08T15:57:01.936Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery failure (run 34247229018)
+- Note: macos: NOT_VERIFIED (macos provider outcome unknown: unresolved:run:34247229018:macos-state-absent:failure (the provider effect may already be live))
+
+### Changelog
+
+> Changelog slice omitted: previous ship SHA f1073fa is not reachable in this repository's history, so no commit range exists to derive.
+
+## 2026-09-08T16:28:03Z · nightly-npm · 0.6.0-nightly.2442.34247229018
+
+- Ship SHA: `9ef6da41656621fb1c4b7b8fca1e528521df127e`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2442.34247229018 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `92b5e7b` ([full sha](https://github.com/kontourai/station/commit/92b5e7b30978b0c40c4d5c1424662f6e7e8900b5)):
+
+**Fixes**
+
+- [#1778](https://github.com/kontourai/station/pull/1778) fix(release): derive TestFlight internal-group membership instead of posting it (#1777)
+
+**CI / workflow**
+
+- [#1779](https://github.com/kontourai/station/pull/1779) ci(nightly): publish Android and macOS per platform with a disclosed-partial receipt (#1774)
+- [#1775](https://github.com/kontourai/station/pull/1775) ci(nightly): deliver iOS beside the native cohort, not inside it (#1774)
+
+## 2026-09-08T14:27:53Z · nightly-npm · 0.6.0-nightly.2442.34234368088
+
+- Ship SHA: `92b5e7b30978b0c40c4d5c1424662f6e7e8900b5`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2442.34234368088 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `5dda86f` ([full sha](https://github.com/kontourai/station/commit/5dda86fbc3e79535929a00097c35c7b25451d3a1)):
+
+_No user-visible changes recorded for this slice._
+
+## 2026-09-08T13:45:30Z · nightly-npm · 0.6.0-nightly.2442.34230188430
+
+- Ship SHA: `5dda86fbc3e79535929a00097c35c7b25451d3a1`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2442.34230188430 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `370c33e` ([full sha](https://github.com/kontourai/station/commit/370c33eed4b501243663ce13ac216832312feb78)):
+
+**Fixes**
+
+- [#1773](https://github.com/kontourai/station/pull/1773) fix(orchestration): bind session barriers to their runtime and take search worker boot off read budgets
+- [#1772](https://github.com/kontourai/station/pull/1772) fix(release): name the App Store Connect error when beta-group assignment fails
+
+## 2026-09-08T10:24:53Z · nightly-npm · 0.6.0-nightly.2442.34211909749
+
+- Ship SHA: `370c33eed4b501243663ce13ac216832312feb78`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.6.0-nightly.2442.34211909749 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+> First recorded entry for this channel; no previous ship SHA exists in the ledger, so no changelog slice was derived.
 
 ## 2026-08-30T19:57:10Z · nightly-desktop · 0.1.2-nightly.2433
 

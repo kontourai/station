@@ -27,7 +27,7 @@
 import { networkInterfaces } from 'node:os';
 import { normalizeSocketAddress } from './runtime-request-security.js';
 
-export interface OffBoxPeerOptions {
+interface OffBoxPeerOptions {
   /**
    * Interface enumerator, injectable for tests. Called ON EVERY EVALUATION on
    * purpose: a cached list fails OPEN. An interface that appears after boot —

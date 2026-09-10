@@ -39,7 +39,7 @@ export interface TurnIdempotencyPersistence {
     },
   ): T;
 }
-export type TurnIdempotencyClaim =
+type TurnIdempotencyClaim =
   | { claimed: true }
   | { claimed: false; value?: string };
 

@@ -283,7 +283,7 @@ export function isProviderAdapterShape(
   );
 }
 
-export type ProviderAdapterRegistrationProvenance = 'builtin' | 'plugin';
+type ProviderAdapterRegistrationProvenance = 'builtin' | 'plugin';
 
 const providerAdapterProvenance = new WeakMap<
   ProviderAdapterShape,

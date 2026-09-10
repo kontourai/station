@@ -41,6 +41,7 @@ import {
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
   PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
@@ -173,6 +174,7 @@ import {
   keptRowsForTaskSession,
 } from '../../routes/orchestration/tasks.js';
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
+import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
 import { createPluginRoutes } from '../../routes/plugins/plugins.js';
 import { createRegistryRoutes } from '../../routes/plugins/registry.js';
 import { createCodingRoutes } from '../../routes/projects/coding.js';
@@ -231,6 +233,7 @@ import {
   type RuntimeCallerRequest,
   type RuntimeDeviceActivityClassifierContext,
   type RuntimeSecurityAuditRecord,
+  resolveClientOriginForRequest,
 } from '../../security/runtime-request-security.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
@@ -334,6 +337,7 @@ import {
   isMcpUiRenderRevoked,
   setMcpUiRenderAllowed,
 } from '../../services/plugins/mcp-ui-permissions.js';
+import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
 import type { AttentionProjectionService } from '../../services/projects/attention-projection.js';
 import { readCheckoutRemotes } from '../../services/projects/checkout-remote-reader.js';
 import { DiffCommentService } from '../../services/projects/diff-comment-service.js';
@@ -454,6 +458,7 @@ import {
   loadHostedTenantRegistryFromEnvironment,
   tenantExecutionContextForRequest,
 } from '../bootstrap/runtime-tenant-context.js';
+import { nativeRuntimeSpecMatches } from '../conversation/native-foreground-invocation.js';
 import {
   createStationEngineAvailabilityReader,
   resolveBedrockConnectionAuth,
@@ -472,6 +477,7 @@ import {
   createRuntimeSystemRouteDeps,
 } from './runtime-route-support.js';
 import { createTaskBasisMcpInitialRead } from './task-basis-mcp-initial-read.js';
+import { createRuntimeWorkspacePaneHostActions } from './workspace-pane-host-actions.js';
 
 type HonoApp = Parameters<NonNullable<HonoServerConfig['configureApp']>>[0];
 
@@ -540,6 +546,7 @@ export interface ConfigureRuntimeRoutesContext {
   /** Runtime-owned durable operation authority shared with fleet dispatch. */
   actionOperations: ActionOperationService;
   orchestrationEventStore?: EventStore;
+  pluginInstallationHost?: PluginInstallationHost;
   pluginOperationalEventSubscriptions: Pick<
     import('../plugins/plugin-operational-event-subscriptions.js').PluginOperationalEventSubscriptionService,
     'quiesce' | 'reconcile'
@@ -1156,6 +1163,7 @@ export function configureRuntimeRoutes(
   const layoutCatalog = new DistributionProfileService(
     context.configLoader.getProjectHomeDir(),
     context.appConfig.distributionProfile,
+    context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
   );
   const kitObservabilityRegistry = new StationKitObservabilityRegistry(
     new StationKitObservabilityHost({
@@ -1321,6 +1329,8 @@ export function configureRuntimeRoutes(
       }),
   );
   const reviewedSourceBasisResolver = new ReviewedSourceBasisResolver({
+    packageMcpJournal:
+      context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
     projectHomeDir: context.configLoader.getProjectHomeDir(),
     logger: context.logger,
   });
@@ -1520,6 +1530,9 @@ export function configureRuntimeRoutes(
       context.eventBus,
       {
         consentChannel: context.consentChannel,
+        packageMcpJournal:
+          context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+        installationHost: context.pluginInstallationHost,
         applyConfigurationMutation: context.applyAgentConfigurationMutation,
         refreshKitObservability: () =>
           kitObservabilityRegistry.discoverInstalled([
@@ -1528,11 +1541,11 @@ export function configureRuntimeRoutes(
           ]),
         settleProviderAdapterRetirements: () =>
           context.orchestrationService.settleProviderAdapterRetirements(),
-        reconcileEngineConnections: async (plugin) => {
+        reconcileEngineConnections: async (plugin, view) => {
           await replacePluginEngineConnections(
             context.configLoader,
             plugin,
-            listProviders('acpConnections')
+            listProviders('acpConnections', view)
               .filter((entry: any) => entry.source === plugin)
               .flatMap((entry: any) =>
                 (entry.provider.getConnections?.() ?? []).map(
@@ -1566,6 +1579,9 @@ export function configureRuntimeRoutes(
       context.reloadSkillsAndAgents,
       context.skillService,
       {
+        packageMcpJournal:
+          context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+        installationHost: context.pluginInstallationHost,
         applyConfigurationMutation: context.applyAgentConfigurationMutation,
         approveKitOperatorAction: (candidate) =>
           context.approvalRegistry.register(
@@ -2447,6 +2463,37 @@ export function configureRuntimeRoutes(
   // Current-host composer staging is intentionally process-local: unfinished
   // uploads expire on restart rather than becoming a durable hidden queue.
   const attachmentStaging = new AttachmentStagingService();
+  const paneHostActions = createRuntimeWorkspacePaneHostActions({
+    projectHomeDir: context.configLoader.getProjectHomeDir(),
+    journal:
+      context.orchestrationEventStore?.createPackageMcpAdmissionJournal(),
+    projects: context.storageAdapter,
+    orchestration: context.orchestrationService,
+    getConnection: (id) => context.connectionService.getConnection(id),
+    nativeAgentAvailable: (id, spec) => {
+      const runtime = context.buildRuntimeContext();
+      return (
+        runtime.getAgentConfigurationRevision() !== null &&
+        runtime.activeAgents.has(id) &&
+        nativeRuntimeSpecMatches(spec, runtime.agentSpecs.get(id))
+      );
+    },
+  });
+  context.app.route(
+    '/api/orchestration/pane-host',
+    createWorkspacePaneHostActionRoutes({
+      service: paneHostActions,
+      actorFor: (c) => {
+        const principal = resolveOrchestrationRequestPrincipal(c);
+        return {
+          principal,
+          readAuthority: readAuthorityForExecution(principal.id),
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          isCurrent: () => isRequestPrincipalCurrent(c.req.raw),
+        };
+      },
+    }),
+  );
   context.app.route(
     '/api/orchestration/attachment-staging',
     createAttachmentStagingRoutes({
@@ -4581,6 +4628,54 @@ export function configureDevicePairingPublicRoutes(
       return c.json({ error: 'local_grant_forbidden' }, 403);
     }
     return c.json({ ready: true });
+  });
+  app.post(PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH, async (c) => {
+    if (
+      !localGrantSecret ||
+      !isDirectLoopbackCaller(c) ||
+      c.req.header('forwarded') ||
+      c.req.header('x-forwarded-for') ||
+      c.req.header('x-forwarded-host')
+    )
+      return c.json({ error: 'local_grant_forbidden' }, 403);
+    if (new URL(c.req.url).search)
+      return c.json({ error: 'invalid_request' }, 400);
+    const body = await readPairingJson(c.req.raw, ['secret', 'action']);
+    if (
+      !body ||
+      typeof body.secret !== 'string' ||
+      !['list', 'approve', 'deny'].includes(String(body.action)) ||
+      (body.action !== 'list' &&
+        (typeof body.requestId !== 'string' || body.requestId.length > 128)) ||
+      (body.action === 'list' && body.requestId !== undefined)
+    )
+      return c.json({ error: 'invalid_request' }, 400);
+    if (!timingSafeSecretEqual(body.secret, localGrantSecret))
+      return c.json({ error: 'local_grant_forbidden' }, 403);
+    try {
+      if (body.action === 'list')
+        return c.json({ requests: pairing.listRequests() });
+      const requestId = body.requestId as string;
+      const result =
+        body.action === 'approve'
+          ? pairing.confirmRequest(requestId, { kind: 'local-grant' })
+          : pairing.denyRequest(requestId);
+      options.audit?.({
+        event:
+          body.action === 'approve'
+            ? 'station.pairing.approved'
+            : 'station.pairing.refused',
+        approver: 'local-grant',
+        source: result.source,
+        timestamp: Date.now(),
+      });
+      return c.json(result);
+    } catch (error) {
+      return c.json(
+        { error: pairingErrorCode(error) },
+        pairingErrorStatus(error),
+      );
+    }
   });
   app.post(PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH, async (c) => {
     if (new URL(c.req.url).search) {

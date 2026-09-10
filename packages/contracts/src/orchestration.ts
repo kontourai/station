@@ -1,4 +1,5 @@
 import type { AgentId, EngineId } from './agent-identity.js';
+import type { AttentionRequestReference } from './attention.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type {
@@ -36,6 +37,8 @@ export interface OrchestrationSendTurnInput
     'recoveryCorrelationId' | 'reviewIsolation'
   > {
   ambientContext?: string;
+  /** Read-only constraint checked again at actual adapter invocation. */
+  expectedInputRequest?: AttentionRequestReference;
 }
 
 /**
@@ -985,11 +988,23 @@ export interface ConversationListItem {
  * branch on `status`; they must not infer a writable Session from an Agent or
  * provider decoration on the inventory row.
  */
+/** Execution facts from the same authorized current-child read, never Agent defaults. */
+export interface ConversationOpenExecution {
+  sessionId: string;
+  agentId: AgentId;
+  provider: EngineId;
+  engineConnectionId?: string;
+  model?: string;
+  acceptedModel?: string;
+}
+
 export type ConversationOpenResolution =
   | {
       status: 'resolved';
       conversation: ConversationListItem;
       currentSessionId: string;
+      /** Absent on older servers; a replaced child cannot borrow its predecessor's execution state. */
+      execution?: ConversationOpenExecution;
       transcript: {
         available: true;
         owner: 'runtime';
@@ -998,6 +1013,8 @@ export type ConversationOpenResolution =
       };
       /** Computed from the current Session control/lifecycle facts. */
       canContinue: boolean;
+      /** Continuation is temporarily blocked only by the current active turn. */
+      continuationPending?: boolean;
       answerability: RequestAnswerability;
       recoveryActions: readonly [];
     }

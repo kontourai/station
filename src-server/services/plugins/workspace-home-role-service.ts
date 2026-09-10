@@ -42,11 +42,11 @@ import {
   type WorkspaceHomeRoleGrant,
   type WorkspaceHomeRoleStatus,
 } from '@kontourai/station-contracts/workspace-home-role';
+import { isRecord } from '../../utils/is-record.js';
 import type { InstalledPluginWorkspacePaneContribution } from './distribution-profile-service.js';
 import {
   GrantsFileStore,
   GrantsStoreUnavailableError,
-  isPlainObject,
 } from './grants-file-store.js';
 
 /** The Home role store cannot be read; nothing may be decided from it. */
@@ -80,7 +80,7 @@ interface HomeRoleStoreFile {
 }
 
 function homeRoleShapeProblems(value: unknown): string[] {
-  if (!isPlainObject(value)) {
+  if (!isRecord(value)) {
     return ['must be a plain object'];
   }
   const problems: string[] = [];
@@ -89,11 +89,11 @@ function homeRoleShapeProblems(value: unknown): string[] {
       problems.push(`unexpected entry: ${key}`);
       continue;
     }
-    if (!isPlainObject(entry)) {
+    if (!isRecord(entry)) {
       problems.push(`${key}: must be an object`);
       continue;
     }
-    if (!isPlainObject(entry.grant)) {
+    if (!isRecord(entry.grant)) {
       problems.push(`${key}: grant must be an object`);
     }
     if (
@@ -158,7 +158,7 @@ export function computeWorkspaceHomeRoleInstallDigest(
   return `sha256:${hash.digest('hex')}`;
 }
 
-export interface StoredWorkspaceHomeRoleRecord {
+interface StoredWorkspaceHomeRoleRecord {
   grant: WorkspaceHomeRoleGrant;
   installDigest: string;
 }
@@ -174,7 +174,7 @@ export function readStoredWorkspaceHomeRole(
   projectHomeDir: string,
 ): StoredWorkspaceHomeRoleRecord | null {
   const stored = homeRoleStore(projectHomeDir).read()[HOME_ROLE_STORE_KEY];
-  if (!isPlainObject(stored)) return null;
+  if (!isRecord(stored)) return null;
   const entry = stored as StoredWorkspaceHomeRole;
   const grant = parseWorkspaceHomeRoleGrant(entry.grant);
   if (!grant) return null;
@@ -205,7 +205,7 @@ export async function clearWorkspaceHomeRole(
   });
 }
 
-export interface WorkspaceHomeRoleStatusDeps {
+interface WorkspaceHomeRoleStatusDeps {
   projectHomeDir: string;
   pluginsDir: string;
   listContributions: () => InstalledPluginWorkspacePaneContribution[];

@@ -29,6 +29,7 @@ describe('ConversationOpenResolver', () => {
     const resolver = createConversationOpenResolver({
       currentSessionId: () => 'released-conversation:session:child',
       readCurrent: vi.fn().mockResolvedValue({
+        sessionId: 'released-conversation:session:child',
         messages: [{ id: 'one', role: 'user', parts: [] }],
         answerability: { answerable: true },
         canContinue: true,
@@ -42,6 +43,27 @@ describe('ConversationOpenResolver', () => {
       currentSessionId: 'released-conversation:session:child',
       transcript: { available: true, owner: 'runtime' },
       canContinue: true,
+    });
+  });
+
+  it('reports an active-turn wait without granting continuation', async () => {
+    const resolver = createConversationOpenResolver({
+      currentSessionId: () => 'busy-child',
+      readCurrent: vi.fn().mockResolvedValue({
+        sessionId: 'busy-child',
+        messages: [],
+        answerability: { answerable: true },
+        canContinue: false,
+        continuationPending: true,
+      }),
+    });
+    await expect(
+      resolver.resolve({ conversation, authority }),
+    ).resolves.toMatchObject({
+      status: 'resolved',
+      canContinue: false,
+      continuationPending: true,
+      recoveryActions: [],
     });
   });
 
@@ -77,4 +99,56 @@ describe('ConversationOpenResolver', () => {
       recoveryActions: ['retry', 'start-new'],
     });
   });
+});
+
+it('refuses mixed execution metadata when lineage changes during the authorized read', async () => {
+  let current = 'old-child';
+  const resolver = createConversationOpenResolver({
+    currentSessionId: () => current,
+    readCurrent: async () => {
+      current = 'new-child';
+      return {
+        sessionId: 'new-child',
+        messages: [],
+        answerability: { answerable: true },
+        canContinue: true,
+        execution: {
+          sessionId: 'new-child',
+          agentId: conversation.agentSlug,
+          provider: 'claude',
+        },
+      };
+    },
+  });
+  await expect(
+    resolver.resolve({
+      conversation,
+      authority,
+      expectedSessionId: 'old-child',
+    }),
+  ).resolves.toMatchObject({ status: 'unavailable', canContinue: false });
+});
+
+it('returns exact observed execution separately from inventory decorations', async () => {
+  const execution = {
+    sessionId: 'current-child',
+    agentId: conversation.agentSlug,
+    provider: 'claude',
+    engineConnectionId: 'actual-connection',
+    model: 'reported-model',
+    acceptedModel: 'accepted-model',
+  };
+  const resolver = createConversationOpenResolver({
+    currentSessionId: () => 'current-child',
+    readCurrent: async () => ({
+      sessionId: 'current-child',
+      execution,
+      messages: [],
+      answerability: { answerable: true },
+      canContinue: true,
+    }),
+  });
+  await expect(
+    resolver.resolve({ conversation, authority }),
+  ).resolves.toMatchObject({ status: 'resolved', execution });
 });

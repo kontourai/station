@@ -189,7 +189,7 @@ describe('CodeQL SARIF policy', () => {
     ).toThrow('--stale-baseline must be fail or warn');
   });
 
-  test('a baseline entry does not grandfather a moved or edited finding (fingerprint mismatch)', () => {
+  test('a baseline entry does not grandfather an EDITED finding (fingerprint mismatch)', () => {
     const document = parseFixture('pinned-codeql-finding.sarif');
     const entry = errorBaseline().findings.find(
       (candidate: { rule: string }) => candidate.rule === 'js/request-forgery',
@@ -199,6 +199,44 @@ describe('CodeQL SARIF policy', () => {
         findings: [{ ...entry, lineHash: 'ffffffffffffffff:1' }],
       },
     });
+    expect(verdict.blocked).toHaveLength(1);
+    expect(verdict.staleBaseline.join('\n')).toContain('no longer matches');
+  });
+
+  /**
+   * The case above says "moved or edited" in its name but only ever varied the
+   * lineHash, which is the EDITED half. Moving a file is the other half and
+   * behaves differently in a way that has bitten a real branch: a rename at
+   * ~100% similarity leaves the flagged line byte-identical, so the finding
+   * reproduces at the new uri carrying the SAME primaryLocationLineHash.
+   * `baselineMatches` compares the path exactly, so rewriting an entry's path
+   * to the new location does not grandfather anything on a workflow that reads
+   * the baseline from the BASE checkout (`security-analysis.yml`,
+   * `pull_request_target`/`merge_group`): the base entry still names the old
+   * path, the result carries the new one, and the required check blocks.
+   *
+   * A moved file therefore needs the finding RESOLVED and the entry removed,
+   * not the entry's path relocated.
+   */
+  test('a baseline entry whose path was relocated blocks the finding it names', () => {
+    const document = parseFixture('pinned-codeql-finding.sarif');
+    const entry = errorBaseline().findings.find(
+      (candidate: { rule: string }) => candidate.rule === 'js/request-forgery',
+    );
+    expect(entry).toBeDefined();
+    // Same rule, same lineHash — only the path moved, exactly as a
+    // high-similarity rename produces.
+    const relocated = {
+      ...entry,
+      path: `src-server/services/relocated/${String(entry?.path).split('/').pop()}`,
+    };
+    expect(relocated.path).not.toBe(entry?.path);
+
+    const verdict = evaluateCodeqlSarif(document, {
+      baseline: { findings: [relocated] },
+    });
+
+    expect(verdict.baselined).toEqual([]);
     expect(verdict.blocked).toHaveLength(1);
     expect(verdict.staleBaseline.join('\n')).toContain('no longer matches');
   });

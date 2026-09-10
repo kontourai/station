@@ -1,14 +1,22 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import vm from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 // The gate declares the reviewed capacity-action commit; this test reads it
 // rather than restating it. When those were two literals they drifted (#3443
 // moved this one and left the gate's behind, taking `main` red).
 import {
+  CHECKOUT_ACTION,
+  PNPM_SETUP_ACTION,
   REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
   readWorkflowDocuments,
 } from '../actionlint-gate.mjs';
 import { readPnpmLockfile } from '../lib/pnpm-lockfile.mjs';
+import {
+  failureDigest,
+  parseMainHealthState,
+  renderMainHealthComment,
+} from '../main-health-comment-policy.mjs';
 import {
   resolveAndroidBuildRun,
   sanitizeLookupDiagnostic,
@@ -237,7 +245,10 @@ describe('CI verification workflow contracts', () => {
     const parsedMainHealth = workflowDocuments.find(
       ({ file }) => file === '.github/workflows/main-health.yml',
     )?.document as
-      | { on?: { workflow_run?: { workflows?: unknown } } }
+      | {
+          on?: { workflow_run?: { workflows?: unknown } };
+          permissions?: unknown;
+        }
       | undefined;
     const intendedTargetFiles = [
       '.github/workflows/nightly.yml',
@@ -273,8 +284,21 @@ describe('CI verification workflow contracts', () => {
 
     expect(trigger).toContain('types: [completed]');
     expect(trigger).not.toContain('Main pipeline health');
-    expect(mainHealth).toMatch(/^permissions:\n {2}issues: write$/m);
-    expect(mainHealth).not.toContain('contents:');
+    // `contents: read` was added for one reason — checking out the default
+    // branch so the failure job can import its comment-policy module (#1811).
+    // Pinned as an exact object rather than a `not.toContain`, so the next
+    // scope added to this privileged workflow_run handler is a visible edit
+    // here and not a silently passing absence check.
+    expect(parsedMainHealth?.permissions).toEqual({
+      actions: 'read',
+      contents: 'read',
+      issues: 'write',
+    });
+    // Only report-failure grew: it checks out and reads the tracker's comment
+    // history. close-after-success does the same work it always did, so the
+    // asymmetry is deliberate and pinned as such.
+    expect(failureJob).toContain('timeout-minutes: 5');
+    expect(successJob).toContain('timeout-minutes: 2');
     expect(failureJob).toContain(
       "github.event.workflow_run.conclusion == 'failure'",
     );
@@ -300,6 +324,19 @@ describe('CI verification workflow contracts', () => {
       'group: main-health-$' + '{{ github.event.workflow_run.name }}',
     );
     expect(failureJob).not.toContain('cancel-in-progress');
+    // The comment policy lives in a module so its transitions are testable
+    // without a workflow_run event; re-inlining it would take that away
+    // silently. The checkout reads the default branch, never the reported
+    // run's code, and keeps no credentials.
+    expect(failureJob).toContain(`uses: ${CHECKOUT_ACTION}`);
+    expect(failureJob).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'ref: ${{ github.event.repository.default_branch }}',
+    );
+    expect(failureJob).toContain('persist-credentials: false');
+    expect(failureJob).toContain('scripts/main-health-comment-policy.mjs');
+    expect(failureJob).toContain('summarizeRunFailure(jobs)');
+    expect(failureJob).toContain('github.rest.issues.updateComment');
     expect(successJob).toContain("state: 'closed'");
     expect(successJob).not.toContain("conclusion == 'failure'");
   });
@@ -319,6 +356,225 @@ describe('CI verification workflow contracts', () => {
     );
     expect(successJob).toContain(
       'if (!hasSuccessfulJob || hasSkippedJob) return;',
+    );
+  });
+
+  /**
+   * Runs the report-failure step's own script, the way the Nightly test below
+   * runs close-after-success's. The module pin above proves the workflow
+   * NAMES the policy; only executing the script proves it ACTS on the answer —
+   * a step that imported the module and then commented unconditionally would
+   * satisfy every string assertion in this file.
+   *
+   * The `workflow_run` event itself still cannot be raised locally; what this
+   * covers is everything downstream of it.
+   */
+  async function runReportFailure({
+    comments,
+    failingStep,
+    issueState = 'open',
+  }: {
+    comments: { id: number; body: string; user?: { type: string } }[];
+    failingStep: string;
+    issueState?: 'open' | 'closed';
+  }) {
+    const document = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/main-health.yml',
+    )?.document as {
+      jobs: Record<string, { steps: { with?: { script?: string } }[] }>;
+    };
+    const script = document.jobs['report-failure'].steps.find(
+      (step) => typeof step.with?.script === 'string',
+    )?.with?.script as string;
+    // `new Function` cannot host a dynamic `import()`, and this step's first
+    // statement is one. vm.compileFunction with the main context's loader can,
+    // so the script runs verbatim rather than being rewritten to suit the test.
+    const run = vm.compileFunction(
+      `return async function (github, context, process, core) {\n${script}\n};`,
+      [],
+      { importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER },
+    )();
+    const listForRepo = vi.fn();
+    const listJobs = vi.fn();
+    const listComments = vi.fn();
+    const createComment = vi.fn();
+    const updateComment = vi.fn();
+    const updateIssue = vi.fn();
+    const github = {
+      rest: {
+        actions: { listJobsForWorkflowRun: listJobs },
+        issues: {
+          listForRepo,
+          listComments,
+          create: vi.fn(),
+          update: updateIssue,
+          addLabels: vi.fn(),
+          createComment,
+          updateComment,
+        },
+      },
+      paginate: vi.fn(async (method: unknown) => {
+        if (method === listJobs)
+          return [
+            {
+              name: 'policy',
+              conclusion: 'failure',
+              steps: [{ name: failingStep, conclusion: 'failure' }],
+            },
+          ];
+        if (method === listComments) return comments;
+        return [
+          {
+            number: 42,
+            state: issueState,
+            title: 'Main pipeline red: Backlog disposition policy',
+          },
+        ];
+      }),
+    };
+    await run(
+      github,
+      {
+        repo: { owner: 'kontourai', repo: 'station' },
+        payload: { workflow_run: { id: 123 } },
+      },
+      {
+        env: {
+          GITHUB_WORKSPACE: root,
+          WORKFLOW_NAME: 'Backlog disposition policy',
+          RUN_URL: 'https://example.test/run/123',
+          HEAD_SHA: 'a'.repeat(40),
+        },
+      },
+      { info: vi.fn() },
+    );
+    return { createComment, updateComment, updateIssue };
+  }
+
+  function recordedComment(failure: string) {
+    return renderMainHealthComment(
+      {
+        workflowName: 'Backlog disposition policy',
+        runUrl: 'https://example.test/run/1',
+        headSha: 'a'.repeat(40),
+      },
+      {
+        lead: 'The workflow failed again on main.',
+        failures: [failure],
+        failureCount: 1,
+        digest: failureDigest([failure]),
+        redRunsSinceComment: 4,
+        commentedAt: new Date().toISOString(),
+      },
+    );
+  }
+
+  it('records an unchanged red run in the existing comment rather than adding one', async () => {
+    const { createComment, updateComment } = await runReportFailure({
+      comments: [
+        {
+          id: 7,
+          body: recordedComment('policy > Run the gate (failure)'),
+          user: { type: 'Bot' },
+        },
+      ],
+      failingStep: 'Run the gate',
+    });
+
+    expect(createComment).not.toHaveBeenCalled();
+    expect(updateComment).toHaveBeenCalledTimes(1);
+    const [call] = updateComment.mock.calls;
+    expect(call[0].comment_id).toBe(7);
+    expect(parseMainHealthState(call[0].body)?.redRunsSinceComment).toBe(5);
+  });
+
+  it('comments when a different step fails than the last comment recorded', async () => {
+    const { createComment, updateComment } = await runReportFailure({
+      comments: [
+        {
+          id: 7,
+          body: recordedComment('policy > Run the gate (failure)'),
+          user: { type: 'Bot' },
+        },
+      ],
+      failingStep: 'Publish the report',
+    });
+
+    expect(updateComment).not.toHaveBeenCalled();
+    expect(createComment).toHaveBeenCalledTimes(1);
+    expect(createComment.mock.calls[0][0].body).toContain(
+      'policy > Publish the report (failure)',
+    );
+  });
+
+  it('speaks when a green-closed tracker is reopened, even with matching state', async () => {
+    // The reducer's own reopen test passes `reopened: true` directly, so it
+    // never reaches the wiring. Here the ONLY signal is the closed issue the
+    // workflow reads: with `reopened` hardcoded false at the call site, the
+    // pre-close marker still matches and the tracker reopens in silence —
+    // the one comment the design most owes a reader.
+    const { createComment, updateComment, updateIssue } =
+      await runReportFailure({
+        comments: [
+          {
+            id: 7,
+            body: recordedComment('policy > Run the gate (failure)'),
+            user: { type: 'Bot' },
+          },
+        ],
+        failingStep: 'Run the gate',
+        issueState: 'closed',
+      });
+
+    expect(updateIssue).toHaveBeenCalledWith(
+      expect.objectContaining({ issue_number: 42, state: 'open' }),
+    );
+    expect(updateComment).not.toHaveBeenCalled();
+    expect(createComment).toHaveBeenCalledTimes(1);
+  });
+
+  it('scans the advisory floor on its own sub-daily schedule, in a shape main-health can clear (#1753)', () => {
+    const document = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/dependency-advisory.yml',
+    )?.document as
+      | {
+          on?: { schedule?: unknown; workflow_dispatch?: unknown };
+          permissions?: unknown;
+          jobs?: Record<
+            string,
+            { if?: unknown; 'runs-on'?: unknown; steps?: { run?: unknown }[] }
+          >;
+        }
+      | undefined;
+
+    // Parsed values, not file text: every constant below is also named in
+    // that workflow's own comments, so a substring check over the source
+    // would stay green if the key itself changed while the prose survived.
+    //
+    // A registry-side break reds the floor for every pull request whose diff
+    // touches a dependency input (the policy narrows by range), with no
+    // commit to attribute it to — a newly disclosed advisory, or an affected
+    // range narrowing until a ledger residual is unused. Four slots a day
+    // bound how long that goes unattributed; one slot leaves it to whichever
+    // pull request gates next, which is how four such breaks were found on
+    // 2026-09-08.
+    expect(document?.on?.schedule).toEqual([{ cron: '23 2,8,14,20 * * *' }]);
+    expect(document?.on).toHaveProperty('workflow_dispatch');
+    // main-health.yml owns every issue write; a red scan here only has to be
+    // observable as a failed run on main.
+    expect(document?.permissions).toEqual({ contents: 'read' });
+
+    // main-health clears this workflow's tracker only for a run that has a
+    // successful job and NO skipped job. A second job here, or an `if:` on
+    // this one, would leave the tracker open against a floor that has since
+    // gone green.
+    const jobs = Object.entries(document?.jobs ?? {});
+    expect(jobs).toHaveLength(1);
+    const [, audit] = jobs[0];
+    expect(audit.if).toBeUndefined();
+    expect(audit['runs-on']).toBe('ubuntu-22.04');
+    expect(audit.steps?.map((step) => step.run)).toContain(
+      'npm run audit:policy',
     );
   });
 
@@ -346,8 +602,10 @@ describe('CI verification workflow contracts', () => {
         name,
         conclusion: missingTerminal && index === 0 ? 'skipped' : 'success',
       }));
+      // Skipped on a complete night; it runs only when a chain job did not
+      // succeed, and then only writes a receipt (#1774).
       jobs.push({
-        name: 'Recovery lock (owner must reconcile)',
+        name: '3 · Publish native cohort / Record incomplete-cohort receipt',
         conclusion: 'skipped',
       });
       const listJobs = vi.fn();
@@ -380,6 +638,34 @@ describe('CI verification workflow contracts', () => {
     }
   });
 
+  // The gate treats this pin as an allowlist key: a `pull_request_target`
+  // router step whose `uses` does not match it exactly is reported as an
+  // unreviewed custom action. That property is worth keeping — such a step runs
+  // beside a write-scoped token — but it also means a Dependabot bump of
+  // `pnpm/setup` can never be green on its own (#1042, #1725). Reading the pin
+  // from the gate rather than restating it keeps the remedy to one edit, and
+  // keeps the workflows and the gate from disagreeing while both stay green.
+  it('bootstraps pnpm from the reviewed pin in every workflow that uses it', () => {
+    const uses = readWorkflowDocuments().flatMap(({ file, document }) =>
+      Object.values(
+        (document as { jobs?: Record<string, { steps?: { uses?: string }[] }> })
+          .jobs ?? {},
+      ).flatMap((job) =>
+        (job?.steps ?? [])
+          .map((step) => step?.uses)
+          .filter(
+            (value): value is string =>
+              typeof value === 'string' && value.startsWith('pnpm/setup@'),
+          )
+          .map((value) => `${file}: ${value}`),
+      ),
+    );
+    expect(uses.length).toBeGreaterThan(0);
+    expect(uses.filter((entry) => !entry.endsWith(PNPM_SETUP_ACTION))).toEqual(
+      [],
+    );
+  });
+
   it('classifies the complete push diff before entering independent heavy concurrency groups', () => {
     const ci = workflow('ci.yml');
     const containerSmoke = workflow('container-smoke.yml');
@@ -401,8 +687,11 @@ describe('CI verification workflow contracts', () => {
     );
     expect(containerClassify).toContain('runs-on: ubuntu-22.04');
     expect(containerClassify).not.toContain('self-hosted');
+    // The head sha is part of the group identity, not decoration: without it
+    // two runs for the same PR at different heads collide and
+    // `cancel-in-progress` picks a winner by arrival order (#1445).
     expect(ci).toContain(
-      `group: ci-fast-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}`,
+      `group: ci-fast-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}-\${{ github.event.pull_request.head.sha || github.sha }}`,
     );
     expect(workflow('full-regression.yml')).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
@@ -1442,6 +1731,110 @@ describe('CI verification workflow contracts', () => {
     expect(diagnostic).not.toContain('\n');
     expect(diagnostic).not.toContain('\u0000');
     expect(diagnostic.length).toBeLessThanOrEqual(1_024);
+  });
+
+  it('keeps the two copied classify jobs identical where they are copies, and different only where their own triggers require it', () => {
+    // ci.yml and container-smoke.yml both carry a job called `classify` that
+    // runs the same classifier. They had drifted, and the drift was invisible
+    // because nothing compared them. Byte-equality is the wrong pin — one
+    // workflow runs on merge_group and the other does not, so forcing the
+    // expressions identical would add a dead branch to container-smoke. So
+    // the invocation is pinned identical and the event handling is pinned
+    // DERIVED from each workflow's own `on:` block.
+    type ClassifyStep = {
+      id?: string;
+      run?: string;
+      env?: Record<string, string>;
+    };
+    type ClassifyJob = {
+      name?: string;
+      'runs-on'?: string;
+      if?: string;
+      steps?: ClassifyStep[];
+    };
+    const documents = readWorkflowDocuments();
+    const read = (file: string, stepId = 'classify') => {
+      const entry = documents.find(
+        (candidate) => candidate.file === `.github/workflows/${file}`,
+      );
+      expect(entry, `${file} must exist`).toBeDefined();
+      const document = entry?.document as {
+        on?: Record<string, unknown>;
+        true?: Record<string, unknown>;
+        jobs?: Record<string, ClassifyJob>;
+      };
+      // `on` is YAML 1.1 truthy, so a permissive parser can hand it back
+      // under the key `true`. Both are accepted rather than assuming one.
+      const triggers = Object.keys(document.on ?? document.true ?? {});
+      const job = document.jobs?.classify;
+      expect(job, `${file} must define job "classify"`).toBeDefined();
+      const step = job?.steps?.find((candidate) => candidate.id === stepId);
+      expect(
+        step,
+        `${file} classify job must have a step id "${stepId}"`,
+      ).toBeDefined();
+      return { triggers, job: job as ClassifyJob, step: step as ClassifyStep };
+    };
+
+    const ci = read('ci.yml');
+    const smoke = read('container-smoke.yml');
+
+    // The copied part: same classifier, same command, same runner, same
+    // budget, same job name. A change to one that is not made to the other
+    // fails here.
+    expect(smoke.step.run).toBe(ci.step.run);
+    expect(ci.step.run).toContain('node scripts/classify-ci-change.mjs');
+    expect(smoke.job.name).toBe(ci.job.name);
+    expect(smoke.job['runs-on']).toBe(ci.job['runs-on']);
+    expect(smoke.job['runs-on']).toBe('ubuntu-22.04');
+
+    // The part that is allowed to differ, and only in one direction: a
+    // workflow handles merge_group in its BEFORE/AFTER expressions if and
+    // only if it declares the merge_group trigger. That is what makes
+    // container-smoke's shorter expression correct rather than stale, and it
+    // is also what would catch a merge_group trigger added without the
+    // matching base_sha branch — the actual drift shape here.
+    for (const { name, triggers, step } of [
+      { name: 'ci.yml', ...ci },
+      { name: 'container-smoke.yml', ...smoke },
+    ]) {
+      const declaresMergeGroup = triggers.includes('merge_group');
+      const expressions = `${step.env?.BEFORE ?? ''}${step.env?.AFTER ?? ''}`;
+      expect(
+        expressions,
+        `${name} classify must derive BEFORE/AFTER`,
+      ).toContain('github.sha');
+      expect(
+        expressions.includes('github.event.merge_group'),
+        `${name}: merge_group trigger ${declaresMergeGroup ? 'declared' : 'absent'}, expression ${expressions.includes('github.event.merge_group') ? 'handles' : 'ignores'} it`,
+      ).toBe(declaresMergeGroup);
+    }
+
+    // The guards that read as dead code and are not. Neither workflow
+    // declares the event its job-level `if` excludes; the guard is what keeps
+    // candidate code off a self-hosted runner if one is ever added. Pinned so
+    // a later reader does not delete them as unreachable.
+    expect(ci.triggers).not.toContain('pull_request');
+    expect(smoke.triggers).not.toContain('pull_request');
+    expect(smoke.job.if).toContain("github.event_name != 'pull_request'");
+    // ci.yml's guard is live rather than defensive: it DOES declare
+    // pull_request_target, and the classifier is intentionally skipped there
+    // because a fork candidate must not choose its own classification.
+    expect(ci.triggers).toContain('pull_request_target');
+    expect(ci.job.if).toContain("github.event_name != 'pull_request_target'");
+
+    // build-ios.yml also has a `classify` job. It is NOT a third copy and
+    // must not be unified with these: it resolves the classifier out of the
+    // BASE commit (`git show "$BASE_SHA:scripts/classify-ci-change.mjs"`) and
+    // fails closed, because it runs on pull_request_target where the head
+    // commit is untrusted. Deleting that difference in the name of removing
+    // duplication would hand a fork PR control of its own iOS relevance.
+    // Its step is `relevance`, not `classify` — the first sign these are
+    // not the same thing.
+    const ios = read('build-ios.yml', 'relevance');
+    expect(ios.step.run).not.toBe(ci.step.run);
+    expect(ios.step.run).toContain('$BASE_SHA:scripts/classify-ci-change.mjs');
+    expect(ios.step.run).toContain('fail_closed');
   });
 
   it('provides the supported post-merge Windows fallback without pretending E2E is covered', () => {

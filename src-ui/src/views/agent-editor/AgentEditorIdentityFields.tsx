@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { AgentIcon } from '../../components/icons/AgentIcon';
 import type { AgentEditorFormProps } from './types';
 import { slugify } from './utils';
@@ -13,26 +12,11 @@ export function AgentEditorIdentityFields({
   AgentEditorFormProps,
   'form' | 'setForm' | 'isCreating' | 'locked' | 'validationErrors'
 >) {
-  const [editingSlug, setEditingSlug] = useState(false);
-
   return (
     <>
       <div className="editor-field">
         <label className="editor-label" htmlFor="ae-name">
           Name <span className="editor-required">*</span>
-          <span className="editor-hint"> · {form.slug}</span>
-          {isCreating && (
-            <button
-              type="button"
-              className="editor-enrich-btn"
-              aria-expanded={editingSlug}
-              aria-controls="ae-slug"
-              disabled={locked}
-              onClick={() => setEditingSlug((current) => !current)}
-            >
-              Edit
-            </button>
-          )}
         </label>
         <input
           id="ae-name"
@@ -54,25 +38,35 @@ export function AgentEditorIdentityFields({
         {validationErrors.name && (
           <span className="editor-error">{validationErrors.name}</span>
         )}
-        {isCreating && editingSlug && (
+        <details
+          className="editor-disclosure"
+          open={validationErrors.slug ? true : undefined}
+        >
+          <summary>Advanced: agent ID</summary>
+          <label className="editor-label" htmlFor="ae-slug">
+            Agent ID
+          </label>
           <input
             id="ae-slug"
             type="text"
             className="editor-input"
             name="slug"
-            aria-label="Slug"
             value={form.slug}
             onChange={(event) =>
               isCreating &&
               setForm((current) => ({ ...current, slug: event.target.value }))
             }
-            disabled={false}
+            readOnly={!isCreating}
+            disabled={locked}
             placeholder="my-agent"
           />
-        )}
-        {validationErrors.slug && (
-          <span className="editor-error">{validationErrors.slug}</span>
-        )}
+          <p className="editor-hint">
+            Used by integrations. You can choose an ID when creating an agent.
+          </p>
+          {validationErrors.slug && (
+            <span className="editor-error">{validationErrors.slug}</span>
+          )}
+        </details>
       </div>
 
       <div className="editor-field">

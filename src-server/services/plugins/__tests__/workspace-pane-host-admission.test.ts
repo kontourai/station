@@ -1,39 +1,71 @@
+import { execFileSync } from 'node:child_process';
 import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
   agentId,
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import { WORKSPACE_PANE_HOST_CONTRIBUTION_VERSION } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { readJson } from '../../../__test-utils__/read-json.js';
 import { saveAgentConfig } from '../../../domain/config-loader-agents.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { PLUGIN_AGENT_OWNER_FILE } from '../../../domain/plugin-agent-ownership.js';
 import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
+import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
+import { createChatRoutes } from '../../../routes/chat/chat.js';
+import { createWorkspacePaneHostActionRoutes } from '../../../routes/orchestration/workspace-pane-host-actions.js';
+import { INTERNAL_NATIVE_WORKSPACE_HEADER } from '../../../runtime/conversation/native-execution-workspace.js';
+import { INTERNAL_NATIVE_FOREGROUND_HEADER } from '../../../runtime/conversation/native-foreground-invocation.js';
+import type { NativeOutputGrantAuthority } from '../../../runtime/native-output-turn-grant.js';
+import { createRuntimeWorkspacePaneHostActions } from '../../../runtime/routes/workspace-pane-host-actions.js';
+import {
+  createBuiltinVendedTool,
+  createBuiltinVendedToolDef,
+} from '../../../runtime/tools/vended-tool-compat.js';
+import { executeExecutionTargetMessage } from '../../../tools/station-control-delegation.js';
+import { getAgentPolicyService } from '../../agents/agent-policy-service.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import type { ForegroundInvocationAdmission } from '../../orchestration/foreground-invocation-admission.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../orchestration/session-agent-resolution.js';
-import { withPluginContentLock } from '../plugin-content-integrity.js';
-import { createWorkspacePaneHostAdmission } from '../workspace-pane-host-admission.js';
+import {
+  computePluginContentDigest,
+  withPluginContentLock,
+} from '../plugin-content-integrity.js';
+import {
+  prepareLocalPluginDataScope,
+  preparePluginIncarnation,
+} from '../plugin-incarnation.js';
+import { grantPermissions, revokeAllGrants } from '../plugin-permissions.js';
+import {
+  captureWorkspacePaneHostPackage,
+  createWorkspacePaneHostAdmission,
+} from '../workspace-pane-host-admission.js';
 
 const pluginId = 'admission-proof';
 const slug = agentId('admission-assistant');
@@ -85,6 +117,7 @@ describe('Workspace Pane host invocation admission', () => {
   let beforeReady: (() => Promise<void>) | undefined;
   let beforeTurn: (() => Promise<void>) | undefined;
   let counter = 0;
+  let ordinaryLookupAllowed = false;
 
   beforeEach(async () => {
     home = mkdtempSync(join(tmpdir(), 'station-pane-admission-'));
@@ -146,11 +179,12 @@ describe('Workspace Pane host invocation admission', () => {
       createdAt: '2026-09-04T00:00:00Z',
       updatedAt: '2026-09-04T00:00:00Z',
     });
+    store = new EventStore(join(home, 'orchestration.sqlite'));
     authority = createWorkspacePaneHostAdmission({
       projectHomeDir: home,
       projects: storage,
+      journal: store.createPackageMcpAdmissionJournal(),
     });
-    store = new EventStore(join(home, 'orchestration.sqlite'));
     const sessions = new Map<string, ProviderSession>();
     const events = new AsyncEventQueue<CanonicalRuntimeEvent>();
     start = vi.fn(async (input) => {
@@ -247,14 +281,23 @@ describe('Workspace Pane host invocation admission', () => {
         resolveSkillDir: async () => null,
       }),
       loadAgentExecutionConfig: async () => {
+        if (ordinaryLookupAllowed)
+          return JSON.parse(
+            readFileSync(join(home, 'agents', slug, 'agent.json'), 'utf8'),
+          ).execution;
         throw new Error('Must consume captured execution, not reread');
       },
       loadAgentPresentation: async () => {
+        if (ordinaryLookupAllowed)
+          return JSON.parse(
+            readFileSync(join(home, 'agents', slug, 'agent.json'), 'utf8'),
+          );
         throw new Error('Must consume captured presentation, not reread');
       },
-      listProjects: () => [{ slug: projectSlug, workingDirectory: home }],
+      listProjects: () => [storage.projectRevision(projectSlug).value],
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
+    ordinaryLookupAllowed = false;
     beforeReady = undefined;
     beforeTurn = undefined;
   });
@@ -263,7 +306,533 @@ describe('Workspace Pane host invocation admission', () => {
     await service?.shutdown();
     store?.close();
     rmSync(home, { recursive: true, force: true });
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
+
+  test('real host HTTP action uses production foreground composition and exact provider receipt once', async () => {
+    vi.stubEnv('STATION_API_BASE', 'http://pane-host.test');
+    vi.stubEnv('STATION_INTERNAL_API_TOKEN', 'pane-host-fixture-token');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+        const url = String(input);
+        const data = url.endsWith('/.well-known/station/v1')
+          ? { environmentId: 'environment-current' }
+          : url.endsWith('/api/connections/claude')
+            ? {
+                success: true,
+                data: {
+                  id: 'claude',
+                  kind: 'agent',
+                  type: 'claude',
+                  enabled: true,
+                  status: 'ready',
+                  capabilities: ['agent-runtime'],
+                  config: { provider: 'claude' },
+                },
+              }
+            : undefined;
+        if (!data) throw new Error(`Unexpected fixture request ${url}`);
+        return new Response(JSON.stringify(data), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }),
+    );
+    await grantPermissions(home, pluginId, ['agents.invoke']);
+    const principal = humanPrincipal('test', 'pane-owner', 'Pane owner');
+    const actor = {
+      principal,
+      isCurrent: () => true,
+      readAuthority: sessionReadAuthorityFromRequest(
+        principal.id,
+        undefined,
+        undefined,
+      ),
+    };
+    const actions = createRuntimeWorkspacePaneHostActions({
+      projectHomeDir: home,
+      projects: storage,
+      orchestration: service,
+      journal: store.createPackageMcpAdmissionJournal(),
+      getConnection: async (id) => ({
+        id,
+        name: 'Controlled connection',
+        kind: 'agent',
+        type: 'claude',
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+        config: { provider: 'claude' },
+        prerequisites: [],
+      }),
+    });
+    const app = createWorkspacePaneHostActionRoutes({
+      service: actions,
+      actorFor: () => actor,
+    });
+    const catalog = await readJson(
+      await app.request(`/${projectSlug}/catalog`),
+    );
+    const projection = catalog.data.contributions[0].projection;
+    const preparation = await readJson(
+      await app.request(`/${projectSlug}/prepare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...projection.owner,
+          actionKey: projection.actions.find(
+            (action: { id: string }) => action.id === 'registered',
+          ).key,
+        }),
+      }),
+    );
+    expect(preparation.data.state).toBe('prepared');
+    const execute = () =>
+      app.request(`/${projectSlug}/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket: preparation.data.ticket }),
+      });
+    const [first, second] = await Promise.all([execute(), execute()]);
+    const result = (await readJson(first)).data;
+    expect(result).toMatchObject({ state: 'accepted' });
+    expect((await readJson(second)).data).toEqual({ state: 'indeterminate' });
+    expect(start).toHaveBeenCalledOnce();
+    expect(start.mock.calls[0]![0]).toMatchObject({
+      agent: { slug, systemPrompt: spec.prompt },
+      metadata: { agentSlug: slug, projectSlug, userId: principal.id },
+    });
+    expect(send).toHaveBeenCalledOnce();
+    expect(
+      send.mock.calls[0]![0].displayInput ?? send.mock.calls[0]![0].input,
+    ).toBe('Exact registered body.');
+    await expect
+      .poll(async () =>
+        (
+          await service.readSession(
+            result.sessionId,
+            INTERNAL_SESSION_READ_SCOPE,
+          )
+        )?.events.some(
+          (event) =>
+            event.method === 'turn.started' && event.turnId === result.turnId,
+        ),
+      )
+      .toBe(true);
+  });
+
+  async function nativeHostProof(
+    options: {
+      beforeModel?: () => Promise<void>;
+      inModel?: () => Promise<void>;
+      retainArtifact?: boolean;
+      portable?: boolean;
+      dropCompanionMarker?: boolean;
+      dropWorkspaceMarker?: boolean;
+      waitForModel?: Promise<void>;
+    } = {},
+  ) {
+    const nativeSpec: AgentSpec = {
+      name: 'Native captured assistant',
+      prompt: 'Keep these native instructions.',
+      model: 'controlled-native-model',
+    };
+    writeFileSync(
+      join(home, 'agents', slug, 'agent.json'),
+      JSON.stringify(nativeSpec),
+    );
+    writeFileSync(
+      join(pluginDir, 'agents', slug, 'agent.json'),
+      JSON.stringify(nativeSpec),
+    );
+    if (options.portable) {
+      const legacy = JSON.parse(
+        readFileSync(join(pluginDir, 'plugin.json'), 'utf8'),
+      );
+      writeFileSync(
+        join(pluginDir, 'plugin.json'),
+        JSON.stringify({
+          $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+          name: legacy.name,
+          version: legacy.version,
+          extensions: {
+            'io.kontourai.station': {
+              schemaVersion: '1.0',
+              agents: legacy.agents,
+              prompts: legacy.prompts,
+              workspacePaneHost: legacy.workspacePaneHost,
+            },
+          },
+        }),
+      );
+    }
+    let retained:
+      | ReturnType<
+          ReturnType<
+            EventStore['createPackageMcpAdmissionJournal']
+          >['currentInstallation']
+        >
+      | undefined;
+    if (options.retainArtifact) {
+      const source = join(home, 'staged-source');
+      renameSync(pluginDir, source);
+      const plugins = join(home, 'plugins');
+      const dataScope = prepareLocalPluginDataScope(
+        plugins,
+        pluginId,
+        null,
+        'preserve',
+      );
+      const root = preparePluginIncarnation(
+        plugins,
+        pluginId,
+        source,
+        dataScope,
+      ).captured;
+      const journal = store.createPackageMcpAdmissionJournal();
+      expect(
+        journal.recordInstallation({
+          pluginId,
+          previous: null,
+          materialization: root.generation!,
+          dataScope,
+          contentDigest: computePluginContentDigest(
+            dirname(root.packageRoot),
+            basename(root.packageRoot),
+          )!,
+        }).state,
+      ).toBe('recorded');
+      retained = journal.currentInstallation(pluginId);
+      // Deliberately do not publish the compatibility alias: it is not authority.
+    }
+    await grantPermissions(
+      home,
+      pluginId,
+      ['agents.invoke'],
+      captureWorkspacePaneHostPackage(
+        home,
+        pluginId,
+        store.createPackageMcpAdmissionJournal(),
+      ),
+    );
+    vi.stubEnv('STATION_API_BASE', 'http://pane-native.test');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: Parameters<typeof fetch>[0]) => {
+        const path = new URL(String(url)).pathname;
+        if (path === `/api/agents/${slug}`)
+          return Response.json({
+            success: true,
+            data: { ...nativeSpec, slug },
+          });
+        if (path.startsWith('/api/projects/'))
+          return Response.json({
+            success: true,
+            data: storage.projectRevision(path.slice('/api/projects/'.length))
+              .value,
+          });
+        if (!String(url).endsWith('/.well-known/station/v1'))
+          throw new Error(`Unexpected native proof network request: ${path}`);
+        return new Response(
+          JSON.stringify({ environmentId: 'environment-current' }),
+        );
+      }),
+    );
+    const streamText = vi.fn(
+      async (_input: unknown, _context: Record<string, unknown>) => {
+        await options.inModel?.();
+        await options.waitForModel;
+        return {
+          fullStream: (async function* () {
+            yield { type: 'text-delta', text: 'Controlled native answer.' };
+            yield { type: 'finish', finishReason: 'stop' };
+          })(),
+          text: Promise.resolve('Controlled native answer.'),
+          usage: Promise.resolve(undefined),
+          finishReason: Promise.resolve('stop'),
+        };
+      },
+    );
+    const activeAgent = {
+      getMemory: () => null,
+      streamText,
+      model: { modelId: 'controlled-native-model' },
+    };
+    let beforeModelCalled = false;
+    const memory = {
+      getConversation: async () => {
+        if (!beforeModelCalled) {
+          beforeModelCalled = true;
+          await options.beforeModel?.();
+        }
+        return { id: 'native-proof', title: 'Native proof' };
+      },
+      createConversation: async () => {},
+      addMessage: async () => {},
+      updateConversation: async () => {},
+      getMessages: async () => [],
+      getConversations: async () => [],
+    };
+    const ctx = {
+      activeAgents: new Map([[slug, activeAgent]]),
+      agentSpecs: new Map([[slug, nativeSpec]]),
+      storageAdapter: storage,
+      appConfig: {},
+      configLoader: {
+        getProjectHomeDir: () => home,
+        getLaunchabilityRevision: () => 0,
+      },
+      providerService: {
+        getLaunchabilityRevision: () => 0,
+        listProviderConnections: () => [],
+      },
+      knowledgeService: {
+        getInjectContext: async () => null,
+        getRAGContextDetailed: async () => null,
+      },
+      feedbackService: {
+        getRatings: () => [],
+        getBehaviorGuidelinesDetailed: () => null,
+      },
+      getAgentConfigurationRevision: () => 0,
+      commitAgentConfigurationRead: async (
+        _revision: number,
+        operation: () => Promise<unknown>,
+      ) => operation(),
+      logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      toolNameMapping: new Map(),
+      approvalRegistry: {},
+      agentHooksMap: new Map(),
+      memoryAdapters: new Map([[slug, memory]]),
+      agentStatus: new Map(),
+      agentStats: new Map(),
+      agentTools: new Map(),
+      metricsLog: [],
+      orchestrationEventStore: store,
+    };
+    const chat = createChatRoutes(ctx as never);
+    nativeAdapter = new StationAgentAdapter({
+      apiBase: 'http://pane-native.test',
+      hasAgent: () => true,
+      approvalRegistry: { has: () => false, resolve: () => false } as never,
+      eventBus: new EventBus(),
+      fetch: async (url, init) => {
+        const headers = new Headers(init?.headers);
+        if (options.dropCompanionMarker)
+          headers.delete(INTERNAL_NATIVE_FOREGROUND_HEADER);
+        if (options.dropWorkspaceMarker)
+          headers.delete(INTERNAL_NATIVE_WORKSPACE_HEADER);
+        return chat.request(
+          new URL(String(url)).pathname.replace('/api/agents', ''),
+          { ...init, headers },
+        );
+      },
+    });
+    const principal = humanPrincipal('test', 'native-owner', 'Native owner');
+    const actor = {
+      principal,
+      isCurrent: () => true,
+      readAuthority: sessionReadAuthorityFromRequest(
+        principal.id,
+        undefined,
+        undefined,
+      ),
+    };
+    const actions = createRuntimeWorkspacePaneHostActions({
+      projectHomeDir: home,
+      projects: storage,
+      orchestration: service,
+      journal: store.createPackageMcpAdmissionJournal(),
+      getConnection: async () => null,
+      nativeAgentAvailable: () => true,
+    });
+    const app = createWorkspacePaneHostActionRoutes({
+      service: actions,
+      actorFor: () => actor,
+    });
+    const catalog = await readJson(
+      await app.request(`/${projectSlug}/catalog`),
+    );
+    const projection = catalog.data.contributions[0].projection;
+    const prepared = await readJson(
+      await app.request(`/${projectSlug}/prepare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...projection.owner,
+          actionKey: projection.actions.find(
+            (action: { id: string }) => action.id === 'registered',
+          ).key,
+        }),
+      }),
+    );
+    expect(prepared.data.state).toBe('prepared');
+    return {
+      actor,
+      retained,
+      streamText,
+      ctx,
+      provenance: { ...projection.owner, actionId: 'registered' },
+      execute: async () =>
+        (
+          await readJson(
+            await app.request(`/${projectSlug}/execute`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ticket: prepared.data.ticket }),
+            }),
+          )
+        ).data,
+    };
+  }
+
+  test('native action resolves journal-selected artifact without an alias and stamps its admission generation', async () => {
+    const proof = await nativeHostProof({ retainArtifact: true });
+    expect(proof.retained?.state).toBe('observed');
+    if (proof.retained?.state !== 'observed')
+      throw new Error('fixture installation absent');
+    expect(proof.provenance.installationGeneration).toBe(
+      proof.retained.installation.incarnation,
+    );
+    expect(proof.provenance.installationGeneration).not.toBe(
+      proof.retained.installation.contentDigest,
+    );
+    const result = await proof.execute();
+    expect(result.state).toBe('accepted');
+    expect(proof.streamText).toHaveBeenCalledOnce();
+  });
+
+  test('portable Station namespace host declaration reaches the canonical native HTTP execution bridge', async () => {
+    const proof = await nativeHostProof({
+      retainArtifact: true,
+      portable: true,
+    });
+    const result = await proof.execute();
+    expect(result.state).toBe('accepted');
+    expect(proof.streamText).toHaveBeenCalledOnce();
+    expect(proof.streamText.mock.calls[0]?.[0]).toContain(
+      'Exact registered body.',
+    );
+  });
+
+  test('journal retirement fences a prepared native action even while artifact bytes remain', async () => {
+    const proof = await nativeHostProof({ retainArtifact: true });
+    if (proof.retained?.state !== 'observed')
+      throw new Error('fixture installation absent');
+    const permissionArtifact = captureWorkspacePaneHostPackage(
+      home,
+      pluginId,
+      store.createPackageMcpAdmissionJournal(),
+    );
+    await expect(
+      grantPermissions(
+        home,
+        'other-plugin',
+        ['agents.invoke'],
+        permissionArtifact,
+      ),
+    ).rejects.toThrow();
+    expect(
+      store
+        .createPackageMcpAdmissionJournal()
+        .requestRetirement(proof.retained.installation).state,
+    ).toBe('fenced');
+    expect((await proof.execute()).state).toBe('unavailable');
+    expect(proof.streamText).not.toHaveBeenCalled();
+    await expect(
+      grantPermissions(home, pluginId, ['agents.invoke'], permissionArtifact),
+    ).rejects.toThrow();
+  });
+
+  test('captured native action reaches existing native model once and releases grants before settlement', async () => {
+    const settled = deferred();
+    const proof = await nativeHostProof({ waitForModel: settled.promise });
+    try {
+      const result = await proof.execute();
+      expect(result).toMatchObject({ state: 'accepted' });
+      expect(proof.streamText).toHaveBeenCalledOnce();
+      expect(proof.streamText).toHaveBeenCalledWith(
+        expect.stringContaining('Exact registered body.'),
+        expect.objectContaining({
+          userId: humanPrincipal('test', 'native-owner', 'Native owner').id,
+        }),
+      );
+      await revokeAllGrants(home, pluginId);
+      settled.resolve();
+      await expect
+        .poll(async () =>
+          (
+            await service.readSession(
+              result.sessionId,
+              INTERNAL_SESSION_READ_SCOPE,
+            )
+          )?.events.some(
+            (event) =>
+              event.method === 'turn.completed' &&
+              event.turnId === result.turnId,
+          ),
+        )
+        .toBe(true);
+      expect((await proof.execute()).state).toBe('indeterminate');
+      expect(proof.streamText).toHaveBeenCalledOnce();
+      rmSync(pluginDir, { recursive: true, force: true });
+      const archived = await service.readSession(
+        result.sessionId,
+        INTERNAL_SESSION_READ_SCOPE,
+      );
+      expect(archived?.session.lifecycleState).toBe('completed');
+      expect(
+        archived?.events.find((event) => event.method === 'session.started')
+          ?.metadata?.workspacePaneHostAction,
+      ).toEqual(proof.provenance);
+      expect(store.listCommandReceipts(result.sessionId)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            commandType: 'startSession',
+            status: 'accepted',
+          }),
+          expect.objectContaining({
+            commandType: 'sendTurn',
+            status: 'accepted',
+          }),
+        ]),
+      );
+    } finally {
+      settled.resolve();
+    }
+  });
+
+  test.each([
+    'agent-edit',
+    'permission-revocation',
+    'runtime-replacement',
+    'stripped-companion',
+  ] as const)(
+    'native final provider admission refuses %s without ambient fallback',
+    async (change) => {
+      let proof: Awaited<ReturnType<typeof nativeHostProof>>;
+      proof = await nativeHostProof({
+        dropCompanionMarker: change === 'stripped-companion',
+        beforeModel: async () => {
+          if (change === 'agent-edit')
+            await saveAgentConfig(home, slug, {
+              name: 'Changed',
+              prompt: 'Replacement native instructions.',
+            });
+          if (change === 'permission-revocation')
+            await revokeAllGrants(home, pluginId);
+          if (change === 'runtime-replacement')
+            proof.ctx.activeAgents.set(slug, {
+              ...proof.ctx.activeAgents.get(slug)!,
+              streamText: vi.fn(),
+            });
+        },
+      });
+      expect((await proof.execute()).state).not.toBe('accepted');
+      expect(proof.streamText).not.toHaveBeenCalled();
+    },
+  );
 
   async function dispatch(admission: ForegroundInvocationAdmission) {
     const threadId = `pane-thread-${++counter}`;
@@ -518,15 +1087,356 @@ describe('Workspace Pane host invocation admission', () => {
     });
   });
 
-  test('refuses worktree provisioning before any adapter effect', async () => {
+  test('a changed Project refuses captured provisioning before the Git effect', async () => {
     const revision = storage.projectRevision(projectSlug);
     await revision.replace({
       ...revision.value,
       defaultWorkspaceIsolation: 'worktree',
     });
-    await expect(prepare()).rejects.toThrow();
-    expect(start).not.toHaveBeenCalled();
-    expect(send).not.toHaveBeenCalled();
+    const prepared = await prepare();
+    const changed = storage.projectRevision(projectSlug);
+    await changed.replace({ ...changed.value, name: 'Changed after capture' });
+    const provision = vi.fn(async () => ({
+      path: join(home, 'never-created'),
+    }));
+    await expect(
+      prepared.run((admission) =>
+        admission.invoke(
+          'provision',
+          {
+            threadId: 'worktree-thread',
+            agentId: slug,
+            projectSlug,
+          },
+          provision,
+        ),
+      ),
+    ).rejects.toThrow();
+    expect(provision).not.toHaveBeenCalled();
+  });
+
+  test('provisioned workspace admission refuses another Session or CWD and cannot start twice', async () => {
+    const revision = storage.projectRevision(projectSlug);
+    await revision.replace({
+      ...revision.value,
+      defaultWorkspaceIsolation: 'worktree',
+    });
+    const prepared = await prepare();
+    const effect = vi.fn(async () => undefined);
+    await prepared.run(async (admission) => {
+      const actual = {
+        threadId: 'captured-thread',
+        agentId: slug,
+        projectSlug,
+      };
+      const cwd = join(home, 'owned-worktree');
+      await admission.invoke('provision', actual, async () => ({ path: cwd }));
+      await expect(
+        admission.invoke(
+          'start',
+          { ...actual, threadId: 'other', cwd },
+          effect,
+        ),
+      ).rejects.toThrow();
+      await expect(
+        admission.invoke('start', { ...actual, cwd: home }, effect),
+      ).rejects.toThrow();
+      expect(effect).not.toHaveBeenCalled();
+      await admission.invoke('start', { ...actual, cwd }, effect);
+      await expect(
+        admission.invoke('start', { ...actual, cwd }, effect),
+      ).rejects.toThrow();
+      expect(effect).toHaveBeenCalledOnce();
+    });
+  });
+
+  test('pending provisioning cannot admit an early start in the shared Project directory', async () => {
+    const revision = storage.projectRevision(projectSlug);
+    await revision.replace({
+      ...revision.value,
+      defaultWorkspaceIsolation: 'worktree',
+    });
+    const prepared = await prepare();
+    const pending = deferred();
+    const entered = deferred();
+    const startEffect = vi.fn(async () => undefined);
+    await prepared.run(async (admission) => {
+      const actual = { threadId: 'pending-thread', agentId: slug, projectSlug };
+      const provisioning = admission.invoke('provision', actual, async () => {
+        entered.resolve();
+        await pending.promise;
+        return { path: join(home, 'created-worktree') };
+      });
+      await entered.promise;
+      try {
+        await expect(
+          admission.invoke('start', { ...actual, cwd: home }, startEffect),
+        ).rejects.toThrow();
+        expect(startEffect).not.toHaveBeenCalled();
+      } finally {
+        pending.resolve();
+        await provisioning;
+      }
+    });
+  });
+
+  test('native worktree action and ordinary child continuation keep real Bash in the owned workspace without output grants', async () => {
+    const repo = join(home, 'repository');
+    mkdirSync(repo);
+    execFileSync('git', ['init', '--quiet', repo], { windowsHide: true });
+    execFileSync(
+      'git',
+      [
+        '-C',
+        repo,
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        'commit',
+        '--allow-empty',
+        '-m',
+        'fixture',
+      ],
+      { windowsHide: true },
+    );
+    const revision = storage.projectRevision(projectSlug);
+    await revision.replace({
+      ...revision.value,
+      workingDirectory: repo,
+      defaultWorkspaceIsolation: 'worktree',
+    });
+    const bash = createBuiltinVendedTool(
+      slug,
+      createBuiltinVendedToolDef('bash')!,
+    )!;
+    const observed: unknown[] = [];
+    const proofOptions = {
+      dropWorkspaceMarker: false,
+      inModel: async () => {
+        observed.push(
+          await bash.execute({ mode: 'execute', command: 'pwd -P' }),
+        );
+      },
+    };
+    const proof = await nativeHostProof(proofOptions);
+    const result = await proof.execute();
+    expect(result.state).toBe('accepted');
+    await expect.poll(() => observed.length).toBe(1);
+    const session = await service.readSession(
+      result.sessionId,
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(session?.session.cwd).not.toBe(repo);
+    expect(observed[0]).toMatchObject({
+      output: realpathSync(session!.session.cwd!),
+    });
+    expect(session?.session.cwd).toContain('repository-worktrees');
+    await expect
+      .poll(
+        async () =>
+          (
+            await service.readSession(
+              result.sessionId,
+              INTERNAL_SESSION_READ_SCOPE,
+            )
+          )?.session.lifecycleState,
+      )
+      .toBe('completed');
+    const forged = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          provider: 'station-agent',
+          threadId: 'forged-public-worktree',
+          cwd: session!.session.cwd,
+          metadata: {
+            agentId: slug,
+            agentSlug: slug,
+            projectSlug,
+            userId: proof.actor.principal.id,
+            workspaceIsolation: { mode: 'worktree' },
+            worktree: {
+              mode: 'worktree',
+              path: session!.session.cwd,
+              repoPath: repo,
+            },
+            executionWorkspace: {
+              threadId: 'forged-public-worktree',
+              projectSlug,
+              cwd: session!.session.cwd,
+            },
+          },
+        },
+      },
+      { userId: proof.actor.principal.id },
+    );
+    expect(forged.status).not.toBe('accepted');
+    expect('message' in forged ? forged.message : '').toContain(
+      'outside project',
+    );
+    expect(proof.streamText).toHaveBeenCalledOnce();
+    ordinaryLookupAllowed = true;
+    await storage.createProject({
+      ...storage.projectRevision(projectSlug).value,
+      id: 'project-b-id',
+      slug: 'project-b',
+      name: 'Same repository, different Project',
+    });
+    await expect(
+      executeExecutionTargetMessage(
+        {
+          conversationId: result.conversationId,
+          target: {
+            environment: { kind: 'current' },
+            agent: slug,
+            workspace: { kind: 'project', projectSlug: 'project-b' },
+          },
+          message: 'Must not cross Project identity.',
+          userId: proof.actor.principal.id,
+          principal: proof.actor.principal,
+          readAuthority: proof.actor.readAuthority,
+        },
+        service,
+      ),
+    ).rejects.toMatchObject({
+      code: 'continuation_workspace_different_project',
+    });
+    expect(proof.streamText).toHaveBeenCalledOnce();
+    expect(service.currentConversationSessionId(result.conversationId)).toBe(
+      result.sessionId,
+    );
+    const registeredBefore = execFileSync(
+      'git',
+      ['-C', repo, 'worktree', 'list', '--porcelain'],
+      { windowsHide: true, encoding: 'utf8' },
+    );
+    // Output declaration can be disabled/exhausted without changing location.
+    const outputAuthority = Reflect.get(
+      service,
+      'nativeOutputGrants',
+    ) as NativeOutputGrantAuthority;
+    const steering = vi.spyOn(getAgentPolicyService(), 'steeringContext');
+    const optionalGrant = vi
+      .spyOn(outputAuthority, 'issue')
+      .mockReturnValue(null);
+    try {
+      const continued = await executeExecutionTargetMessage(
+        {
+          conversationId: result.conversationId,
+          target: {
+            environment: { kind: 'current' },
+            agent: slug,
+            workspace: { kind: 'project', projectSlug },
+          },
+          message: 'Continue in the same workspace.',
+          userId: proof.actor.principal.id,
+          principal: proof.actor.principal,
+          readAuthority: proof.actor.readAuthority,
+        },
+        service,
+      );
+      await expect.poll(() => observed.length).toBe(2);
+      expect(continued.sessionId).not.toBe(result.sessionId);
+      expect(
+        (
+          await service.readSession(
+            continued.sessionId,
+            INTERNAL_SESSION_READ_SCOPE,
+          )
+        )?.session.cwd,
+      ).toBe(session!.session.cwd);
+      expect(observed[1]).toMatchObject({
+        output: realpathSync(session!.session.cwd!),
+      });
+      expect(
+        execFileSync('git', ['-C', repo, 'worktree', 'list', '--porcelain'], {
+          windowsHide: true,
+          encoding: 'utf8',
+        }),
+      ).toBe(registeredBefore);
+      expect(optionalGrant).toHaveBeenCalled();
+      expect(steering.mock.calls.at(-1)?.[0].cwd).toBe(session!.session.cwd);
+      await expect
+        .poll(
+          async () =>
+            (
+              await service.readSession(
+                continued.sessionId,
+                INTERNAL_SESSION_READ_SCOPE,
+              )
+            )?.session.lifecycleState,
+        )
+        .toBe('completed');
+      const third = await executeExecutionTargetMessage(
+        {
+          conversationId: result.conversationId,
+          target: {
+            environment: { kind: 'current' },
+            agent: slug,
+            workspace: { kind: 'project', projectSlug },
+          },
+          message: 'Third turn in the original owned worktree.',
+          userId: proof.actor.principal.id,
+          principal: proof.actor.principal,
+          readAuthority: proof.actor.readAuthority,
+        },
+        service,
+      );
+      await expect.poll(() => observed.length).toBe(3);
+      expect(third.sessionId).not.toBe(continued.sessionId);
+      expect(third.sessionId).not.toBe(result.sessionId);
+      expect(observed[2]).toMatchObject({
+        output: realpathSync(session!.session.cwd!),
+      });
+      expect(
+        (
+          await service.readSession(
+            third.sessionId,
+            INTERNAL_SESSION_READ_SCOPE,
+          )
+        )?.session.cwd,
+      ).toBe(session!.session.cwd);
+      expect(
+        execFileSync('git', ['-C', repo, 'worktree', 'list', '--porcelain'], {
+          windowsHide: true,
+          encoding: 'utf8',
+        }),
+      ).toBe(registeredBefore);
+      await expect
+        .poll(
+          async () =>
+            (
+              await service.readSession(
+                third.sessionId,
+                INTERNAL_SESSION_READ_SCOPE,
+              )
+            )?.session.lifecycleState,
+        )
+        .toBe('completed');
+      proofOptions.dropWorkspaceMarker = true;
+      await expect(
+        executeExecutionTargetMessage(
+          {
+            conversationId: result.conversationId,
+            target: {
+              environment: { kind: 'current' },
+              agent: slug,
+              workspace: { kind: 'project', projectSlug },
+            },
+            message: 'Must not run without the workspace relay.',
+            userId: proof.actor.principal.id,
+            principal: proof.actor.principal,
+            readAuthority: proof.actor.readAuthority,
+          },
+          service,
+        ),
+      ).rejects.toThrow();
+      expect(proof.streamText).toHaveBeenCalledTimes(3);
+    } finally {
+      optionalGrant.mockRestore();
+      steering.mockRestore();
+    }
   });
 
   test('refuses native Agent execution that cannot consume the captured spec', async () => {

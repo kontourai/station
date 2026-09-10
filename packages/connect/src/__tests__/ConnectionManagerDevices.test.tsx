@@ -26,10 +26,12 @@ function setup({
   allowManualCredentials,
   hostAppName,
   authenticatedRequest,
+  pairingClientChannel,
 }: {
   allowManualCredentials?: boolean;
   hostAppName?: string;
   authenticatedRequest?: typeof fetch;
+  pairingClientChannel?: 'stable' | 'beta' | 'nightly';
 } = {}) {
   const store = new ConnectionStore({ storage: memoryAdapter() });
   store.add('Remote Station', 'https://station.example.test');
@@ -41,6 +43,7 @@ function setup({
         allowManualCredentials={allowManualCredentials}
         hostAppName={hostAppName}
         authenticatedRequest={authenticatedRequest}
+        pairingClientChannel={pairingClientChannel}
       />
     </ConnectionsProvider>,
   );
@@ -82,13 +85,38 @@ describe('Connection Manager paired devices', () => {
     ).toBeTruthy();
     expect(await screen.findByText('Pixel 9')).toBeTruthy();
 
-    // Granting access lives one step inside the review surface, not beside it.
+    // The device inventory also retains its pairing entry point.
     fireEvent.click(
       screen.getByRole('button', { name: 'Approve another device' }),
     );
     expect(screen.getByRole('heading', { name: 'Pair a Device' })).toBeTruthy();
     // Let the pairing panel's own first poll settle inside the test.
     await screen.findByRole('button', { name: 'Create pairing code' });
+  });
+
+  it('invites another device directly to the selected server and returns to connections', async () => {
+    const request = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input)).pathname;
+      return Response.json(
+        path.endsWith('/devices') ? { devices: [] } : { requests: [] },
+      );
+    });
+    setup({ authenticatedRequest: request });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Connect another device' }),
+    );
+    await screen.findByRole('button', { name: 'Create pairing code' });
+    expect(
+      (screen.getByLabelText('Pairing endpoint') as HTMLInputElement).value,
+    ).toBe('https://station.example.test');
+    expect(request).toHaveBeenCalledWith(
+      new URL('https://station.example.test/api/pairing/requests'),
+      expect.anything(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(
+      screen.getByRole('button', { name: 'Connect another device' }),
+    ).toBeTruthy();
   });
 
   it('returns to the device list when the pairing panel is dismissed', async () => {

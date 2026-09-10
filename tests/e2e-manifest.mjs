@@ -303,9 +303,13 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
   parallelSafe: [
     'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
+    'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
+    'tests/code-block-actions.spec.ts',
+    'tests/model-visibility.spec.ts',
+    'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
     'tests/keyboard-shortcuts.spec.ts',
     'tests/sidebar-geometry.spec.ts',
@@ -536,6 +540,36 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/code-block-actions.spec.ts',
+    bucket: 'product',
+    surface: 'Long transcript code blocks',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production code-block frame and styles bundled in memory; browser layout drives the long-block boundary. Clipboard success/refusal is a browser-local fixture, with no OS clipboard or live Station writes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/model-visibility.spec.ts',
+    bucket: 'product',
+    surface: 'Provider model preferences',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production provider form and device preference store bundled in memory with one unused SDK query stub. Browser-local interactions prove provider bulk visibility, preserved default model, keyboard operation and phone-sized light/dark controls. No live instance or shared outputs.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/image-preview-inspection.spec.ts',
+    bucket: 'product',
+    surface: 'Chat and workspace image previews',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real production image inspector and dialog components with browser-decoded PNG input; verifies zoom, pointer and touch pan, keyboard and gallery focus, full backdrop coverage, failure state and narrow theme/rotation geometry. Bundling is in-memory; no live Station instance or shared output writes.',
+    exceptions: [],
+  },
+  {
     path: 'tests/agent-editor-geometry.spec.ts',
     bucket: 'product',
     surface: 'Agents',
@@ -613,6 +647,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real-browser focus semantics for dialog return focus: a collapsed surviving ancestor refuses focus and the walk falls through, an open follow-up dialog keeps focus, and a surviving trigger is restored untouched. jsdom reports a hidden .focus() as successful, so station#1206 gap 2 is only falsifiable here. station#1245 adds the real ConnectionManagerModalContent from packages/connect falling back past an inert survivor — the only place the cross-package wiring is exercised in a real bundle.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/attention-file-replies.spec.ts',
+    bucket: 'product',
+    surface: 'Attention input replies',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real input-reply, file normalization, staging and SDK clients with exact browser-local HTTP and model-observation fixtures; covers upload failure, immutable send retry, separate drafts and request/authority changes, with no live service writes.',
     exceptions: [],
   },
   {
@@ -731,6 +775,26 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Proves a test-only plugin installed through real preview and consent receives a server-issued Project Pane occurrence and executes public Agent, navigation, and toast SDK hooks in direct and placed hosts, without migrating first-party examples.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/workspace-pane-host-actions.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves one host action bar across direct and placed real Project Pane routes, keyboard Agent selection and 390px reflow. Provider transport is intercepted; server integration separately proves actual captured invocation.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/workspace-pane-host-actions-live.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real browser host action through SDK, HTTP and captured permission/Agent admission into the external Muse echo provider, with exact turn completion read from EventStore and displayed in conversation. Requires ready Muse; no paid model or route interception.',
     exceptions: [],
   },
   {
@@ -1685,15 +1749,6 @@ export const e2eManifest = [
     exceptions: ['waitForTimeout'],
   },
   {
-    path: 'tests/android/app-load.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale: 'Android app-load coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
-  {
     path: 'tests/android/desktop-regression.spec.ts',
     bucket: 'android',
     surface: 'Android',
@@ -1701,7 +1756,7 @@ export const e2eManifest = [
     primary: false,
     rationale:
       'Android desktop-regression coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
+    exceptions: [],
   },
   {
     path: 'tests/android/landscape-chrome.spec.ts',
@@ -1722,31 +1777,12 @@ export const e2eManifest = [
     exceptions: ['waitForTimeout'],
   },
   {
-    path: 'tests/android/navigation.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale: 'Android navigation coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
-  {
     path: 'tests/android/split-pane-mobile.spec.ts',
     bucket: 'android',
     surface: 'Android',
     tierTarget: 'partial',
     primary: false,
     rationale: 'Android split-pane coverage runs in the Android matrix.',
-    exceptions: ['waitForTimeout'],
-  },
-  {
-    path: 'tests/android/webview-compat.spec.ts',
-    bucket: 'android',
-    surface: 'Android',
-    tierTarget: 'partial',
-    primary: false,
-    rationale:
-      'Android webview compatibility coverage runs in the Android matrix.',
     exceptions: ['waitForTimeout'],
   },
 ];

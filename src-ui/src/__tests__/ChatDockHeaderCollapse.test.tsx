@@ -34,6 +34,7 @@ const SHORTCUT_DISPLAY: Record<string, string> = {
 };
 vi.mock('../hooks/useKeyboardShortcut', () => ({
   useShortcutDisplay: (id: string) => SHORTCUT_DISPLAY[id] ?? '',
+  useShortcutDisplayLookup: () => (id: string) => SHORTCUT_DISPLAY[id] ?? '',
 }));
 
 import {

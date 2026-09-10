@@ -22,9 +22,30 @@ import { execFileSync } from 'node:child_process';
  *
  * Platform fan-out (also run by this script, via `tauri icon`):
  *   src-desktop/icons/{icon.icns,icon.ico,icon.png,32x32,64x64,128x128*}
- *                                     — from the rounded master
+ *                                     — from the rounded master. Every `.icns`
+ *                                       is rewritten into canonical member
+ *                                       order on the way out (lib/icns.mjs):
+ *                                       tauri's icns writer emits the same
+ *                                       members in a per-process random
+ *                                       sequence, so without that the four
+ *                                       committed icns churned on every run
+ *                                       (#1797).
  *   src-desktop/icons/{Square*,StoreLogo}.png, gen/apple AppIcon set,
  *   gen/android app/src/main mipmaps  — from the square master
+ *   src-desktop/icons/<channel>/ios/AppIcon-*.png (stable, beta, nightly)
+ *                                     — from each channel's square master:
+ *                                       the committed iOS asset-catalog sets.
+ *                                       `tauri ios init` regenerates
+ *                                       gen/apple's AppIcon.appiconset with
+ *                                       Tauri's DEFAULT icons (#1776), so
+ *                                       ios-channel-icons.mjs copies the
+ *                                       channel's set over it after every
+ *                                       init. The committed gen/apple catalog
+ *                                       is the stable set (local and
+ *                                       simulator builds reuse it as is).
+ *                                       Dev has no iOS delivery and gets no
+ *                                       set. tauri-cli is byte-deterministic
+ *                                       here: two runs on one master agree.
  *   gen/android app/src/debug mipmaps — from the square master hue-rotated
  *                                       DEV_HUE_ROTATION degrees: the "Station
  *                                       Dev" launcher identity. The in-app dev
@@ -42,13 +63,16 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
+import { assertOpaqueIosPngs } from './ios-channel-icons.mjs';
+import { canonicalizeIcns } from './lib/icns.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BRAND_DIR = join(ROOT, 'assets', 'brand');
@@ -64,6 +88,14 @@ const APPLE_ICONSET = join(
 );
 const ANDROID_RES = (sourceSet) =>
   join(DESKTOP_DIR, 'gen', 'android', 'app', 'src', sourceSet, 'res');
+
+/** Channels that ship on iOS and therefore carry a committed catalog set. */
+export const IOS_ICON_SET_CHANNELS = Object.freeze([
+  'stable',
+  'beta',
+  'nightly',
+]);
+export const iosIconSetDir = (channel) => join(ICONS_DIR, channel, 'ios');
 
 const ICON_SIZE = 1024;
 const ICON_CORNER_RADIUS = 228; // macOS-style rounded square, ~22% of edge
@@ -85,6 +117,9 @@ export const BETA_HUE_SHIFT = 32;
 export const NIGHTLY_HUE_SHIFT = 65;
 
 async function renderMasters() {
+  // Imported here so the exported fan-out helper can be tested without
+  // Playwright's Chromium.
+  const { chromium } = await import('playwright');
   const imageDataUrl = `data:image/jpeg;base64,${readFileSync(REFERENCE).toString('base64')}`;
 
   const browser = await chromium.launch();
@@ -372,6 +407,19 @@ async function renderMasters() {
   };
 }
 
+/**
+ * Run the pinned `tauri icon` fan-out, then rewrite the `.icns` it emits into
+ * canonical member order.
+ *
+ * Everything else `tauri icon` writes is byte-identical across runs; the
+ * `.icns` is not, because its writer walks a Rust `HashMap` and emits the
+ * same members in a different sequence every process (#1797). The
+ * canonicalization is a lossless permutation of members the writer already
+ * produced -- see `lib/icns.mjs` for why that is the safe normalization and
+ * `iconutil` is not. It happens here rather than at each destination so that
+ * every icns this script emits is canonical by construction, including the
+ * ones only a channel copy consumes.
+ */
 function tauriIcon(source, outDir) {
   const args = ['icon', source];
   if (outDir) args.push('-o', outDir);
@@ -380,6 +428,52 @@ function tauriIcon(source, outDir) {
     stdio: 'pipe',
     windowsHide: true,
   });
+  const icns = join(outDir ?? ICONS_DIR, 'icon.icns');
+  writeFileSync(icns, canonicalizeIcns(readFileSync(icns)));
+}
+
+/**
+ * Fan a rounded master out to `outDir` and return the `.icns` bytes that run
+ * emitted. Exported so the byte-stability test reaches the real `tauri icon`
+ * seam -- the one that is not deterministic on its own -- rather than a
+ * fixture of what it once wrote.
+ */
+export function readDesktopIcns(roundedMaster, outDir) {
+  tauriIcon(roundedMaster, outDir);
+  return readFileSync(join(outDir, 'icon.icns'));
+}
+
+/** The rounded master the committed `src-desktop/icons/icon.icns` comes from. */
+export const ROUNDED_MASTER = join(BRAND_DIR, 'icon-1024.png');
+
+/**
+ * Fan an opaque square master out to an iOS asset-catalog set: the exact
+ * AppIcon-*.png filenames Tauri's Contents.json template references. Stale
+ * PNGs in the destination are removed first so the set is exactly the
+ * fan-out. Every emitted PNG must be fully opaque (App Store rule, and the
+ * delivery's CgBI pixel comparison is only lossless at alpha 255), so a
+ * rounded or otherwise translucent master is refused here rather than after
+ * a signed build. Exported so the byte-stability test reaches the real
+ * `tauri icon` seam without rendering the masters.
+ */
+export function writeIosIconSet(squareMaster, destinationDir) {
+  const outDir = mkdtempSync(join(tmpdir(), 'station-ios-set-'));
+  try {
+    tauriIcon(squareMaster, outDir);
+    mkdirSync(destinationDir, { recursive: true });
+    for (const name of readdirSync(destinationDir)) {
+      if (name.endsWith('.png')) unlinkSync(join(destinationDir, name));
+    }
+    copyInto(join(outDir, 'ios'), destinationDir, (name) =>
+      name.endsWith('.png'),
+    );
+  } finally {
+    rmSync(outDir, { recursive: true, force: true });
+  }
+  assertOpaqueIosPngs(destinationDir);
+  return readdirSync(destinationDir)
+    .filter((name) => name.endsWith('.png'))
+    .sort();
 }
 
 const copyInto = (fromDir, toDir, filter = () => true) => {
@@ -419,8 +513,19 @@ async function main() {
 
   const tempDirs = [variantDir];
   try {
+    const copyIosSet = (squareOutDir, destinationDir) => {
+      mkdirSync(destinationDir, { recursive: true });
+      for (const name of readdirSync(destinationDir)) {
+        if (name.endsWith('.png')) unlinkSync(join(destinationDir, name));
+      }
+      copyInto(join(squareOutDir, 'ios'), destinationDir, (name) =>
+        name.endsWith('.png'),
+      );
+      assertOpaqueIosPngs(destinationDir);
+    };
+
     // Rounded master drives the whole default fan-out first...
-    tauriIcon(join(BRAND_DIR, 'icon-1024.png'));
+    tauriIcon(ROUNDED_MASTER);
 
     // ...then the surfaces whose platforms mask or reject alpha themselves
     // are overwritten from the full-bleed square master.
@@ -432,6 +537,10 @@ async function main() {
     );
     copyInto(join(squareOut, 'ios'), APPLE_ICONSET);
     copyAndroidMipmaps(squareOut, ANDROID_RES('main'));
+    // The committed catalog above is what local/simulator `tauri ios build`
+    // reuses; this committed set is what TestFlight delivery copies over the
+    // regenerated catalog. Both are the same square fan-out.
+    copyIosSet(squareOut, iosIconSetDir('stable'));
 
     // Keep a canonical Stable Android source outside generated scaffolding.
     // Channel application copies from these committed sources after `init`.
@@ -457,6 +566,8 @@ async function main() {
       tempDirs.push(squareOut);
       tauriIcon(square, squareOut);
       copyAndroidMipmaps(squareOut, join(channelDir, 'android'));
+      if (IOS_ICON_SET_CHANNELS.includes(channel))
+        copyIosSet(squareOut, iosIconSetDir(channel));
     };
 
     writeChannelSet({
@@ -485,8 +596,19 @@ async function main() {
     }
   }
   console.log(
-    'Regenerated: Stable masters/platform sets, Dev/Beta/Nightly desktop + Android sets, iOS Stable set, and favicons',
+    'Regenerated: Stable masters/platform sets, Dev/Beta/Nightly desktop + Android sets, Stable/Beta/Nightly iOS sets, and favicons',
   );
 }
 
-await main();
+function isMainModule() {
+  try {
+    return (
+      process.argv[1] &&
+      realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
+    );
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) await main();

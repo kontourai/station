@@ -52,7 +52,7 @@ export const FLEET_STREAM_CAPABILITY: FleetRoutingStreamCapability = {
     'A Dispatch-routed turn is buffered end to end: Relay has no native streaming and the fleet serve route returns the completion in full. v1 fleet routing is scoped to non-interactive work.',
 };
 
-export interface FleetRoutingContext {
+interface FleetRoutingContext {
   /** The DECIDING Station — whose log this envelope belongs to. */
   environmentId: string;
   agentName: string;

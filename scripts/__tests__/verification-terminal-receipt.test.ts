@@ -14,6 +14,9 @@ import { reportExecution } from '../lib/verification-terminal-receipt.mjs';
 
 const roots: string[] = [];
 
+/** The terminal escape byte, spelled rather than embedded in source. */
+const ESC = String.fromCharCode(27);
+
 function changedDiagnostic(provenance: Record<string, string>) {
   return {
     schemaVersion: 1,
@@ -1079,4 +1082,405 @@ describe('reportExecution preserves genuine failures (station#4173)', () => {
       );
     },
   );
+});
+
+/**
+ * station#1827.
+ *
+ * The literal string a PASSING knowledge-store test prints on purpose. On
+ * PR #1787 (run 34301492334) the receipt named it as the cause of a lane the
+ * ci:fast runner had killed for exceeding its feedback budget: the scan
+ * matched `/^\s*Error:\s/`, nothing matched the runner's own owner-final
+ * line, and the recovered cause was discarded on the ordinary path.
+ *
+ * It is in both fixtures below for one reason: without a line the scan WOULD
+ * have chosen, a test asserting the budget message proves only that the noise
+ * happened not to be there.
+ */
+const SCANNED_DECOY_DIAGNOSTIC = '          Error: observer failed';
+const BUDGET_CAUSE = 'ci:fast exceeded its 12-minute feedback budget';
+const OWNER_FINAL_STDERR = `[station-ci-fast-owner-final] ${BUDGET_CAUSE}\n`;
+
+/**
+ * A ci-fast owner capture shaped like the live one: a digest-bound, coherent
+ * changed-verification diagnostic (so `reportExecution` takes its ORDINARY,
+ * non-throwing path — the path that had never executed with an owner-final
+ * line present), stdout carrying the decoy, stderr ending in the owner-final
+ * line, and the cause the lifecycle recovers from it.
+ */
+function ciFastBudgetKillRaw(worktree: string) {
+  const diagnosticRoot = join(worktree, '.kontourai/test-impact');
+  mkdirSync(diagnosticRoot, { recursive: true });
+  const provenance = {
+    repositoryId: 'a'.repeat(64),
+    headSha: 'b'.repeat(40),
+    workspaceDigest: 'c'.repeat(64),
+    environmentDigest: 'd'.repeat(64),
+    dependencyDigest: 'e'.repeat(64),
+  };
+  writeChangedDiagnosticBundle(diagnosticRoot, changedDiagnostic(provenance));
+  return {
+    ...__verificationCoordinatorInternals.attachCiFastDiagnostics(
+      { lane: { id: 'ci-fast' }, before: { worktree, ...provenance } },
+      {
+        output: {
+          stdout: { text: `${SCANNED_DECOY_DIAGNOSTIC}\n` },
+          stderr: { text: OWNER_FINAL_STDERR },
+        },
+      },
+    ),
+    infrastructureCause: BUDGET_CAUSE,
+  };
+}
+
+test("the ci-fast runner's own budget cause outranks a scanned excerpt on the ordinary path (station#1827)", () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-ordinary-'));
+  roots.push(worktree);
+  const raw = ciFastBudgetKillRaw(worktree);
+  const reported = reportExecution({
+    raw,
+    result: {
+      status: 'infrastructure_error',
+      exitCode: null,
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+    },
+    cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+    worktree,
+    request: { key: 'a'.repeat(64) },
+  });
+
+  // The ordinary path, not a reporting-pipeline failure: `reconcileNote`'s
+  // absence is what says so (docs/reference/verification-receipts.md).
+  expect(reported.summary.reconcileNote).toBeUndefined();
+  expect(reported.summary.firstCausalExcerpt).toBe(BUDGET_CAUSE);
+  // The invariant this file states twice: the two fields never disagree.
+  expect(reported.summary.causalExcerpts[0]).toBe(
+    reported.summary.firstCausalExcerpt,
+  );
+  // The scanned evidence is RANKED BELOW the cause, not discarded: the scan
+  // is a second line, and demoting it must not delete it.
+  expect(reported.summary.causalExcerpts).toContain(SCANNED_DECOY_DIAGNOSTIC);
+  // The caveat `verification-gate-summary.mjs` renders for `causeStream`
+  // says the excerpt "was picked by severity and position". Nothing picked
+  // this one, so printing that sentence would be a false claim.
+  expect(reported.summary.causeStream).toBeUndefined();
+  // Persistable: `publishTerminalReceipt` spreads the RESULT into
+  // `createVerificationReceipt`, so the summary alone would leave the
+  // canonical receipt carrying no cause at all.
+  expect(reported.result.infrastructureCause).toBe(BUDGET_CAUSE);
+});
+
+test('an ordinary failing lane still reports its scanned excerpt (station#1827)', () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-failed-'));
+  roots.push(worktree);
+  // Byte-identical capture, including the owner-final line and the recovered
+  // cause. Only the terminal differs -- the cause outranks the scan for the
+  // status it explains and for no other, so a `failed` lane is unchanged.
+  const raw = ciFastBudgetKillRaw(worktree);
+  const reported = reportExecution({
+    raw,
+    result: {
+      status: 'failed',
+      exitCode: 1,
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+    },
+    cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+    worktree,
+    request: { key: 'b'.repeat(64) },
+  });
+
+  expect(reported.summary.firstCausalExcerpt).toBe(SCANNED_DECOY_DIAGNOSTIC);
+  expect(reported.summary.causalExcerpts[0]).toBe(SCANNED_DECOY_DIAGNOSTIC);
+  expect(reported.summary.causalExcerpts).not.toContain(BUDGET_CAUSE);
+  expect(reported.result.infrastructureCause).toBeUndefined();
+});
+
+/**
+ * station#1827 review item 1: the OTHER channel a runner declares its own stop
+ * on. `createOwnedRunner` returns `{ status: null, error: Error(...) }` for a
+ * surviving owned process, an unreadable capture and a spawn failure, on every
+ * lane -- `primaryInterruptedCause` has always reported it, and threading only
+ * `raw.infrastructureCause` left it computed-and-dropped on the ordinary path
+ * for the same status.
+ */
+test("the owned runner's own error message is the cause when no owner-final line was printed (station#1827)", () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-sibling-'));
+  roots.push(worktree);
+  const reported = reportExecution({
+    raw: {
+      // No ci-fast attachment contract here: this shape reaches the ordinary
+      // path on ANY lane, which is the reachability the review established.
+      error: { message: 'owned verification process survived cleanup' },
+      output: {
+        stdout: { text: `${SCANNED_DECOY_DIAGNOSTIC}\n` },
+        stderr: { text: '' },
+      },
+    },
+    result: {
+      status: 'infrastructure_error',
+      exitCode: null,
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+    },
+    cleanup: { status: 'failed', survivingOwnedChildren: 0 },
+    worktree,
+    request: { key: 'a'.repeat(64) },
+  });
+
+  expect(reported.summary.reconcileNote).toBeUndefined();
+  expect(reported.summary.firstCausalExcerpt).toBe(
+    'owned verification process survived cleanup',
+  );
+  expect(reported.summary.causalExcerpts).toContain(SCANNED_DECOY_DIAGNOSTIC);
+  expect(reported.result.infrastructureCause).toBe(
+    'owned verification process survived cleanup',
+  );
+});
+
+test('the owner-final line outranks the runner error message when both spoke (station#1827)', () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-precedence-'));
+  roots.push(worktree);
+  // Both channels, different text. `primaryInterruptedCause` has always read
+  // them in this order; the ordinary path must not invert it, or the two
+  // paths would name different causes for one run again.
+  const reported = reportExecution({
+    raw: {
+      infrastructureCause: BUDGET_CAUSE,
+      error: { message: 'owned verification process survived cleanup' },
+      output: {
+        stdout: { text: `${SCANNED_DECOY_DIAGNOSTIC}\n` },
+        stderr: { text: OWNER_FINAL_STDERR },
+      },
+    },
+    result: {
+      status: 'infrastructure_error',
+      exitCode: null,
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+    },
+    cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+    worktree,
+    request: { key: 'a'.repeat(64) },
+  });
+
+  expect(reported.result.infrastructureCause).toBe(BUDGET_CAUSE);
+  expect(reported.summary.firstCausalExcerpt).toBe(BUDGET_CAUSE);
+});
+
+/**
+ * station#1827 review item 2. The comment on the summary/receipt fork promises
+ * they never name different causes; these are the two inputs that used to
+ * break it, because the reporter normalized and `boundedText` did not.
+ */
+test('the summary and the receipt hold the same normalized cause bytes (station#1827)', () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-normalize-'));
+  roots.push(worktree);
+  const run = (raw: Record<string, unknown>) =>
+    reportExecution({
+      raw: {
+        ...raw,
+        output: {
+          stdout: { text: `${SCANNED_DECOY_DIAGNOSTIC}\n` },
+          stderr: { text: '' },
+        },
+      },
+      result: {
+        status: 'infrastructure_error',
+        exitCode: null,
+        counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+      },
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      worktree,
+      request: { key: 'a'.repeat(64) },
+    });
+
+  // Whitespace-only is not a declaration. It used to reach the receipt as
+  // `"   "` while the summary named the decoy -- two artifacts, two answers.
+  const blank = run({ infrastructureCause: '   ' });
+  expect(blank.result.infrastructureCause).toBeUndefined();
+  expect(blank.summary.firstCausalExcerpt).toBe(SCANNED_DECOY_DIAGNOSTIC);
+  expect(blank.summary.infrastructureCause).toBeUndefined();
+
+  // A coloured declaration: the summary stripped the escapes, the receipt kept
+  // them. Worse, `boundedText` redacts WITHOUT stripping first, which is the
+  // ordering the reporter's own comment calls unsafe for a secret split by an
+  // escape sequence.
+  const coloured = run({
+    infrastructureCause: `${ESC}[31mci:fast exceeded its budget${ESC}[0m`,
+  });
+  expect(coloured.result.infrastructureCause).toBe(
+    'ci:fast exceeded its budget',
+  );
+  expect(coloured.result.infrastructureCause).toBe(
+    coloured.summary.firstCausalExcerpt,
+  );
+  expect(coloured.result.infrastructureCause).toBe(
+    coloured.summary.infrastructureCause,
+  );
+  expect(coloured.result.infrastructureCause).not.toContain(ESC);
+
+  // The escape-split secret the ordering exists for. The discriminating shape
+  // is a token whose CHARACTER CLASS the escape breaks: `ghp_[A-Za-z0-9]{36,}`
+  // sees 20 alphanumerics and stops, so redacting before stripping leaves the
+  // token whole and the later strip reassembles it into the receipt. A
+  // `Bearer <token>` fixture proves nothing here -- that pattern matches the
+  // escape bytes too and redacts under either order.
+  const secret = run({
+    infrastructureCause: `stopped after ghp_${'A'.repeat(20)}${ESC}[0m${'B'.repeat(20)}`,
+  });
+  expect(secret.result.infrastructureCause).toContain('[REDACTED]');
+  expect(secret.result.infrastructureCause).not.toContain('ghp_');
+  expect(secret.result.infrastructureCause).not.toContain('B'.repeat(20));
+});
+
+/**
+ * station#1827 review item 4: the reconcile branch. `primaryInterruptedCause`
+ * has always put the cause in the SUMMARY here; the branch that puts it on the
+ * preserved result -- and therefore into the canonical receipt -- had no
+ * assertion of its own, so deleting it was caught by nothing.
+ */
+test("a reporting-pipeline failure still records the runner's cause on the preserved result (station#1827)", () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-reconcile-'));
+  roots.push(worktree);
+  const reported = reportExecution({
+    raw: {
+      infrastructureCause: BUDGET_CAUSE,
+      // Forces the catch branch: a required attachment the lane could not
+      // bind. `preservesPrimaryTerminal` then keeps the primary terminal.
+      unavailableAttachments: [
+        { name: 'changed-test-diagnostics', reason: 'missing' },
+      ],
+      output: {
+        stdout: { text: `${SCANNED_DECOY_DIAGNOSTIC}\n` },
+        stderr: { text: OWNER_FINAL_STDERR },
+      },
+    },
+    result: {
+      status: 'infrastructure_error',
+      exitCode: null,
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+    },
+    cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+    worktree,
+    request: { key: 'a'.repeat(64) },
+  });
+
+  // This IS the reconcile case, which is what makes the assertion below about
+  // the branch the review found untested rather than the ordinary one.
+  expect(reported.summary.reconcileNote).toContain(
+    'required attachment unavailable',
+  );
+  expect(reported.result.infrastructureCause).toBe(BUDGET_CAUSE);
+  // The two artifacts differ only in RENDERING: this branch wraps the cause in
+  // a sentence. The declaration and its bytes are the same.
+  expect(reported.summary.firstCausalExcerpt).toBe(
+    `verification execution infrastructure error: ${BUDGET_CAUSE}`,
+  );
+  // station#1827 fix round 2, L3: this path sets no summary MARKER, and that
+  // is what keeps the CI annotation's declared-cause sentence off it. The
+  // second excerpt here is the `reconcileNote` this pipeline synthesized about
+  // its own failure, so a sentence claiming the runner named the cause -- or
+  // that the rest came from a scan -- would be false about this document.
+  expect(reported.summary.infrastructureCause).toBeUndefined();
+  expect(reported.summary.causalExcerpts[1]).toContain(
+    'verification reporting failed',
+  );
+});
+
+/**
+ * station#1827: `reportExecution` hands ONE string to the result and to the
+ * summarizer, on the class where a second derivation would visibly differ.
+ *
+ * Round 6 corrected this docblock. It used to be about
+ * `boundedSummaryEnvelope`, which this test never reaches -- the envelope has
+ * one call site, inside the publish path, and nothing here calls it. Three
+ * assertions satisfied by a literal assignment upstream cannot have power
+ * over a function they do not execute, and would have passed against the
+ * round-4 envelope unchanged. That coverage lives in
+ * `verification-coordinator.test.ts`, where the summary genuinely IS the
+ * envelope; this test covers the seam it can actually reach.
+ *
+ * `pad = 491` is still the right fixture for it: the value is 503 bytes and
+ * the redactor would rewrite its trailing `{"apiKey":"` and grow it, so any
+ * re-derivation between the result and the summary shows up. An offset
+ * landing exactly on the cap would have that growth cut straight back off and
+ * agree under either derivation.
+ */
+test('the receipt, the marker and the excerpt hold one declaration byte for byte (station#1827)', () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-one-value-bytes-'));
+  roots.push(worktree);
+  const reported = reportExecution({
+    raw: {
+      infrastructureCause: `${'x'.repeat(491)} {"apiKey":"SECRETVALUE0123456789","b":"c"}`,
+      output: {
+        stdout: { text: `${SCANNED_DECOY_DIAGNOSTIC}\n` },
+        stderr: { text: '' },
+      },
+    },
+    result: {
+      status: 'infrastructure_error',
+      exitCode: null,
+      counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+    },
+    cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+    worktree,
+    request: { key: 'a'.repeat(64) },
+  });
+
+  const persisted = reported.result.infrastructureCause as string;
+  // The fixture is only discriminating if it really is in that class.
+  expect(persisted).toMatch(/\{"apiKey":"$/);
+  expect(persisted).not.toContain('SECRETVALUE0123456789');
+  expect(reported.summary.infrastructureCause).toBe(persisted);
+  expect(reported.summary.firstCausalExcerpt).toBe(persisted);
+});
+
+/**
+ * station#1827 fix round 2, M1. The delta review's case: bounding after
+ * redacting can move a token-shaped fragment to end-of-string, where
+ * `verification-redaction.mjs`'s `$`-anchored partial-token rules match on a
+ * LATER pass but could not on the first -- so a second derivation of the same
+ * declaration came back different, and the summary and the receipt named
+ * different causes for one run.
+ *
+ * The fix is that there is no second derivation: `reportExecution` normalizes
+ * once and hands that one string to both. Swept across the offsets where the
+ * cut lands inside the token, because a single offset proves nothing about a
+ * boundary condition.
+ */
+test('one derivation reaches both artifacts even when the bound cuts inside a token (station#1827)', () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-1827-one-value-'));
+  roots.push(worktree);
+  let redactedAtCut = 0;
+  for (let pad = 495; pad <= 512; pad += 1) {
+    const reported = reportExecution({
+      raw: {
+        infrastructureCause: `${'a'.repeat(pad)}ghp_ABCDEFG and more text after it`,
+        output: {
+          stdout: { text: `${SCANNED_DECOY_DIAGNOSTIC}\n` },
+          stderr: { text: '' },
+        },
+      },
+      result: {
+        status: 'infrastructure_error',
+        exitCode: null,
+        counts: { executed: 1, passed: 0, failed: 0, infrastructureErrors: 1 },
+      },
+      cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      worktree,
+      request: { key: 'a'.repeat(64) },
+    });
+    const persisted = reported.result.infrastructureCause as string;
+    // One value, three surfaces. Under a second derivation the receipt kept
+    // `…aaaghp_ABC` while the summary held `…aaa[REDACT`.
+    expect(reported.summary.firstCausalExcerpt).toBe(persisted);
+    expect(reported.summary.infrastructureCause).toBe(persisted);
+    // And that one value is safe to persist: no token fragment left at the
+    // end, no replacement marker cut in half.
+    expect(persisted).not.toMatch(/gh[pousr]_[A-Za-z0-9]*$/);
+    if (!persisted.endsWith('[REDACTED]'))
+      expect(persisted).not.toMatch(/\[R(?:E(?:D(?:A(?:C(?:T(?:E)?)?)?)?)?)?$/);
+    if (persisted.endsWith('[REDACTED]')) redactedAtCut += 1;
+  }
+  // Not vacuous: the sweep really does include offsets that cut inside the
+  // token and therefore exercise the partial-token rules.
+  expect(redactedAtCut).toBeGreaterThan(0);
 });

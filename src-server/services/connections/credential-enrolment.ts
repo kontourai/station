@@ -59,7 +59,7 @@ export type EnrolmentAuthState =
   | 'unauthenticated'
   | 'unknown';
 
-export interface EnrolmentVerification {
+interface EnrolmentVerification {
   state: EnrolmentAuthState;
   /** The engine's own words, when it gave any. Never Station's paraphrase. */
   detail?: string;
