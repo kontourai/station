@@ -533,6 +533,26 @@ Hosted setup pairs with `https://station.kontourai.io` and selects it only after
 authentication succeeds; a denied or interrupted request preserves any prior
 saved Station, default selection, and credential reference for an honest retry.
 
+### `open`
+
+`station open` opens an authorized browser session for a Station that is
+already running on this machine. Unlike the [bare launcher](#the-station-launcher),
+it never starts or stops a backend: it reads the selected home's instance
+registry, refuses unless exactly one live instance answers, mints a one-time
+local UI-bootstrap token, and hands the browser the same redeemable URL the
+launcher does (station#1991).
+
+```text
+station open [--home=<directory>] [--instance=<name>]
+```
+
+It is deliberate about refusing rather than guessing: no live instance in the
+home names it and points at `--home`; several live instances require
+`--instance=<name>`; an instance with no recorded browser address points at
+its owning app; and a host with no browser opener says so instead of hanging.
+On success it prints the bare address — the bootstrap token never appears in
+any log line.
+
 ### `triage`
 
 `station triage` creates an opaque owner-only run under
