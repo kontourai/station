@@ -307,6 +307,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/banner-stack-bound.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
     'tests/code-block-actions.spec.ts',
+    'tests/model-visibility.spec.ts',
     'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
     'tests/keyboard-shortcuts.spec.ts',
@@ -545,6 +546,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Production code-block frame and styles bundled in memory; browser layout drives the long-block boundary. Clipboard success/refusal is a browser-local fixture, with no OS clipboard or live Station writes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/model-visibility.spec.ts',
+    bucket: 'product',
+    surface: 'Provider model preferences',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production provider form and device preference store bundled in memory with one unused SDK query stub. Browser-local interactions prove provider bulk visibility, preserved default model, keyboard operation and phone-sized light/dark controls. No live instance or shared outputs.',
     exceptions: [],
   },
   {
