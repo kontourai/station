@@ -2171,3 +2171,17 @@ Inspecting a saved reference reads its original answer under current access
 on the selected Station. No network request is made to an origin supplied by
 an untrusted quote link. The saved quotation and a changed current source
 remain visibly distinct.
+
+## Files in answers to input requests
+
+`getInputReplyContext(apiBase, reference, options)` from
+`@kontourai/station-sdk/input-reply` resolves the exact open input event to its
+Agent, Conversation and declared attachment transport capabilities. It does not
+turn an approval or permission request into a text-answer operation.
+
+Use `sendExecutionMessage` with that exact current-Station target and
+`expectedInputRequest: reference`. The foreground route checks the binding, and
+the orchestration owner checks the same open event again before adapter input.
+Opaque `attachmentRefs` use the existing current-host staging path; retries
+retain the same `clientTurnId` and payload after an uncertain response. Pass the
+captured host `requestScope` to each read, staging operation and send.

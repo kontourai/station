@@ -120,3 +120,9 @@ bounded exact-answer quotation read: Session, turn, message, text and SHA-256
 text revision. It conveys no authorization grant or evidence verdict. The
 quote-source HTTP route checks current read authority before and after owner
 I/O and refuses oversized text instead of returning an incomplete source.
+
+`AttentionInputReplyContext` on the attention subpath projects one exact open
+input request's reply binding and declared file/image transport. `needs_input`
+items may carry `inputReference`; approval/permission references keep their
+separate meaning. `OrchestrationSendTurnInput.expectedInputRequest` is a
+constraint, not a grant, and is removed before the adapter receives input.

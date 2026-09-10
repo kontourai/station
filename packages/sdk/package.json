@@ -45,7 +45,8 @@
     "./spatial-board": "./src/spatial-board.ts",
     "./testing": "./src/voice/testing.ts",
     "./voice": "./src/voice/session.ts",
-    "./quote-source": "./src/client/quote-source.ts"
+    "./quote-source": "./src/client/quote-source.ts",
+    "./input-reply": "./src/client/input-reply.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",
