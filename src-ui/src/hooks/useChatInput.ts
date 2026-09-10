@@ -17,7 +17,6 @@ import { useAgent } from '../contexts/AgentsContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { conversationOpenPhase } from '../contexts/conversation-open-policy';
 import { useToast } from '../contexts/ToastContext';
-import { registerConversationFileReceiver } from '../lib/conversation-file-intake';
 import { resolveTurnModel } from '../lib/turnModel';
 import type { FileAttachment } from '../types';
 import type { ApprovalMode } from '../utils/approvalMode';
@@ -594,31 +593,42 @@ export function useChatInput({
       intakePhase === 'busy'
     )
       return;
-    return registerConversationFileReceiver({
-      apiBase,
-      sessionId,
-      receive: async (files, operation) => {
-        const target = activeChatsStore.getSnapshot()[sessionId];
-        if (
-          !target ||
-          conversationOpenPhase(target) !== 'writable' ||
-          !operation.requestScope.isCurrent()
-        )
-          throw new Error('This chat cannot currently accept attachments.');
-        return intake.current(files, {
-          ...operation,
-          isCurrent: () =>
-            operation.requestScope.isCurrent() &&
-            intakeOwner.current.apiBase === apiBase &&
-            intakeOwner.current.sessionId === sessionId &&
-            intakeOwner.current.isChatVisible &&
-            Boolean(activeChatsStore.getSnapshot()[sessionId]) &&
-            conversationOpenPhase(
-              activeChatsStore.getSnapshot()[sessionId]!,
-            ) === 'writable',
+    let closed = false;
+    let unregister: (() => void) | undefined;
+    void import('../lib/conversation-file-intake').then(
+      ({ registerConversationFileReceiver }) => {
+        if (closed) return;
+        unregister = registerConversationFileReceiver({
+          apiBase,
+          sessionId,
+          receive: async (files, operation) => {
+            const target = activeChatsStore.getSnapshot()[sessionId];
+            if (
+              !target ||
+              conversationOpenPhase(target) !== 'writable' ||
+              !operation.requestScope.isCurrent()
+            )
+              throw new Error('This chat cannot currently accept attachments.');
+            return intake.current(files, {
+              ...operation,
+              isCurrent: () =>
+                operation.requestScope.isCurrent() &&
+                intakeOwner.current.apiBase === apiBase &&
+                intakeOwner.current.sessionId === sessionId &&
+                intakeOwner.current.isChatVisible &&
+                Boolean(activeChatsStore.getSnapshot()[sessionId]) &&
+                conversationOpenPhase(
+                  activeChatsStore.getSnapshot()[sessionId]!,
+                ) === 'writable',
+            });
+          },
         });
       },
-    });
+    );
+    return () => {
+      closed = true;
+      unregister?.();
+    };
   }, [apiBase, sessionId, isChatVisible, intakePhase]);
 
   const handleRemoveAttachment = useCallback(

@@ -3,7 +3,6 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
-import { requestConversationFileIntake } from '../../lib/conversation-file-intake';
 import {
   chatTaskSessionId,
   type HomeWorkItem,
@@ -73,6 +72,9 @@ function FileDropRow({
           throw new Error(
             'This chat is unavailable or read-only. Open a writable chat to attach files.',
           );
+        const { requestConversationFileIntake } = await import(
+          '../../lib/conversation-file-intake'
+        );
         const result = await requestConversationFileIntake(
           scope,
           sessionId,
