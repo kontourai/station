@@ -54,6 +54,12 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   CONTENT_INTEGRITY_FAST_COMMAND,
+  // CLI help topics must have a `###` heading in docs/reference/cli.md
+  // (scripts/cli-doc-parity.mjs). Pure source read, no build, ~50ms. Until
+  // this joined the lane, the CLI↔docs contract was enforced ONLY by the
+  // nightly full-regression gate, so #1795 could register the `open` verb
+  // and land red on main, discovered by the next Nightly a day later.
+  Object.freeze(['npm', Object.freeze(['run', 'docs:cli-parity:check'])]),
   // PRECONDITION for the typecheck aggregate below, same shape as
   // `build:connect`: the Basis MCP app bundles are git-ignored build output
   // that `typecheck:basis-pane`, `typecheck:server`, and `typecheck:ui`
