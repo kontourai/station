@@ -8,6 +8,7 @@ import {
   type HomeWorkItem,
 } from '../../views/home/home-view-model';
 import { InboxRow } from '../chat-dock/ChatDockInboxRows';
+import { SkeletonBlock } from '../state';
 import './SidebarOpenChats.css';
 
 /** Rows retain the shared inbox anatomy; file intake goes to the exact live composer. */
@@ -120,7 +121,9 @@ function FileDropRow({
           {item.title}
         </span>
       )}
-      {opening && <span role="status">Opening the target chat for files…</span>}
+      {opening && (
+        <SkeletonBlock label="Opening the target chat for files" count={1} />
+      )}
       {error && <span role="alert">{error}</span>}
     </fieldset>
   );
