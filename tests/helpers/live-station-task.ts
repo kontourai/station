@@ -107,6 +107,7 @@ export async function startStation(
     performanceReference?: boolean;
     runtimeFramework?: 'voltagent' | 'strands';
     deterministicReadiness?: boolean;
+    logFile?: string;
   } = {},
 ): Promise<string> {
   const args = [
@@ -117,6 +118,7 @@ export async function startStation(
     `--port=${live.serverPort}`,
     `--ui-port=${live.uiPort}`,
   ];
+  if (options.logFile) args.push(`--log=${options.logFile}`);
   if (clean) args.splice(3, 0, '--clean');
   const startup = await runCommand(...stationCommand(args), {
     // The diagnostic production UI is intentionally a distinct tree-shaken
@@ -203,8 +205,8 @@ export async function publishTaskRoomAgentEdit(
       callback();
     };
     socket.on('connect', () => {
-      socket.end(
-        `${JSON.stringify({ command: 'publish-agent-edit', ...input })}\n`,
+      socket.write(
+        `${JSON.stringify({ protocol: 'station.task-room-control/v1', request: { command: 'publish-agent-edit', ...input } })}\n`,
       );
     });
     socket.on('data', (chunk: Buffer) => {
@@ -343,9 +345,16 @@ export async function createTaskFromProject(
     success: true,
     data: { isRepo: true, branch },
   });
-  await expect(
-    page.getByText(`⎇ ${branch}`, { exact: true }).first(),
-  ).toBeVisible({ timeout: 15_000 });
+  const branchLabel = page.locator(
+    '.project-page__git-section .project-page__section-label',
+  );
+  await expect(branchLabel).toBeVisible({ timeout: 15_000 });
+  // The branch icon is an SVG, not part of the label's text contract.
+  const escapedBranch = branch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  await expect(branchLabel).toHaveText(
+    new RegExp(`^\\s*${escapedBranch}(?:\\s*·.*)?\\s*$`),
+    { timeout: 15_000 },
+  );
   await page.getByLabel('Task title').fill(title);
   await page.getByRole('button', { name: 'Add task' }).click();
   await page.waitForURL(/\/tasks\//, { timeout: 15_000 });

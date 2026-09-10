@@ -1,14 +1,14 @@
 /**
  * station#settings-revamp slice-1 review finding 4: `updateAppConfig`
  * (the plain function `useUpdateConfigMutation` wraps) types its input as
- * `Partial<AppConfig>` — the `@ts-expect-error` block below is a
+ * `Partial<AppConfig>` — the `expectTypeOf` assertions below is a
  * compile-time regression guard, checked by `tsc --noEmit` (this repo's
  * `.test.ts` files are typechecked; vitest itself strips types without
  * checking them, so this only bites on the typecheck gate, not on
  * `vitest run`) — and surfaces the route's `ignoredKeys` sibling field
  * instead of discarding it.
  */
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, expectTypeOf, test, vi } from 'vitest';
 
 vi.mock('../api', () => ({
   _getApiBase: vi.fn().mockResolvedValue('http://example.test'),
@@ -126,16 +126,13 @@ describe('updateAppConfig', () => {
     ).rejects.toThrow('defaultModel: required — cannot be cleared');
   });
 
-  // Compile-time only — never executed. A typo'd key must fail `tsc
-  // --noEmit`, not silently round-trip to the server to be dropped as
-  // `ignored: 'unknown'`.
+  // Checked by the SDK typecheck lane; Vitest execution is not type evidence.
   test("type-level: a typo'd config key is rejected at compile time", () => {
-    const acceptsConfig = (input: Parameters<typeof updateAppConfig>[0]) =>
-      input;
-    acceptsConfig({
-      // @ts-expect-error — `defaultModell` is not a key of AppConfig.
-      defaultModell: 'gpt-4',
-    });
-    expect(true).toBe(true);
+    expectTypeOf<Parameters<typeof updateAppConfig>[0]>().toHaveProperty(
+      'defaultModel',
+    );
+    expectTypeOf<Parameters<typeof updateAppConfig>[0]>().not.toHaveProperty(
+      'defaultModell',
+    );
   });
 });

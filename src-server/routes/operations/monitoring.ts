@@ -382,14 +382,9 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
         conversation: c.req.query('conversation'),
       };
       const toolsOnly = c.req.query('tools') === 'true';
-      // OPT-IN, and deliberately so. A previous round put the MCP tool's
-      // 500-row default here, at a route three other callers already used —
-      // the Monitoring view, `station monitoring events`, and the SDK — none
-      // of which pass a limit and none of which read `truncated`. A
-      // month-long range silently became its most recent 500 rows, and the
-      // view built its conversation autocomplete from that, so filtering for
-      // an older conversation reported it did not exist. The consumer that
-      // needs a bound sets one; the shared route does not invent it.
+      // Limits are opt-in. The UI requests a bounded window and discloses
+      // truncation; CLI/SDK export callers may still request all matching rows.
+      // Apply the cap only after both authorization layers and content filters.
       const rawLimit = c.req.query('limit');
       const requestedLimit = Number.parseInt(rawLimit ?? '', 10);
       if (rawLimit !== undefined && !(requestedLimit > 0)) {
@@ -469,8 +464,7 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
       // the endpoint two order contracts selected by whether you passed a
       // cap: adding a limit that drops nothing still reordered the page, and
       // the caller that most needs chronological order — the Monitoring
-      // view, which renders a timeline — is the one that never passes a
-      // limit. Write order and timestamp order genuinely disagree after an
+      // view, which renders a timeline. Write order and timestamp order genuinely disagree after an
       // OTLP backfill, which persists client-supplied timestamps.
       const ordered = [...matching].sort(
         (left, right) => eventTime(left) - eventTime(right),

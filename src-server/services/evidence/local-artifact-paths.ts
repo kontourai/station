@@ -179,10 +179,12 @@ interface WorkflowSidecarTaskPaths {
 export function workflowSidecarTaskPaths(
   cwd: string,
   taskSlug: string,
+  // Batch callers may reuse the root resolved for this request.
+  canonicalRoot = flowAgentsRoot(cwd),
 ): WorkflowSidecarTaskPaths {
   const canonicalRelativeDir = workflowSidecarTaskReference(taskSlug);
   const legacyRelativeDir = `${STATION_LEGACY_ROOTS.flowAgents}/${taskSlug}`;
-  const canonicalDir = workflowSidecarTaskDir(cwd, taskSlug);
+  const canonicalDir = join(canonicalRoot, taskSlug);
   const legacyDir = legacyWorkflowSidecarTaskDir(cwd, taskSlug);
   const canonicalStateFile = join(canonicalDir, 'state.json');
   const legacyStateFile = join(legacyDir, 'state.json');

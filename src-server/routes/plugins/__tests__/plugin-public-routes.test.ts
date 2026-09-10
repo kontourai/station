@@ -13,6 +13,7 @@ import { createPluginGrantReconciliationService } from '../../../services/plugin
 import {
   grantPermissions,
   readPluginGrantRecord,
+  revokeGrants,
 } from '../../../services/plugins/plugin-permissions.js';
 import {
   acquirePluginPublicServerModule,
@@ -36,6 +37,7 @@ afterEach(async () => {
       .map((dir) => rm(dir, { recursive: true, force: true })),
   );
   delete (globalThis as any).__pluginServerEvents;
+  delete (globalThis as any).__revokeResponseGrant;
 });
 
 function writePlugin(root: string, relativePath: string, content: string) {
@@ -1075,4 +1077,31 @@ describe('plugin-public-routes grants-unavailable contract (#1835)', () => {
     expect(permissionsBody.grantsUnavailable).toBe(true);
     expect(String(permissionsBody.error)).not.toContain(root);
   });
+});
+
+test('withholds a response when its plugin revokes permission in the response hook', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'station-plugin-response-revoke-'));
+  cleanupDirs.push(root);
+  const pluginDir = join(root, 'plugins', 'response-plugin');
+  writePlugin(
+    pluginDir,
+    'plugin.json',
+    JSON.stringify({
+      name: 'response-plugin',
+      version: '1.0.0',
+      serverModule: 'plugin.mjs',
+    }),
+  );
+  writePlugin(
+    pluginDir,
+    'plugin.mjs',
+    `export const hooks = { onResponse: async () => globalThis.__revokeResponseGrant() };
+export default function register(app) { app.get('/value', c => c.json({ value: 'private-output' })); }`,
+  );
+  (globalThis as any).__revokeResponseGrant = () =>
+    revokeGrants(root, 'response-plugin', ['plugin.server']);
+  await seedGrant(root, 'response-plugin', 'plugin.server');
+  const response = await createApp(root).request('/response-plugin/value');
+  expect(response.status).toBe(500);
+  expect(await response.text()).not.toContain('private-output');
 });

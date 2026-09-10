@@ -1,8 +1,12 @@
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { devices, expect, type Page } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import {
   E2E_STATION_CAPABILITIES,
   E2E_STATION_COMPATIBILITY,
+  installE2EWorkspacePaneCatalog,
 } from './helpers/current-station-contract';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
@@ -202,17 +206,74 @@ async function mockTaskFirstHome(
       );
       return;
     }
+    if (
+      path === '/api/conversations/task-first-home/open' &&
+      route.request().method() === 'GET'
+    ) {
+      const resolution: ConversationOpenResolution = {
+        status: 'resolved',
+        conversation: {
+          id: taskSession.threadId,
+          title: 'New chat',
+          agentSlug: agentId(taskSession.assignedAgentSlug),
+          source: 'runtime',
+          createdAt: taskSession.createdAt,
+          updatedAt: taskSession.updatedAt,
+          messageCount: 0,
+          mutable: false,
+          answerability: { answerable: true },
+        },
+        currentSessionId: taskSession.threadId,
+        execution: {
+          sessionId: taskSession.threadId,
+          agentId: agentId(taskSession.assignedAgentSlug),
+          provider: taskSession.provider,
+          engineConnectionId: 'codex',
+          model: taskSession.model,
+        },
+        transcript: { available: true, owner: 'runtime', messageCount: 0 },
+        canContinue: true,
+        answerability: { answerable: true },
+        recoveryActions: [],
+      };
+      await route.fulfill(json(resolution));
+      return;
+    }
+    if (
+      path === '/api/orchestration/pane-host/station/catalog' &&
+      route.request().method() === 'GET'
+    ) {
+      // This project has built-in panes and no installed package actions.
+      await route.fulfill(
+        json({
+          projectSlug: 'station',
+          support: 'supported',
+          complete: true,
+          contributions: [],
+        } satisfies WorkspacePaneHostActionCatalog),
+      );
+      return;
+    }
     if (path === '/api/orchestration/sessions/task-first-home') {
       await route.fulfill(
         json({ session: taskSession, events: options.sessionEvents ?? [] }),
       );
       return;
     }
-    if (path === '/api/orchestration/sessions/task-first-home/event-window') {
+    if (
+      path === '/api/orchestration/sessions/task-first-home/event-window' ||
+      path === '/api/orchestration/conversations/task-first-home/event-window'
+    ) {
       await route.fulfill(
         json({
           protocolVersion: 1,
-          session: taskSession,
+          ...(path.includes('/conversations/')
+            ? {
+                conversationId: 'task-first-home',
+                currentSessionId: 'task-first-home',
+                handoffs: [],
+              }
+            : { session: taskSession }),
           events: (options.sessionEvents ?? []).map((event, index) => ({
             sequence: index + 1,
             event,
@@ -223,7 +284,10 @@ async function mockTaskFirstHome(
       );
       return;
     }
-    if (path === '/api/orchestration/sessions/task-first-home/flow-run') {
+    if (
+      path === '/api/orchestration/sessions/task-first-home/flow-run' ||
+      path === '/api/orchestration/sessions/task-first-home/builder-run'
+    ) {
       await route.fulfill({
         status: 404,
         contentType: 'application/json',
@@ -326,7 +390,23 @@ async function mockTaskFirstHome(
       );
       return;
     }
-    if (path === '/api/connections/agents') {
+    if (
+      path === '/api/knowledge/status' &&
+      route.request().method() === 'GET'
+    ) {
+      await route.fulfill(
+        json({
+          vectorDb: null,
+          embedding: null,
+          stats: { totalDocuments: 0, totalChunks: 0, projectCount: 0 },
+        }),
+      );
+      return;
+    }
+    if (
+      path === '/api/connections/agents' ||
+      (path === '/api/connections' && route.request().method() === 'GET')
+    ) {
       await route.fulfill(
         json([
           agentConnectionFixture({
@@ -367,8 +447,85 @@ async function mockTaskFirstHome(
       );
       return;
     }
+    if (
+      route.request().method() === 'GET' &&
+      /^\/api\/orchestration\/(?:sessions|conversations)\/codex-agent%3A\d+\/(?:checkpoints|event-window)$/.test(
+        path,
+      )
+    ) {
+      await route.fulfill({
+        status: 404,
+        json: {
+          success: false,
+          error: 'This draft has not started an execution Session',
+        },
+      });
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/projects/station/layouts/coding'
+    ) {
+      await route.fulfill(
+        json({
+          id: 'l1',
+          slug: 'coding',
+          name: 'Coding',
+          type: 'coding',
+          config: {},
+        }),
+      );
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      path === '/api/projects/station/conversations'
+    ) {
+      await route.fulfill(json([]));
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      [
+        '/api/coding/git/log',
+        '/api/projects/station/knowledge',
+        '/api/projects/station/knowledge/namespaces',
+        '/api/projects/station/knowledge/status',
+        '/api/projects/station/operating-state/availability',
+        '/api/projects/station/work-items',
+        '/api/projects/station/flow/definitions',
+        '/api/projects/station/readiness',
+        '/api/projects/station/trust-bundles',
+        '/api/tasks/task%3Atask-first-home/room',
+        '/api/tasks/task%3Atask-first-home/room/events',
+      ].includes(path)
+    ) {
+      await route.fulfill({
+        status: 503,
+        json: {
+          success: false,
+          error: 'Optional project source unavailable in this Home fixture',
+        },
+      });
+      return;
+    }
+    if (
+      route.request().method() === 'GET' &&
+      [
+        '/api/orchestration/sessions/task-first-home/checkpoints',
+        '/api/projects/layouts/available',
+      ].includes(path)
+    ) {
+      await route.fulfill(json([]));
+      return;
+    }
     if (await fulfillStationShellRead(route)) return;
     await rejectUnexpectedFixtureRequest(route);
+  });
+  await installE2EWorkspacePaneCatalog(page, {
+    projectId: project.id,
+    projectSlug: project.slug,
+    layoutSlug: 'coding',
   });
   await page.route('**/api/coding/git/status**', (route) => {
     expect(new URL(route.request().url()).searchParams.get('path')).toBe(
@@ -672,8 +829,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
       page.locator('.chat-dock__active-identity').getByText('New chat'),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Collapse chat dock' }),
+      page.getByRole('button', { name: 'Hide Chat', exact: true }),
     ).toBeVisible();
+    await page.locator('.chat-dock__header').hover();
     await page.getByRole('button', { name: 'Close chat' }).click();
     await expect.poll(() => new URL(page.url()).pathname).toBe('/');
     await expect
@@ -1063,8 +1221,16 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await installVisualViewportFixture(page);
     await mockTaskFirstHome(page);
     await page.goto('/?surface=activity');
+    await page
+      .getByRole('region', { name: 'Activity', exact: true })
+      .getByRole('button', { name: 'Expand dock region to workspace' })
+      .click();
 
-    await page.getByRole('button', { name: /task first home/i }).click();
+    await page
+      .getByRole('button', {
+        name: /^Worker task · task first home Delegated worker/,
+      })
+      .click();
     await expect(page.getByTestId('session-detail')).toBeVisible();
 
     const delegate = page
@@ -1336,7 +1502,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
       expect(geometry.overflows).toBe(false);
 
       await composer.fill('Continue from my phone');
-      const continueButton = page.getByRole('button', { name: 'Continue' });
+      const continueButton = page
+        .getByTestId('session-detail')
+        .getByRole('button', { name: 'Continue', exact: true });
       const approveButton = request.getByRole('button', { name: 'Approve' });
       const declineButton = request.getByRole('button', { name: 'Decline' });
       for (const control of [continueButton, approveButton, declineButton]) {

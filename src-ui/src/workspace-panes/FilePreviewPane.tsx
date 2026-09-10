@@ -10,7 +10,6 @@ import {
   type WorkspaceFilePreviewPaneState,
   type WorkspaceFilePreviewStatus,
 } from '@kontourai/station-sdk/workspace-file-preview';
-import { type QueryKey, useQueryClient } from '@tanstack/react-query';
 import {
   lazy,
   type ReactNode,
@@ -87,19 +86,25 @@ const STATUS_COPY: Record<
   unreadable: 'Station could not read this file from the Project workspace.',
 };
 
+interface FilePreviewRefresh {
+  projectSlug: string;
+  path: string;
+  nonce: string;
+}
+
 function ReferenceFilePreviewRefresh({
   projectSlug,
   path,
-  queryKey,
+  refetch,
   completed,
 }: {
   projectSlug: string;
   path: string;
-  queryKey: QueryKey;
-  completed(nonce: string): void;
+  refetch(): Promise<{ isError: boolean }>;
+  completed(refresh: FilePreviewRefresh): void;
 }) {
-  const queryClient = useQueryClient();
-  useEffect(() => {
+  const [requested, setRequested] = useState<FilePreviewRefresh>();
+  useLayoutEffect(() => {
     const refresh = (event: Event) => {
       if (!(event instanceof CustomEvent)) return;
       const detail = event.detail;
@@ -114,14 +119,7 @@ function ReferenceFilePreviewRefresh({
       )
         return;
       const nonce = (detail as { nonce: string }).nonce;
-      // Exact key only: a reference corpus rebuild must not refresh unrelated
-      // files, and a cached response can never count as the sample.
-      void queryClient
-        .invalidateQueries({ queryKey, exact: true })
-        .then(() =>
-          queryClient.refetchQueries({ queryKey, exact: true, type: 'active' }),
-        )
-        .then(() => completed(nonce));
+      setRequested({ projectSlug, path, nonce });
     };
     window.addEventListener(
       INTERACTIVE_WORKSPACE_FILE_PREVIEW_REFRESH_EVENT,
@@ -132,7 +130,26 @@ function ReferenceFilePreviewRefresh({
         INTERACTIVE_WORKSPACE_FILE_PREVIEW_REFRESH_EVENT,
         refresh,
       );
-  }, [completed, path, projectSlug, queryClient, queryKey]);
+  }, [path, projectSlug]);
+  useEffect(() => {
+    if (
+      !requested ||
+      requested.projectSlug !== projectSlug ||
+      requested.path !== path
+    )
+      return;
+    // Layout marks can arrive before subscription cleanup from the old pane.
+    // Starting the read in this effect keeps that retired owner from cancelling it.
+    let current = true;
+    void refetch().then((result) => {
+      if (!current) return;
+      if (!result.isError) completed(requested);
+      setRequested(undefined);
+    });
+    return () => {
+      current = false;
+    };
+  }, [completed, path, projectSlug, refetch, requested]);
   return null;
 }
 
@@ -863,10 +880,13 @@ export function FilePreviewPane({
   state: WorkspaceFilePreviewPaneState;
 }) {
   const performanceSurfaceRef = useRef<HTMLDivElement | null>(null);
-  const refreshNonceRef = useRef<string | undefined>(undefined);
-  const [completedRefreshNonce, setCompletedRefreshNonce] = useState<
-    string | undefined
-  >();
+  const [completedRefresh, setCompletedRefresh] =
+    useState<FilePreviewRefresh>();
+  const completedRefreshNonce =
+    completedRefresh?.projectSlug === state.projectSlug &&
+    completedRefresh.path === state.path
+      ? completedRefresh.nonce
+      : undefined;
   const { navigate, selectedProjectLayout } = useNavigation();
   const { addFile, has, removeFile } = useCodingFilesContext();
   const catalog = useResolvedWorkspacePaneCatalog(projectSlug);
@@ -875,16 +895,14 @@ export function FilePreviewPane({
     path: state.path,
     ...(state.lineRange ? { lineRange: state.lineRange } : {}),
   };
-  const previewQueryKey = [
-    'projects',
-    projectSlug,
-    'file-preview',
-    previewRequest,
-  ] as const;
   const query = useProjectWorkspaceFilePreviewQuery(
     projectSlug,
     previewRequest,
   );
+  const measurementFetching =
+    (import.meta.env.MODE === 'test' ||
+      import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE === '1') &&
+    query.isFetching;
   const fileName = state.path.split('/').pop() || state.path;
   const intent = parseWorkspaceOpenFilePreviewIntent({
     projectSlug: state.projectSlug,
@@ -936,6 +954,9 @@ export function FilePreviewPane({
       return;
     const preview = query.data;
     if (
+      query.isLoading ||
+      measurementFetching ||
+      query.isError ||
       preview?.status !== 'ready' ||
       preview.sizeBytes === undefined ||
       preview.lineCount === undefined ||
@@ -953,10 +974,17 @@ export function FilePreviewPane({
       committedEpochMs: browserEpochMs(),
     });
     if (completedRefreshNonce) {
-      refreshNonceRef.current = undefined;
-      setCompletedRefreshNonce(undefined);
+      setCompletedRefresh(undefined);
     }
-  }, [completedRefreshNonce, query.data, state.path, state.projectSlug]);
+  }, [
+    completedRefreshNonce,
+    query.data,
+    query.isLoading,
+    measurementFetching,
+    query.isError,
+    state.path,
+    state.projectSlug,
+  ]);
 
   const copyDirectLink = () => {
     if (!directLink || !navigator.clipboard) {
@@ -978,11 +1006,8 @@ export function FilePreviewPane({
         <ReferenceFilePreviewRefresh
           projectSlug={projectSlug}
           path={state.path}
-          queryKey={previewQueryKey}
-          completed={(nonce) => {
-            refreshNonceRef.current = nonce;
-            setCompletedRefreshNonce(nonce);
-          }}
+          refetch={query.refetch}
+          completed={setCompletedRefresh}
         />
       ) : null}
       <div style={{ padding: '6px 12px 4px', flexShrink: 0 }}>
@@ -1052,12 +1077,23 @@ export function FilePreviewPane({
           )
             return;
           const surface = event.currentTarget;
+          const scrolledEpochMs =
+            event.timeStamp >= performance.timeOrigin
+              ? event.timeStamp
+              : performance.timeOrigin + event.timeStamp;
           requestAnimationFrame(() => {
+            if (
+              !surface.isConnected ||
+              surface.dataset.stationFilePath !== state.path ||
+              surface.dataset.stationProjectSlug !== state.projectSlug
+            )
+              return;
             surface.getBoundingClientRect();
             emitFilePreviewScrollPerformanceMark({
               projectSlug: state.projectSlug,
               path: state.path,
               scrollTop: surface.scrollTop,
+              scrolledEpochMs,
               committedEpochMs: browserEpochMs(),
             });
           });

@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
@@ -47,6 +47,7 @@ import {
   ConnectedAttachAnswerToTaskButton,
   ConnectedAttachUserInputToTaskButton,
 } from '../components/chat/AttachAnswerToTaskButton';
+import TurnActionsMenu from '../components/chat/TurnActionsMenu';
 
 function renderUserInput() {
   return render(
@@ -67,6 +68,38 @@ describe('Task attachment affordances follow the Task catalog', () => {
   beforeEach(() => {
     tasksQuery.state = {};
     tasksQuery.calls = [];
+  });
+
+  test('keeps the Task picker alive when focus leaves its answer menu', async () => {
+    tasksQuery.state = {
+      isSuccess: true,
+      data: [{ id: 'task-1', title: 'My Task' }],
+    };
+    render(
+      <TurnActionsMenu
+        taskTarget={{ sessionId: 'session-1', turnId: 'turn-1' }}
+      />,
+    );
+    const trigger = screen.getByRole('button', { name: 'More answer actions' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const attach = await screen.findByRole('menuitem', {
+      name: /Add this answer to a Task/,
+    });
+    attach.focus();
+    fireEvent.click(attach);
+    const search = await screen.findByRole('searchbox', {
+      name: 'Find a Task',
+    });
+    search.focus();
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    expect(
+      screen.getByRole('dialog', { name: 'Add answer to Task' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('menu', { name: 'Answer actions' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
   test('offers nothing when the catalog has settled with no Tasks', () => {

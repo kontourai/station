@@ -1,3 +1,7 @@
+import { assertPluginNameSegment } from '../../services/plugins/plugin-name.js';
+
+export { assertPluginNameSegment } from '../../services/plugins/plugin-name.js';
+
 import { execFile as execFileCb } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -13,7 +17,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { isDeepStrictEqual, promisify } from 'node:util';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { PluginInstallationRevision } from '@kontourai/station-contracts/plugin';
@@ -1731,19 +1735,6 @@ export async function restorePluginDurableState(
   );
 }
 
-export function assertPluginNameSegment(pluginName: string): void {
-  if (
-    !pluginName ||
-    pluginName === '.' ||
-    pluginName === '..' ||
-    isAbsolute(pluginName) ||
-    pluginName.includes('/') ||
-    pluginName.includes('\\')
-  ) {
-    throw new Error(`Invalid plugin name: ${pluginName || '(empty)'}`);
-  }
-}
-
 function assertPluginAgentOwned(agentDir: string, pluginName: string): void {
   const owner = pluginAgentOwner(agentDir);
   if (owner !== pluginName) {
@@ -2182,6 +2173,7 @@ function resolveInstalledPluginName(
   pluginIdOrName: string,
 ): string | null {
   assertPluginNameSegment(pluginIdOrName);
+  if (!existsSync(pluginsDir)) return null;
   const directPath = join(pluginsDir, pluginIdOrName, 'plugin.json');
   assertPathInside(pluginsDir, directPath, 'Plugin lookup target');
   if (existsSync(directPath)) {

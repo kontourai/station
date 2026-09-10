@@ -22,7 +22,7 @@ import { ForegroundInvocationUnavailableError } from '../orchestration/foregroun
 import { scanInstalledPluginInventory } from './installed-plugin-inventory.js';
 import type { PackageMcpAdmissionJournal } from './package-mcp-admission.js';
 import {
-  hasGrant,
+  readPluginGrantStateAsync,
   withPluginPermissionInvocation,
 } from './plugin-permissions.js';
 import {
@@ -97,11 +97,6 @@ export function createWorkspacePaneHostActions(input: {
       actor.readAuthority.mode,
       actor.readAuthority.tenantExecutionContext?.tenantId,
     ]);
-  const permission = (
-    id: string,
-    artifact: ReturnType<typeof captureWorkspacePaneHostPackage>,
-  ) => hasGrant(input.projectHomeDir, id, 'agents.invoke', undefined, artifact);
-
   async function catalog(
     projectSlug: string,
   ): Promise<WorkspacePaneHostActionCatalog> {
@@ -123,9 +118,9 @@ export function createWorkspacePaneHostActions(input: {
       selected?.state !== 'unavailable' &&
       inventory.every((entry) => entry.state === 'valid');
     for (const pluginId of ids.slice(0, 128)) {
-      let captured: ReturnType<typeof captureWorkspacePaneHostPackage>;
+      let captured: Awaited<ReturnType<typeof captureWorkspacePaneHostPackage>>;
       try {
-        captured = captureWorkspacePaneHostPackage(
+        captured = await captureWorkspacePaneHostPackage(
           input.projectHomeDir,
           pluginId,
           input.journal,
@@ -136,15 +131,21 @@ export function createWorkspacePaneHostActions(input: {
       }
       const { manifest, generation: installationGeneration } = captured;
       if (!manifest.workspacePaneHost) continue;
-      const granted = permission(pluginId, captured);
+      const granted = (
+        await readPluginGrantStateAsync(
+          input.projectHomeDir,
+          pluginId,
+          captured,
+        )
+      ).granted.includes('agents.invoke');
       const owner = { pluginId, installationGeneration };
       const source = createWorkspacePaneHostContribution({
         declaration: manifest.workspacePaneHost,
         owner,
         projectId: project.id,
         authority: {
-          current: () => ({
-            state: captured.isCurrent() ? 'current' : 'retired',
+          current: async () => ({
+            state: (await captured.isCurrentAsync()) ? 'current' : 'retired',
           }),
         },
         agents: {

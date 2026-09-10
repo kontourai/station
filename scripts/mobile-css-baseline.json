@@ -211,7 +211,7 @@
     },
     "src-ui/src/views/SettingsView.css": {
       "count": 2,
-      "reason": "Single-column env-var rows and the reduced-motion outline that substitutes for the highlight pulse. (Recorded 4->3 in station#753's lane when the section-nav scroller block was removed upstream; 3->2 here when the never-mounted SettingsOverview component and its .settings-overview* rules, including their mobile block, were deleted.)"
+      "reason": "Single-column environment rows and the reduced-motion outline for the highlight pulse; unused overview card styles removed."
     },
     "src-ui/src/views/TaskWorkspaceView.css": {
       "count": 1,

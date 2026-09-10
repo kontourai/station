@@ -1,6 +1,11 @@
-import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts/environment-security';
+import {
+  DEFAULT_GRANT_PAIRING_SCOPE,
+  PAIRING_SCOPE_ORCHESTRATION_READ,
+} from '@kontourai/station-contracts/environment-security';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { PAIRING_SCOPE_ROUTE_TABLE } from '../../../security/pairing-route-scopes.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
@@ -13,6 +18,70 @@ import {
   resolveRuntimeCorsOrigin,
 } from '../runtime-http.js';
 
+test.each([
+  // A newly declared read-tier POST must obey the same HTTP side-effect rule.
+  ...PAIRING_SCOPE_ROUTE_TABLE.filter(
+    (route) =>
+      route.method === 'POST' &&
+      route.scope === PAIRING_SCOPE_ORCHESTRATION_READ,
+  ).map(
+    (route) =>
+      ['POST', route.prefix.replace(/:[^/]+/g, 'fixture'), 200, []] as const,
+  ),
+  ['POST', '/api/projects/demo/file-preview', 200, []],
+  ['POST', '/api/projects/demo/file-preview/download', 200, []],
+  ['POST', '/api/projects/demo/file-preview', 400, []],
+  ['POST', '/api/projects/demo/knowledge/search', 200, []],
+  ['POST', '/api/projects/demo/knowledge/ns/notes/search', 200, []],
+  ['POST', '/api/knowledge/search', 200, []],
+  ['POST', '/api/knowledge/index/search', 200, []],
+  ['POST', '/api/knowledge/roots/validate', 200, []],
+  ['GET', '/api/projects/demo', 200, []],
+  ['PATCH', '/api/projects/demo', 200, ['projects']],
+  ['PUT', '/api/projects/demo/file-preview', 200, ['projects']],
+  ['POST', '/api/projects/demo/file-preview/rebuild', 200, ['projects']],
+  ['POST', '/api/knowledge/index/rebuild', 200, ['knowledge']],
+  [
+    'POST',
+    '/api/projects/demo/knowledge/upload',
+    200,
+    ['projects', 'knowledge'],
+  ],
+] as const)(
+  'HTTP data-change effects: %s %s (%s)',
+  async (method, path, status, keys) => {
+    const emit = vi.fn();
+    const logger: Logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      trace: vi.fn(),
+      fatal: vi.fn(),
+      child: vi.fn().mockReturnThis(),
+      setLevel: vi.fn(),
+      getLevel: vi.fn(() => 'info' as const),
+    };
+    const app = new Hono();
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit } as unknown as EventBus,
+    });
+    app.on(method, path, (c) =>
+      c.json({ success: status === 200, data: {} }, status),
+    );
+    const response = await app.request(`http://station.test${path}`, {
+      method,
+    });
+    expect(response.status).toBe(status);
+    if (keys.length)
+      expect(emit).toHaveBeenCalledExactlyOnceWith(SERVER_EVENTS.DATA_CHANGED, {
+        keys,
+      });
+    else expect(emit).not.toHaveBeenCalled();
+  },
+);
 function createCapturingLogger(): Logger {
   return {
     info: vi.fn(),

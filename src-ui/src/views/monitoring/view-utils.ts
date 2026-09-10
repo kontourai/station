@@ -34,70 +34,66 @@ export function filterMonitoringEvents(
   selection: MonitoringSelectionState,
 ) {
   const parsed = parseMonitoringSearchQuery(selection.searchQuery);
+  const searchText = parsed.text.toLowerCase();
+  const isIncompleteFilter = /^(agent|conversation|tool|trace):$/.test(
+    parsed.text.trim(),
+  );
 
-  return events
-    .filter((event) => {
-      const agentsToFilter = parsed.filters.agent || selection.selectedAgents;
-      if (agentsToFilter.length > 0) {
-        // A slug-less event used to be unreachable behind ANY agent filter:
-        // `|| ''` made it match a bucket nobody can select. It now answers to
-        // the same '(unnamed)' name /api/insights reports — via the SHARED
-        // rule, so a fourth surface cannot re-derive it differently
-        // (archive#3086).
-        if (
-          !agentsToFilter.includes(
-            monitoringAgentName(event as Record<string, unknown>),
-          )
-        ) {
-          return false;
-        }
-      }
-
-      const conversationToFilter =
-        parsed.filters.conversation?.[0] || selection.selectedConversation;
+  return events.filter((event) => {
+    const agentsToFilter = parsed.filters.agent || selection.selectedAgents;
+    if (agentsToFilter.length > 0) {
+      // A slug-less event used to be unreachable behind ANY agent filter:
+      // `|| ''` made it match a bucket nobody can select. It now answers to
+      // the same '(unnamed)' name /api/insights reports — via the SHARED
+      // rule, so a fourth surface cannot re-derive it differently
+      // (archive#3086).
       if (
-        conversationToFilter &&
-        event[K.CONVERSATION_ID] !== conversationToFilter
+        !agentsToFilter.includes(
+          monitoringAgentName(event as Record<string, unknown>),
+        )
       ) {
         return false;
       }
+    }
 
-      const toolCallIdToFilter =
-        parsed.filters.tool?.[0] || selection.selectedToolCallId;
-      if (toolCallIdToFilter && event[K.TOOL_CALL_ID] !== toolCallIdToFilter) {
-        return false;
-      }
+    const conversationToFilter =
+      parsed.filters.conversation?.[0] || selection.selectedConversation;
+    if (
+      conversationToFilter &&
+      event[K.CONVERSATION_ID] !== conversationToFilter
+    ) {
+      return false;
+    }
 
-      const traceIdToFilter =
-        parsed.filters.trace?.[0] || selection.selectedTraceId;
-      if (traceIdToFilter && event[K.TRACE_ID] !== traceIdToFilter) {
-        return false;
-      }
+    const toolCallIdToFilter =
+      parsed.filters.tool?.[0] || selection.selectedToolCallId;
+    if (toolCallIdToFilter && event[K.TOOL_CALL_ID] !== toolCallIdToFilter) {
+      return false;
+    }
 
-      if (
-        selection.eventTypeFilter.length > 0 &&
-        !selection.eventTypeFilter.includes(getEventType(event))
-      ) {
-        return false;
-      }
+    const traceIdToFilter =
+      parsed.filters.trace?.[0] || selection.selectedTraceId;
+    if (traceIdToFilter && event[K.TRACE_ID] !== traceIdToFilter) {
+      return false;
+    }
 
-      const isIncompleteFilter = /^(agent|conversation|tool|trace):$/.test(
-        parsed.text.trim(),
-      );
-      if (
-        parsed.text &&
-        !isIncompleteFilter &&
-        !JSON.stringify(event).toLowerCase().includes(parsed.text.toLowerCase())
-      ) {
-        return false;
-      }
+    if (
+      selection.eventTypeFilter.length > 0 &&
+      !selection.eventTypeFilter.includes(getEventType(event))
+    ) {
+      return false;
+    }
 
-      return true;
-    })
-    .sort(
-      (a, b) =>
-        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-    );
+    if (
+      parsed.text &&
+      !isIncompleteFilter &&
+      !JSON.stringify(event).toLowerCase().includes(searchText)
+    ) {
+      return false;
+    }
+
+    return true;
+  });
 }
 
 export function getHistoricalAgentSlugs(

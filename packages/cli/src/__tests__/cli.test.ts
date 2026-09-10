@@ -7,9 +7,16 @@ import {
   beforeEach,
   describe,
   expect,
+  onTestFinished,
   test,
   vi,
 } from 'vitest';
+
+function temporaryHome(): string {
+  const home = mkdtempSync(join(tmpdir(), 'station-cli-home-'));
+  onTestFinished(() => rmSync(home, { recursive: true, force: true }));
+  return home;
+}
 
 // Snapshot of any global the CLI reads at runtime so each test is fully
 // self-contained regardless of shuffle order. The global vitest setup
@@ -64,8 +71,6 @@ afterEach(() => {
 const TEST_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-cli-test-'));
 const ownedPath = (name: string): string => join(TEST_TEMP_ROOT, name);
 
-const SERVICE_BASE = ownedPath('station-service');
-const PARSE_BASE = ownedPath('parse-base');
 const STATION_HOME = ownedPath('station-home');
 const PERSISTENT_HOME = ownedPath('station-persistent-home');
 const AMBIENT_HOME = ownedPath('ambient-home');
@@ -394,17 +399,18 @@ describe('runCli', () => {
   });
 
   test('the direct `service install` dispatch signposts setup local; other actions do not', async () => {
+    const home = temporaryHome();
     const { runCli, service } = await loadCliWithLifecycleMocks();
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    await runCli(['service', 'install', `--base=${SERVICE_BASE}`]);
+    await runCli(['service', 'install', `--base=${home}`]);
     const installLines = log.mock.calls.map(([line]) => String(line));
     expect(
       installLines.some((line) => line.includes('station setup local')),
     ).toBe(true);
 
     log.mockClear();
-    await runCli(['service', 'status', `--base=${SERVICE_BASE}`]);
+    await runCli(['service', 'status', `--base=${home}`]);
     const statusLines = log.mock.calls.map(([line]) => String(line));
     expect(
       statusLines.some((line) => line.includes('station setup local')),
@@ -414,13 +420,14 @@ describe('runCli', () => {
   });
 
   test('dispatches service lifecycle flags through the shared parser', async () => {
+    const home = temporaryHome();
     const { runCli, service } = await loadCliWithLifecycleMocks();
 
     await runCli([
       'service',
       'status',
       '--instance=hosted',
-      `--base=${SERVICE_BASE}`,
+      `--base=${home}`,
       '--port=3242',
       '--ui-port=5274',
       '--json',
@@ -430,13 +437,13 @@ describe('runCli', () => {
       [
         'status',
         '--instance=hosted',
-        `--base=${SERVICE_BASE}`,
+        `--base=${home}`,
         '--port=3242',
         '--ui-port=5274',
         '--json',
       ],
       expect.objectContaining({
-        baseDir: SERVICE_BASE,
+        baseDir: home,
         instanceName: 'hosted',
         serverPort: 3242,
         uiPort: 5274,
@@ -445,6 +452,7 @@ describe('runCli', () => {
   });
 
   test('parses repeatable --allowed-origin fail-closed (#1672)', async () => {
+    const home = temporaryHome();
     // The parser delegates validation to the real service-module helper; the
     // suite's service mock must not mask it for this parse-only test.
     vi.doMock('../commands/service.js', async (importOriginal) => ({
@@ -455,7 +463,7 @@ describe('runCli', () => {
 
     expect(
       parseLifecycleArgs([
-        `--base=${SERVICE_BASE}`,
+        `--base=${home}`,
         '--allowed-origin=https://kontour.example.ts.net',
         '--allowed-origin=https://second.example.ts.net',
       ]),
@@ -467,7 +475,7 @@ describe('runCli', () => {
       clearAllowedOrigins: false,
     });
     expect(
-      parseLifecycleArgs([`--base=${PARSE_BASE}`, '--clear-allowed-origins']),
+      parseLifecycleArgs([`--base=${home}`, '--clear-allowed-origins']),
     ).toMatchObject({ allowedOrigins: undefined, clearAllowedOrigins: true });
 
     for (const [flag, reason] of [
@@ -477,13 +485,14 @@ describe('runCli', () => {
       ['--allowed-origin=https://host.example/', /bare origin/],
       ['--allowed-origin=https://user:pw@host.example', /bare origin/],
     ] as const) {
-      expect(() => parseLifecycleArgs([`--base=${PARSE_BASE}`, flag])).toThrow(
+      expect(() => parseLifecycleArgs([`--base=${home}`, flag])).toThrow(
         reason,
       );
     }
   });
 
   test('preserves everything after the first equals sign in lifecycle values', async () => {
+    const home = join(temporaryHome(), 'station=blue');
     vi.doMock('../commands/service.js', async (importOriginal) => ({
       ...(await importOriginal<object>()),
       runServiceCommand: vi.fn(),
@@ -491,9 +500,9 @@ describe('runCli', () => {
     const { parseLifecycleArgs } = await import('../cli.js');
 
     expect(
-      parseLifecycleArgs(['--base=/srv/station=blue', '--features=a=1,b']),
+      parseLifecycleArgs([`--base=${home}`, '--features=a=1,b']),
     ).toMatchObject({
-      baseDir: '/srv/station=blue',
+      baseDir: home,
       features: 'a=1,b',
     });
   });

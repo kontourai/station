@@ -38,6 +38,16 @@ interface EventLogFile {
 export class RuntimeEventLog {
   private readonly retention: EventLogRetentionPolicy;
   private readonly now: () => Date;
+  // Only file identity and timestamp bounds are retained, never event payloads.
+  // Bounds come from contents: a file named for today may contain OTLP backfill.
+  private readonly timeBounds = new Map<
+    string,
+    {
+      signature: string;
+      min: number;
+      max: number;
+    }
+  >();
   private lastRetentionDay?: string;
   private retentionInFlight?: Promise<RetentionResult>;
 
@@ -73,55 +83,74 @@ export class RuntimeEventLog {
     userId: string,
   ): Promise<any[]> {
     const events: any[] = [];
-
+    let names: string[];
     try {
-      const eventFiles = await readdir(this.eventLogPath);
-      // SORT. `readdir` has no ordering guarantee — APFS happens to return
-      // these sorted, ext4/overlayfs (what the shipped container runs on)
-      // hash-orders them. The filename is `events-YYYY-MM-DD.ndjson`, so
-      // lexical order IS chronological order, and the caller's tail-slice
-      // decides WHICH rows survive a bounded read. `listEventLogFiles` below
-      // has always sorted for exactly this reason.
-      const logFiles = eventFiles
-        .filter((file) => EVENT_FILE_PATTERN.test(file))
-        .sort((left, right) => left.localeCompare(right));
-
-      for (const file of logFiles) {
-        const filePath = join(this.eventLogPath, file);
-        const fileStream = createReadStream(filePath);
-        const rl = createInterface({ input: fileStream, crlfDelay: Infinity });
-
-        for await (const line of rl) {
-          if (!line.trim()) {
-            continue;
-          }
-          try {
-            const event = JSON.parse(line);
-            const eventTime = new Date(event.timestamp).getTime();
-
-            if (
-              eventTime >= start &&
-              eventTime <= end &&
-              (event.userId === userId || event['station.user.id'] === userId)
-            ) {
-              events.push(event);
-            }
-          } catch (error) {
-            this.logger.warn('Failed to parse event line', {
-              line,
-              error,
-            });
-          }
-        }
-      }
+      names = await readdir(this.eventLogPath);
     } catch (error) {
-      this.logger.error('Failed to query events from disk', {
-        error,
-        start,
-        end,
-      });
+      if (isMissingFileError(error)) return [];
+      throw error;
     }
-
+    const files = names.filter((name) => EVENT_FILE_PATTERN.test(name)).sort();
+    const present = new Set(files);
+    for (const name of this.timeBounds.keys()) {
+      if (!present.has(name)) this.timeBounds.delete(name);
+    }
+    for (const name of files) {
+      const path = join(this.eventLogPath, name);
+      try {
+        const before = await eventFileSignature(path);
+        const known = this.timeBounds.get(name);
+        if (
+          known?.signature === before &&
+          (known.max < start || known.min > end)
+        ) {
+          continue;
+        }
+        let min = Number.POSITIVE_INFINITY;
+        let max = Number.NEGATIVE_INFINITY;
+        const stream = createReadStream(path);
+        const lines = createInterface({ input: stream, crlfDelay: Infinity });
+        try {
+          for await (const line of lines) {
+            if (!line.trim()) continue;
+            let event: any;
+            try {
+              event = JSON.parse(line);
+              const time = new Date(event.timestamp).getTime();
+              if (!Number.isFinite(time)) continue;
+              min = Math.min(min, time);
+              max = Math.max(max, time);
+              if (
+                time >= start &&
+                time <= end &&
+                (event.userId === userId || event['station.user.id'] === userId)
+              ) {
+                events.push(event);
+              }
+            } catch (error) {
+              this.logger.warn('Failed to parse event line', {
+                file: name,
+                error,
+              });
+            }
+          }
+        } finally {
+          lines.close();
+          stream.destroy();
+        }
+        // Do not memoize a partial observation during an append or replacement.
+        if (before === (await eventFileSignature(path))) {
+          this.timeBounds.set(name, { signature: before, min, max });
+        } else {
+          this.timeBounds.delete(name);
+        }
+      } catch (error) {
+        this.timeBounds.delete(name);
+        // Concurrent retention can remove a file. Other I/O failures must reach
+        // the route's error response, never become an authoritative empty read.
+        if (!isMissingFileError(error)) throw error;
+      }
+    }
     return events;
   }
 
@@ -298,4 +327,9 @@ function isMissingFileError(error: unknown): boolean {
     'code' in error &&
     (error as NodeJS.ErrnoException).code === 'ENOENT'
   );
+}
+
+async function eventFileSignature(path: string): Promise<string> {
+  const info = await stat(path, { bigint: true });
+  return `${info.dev}:${info.ino}:${info.size}:${info.mtimeNs}:${info.ctimeNs}`;
 }

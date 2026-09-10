@@ -16,7 +16,8 @@ class CodedOrchestrationError extends Error {
 }
 
 const sendExecutionMessageMock = vi.fn();
-vi.mock('../hooks/useOrchestration', () => ({
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
   sendExecutionMessage: (...args: unknown[]) =>
     sendExecutionMessageMock(...args),
 }));
@@ -232,9 +233,8 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
 
     expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
-    const input = sendExecutionMessageMock.mock.calls[0][0];
+    const input = sendExecutionMessageMock.mock.calls[0][1];
     expect(input).toMatchObject({
-      apiBase: 'http://api.test',
       target: {
         agent: 'codex',
         model: {
@@ -258,7 +258,10 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
     expect(input.target).not.toHaveProperty('environment');
     expect(input.clientTurnId).toEqual(expect.any(String));
-    expect(input.signal).toBeInstanceOf(AbortSignal);
+    expect(sendExecutionMessageMock.mock.calls[0][0]).toBe('http://api.test');
+    expect(sendExecutionMessageMock.mock.calls[0][2].signal).toBeInstanceOf(
+      AbortSignal,
+    );
     expect(JSON.stringify(input.target)).not.toMatch(
       /provider|connection|engine|apiBase|transport|credential/i,
     );
@@ -280,7 +283,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       await result.current(sessionId, 'codex', undefined, 'use default');
     });
 
-    expect(sendExecutionMessageMock.mock.calls[0][0].target).not.toHaveProperty(
+    expect(sendExecutionMessageMock.mock.calls[0][1].target).not.toHaveProperty(
       'model',
     );
   });
@@ -371,8 +374,8 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       await result.current(sessionId, 'codex', undefined, 'second global turn');
     });
 
-    const first = sendExecutionMessageMock.mock.calls[0]?.[0];
-    const followUp = sendExecutionMessageMock.mock.calls[1]?.[0];
+    const first = sendExecutionMessageMock.mock.calls[0]?.[1];
+    const followUp = sendExecutionMessageMock.mock.calls[1]?.[1];
     expect(first).toMatchObject({
       conversationId: sessionId,
       target: { environment: { kind: 'current' }, agent: 'codex' },
@@ -394,7 +397,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     await act(async () => {
       await result.current(sessionId, 'codex', undefined, 'retry me');
     });
-    const firstId = sendExecutionMessageMock.mock.calls[0][0].clientTurnId;
+    const firstId = sendExecutionMessageMock.mock.calls[0][1].clientTurnId;
     const retry = activeChatsStore
       .getSnapshot()
       [sessionId]?.ephemeralMessages?.at(-1)?.action?.handler;
@@ -403,7 +406,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     await act(async () => {
       await retry?.();
     });
-    expect(sendExecutionMessageMock.mock.calls[1][0].clientTurnId).toBe(
+    expect(sendExecutionMessageMock.mock.calls[1][1].clientTurnId).toBe(
       firstId,
     );
   });
@@ -513,9 +516,11 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       );
     });
     expect(sendExecutionMessageMock).toHaveBeenLastCalledWith(
+      'http://api.test',
       expect.objectContaining({
         attachmentRefs: [stagedSnapshot.reference],
       }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 
@@ -1234,7 +1239,7 @@ describe('useCancelMessage', () => {
       abortController: undefined,
     });
     sendExecutionMessageMock.mockImplementationOnce(
-      ({ signal }: { signal: AbortSignal }) =>
+      (_base: string, _input: unknown, { signal }: { signal: AbortSignal }) =>
         new Promise((_resolve, reject) => {
           signal.addEventListener('abort', () => reject(signal.reason), {
             once: true,

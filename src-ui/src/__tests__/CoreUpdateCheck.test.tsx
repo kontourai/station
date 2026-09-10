@@ -143,6 +143,9 @@ describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
     // No provenance fields → no meta row at all, not empty labels.
     expect(screen.queryByText(/Current:/)).toBeNull();
     expect(screen.queryByText(/Branch:/)).toBeNull();
+    expect(
+      screen.queryByText(/Pull latest changes from the git remote/),
+    ).toBeNull();
   });
 
   test('remoteUnreachable renders the message as a warning, not an error', () => {

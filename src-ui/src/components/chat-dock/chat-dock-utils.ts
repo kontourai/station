@@ -168,16 +168,6 @@ export function chatModelLabel(
   return modelIdentityLabel(modelId, models);
 }
 
-/**
- * Whether the mobile task-switcher sheet can mount in this chrome — the other
- * half of the same question `inboxPanelMounts` answers for desktop. Named so
- * the routing guarantee can be DERIVED for both surfaces instead of one being
- * asserted in a test comment.
- */
-export function mobileTaskSwitcherMounts({ isMobile }: DockChrome): boolean {
-  return isMobile;
-}
-
 /** The minimal shape every project-name lookup below needs. */
 interface ProjectNameLookup {
   slug: string;

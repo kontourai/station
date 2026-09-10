@@ -107,8 +107,8 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
 
   const isDirty =
     !isLoading && !!form && JSON.stringify(form) !== JSON.stringify(savedForm);
-  const { guard, DiscardModal } = useUnsavedGuard(isDirty);
-  useCloseShortcut(() => guard(() => navigate(`/projects/${slug}`)));
+  const { DiscardModal } = useUnsavedGuard(isDirty);
+  useCloseShortcut(() => navigate(`/projects/${slug}`));
 
   if (isLoadError && !project) {
     return (
@@ -202,7 +202,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         <button
           type="button"
           className="editor-btn"
-          onClick={() => guard(() => navigate(`/projects/${slug}`))}
+          onClick={() => navigate(`/projects/${slug}`)}
         >
           ← Back
         </button>
@@ -414,7 +414,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         <ResourcesSection slug={slug} />
 
         {/* Knowledge */}
-        <KnowledgeSection slug={slug} guard={guard} />
+        <KnowledgeSection slug={slug} />
 
         {/* Danger Zone */}
         <PageSection

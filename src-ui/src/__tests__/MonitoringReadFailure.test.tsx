@@ -55,7 +55,10 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     // The one transport under test. The store's own hydration logic — the
     // abort/generation guards, the loading flag, the new error slot — is the
     // real thing.
-    fetchMonitoringEvents: fetchHistorical,
+    fetchMonitoringEventWindow: async (...args: unknown[]) => ({
+      events: await fetchHistorical(...args),
+      truncated: false,
+    }),
     fetchSSE,
     useMonitoringStatsQuery: () => ({ data: undefined }),
     useOrchestrationSessionsQuery: () => ({

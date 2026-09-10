@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { type Browser, expect, type Page, test } from '@playwright/test';
 import {
@@ -19,6 +19,7 @@ import {
   performanceReportReceipt,
   referenceEvaluatorExitFailure,
 } from '../scripts/interactive-workspace-performance.mjs';
+import { INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS } from '../scripts/verification-lanes.mjs';
 import { WORK_BOARD_200_PIN_MIX } from '../src-ui/src/performance/work-board-performance-bridge';
 import { readE2EOperatorCredential } from './helpers/e2e-operator-credential';
 import {
@@ -236,8 +237,15 @@ async function runFixtureTarget(input: {
     process.platform === 'win32'
       ? `\\\\.\\pipe\\station-performance-${randomUUID().replaceAll('-', '')}`
       : join(input.controlParent, `${fixtureName.slice(0, 4)}.sock`);
+  // A failed action can outlive its target home, which the next fixture
+  // replaces. Keep the server log beside the retained measurement evidence.
+  const referenceLogRoot = process.env.STATION_PERFORMANCE_REPORT_OUTPUT
+    ? dirname(resolve(process.env.STATION_PERFORMANCE_REPORT_OUTPUT))
+    : input.fixtureRoot;
+  mkdirSync(referenceLogRoot, { recursive: true, mode: 0o700 });
   const bootstrapToken = await startStation(live, true, {
     performanceReference: true,
+    logFile: join(referenceLogRoot, `${fixtureName}-station.log`),
     taskRoomControlSocket: controlSocket,
   });
   const context = await input.browser.newContext();
@@ -433,6 +441,18 @@ async function runFixtureTarget(input: {
           { mode: 0o600 },
         );
     }
+    if (retainedReport) {
+      for (const extension of ['png', 'txt', 'json']) {
+        const name = `${input.fixture.id}-failure.${extension}`;
+        const diagnostic = join(dirname(rawBridgePath), name);
+        if (existsSync(diagnostic))
+          writeFileSync(
+            join(dirname(retainedReport), name),
+            readFileSync(diagnostic),
+            { mode: 0o600 },
+          );
+      }
+    }
     const receipt = performanceReportReceipt(report);
     // Artifact storage can be unavailable independently of the product run.
     // Emit a bounded, closed receipt before the platform-specific assertion so
@@ -471,10 +491,10 @@ test.describe
   .serial('Interactive workspace production bridge (#2892)', () => {
     test.setTimeout(
       ONE_HOUR_REFERENCE_ENABLED
-        ? 90 * 60 * 1000
+        ? INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS.oneHour
         : WORK_BOARD_REFERENCE_ENABLED
-          ? 80 * 60 * 1000
-          : 3_300_000,
+          ? INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS.workBoard
+          : INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS.default,
     );
 
     test('executes isolated real Station targets and aggregates one build receipt', async ({
