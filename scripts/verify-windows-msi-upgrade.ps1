@@ -33,9 +33,9 @@ if ($existing.Count) { throw 'An existing Nightly installation belongs to the us
 New-Item -ItemType Directory -Path $ProofRoot | Out-Null
 Set-Content -LiteralPath (Join-Path $ProofRoot 'fixture-owner.json') -Value (@{ productA=$productA; productB=$productB; upgradeCode=$upgradeA } | ConvertTo-Json) -Encoding utf8
 $install = Join-Path $ProofRoot 'install'
-$home = Join-Path $ProofRoot 'home'
-New-Item -ItemType Directory -Path $home | Out-Null
-Set-Content (Join-Path $home 'preserve.txt') 'user-home-sentinel'
+$proofHome = Join-Path $ProofRoot 'home'
+New-Item -ItemType Directory -Path $proofHome | Out-Null
+Set-Content (Join-Path $proofHome 'preserve.txt') 'user-home-sentinel'
 function Invoke-Msi([string[]]$arguments, [string]$logName) {
   $log = Join-Path $ProofRoot $logName
   $process = Start-Process msiexec.exe -PassThru -ArgumentList ($arguments + @('/qn', '/norestart', '/l*v', ('"' + $log + '"')))
@@ -69,11 +69,14 @@ Invoke-Msi @('/x', $productB) 'uninstall-b.log'
 foreach ($directory in @('node_modules','dist-server','schemas')) {
   if (Test-Path (Join-Path $install $directory)) { throw "Uninstall retained $directory" }
 }
-if ((Get-Content (Join-Path $home 'preserve.txt')) -ne 'user-home-sentinel' -or -not (Test-Path (Join-Path $install 'foreign.txt'))) { throw 'Cleanup touched data outside application resources' }
+if ((Get-Content (Join-Path $proofHome 'preserve.txt')) -ne 'user-home-sentinel' -or -not (Test-Path (Join-Path $install 'foreign.txt'))) { throw 'Cleanup touched data outside application resources' }
 Invoke-Msi @('/i', ('"' + $InstallerB + '"'), ('INSTALLDIR="' + $install + '"')) 'clean-b.log'
 $clean = @(Inventory)
 $clean | Set-Content (Join-Path $ProofRoot 'inventory-clean-b.txt')
 $difference = @(Compare-Object $upgraded $clean)
 if ($difference.Count) { $difference | ConvertTo-Json | Set-Content (Join-Path $ProofRoot 'inventory-difference.json'); throw 'Upgraded B differs from clean B' }
 Invoke-Msi @('/x', $productB) 'final-uninstall-b.log'
+foreach ($directory in @('node_modules','dist-server','schemas')) {
+  if (Test-Path (Join-Path $install $directory)) { throw "Final uninstall retained $directory" }
+}
 @{ kind='station.windows-msi-upgrade-proof/v1'; result='PASSED'; installerA=$InstallerA; installerB=$InstallerB; filesA=$installedA.Count; filesB=$clean.Count; upgradeEqualsClean=$true; userHomePreserved=$true; installState='UNINSTALLED' } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $ProofRoot 'receipt.json')
