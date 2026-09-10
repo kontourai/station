@@ -3133,17 +3133,8 @@ for (const retiredInlineCliDevSnippet of [
 const cliLifecycle = readRequiredSource(
   '../packages/cli/src/commands/lifecycle.ts',
 );
-for (const requiredImport of [
-  './lifecycle-doctor.js',
-  'collectDoctorReport,',
-]) {
-  if (!cliLifecycle.includes(requiredImport)) {
-    errors.push(
-      `packages/cli/src/commands/lifecycle.ts must include ${requiredImport}.`,
-    );
-  }
-}
 for (const retiredLifecycleSnippet of [
+  './lifecycle-doctor.js',
   'function execVersion(',
   'async function detectOllama(',
   'function doctorStatusSymbol(',

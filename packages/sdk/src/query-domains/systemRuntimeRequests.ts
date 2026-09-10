@@ -7,6 +7,7 @@ import type {
 } from '@kontourai/station-contracts/fleet-routing-receipt';
 import { HEALTH_PROBE_TIMEOUT_MS } from '@kontourai/station-contracts/http';
 import { _getApiBase } from '../api';
+import { parseRestartExpectation } from '../core-update-restart-status';
 import type {
   AuthStatusData,
   BrandingData,
@@ -401,46 +402,6 @@ export async function requestCoreUpdateStatus(
     throw new Error(result.error);
   }
   return result;
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length > 0 &&
-    value.trim() === value &&
-    ![...value].some((character) => {
-      const codePoint = character.codePointAt(0);
-      return (
-        codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f)
-      );
-    })
-  );
-}
-
-function isCanonicalTimestamp(value: unknown): value is string {
-  if (!isNonEmptyString(value)) return false;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
-}
-
-function parseRestartExpectation(
-  value: unknown,
-): CoreUpdateRestartExpectation | null {
-  if (typeof value !== 'object' || value === null) return null;
-  const record = value as Record<string, unknown>;
-  if (
-    typeof record.expectedHash !== 'string' ||
-    !/^[a-f0-9]{7}$/.test(record.expectedHash) ||
-    !isNonEmptyString(record.expectedInstanceId) ||
-    !isCanonicalTimestamp(record.deadlineAt)
-  ) {
-    return null;
-  }
-  return {
-    expectedHash: record.expectedHash,
-    expectedInstanceId: record.expectedInstanceId,
-    deadlineAt: record.deadlineAt,
-  };
 }
 
 export async function applyCoreUpdate(apiBase: string): Promise<{

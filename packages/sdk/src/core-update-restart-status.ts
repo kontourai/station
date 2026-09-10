@@ -24,7 +24,7 @@ function isCanonicalTimestamp(value: unknown): value is string {
   return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
 }
 
-function parseRestartExpectation(
+export function parseRestartExpectation(
   value: unknown,
 ): CoreUpdateRestartExpectation | null {
   if (typeof value !== 'object' || value === null) return null;

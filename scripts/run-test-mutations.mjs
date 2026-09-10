@@ -62,7 +62,11 @@ export const MUTATIONS = [
       {
         path: 'src-ui/src/components/chat-dock/ChatDockContentArea.tsx',
         change: (source) =>
-          exactReplace(source, 'onClick={() => onNewChat()}', 'onClick={() => {}}'),
+          exactReplace(
+            source,
+            'onClick={() => onNewChat()}',
+            'onClick={() => {}}',
+          ),
       },
     ],
   },
