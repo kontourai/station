@@ -33,3 +33,12 @@
 .code-block-body code {
   font-family: var(--font-mono);
 }
+
+.code-block-actions > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.code-block-actions .button {
+  flex-shrink: 0;
+}

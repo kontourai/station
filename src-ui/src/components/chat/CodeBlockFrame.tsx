@@ -10,6 +10,7 @@ import { copyToClipboard } from '../../lib/clipboard';
 import { triggerHaptic } from '../../platform/native/haptics';
 import { Button } from '../Button';
 import { CheckGlyph } from '../icons/Glyph';
+import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
 import './CodeBlockFrame.css';
 
 export function CodeBlockFrame({
@@ -76,7 +77,7 @@ export function CodeBlockFrame({
   }, [code]);
 
   const actions = (
-    <div className="code-block-actions">
+    <ResponsiveSurfaceActions className="code-block-actions">
       <span>{lang}</span>
       <Button
         variant="ghost"
@@ -97,7 +98,7 @@ export function CodeBlockFrame({
           'Copy'
         )}
       </Button>
-    </div>
+    </ResponsiveSurfaceActions>
   );
   return (
     <div className="code-block-frame">
