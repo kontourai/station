@@ -80,6 +80,24 @@ jobs:
           echo "NDK_HOME=$root" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$root" >> "$GITHUB_ENV"
 
+          # `ring`'s build script drives cc-rs, which looks for an unsuffixed
+          # `aarch64-linux-android-clang` on PATH. The NDK ships API-suffixed
+          # wrappers instead (`aarch64-linux-android21-clang` upwards), so
+          # exporting PATH alone is not enough — the first run of this job
+          # failed with `ToolNotFound: aarch64-linux-android-clang`. Name a
+          # concrete wrapper. Any API level compiles ring's C identically; the
+          # highest present keeps this off the deprecation floor.
+          bin="$root/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          cc="$(find "$bin" -maxdepth 1 -name 'aarch64-linux-android*-clang' 2>/dev/null | sort -V | tail -1)"
+          test -n "$cc" && test -x "$cc" || {
+            echo "::error::no aarch64-linux-android clang under $bin" >&2
+            exit 1
+          }
+          echo "Using CC $cc"
+          echo "PATH=$bin:$PATH" >> "$GITHUB_ENV"
+          echo "CC_aarch64_linux_android=$cc" >> "$GITHUB_ENV"
+          echo "AR_aarch64_linux_android=$bin/llvm-ar" >> "$GITHUB_ENV"
+
       # The same directories `verify:desktop-rust` creates. tauri-build resolves
       # frontendDist at build-script time and that requirement does not vary by
       # target, so no frontend build is needed to type-check Rust.
