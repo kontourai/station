@@ -19,7 +19,16 @@ vi.mock('../components/chat-dock/ChatDockBody', () => ({
   ChatDockBody: () => <div>Chat body</div>,
 }));
 
-describe('ChatDockContentArea history backdrop', () => {
+describe('ChatDockContentArea', () => {
+  test('starts a chat through the empty dock action', () => {
+    const onNewChat = vi.fn();
+    renderContentArea(vi.fn(), onNewChat, false);
+
+    expect(screen.getByText('No chat open')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Start a chat' }));
+    expect(onNewChat).toHaveBeenCalledExactlyOnceWith();
+  });
+
   test('closes by pointer through a named non-tabbable semantic control', async () => {
     const onCloseHistory = vi.fn();
     render(
@@ -69,7 +78,7 @@ describe('ChatDockContentArea history backdrop', () => {
     historyPending = new Promise<void>((resolve) => {
       resolveHistory = resolve;
     });
-    renderHistoryPanel();
+    renderContentArea();
 
     expect(
       await screen.findByRole('status', {
@@ -87,7 +96,7 @@ describe('ChatDockContentArea history backdrop', () => {
       .spyOn(console, 'error')
       .mockImplementation(() => {});
     historyError = new Error('history chunk unavailable');
-    renderHistoryPanel(onCloseHistory);
+    renderContentArea(onCloseHistory);
 
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(screen.getByText('No chat open')).toBeTruthy();
@@ -103,7 +112,11 @@ describe('ChatDockContentArea history backdrop', () => {
   });
 });
 
-function renderHistoryPanel(onCloseHistory = vi.fn()) {
+function renderContentArea(
+  onCloseHistory = vi.fn(),
+  onNewChat = vi.fn(),
+  isHistoryOpen = true,
+) {
   return render(
     <ChatDockContentArea
       activeSession={null}
@@ -125,14 +138,14 @@ function renderHistoryPanel(onCloseHistory = vi.fn()) {
       agentDefaultModelId={null}
       availableModels={[]}
       chatInput={{} as never}
-      isHistoryOpen
+      isHistoryOpen={isHistoryOpen}
       onCloseHistory={onCloseHistory}
       onToggleStatsPanel={vi.fn()}
       onTitleUpdate={vi.fn()}
       onDeleteSession={vi.fn()}
       onFocusSession={vi.fn()}
       onOpenConversation={vi.fn()}
-      onNewChat={vi.fn()}
+      onNewChat={onNewChat}
     />,
   );
 }
