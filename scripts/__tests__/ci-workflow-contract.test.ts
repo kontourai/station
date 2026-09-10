@@ -658,8 +658,11 @@ describe('CI verification workflow contracts', () => {
     );
     expect(containerClassify).toContain('runs-on: ubuntu-22.04');
     expect(containerClassify).not.toContain('self-hosted');
+    // The head sha is part of the group identity, not decoration: without it
+    // two runs for the same PR at different heads collide and
+    // `cancel-in-progress` picks a winner by arrival order (#1445).
     expect(ci).toContain(
-      `group: ci-fast-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}`,
+      `group: ci-fast-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}-\${{ github.event.pull_request.head.sha || github.sha }}`,
     );
     expect(workflow('full-regression.yml')).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
