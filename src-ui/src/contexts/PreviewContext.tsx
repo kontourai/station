@@ -55,7 +55,10 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
   const canPrev = currentIdx > 0;
   const canNext = currentIdx < items.length - 1;
 
-  const canPreview = (mediaType?: string) => mediaType?.startsWith('image/');
+  const selectAdjacentImage = (direction: -1 | 1) => {
+    const next = items[currentIdx + direction];
+    if (next) setCurrent(next);
+  };
 
   // archive#3796: one memoised value per provider — a fresh object literal
   // here republishes the context to every consumer on any render of this
@@ -68,7 +71,7 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
   return (
     <PreviewContext.Provider value={value}>
       {children}
-      {current && canPreview(current.mediaType) && (
+      {current?.mediaType?.startsWith('image/') && (
         <ResponsiveDialogSurface
           onClose={closePreview}
           ariaLabel="Preview"
@@ -88,9 +91,7 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
             >
               <Button
                 aria-disabled={!canPrev}
-                onClick={() => {
-                  if (canPrev) setCurrent(items[currentIdx - 1]);
-                }}
+                onClick={() => selectAdjacentImage(-1)}
               >
                 Previous image
               </Button>
@@ -99,9 +100,7 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
               </span>
               <Button
                 aria-disabled={!canNext}
-                onClick={() => {
-                  if (canNext) setCurrent(items[currentIdx + 1]);
-                }}
+                onClick={() => selectAdjacentImage(1)}
               >
                 Next image
               </Button>
@@ -112,12 +111,7 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
             componentProps={{
               src: current.url,
               name: current.name || 'Preview',
-              onNavigate: (direction: -1 | 1) => {
-                if (direction === -1 && canPrev)
-                  setCurrent(items[currentIdx - 1]);
-                if (direction === 1 && canNext)
-                  setCurrent(items[currentIdx + 1]);
-              },
+              onNavigate: selectAdjacentImage,
             }}
             pending={<SkeletonBlock count={1} label="Loading image preview" />}
           />
