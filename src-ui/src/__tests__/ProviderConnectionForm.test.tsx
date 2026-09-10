@@ -2,8 +2,14 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  modelPreferenceKey,
+  readModelPickerPreferences,
+  resetModelPickerPreferencesCacheForTests,
+  updateModelPickerPreferences,
+} from '../settings/modelPickerPreferences';
 
 let awsProfilesResult: {
   data?: { profiles: string[]; available: boolean };
@@ -966,6 +972,118 @@ describe('ProviderConnectionForm — Anthropic and Google default model (review 
     expect(Array.from(select.options).map((option) => option.value)).toEqual([
       '',
       'claude-x',
+    ]);
+  });
+});
+
+describe('provider-scoped bulk model visibility', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetModelPickerPreferencesCacheForTests();
+  });
+
+  test('hides and restores all listed models while preserving preferences and serving configuration', () => {
+    const own = modelPreferenceKey('provider-a', 'shared');
+    const custom = modelPreferenceKey('provider-a', 'custom');
+    const other = modelPreferenceKey('provider-b', 'shared');
+    updateModelPickerPreferences(() => ({
+      favorites: [own],
+      recents: [own],
+      hidden: [other, custom],
+      order: [custom, own],
+    }));
+    const onSetField = vi.fn();
+    const onSetConfigField = vi.fn();
+    const form = anthropicForm({
+      config: {
+        defaultModel: 'shared',
+        modelOptions: [
+          { id: 'shared', name: 'Shared' },
+          { id: 'custom', name: 'Custom' },
+        ],
+      },
+    });
+    const props = {
+      form,
+      isNew: false,
+      selectedProviderId: 'provider-a',
+      testResult: null,
+      testError: null,
+      isTesting: false,
+      onSetField,
+      onSetConfigField,
+      onTypeChange: vi.fn(),
+      onTestConnection: vi.fn(),
+    };
+    const view = render(<ProviderConnectionForm {...props} />);
+    expect(screen.getByRole('status').textContent).toBe('1 of 2 visible');
+    fireEvent.click(screen.getByRole('button', { name: 'Hide all (2)' }));
+    expect(new Set(readModelPickerPreferences().hidden)).toEqual(
+      new Set([own, custom, other]),
+    );
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Hide all (2)',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(screen.getByRole('status').textContent).toBe('0 of 2 visible');
+    expect(readModelPickerPreferences()).toMatchObject({
+      favorites: [own],
+      recents: [own],
+      order: [custom, own],
+    });
+    expect(onSetField).not.toHaveBeenCalled();
+    expect(onSetConfigField).not.toHaveBeenCalled();
+    expect(
+      (screen.getByLabelText('Default model') as HTMLSelectElement).value,
+    ).toBe('shared');
+    view.unmount();
+    act(() => resetModelPickerPreferencesCacheForTests());
+    render(<ProviderConnectionForm {...props} />);
+    expect(screen.getByRole('status').textContent).toBe('0 of 2 visible');
+    fireEvent.click(screen.getByRole('button', { name: 'Show all (2)' }));
+    expect(readModelPickerPreferences().hidden).toEqual([other]);
+    expect(readModelPickerPreferences()).toMatchObject({
+      favorites: [own],
+      recents: [own],
+      order: [custom, own],
+    });
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Show all (2)',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  test('switching providers applies bulk action only to the newly selected catalog', () => {
+    const props = {
+      form: anthropicForm({
+        config: { modelOptions: [{ id: 'shared', name: 'Shared' }] },
+      }),
+      isNew: false,
+      selectedProviderId: 'provider-a',
+      testResult: null,
+      testError: null,
+      isTesting: false,
+      onSetField: vi.fn(),
+      onSetConfigField: vi.fn(),
+      onTypeChange: vi.fn(),
+      onTestConnection: vi.fn(),
+    };
+    const view = render(<ProviderConnectionForm {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide all (1)' }));
+    view.rerender(
+      <ProviderConnectionForm {...props} selectedProviderId="provider-b" />,
+    );
+    expect(screen.getByRole('status').textContent).toBe('1 of 1 visible');
+    fireEvent.click(screen.getByRole('button', { name: 'Hide all (1)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show all (1)' }));
+    expect(readModelPickerPreferences().hidden).toEqual([
+      modelPreferenceKey('provider-a', 'shared'),
     ]);
   });
 });

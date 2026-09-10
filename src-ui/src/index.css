@@ -8005,6 +8005,17 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   text-overflow: ellipsis;
 }
 
+.provider-detail__model-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.provider-detail__model-bulk .button {
+  min-height: 44px;
+}
+
 .provider-detail__model-actions .button {
   min-width: 36px;
   min-height: 36px;
