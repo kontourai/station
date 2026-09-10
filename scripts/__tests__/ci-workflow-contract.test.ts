@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 // moved this one and left the gate's behind, taking `main` red).
 import {
   CHECKOUT_ACTION,
+  PNPM_SETUP_ACTION,
   REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
   readWorkflowDocuments,
 } from '../actionlint-gate.mjs';
@@ -635,6 +636,34 @@ describe('CI verification workflow contracts', () => {
       );
       expect(update).toHaveBeenCalledTimes(missingTerminal ? 0 : 1);
     }
+  });
+
+  // The gate treats this pin as an allowlist key: a `pull_request_target`
+  // router step whose `uses` does not match it exactly is reported as an
+  // unreviewed custom action. That property is worth keeping — such a step runs
+  // beside a write-scoped token — but it also means a Dependabot bump of
+  // `pnpm/setup` can never be green on its own (#1042, #1725). Reading the pin
+  // from the gate rather than restating it keeps the remedy to one edit, and
+  // keeps the workflows and the gate from disagreeing while both stay green.
+  it('bootstraps pnpm from the reviewed pin in every workflow that uses it', () => {
+    const uses = readWorkflowDocuments().flatMap(({ file, document }) =>
+      Object.values(
+        (document as { jobs?: Record<string, { steps?: { uses?: string }[] }> })
+          .jobs ?? {},
+      ).flatMap((job) =>
+        (job?.steps ?? [])
+          .map((step) => step?.uses)
+          .filter(
+            (value): value is string =>
+              typeof value === 'string' && value.startsWith('pnpm/setup@'),
+          )
+          .map((value) => `${file}: ${value}`),
+      ),
+    );
+    expect(uses.length).toBeGreaterThan(0);
+    expect(uses.filter((entry) => !entry.endsWith(PNPM_SETUP_ACTION))).toEqual(
+      [],
+    );
   });
 
   it('classifies the complete push diff before entering independent heavy concurrency groups', () => {
