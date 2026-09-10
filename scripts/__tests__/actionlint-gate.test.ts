@@ -7,6 +7,7 @@ import {
   findingKey,
   parseFindings,
   persistentRunnerPolicyFindings,
+  REVIEWED_CAPACITY_REUSABLE_WORKFLOW_REF,
   REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
   readWorkflowDocuments,
 } from '../actionlint-gate.mjs';
@@ -2142,7 +2143,7 @@ describe('persistent runner policy', () => {
         document: {
           jobs: {
             scan: {
-              uses: 'kontourai/.github/.github/workflows/secret-scan.yml@02f40a67901a79ce4004c44d91e350b93782644c',
+              uses: REVIEWED_CAPACITY_REUSABLE_WORKFLOW_REF,
               if: "github.event_name != 'pull_request'",
               with: {
                 runner:
@@ -2195,7 +2196,7 @@ describe('persistent runner policy', () => {
         document: {
           jobs: {
             scan: {
-              uses: 'kontourai/.github/.github/workflows/secret-scan.yml@02f40a67901a79ce4004c44d91e350b93782644c',
+              uses: REVIEWED_CAPACITY_REUSABLE_WORKFLOW_REF,
               if: "github.event_name != 'pull_request'",
               with: {
                 runner: '$' + '{{ vars.SECRET_SCAN_RUNNER }}',
@@ -2219,7 +2220,7 @@ describe('persistent runner policy', () => {
       document: {
         jobs: {
           heavy: {
-            uses: `kontourai/.github/.github/workflows/secret-scan.yml@02f40a67901a79ce4004c44d91e350b93782644c`,
+            uses: REVIEWED_CAPACITY_REUSABLE_WORKFLOW_REF,
             with: {
               runner:
                 '["self-hosted","Linux","X64","kontour-linux","heavy-host"]',
@@ -2250,7 +2251,7 @@ describe('persistent runner policy', () => {
         document: {
           jobs: {
             scan: {
-              uses: `kontourai/.github/.github/workflows/secret-scan.yml@02f40a67901a79ce4004c44d91e350b93782644c`,
+              uses: REVIEWED_CAPACITY_REUSABLE_WORKFLOW_REF,
               if: "github.event_name != 'pull_request'",
               with: {
                 runner:
@@ -2340,7 +2341,7 @@ describe('persistent runner policy', () => {
         document: {
           jobs: {
             scan: {
-              uses: 'kontourai/.github/.github/workflows/secret-scan.yml@02f40a67901a79ce4004c44d91e350b93782644c',
+              uses: REVIEWED_CAPACITY_REUSABLE_WORKFLOW_REF,
               if: "github.event_name != 'pull_request'",
               with: {
                 runner: '["self-hosted","Linux","X64","fast-feedback"]',
