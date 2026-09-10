@@ -28,10 +28,11 @@
  *    so where it can: a scheduled test that Vitest refuses, or that fails the
  *    resource-classification preflight, converts the addition into a receipt
  *    naming a target that never ran, or into a red gate. Both are asserted
- *    below against `packages/cli/src/cli.ts`, the path where it happened.
+ *    below against `scripts/station-cli.ts`, the path where it happened
+ *    (it was `packages/cli/src/cli.ts` until #1836 moved the read).
  *
- * WHAT THIS GATE DOES NOT COVER. The scan is a partial derivation: 144 test
- * files read by path with a module anchor and it reports 80. Both figures are
+ * WHAT THIS GATE DOES NOT COVER. The scan is a partial derivation: 143 test
+ * files read by path with a module anchor and it reports 79. Both figures are
  * derived and asserted below, so the fraction cannot go stale in prose. A pin
  * reached through a helper parameter (`const read = (p) =>
  * readFileSync(join(UI_SRC, p))`, at least 14 files, hiding
@@ -81,18 +82,22 @@ const derived = pathReadPinEdges({ root: ROOT });
  * reds. `PATH_READING_SUITES` counts suites the scanner could in principle
  * resolve a pin in; `REPORTED_SUITES` counts the ones it does.
  */
-const PATH_READING_SUITES = 144;
-const REPORTED_SUITES = 80;
+const PATH_READING_SUITES = 143;
+const REPORTED_SUITES = 79;
 
-/** The two Playwright pins: seen and existence-checked, never scheduled. */
+/** The Playwright pins: seen and existence-checked, never scheduled.
+ *
+ * Both entries went stale and this gate is what said so, which is the property
+ * it exists for. #1836 moved the hot-reload spec's read from
+ * `packages/cli/src/cli.ts` to `scripts/station-cli.ts`, and
+ * `mobile-surface-sweep.spec.ts` now IMPORTS `destination-registry` rather than
+ * reading it by path, so it is correctly no longer a path-read pin and is
+ * removed rather than re-pointed. Re-measured against the live scan, not
+ * adjusted until green. */
 const E2E_PINS = Object.freeze([
   {
-    pin: 'packages/cli/src/cli.ts',
+    pin: 'scripts/station-cli.ts',
     spec: 'tests/plugin-dev-hot-reload.spec.ts',
-  },
-  {
-    pin: 'src-ui/src/app-shell/destination-registry.ts',
-    spec: 'tests/mobile-surface-sweep.spec.ts',
   },
 ]);
 
