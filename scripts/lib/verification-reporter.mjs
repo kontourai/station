@@ -1296,43 +1296,23 @@ export function summarizeVerificationOutput({
     !scopedStdout.includes(firstCausalExcerpt)
       ? 'stderr'
       : null;
-  // What this computes, stated as narrowly as it is true: the last npm step
-  // header present in the capture is the step that was still RUNNING when the
-  // process exited. For a chain of `&&` (every script in this repo is one --
-  // checked for `;`, `||`, background `&`, concurrently and --if-present) a
-  // non-zero exit means that step is also the one that failed. Under
-  // `canceled` or `timed_out` nothing failed at all; the field still names the
-  // step that was in flight, which is the useful thing to know, but a reader
-  // must not read it as blame.
-  //
-  // Two cases where it would be a false claim, both suppressed rather than
-  // qualified (review of station#1871):
-  //
-  //  - TRUNCATED captures. On overflow the retained text is the first 3 MiB
-  //    PREFIX and the child keeps running, so the last header in that prefix
-  //    belongs to a step that completed fine -- it is simply where the tape
-  //    ran out. Naming it would accuse a passing step.
-  //  - A terminal status of `completed` carrying a non-zero exit code. That
-  //    is a real non-pass, and testing `status !== 'completed'` alone would
-  //    stay silent on exactly the run a reader needs the field for.
-  //
-  // `exitedNonZero` is computed once, above the causal scan, where
-  // station#1459 folds it into the strictly stronger `observedClean`; this is
-  // its second reader, not a second definition.
-  // The step is reported under a name that matches what the status actually
-  // claims. Under `timed_out` or `canceled` nothing failed -- the note above
-  // says as much, and asked the reader not to read `failingStep` as blame.
-  // A field named `failingStep` cannot carry that instruction: the name IS the
-  // claim, and readers acted on it. It is now `inFlightStep` for those
-  // statuses, which says the true and still-useful thing (this is the step
-  // that was running when the clock ran out) without accusing it.
-  //
-  // The carve-out is exactly the two statuses that mean the run was STOPPED.
-  // `failed` and `infrastructure_error` are non-passing terminal states that
-  // did reach a verdict, so they keep naming a failing step as before; only a
-  // clock or a signal produces a step that was merely in flight.
+  // A final npm header identifies a failed leaf only in a short-circuit
+  // chain. Completed keep-going summaries supersede that inference: their
+  // final child may have passed. Preserve the declared causal excerpts, and
+  // omit leaf attribution until a later independent npm step starts.
+  const aggregateSummaryIndex = stdoutLines.findLastIndex(
+    (line) =>
+      line === '════ Playwright coverage summary ════' ||
+      /^(?:OK: \S+ -- all \d+ lane\(s\) passed\.|FAIL: \S+ -- \d+ of \d+ lane\(s\) failed:)/.test(
+        line,
+      ),
+  );
   const attributableStep =
-    stepBoundary && !terminal.truncated ? stepBoundary.step : null;
+    stepBoundary &&
+    !terminal.truncated &&
+    stepBoundary.index > aggregateSummaryIndex
+      ? stepBoundary.step
+      : null;
   const stopped = STOPPED_TERMINAL_STATUSES.has(terminal.status);
   const failingStep =
     attributableStep &&

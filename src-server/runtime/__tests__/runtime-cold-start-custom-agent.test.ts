@@ -448,8 +448,11 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
 }, () => {
   let home: string;
   let runtime: InstanceType<typeof StationRuntime> | undefined;
+  let releaseKitDiscovery: (() => void) | undefined;
 
   afterEach(async () => {
+    releaseKitDiscovery?.();
+    releaseKitDiscovery = undefined;
     try {
       if (runtime) {
         await runtime.shutdown();
@@ -1305,6 +1308,16 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         context,
       ),
     ).toEqual({ state: 'unavailable' });
+    // Real worker retirement can truthfully return winding-down. Settle this
+    // test's reader before the general runtime fixture teardown releases home.
+    await expect
+      .poll(
+        async () =>
+          (await subject.runtimeSearch!.retireAfterFailedInitialization())
+            .state,
+        { timeout: 5_000 },
+      )
+      .toBe('closed');
   });
 
   it('settles async route-service readiness before capturing agent configuration', async () => {
@@ -1385,6 +1398,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     routeMocks.kitLifecycleReady = new Promise<void>((resolve) => {
       releaseDiscovery = resolve;
     });
+    releaseKitDiscovery = () => releaseDiscovery();
     runtime = new StationRuntime({
       projectHomeDir: home,
       port: TEST_PORT,
@@ -1409,6 +1423,8 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     routeMocks.kitLifecycleReady = new Promise<void>((_resolve, reject) => {
       rejectDiscovery = reject;
     });
+    releaseKitDiscovery = () =>
+      rejectDiscovery(new Error('Kit fixture cleanup'));
     // Observe the intentionally rejected fixture promise immediately. The
     // runtime must still receive the original promise and fail readiness, but
     // route registration can occur before runInitialize reaches its await.

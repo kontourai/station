@@ -249,6 +249,16 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
   })),
   journeys: [
     {
+      path: 'tests/connect-modal.spec.ts',
+      journey:
+        'manual connection consent, keyboard access, and saved host management',
+    },
+    {
+      path: 'tests/connect-remote-auth-recovery.spec.ts',
+      journey:
+        'phone connection access and authenticated recovery before protected bootstrap',
+    },
+    {
       path: 'tests/csp-shell.spec.ts',
       journey: 'built shell startup and connection recovery navigation',
     },
@@ -311,6 +321,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/model-visibility.spec.ts',
     'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
+    'tests/monitoring-and-chrome.spec.ts',
     'tests/keyboard-shortcuts.spec.ts',
     'tests/sidebar-geometry.spec.ts',
     'tests/project-lifecycle.spec.ts',
@@ -667,6 +678,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Diagnostics bundle download, dated filename, canonical failure state, and retry behavior.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/monitoring-and-chrome.spec.ts',
+    bucket: 'product',
+    surface: 'Monitoring',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Mounted payload work and real responsive chrome geometry; replaces source-string layout claims.',
     exceptions: [],
   },
   {
@@ -1615,7 +1636,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'station#3805: one unmocked browser journey from a newly created, runner-owned home through explicit model setup, first-run completion, real direct-chat Work, a real scheduled-check Starter, reload, and exact Scheduler receipt/output inspection. It proves no Project or Task is silently seeded, inherits no telemetry configuration, and uses an explicit healthy resource observation so unrelated host load cannot substitute an honest deferral for this product-path proof.',
+      'station#3805: one unmocked browser journey from a newly created, runner-owned home through explicit model setup, first-run completion, real direct-chat Work, explicit opt-in to developer tools for the scheduled-check Starter, reload, and exact Scheduler receipt/output inspection. It proves no Project or Task is silently seeded, inherits no telemetry configuration, and uses an explicit healthy resource observation so unrelated host load cannot substitute an honest deferral for this product-path proof.',
     exceptions: [],
   },
   {

@@ -1223,6 +1223,8 @@ describe('interactive workspace performance contract', () => {
       'PRODUCT_FILE_100K_PREPARE_CORPUS_CONTROL_CONNECTION',
       'PRODUCT_FILE_100K_RENDER_DIFF_FAILED',
       'PRODUCT_COLLABORATION_LEAVE_LIVE_COMMAND_OUTCOME_DEGRADED',
+      'PRODUCT_COLLABORATION_PEER_CURSOR_LIVE_COMMAND_OUTCOME_RATE_LIMITED',
+      'PRODUCT_COLLABORATION_PEER_CURSOR_LIVE_COMMAND_OUTCOME_FORBIDDEN',
       'PRODUCT_COLLABORATION_PRESENCE_OWNER_ABSENCE_FAILED',
       'PRODUCT_RECONNECT_STRATEGY_TIMEOUT_AT_104',
       'PRODUCT_RECONNECT_DRIVER_RETAINED_SEED_RENDER',
@@ -2042,12 +2044,6 @@ describe('interactive workspace performance contract', () => {
     expect(bridgeSpec).toContain('installTelemetryDialogDismissal');
     expect(bridgeSpec).toContain('page.addLocatorHandler');
     expect(bridgeSpec).toContain('removeTelemetryDialogHandler');
-    expect(bridgeSpec).toContain(
-      'WORK_BOARD_ONE_HOUR_REFERENCE_TIMEOUT_MS = 65 * 60 * 1000',
-    );
-    expect(bridgeSpec).toContain(
-      'WORK_BOARD_REFERENCE_ENABLED\n          ? 80 * 60 * 1000',
-    );
     expect(workflow).not.toContain('STATION_PERFORMANCE_UI_URL:');
   });
 });

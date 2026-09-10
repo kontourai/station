@@ -1,7 +1,15 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
@@ -56,22 +64,40 @@ export async function generateAgentPluginValidators({ check = false } = {}) {
     join(dirname(require.resolve('ajv/package.json')), 'LICENSE'),
     'utf8',
   );
-  const output = execFileSync(
-    process.execPath,
-    [
-      join(root, 'node_modules/@biomejs/biome/bin/biome'),
-      'format',
-      '--stdin-file-path=agent-plugin-validators.generated.mjs',
-    ],
-    {
-      input:
-        header +
+  const inputDirectory = mkdtempSync(
+    join(tmpdir(), 'station-validator-format-'),
+  );
+  let inputFd;
+  let output;
+  try {
+    const inputPath = join(inputDirectory, 'input.mjs');
+    writeFileSync(
+      inputPath,
+      header +
         `/*! Bundled Ajv runtime helper.\n${runtimeLicense}*/\n` +
         bundled.outputFiles[0].text.replaceAll('\nexport {', '\n\nexport {'),
-      encoding: 'utf8',
-      windowsHide: true,
-    },
-  );
+    );
+    // Biome's Node launcher inherits stdin into another process. A regular
+    // file has a definite EOF, avoiding a pipe kept open across that launch.
+    inputFd = openSync(inputPath, 'r');
+    output = execFileSync(
+      process.execPath,
+      [
+        join(root, 'node_modules/@biomejs/biome/bin/biome'),
+        'format',
+        '--stdin-file-path=agent-plugin-validators.generated.mjs',
+      ],
+      {
+        stdio: [inputFd, 'pipe', 'pipe'],
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 30_000,
+      },
+    );
+  } finally {
+    if (inputFd !== undefined) closeSync(inputFd);
+    rmSync(inputDirectory, { recursive: true, force: true });
+  }
   const target = join(
     root,
     'packages/shared/src/agent-plugin-validators.generated.mjs',

@@ -49,18 +49,15 @@ import {
   createWslQuarantinedTest,
   WSL_QUARANTINE_REASON,
 } from '../lib/wsl-host-class.mjs';
+import { FULL_REGRESSION_PHASES } from '../verification-lanes.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
-const ORDINARY_FULL_PHASE_IDS = Object.freeze([
-  'test-full-ordinary-1-of-8',
-  'test-full-ordinary-2-of-8',
-  'test-full-ordinary-3-of-8',
-  'test-full-ordinary-4-of-8',
-  'test-full-ordinary-5-of-8',
-  'test-full-ordinary-6-of-8',
-  'test-full-ordinary-7-of-8',
-  'test-full-ordinary-8-of-8',
-]);
+const FULL_PHASE_IDS = FULL_REGRESSION_PHASES.map((phase) => phase.id);
+const ORDINARY_FULL_PHASE_IDS = FULL_PHASE_IDS.filter((id) =>
+  id.startsWith('test-full-ordinary-'),
+);
+const phasesThrough = (id: string) =>
+  FULL_PHASE_IDS.slice(0, FULL_PHASE_IDS.indexOf(id) + 1);
 
 /**
  * station#4177 INTERIM quarantine — WSL2 fleet-runner host class ONLY.
@@ -1110,7 +1107,7 @@ describe('verification coordinator', () => {
         },
       });
 
-      expect(started).toEqual(['browser-prerequisite', 'repo-governance']);
+      expect(started).toEqual(phasesThrough('repo-governance'));
       expect(result.receipt.terminal.passed).toBe(false);
     } finally {
       temp.remove();
@@ -1502,7 +1499,7 @@ describe('verification coordinator', () => {
       expect(first.disposition).toBe('executed');
       expect(projected.disposition).toBe('reused');
       expect(localReuse.disposition).toBe('reused');
-      expect(phaseCalls).toBe(19);
+      expect(phaseCalls).toBe(FULL_PHASE_IDS.length);
       expect(projected.receipt.request.worktree).toBe(secondWorktree);
       expect(localReuse.receipt.request.worktree).toBe(secondWorktree);
       expect(localReuse.receipt.artifacts).toEqual(projected.receipt.artifacts);
@@ -1540,19 +1537,10 @@ describe('verification coordinator', () => {
       const resumed = await coordinateVerification(options);
       expect(resumed.receipt.terminal.passed).toBe(true);
       expect(calls).toEqual([
-        '0:browser-prerequisite',
-        '0:repo-governance',
-        '0:sdk-builds',
-        '0:verify-static',
-        ...ORDINARY_FULL_PHASE_IDS.map((id) => `0:${id}`),
-        '0:test-full-process-heavy',
-        '0:test-full-process-exclusive',
-        '0:test-full-coordinator-exclusive',
-        '0:test-full-credential-ledger-exclusive',
-        '0:test-full-shared-output',
-        '1:test-full-shared-output',
-        '1:test-full-dogfood-reconcile',
-        '1:app-builds',
+        ...phasesThrough('test-full-shared-output').map((id) => `0:${id}`),
+        ...FULL_PHASE_IDS.slice(
+          FULL_PHASE_IDS.indexOf('test-full-shared-output'),
+        ).map((id) => `1:${id}`),
       ]);
     } finally {
       temp.remove();
@@ -1961,34 +1949,21 @@ describe('verification coordinator', () => {
             job.state === 'queued',
         ),
       );
-      expect(phases).toEqual([
-        'browser-prerequisite',
-        'repo-governance',
-        'sdk-builds',
-        'verify-static',
-      ]);
+      expect(phases).toEqual(
+        FULL_PHASE_IDS.slice(
+          0,
+          FULL_PHASE_IDS.indexOf(ORDINARY_FULL_PHASE_IDS[0]),
+        ),
+      );
       releaseLight();
       const [ciResult, lowResult] = await Promise.all([ci, low]);
       expect(lowResult.receipt.terminal.passed).toBe(true);
       expect(ciResult.receipt.terminal.passed).toBe(true);
-      expect(phases).toEqual([
-        'browser-prerequisite',
-        'repo-governance',
-        'sdk-builds',
-        'verify-static',
-        ...ORDINARY_FULL_PHASE_IDS,
-        'test-full-process-heavy',
-        'test-full-process-exclusive',
-        'test-full-coordinator-exclusive',
-        'test-full-credential-ledger-exclusive',
-        'test-full-shared-output',
-        'test-full-dogfood-reconcile',
-        'app-builds',
-      ]);
+      expect(phases).toEqual(FULL_PHASE_IDS);
       const phaseArtifacts = ciResult.receipt.artifacts.filter((artifact) =>
         artifact.path.includes('/attachment-'),
       );
-      expect(phaseArtifacts).toHaveLength(19);
+      expect(phaseArtifacts).toHaveLength(FULL_PHASE_IDS.length);
       const records = phaseArtifacts.map((artifact) =>
         JSON.parse(readFileSync(join(worktree, artifact.path), 'utf8')),
       );
@@ -2234,6 +2209,7 @@ describe('verification coordinator', () => {
         heartbeatMs: 1,
         collectProvenance: () =>
           worktreeProvenance(fastWorktree, 'bounded-fast'),
+        hostCpuSampler: healthySampler(),
         runner: async () => ({ status: 0 }),
       });
       // `passed` is not earnable here — see the note on the first ci:fast
@@ -2609,25 +2585,14 @@ setInterval(() => {
         const first = await coordinateVerification(options);
         expect(first.receipt.terminal.passed).toBe(false);
         expect(first.receipt.terminal.status).toBe('infrastructure_error');
-        expect(calls).toEqual(['0:browser-prerequisite']);
+        expect(calls).toEqual([`0:${FULL_PHASE_IDS[0]}`]);
 
         attempt = 1;
         const retried = await coordinateVerification(options);
         expect(retried.receipt.terminal.passed).toBe(true);
         expect(calls).toEqual([
-          '0:browser-prerequisite',
-          '1:browser-prerequisite',
-          '1:repo-governance',
-          '1:sdk-builds',
-          '1:verify-static',
-          ...ORDINARY_FULL_PHASE_IDS.map((id) => `1:${id}`),
-          '1:test-full-process-heavy',
-          '1:test-full-process-exclusive',
-          '1:test-full-coordinator-exclusive',
-          '1:test-full-credential-ledger-exclusive',
-          '1:test-full-shared-output',
-          '1:test-full-dogfood-reconcile',
-          '1:app-builds',
+          `0:${FULL_PHASE_IDS[0]}`,
+          ...FULL_PHASE_IDS.map((id) => `1:${id}`),
         ]);
       } finally {
         temp.remove();
@@ -2665,25 +2630,14 @@ setInterval(() => {
         status: 'completed',
         passed: false,
       });
-      expect(calls).toEqual(['0:browser-prerequisite']);
+      expect(calls).toEqual([`0:${FULL_PHASE_IDS[0]}`]);
 
       attempt = 1;
       const retried = await coordinateVerification(options);
       expect(retried.receipt.terminal.passed).toBe(true);
       expect(calls).toEqual([
-        '0:browser-prerequisite',
-        '1:browser-prerequisite',
-        '1:repo-governance',
-        '1:sdk-builds',
-        '1:verify-static',
-        ...ORDINARY_FULL_PHASE_IDS.map((id) => `1:${id}`),
-        '1:test-full-process-heavy',
-        '1:test-full-process-exclusive',
-        '1:test-full-coordinator-exclusive',
-        '1:test-full-credential-ledger-exclusive',
-        '1:test-full-shared-output',
-        '1:test-full-dogfood-reconcile',
-        '1:app-builds',
+        `0:${FULL_PHASE_IDS[0]}`,
+        ...FULL_PHASE_IDS.map((id) => `1:${id}`),
       ]);
     } finally {
       temp.remove();
@@ -2711,7 +2665,7 @@ setInterval(() => {
     try {
       const first = await coordinateVerification(options);
       expect(first.receipt.terminal.passed).toBe(true);
-      expect(executedPhases).toHaveLength(19);
+      expect(executedPhases).toHaveLength(FULL_PHASE_IDS.length);
 
       const path = join(
         worktree,
@@ -2853,13 +2807,7 @@ setInterval(() => {
           );
         },
       });
-      expect(phases).toEqual([
-        'browser-prerequisite',
-        'repo-governance',
-        'sdk-builds',
-        'verify-static',
-        ORDINARY_FULL_PHASE_IDS[0],
-      ]);
+      expect(phases).toEqual(phasesThrough(ORDINARY_FULL_PHASE_IDS[0]));
       expect(timedOut.receipt.terminal).toMatchObject({
         status: 'timed_out',
         passed: false,
@@ -2936,7 +2884,7 @@ setInterval(() => {
           observed!.phase?.executionStartedAt ?? 0,
         );
         expect(observed!.phase).toMatchObject({
-          id: 'browser-prerequisite',
+          id: FULL_PHASE_IDS[0],
           executionDeadlineAt: observed!.deadlineAt,
         });
         expect(result.receipt.terminal).toMatchObject({

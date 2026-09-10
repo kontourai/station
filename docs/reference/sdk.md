@@ -1716,6 +1716,24 @@ knowledgeQueries.namespaces(projectSlug)             // GET /api/projects/:slug/
 
 ---
 
+## Monitoring event windows
+
+`fetchMonitoringEventWindow(start, end, signal, { limit: 1000 })` returns
+`{ events, truncated }` from the historical monitoring route. Bounded viewers
+must disclose truncation and that local filters apply only to loaded rows.
+Narrow the time interval to inspect older activity. For older peers that omit
+the flag, a full limited window is conservatively marked truncated.
+
+`fetchMonitoringEvents(start, end, signal, filters)` retains its array return
+shape and no default limit for existing export callers. Both functions reject
+failed or malformed reads instead of reporting an empty history.
+
+API-base initialization wakes pending callers when configuration is published,
+with the existing 500 ms failure bound; later reads observe the latest configured
+base. Best-effort SDK telemetry retains at most 1,000 events per flush interval
+and drops additional events in that interval. Flushes are single-flight with a
+five-second request timeout. It is not an accounting ledger.
+
 ## Telemetry
 
 ### `telemetry`

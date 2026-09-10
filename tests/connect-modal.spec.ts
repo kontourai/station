@@ -13,6 +13,8 @@
  */
 import { expect, type Locator, test } from '@playwright/test';
 import { requireE2EOperatorCredential } from './helpers/e2e-operator-credential';
+import { dismissSetupLauncher } from './helpers/orchestration';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 /**
  * Per-connection actions (Edit/Check/Forget) live behind a "More actions"
@@ -74,6 +76,10 @@ function seedConnection(
 
 test.describe('Connection Manager Modal', () => {
   test.beforeEach(async ({ page }) => {
+    await page.route('**/api/**', async (route) => {
+      if (await fulfillStationShellRead(route)) return;
+      await route.fallback();
+    });
     await page.addInitScript(seedConnection());
     await page.route('**/api/system/status', (route) =>
       route.fulfill({
@@ -139,15 +145,15 @@ test.describe('Connection Manager Modal', () => {
     ).toBeVisible({
       timeout: 10000,
     });
-    await expect(page.getByText('Dev Server').first()).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /^Manage Stations.*Dev Server/ }),
+    ).toBeVisible();
     await expect(
       page.getByRole('status').filter({
         hasText: 'Loading connection recovery…',
       }),
     ).toHaveCount(0, { timeout: 10_000 });
-    await page.evaluate(() => {
-      document.querySelector('[data-testid="setup-launcher"]')?.remove();
-    });
+    await dismissSetupLauncher(page);
   });
 
   test('connection chip is visible in the header', async ({ page }) => {
@@ -252,7 +258,12 @@ test.describe('Connection Manager Modal', () => {
     await page
       .getByPlaceholder('https://station.example.ts.net')
       .fill('http://10.0.0.5:3141');
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    const add = page.getByRole('button', { name: 'Add', exact: true });
+    await expect(add).toBeDisabled();
+    await page
+      .getByRole('checkbox', { name: 'Allow an unencrypted connection' })
+      .check();
+    await add.click();
 
     // The pre-save handshake is actually in flight — this button label is
     // exclusively driven by that check, not by the unrelated post-add probe.
@@ -266,8 +277,9 @@ test.describe('Connection Manager Modal', () => {
     // instead of returning to the list (archive#986) — the pairing panel names it
     // by name, not "this Station".
     await expect(
-      dialog.getByText(/Send a short-lived request to Office\./),
+      dialog.getByRole('heading', { name: 'Request Access', exact: true }),
     ).toBeVisible();
+    await expect(dialog).toContainText('Office');
     await dialog.getByRole('button', { name: 'Back' }).click();
 
     // The connection is saved and active as soon as it is added, regardless
@@ -341,12 +353,14 @@ test.describe('Connection Manager Modal', () => {
       page.getByRole('button', { name: /^Manage Stations/ }),
     ).toHaveCount(1);
 
-    // Maximized mobile dock: the app toolbar is genuinely hidden
-    // (`app__main--mobile-dock-fullscreen`), and the dock header's own
-    // connection control must still be the one surviving control — that is
-    // the entire reason it exists (station#3297).
+    // Fullscreen keeps message context primary. Station management moves into
+    // the mobile chat actions sheet, where exactly one control remains reachable.
     await page.goto('/?dock=open&maximize=true');
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
+    await page
+      .getByTestId('chat-dock-mobile-header')
+      .getByRole('button', { name: 'Chat actions', exact: true })
+      .click();
     const survivor = page.getByRole('button', { name: /^Manage Stations/ });
     await expect(survivor).toHaveCount(1);
     await expect(survivor).toHaveAttribute(
@@ -366,7 +380,12 @@ test.describe('Connection Manager Modal', () => {
     await page
       .getByPlaceholder('https://station.example.ts.net')
       .fill('http://203.0.113.5:3141');
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    const add = page.getByRole('button', { name: 'Add', exact: true });
+    await expect(add).toBeDisabled();
+    await page
+      .getByRole('checkbox', { name: 'Allow an unencrypted connection' })
+      .check();
+    await add.click();
 
     // Back out of the authorize step this add now continues into (archive#986) —
     // switching to an already-saved connection does not require completing
@@ -432,7 +451,12 @@ test.describe('Connection Manager Modal', () => {
     await page
       .getByPlaceholder('https://station.example.ts.net')
       .fill('http://delete-me:3141');
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    const add = page.getByRole('button', { name: 'Add', exact: true });
+    await expect(add).toBeDisabled();
+    await page
+      .getByRole('checkbox', { name: 'Allow an unencrypted connection' })
+      .check();
+    await add.click();
 
     // Back out of the authorize step this add now continues into (archive#986).
     await page
@@ -574,9 +598,7 @@ test.describe('Connection Manager Modal', () => {
     });
     await page.reload();
     await expect(page.locator('body')).toBeVisible({ timeout: 15_000 });
-    await page.evaluate(() => {
-      document.querySelector('[data-testid="setup-launcher"]')?.remove();
-    });
+    await dismissSetupLauncher(page);
     await expect(
       page.getByRole('status').filter({
         hasText: 'Loading connection recovery…',

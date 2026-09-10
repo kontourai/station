@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 const SEED_STORAGE = `
   if (!window.sessionStorage.getItem('station:e2e-onboarding-test-initialized')) {
@@ -430,7 +431,13 @@ test.describe('Onboarding Setup Launcher', () => {
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.addInitScript(SEED_STORAGE);
+    await page.addInitScript(() => {
+      localStorage.removeItem('station:onboarding-setup-dismissed');
+    });
+    await page.route('**/api/**', async (route) => {
+      if (await fulfillStationShellRead(route)) return;
+      await route.fallback();
+    });
 
     await page.route('**/api/system/status', (route) =>
       route.fulfill({

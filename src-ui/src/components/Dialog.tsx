@@ -131,7 +131,14 @@ export function Dialog({
           <ResponsiveDialogCloseButton label={closeLabel} onClick={onClose} />
         )}
       </div>
-      <div className="station-dialog__body">{children}</div>
+      <section
+        className="station-dialog__body"
+        aria-labelledby={titleId}
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: Text-only scrollable content needs keyboard focus; the tool-result mobile accessibility journey covers this.
+        tabIndex={0}
+      >
+        {children}
+      </section>
       {footer && (
         <ResponsiveSurfaceActions className="station-dialog__footer">
           {footer}
