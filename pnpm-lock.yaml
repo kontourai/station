@@ -335,8 +335,8 @@ importers:
         specifier: 6.0.1
         version: 6.0.1(supports-color@7.2.0)
       '@kontourai/console':
-        specifier: ^0.3.0
-        version: 0.3.0
+        specifier: ^2.8.0
+        version: 2.8.0(supports-color@7.2.0)
       '@playwright/test':
         specifier: ^1.62.1
         version: 1.62.1
@@ -2057,8 +2057,8 @@ packages:
       react: ^19.0.0
       react-dom: ^19.0.0
 
-  '@kontourai/console@0.3.0':
-    resolution: {integrity: sha512-Qmy02AR299o2yM1QteqMmC2Z4nLRm4a8Q7kZzMpWMrOrkdFxYW7pVlj0bghCurQviHez8hvxSoqP2qWerHlm2g==}
+  '@kontourai/console@2.8.0':
+    resolution: {integrity: sha512-NAwziIM+gtwiG16tMfXHf+ggeKVHD3nBpZFhN1LFbnUJpCvXwIosBkagrbKTFHgar//9Kh/a9QhVJ1eal+ftlA==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -8736,7 +8736,14 @@ snapshots:
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
-  '@kontourai/console@0.3.0': {}
+  '@kontourai/console@2.8.0(supports-color@7.2.0)':
+    dependencies:
+      '@kontourai/console-core': 0.3.0
+      '@kontourai/flow': 1.4.1(supports-color@7.2.0)
+      '@kontourai/telemetry': 0.1.0
+      jose: 6.2.4
+    transitivePeerDependencies:
+      - supports-color
 
   '@kontourai/datum@0.7.0(playwright@1.62.1)':
     dependencies:

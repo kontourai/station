@@ -358,7 +358,7 @@
     "@biomejs/biome": "^2.5.11",
     "@changesets/cli": "^3.0.1",
     "@cyclonedx/cyclonedx-npm": "6.0.1",
-    "@kontourai/console": "^0.3.0",
+    "@kontourai/console": "^2.8.0",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2.11.4",
