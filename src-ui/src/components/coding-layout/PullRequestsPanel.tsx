@@ -10,9 +10,16 @@ import {
   usePullRequestsQuery,
 } from '@kontourai/station-sdk';
 import { useEffect, useRef, useState } from 'react';
+import { Button } from '../Button';
+import { LazyBoundary } from '../LazyBoundary';
 import { ConfirmModal } from '../modals/ConfirmModal';
-import { Empty, ErrorState, SkeletonList } from '../state';
+import { Empty, ErrorState, SkeletonBlock, SkeletonList } from '../state';
 import './PullRequestsPanel.css';
+
+const loadReview = () =>
+  import('./PullRequestReviewPanel').then((module) => ({
+    default: module.PullRequestReviewPanel,
+  }));
 
 type StateFilter = 'ALL' | 'OPEN' | 'CLOSED' | 'MERGED';
 
@@ -27,6 +34,7 @@ export function PullRequestsPanel({
   projectSlug: string;
   activeRepoRoot?: string | null;
 }) {
+  const [selected, setSelected] = useState<PullRequest | null>(null);
   const [filter, setFilter] = useState<StateFilter>('OPEN');
   const resolvingContext = {
     project: projectSlug,
@@ -76,6 +84,33 @@ export function PullRequestsPanel({
         description={
           context.data?.reason ?? 'Repository context is unavailable'
         }
+      />
+    );
+  }
+  if (
+    selected &&
+    identity &&
+    selected.provider === identity.provider &&
+    selected.host === identity.host &&
+    selected.repository.owner === identity.repository.owner &&
+    selected.repository.name === identity.repository.name
+  ) {
+    return (
+      <LazyBoundary
+        load={loadReview}
+        componentProps={{
+          target: {
+            provider: selected.provider,
+            host: selected.host,
+            owner: selected.repository.owner,
+            repository: selected.repository.name,
+            ref: selected.ref,
+            project: projectSlug,
+            workingDirectory: activeRepoRoot ?? undefined,
+          },
+          onBack: () => setSelected(null),
+        }}
+        pending={<SkeletonBlock label="Opening pull request review" />}
       />
     );
   }
@@ -149,6 +184,7 @@ export function PullRequestsPanel({
               projectSlug={projectSlug}
               activeRepoRoot={activeRepoRoot}
               onMerged={() => void pullRequests.refetch()}
+              onOpen={() => setSelected(pullRequest)}
             />
           ))}
         </ul>
@@ -163,12 +199,14 @@ function PullRequestRow({
   projectSlug,
   activeRepoRoot,
   onMerged,
+  onOpen,
 }: {
   pullRequest: PullRequest;
   result: PullRequestResult<PullRequest[]>;
   projectSlug: string;
   activeRepoRoot?: string | null;
   onMerged: () => void;
+  onOpen: () => void;
 }) {
   const [method, setMethod] = useState<PullRequestMergeMethod>(
     result.effectiveMergeMethods[0] ?? 'merge',
@@ -241,9 +279,9 @@ function PullRequestRow({
   return (
     <li className="pull-request-card">
       <div className="pull-request-card__title-row">
-        <a href={pullRequest.url} target="_blank" rel="noreferrer">
+        <Button variant="link" onClick={onOpen}>
           {pullRequest.title}
-        </a>
+        </Button>
         <span className="pull-request-card__chip">
           {normalizedState(pullRequest.state)}
         </span>

@@ -113,3 +113,14 @@ It supplies no candidate kind, deployment scope, owner projection identity,
 promotion verdict, or effect result. Generic record `active` is not learning
 activation. All restricted/unavailable/refused outcomes omit source identity.
 The full `LearningReviewProjection` lifecycle contract is unchanged.
+
+`PullRequestReviewSnapshot` on `pull-request-provider` binds provider-supplied
+review content to an observed head/base pair and timestamp. Diff availability
+and discussion completeness are explicit; a provider diff is not a claim that
+all binary or oversized content was returned. Optional provider methods preserve
+compatibility with adapters that do not implement in-app review.
+`PullRequestReviewInput.expectedHeadSha` binds approvals to the inspected head.
+`PullRequestReviewOutcome` distinguishes confirmed acknowledgements from refused
+and indeterminate attempts. A forge review is not a Station gate verdict.
+`PullRequestMergeInput.expectedHeadSha` optionally constrains merge admission to
+the inspected revision; review-origin merges observe the resulting provider state.

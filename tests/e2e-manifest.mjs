@@ -308,6 +308,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/agent-editor-geometry.spec.ts',
     'tests/code-block-actions.spec.ts',
     'tests/model-visibility.spec.ts',
+    'tests/pull-request-review.spec.ts',
     'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
     'tests/keyboard-shortcuts.spec.ts',
@@ -1415,6 +1416,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'ACP project context is primary but needs promotion review after agent ACP lane hardening.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/pull-request-review.spec.ts',
+    bucket: 'product',
+    surface: 'In-app pull request review',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production review panel, shared diff renderer, SDK and confirmation dialog; exact provider HTTP fixtures verify revision-bound writes, uncertainty and retained drafts in desktop dark and phone light presentations. No live forge or shared writes.',
     exceptions: [],
   },
   {

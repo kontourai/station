@@ -124,3 +124,5 @@ src-ui/src/views/plugin-management/PluginRecoveryPanel.tsx|covered|ResponsiveSur
 src-ui/src/workspace-panes/WorkspacePaneHostActions.tsx|covered|ResponsiveSurfaceActions and shared Button/editor-select; tests/workspace-pane-host-actions-live.spec.ts proves supported Files content and completed controlled-provider actions at 390px and 1280px; src-ui/src/workspace-panes/__tests__/WorkspacePaneHostActions.test.tsx verifies single invocation, Agent choice and exact conversation opening.
 
 src-ui/src/components/chat/CodeBlockFrame.tsx|covered|ResponsiveSurfaceActions and shared Button with 44px controls; tests/code-block-actions.spec.ts exercises real long/short geometry, footer reachability, clipboard success/refusal and phone-width light/dark presentation.
+
+src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx|covered|Shared ResponsiveSurfaceActions and Button; 44px controls and wrapping in the owning CSS. Runtime review journey validation is part of #215.
