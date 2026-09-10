@@ -26,6 +26,69 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # #1726 (bump jni 0.21.1 -> 0.22.4) passed every required check and then
+  # reddened `main` at `cargo build`. Nothing was wrong with the gates: the
+  # Android-only code is `#[cfg(target_os = "android")]`, so the desktop-rust
+  # job below never compiles it, and build-android.yml runs on push to `main`
+  # rather than on pull requests. The only lane that compiles Android code ran
+  # AFTER the merge — while that workflow's own header calls itself "the only
+  # CI signal for Android-breaking changes".
+  #
+  # This closes the gap at the cheapest point that would have caught it: a type
+  # check, not an APK. `cargo check` never links the target, so this is a small
+  # fraction of build-android.yml's four-target assembly and Gradle packaging,
+  # and one ABI is enough — an API break like #1726's `method not found` does
+  # not vary by target.
+  #
+  # Uses ONLY the actions this workflow already runs. No `setup-android` and no
+  # `setup-java`: this is a pull_request_target lane, where the gate rightly
+  # refuses unreviewed actions, and neither is needed anyway. adb lives in
+  # platform-tools and only matters when driving a device; aapt/apksigner live
+  # in build-tools and only matter when packaging an APK. The single Android
+  # requirement here is a C compiler, because `ring`'s build script compiles C
+  # for the target and build scripts run during `check` — and the hosted image
+  # already ships an NDK.
+  android-cross-check:
+    name: Android type check
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with: { targets: aarch64-linux-android }
+
+      # Resolved rather than pinned: the revision is an image detail, and any
+      # recent NDK supplies the C compiler this needs. Fails closed — an image
+      # without one must not read as a passing type check.
+      - name: Resolve the image's Android NDK
+        run: |
+          set -euo pipefail
+          root="${ANDROID_NDK_ROOT:-${ANDROID_NDK_HOME:-}}"
+          if [ -z "$root" ] || [ ! -d "$root" ]; then
+            root="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/ndk" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -1)"
+          fi
+          test -n "$root" && test -d "$root" || {
+            echo "::error::no Android NDK on this image; the Android type check cannot compile ring's build script" >&2
+            exit 1
+          }
+          echo "Using NDK $root"
+          echo "NDK_HOME=$root" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$root" >> "$GITHUB_ENV"
+
+      # The same directories `verify:desktop-rust` creates. tauri-build resolves
+      # frontendDist at build-script time and that requirement does not vary by
+      # target, so no frontend build is needed to type-check Rust.
+      - name: Type-check the Android-only code paths
+        run: |
+          mkdir -p dist-server dist-desktop-runtime/node_modules
+          cd src-desktop
+          cargo check --target aarch64-linux-android --lib
+
   desktop-rust:
     runs-on: ubuntu-22.04
     steps:
