@@ -678,6 +678,17 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'app destination registry declarations (routes, labels, nav, docs)',
   },
   {
+    // The glossary copy ratchet reads every src-ui source file by path, so
+    // no import edge ever reaches it: a copy edit ("Connect to Station" in
+    // GuidedConnect.tsx) shipped green and Nightly redded a day later.
+    // Supplemental: ADDS the ratchet to any src-ui change without replacing
+    // the related-graph selection for that path (#1563).
+    pattern: 'src-ui/src/**',
+    supplemental: true,
+    tests: ['src-ui/src/__tests__/station-vocabulary.test.ts'],
+    reason: 'glossary copy ratchet scans all src-ui sources by path',
+  },
+  {
     pattern: 'justfile',
     tests: [
       'scripts/__tests__/just-interface.test.ts',

@@ -47,7 +47,7 @@ export function GuidedConnect({
     <div className="guided-connect">
       <div className="guided-connect__inner">
         <img src="/favicon.png" alt="" className="guided-connect__logo" />
-        <h1 className="guided-connect__title">Connect to Station</h1>
+        <h1 className="guided-connect__title">Connect to a Station</h1>
         <p className="guided-connect__description">
           Choose the computer where you want to work.
         </p>
@@ -69,7 +69,7 @@ export function GuidedConnect({
                   className="guided-connect__action guided-connect__action--primary"
                   href={browserHandoff}
                 >
-                  Connect with Station
+                  Open in the Station app
                 </a>
                 <small>
                   Don't have the app?{' '}
