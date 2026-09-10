@@ -113,3 +113,10 @@ It supplies no candidate kind, deployment scope, owner projection identity,
 promotion verdict, or effect result. Generic record `active` is not learning
 activation. All restricted/unavailable/refused outcomes omit source identity.
 The full `LearningReviewProjection` lifecycle contract is unchanged.
+
+
+`OrchestrationQuoteSource` on the orchestration subpath is the versioned,
+bounded exact-answer quotation read: Session, turn, message, text and SHA-256
+text revision. It conveys no authorization grant or evidence verdict. The
+quote-source HTTP route checks current read authority before and after owner
+I/O and refuses oversized text instead of returning an incomplete source.

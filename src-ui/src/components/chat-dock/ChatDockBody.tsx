@@ -19,19 +19,19 @@ import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
+import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { drainQueuedMessageOnTurnCompleted } from '../../hooks/orchestration/queueDrain';
 import { useActiveChatTranscript } from '../../hooks/orchestration/useActiveChatTranscript';
+import type { useChatInput } from '../../hooks/useChatInput';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
 import { useShareReceiver } from '../../hooks/useShareReceiver';
-import type { SlashCommand } from '../../hooks/useSlashCommands';
 import { useSTT } from '../../hooks/useSTT';
 import { useTTS } from '../../hooks/useTTS';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
-import type { ApprovalMode } from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import {
   formatChatErrorDisplay,
@@ -58,6 +58,7 @@ import { ChatEmptyState } from '../chat/ChatEmptyState';
 import { ChatInputArea } from '../chat/ChatInputArea';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
+import { SourceQuoteDrafts } from '../chat/SourceQuoteDrafts';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
 import { ConversationStats } from '../conversation-stats/ConversationStats';
 import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
@@ -161,55 +162,7 @@ interface ChatDockBodyProps {
   /** Re-resolves the exact durable conversation identity, never an Agent guess. */
   onRetryConversationOpen?: () => void | Promise<void>;
   onForkFromTurn?: (source: ForkTurnSource) => void;
-  chatInput: {
-    input: string;
-    attachments: FileAttachment[];
-    attachmentStages: import('../../types').ComposerAttachmentStageSnapshot[];
-    sendBlockedReason?: string;
-    textareaRef: React.RefObject<HTMLTextAreaElement | null>;
-    currentModel: string | undefined;
-    canModelSelect: boolean;
-    modelSelectionReason?: string;
-    modelsStale?: boolean;
-    modelQuery: string | null;
-    commandQuery: string | null;
-    slashCommands: SlashCommand[];
-    handleInputChange: (value: string) => void;
-    handleSend: (
-      overrideText?: string,
-      overrideAttachments?: FileAttachment[],
-      options?: { ambientContext?: string },
-    ) => Promise<void>;
-    handleCancel: () => void;
-    handleClearInput: () => void;
-    handleAddAttachments: (files: FileAttachment[]) => void;
-    selectAttachmentFiles: (files: File[]) => Promise<void>;
-    attachmentError: string | null;
-    retryAttachmentStage: (id: string) => void | Promise<void>;
-    cancelAttachmentStage: (id: string) => void | Promise<void>;
-    replaceAttachmentFile: (id: string, files: File[]) => void | Promise<void>;
-    handleRemoveAttachment: (id: string) => void;
-    handleClearAttachments: () => void;
-    handleModelSelect: (model: SelectableModel) => void;
-    handleModelReset: () => void;
-    handleModelClose: () => void;
-    handleModelOpen: () => void;
-    handleModelRuntimeOptionChange: (
-      key: string,
-      value: string | number | boolean | undefined,
-    ) => void;
-    handleApprovalModeChange: (mode: ApprovalMode) => void;
-    handleCommandSelect: (command: SlashCommand) => Promise<void>;
-    handleCommandClose: () => void;
-    handleHistoryUp: () => void;
-    handleHistoryDown: () => void;
-    handleRestorePortableDraft: (
-      text: string,
-      attachments: FileAttachment[],
-    ) => void;
-    updateFromInput: (value: string) => void;
-    closeAll: () => void;
-  };
+  chatInput: ReturnType<typeof useChatInput>;
   setShowStatsPanel: (show: boolean) => void;
 }
 
@@ -913,6 +866,13 @@ export function ChatDockBody({
             owner,
             accountableHuman,
             onForkFromTurn: forkFromTurn,
+            onQuote:
+              readOnlyOpen || resolvingOpen || busyOpen
+                ? undefined
+                : (quote) => {
+                    chatDraftsStore.addQuote(activeSession.id, quote);
+                    chatInput.textareaRef.current?.focus();
+                  },
             // The dock's header gear opens ChatSettingsPanel, which carries the
             // Summarize entry point (#3310).
             hasSettingsEntryPoint: true,
@@ -1249,7 +1209,15 @@ export function ChatDockBody({
             .
           </div>
         )}
+      <SourceQuoteDrafts
+        origin={apiBase}
+        quotes={chatInput.quotes}
+        onRemove={chatInput.removeQuote}
+      />
       <ChatInputArea
+        hasQuotedContext={chatInput.quotes.length > 0}
+        draftText={chatInput.quotedDraftText}
+        quoteContext={chatInput.quotes}
         sessionId={activeSession.id}
         input={chatInput.input}
         attachments={chatInput.attachments}

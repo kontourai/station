@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   parseStationAnswerNarrativePublishInput,
@@ -29,7 +30,11 @@ import type {
   TerminalProcessDetail,
   TerminalProcessSummary,
 } from '@kontourai/station-contracts/orchestration';
-import { FOREGROUND_MESSAGE_INDETERMINATE_CODE } from '@kontourai/station-contracts/orchestration';
+import {
+  FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+  type OrchestrationQuoteSource,
+  QUOTE_SOURCE_MAX_BYTES,
+} from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
@@ -2379,6 +2384,52 @@ export function createOrchestrationRoutes(
   // An answer is addressed by the Session/turn tuple, never by transcript
   // position. The query Module owns both reauthorization and the one ordered
   // event replay, so a denied or missing answer is the same public 404.
+  app.get('/sessions/:threadId/turns/:turnId/quote-source', async (c) => {
+    const sessionId = param(c, 'threadId');
+    const turnId = param(c, 'turnId');
+    if (sessionId.length > 1024 || turnId.length > 1024)
+      return c.json({ success: false, error: 'Quote source unavailable' }, 404);
+    const authority = readAuthorityFor(c);
+    const current = () =>
+      deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
+      orchestrationService.canUserReadSession(sessionId, authority);
+    const missing = () =>
+      c.json({ success: false, error: 'Quote source unavailable' }, 404);
+    if (!current()) return missing();
+    const outcome = await orchestrationService.sessionQueries.readAssistantTurn(
+      { type: 'assistant-turn', threadId: sessionId, turnId },
+      authority,
+    );
+    if (!current()) return missing();
+    if (outcome.status === 'unavailable')
+      return c.json({ success: false, error: 'Quote source unavailable' }, 503);
+    if (
+      outcome.status !== 'found' ||
+      outcome.sessionId !== sessionId ||
+      outcome.turnId !== turnId
+    )
+      return missing();
+    const text = outcome.message.parts
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text ?? '')
+      .join('\n');
+    if (!text || Buffer.byteLength(text, 'utf8') > QUOTE_SOURCE_MAX_BYTES)
+      return c.json(
+        { success: false, error: 'Quote source exceeds the bounded text view' },
+        413,
+      );
+    const data: OrchestrationQuoteSource = {
+      version: 1,
+      sessionId,
+      turnId,
+      messageId: outcome.message.id,
+      text,
+      revision: createHash('sha256').update(text).digest('hex'),
+    };
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ success: true, data });
+  });
+
   app.get('/sessions/:threadId/turns/:turnId', async (c) => {
     const outcome = await orchestrationService.sessionQueries.readAssistantTurn(
       {

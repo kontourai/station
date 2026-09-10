@@ -2151,3 +2151,23 @@ execution authority or proves a witnessed channel transfer. Do not reuse a
 cached recovery notice across API-base changes; refresh the selected Station
 before projecting it as current. The record exposes no filesystem path or
 backup manifest contents.
+
+
+## Saved answer quotations
+
+`getAssistantQuoteSource(apiBase, sessionId, turnId, options)` from
+`@kontourai/station-sdk/client` reads a bounded completed answer through
+`GET /api/orchestration/sessions/:sessionId/turns/:turnId/quote-source`.
+Pass the host-captured `requestScope` and an abort signal. The result is
+`OrchestrationQuoteSource`: exact Session/turn/message identifiers, source text,
+and a SHA-256 text revision. Reads recheck current access and do not load the
+whole Session. Missing and denied answers are indistinguishable; an oversized
+answer is refused. A text revision detects changes, not evidence standing.
+
+The Station composer retains up to three selected excerpts with its existing
+local draft. Sending serializes the user's copied text and source references
+into the ordinary user message; it creates no capability or trust grant.
+Inspecting a saved reference reads its original answer under current access
+on the selected Station. No network request is made to an origin supplied by
+an untrusted quote link. The saved quotation and a changed current source
+remain visibly distinct.

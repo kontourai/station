@@ -3,7 +3,15 @@ import {
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import {
   buildLastChosenModelBindingKey,
   isProviderManagedAgent,
@@ -15,9 +23,14 @@ import {
 } from '../contexts/ActiveChatsContext';
 import { useAgent } from '../contexts/AgentsContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { useToast } from '../contexts/ToastContext';
 import { resolveTurnModel } from '../lib/turnModel';
 import type { FileAttachment } from '../types';
+import {
+  composeQuotedReply,
+  type SavedAnswerQuote,
+} from '../utils/answer-quotes';
 import type { ApprovalMode } from '../utils/approvalMode';
 import { approvalModeLabel } from '../utils/approvalMode';
 import {
@@ -270,6 +283,19 @@ export function useChatInput({
 
   // Input value
   const input = activeChatState?.input || '';
+  const quotes = useSyncExternalStore(chatDraftsStore.subscribe, () =>
+    chatDraftsStore.getQuotes(sessionId ?? ''),
+  );
+  const quotedDraftText = useMemo(
+    () => composeQuotedReply(input, quotes),
+    [input, quotes],
+  );
+  const removeQuote = useCallback(
+    (index: number) => {
+      if (sessionId) chatDraftsStore.removeQuote(sessionId, index);
+    },
+    [sessionId],
+  );
   const attachments = activeChatState?.attachments || [];
   const attachmentStages = activeChatState?.attachmentStages || [];
   // Through the SAME resolver the dispatcher uses, so the chip cannot name a
@@ -413,9 +439,27 @@ export function useChatInput({
       // after a just-issued handleInputChange.
       // Explicit overrides bypass the persisted composer value, so sanitize at
       // the shared send boundary as well as on ordinary input updates.
+      const submittedQuotes = chatDraftsStore.getQuotes(sessionId);
+      if (submittedQuotes.some((quote) => quote.origin !== apiBase)) {
+        showToast(
+          'A quote belongs to another Station. Remove it or return to that Station before sending.',
+          'error',
+        );
+        return;
+      }
       const text = sanitizeChatInput(
-        overrideText !== undefined ? overrideText : input,
+        composeQuotedReply(
+          overrideText !== undefined ? overrideText : input,
+          submittedQuotes,
+        ),
       );
+      if (text.length > CHAT_INPUT_MAX_CHARS) {
+        showToast(
+          'The reply and quoted context exceed the message limit. Shorten the reply or remove a quote.',
+          'error',
+        );
+        return;
+      }
       const selectedAttachments = overrideAttachments ?? attachments;
       if (
         !text.trim() &&
@@ -455,6 +499,15 @@ export function useChatInput({
         postSendState?.status === 'queued' ||
         postSendState?.queuedMessages?.includes(text.trim())
       ) {
+        if (
+          (postSendState?.input && postSendState.input !== input) ||
+          chatDraftsStore
+            .getQuotes(sessionId)
+            .some((quote) => !submittedQuotes.includes(quote))
+        ) {
+          chatDraftsStore.consumeQuotes(sessionId, submittedQuotes);
+          return;
+        }
         pendingDraftRef.current = null;
         if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
         draftTimerRef.current = null;
@@ -463,6 +516,7 @@ export function useChatInput({
     },
     [
       sessionId,
+      apiBase,
       agentSlug,
       conversationId,
       input,
@@ -471,6 +525,7 @@ export function useChatInput({
       sendMessageAction,
       addToInputHistory,
       clearDraft,
+      showToast,
     ],
   );
 
@@ -808,8 +863,15 @@ export function useChatInput({
   }, [sessionId, navigateHistoryDown]);
 
   const handleRestorePortableDraft = useCallback(
-    (text: string, restoredAttachments: FileAttachment[]) => {
+    (
+      text: string,
+      restoredAttachments: FileAttachment[],
+      restoredQuotes: readonly SavedAnswerQuote[] = [],
+    ) => {
       if (!sessionId) return;
+      chatDraftsStore.clear(sessionId);
+      for (const quote of restoredQuotes)
+        chatDraftsStore.addQuote(sessionId, quote);
       const cleanValue = sanitizeChatInput(text);
       updateChat(sessionId, {
         input: cleanValue,
@@ -834,6 +896,9 @@ export function useChatInput({
       // Refs
       textareaRef,
       // State
+      quotes,
+      quotedDraftText,
+      removeQuote,
       input,
       attachments,
       attachmentError,
@@ -875,6 +940,9 @@ export function useChatInput({
     }),
     [
       input,
+      quotes,
+      quotedDraftText,
+      removeQuote,
       attachments,
       attachmentError,
       attachmentStages,

@@ -137,6 +137,9 @@ import type { ChatSession } from '../types';
 
 function buildChatInput() {
   return {
+    quotes: [],
+    quotedDraftText: '',
+    removeQuote: vi.fn(),
     input: '',
     attachments: [],
     textareaRef: { current: null },
