@@ -784,15 +784,7 @@ export class PluginRegistry {
     return registration.component;
   }
 
-  getComponent(name: string): LayoutComponent | null {
-    return this.layouts.get(name)?.component ?? null;
-  }
-
   hasLayout(name: string): boolean {
-    return this.layouts.has(name);
-  }
-
-  hasComponent(name: string): boolean {
     return this.layouts.has(name);
   }
 
@@ -803,14 +795,8 @@ export class PluginRegistry {
     }));
   }
 
-  listComponents() {
-    return this.listLayouts();
-  }
   getLayoutManifest(name: string) {
     return this.pluginMeta.get(name) || null;
-  }
-  getComponentManifest(name: string) {
-    return this.getLayoutManifest(name);
   }
 
   /** Aggregate links from all plugins, optionally filtered by placement */
