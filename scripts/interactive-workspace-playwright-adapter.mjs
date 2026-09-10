@@ -624,11 +624,22 @@ async function measureIsolatedFixture({
       const diagnosticRoot = dirname(
         resolve(env.STATION_PERFORMANCE_RAW_BRIDGE_OUTPUT),
       );
+      const failedClient = reconnectHarness?.diagnostics.failedClient;
+      const failurePage = failedClient?.page ?? page;
+      if (failedClient)
+        writeFileSync(
+          resolve(diagnosticRoot, `${fixture.id}-failure.json`),
+          JSON.stringify({
+            documentStatus: failedClient.documentStatus ?? null,
+            editorPresent: failedClient.editorPresent,
+            editorRevisionMatches: failedClient.editorRevisionMatches,
+          }),
+        );
       await Promise.allSettled([
-        page.screenshot({
+        failurePage.screenshot({
           path: resolve(diagnosticRoot, `${fixture.id}-failure.png`),
         }),
-        page
+        failurePage
           .locator('body')
           .innerText({ timeout: 2_000 })
           .then((body) =>
@@ -806,6 +817,8 @@ async function createReconnectHarness({
   operationCount,
   totalIterations,
 }) {
+  /** @type {{ failedClient?: { page: import('playwright').Page, documentStatus: number | undefined, editorPresent: boolean, editorRevisionMatches: boolean } }} */
+  const diagnostics = {};
   if (
     !Number.isSafeInteger(totalIterations) ||
     totalIterations < 1 ||
@@ -958,6 +971,12 @@ async function createReconnectHarness({
               : null;
           });
           const message = error instanceof Error ? error.message : 'unknown';
+          diagnostics.failedClient = {
+            page,
+            documentStatus: lastDocumentStatus,
+            editorPresent: editor !== null,
+            editorRevisionMatches: editor === expectedRevision,
+          };
           throw new Error(
             `document status ${lastDocumentStatus ?? 'none'}; ${editor ? `editor revision ${editor.slice(-12)} expected ${expectedRevision.slice(-12)}` : 'editor missing after reconnect'}; ${message}`,
           );
@@ -1152,6 +1171,7 @@ async function createReconnectHarness({
     }));
   }
   return {
+    diagnostics,
     run: async (iteration) => {
       if (
         !Number.isSafeInteger(iteration) ||

@@ -1,3 +1,4 @@
+import type { ConversationOpenExecution } from '@kontourai/station-contracts/orchestration';
 import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { expect, type Page } from '@playwright/test';
 import {
@@ -815,6 +816,7 @@ export async function seedOrchestrationRoutes(
       messageCount?: number;
     }>;
     conversationLookups?: Record<string, ConversationLookupFixture>;
+    executionBySession?: Record<string, ConversationOpenExecution>;
   },
 ): Promise<void> {
   await installMockOrchestrationEventWindow(page);
@@ -1011,6 +1013,17 @@ export async function seedOrchestrationRoutes(
         const currentSessionId = sessionReader
           ? sessionReader(conversationId).at(-1)
           : conversation.currentSessionId;
+        const execution = currentSessionId
+          ? options?.executionBySession?.[currentSessionId]
+          : undefined;
+        if (
+          execution &&
+          (execution.sessionId !== currentSessionId ||
+            execution.agentId !== conversation.agentSlug)
+        )
+          throw new Error(
+            'Conversation fixture execution identity is inconsistent',
+          );
         const { currentSessionId: _seededCurrentSessionId, ...identity } =
           conversation;
         const exactConversation = {
@@ -1032,6 +1045,7 @@ export async function seedOrchestrationRoutes(
               status: currentSessionId ? 'resolved' : 'missing-session',
               conversation: exactConversation,
               ...(currentSessionId ? { currentSessionId } : {}),
+              ...(execution ? { execution } : {}),
               transcript: {
                 available: Boolean(currentSessionId),
                 owner: 'runtime',

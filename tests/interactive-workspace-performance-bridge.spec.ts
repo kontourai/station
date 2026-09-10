@@ -442,7 +442,7 @@ async function runFixtureTarget(input: {
         );
     }
     if (retainedReport) {
-      for (const extension of ['png', 'txt']) {
+      for (const extension of ['png', 'txt', 'json']) {
         const name = `${input.fixture.id}-failure.${extension}`;
         const diagnostic = join(dirname(rawBridgePath), name);
         if (existsSync(diagnostic))

@@ -1,3 +1,7 @@
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import { expect, test } from '@playwright/test';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import {
@@ -147,7 +151,19 @@ test.describe('Structured UI blocks', () => {
       },
     ]);
     await installMockOrchestrationSse(page);
-    await seedOrchestrationRoutes(page);
+    // A reopened current Session needs its server-owned execution binding;
+    // transcript events and sessionStorage alone cannot authorize submission.
+    await seedOrchestrationRoutes(page, {
+      executionBySession: {
+        'session-1': {
+          sessionId: 'session-1',
+          agentId: agentId('dev-agent'),
+          provider: 'codex',
+          engineConnectionId: 'codex',
+          model: 'claude-sonnet',
+        },
+      },
+    });
 
     // Capture the form submission's outgoing chat turn.
     let sentBody: string | null = null;
@@ -170,6 +186,13 @@ test.describe('Structured UI blocks', () => {
             conversationId: 'conv-1',
             sessionId: 'session-1',
             agent: 'dev-agent',
+            resolution: {
+              provider: 'codex',
+              engine: {
+                kind: 'connection',
+                connectionId: engineConnectionId('codex'),
+              },
+            },
           }),
         ),
       });

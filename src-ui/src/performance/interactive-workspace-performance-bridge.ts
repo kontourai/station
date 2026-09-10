@@ -9,7 +9,6 @@ const PRODUCT_MARK_TIMEOUT_MS = import.meta.env.MODE === 'test' ? 50 : 30_000;
 const REFERENCE_SAMPLE_SETTLE_MS = import.meta.env.MODE === 'test' ? 0 : 4_000;
 const COLLABORATION_SAMPLE_SETTLE_MS =
   import.meta.env.MODE === 'test' ? 0 : 4_000;
-const RECONNECT_SAMPLE_SETTLE_MS = import.meta.env.MODE === 'test' ? 0 : 4_000;
 const ONE_HOUR_REFERENCE_DURATION_MS = 60 * 60 * 1000;
 
 interface Sampling {
@@ -289,7 +288,17 @@ export async function observeReconnectMark(
         afterEpochMs: strategy.receivedEpochMs,
       });
     } catch {
-      throw new Error('reconnect apply wait timed out');
+      const latest = marks.latestTaskApply();
+      const detail = !latest
+        ? 'no task apply observed'
+        : latest.taskId !== taskId
+          ? 'latest apply belongs to another task'
+          : latest.workingRevision !== input.expectedRevision
+            ? 'latest apply revision mismatch'
+            : latest.appliedEpochMs < strategy.receivedEpochMs
+              ? 'matching apply preceded reconnect strategy'
+              : 'matching apply was rejected unexpectedly';
+      throw new Error(`reconnect apply wait timed out; ${detail}`);
     }
     // A matching DOM revision may have been rendered before the restart. Only
     // the product-owned commit mark, emitted after this strategy event, proves
@@ -613,9 +622,6 @@ async function measureReconnect(
           },
         },
       });
-    await new Promise((resolve) =>
-      setTimeout(resolve, RECONNECT_SAMPLE_SETTLE_MS),
-    );
   }
   return {
     ...verifiedFixture(fixture, sampling, measurements),
@@ -630,7 +636,6 @@ export function reconnectDriverStage(message: string): string {
   const named = /Reconnect stage ([A-Z0-9_]+) failed/.exec(message);
   if (named) {
     if (message.includes('strategy wait')) return `${named[1]}_STRATEGY`;
-    if (message.includes('apply wait')) return `${named[1]}_APPLY`;
     const documentStatus = /document status ([0-9]+|none)/.exec(message);
     if (documentStatus && documentStatus[1] !== '200')
       return `${named[1]}_DOCUMENT_${documentStatus[1]!.toUpperCase()}`;
@@ -638,6 +643,17 @@ export function reconnectDriverStage(message: string): string {
       return `${named[1]}_EDITOR_MISSING`;
     if (/editor revision [0-9a-f]{12} expected [0-9a-f]{12}/.test(message))
       return `${named[1]}_EDITOR_REVISION_MISMATCH`;
+    if (message.includes('no task apply observed'))
+      return `${named[1]}_APPLY_NO_MARK`;
+    if (message.includes('latest apply belongs to another task'))
+      return `${named[1]}_APPLY_TASK_MISMATCH`;
+    if (message.includes('latest apply revision mismatch'))
+      return `${named[1]}_APPLY_REVISION_MISMATCH`;
+    if (message.includes('matching apply preceded reconnect strategy'))
+      return `${named[1]}_APPLY_BEFORE_STRATEGY`;
+    if (message.includes('matching apply was rejected unexpectedly'))
+      return `${named[1]}_APPLY_MATCH_REJECTED`;
+    if (message.includes('apply wait')) return `${named[1]}_APPLY`;
     if (message.includes('no task commit observed'))
       return `${named[1]}_RENDER_NO_COMMIT`;
     if (message.includes('belongs to another task'))

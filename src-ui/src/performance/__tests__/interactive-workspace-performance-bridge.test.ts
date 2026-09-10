@@ -860,7 +860,7 @@ test('rejects browser RTT when the real batch response has no server receipt', a
   });
 });
 
-test('rejects an already-current editor DOM without a post-strategy layout mark', async () => {
+test('rejects an already-current editor DOM when no apply was observed', async () => {
   document.body.innerHTML = `<textarea data-station-performance-surface="task-editor"
     data-station-task-id="task-1"
     data-station-working-revision="swsr-v1:${'a'.repeat(64)}">already current</textarea>`;
@@ -875,7 +875,65 @@ test('rejects an already-current editor DOM without a post-strategy layout mark'
     revision: `swsr-v1:${'a'.repeat(64)}`,
     receivedEpochMs: browserEpochMs(),
   });
-  await expect(observed).rejects.toThrow('reconnect apply wait timed out');
+  await expect(observed).rejects.toThrow('no task apply observed');
+});
+
+test.each([
+  ['task', 'APPLY_TASK_MISMATCH'],
+  ['revision', 'APPLY_REVISION_MISMATCH'],
+  ['time', 'APPLY_BEFORE_STRATEGY'],
+] as const)(
+  'identifies an unusable reconnect apply by %s',
+  async (mismatch, code) => {
+    const revision = `swsr-v1:${'a'.repeat(64)}`;
+    const receivedEpochMs = browserEpochMs();
+    const observed = observeReconnectMark('task-1', {
+      strategy: 'gap',
+      afterEpochMs: receivedEpochMs,
+      expectedRevision: revision,
+    });
+    emitReconnectStrategyPerformanceMark({
+      taskId: 'task-1',
+      strategy: 'gap',
+      receivedEpochMs,
+    });
+    emitTaskDocumentApplyPerformanceMark({
+      taskId: mismatch === 'task' ? 'another-task' : 'task-1',
+      workingRevision:
+        mismatch === 'revision' ? `swsr-v1:${'b'.repeat(64)}` : revision,
+      appliedEpochMs: receivedEpochMs + (mismatch === 'time' ? -1 : 1),
+    });
+    const failure = await observed.catch((error: Error) => error);
+    expect(failure).toBeInstanceOf(Error);
+    if (!(failure instanceof Error)) throw new Error('Expected rejected apply');
+    expect(
+      reconnectDriverStage(
+        `Reconnect stage FALLBACK_SAMPLE_74 failed: ${failure.message}`,
+      ),
+    ).toBe(`FALLBACK_SAMPLE_74_${code}`);
+  },
+);
+
+test('an exact apply and matching DOM still require a post-apply layout commit', async () => {
+  const revision = `swsr-v1:${'a'.repeat(64)}`;
+  document.body.innerHTML = `<textarea data-station-working-revision="${revision}"></textarea>`;
+  const receivedEpochMs = browserEpochMs();
+  const observed = observeReconnectMark('task-1', {
+    strategy: 'gap',
+    afterEpochMs: receivedEpochMs,
+    expectedRevision: revision,
+  });
+  emitReconnectStrategyPerformanceMark({
+    taskId: 'task-1',
+    strategy: 'gap',
+    receivedEpochMs,
+  });
+  emitTaskDocumentApplyPerformanceMark({
+    taskId: 'task-1',
+    workingRevision: revision,
+    appliedEpochMs: receivedEpochMs + 1,
+  });
+  await expect(observed).rejects.toThrow('no task commit observed');
 });
 
 test('accepts an exact post-strategy revision commit without inspecting document text', async () => {

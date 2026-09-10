@@ -422,9 +422,8 @@ test.describe
         )
         .toBe(true);
 
-      // Starting from the project keeps the real generated Session scoped to
-      // the same Project as the Task. This is the browser path that exercises
-      // the server-side project/session matching guard.
+      // Visiting a Project does not bind a new chat to it. Select the Project
+      // explicitly for both the attachment and its cross-project refusal control.
       await page.goto(`${live.ui}/projects/${projectSlug}?dock=open`);
       await expect(
         page
@@ -441,6 +440,11 @@ test.describe
         '.new-chat-modal[role="dialog"][aria-label="New Chat"]',
       );
       await expect(picker).toBeVisible();
+      await picker.locator('.new-chat-modal__context-button').click();
+      await picker.locator(`[data-context-value="${projectSlug}"]`).click();
+      await expect(
+        picker.locator('.new-chat-modal__context-button'),
+      ).toContainText(projectSlug);
       await picker.getByRole('button', { name: new RegExp(agentName) }).click();
       const composer = page.getByPlaceholder('Type a message...');
       await expect(composer).toBeVisible({ timeout: 20_000 });
