@@ -45,12 +45,26 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'SDK build failed' }
   npm.cmd run build:connect
   if ($LASTEXITCODE -ne 0) { throw 'Connect build failed' }
-  npm.cmd run build:desktop -- --target x86_64-pc-windows-msvc --config src-desktop/tauri.nightly.conf.json --config $env:STATION_WINDOWS_CONFIG
+  npm.cmd run build:desktop -- --target x86_64-pc-windows-msvc --config (Join-Path $root 'src-desktop/tauri.nightly.conf.json') --config $env:STATION_WINDOWS_CONFIG
   if ($LASTEXITCODE -ne 0) { throw 'Windows installer build failed' }
   $installers = @(Get-ChildItem 'src-desktop/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi')
   if ($installers.Count -ne 1 -or $installers[0].Length -lt 1MB) { throw 'Expected one nonempty MSI' }
   $signature = Get-AuthenticodeSignature $installers[0].FullName
   if ($RequireSigning -and $signature.Status -ne 'Valid') { throw "Invalid Authenticode signature: $($signature.Status)" }
+  $extracted = Join-Path $out 'msi-extracted'
+  $extractLog = Join-Path $out 'msi-extract.log'
+  $extraction = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @('/a', ('"' + $installers[0].FullName + '"'), '/qn', ('TARGETDIR="' + $extracted + '"'), '/l*v', ('"' + $extractLog + '"'))
+  if ($extraction.ExitCode -ne 0) { throw "MSI administrative extraction failed: $($extraction.ExitCode)" }
+  $manifests = @(Get-ChildItem $extracted -Recurse -Filter station-build.json)
+  if ($manifests.Count -ne 1) { throw 'Expected one packaged build identity' }
+  $expectedHash = (Get-FileHash src-desktop/station-client-build.json -Algorithm SHA256).Hash
+  if ((Get-FileHash $manifests[0].FullName -Algorithm SHA256).Hash -ne $expectedHash) { throw 'Packaged build identity differs from staged source' }
+  if ($RequireSigning) {
+    $expanded = Join-Path $out 'updater-extracted'
+    Expand-Archive -LiteralPath ($installers[0].FullName + '.zip') -DestinationPath $expanded
+    $updaterInstallers = @(Get-ChildItem $expanded -Recurse -File)
+    if ($updaterInstallers.Count -ne 1 -or $updaterInstallers[0].Extension -ne '.msi' -or (Get-FileHash $updaterInstallers[0].FullName -Algorithm SHA256).Hash -ne (Get-FileHash $installers[0].FullName -Algorithm SHA256).Hash) { throw 'Updater archive does not contain exactly the signed MSI' }
+  }
   $basename = "station-$($config.version)-windows-x86_64.msi"
   Copy-Item $installers[0].FullName (Join-Path $out $basename)
   if ($RequireSigning) {
@@ -64,6 +78,8 @@ try {
     bundleVersion = $BundleVersion; platform = 'windows-x86_64'
     installer = $basename; installerSha256 = (Get-FileHash (Join-Path $out $basename) -Algorithm SHA256).Hash.ToLowerInvariant()
     platformSigningState = $(if ($RequireSigning) { 'VERIFIED' } else { 'NOT_VERIFIED' })
+    packagedProvenanceSha256 = $expectedHash.ToLowerInvariant()
+    updaterPayloadState = $(if ($RequireSigning) { 'VERIFIED' } else { 'NOT_VERIFIED' })
     publicationState = 'NOT_PUBLISHED'; installState = 'NOT_INSTALLED'; updateState = 'NOT_UPDATED'
   }
   $receipt | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 (Join-Path $out 'windows-build-receipt.json')
