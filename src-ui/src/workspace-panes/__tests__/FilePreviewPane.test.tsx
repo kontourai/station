@@ -15,7 +15,9 @@ import {
   waitFor,
 } from '@testing-library/react';
 import type { ComponentProps } from 'react';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+
+afterEach(() => vi.unstubAllGlobals());
 
 const previewQuery = vi.hoisted(() => vi.fn());
 const addFileMock = vi.hoisted(() => vi.fn(() => true));
@@ -639,6 +641,14 @@ describe('FilePreviewPane', () => {
   });
 
   test('renders a validated bounded PNG payload as an inert image', () => {
+    // jsdom has no layout; real image geometry is exercised in the browser spec.
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
     previewQuery.mockReturnValue({
       isLoading: false,
       isError: false,

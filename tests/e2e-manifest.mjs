@@ -317,6 +317,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/banner-stack-bound.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
     'tests/monitoring-and-chrome.spec.ts',
+    'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
     'tests/keyboard-shortcuts.spec.ts',
     'tests/sidebar-geometry.spec.ts',
@@ -554,6 +555,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Mounted payload work and real responsive chrome geometry; replaces source-string layout claims.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/image-preview-inspection.spec.ts',
+    bucket: 'product',
+    surface: 'Chat and workspace image previews',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real production image inspector and dialog components with browser-decoded PNG input; verifies zoom, pointer and touch pan, keyboard and gallery focus, full backdrop coverage, failure state and narrow theme/rotation geometry. Bundling is in-memory; no live Station instance or shared output writes.',
     exceptions: [],
   },
   {
