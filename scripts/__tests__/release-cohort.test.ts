@@ -1277,3 +1277,57 @@ test('the documented owner lock recipe produces a tag object the plan-time valid
   expect(refused.status).toBe(1);
   expect(refused.stderr).toContain('not canonical recovery JSON');
 });
+
+describe('Windows joins desktop publication', () => {
+  test('a three-platform plan refuses omission and admits every exact artifact', () => {
+    const plan = createCohortPlan(
+      input({ requiredPlatforms: ['android', 'macos', 'windows'] }),
+    );
+    const files = Object.fromEntries(
+      plan.requiredPlatforms.map((platform: string) => [
+        platform,
+        { artifact: Buffer.from(platform) },
+      ]),
+    );
+    const receipts = plan.requiredPlatforms.map((platform: string) => {
+      const bytes = files[platform].artifact;
+      return createStageReceipt(plan, {
+        platform,
+        artifacts: [{ name: 'artifact', bytes }],
+        artifactAttestationClaim: attestation([
+          {
+            name: 'artifact',
+            size: bytes.length,
+            sha256: createHash('sha256').update(bytes).digest('hex'),
+          },
+        ]),
+      });
+    });
+    expect(() => admitCohort(plan, receipts.slice(0, 2), files)).toThrow();
+    const admission = admitCohort(plan, receipts, files);
+    expect(admission.plan.requiredPlatforms).toEqual([
+      'android',
+      'macos',
+      'windows',
+    ]);
+    const states = plan.requiredPlatforms.map((platform: string) =>
+      recordProviderPromotion(beginPromotion(admission), {
+        platform,
+        outcome: 'reported_success',
+        providerEvidenceClaim: {
+          provider: platform === 'android' ? 'google-play' : 'github-releases',
+          immutableReference: `${platform}:1`,
+          queryReceiptDigest: `sha256:${'b'.repeat(64)}`,
+          cohortId: plan.cohortId,
+          sourceSha,
+        },
+      }),
+    );
+    expect(() => finalizeCohort(states.slice(0, 2))).toThrow();
+    expect(
+      finalizeCohort(states).providerClaims.map(
+        (claim: { platform: string }) => claim.platform,
+      ),
+    ).toEqual(['android', 'macos', 'windows']);
+  });
+});

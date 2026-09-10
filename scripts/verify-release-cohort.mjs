@@ -7,6 +7,11 @@ import { fileURLToPath } from 'node:url';
 import { NIGHTLY_BUILDS_PER_DAY } from './lib/nightly-build-identity.mjs';
 import { verifyTauriUpdaterSignature } from './lib/release-artifacts.mjs';
 import {
+  assertWindowsNightlyManifest,
+  assertWindowsNightlyReceipt,
+  desktopPublishedAssetName,
+} from './lib/windows-nightly.mjs';
+import {
   canonicalJson,
   createArtifactRecord,
   parseVerificationCandidate,
@@ -197,6 +202,7 @@ export function parseVerifiedAttestation(
 const PLATFORM_PROVIDER = Object.freeze({
   android: 'google-play',
   macos: 'github-releases',
+  windows: 'github-releases',
 });
 
 /**
@@ -328,6 +334,23 @@ export function requiredArtifactPaths(candidate, input, shipped) {
         canonicalJson(MACOS_NIGHTLY_ASSETS))
   ) {
     fail('macOS delivery inventory does not exactly match the Nightly assets');
+  }
+  if (shipped.includes('windows')) {
+    const windows = candidate.stageClaims.find(
+      (stage) => stage.platform === 'windows',
+    );
+    const expected = [
+      'station-nightly-desktop-windows-x86_64.msi',
+      'station-nightly-desktop-windows-x86_64.msi.zip',
+      'station-nightly-desktop-windows-x86_64.msi.zip.sig',
+      'windows-build-receipt.json',
+    ];
+    if (
+      !windows ||
+      canonicalJson(windows.artifacts.map((record) => record.name).sort()) !==
+        canonicalJson(expected)
+    )
+      fail('Windows delivery inventory differs from the Nightly assets');
   }
   return result;
 }
@@ -535,7 +558,13 @@ export function parseLatestUpdaterManifest(bytes, identity, signatureBytes) {
     fail('latest.json is not valid JSON');
   }
   const platform = manifest?.platforms?.['darwin-aarch64'];
-  const expectedUrl = `https://github.com/${REPOSITORY}/releases/download/${identity.releaseTag}/station-nightly-desktop-macos-aarch64.app.tar.gz`;
+  const assetName = identity.windows
+    ? desktopPublishedAssetName(
+        'station-nightly-desktop-macos-aarch64.app.tar.gz',
+        identity.version,
+      )
+    : 'station-nightly-desktop-macos-aarch64.app.tar.gz';
+  const expectedUrl = `https://github.com/${REPOSITORY}/releases/download/${identity.releaseTag}/${assetName}`;
   if (
     !plain(manifest) ||
     manifest.version !== identity.version ||
@@ -587,7 +616,11 @@ export function parseGithubReleaseObservation(
   }
   if (
     canonicalJson(release.assets.map((asset) => asset?.name).sort()) !==
-    canonicalJson(MACOS_NIGHTLY_ASSETS)
+    canonicalJson(
+      identity.windows
+        ? [...new Set(release.assets.map((asset) => asset?.name))].sort()
+        : MACOS_NIGHTLY_ASSETS,
+    )
   ) {
     fail(
       'GitHub release assets do not exactly match the Nightly delivery inventory',
@@ -595,8 +628,12 @@ export function parseGithubReleaseObservation(
   }
   const assets = [];
   for (const record of records) {
+    const publishedName =
+      identity.windows && record.name !== 'windows-build-receipt.json'
+        ? desktopPublishedAssetName(record.name, identity.version)
+        : record.name;
     const matches = release.assets.filter(
-      (asset) => plain(asset) && asset.name === record.name,
+      (asset) => plain(asset) && asset.name === publishedName,
     );
     if (matches.length !== 1)
       fail(`GitHub release asset ${record.name} is missing or duplicated`);
@@ -839,11 +876,60 @@ function verifyCandidateObservations(candidateInput, artifactInput) {
       ).trim(),
     });
     verifyMacosArchive(updaterPath, candidate.versionIdentities.desktop);
+    const hasWindows =
+      candidate.admission.plan.requiredPlatforms.includes('windows');
+    if (hasWindows) {
+      const windowsPaths = new Map(
+        paths
+          .filter((entry) => entry.platform === 'windows')
+          .map((entry) => [entry.record.name, entry.path]),
+      );
+      const installerName = 'station-nightly-desktop-windows-x86_64.msi';
+      const installer =
+        windowsPaths.get(installerName) ?? fail('Windows installer missing');
+      const archive =
+        windowsPaths.get(`${installerName}.zip`) ??
+        fail('Windows updater missing');
+      const signature =
+        windowsPaths.get(`${installerName}.zip.sig`) ??
+        fail('Windows signature missing');
+      const receipt = JSON.parse(
+        readFileSync(
+          windowsPaths.get('windows-build-receipt.json') ??
+            fail('Windows signing receipt missing'),
+          'utf8',
+        ).replace(/^\uFEFF/, ''),
+      );
+      assertWindowsNightlyReceipt(
+        receipt,
+        {
+          ...candidate.versionIdentities.desktop,
+          sourceSha: candidate.sourceSha,
+        },
+        readFileSync(installer),
+      );
+      verifyTauriUpdaterSignature({
+        updater: archive,
+        signature,
+        updaterPublicKey: readFileSync(
+          resolve(updaterPublicKeyFile),
+          'utf8',
+        ).trim(),
+      });
+      const manifest = JSON.parse(
+        readFileSync(macosPaths.get('latest.json'), 'utf8'),
+      );
+      assertWindowsNightlyManifest(
+        manifest,
+        candidate.versionIdentities.desktop.version,
+        readFileSync(signature),
+      );
+    }
     parseLatestUpdaterManifest(
       readFileSync(
         macosPaths.get('latest.json') ?? fail('latest.json is missing'),
       ),
-      candidate.versionIdentities.desktop,
+      { ...candidate.versionIdentities.desktop, windows: hasWindows },
       readFileSync(signaturePath),
     );
     const githubTag = parseGithubTagReference(
@@ -881,8 +967,18 @@ function verifyCandidateObservations(candidateInput, artifactInput) {
       {
         ...candidate.versionIdentities.desktop,
         sourceSha: candidate.sourceSha,
+        windows: hasWindows,
       },
-      macosRecords,
+      [
+        ...macosRecords,
+        ...(hasWindows
+          ? candidate.stageClaims
+              .find((stage) => stage.platform === 'windows')
+              .artifacts.filter(
+                (record) => record.name !== 'windows-build-receipt.json',
+              )
+          : []),
+      ],
       githubTag,
       new Date(),
     );
@@ -916,6 +1012,11 @@ function verifyCandidateObservations(candidateInput, artifactInput) {
       ),
     );
   }
+  if (
+    shipped.includes('windows') !== shipped.includes('macos') &&
+    candidate.admission.plan.requiredPlatforms.includes('windows')
+  )
+    fail('Desktop publication outcomes must agree');
   if (shipped.includes('macos')) providers.push(verifyMacosPublication());
   const { platforms, state } = finalPlatformStates(candidate, providers);
   return {

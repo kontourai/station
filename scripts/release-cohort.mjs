@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 const SHA1 = /^[a-f0-9]{40}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
-const PLATFORMS = Object.freeze(['android', 'macos']);
+const PLATFORMS = Object.freeze(['android', 'macos', 'windows']);
+const LEGACY_PLATFORMS = Object.freeze(['android', 'macos']);
 /**
  * Nightly publishes per platform (#1774): each required platform carries its
  * own provider claim, a provider-side failure on one never withholds the
@@ -77,8 +78,13 @@ function facts(input = {}) {
   if (!/^[1-9][0-9]{0,18}$/.test(workflowRunId))
     fail('workflowRunId must be a positive GitHub run identifier');
   const requiredPlatforms = [...(input.requiredPlatforms ?? [])].sort();
-  if (canonicalJson(requiredPlatforms) !== canonicalJson(PLATFORMS))
-    fail('requiredPlatforms must exactly be android and macos');
+  if (
+    canonicalJson(requiredPlatforms) !== canonicalJson(PLATFORMS) &&
+    canonicalJson(requiredPlatforms) !== canonicalJson(LEGACY_PLATFORMS)
+  )
+    fail(
+      'requiredPlatforms must exactly be android, macos and windows (or the legacy two-platform cohort)',
+    );
   if (
     !plain(input.versionIdentities) ||
     canonicalJson(Object.keys(input.versionIdentities).sort()) !==
@@ -273,7 +279,7 @@ function stage(p, value) {
   return exact(value, stageFor(p, value), 'stage receipt');
 }
 function stages(p, values) {
-  if (!Array.isArray(values) || values.length !== 2)
+  if (!Array.isArray(values) || values.length !== p.requiredPlatforms.length)
     fail('stage receipts must contain both platforms');
   const map = new Map(
     values.map((v) => {
@@ -286,7 +292,8 @@ function stages(p, values) {
       return [r.platform, r];
     }),
   );
-  if (map.size !== 2) fail('stage receipts must be unique');
+  if (map.size !== p.requiredPlatforms.length)
+    fail('stage receipts must be unique');
   return p.requiredPlatforms.map(
     (x) => map.get(x) ?? fail(`missing stage receipt for ${x}`),
   );
@@ -294,7 +301,8 @@ function stages(p, values) {
 function downloads(receipts, value) {
   if (
     !plain(value) ||
-    canonicalJson(Object.keys(value).sort()) !== canonicalJson(PLATFORMS)
+    canonicalJson(Object.keys(value).sort()) !==
+      canonicalJson(receipts.map((receipt) => receipt.platform).sort())
   )
     fail('downloadedArtifacts must exactly match admitted platforms');
   for (const receipt of receipts) {

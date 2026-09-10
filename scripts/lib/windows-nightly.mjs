@@ -1,13 +1,16 @@
 import { createHash } from 'node:crypto';
-import { nightlyVersion } from './nightly-build-identity.mjs';
 import { updaterPluginConfig } from './native-release-config.mjs';
+import { nightlyVersion } from './nightly-build-identity.mjs';
 import { createUpdaterManifestForPlatforms } from './tauri-updater-manifest.mjs';
 
 export const WINDOWS_NIGHTLY_PLATFORM = 'windows-x86_64';
 export const NIGHTLY_DESKTOP_ENDPOINT =
   'https://github.com/kontourai/station/releases/download/nightly-desktop/latest.json';
 
-/** The shared reservation also supplies a strictly increasing MSI version. */
+/**
+ * The shared reservation also supplies a strictly increasing MSI version.
+ * @param {{packageVersion: string, bundleVersion: number | string, updaterPublicKey?: string}} input
+ */
 export function createWindowsNightlyConfig({
   packageVersion,
   bundleVersion,
@@ -100,4 +103,55 @@ export function assembleNightlyDesktopManifest({
     releaseTag: 'nightly-desktop',
     platforms,
   });
+}
+
+/** Staging names stay stable; published bytes are never clobbered across versions. */
+export function desktopPublishedAssetName(name, version) {
+  if (name === 'latest.json') return name;
+  if (!name.startsWith('station-nightly-desktop-')) {
+    throw new Error(`Unexpected desktop staging asset: ${name}`);
+  }
+  if (!/^\d+\.\d+\.\d+-nightly\.\d+(?:\.\d+)?$/.test(version)) {
+    throw new Error('Invalid desktop Nightly version');
+  }
+  return name.replace('station-nightly-desktop-', `station-${version}-`);
+}
+
+export function assertWindowsNightlyReceipt(receipt, identity, installerBytes) {
+  if (
+    receipt?.kind !== 'station.windows-nightly-build/v1' ||
+    receipt.sourceSha !== identity.sourceSha ||
+    receipt.version !== identity.version ||
+    receipt.bundleVersion !== Number(identity.bundleVersion) ||
+    receipt.platform !== WINDOWS_NIGHTLY_PLATFORM ||
+    receipt.platformSigningState !== 'VERIFIED' ||
+    receipt.updaterPayloadState !== 'VERIFIED' ||
+    !/^[a-f0-9]{64}$/.test(receipt.packagedProvenanceSha256 ?? '') ||
+    receipt.installerSha256 !==
+      createHash('sha256').update(installerBytes).digest('hex')
+  )
+    throw new Error('Windows Authenticode receipt does not bind installer');
+}
+
+export function assertWindowsNightlyManifest(
+  manifest,
+  version,
+  signatureBytes,
+) {
+  const entry = manifest?.platforms?.[WINDOWS_NIGHTLY_PLATFORM];
+  const name = desktopPublishedAssetName(
+    'station-nightly-desktop-windows-x86_64.msi.zip',
+    version,
+  );
+  if (
+    manifest?.version !== version ||
+    !manifest.platforms ||
+    Object.keys(manifest.platforms).sort().join(',') !==
+      'darwin-aarch64,windows-x86_64' ||
+    entry?.signature !== Buffer.from(signatureBytes).toString('utf8').trim() ||
+    entry?.url !==
+      `https://github.com/kontourai/station/releases/download/nightly-desktop/${name}`
+  ) {
+    throw new Error('Windows updater manifest binding differs');
+  }
 }

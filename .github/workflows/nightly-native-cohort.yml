@@ -61,8 +61,8 @@ jobs:
       - run: npm run dependencies:ci
       - name: Admit only byte-for-byte staged assets
         run: |
-          node scripts/release-cohort-workflow.mjs artifact-input artifacts.json android=station-nightly-universal.aab=cohort/cohort-android/station-nightly-universal.aab macos=latest.json=cohort/cohort-macos/latest.json macos=station-nightly-desktop-macos-aarch64.app.tar.gz=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz macos=station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig macos=station-nightly-desktop-macos-aarch64.dmg=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.dmg
-          node scripts/release-cohort.mjs admit cohort/cohort-plan.json artifacts.json cohort/android-stage-receipt.json cohort/macos-stage-receipt.json > cohort-admission.json
+          node scripts/release-cohort-workflow.mjs artifact-input artifacts.json android=station-nightly-universal.aab=cohort/cohort-android/station-nightly-universal.aab macos=latest.json=cohort/cohort-macos/latest.json macos=station-nightly-desktop-macos-aarch64.app.tar.gz=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz macos=station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig macos=station-nightly-desktop-macos-aarch64.dmg=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.dmg windows=station-nightly-desktop-windows-x86_64.msi=cohort/cohort-windows/station-nightly-desktop-windows-x86_64.msi windows=station-nightly-desktop-windows-x86_64.msi.zip=cohort/cohort-windows/station-nightly-desktop-windows-x86_64.msi.zip windows=station-nightly-desktop-windows-x86_64.msi.zip.sig=cohort/cohort-windows/station-nightly-desktop-windows-x86_64.msi.zip.sig windows=windows-build-receipt.json=cohort/cohort-windows/windows-build-receipt.json
+          node scripts/release-cohort.mjs admit cohort/cohort-plan.json artifacts.json cohort/android-stage-receipt.json cohort/macos-stage-receipt.json cohort/windows-stage-receipt.json > cohort-admission.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nightly-cohort-admission-${{ github.run_id }}
@@ -223,7 +223,7 @@ jobs:
           retention-days: 14
 
   promote-macos:
-    name: Publish macOS rolling release
+    name: Publish the complete desktop release
     needs: [admit-cohort, create-promotion-fence]
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.admit-cohort.result == 'success' && needs.create-promotion-fence.result == 'success' }}
     runs-on: macos-15
@@ -251,7 +251,7 @@ jobs:
           status=$(curl --silent --show-error --output "$tag_object" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/tags/$tag_sha")
           test "$status" = 200
           node scripts/release-cohort-workflow.mjs assert-promotion-fence-tag-object "$tag_object" cohort/cohort-plan.json cohort/cohort-admission.json
-      - name: Promote all four admitted macOS assets and bind the rolling tag
+      - name: Upload both desktops, then publish latest.json last
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -260,8 +260,7 @@ jobs:
           version=$(node -e 'console.log(require("./cohort/cohort-plan.json").versionIdentities.desktop.version)')
           release_preflight=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease)
           node --input-type=module -e 'const value=JSON.parse(process.argv[1]); if(value.isDraft!==false||value.isPrerelease!==true) process.exit(1)' "$release_preflight"
-          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber cohort/cohort-macos/station-nightly-desktop-macos-aarch64.dmg cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig
-          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber cohort/cohort-macos/latest.json
+          node scripts/publish-nightly-desktop.mjs cohort desktop-publication github-release-observation.json
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes "Rolling Nightly desktop $version at ${{ inputs.source_sha }}"
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="${{ inputs.source_sha }}" -F force=true >/dev/null
           test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)" = "${{ inputs.source_sha }}"
@@ -272,18 +271,23 @@ jobs:
           node scripts/release-cohort.mjs begin-promotion cohort/cohort-admission.json > promotion-state.json
           node scripts/release-cohort-workflow.mjs provider-claim macos-claim.json cohort/cohort-plan.json macos github-release-observation.json
           node scripts/release-cohort.mjs promotion-receipt promotion-state.json macos-claim.json > promotion-macos-state.json
+          node scripts/release-cohort-workflow.mjs provider-claim windows-claim.json cohort/cohort-plan.json windows github-release-observation.json
+          node scripts/release-cohort.mjs promotion-receipt promotion-state.json windows-claim.json > promotion-windows-state.json
       - name: Record unknown macOS provider state for disclosure
         if: ${{ always() && steps.macos_provider_state.outcome != 'success' }}
         run: |
           node scripts/release-cohort.mjs begin-promotion cohort/cohort-admission.json > promotion-state.json
           node scripts/release-cohort-workflow.mjs unknown-claim macos-unknown-claim.json cohort/cohort-plan.json macos "run:$GITHUB_RUN_ID:github-release-upload-or-readback"
           node scripts/release-cohort.mjs promotion-receipt promotion-state.json macos-unknown-claim.json > promotion-macos-state.json
+          node scripts/release-cohort-workflow.mjs unknown-claim windows-unknown-claim.json cohort/cohort-plan.json windows "run:$GITHUB_RUN_ID:desktop-upload-or-readback"
+          node scripts/release-cohort.mjs promotion-receipt promotion-state.json windows-unknown-claim.json > promotion-windows-state.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: nightly-cohort-macos-state-${{ github.run_id }}
           path: |
             promotion-macos-state.json
+            promotion-windows-state.json
             github-release-observation.json
           if-no-files-found: error
           retention-days: 14
@@ -375,6 +379,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PROMOTE_ANDROID_RESULT: ${{ needs.promote-android.result }}
           PROMOTE_MACOS_RESULT: ${{ needs.promote-macos.result }}
+          PROMOTE_WINDOWS_RESULT: ${{ needs.promote-macos.result }}
         run: |
           set -euo pipefail
           # A platform whose job left no state is joined from its job result,
@@ -382,7 +387,7 @@ jobs:
           # (not_attempted → NOT_PUBLISHED); a job that ran and died before
           # retaining its state may already have had its effect (unknown →
           # NOT_VERIFIED).
-          for platform in android macos; do
+          for platform in android macos windows; do
             if [ ! -f "cohort/promotion-$platform-state.json" ]; then
               result_variable="PROMOTE_$(printf '%s' "$platform" | tr '[:lower:]' '[:upper:]')_RESULT"
               if [ "${!result_variable}" = skipped ]; then
@@ -395,8 +400,8 @@ jobs:
               node scripts/release-cohort.mjs promotion-receipt "promotion-$platform-started.json" "$platform-absent-claim.json" > "cohort/promotion-$platform-state.json"
             fi
           done
-          node scripts/release-cohort.mjs finalize cohort/promotion-android-state.json cohort/promotion-macos-state.json > verification-candidate.json
-          node scripts/release-cohort-workflow.mjs artifact-input final-artifacts.json android=station-nightly-universal.aab=cohort/cohort-android/station-nightly-universal.aab macos=latest.json=cohort/cohort-macos/latest.json macos=station-nightly-desktop-macos-aarch64.app.tar.gz=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz macos=station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig macos=station-nightly-desktop-macos-aarch64.dmg=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.dmg
+          node scripts/release-cohort.mjs finalize cohort/promotion-android-state.json cohort/promotion-macos-state.json cohort/promotion-windows-state.json > verification-candidate.json
+          node scripts/release-cohort-workflow.mjs artifact-input final-artifacts.json android=station-nightly-universal.aab=cohort/cohort-android/station-nightly-universal.aab macos=latest.json=cohort/cohort-macos/latest.json macos=station-nightly-desktop-macos-aarch64.app.tar.gz=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz macos=station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig macos=station-nightly-desktop-macos-aarch64.dmg=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.dmg windows=station-nightly-desktop-windows-x86_64.msi=cohort/cohort-windows/station-nightly-desktop-windows-x86_64.msi windows=station-nightly-desktop-windows-x86_64.msi.zip=cohort/cohort-windows/station-nightly-desktop-windows-x86_64.msi.zip windows=station-nightly-desktop-windows-x86_64.msi.zip.sig=cohort/cohort-windows/station-nightly-desktop-windows-x86_64.msi.zip.sig windows=windows-build-receipt.json=cohort/cohort-windows/windows-build-receipt.json
           node scripts/verify-release-cohort.mjs verify-finalize verification-candidate.json final-artifacts.json > final-cohort-receipt.json
           node scripts/release-cohort-workflow.mjs assert-final final-cohort-receipt.json "${{ inputs.source_sha }}"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -628,7 +633,7 @@ jobs:
             {"promotion-fence":"${{ needs.create-promotion-fence.result }}","promote-android":"${{ needs.promote-android.result }}","promote-macos":"${{ needs.promote-macos.result }}","deliver-ios":"${{ needs.deliver-ios.result }}","protected-finalize":"${{ needs.protected-finalize.result }}","record-native-completion":"${{ needs.record-native-completion.result }}","final-attestation":"${{ needs.record-native-completion.outputs.final_attestation }}","app-token":"${{ needs.record-native-completion.outputs.app_token }}","ledger":"${{ needs.record-native-completion.outputs.ledger }}","tag":"${{ needs.record-native-completion.outputs.tag }}","promotion-fence-clear":"${{ needs.clear-promotion-fence.result }}"}
         run: |
           printf '%s\n' "$JOB_RESULTS" > recovery-job-results.json
-          node scripts/release-cohort-workflow.mjs recovery-receipt native-cohort-recovery.json "$SOURCE_SHA" "$GITHUB_RUN_ID" cohort/cohort-plan.json recovery-job-results.json cohort/cohort-admission.json cohort/verification-candidate.json cohort/play-observation.json cohort/github-release-observation.json cohort/promotion-android-state.json cohort/promotion-macos-state.json
+          node scripts/release-cohort-workflow.mjs recovery-receipt native-cohort-recovery.json "$SOURCE_SHA" "$GITHUB_RUN_ID" cohort/cohort-plan.json recovery-job-results.json cohort/cohort-admission.json cohort/verification-candidate.json cohort/play-observation.json cohort/github-release-observation.json cohort/promotion-android-state.json cohort/promotion-macos-state.json cohort/promotion-windows-state.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

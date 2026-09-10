@@ -245,6 +245,8 @@ describe('one-revision native promotion contract', () => {
       'stage-android',
       'stage-macos',
       'stage-ios',
+      'stage-windows',
+      'assemble-desktop',
     ]);
     expect(Object.keys(cohort.jobs ?? {})).toEqual([
       'admit-cohort',
@@ -332,7 +334,7 @@ describe('one-revision native promotion contract', () => {
       `"$claim" "$platform-absent-claim.json" cohort/cohort-plan.json "$platform" "run:$GITHUB_RUN_ID:$platform-state-absent:\${!result_variable}"`,
     );
     expect(finalizeStep.run).toContain(
-      'finalize cohort/promotion-android-state.json cohort/promotion-macos-state.json > verification-candidate.json',
+      'finalize cohort/promotion-android-state.json cohort/promotion-macos-state.json cohort/promotion-windows-state.json > verification-candidate.json',
     );
     expect(finalizeStep.run).toContain(
       'verify-finalize verification-candidate.json final-artifacts.json',
@@ -589,7 +591,7 @@ describe('one-revision native promotion contract', () => {
       macosSteps.indexOf(
         namedStep(
           cohort.jobs?.['promote-macos'] ?? {},
-          'Promote all four admitted macOS assets and bind the rolling tag',
+          'Upload both desktops, then publish latest.json last',
         ),
       ),
     );
@@ -747,7 +749,7 @@ describe('one-revision native promotion contract', () => {
     const cohort = workflow('nightly-native-cohort.yml');
     const macos = namedStep(
       cohort.jobs?.['promote-macos'] ?? {},
-      'Promote all four admitted macOS assets and bind the rolling tag',
+      'Upload both desktops, then publish latest.json last',
     );
     expect(macos.run).toContain('--json isDraft,isPrerelease');
     expect(macos.run).toContain(

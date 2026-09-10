@@ -1038,7 +1038,7 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     // that never happened — and desktop has no rebuild input to recover
     // with, so a hand-deleted tag would be the only fix.
     const publish = desktopReleasePath.indexOf(
-      'name: Promote all four admitted macOS assets and bind the rolling tag',
+      'name: Upload both desktops, then publish latest.json last',
     );
     const advance = desktopReleasePath.indexOf(
       'name: Record only a reported-success macOS provider state',
@@ -1054,7 +1054,7 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
   it('refuses draft and unbootstrapped rolling releases rather than asking GITHUB_TOKEN to create a workflow-changing ref', () => {
     const publish = desktopReleasePath.slice(
       desktopReleasePath.indexOf(
-        'name: Promote all four admitted macOS assets and bind the rolling tag',
+        'name: Upload both desktops, then publish latest.json last',
       ),
       desktopReleasePath.indexOf(
         'name: Record only a reported-success macOS provider state',
@@ -1068,43 +1068,24 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     expect(publish).not.toContain('--target');
   });
 
-  it('uploads latest.json as its OWN gh release upload invocation, after the binaries invocation completes (station#575 MED-3)', () => {
+  it('delegates desktop uploads to the manifest-last publisher (station#575 MED-3)', () => {
     const publish = desktopReleasePath.slice(
       desktopReleasePath.indexOf(
-        'name: Promote all four admitted macOS assets and bind the rolling tag',
+        'name: Upload both desktops, then publish latest.json last',
       ),
       desktopReleasePath.indexOf(
         'name: Record only a reported-success macOS provider state',
       ),
     );
-    expect(publish).toContain('gh release view "$tag"');
-    expect(publish).toContain('--clobber');
-    const invocations = publish.match(/gh release upload "\$tag"/g) ?? [];
-    // Exactly two: merging latest.json into the binaries' command (which
-    // uploads its arguments concurrently) would collapse this to one.
-    expect(invocations).toHaveLength(2);
-    // The second invocation is a single physical line naming ONLY
-    // latest.json — no trailing `\` continuation and no binary asset name
-    // on that line — so it cannot be the same shell command as the
-    // binaries' multi-line upload above it.
-    const manifestUploadLine = publish
-      .split('\n')
-      .find(
-        (line) =>
-          line.includes('gh release upload "$tag"') &&
-          line.includes('latest.json'),
-      );
-    expect(manifestUploadLine).toBeDefined();
-    expect(manifestUploadLine).not.toContain('\\');
-    expect(manifestUploadLine).not.toContain('.dmg');
-    expect(manifestUploadLine).not.toContain('.app.tar.gz');
-    const binariesIndex = publish.indexOf(
-      'gh release upload nightly-desktop --repo "$' +
-        '{{ github.repository }}" --clobber \\\n            release-assets/station-nightly-desktop-macos-aarch64.dmg',
+    // Actual upload ordering and corrupt readbacks are exercised through the
+    // publisher's injected GitHub adapter in publish-nightly-desktop.test.ts.
+    expect(publish).toContain(
+      'node scripts/publish-nightly-desktop.mjs cohort desktop-publication github-release-observation.json',
     );
-    const manifestIndex = publish.lastIndexOf(manifestUploadLine ?? '');
-    expect(publish).toContain('station-nightly-desktop-macos-aarch64.dmg');
-    expect(manifestIndex).toBeGreaterThan(binariesIndex);
+    expect(publish).not.toContain('gh release upload');
+    expect(publish.indexOf('publish-nightly-desktop.mjs')).toBeLessThan(
+      publish.indexOf('gh api --method PATCH'),
+    );
   });
 
   it('agrees on one release tag across the notarize step, the manifest step, and the upload asset names (station#575 MED-2)', () => {
@@ -1127,16 +1108,14 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     );
     const publish = desktopReleasePath.slice(
       desktopReleasePath.indexOf(
-        'name: Promote all four admitted macOS assets and bind the rolling tag',
+        'name: Upload both desktops, then publish latest.json last',
       ),
       desktopReleasePath.indexOf(
         'name: Record only a reported-success macOS provider state',
       ),
     );
-    expect(publish).toContain('station-nightly-desktop-macos-aarch64.dmg');
-    expect(publish).toContain(
-      'station-nightly-desktop-macos-aarch64.app.tar.gz',
-    );
+    expect(publish).toContain('scripts/publish-nightly-desktop.mjs');
+    expect(desktopReleasePath).toContain('cohort/windows-stage-receipt.json');
   });
 
   it('verifies the nightly product name and bundle id on the notarized app (station#575 L6)', () => {
@@ -1180,7 +1159,7 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
 
   it('records the desktop ship in the deploy ledger after publish, at the decided SHA', () => {
     const publish = desktopReleasePath.indexOf(
-      'name: Promote all four admitted macOS assets and bind the rolling tag',
+      'name: Upload both desktops, then publish latest.json last',
     );
     const ledger = desktopReleasePath.indexOf(
       'name: Record durable completion only after the verified final receipt',

@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   assembleNightlyDesktopManifest,
+  assertWindowsNightlyManifest,
+  assertWindowsNightlyReceipt,
   createWindowsNightlyConfig,
 } from '../lib/windows-nightly.mjs';
 
@@ -82,4 +84,50 @@ describe('Windows Nightly', () => {
     candidate.builds[1].assetName = 'station-nightly-windows-x86_64.msi.zip';
     expect(() => assembleNightlyDesktopManifest(candidate)).toThrow();
   });
+});
+
+it('requires attested Windows signature, payload and packaged provenance facts', () => {
+  const identity = { sourceSha, version, bundleVersion: 244302 };
+  const receipt = {
+    kind: 'station.windows-nightly-build/v1',
+    ...identity,
+    platform: 'windows-x86_64',
+    platformSigningState: 'VERIFIED',
+    updaterPayloadState: 'VERIFIED',
+    packagedProvenanceSha256: 'b'.repeat(64),
+    installerSha256: createHash('sha256').update(bytes).digest('hex'),
+  };
+  expect(() =>
+    assertWindowsNightlyReceipt(receipt, identity, bytes),
+  ).not.toThrow();
+  for (const field of Object.keys(receipt)) {
+    expect(() =>
+      assertWindowsNightlyReceipt(
+        { ...receipt, [field]: undefined },
+        identity,
+        bytes,
+      ),
+    ).toThrow();
+  }
+  expect(() =>
+    assertWindowsNightlyReceipt(receipt, identity, Buffer.from('other MSI')),
+  ).toThrow();
+});
+it('binds the Windows feed entry to the same version and updater signature', () => {
+  const manifest = assembleNightlyDesktopManifest(input());
+  expect(() =>
+    assertWindowsNightlyManifest(manifest, version, Buffer.from('signed')),
+  ).not.toThrow();
+  expect(() =>
+    assertWindowsNightlyManifest(manifest, version, Buffer.from('wrong')),
+  ).toThrow();
+  Object.assign(manifest.platforms, {
+    'windows-x86_64': {
+      signature: 'signed',
+      url: 'https://example.com/other.msi.zip',
+    },
+  });
+  expect(() =>
+    assertWindowsNightlyManifest(manifest, version, Buffer.from('signed')),
+  ).toThrow();
 });

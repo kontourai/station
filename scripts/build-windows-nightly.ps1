@@ -50,7 +50,7 @@ try {
   $installers = @(Get-ChildItem 'src-desktop/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi')
   if ($installers.Count -ne 1 -or $installers[0].Length -lt 1MB) { throw 'Expected one nonempty MSI' }
   $signature = Get-AuthenticodeSignature $installers[0].FullName
-  if ($RequireSigning -and $signature.Status -ne 'Valid') { throw "Invalid Authenticode signature: $($signature.Status)" }
+  if ($RequireSigning -and ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint)) { throw "Invalid Authenticode signature: $($signature.Status)" }
   $extracted = Join-Path $out 'msi-extracted'
   $extractLog = Join-Path $out 'msi-extract.log'
   $extraction = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @('/a', ('"' + $installers[0].FullName + '"'), '/qn', ('TARGETDIR="' + $extracted + '"'), '/l*v', ('"' + $extractLog + '"'))

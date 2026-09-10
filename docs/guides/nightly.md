@@ -219,3 +219,55 @@ future *public* nightly ring on any platform must go through the protected
 native release environment, produce immutable provenance-attested artifacts,
 use a separate updater channel, and preserve the existing stable and preview
 trust contracts.
+
+## Windows desktop and the shared update feed
+
+Windows Nightly is built on the hosted Windows runner in
+`nightly-native-stage.yml`, using the same source SHA and reserved version as
+macOS and Android. The supported packaging entry point is
+`scripts/build-windows-nightly.ps1`; it uses `npm run build:desktop` so the
+Windows resource aliases are applied before WiX bundles the installer.
+
+For a local unsigned packaging check in a fresh Windows worktree:
+
+```powershell
+npm run dependencies:ci
+./scripts/build-windows-nightly.ps1 -SourceSha (git rev-parse HEAD) -BundleVersion 244399
+```
+
+The number in this example is a **local test identity**, not a production
+reservation. Hosted jobs must use `plan-cohort.outputs.bundle_version`.
+The MSI's three numeric fields encode that reservation monotonically;
+the application retains its normal `X.Y.Z-nightly.<day>.<build>` version,
+`io.kontourai.station.nightly` identity, and separate Nightly home.
+
+Signing requires `WINDOWS_CERTIFICATE_BASE64` (a PFX) and
+`WINDOWS_CERTIFICATE_PASSWORD` in the protected `native-release` environment,
+plus the existing `TAURI_SIGNING_PRIVATE_KEY`,
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and `TAURI_SIGNING_PUBLIC_KEY`.
+Authenticode and updater signatures serve separate purposes. The builder
+checks Authenticode, extracts the MSI to compare packaged provenance, and
+checks that the updater archive contains exactly that MSI. The assembly and
+protected finalization steps verify the Tauri signature independently.
+Without Windows signing authority, the build may retain an unsigned MSI for
+diagnostics, but the signed stage fails and desktop publication is withheld.
+
+One desktop publisher owns `nightly-desktop/latest.json`. Both macOS and
+Windows must stage successfully before the manifest is assembled; entries
+from a previous release are never carried into a newer version. Downloads
+have version-specific filenames. The publisher uploads all six desktop
+assets, verifies their GitHub sizes and digests, then replaces `latest.json`
+last and reads it back. Existing download bytes are not overwritten, so a
+failed upload before the manifest write leaves the previous feed usable.
+The GitHub asset replacement itself is not a transactional API operation;
+a failed or interrupted write remains an unresolved provider effect in the
+cohort receipt until readback confirms it.
+
+The macOS and Windows provider claims refer to that same desktop publication.
+Android retains its separate provider outcome. The protected receipt must
+verify both desktop inventories before reporting their publication complete.
+A successful build or publication does not prove an installation or upgrade:
+verify a fresh install, launch, upgrade, and uninstall on Windows separately.
+The MSI cleanup fragment removes obsolete bundled runtime directories during
+upgrade/uninstall while leaving the Station user home outside the install
+location untouched.

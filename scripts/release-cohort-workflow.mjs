@@ -60,13 +60,14 @@ function planInput([destination, sourceSha, workflowRunId, date, build]) {
       requiredReceipt: 'provider-backed',
       externalEvidenceAuthority: 'github-artifact-attestation',
     },
-    requiredPlatforms: ['android', 'macos'],
+    requiredPlatforms: ['android', 'macos', 'windows'],
   });
 }
 
 function stageInput([destination, planPath, platform, ...entries]) {
   const plan = json(planPath);
-  if (!['android', 'macos'].includes(platform)) fail('platform is invalid');
+  if (!['android', 'macos', 'windows'].includes(platform))
+    fail('platform is invalid');
   const artifacts = entries.map((entry) => {
     const divider = entry.indexOf('=');
     if (divider < 1) fail(`artifact entry is invalid: ${entry}`);
@@ -224,7 +225,7 @@ function providerClaim([destination, planPath, platform, observationPath]) {
   // GitHub's release API is the structural readback itself. Normalize only
   // the authenticated facts needed by the state machine; finalization does a
   // second exact inventory/tag observation in the protected verifier.
-  if (platform === 'macos' && observation.provider === undefined) {
+  if (platform !== 'android' && observation.provider === undefined) {
     if (
       observation.tag_name !== plan.versionIdentities.desktop.releaseTag ||
       observation.draft !== false ||
@@ -232,7 +233,7 @@ function providerClaim([destination, planPath, platform, observationPath]) {
       !Number.isSafeInteger(observation.id) ||
       observation.id < 1 ||
       !Array.isArray(observation.assets) ||
-      observation.assets.length !== 4
+      observation.assets.length < 4
     ) {
       fail(
         'GitHub release readback is not the expected public rolling release',
@@ -360,7 +361,9 @@ function platformDisclosure(platform, jobResults, statePath) {
     }
     claim = receipt.outcome;
   }
-  const jobResult = jobResults[`promote-${platform}`] ?? 'not-run';
+  const jobResult =
+    jobResults[`promote-${platform === 'windows' ? 'macos' : platform}`] ??
+    'not-run';
   return {
     jobResult,
     claim,
@@ -394,6 +397,7 @@ function recoveryReceipt([
   githubReleaseObservationPath,
   androidStatePath,
   macosStatePath,
+  windowsStatePath,
 ]) {
   if (!/^[0-9a-f]{40}$/.test(sourceSha ?? ''))
     fail('recovery source sha is invalid');
@@ -441,12 +445,19 @@ function recoveryReceipt([
   if (COHORT_CHAIN_JOBS.every((job) => jobResults[job] === 'success'))
     fail('every cohort chain job succeeded; there is nothing to disclose');
   const platforms = Object.fromEntries(
-    COHORT_PLATFORMS.map((platform) => [
+    (windowsStatePath
+      ? [...COHORT_PLATFORMS, 'windows']
+      : COHORT_PLATFORMS
+    ).map((platform) => [
       platform,
       platformDisclosure(
         platform,
         jobResults,
-        platform === 'android' ? androidStatePath : macosStatePath,
+        platform === 'android'
+          ? androidStatePath
+          : platform === 'macos'
+            ? macosStatePath
+            : windowsStatePath,
       ),
     ]),
   );
@@ -545,6 +556,7 @@ function assertRecoveryTagObject([tagPath, sourceSha]) {
 const PLATFORM_PROVIDER = Object.freeze({
   android: 'google-play',
   macos: 'github-releases',
+  windows: 'github-releases',
 });
 
 /**
@@ -573,14 +585,18 @@ function finalReceipt(receiptPath, sourceSha) {
     typeof platforms !== 'object' ||
     Array.isArray(platforms) ||
     canonicalJson(Object.keys(platforms).sort()) !==
-      canonicalJson(COHORT_PLATFORMS) ||
+      canonicalJson(
+        Object.hasOwn(platforms, 'windows')
+          ? [...COHORT_PLATFORMS, 'windows']
+          : COHORT_PLATFORMS,
+      ) ||
     !Array.isArray(receipt.providers)
   ) {
     fail('final receipt does not disclose every required platform');
   }
   const observed = receipt.providers.map((provider) => provider?.provider);
   const shipped = [];
-  for (const platform of COHORT_PLATFORMS) {
+  for (const platform of Object.keys(platforms)) {
     const entry = platforms[platform];
     const provider = PLATFORM_PROVIDER[platform];
     if (entry?.state === 'complete') {
@@ -615,7 +631,7 @@ function finalReceipt(receiptPath, sourceSha) {
   if (!shipped.length)
     fail('final receipt must verify at least one published platform');
   const derived =
-    shipped.length === COHORT_PLATFORMS.length ? 'complete' : 'partial';
+    shipped.length === Object.keys(platforms).length ? 'complete' : 'partial';
   if (receipt.state !== derived)
     fail(`final receipt state ${receipt.state} is not its derived ${derived}`);
   return { receipt, shipped };
@@ -632,7 +648,7 @@ function assertFinal([receiptPath, sourceSha]) {
  */
 function finalPlatformNotes([receiptPath, sourceSha]) {
   const { receipt } = finalReceipt(receiptPath, sourceSha);
-  for (const platform of COHORT_PLATFORMS) {
+  for (const platform of Object.keys(receipt.platforms)) {
     const entry = receipt.platforms[platform];
     if (entry.state !== 'complete')
       process.stdout.write(
@@ -661,7 +677,7 @@ try {
   else if (command === 'unknown-claim' && args.length === 4) unknownClaim(args);
   else if (command === 'not-attempted-claim' && args.length === 4)
     notAttemptedClaim(args);
-  else if (command === 'recovery-receipt' && args.length === 11)
+  else if (command === 'recovery-receipt' && [11, 12].includes(args.length))
     recoveryReceipt(args);
   else if (command === 'canonical-recovery-message' && args.length === 1)
     canonicalRecoveryMessage(args);
