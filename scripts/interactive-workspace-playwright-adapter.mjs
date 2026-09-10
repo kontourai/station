@@ -633,6 +633,8 @@ async function measureIsolatedFixture({
             documentStatus: failedClient.documentStatus ?? null,
             editorPresent: failedClient.editorPresent,
             editorRevisionMatches: failedClient.editorRevisionMatches,
+            baselineMatchedAtStart: failedClient.baselineMatchedAtStart,
+            targetMatchedAtStart: failedClient.targetMatchedAtStart,
           }),
         );
       await Promise.allSettled([
@@ -817,7 +819,7 @@ async function createReconnectHarness({
   operationCount,
   totalIterations,
 }) {
-  /** @type {{ failedClient?: { page: import('playwright').Page, documentStatus: number | undefined, editorPresent: boolean, editorRevisionMatches: boolean } }} */
+  /** @type {{ failedClient?: { page: import('playwright').Page, documentStatus: number | undefined, editorPresent: boolean, editorRevisionMatches: boolean, baselineMatchedAtStart: boolean, targetMatchedAtStart: boolean } }} */
   const diagnostics = {};
   if (
     !Number.isSafeInteger(totalIterations) ||
@@ -927,7 +929,19 @@ async function createReconnectHarness({
       },
       resume: async (strategy, expectedRevision, baseRevision) => {
         lastDocumentStatus = undefined;
-        const startedEpochMs = await epoch(page);
+        const sampleStart = await page.evaluate(() => {
+          const editor = document.querySelector(
+            'textarea[data-station-working-revision]',
+          );
+          return {
+            epochMs: performance.timeOrigin + performance.now(),
+            editorRevision:
+              editor instanceof HTMLTextAreaElement
+                ? editor.dataset.stationWorkingRevision
+                : null,
+          };
+        });
+        const startedEpochMs = sampleStart.epochMs;
         const observation = reconnectStage(
           `${strategy.toUpperCase()}_OBSERVE`,
           () =>
@@ -976,6 +990,9 @@ async function createReconnectHarness({
             documentStatus: lastDocumentStatus,
             editorPresent: editor !== null,
             editorRevisionMatches: editor === expectedRevision,
+            baselineMatchedAtStart: sampleStart.editorRevision === baseRevision,
+            targetMatchedAtStart:
+              sampleStart.editorRevision === expectedRevision,
           };
           throw new Error(
             `document status ${lastDocumentStatus ?? 'none'}; ${editor ? `editor revision ${editor.slice(-12)} expected ${expectedRevision.slice(-12)}` : 'editor missing after reconnect'}; ${message}`,
