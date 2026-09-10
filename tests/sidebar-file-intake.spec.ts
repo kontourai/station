@@ -46,7 +46,7 @@ createRoot(document.getElementById('root')).render(<Harness/>);
       {
         name: 'environment-only',
         setup(b) {
-          const fixtures = {
+          const fixtures: Record<string, string> = {
             ApiBaseContext:
               'export const useHostRequestAuthorityScope=()=>window.scope; export const useApiBase=()=>({apiBase:window.scope.apiBase});',
             AgentsContext:
