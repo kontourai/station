@@ -4328,12 +4328,17 @@ setInterval(() => {
 
       const first = coordinatorChild(temp.root, firstWorktree, 'one');
       const second = coordinatorChild(temp.root, secondWorktree, 'two');
-      await waitFor(() =>
-        verificationStatus({ root: temp.root, capacity: 40 }).jobs.some(
-          (job) => job.state === 'queued',
-        ),
-      );
-      const snapshot = verificationStatus({ root: temp.root, capacity: 40 });
+      // Assert the observation that SATISFIED the wait, not a fresh one taken
+      // after it. Reading status twice opens a time-of-check/time-of-use window:
+      // `waitFor` sees a queued job, the scheduler admits it, and the second
+      // read reports `waiting: 0`. That lost deterministically on the hosted
+      // Linux runner while passing here, which reads as an unrelated flake on
+      // whichever pull request happens to route this suite (#1074).
+      let snapshot = verificationStatus({ root: temp.root, capacity: 40 });
+      await waitFor(() => {
+        snapshot = verificationStatus({ root: temp.root, capacity: 40 });
+        return snapshot.jobs.some((job) => job.state === 'queued');
+      });
       expect(snapshot.waiting).toBeGreaterThan(0);
       expect(snapshot.usedWeight).toBeLessThanOrEqual(40);
       const [one, two] = await Promise.all([collect(first), collect(second)]);
