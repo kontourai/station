@@ -72,13 +72,11 @@ jobs:
           if [ -z "$root" ] || [ ! -d "$root" ]; then
             root="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/ndk" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -1)"
           fi
-          test -n "$root" && test -d "$root" || {
+          if [ -z "$root" ] || [ ! -d "$root" ]; then
             echo "::error::no Android NDK on this image; the Android type check cannot compile ring's build script" >&2
             exit 1
-          }
+          fi
           echo "Using NDK $root"
-          echo "NDK_HOME=$root" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$root" >> "$GITHUB_ENV"
 
           # `ring`'s build script drives cc-rs, which looks for an unsuffixed
           # `aarch64-linux-android-clang` on PATH. The NDK ships API-suffixed
@@ -89,14 +87,19 @@ jobs:
           # highest present keeps this off the deprecation floor.
           bin="$root/toolchains/llvm/prebuilt/linux-x86_64/bin"
           cc="$(find "$bin" -maxdepth 1 -name 'aarch64-linux-android*-clang' 2>/dev/null | sort -V | tail -1)"
-          test -n "$cc" && test -x "$cc" || {
+          if [ -z "$cc" ] || [ ! -x "$cc" ]; then
             echo "::error::no aarch64-linux-android clang under $bin" >&2
             exit 1
-          }
+          fi
           echo "Using CC $cc"
-          echo "PATH=$bin:$PATH" >> "$GITHUB_ENV"
-          echo "CC_aarch64_linux_android=$cc" >> "$GITHUB_ENV"
-          echo "AR_aarch64_linux_android=$bin/llvm-ar" >> "$GITHUB_ENV"
+
+          {
+            echo "NDK_HOME=$root"
+            echo "ANDROID_NDK_ROOT=$root"
+            echo "PATH=$bin:$PATH"
+            echo "CC_aarch64_linux_android=$cc"
+            echo "AR_aarch64_linux_android=$bin/llvm-ar"
+          } >> "$GITHUB_ENV"
 
       # The same directories `verify:desktop-rust` creates. tauri-build resolves
       # frontendDist at build-script time and that requirement does not vary by
