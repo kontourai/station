@@ -54,7 +54,7 @@ export function createFallowReview(sourceRevision, reports) {
       finding,
       status: 'pending',
       rationale: '',
-      evidence: [],
+      evidence: /** @type {string[]} */ ([]),
     }));
   if (new Set(findings.map(({ id }) => id)).size !== findings.length)
     throw new Error('Duplicate finding identity');
