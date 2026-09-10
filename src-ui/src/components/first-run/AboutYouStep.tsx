@@ -46,7 +46,7 @@ export interface AboutYouStepProps {
   /** Both destinations preserve selected answers; undefined means unanswered. */
   onComplete: (
     profile: UserProfileSettings | undefined,
-    destination: 'chat' | 'tour',
+    destination: 'chat' | 'tour' | 'devices',
   ) => void | Promise<void>;
   /** The save is in flight. */
   saving?: boolean;
@@ -163,8 +163,13 @@ export function AboutYouStep({
         you write and send a message.
       </p>
       {saving ? <p role="status">Saving your answers…</p> : null}
+      <p className="first-run-chapter__lede">
+        Want to use this Station on your phone too? Connect another device with
+        a QR invitation. Both devices use the same Station server. This is
+        optional—you can also do it later from Connections.
+      </p>
       <ResponsiveSurfaceActions className="first-run-chapter__actions">
-        {(['tour', 'chat'] as const).map((destination) => (
+        {(['devices', 'tour', 'chat'] as const).map((destination) => (
           <button
             key={destination}
             type="button"
@@ -187,7 +192,11 @@ export function AboutYouStep({
               );
             }}
           >
-            {destination === 'chat' ? 'Start your first chat' : 'Take the tour'}
+            {destination === 'chat'
+              ? 'Start your first chat'
+              : destination === 'devices'
+                ? 'Connect another device'
+                : 'Take the tour'}
           </button>
         ))}
       </ResponsiveSurfaceActions>
