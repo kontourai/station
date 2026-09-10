@@ -45,7 +45,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'SDK build failed' }
   npm.cmd run build:connect
   if ($LASTEXITCODE -ne 0) { throw 'Connect build failed' }
-  npm.cmd run build:desktop -- --target x86_64-pc-windows-msvc --config (Join-Path $root 'src-desktop/tauri.nightly.conf.json') --config $env:STATION_WINDOWS_CONFIG
+  npm.cmd run build:desktop -- --verbose --target x86_64-pc-windows-msvc --config (Join-Path $root 'src-desktop/tauri.nightly.conf.json') --config $env:STATION_WINDOWS_CONFIG
   if ($LASTEXITCODE -ne 0) { throw 'Windows installer build failed' }
   $installers = @(Get-ChildItem 'src-desktop/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi')
   if ($installers.Count -ne 1 -or $installers[0].Length -lt 1MB) { throw 'Expected one nonempty MSI' }

@@ -136,3 +136,23 @@ it('refuses changed admitted bytes before any upload', () => {
   expect(() => publishNightlyDesktop(f)).toThrow('changed after admission');
   expect(f.writes).toEqual([]);
 });
+
+it('rejects an older Nightly before changing the shared feed', () => {
+  const f = fixture();
+  const current = JSON.stringify({ version: '0.1.11-nightly.2444' });
+  Object.assign(f.release, {
+    assets: [
+      {
+        id: 42,
+        name: 'latest.json',
+        state: 'uploaded',
+        size: current.length,
+        digest: `sha256:${createHash('sha256').update(current).digest('hex')}`,
+      },
+    ],
+  });
+  const run = (args: string[]) =>
+    args[1].endsWith('/assets/42') ? current : f.run(args);
+  expect(() => publishNightlyDesktop({ ...f, run })).toThrow('regress');
+  expect(f.writes).toEqual([]);
+});

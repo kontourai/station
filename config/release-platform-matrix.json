@@ -160,16 +160,18 @@
         "evidence": { "kind": "deploy-ledger", "selector": "nightly-desktop" }
       },
       "windows": {
-        "state": "gated",
-        "buildJob": null,
-        "testLane": "Windows portable floor",
-        "publicationTarget": "not configured",
-        "updateAuthority": "not configured",
-        "rollbackSource": "last stable Windows release",
+        "state": "configured",
+        "buildJob": "nightly-native-stage.yml#stage-windows",
+        "testLane": "Windows MSI packaging and extraction, exact-SHA cohort admission, and protected signing checks",
+        "publicationTarget": "shared rolling GitHub prerelease nightly-desktop",
+        "updateAuthority": "signed Tauri Nightly updater feed",
+        "rollbackSource": "previous version-specific desktop downloads retained beside the shared manifest",
+        "requiredForPromotion": true,
+        "availabilityPolicy": "per-platform-native-cohort; macOS and Windows share one manifest publication; fleet completion remains NOT_VERIFIED",
         "evidence": {
           "kind": "not-verified",
-          "owner": "#844",
-          "reason": "Nightly Windows artifacts are not configured."
+          "owner": "#1045",
+          "reason": "Windows signing authority and provider/install receipts must be verified separately; existing macOS ledger entries do not establish Windows delivery."
         }
       },
       "linux": {

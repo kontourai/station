@@ -106,8 +106,9 @@ when the gated SHA is the workflow event SHA.
 
 Phase one, `nightly-native-stage.yml`, needs only the source gate and runs in
 parallel with the full-regression receipt (#1453): it reserves the cohort
-identity, then stages a signed Android AAB (arm64-v8a only, #1456), the four
-notarized macOS updater assets, and the signed, audited iOS package (#1454)
+identity, then stages a signed Android AAB (arm64-v8a only, #1456), notarized
+macOS downloads, a signed Windows MSI and updater archive, one shared desktop
+manifest, and the signed, audited iOS package (#1454)
 as run artifacts with content-bound stage receipts. It publishes nothing: no
 Play upload, no release asset, no tag move, no TestFlight upload, no ledger
 write. A failed night therefore costs one reserved version code and nothing
@@ -120,21 +121,25 @@ Phase two, `nightly-native-cohort.yml`, needs the source gate, the exact-SHA
 full-regression receipt, and phase one, and receives the reserved identity as
 inputs. It admits the staged bytes against their stage receipts, creates the
 promotion fence, and then publishes **per platform** (#1774): Android (Play
-internal), the rolling macOS prerelease, and the already-audited iOS package
+internal), the shared macOS/Windows desktop prerelease, and the already-audited iOS package
 (`testflight-delivery.yml` in `delivery: upload` mode, which never rebuilds)
 each run from that one admission and fence, in parallel, and none of them
-waits on or is withheld by another's provider outcome. Each Android/macOS job
-begins its own promotion state from the admission and records exactly its own
-provider claim — `reported_success` from a provider readback, or `unknown`
+waits on or is withheld by another provider's outcome. The desktop publisher
+waits for both desktop builds, verifies their version-specific uploads, then
+replaces `latest.json` last. It records separate macOS and Windows claims for
+that one provider operation; the two desktop outcomes must agree. The Android
+job records its own provider claim — `reported_success` from a provider readback, or `unknown`
 with the run reference when its provider step did not succeed — as a
 per-platform state artifact.
 
 The protected verifier (`protected-finalize`) runs whenever at least one of
-Android/macOS published. It joins both platforms' own state files into one
+Android or the shared desktop release published. It joins all three platform
+state files into one
 verification candidate (a platform that never retained its state is joined as
 an explicit `unknown` claim, never inferred), observes the provider of every
 platform that reported success — Play track and AAB identity for Android;
-release assets, rolling tag, updater signature and manifest for macOS — and
+release assets, rolling tag, both updater signatures and the shared manifest
+for macOS/Windows, plus the attested Windows signing and payload receipt — and
 emits the attested final receipt. That receipt's `state` is derived from what
 was observed: `complete` when every required platform was verified as
 published, `partial` when only a subset was, and its `platforms` map names
@@ -151,12 +156,12 @@ partial cohort is a disclosed outcome, not an error the other platform pays
 for.
 
 Recording (`record-native-completion`) verifies the final receipt's
-attestation, then writes one deploy-ledger row per platform the receipt
-verified as published, with `native cohort final receipt <state>` in the gate
+attestation, then writes an Android row and a shared desktop row for the
+providers the receipt verified as published, with `native cohort final receipt <state>` in the gate
 column and, on every row it writes, a note per `NOT_VERIFIED` or
 `NOT_PUBLISHED` platform and an `ios:` note carrying the TestFlight job
 result (iOS has no ledger channel of its own). The rolling Android marker `refs/tags/nightly` moves only when the
-receipt says Android published; macOS binds its own `nightly-desktop` tag in
+receipt says Android published; the desktop publisher binds `nightly-desktop` in
 its publishing job, before its claim step. The next plan's decide step
 (`scripts/nightly-cohort-decide.mjs`, rule in
 `scripts/lib/nightly-cohort-decision.mjs`) therefore never treats a marker
@@ -224,10 +229,10 @@ the disk image and the updater archive's application both carry stapled
 tickets. Preview and stable releases keep the serial staple-then-package order,
 so an application copied out of one of their disk images validates offline.
 The independently published CLI remains outside this cohort. The Nightly
-Android and macOS matrix cells carry `requiredForPromotion: true` and the
-`per-platform-native-cohort` availability policy; both are invariants
-`scripts/release-platform-matrix.mjs` asserts for those two cells so a matrix
-edit cannot silently demote either, not properties the cohort derives at
+Android, macOS, and Windows matrix cells carry `requiredForPromotion: true` and the
+`per-platform-native-cohort` availability policy; these are invariants
+`scripts/release-platform-matrix.mjs` asserts for those three cells so a matrix
+edit cannot silently demote a required platform, not properties the cohort derives at
 run time. This is only an available configured subset, and fleet/CLI
 completion remains `NOT_VERIFIED`.
 

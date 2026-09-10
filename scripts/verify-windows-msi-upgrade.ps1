@@ -28,7 +28,7 @@ $upgradeA = Read-MsiProperty $InstallerA 'UpgradeCode'
 if ($upgradeA -ne (Read-MsiProperty $InstallerB 'UpgradeCode')) { throw 'MSIs do not share an upgrade identity' }
 if ([version](Read-MsiProperty $InstallerB 'ProductVersion') -le [version](Read-MsiProperty $InstallerA 'ProductVersion')) { throw 'Build B must be newer than build A' }
 $uninstallKeys = @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')
-$existing = @(Get-ItemProperty $uninstallKeys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'Station Nightly' })
+$existing = @(Get-ItemProperty $uninstallKeys -ErrorAction SilentlyContinue | Where-Object { $displayName = $_.PSObject.Properties['DisplayName']; $displayName -and $displayName.Value -eq 'Station Nightly' })
 if ($existing.Count) { throw 'An existing Nightly installation belongs to the user; this fixture requires an unused Nightly identity' }
 New-Item -ItemType Directory -Path $ProofRoot | Out-Null
 Set-Content -LiteralPath (Join-Path $ProofRoot 'fixture-owner.json') -Value (@{ productA=$productA; productB=$productB; upgradeCode=$upgradeA } | ConvertTo-Json) -Encoding utf8
