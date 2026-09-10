@@ -316,9 +316,9 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
-    'tests/monitoring-and-chrome.spec.ts',
     'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
+    'tests/monitoring-and-chrome.spec.ts',
     'tests/keyboard-shortcuts.spec.ts',
     'tests/sidebar-geometry.spec.ts',
     'tests/project-lifecycle.spec.ts',
@@ -548,16 +548,6 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
-    path: 'tests/monitoring-and-chrome.spec.ts',
-    bucket: 'product',
-    surface: 'Monitoring',
-    tierTarget: 'full',
-    primary: true,
-    rationale:
-      'Mounted payload work and real responsive chrome geometry; replaces source-string layout claims.',
-    exceptions: [],
-  },
-  {
     path: 'tests/image-preview-inspection.spec.ts',
     bucket: 'product',
     surface: 'Chat and workspace image previews',
@@ -655,6 +645,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Diagnostics bundle download, dated filename, canonical failure state, and retry behavior.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/monitoring-and-chrome.spec.ts',
+    bucket: 'product',
+    surface: 'Monitoring',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Mounted payload work and real responsive chrome geometry; replaces source-string layout claims.',
     exceptions: [],
   },
   {
