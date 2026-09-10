@@ -132,8 +132,15 @@ function handleClaudeNotification(
     const remaining = (chat?.backgroundTasks || []).filter(
       (task) => task.taskId !== taskId,
     );
+    // station#1877: the registry now carries every live subagent, not only
+    // ones that outlived their turn, so registry membership alone no longer
+    // means the user saw this as "still working". Gate on `backgrounded`,
+    // which is what "survived past its turn" actually meant — an inline tool
+    // part already reports a same-turn completion, and announcing here too
+    // would double-report it.
     const wasTracked =
-      (chat?.backgroundTasks || []).length !== remaining.length;
+      (chat?.backgroundTasks || []).find((task) => task.taskId === taskId)
+        ?.backgrounded === true;
     activeChatsStore.updateChat(event.threadId, {
       backgroundTasks: remaining,
     });
