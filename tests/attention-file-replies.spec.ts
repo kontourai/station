@@ -298,13 +298,11 @@ test('an image-only answer stays bound to the second request', async ({
     return canvas.toDataURL('image/png').split(',')[1];
   });
   const second = page.getByRole('region', { name: 'Second request' });
-  await second
-    .getByLabel('Files for this answer')
-    .setInputFiles({
-      name: 'answer.png',
-      mimeType: 'image/png',
-      buffer: Buffer.from(png, 'base64'),
-    });
+  await second.getByLabel('Files for this answer').setInputFiles({
+    name: 'answer.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(png, 'base64'),
+  });
   await expect(
     second.getByRole('button', { name: 'Send answer', exact: true }),
   ).toBeEnabled();

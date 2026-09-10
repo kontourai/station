@@ -852,14 +852,12 @@ describe('Orchestration Routes', () => {
       engineId: 'claude',
       capabilities: ['file-input'],
     }));
-    const execute = vi
-      .fn()
-      .mockResolvedValue({
-        conversationId: 'conversation-a',
-        sessionId: 'session-a',
-        providerTurnId: 'turn-a',
-        target: { kind: 'agent', id: 'agent-a' },
-      });
+    const execute = vi.fn().mockResolvedValue({
+      conversationId: 'conversation-a',
+      sessionId: 'session-a',
+      providerTurnId: 'turn-a',
+      target: { kind: 'agent', id: 'agent-a' },
+    });
     const app = createOrchestrationRoutes(
       { inspectInputReplyContext } as unknown as Parameters<
         typeof createOrchestrationRoutes
