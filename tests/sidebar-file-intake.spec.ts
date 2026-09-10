@@ -2,7 +2,7 @@
 import { writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, type TestInfo } from '@playwright/test';
 import { build } from 'esbuild';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 
@@ -206,7 +206,7 @@ async function drop(
   page: Page,
   name: string,
   path: string,
-  screenshot?: string,
+  testInfo?: TestInfo,
 ) {
   const row = page.getByRole('group', { name: 'Chat ' + name, exact: true });
   const box = await row.boundingBox();
@@ -222,7 +222,10 @@ async function drop(
     });
   await expect(row.getByRole('status')).toContainText('Add 1 file');
   expect(await row.boundingBox()).toEqual(box);
-  if (screenshot) await page.screenshot({ path: screenshot });
+  if (testInfo)
+    await page.screenshot({
+      path: testInfo.outputPath('sidebar-drag-hint.png'),
+    });
   await cdp.send('Input.dispatchDragEvent', {
     type: 'drop',
     x: box.x + 40,
@@ -237,12 +240,7 @@ test('sidebar file drop opens only the target draft, stages once and preserves b
   const prepared = await mount(page);
   const path = testInfo.outputPath('intake.txt');
   await writeFile(path, 'sidebar file');
-  await drop(
-    page,
-    'target',
-    path,
-    testInfo.outputPath('sidebar-drag-hint.png'),
-  );
+  await drop(page, 'target', path, testInfo);
   await expect(
     page.getByRole('heading', { name: 'target', exact: true }),
   ).toBeVisible();
