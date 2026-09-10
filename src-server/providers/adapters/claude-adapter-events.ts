@@ -391,24 +391,7 @@ export function mapClaudeSdkMessage({
       reason: liveTasks.length > 0 ? 'background-tasks' : undefined,
     });
     if (liveTasks.length > 0) {
-      publish({
-        eventId: crypto.randomUUID(),
-        provider,
-        threadId: record.session.threadId,
-        createdAt,
-        method: 'extension.notification',
-        namespace: CLAUDE_EXTENSION_NAMESPACE,
-        type: 'task/registry',
-        payload: {
-          active: liveTasks.map((task) => ({
-            taskId: task.taskId,
-            toolCallId: task.toolCallId,
-            description: task.description,
-            subagentType: task.subagentType,
-            backgrounded: task.backgrounded === true,
-          })),
-        },
-      });
+      publishClaudeTaskRegistry({ provider, record, publish, createdAt });
     }
     return;
   }
@@ -447,6 +430,9 @@ export function mapClaudeSdkMessage({
         ...(message.prompt ? { prompt: message.prompt } : {}),
       },
     });
+    // station#1877: the live set changed, so the client needs the snapshot
+    // now — not only if this turn later goes idle with work still running.
+    publishClaudeTaskRegistry({ provider, record, publish, createdAt });
     return;
   }
 
@@ -1103,6 +1089,43 @@ export function mapClaudeTaskStatus(
   }
 }
 
+/**
+ * Publishes the current live subagent set.
+ *
+ * station#1877: this used to be reachable only from the `session.state-changed`
+ * transition to `idle`, so a subagent that started and finished inside one
+ * active turn never produced a registry event at all — the client had no live
+ * set to render and the run was invisible until its settle. Every mutation of
+ * `record.activeTasks` publishes the snapshot now, including the empty one, so
+ * the client can clear a finished task instead of inferring its absence.
+ */
+function publishClaudeTaskRegistry(params: {
+  provider: ProviderSession['provider'];
+  record: ClaudeMessageState;
+  publish: (event: CanonicalRuntimeEvent) => void;
+  createdAt: string;
+}): void {
+  const { provider, record, publish, createdAt } = params;
+  publish({
+    eventId: crypto.randomUUID(),
+    provider,
+    threadId: record.session.threadId,
+    createdAt,
+    method: 'extension.notification',
+    namespace: CLAUDE_EXTENSION_NAMESPACE,
+    type: 'task/registry',
+    payload: {
+      active: [...(record.activeTasks?.values() ?? [])].map((task) => ({
+        taskId: task.taskId,
+        toolCallId: task.toolCallId,
+        description: task.description,
+        subagentType: task.subagentType,
+        backgrounded: task.backgrounded === true,
+      })),
+    },
+  });
+}
+
 function settleClaudeTask(params: {
   provider: ProviderSession['provider'];
   record: ClaudeMessageState;
@@ -1156,6 +1179,9 @@ function settleClaudeTask(params: {
       summary,
     },
   });
+  // station#1877: publish the set this settle left behind, so a client that
+  // is tracking siblings drops only this one and keeps the rest live.
+  publishClaudeTaskRegistry({ provider, record, publish, createdAt });
 }
 
 const CLAUDE_TOOL_RESULT_OUTPUT_LIMIT = 2000;
