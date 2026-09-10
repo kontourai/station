@@ -1023,34 +1023,6 @@ export class RevisionEvidenceModule {
     return this.#active(generation) && this.#restorePersisted(generation);
   }
 
-  liveBuffer(
-    scope: WorkingStateScope,
-    sharedRevision: SharedWorkingStateRevisionId,
-  ): RevisionEvidenceState {
-    const canonical = canonicalScope(scope);
-    if (!canonical || !boundedText(sharedRevision))
-      throw new Error('live buffer state is malformed');
-    return {
-      state: 'live_buffer',
-      scope: canonical,
-      sharedRevision,
-    };
-  }
-
-  locallyPending(
-    scope: WorkingStateScope,
-    sharedRevision: SharedWorkingStateRevisionId,
-  ): RevisionEvidenceState {
-    const canonical = canonicalScope(scope);
-    if (!canonical || !boundedText(sharedRevision))
-      throw new Error('locally pending state is malformed');
-    return {
-      state: 'locally_pending',
-      scope: canonical,
-      sharedRevision,
-    };
-  }
-
   freeze(input: unknown): FreezeOutcome {
     const generation = this.#lifecycleGeneration;
     if (!this.#active(generation))

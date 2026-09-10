@@ -5024,13 +5024,6 @@ for (const retiredInlineConnectionsHubSnippet of [
 // invariant that still has a subject is the "must not inline" list above —
 // ConnectionsHub may not grow its own copies back.
 
-const connectionsHubSection = readRequiredSource(
-  '../src-ui/src/views/connections-hub/ConnectionsHubSection.tsx',
-);
-if (!connectionsHubSection.includes('export function ConnectionsHubSection')) {
-  errors.push('ConnectionsHubSection.tsx must export ConnectionsHubSection.');
-}
-
 const systemStatusHook = readRequiredSource(
   '../src-ui/src/hooks/useSystemStatus.ts',
 );
