@@ -76,6 +76,13 @@ function readRegistryTasks(payload: unknown): ChatBackgroundTask[] {
       subagentType:
         typeof raw.subagentType === 'string' ? raw.subagentType : undefined,
       backgrounded: raw.backgrounded === true,
+      // Absent depth stays absent: "not reported" is not "top level".
+      spawnDepth:
+        typeof raw.spawnDepth === 'number' &&
+        Number.isFinite(raw.spawnDepth) &&
+        raw.spawnDepth > 0
+          ? raw.spawnDepth
+          : undefined,
     });
   }
   return tasks;

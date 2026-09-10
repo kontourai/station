@@ -743,6 +743,63 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
     expect(withResult).toHaveLength(1);
   });
 
+  test('station#1877 follow-up: spawn_depth is tracked and published on the registry', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-nested',
+        tool_use_id: 'toolu-nested',
+        description: 'Nested investigation',
+        subagent_type: 'general-purpose',
+        spawn_depth: 2,
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+
+    expect(record.activeTasks?.get('task-nested')?.spawnDepth).toBe(2);
+    const registry = publish.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.type === 'task/registry');
+    expect(registry.payload.active[0]).toMatchObject({
+      taskId: 'task-nested',
+      spawnDepth: 2,
+    });
+  });
+
+  test('station#1877 follow-up: an absent spawn_depth stays absent rather than becoming 1', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-flat',
+        tool_use_id: 'toolu-flat',
+        description: 'Top level',
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+
+    expect(record.activeTasks?.get('task-flat')?.spawnDepth).toBeUndefined();
+    const registry = publish.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.type === 'task/registry');
+    expect('spawnDepth' in registry.payload.active[0]).toBe(false);
+  });
+
   test('station#1879: a settle carries the SDK output_file and usage', () => {
     const publish = vi.fn();
     const record = makeRecord();
