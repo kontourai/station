@@ -303,6 +303,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
   parallelSafe: [
     'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
+    'tests/sidebar-file-intake.spec.ts',
     'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
     'tests/banner-stack-bound.spec.ts',
@@ -636,6 +637,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real-browser focus semantics for dialog return focus: a collapsed surviving ancestor refuses focus and the walk falls through, an open follow-up dialog keeps focus, and a surviving trigger is restored untouched. jsdom reports a hidden .focus() as successful, so station#1206 gap 2 is only falsifiable here. station#1245 adds the real ConnectionManagerModalContent from packages/connect falling back past an inert survivor — the only place the cross-package wiring is exercised in a real bundle.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/sidebar-file-intake.spec.ts',
+    bucket: 'product',
+    surface: 'Sidebar file intake',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production sidebar rows, composer receiver and upload staging with exact HTTP fixtures. CDP supplies an external file drag from a test-owned output file; draft preservation and no-send behavior are asserted.',
     exceptions: [],
   },
   {

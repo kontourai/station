@@ -1,18 +1,17 @@
-import type { HomeWorkItem } from '../../views/home/home-view-model';
+import { useEffect, useRef, useState } from 'react';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { activeChatsStore } from '../../contexts/active-chats-store';
+import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
+import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
+import { requestConversationFileIntake } from '../../lib/conversation-file-intake';
+import {
+  chatTaskSessionId,
+  type HomeWorkItem,
+} from '../../views/home/home-view-model';
 import { InboxRow } from '../chat-dock/ChatDockInboxRows';
+import './SidebarOpenChats.css';
 
-/**
- * archive#3314: the sidebar's "Open chats" mini-inbox rows — the
- * SAME shared row anatomy as the chat-dock inbox and the mobile task
- * switcher (`ChatDockInboxRows.tsx`), in its compact host variant. No third
- * bespoke row style. Lazy-loaded by `ProjectSidebar` so the shared row
- * module (and its stylesheet) stays out of the entry chunk the sidebar
- * belongs to.
- *
- * No snooze/close actions here: this list comes straight from the
- * open-chats store, which snoozing does not filter — a control whose effect
- * is invisible where it is offered would be chrome, not a feature.
- */
+/** Rows retain the shared inbox anatomy; file intake goes to the exact live composer. */
 export function SidebarOpenChats({
   items,
   now,
@@ -25,16 +24,102 @@ export function SidebarOpenChats({
   return (
     <>
       {items.map((item) => (
-        <InboxRow
+        <FileDropRow
           key={item.id}
           item={item}
-          isCurrent={false}
-          isSnoozed={false}
-          isOpenChat={false}
           now={now}
           onActivate={onActivate}
         />
       ))}
     </>
+  );
+}
+function FileDropRow({
+  item,
+  now,
+  onActivate,
+}: {
+  item: HomeWorkItem;
+  now: number;
+  onActivate: (item: HomeWorkItem) => void;
+}) {
+  const root = useRef<HTMLFieldSetElement>(null);
+  const scope = useHostRequestAuthorityScope();
+  const [error, setError] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
+  const sessionId = chatTaskSessionId(item);
+  const owner = useRef(scope);
+  owner.current = scope;
+  const identity = `${scope?.apiBase}:${scope?.authorityKey}:${sessionId}`;
+  const previousIdentity = useRef(identity);
+  useEffect(() => {
+    if (previousIdentity.current === identity) return;
+    previousIdentity.current = identity;
+    setError(null);
+    setOpening(false);
+  }, [identity]);
+  const drop = useChatPaneFileDrop({
+    rootRef: root,
+    resetKey: `${scope?.apiBase}:${scope?.authorityKey}:${sessionId}`,
+    reportError: setError,
+    selectFiles: async (files) => {
+      setError(null);
+      setOpening(true);
+      try {
+        const target = activeChatsStore.getSnapshot()[sessionId];
+        if (!scope?.isCurrent())
+          throw new Error('Reconnect to this Station before adding files.');
+        if (!target || conversationOpenPhase(target) === 'read-only')
+          throw new Error(
+            'This chat is unavailable or read-only. Open a writable chat to attach files.',
+          );
+        const result = await requestConversationFileIntake(
+          scope,
+          sessionId,
+          files,
+          () => onActivate(item),
+        );
+        if (scope.isCurrent() && result.errors.length)
+          setError(result.errors[0]);
+      } catch (cause) {
+        if (owner.current === scope && scope?.isCurrent())
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : 'Files could not be attached to this chat.',
+          );
+      } finally {
+        if (owner.current === scope) setOpening(false);
+      }
+    },
+  });
+  return (
+    <fieldset
+      ref={root}
+      className="sidebar-chat-drop"
+      aria-label={`Chat ${item.title}`}
+      onDragEnter={drop.onDragEnter}
+      onDragOver={drop.onDragOver}
+      onDragLeave={drop.onDragLeave}
+      onDrop={drop.onDrop}
+      onDragEnd={drop.onDragEnd}
+    >
+      <InboxRow
+        item={item}
+        isCurrent={false}
+        isSnoozed={false}
+        isOpenChat={false}
+        now={now}
+        onActivate={onActivate}
+      />
+      {drop.isDraggingFiles && (
+        <span className="sidebar-chat-drop__hint" role="status">
+          Add {drop.fileCount} file{drop.fileCount === 1 ? '' : 's'} to{' '}
+          {item.title}
+        </span>
+      )}
+      {opening && <span role="status">Opening the target chat for files…</span>}
+      {error && <span role="alert">{error}</span>}
+    </fieldset>
   );
 }

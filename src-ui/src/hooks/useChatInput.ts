@@ -15,7 +15,9 @@ import {
 } from '../contexts/ActiveChatsContext';
 import { useAgent } from '../contexts/AgentsContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { conversationOpenPhase } from '../contexts/conversation-open-policy';
 import { useToast } from '../contexts/ToastContext';
+import { registerConversationFileReceiver } from '../lib/conversation-file-intake';
 import { resolveTurnModel } from '../lib/turnModel';
 import type { FileAttachment } from '../types';
 import type { ApprovalMode } from '../utils/approvalMode';
@@ -47,6 +49,9 @@ import { useSlashCommands } from './useSlashCommands';
 // hook, and the components that call it, to recompute.
 type ComposerChatSlice = Pick<
   ChatUIState,
+  | 'conversationOpenState'
+  | 'conversationOpenPending'
+  | 'conversationOpenFailed'
   | 'input'
   | 'attachments'
   | 'attachmentStages'
@@ -68,6 +73,9 @@ function selectComposerSlice(
 ): ComposerChatSlice | null {
   if (!state) return null;
   return {
+    conversationOpenState: state.conversationOpenState,
+    conversationOpenPending: state.conversationOpenPending,
+    conversationOpenFailed: state.conversationOpenFailed,
     input: state.input,
     attachments: state.attachments,
     attachmentStages: state.attachmentStages,
@@ -519,15 +527,17 @@ export function useChatInput({
   const handleAddAttachments = useCallback(
     (files: FileAttachment[]) => {
       if (!sessionId) return;
-      const existing = attachments;
+      const existing =
+        activeChatsStore.getSnapshot()[sessionId]?.attachments ?? [];
       updateChat(sessionId, { attachments: [...existing, ...files] });
     },
-    [sessionId, attachments, updateChat],
+    [sessionId, updateChat],
   );
 
   const {
     error: attachmentError,
     selectFiles: selectAttachmentFiles,
+    selectFilesWithResult,
     replaceFile: replaceAttachmentFile,
     setError: setAttachmentError,
     retry: retryAttachmentStage,
@@ -536,9 +546,18 @@ export function useChatInput({
     sendBlockedReason,
   } = useComposerAttachments({
     apiBase,
+    ownerKey: sessionId ?? '',
     attachments,
     stages: attachmentStages,
     capabilities: attachmentCapabilities,
+    getCurrentStages: () =>
+      sessionId
+        ? (activeChatsStore.getSnapshot()[sessionId]?.attachmentStages ?? [])
+        : [],
+    getCurrentAttachments: () =>
+      sessionId
+        ? (activeChatsStore.getSnapshot()[sessionId]?.attachments ?? [])
+        : [],
     onAddAttachments: handleAddAttachments,
     onReplaceAttachment: (replacement) => {
       if (!sessionId) return;
@@ -559,6 +578,48 @@ export function useChatInput({
       if (sessionId) updateChat(sessionId, { attachmentStages: nextStages });
     },
   });
+
+  const intakeOwner = useRef({ apiBase, sessionId, isChatVisible });
+  intakeOwner.current = { apiBase, sessionId, isChatVisible };
+  const intake = useRef(selectFilesWithResult);
+  intake.current = selectFilesWithResult;
+  const intakePhase = activeChatState
+    ? conversationOpenPhase(activeChatState)
+    : 'resolving';
+  useEffect(() => {
+    if (
+      !sessionId ||
+      !isChatVisible ||
+      intakePhase === 'resolving' ||
+      intakePhase === 'busy'
+    )
+      return;
+    return registerConversationFileReceiver({
+      apiBase,
+      sessionId,
+      receive: async (files, operation) => {
+        const target = activeChatsStore.getSnapshot()[sessionId];
+        if (
+          !target ||
+          conversationOpenPhase(target) !== 'writable' ||
+          !operation.requestScope.isCurrent()
+        )
+          throw new Error('This chat cannot currently accept attachments.');
+        return intake.current(files, {
+          ...operation,
+          isCurrent: () =>
+            operation.requestScope.isCurrent() &&
+            intakeOwner.current.apiBase === apiBase &&
+            intakeOwner.current.sessionId === sessionId &&
+            intakeOwner.current.isChatVisible &&
+            Boolean(activeChatsStore.getSnapshot()[sessionId]) &&
+            conversationOpenPhase(
+              activeChatsStore.getSnapshot()[sessionId]!,
+            ) === 'writable',
+        });
+      },
+    });
+  }, [apiBase, sessionId, isChatVisible, intakePhase]);
 
   const handleRemoveAttachment = useCallback(
     (id: string) => {
