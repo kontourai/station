@@ -6,7 +6,9 @@ name: Nightly
 # publication.
 on:
   schedule:
-    - cron: '0 9 * * *'
+    # 00:00, 06:00, 12:00, 18:00 UTC. Quiet intervals no-op when main has
+    # not moved since the last verified ship.
+    - cron: '0 */6 * * *'
   workflow_dispatch:
     inputs:
       source_sha: { description: Optional current workflow event SHA; older revisions are rejected, required: false }
