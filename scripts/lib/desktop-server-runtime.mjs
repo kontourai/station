@@ -91,12 +91,67 @@ function targetPackageRoot(
   sourceRoot,
   parentTargetRoot,
   outputRoot,
-  copied,
+  planned,
 ) {
-  const topLevelTarget = join(outputRoot, 'node_modules', packageName);
-  const topLevelSource = copied.get(topLevelTarget);
-  if (!topLevelSource || topLevelSource === sourceRoot) return topLevelTarget;
-  return join(parentTargetRoot, 'node_modules', packageName);
+  // Match Node's nearest node_modules lookup. A different nearer version
+  // shadows the root, even when the root has the requested version.
+  let current = parentTargetRoot;
+  while (true) {
+    const candidate = join(current, 'node_modules', packageName);
+    const visible = planned.get(candidate);
+    if (visible) {
+      return visible === sourceRoot
+        ? candidate
+        : join(parentTargetRoot, 'node_modules', packageName);
+    }
+    if (current === outputRoot) break;
+    current = dirname(current);
+  }
+  return join(outputRoot, 'node_modules', packageName);
+}
+
+function planRuntimePackages(packageNames, projectRoot, outputRoot) {
+  outputRoot = resolve(outputRoot);
+  const planned = new Map();
+  const queue = [];
+  const add = (target, source) => {
+    const existing = planned.get(target);
+    if (existing === source) return;
+    if (existing)
+      throw new Error(
+        `Conflicting runtime packages at ${target}: ${existing} and ${source}`,
+      );
+    planned.set(target, source);
+    queue.push({ target, source });
+  };
+  // Root imports must retain the versions selected by the server, regardless
+  // of which transitive dependency happens to be traversed first.
+  for (const name of packageNames) {
+    let source;
+    try {
+      source = resolvePackageRoot(name, projectRoot);
+    } catch (error) {
+      if (OPTIONAL_DESKTOP_SERVER_RUNTIME_PACKAGES.has(name)) continue;
+      throw error;
+    }
+    add(join(outputRoot, 'node_modules', name), source);
+  }
+  for (let index = 0; index < queue.length; index += 1) {
+    const { target, source } = queue[index];
+    // Reserve all siblings before visiting their descendants. Otherwise a
+    // later sibling can silently shadow a dependency already hoisted for a child.
+    for (const name of installedRuntimeDependencies(
+      readPackage(source),
+      source,
+    )) {
+      const dependency = resolvePackageRoot(name, source);
+      add(
+        targetPackageRoot(name, dependency, target, outputRoot, planned),
+        dependency,
+      );
+    }
+  }
+  return planned;
 }
 
 /**
@@ -153,55 +208,6 @@ function stageWindowsWixPackage(
       relative(join(outputRoot, 'node_modules'), targetPackageRootPath),
     ),
   });
-}
-
-function copyPackageTree(
-  packageName,
-  fromRoot,
-  parentTargetRoot,
-  outputRoot,
-  copied,
-  windowsWixResources,
-) {
-  const sourceRoot = resolvePackageRoot(packageName, fromRoot);
-  const targetPackageRootPath = targetPackageRoot(
-    packageName,
-    sourceRoot,
-    parentTargetRoot,
-    outputRoot,
-    copied,
-  );
-  const existingSource = copied.get(targetPackageRootPath);
-  if (existingSource === sourceRoot) return;
-  if (existingSource) {
-    throw new Error(
-      `Conflicting runtime packages for ${packageName}: ${existingSource} and ${sourceRoot}`,
-    );
-  }
-  copied.set(targetPackageRootPath, sourceRoot);
-
-  const pkg = readPackage(sourceRoot);
-  mkdirSync(dirname(targetPackageRootPath), { recursive: true });
-  cpSync(sourceRoot, targetPackageRootPath, packageCopyOptions(sourceRoot));
-  if (windowsWixResources) {
-    stageWindowsWixPackage(
-      sourceRoot,
-      targetPackageRootPath,
-      outputRoot,
-      windowsWixResources,
-    );
-  }
-
-  for (const dependency of installedRuntimeDependencies(pkg, sourceRoot)) {
-    copyPackageTree(
-      dependency,
-      sourceRoot,
-      targetPackageRootPath,
-      outputRoot,
-      copied,
-      windowsWixResources,
-    );
-  }
 }
 
 function writeWindowsWixTauriConfig(
@@ -291,20 +297,12 @@ export function stageDesktopServerRuntime({
     mkdirSync(windowsWixResources.root, { recursive: true });
   }
   mkdirSync(outputRoot, { recursive: true });
-  const copied = new Map();
-  for (const packageName of packages) {
-    try {
-      copyPackageTree(
-        packageName,
-        projectRoot,
-        outputRoot,
-        outputRoot,
-        copied,
-        windowsWixResources,
-      );
-    } catch (error) {
-      if (OPTIONAL_DESKTOP_SERVER_RUNTIME_PACKAGES.has(packageName)) continue;
-      throw error;
+  const planned = planRuntimePackages(packages, projectRoot, outputRoot);
+  for (const [target, source] of planned) {
+    mkdirSync(dirname(target), { recursive: true });
+    cpSync(source, target, packageCopyOptions(source));
+    if (windowsWixResources) {
+      stageWindowsWixPackage(source, target, outputRoot, windowsWixResources);
     }
   }
   inspectDesktopServerRuntime(outputRoot, budget);

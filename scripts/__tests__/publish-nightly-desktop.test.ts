@@ -42,9 +42,8 @@ function fixture() {
             'station-nightly-desktop-macos-aarch64.app.tar.gz.sig',
           ]
         : [
-            'station-nightly-desktop-windows-x86_64.msi',
-            'station-nightly-desktop-windows-x86_64.msi.zip',
-            'station-nightly-desktop-windows-x86_64.msi.zip.sig',
+            'station-nightly-desktop-windows-x86_64-setup.exe',
+            'station-nightly-desktop-windows-x86_64-setup.exe.sig',
             'windows-build-receipt.json',
           ];
     const artifacts = names.map((name) => {
@@ -109,7 +108,7 @@ function fixture() {
 it('publishes all immutable downloads before the only mutable manifest', () => {
   const f = fixture();
   publishNightlyDesktop(f);
-  expect(f.writes).toHaveLength(7);
+  expect(f.writes).toHaveLength(6);
   expect(f.writes.at(-1)).toBe('latest.json');
   expect(
     f.writes
@@ -129,7 +128,7 @@ it('refuses changed admitted bytes before any upload', () => {
     join(
       f.root,
       'cohort-windows',
-      'station-nightly-desktop-windows-x86_64.msi',
+      'station-nightly-desktop-windows-x86_64-setup.exe',
     ),
     'changed',
   );

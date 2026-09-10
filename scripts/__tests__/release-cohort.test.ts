@@ -12,6 +12,7 @@ import {
   createCohortPlan,
   createStageReceipt,
   finalizeCohort,
+  groupDesktopPromotionStates,
   recordProviderPromotion,
   unshippedState,
 } from '../release-cohort.mjs';
@@ -1324,6 +1325,13 @@ describe('Windows joins desktop publication', () => {
       }),
     );
     expect(() => finalizeCohort(states.slice(0, 2))).toThrow();
+    const desktop = groupDesktopPromotionStates([states[1], states[2]]);
+    expect(() => groupDesktopPromotionStates([states[0], states[1]])).toThrow();
+    expect(
+      finalizeCohort([states[0], desktop]).providerClaims.map(
+        (claim: { platform: string }) => claim.platform,
+      ),
+    ).toEqual(['android', 'macos', 'windows']);
     expect(
       finalizeCohort(states).providerClaims.map(
         (claim: { platform: string }) => claim.platform,

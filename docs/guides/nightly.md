@@ -7,7 +7,7 @@ platform delivery authorities while sharing one channel identifier:
 | Platform | Artifact | Identifier | Built by | Delivered by |
 | --- | --- | --- | --- | --- |
 | macOS | notarized app, DMG, updater archive | `io.kontourai.station.nightly` | `.github/workflows/nightly-native-stage.yml#stage-macos` | rolling GitHub prerelease and shared signed Tauri feed |
-| Windows | MSI and signed updater archive | `io.kontourai.station.nightly` | `.github/workflows/nightly-native-stage.yml#stage-windows` | shared rolling GitHub prerelease and signed Tauri feed |
+| Windows | NSIS installer and Tauri updater signature | `io.kontourai.station.nightly` | `.github/workflows/nightly-native-stage.yml#stage-windows` | shared rolling GitHub prerelease and signed Tauri feed |
 | Android | signed AAB/APK | `io.kontourai.station.nightly` | `.github/workflows/nightly-native-stage.yml#stage-android` | Play internal testing track |
 
 Because the nightly uses its own identifier, these channels install alongside a
@@ -223,52 +223,57 @@ trust contracts.
 
 ## Windows desktop and the shared update feed
 
-Windows Nightly is built on the hosted Windows runner in
-`nightly-native-stage.yml`, using the same source SHA and reserved version as
-macOS and Android. The supported packaging entry point is
-`scripts/build-windows-nightly.ps1`; it uses `npm run build:desktop` so the
-Windows resource aliases are applied before WiX bundles the installer.
+Windows Nightly uses Tauri's built-in NSIS installer and v2 updater artifacts.
+The same `setup.exe` serves as the initial installer and update payload; its
+`.sig` is generated and checked with the Tauri updater key. The app installs
+per user and uses the separate `io.kontourai.station.nightly` identity.
+Station's desktop server currently requires Node 24 on the user's PATH.
 
-For a local unsigned packaging check in a fresh Windows worktree:
+`nightly-native-stage.yml` builds Windows from the same source SHA and reserved
+version as macOS and Android. `scripts/build-windows-nightly.ps1` uses
+`npm run build:desktop`, including the Windows resource staging adapter, and
+extracts the installer with 7-Zip to verify packaged build provenance.
+The pre-release desktop workflow also builds an unsigned NSIS package.
+
+For local packaging in a clean Windows worktree with Node 24 and 7-Zip:
 
 ```powershell
 npm run dependencies:ci
 ./scripts/build-windows-nightly.ps1 -SourceSha (git rev-parse HEAD) -BundleVersion 244399
 ```
 
-The number in this example is a **local test identity**, not a production
-reservation. Hosted jobs must use `plan-cohort.outputs.bundle_version`.
-The MSI's three numeric fields encode that reservation monotonically;
-the application retains its normal `X.Y.Z-nightly.<day>.<build>` version,
-`io.kontourai.station.nightly` identity, and separate Nightly home.
+That example number is a local test identity. Hosted releases consume the
+reserved `plan-cohort.outputs.bundle_version`. Generated output from a prior
+build must be retained separately before another build uses the same worktree.
 
-Signing requires `WINDOWS_CERTIFICATE_BASE64` (a PFX) and
-`WINDOWS_CERTIFICATE_PASSWORD` in the protected `native-release` environment,
-plus the existing `TAURI_SIGNING_PRIVATE_KEY`,
-`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and `TAURI_SIGNING_PUBLIC_KEY`.
-Authenticode and updater signatures serve separate purposes. The builder
-checks Authenticode, extracts the MSI to compare packaged provenance, and
-checks that the updater archive contains exactly that MSI. The assembly and
-protected finalization steps verify the Tauri signature independently.
-Without Windows signing authority, the build may retain an unsigned MSI for
-diagnostics, but the signed stage fails and desktop publication is withheld.
+Windows publisher signing can use Tauri's `signCommand` through the protected
+`WINDOWS_SIGN_COMMAND` variable, with the signing tool and its credentials
+configured in the runner environment. This supports cloud/HSM signing such as
+Azure Artifact Signing. Existing exportable certificates can instead use
+`WINDOWS_CERTIFICATE_BASE64` and `WINDOWS_CERTIFICATE_PASSWORD`. The builder
+checks Authenticode independently of the Tauri updater signature.
 
-One desktop publisher owns `nightly-desktop/latest.json`. Both macOS and
-Windows must stage successfully before the manifest is assembled; entries
-from a previous release are never carried into a newer version. Downloads
-have version-specific filenames. The publisher uploads all six desktop
-assets, verifies their GitHub sizes and digests, then replaces `latest.json`
-last and reads it back. Existing download bytes are not overwritten, so a
-failed upload before the manifest write leaves the previous feed usable.
-The GitHub asset replacement itself is not a transactional API operation;
-a failed or interrupted write remains an unresolved provider effect in the
-cohort receipt until readback confirms it.
+Updater signing uses `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PUBLIC_KEY`,
+and an optional `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. `-RequireSigning`
+requires both publisher and updater signing. `-SignUpdater` supports isolated
+updater-signature tests without claiming Authenticode verification. Without
+publisher signing, a diagnostic installer can be retained in Actions, but the
+required promotion stage stays `NOT_VERIFIED` and withholds publication.
 
-The macOS and Windows provider claims refer to that same desktop publication.
-Android retains its separate provider outcome. The protected receipt must
-verify both desktop inventories before reporting their publication complete.
-A successful build or publication does not prove an installation or upgrade:
-verify a fresh install, launch, upgrade, and uninstall on Windows separately.
-The MSI cleanup fragment removes obsolete bundled runtime directories during
-upgrade/uninstall while leaving the Station user home outside the install
-location untouched.
+One publisher owns `nightly-desktop/latest.json`. It waits for both desktop
+builds, verifies their updater signatures, and creates a manifest containing
+only that cohort. It uploads the five version-specific desktop downloads,
+checks their GitHub sizes and digests, and replaces `latest.json` last. It
+refuses version regression. Previous downloads are not overwritten, so an
+upload failure before the manifest write leaves the previous feed usable.
+GitHub's manifest replacement is not transactional; interrupted provider
+writes remain unresolved until readback verifies them.
+
+The final receipt records separate macOS and Windows claims for this shared
+publication. Android retains its separate provider outcome. A build or release
+receipt does not prove installation. Use
+`scripts/verify-windows-installer-upgrade.ps1` on a host without an existing
+Nightly install to compare an upgraded installation with both the packaged
+payload and a clean installation, exercise Tauri's NSIS `/UPDATE` path, and
+verify uninstall and preservation of the separate Station home. Native window
+and in-app download/relaunch checks remain separate evidence.

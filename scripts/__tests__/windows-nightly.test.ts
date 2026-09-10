@@ -17,7 +17,7 @@ function build(platform: string) {
     version,
     bytes,
     sha256: createHash('sha256').update(bytes).digest('hex'),
-    assetName: `station-${version}-${platform === 'darwin-aarch64' ? 'macos-aarch64.app.tar.gz' : 'windows-x86_64.msi.zip'}`,
+    assetName: `station-${version}-${platform === 'darwin-aarch64' ? 'macos-aarch64.app.tar.gz' : 'windows-x86_64-setup.exe'}`,
     signature: 'signed',
     platformSigningState: 'VERIFIED',
     updaterSigningState: 'VERIFIED',
@@ -30,20 +30,22 @@ const input = () => ({
   builds: [build('darwin-aarch64'), build('windows-x86_64')],
 });
 describe('Windows Nightly', () => {
-  it('keeps MSI upgrade identity monotonic across rebuilds and days', () => {
+  it('uses the shared Nightly versions with Tauri NSIS and per-user installation', () => {
     const configs = [244302, 244303, 244400].map((bundleVersion) =>
       createWindowsNightlyConfig({ packageVersion: '0.1.11', bundleVersion }),
     );
-    expect(configs.map((c) => c.bundle.windows.wix.version)).toEqual([
-      '0.3.47694',
-      '0.3.47695',
-      '0.3.47792',
+    expect(configs.map((c) => c.version)).toEqual([
+      '0.1.11-nightly.2443.2',
+      '0.1.11-nightly.2443.3',
+      '0.1.11-nightly.2444',
     ]);
+    expect(configs[0].bundle.targets).toEqual(['nsis']);
+    expect(configs[0].bundle.windows.nsis.installMode).toBe('currentUser');
     expect(configs[0].version).toBe(version);
     expect(configs[0].identifier).toBe('io.kontourai.station.nightly');
     expect(configs[0].bundle.createUpdaterArtifacts).toBe(false);
   });
-  it.each([0, -1, 1.5, NaN, 16777216])(
+  it.each([0, -1, 1.5, NaN, 2_100_000_001])(
     'rejects invalid reservation %s',
     (bundleVersion) => {
       expect(() =>
@@ -81,7 +83,7 @@ describe('Windows Nightly', () => {
         builds: [candidate.builds[0], candidate.builds[0]],
       }),
     ).toThrow();
-    candidate.builds[1].assetName = 'station-nightly-windows-x86_64.msi.zip';
+    candidate.builds[1].assetName = 'station-nightly-windows-x86_64-setup.exe';
     expect(() => assembleNightlyDesktopManifest(candidate)).toThrow();
   });
 });
@@ -92,6 +94,8 @@ it('requires attested Windows signature, payload and packaged provenance facts',
     kind: 'station.windows-nightly-build/v1',
     ...identity,
     platform: 'windows-x86_64',
+    installerKind: 'nsis',
+    updaterFormat: 'tauri-v2',
     platformSigningState: 'VERIFIED',
     updaterPayloadState: 'VERIFIED',
     packagedProvenanceSha256: 'b'.repeat(64),
@@ -110,7 +114,11 @@ it('requires attested Windows signature, payload and packaged provenance facts',
     ).toThrow();
   }
   expect(() =>
-    assertWindowsNightlyReceipt(receipt, identity, Buffer.from('other MSI')),
+    assertWindowsNightlyReceipt(
+      receipt,
+      identity,
+      Buffer.from('other installer'),
+    ),
   ).toThrow();
 });
 it('binds the Windows feed entry to the same version and updater signature', () => {
@@ -124,7 +132,7 @@ it('binds the Windows feed entry to the same version and updater signature', () 
   Object.assign(manifest.platforms, {
     'windows-x86_64': {
       signature: 'signed',
-      url: 'https://example.com/other.msi.zip',
+      url: 'https://example.com/other-setup.exe',
     },
   });
   expect(() =>

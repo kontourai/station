@@ -61,7 +61,7 @@ export function publishNightlyDesktop({
       else assets.push(asset);
     }
   }
-  if (!manifest || assets.length !== 6)
+  if (!manifest || assets.length !== 5)
     throw new Error('Incomplete desktop publication inventory');
   const query = () =>
     JSON.parse(

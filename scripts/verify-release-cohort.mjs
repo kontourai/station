@@ -340,9 +340,8 @@ export function requiredArtifactPaths(candidate, input, shipped) {
       (stage) => stage.platform === 'windows',
     );
     const expected = [
-      'station-nightly-desktop-windows-x86_64.msi',
-      'station-nightly-desktop-windows-x86_64.msi.zip',
-      'station-nightly-desktop-windows-x86_64.msi.zip.sig',
+      'station-nightly-desktop-windows-x86_64-setup.exe',
+      'station-nightly-desktop-windows-x86_64-setup.exe.sig',
       'windows-build-receipt.json',
     ];
     if (
@@ -884,14 +883,11 @@ function verifyCandidateObservations(candidateInput, artifactInput) {
           .filter((entry) => entry.platform === 'windows')
           .map((entry) => [entry.record.name, entry.path]),
       );
-      const installerName = 'station-nightly-desktop-windows-x86_64.msi';
+      const installerName = 'station-nightly-desktop-windows-x86_64-setup.exe';
       const installer =
         windowsPaths.get(installerName) ?? fail('Windows installer missing');
-      const archive =
-        windowsPaths.get(`${installerName}.zip`) ??
-        fail('Windows updater missing');
       const signature =
-        windowsPaths.get(`${installerName}.zip.sig`) ??
+        windowsPaths.get(`${installerName}.sig`) ??
         fail('Windows signature missing');
       const receipt = JSON.parse(
         readFileSync(
@@ -909,7 +905,7 @@ function verifyCandidateObservations(candidateInput, artifactInput) {
         readFileSync(installer),
       );
       verifyTauriUpdaterSignature({
-        updater: archive,
+        updater: installer,
         signature,
         updaterPublicKey: readFileSync(
           resolve(updaterPublicKeyFile),

@@ -19,6 +19,7 @@ on:
       - 'scripts/build-desktop-resources.mjs'
       - 'scripts/build-windows-nightly.ps1'
       - 'scripts/windows-nightly-config.mjs'
+      - 'scripts/verify-windows-updater.mjs'
       - 'scripts/lib/desktop-build-command.mjs'
       - 'scripts/lib/desktop-server-runtime.mjs'
       - 'scripts/lib/windows-nightly.mjs'
@@ -44,6 +45,7 @@ on:
       - 'scripts/build-desktop-resources.mjs'
       - 'scripts/build-windows-nightly.ps1'
       - 'scripts/windows-nightly-config.mjs'
+      - 'scripts/verify-windows-updater.mjs'
       - 'scripts/lib/desktop-build-command.mjs'
       - 'scripts/lib/desktop-server-runtime.mjs'
       - 'scripts/lib/windows-nightly.mjs'
@@ -89,7 +91,7 @@ jobs:
         run: npm run verify:desktop-clean-checkout
 
   windows-bundle:
-    name: Windows MSI packaging
+    name: Windows NSIS packaging
     runs-on: windows-latest
     timeout-minutes: 120
     permissions: { contents: read }
@@ -107,7 +109,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: x86_64-pc-windows-msvc }
       - run: npm run dependencies:ci
-      - name: Bundle and extract an unsigned diagnostic MSI
+      - name: Bundle and extract an unsigned diagnostic installer
         shell: pwsh
         run: |
           # This local test identity is never a release reservation or published feed.

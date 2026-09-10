@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { verifyTauriUpdaterSignature } from './lib/release-artifacts.mjs';
 import {
   assembleNightlyDesktopManifest,
+  assertWindowsNightlyReceipt,
   desktopPublishedAssetName,
 } from './lib/windows-nightly.mjs';
 
@@ -14,16 +15,16 @@ const plan = readJson(join(root, 'cohort-plan.json'));
 const receipt = readJson(
   join(root, 'cohort-windows/windows-build-receipt.json'),
 );
-if (
-  receipt.sourceSha !== plan.sourceSha ||
-  receipt.version !== plan.versionIdentities.desktop.version ||
-  receipt.bundleVersion !==
-    Number(plan.versionIdentities.desktop.bundleVersion) ||
-  receipt.platformSigningState !== 'VERIFIED' ||
-  receipt.updaterPayloadState !== 'VERIFIED'
-) {
-  throw new Error('Windows signing receipt differs from cohort');
-}
+assertWindowsNightlyReceipt(
+  receipt,
+  { ...plan.versionIdentities.desktop, sourceSha: plan.sourceSha },
+  readFileSync(
+    join(
+      root,
+      'cohort-windows/station-nightly-desktop-windows-x86_64-setup.exe',
+    ),
+  ),
+);
 const updaterPublicKey = readFileSync(publicKeyPath, 'utf8').trim();
 const builds = [
   [
@@ -34,7 +35,7 @@ const builds = [
   [
     'windows-x86_64',
     'cohort-windows',
-    'station-nightly-desktop-windows-x86_64.msi.zip',
+    'station-nightly-desktop-windows-x86_64-setup.exe',
   ],
 ].map(([platform, directory, name]) => {
   const updater = join(root, directory, name);

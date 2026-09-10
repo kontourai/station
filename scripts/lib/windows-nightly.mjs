@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
 import { updaterPluginConfig } from './native-release-config.mjs';
-import { nightlyVersion } from './nightly-build-identity.mjs';
+import {
+  MAX_ANDROID_VERSION_CODE,
+  nightlyVersion,
+} from './nightly-build-identity.mjs';
 import { createUpdaterManifestForPlatforms } from './tauri-updater-manifest.mjs';
 
 export const WINDOWS_NIGHTLY_PLATFORM = 'windows-x86_64';
@@ -8,7 +11,7 @@ export const NIGHTLY_DESKTOP_ENDPOINT =
   'https://github.com/kontourai/station/releases/download/nightly-desktop/latest.json';
 
 /**
- * The shared reservation also supplies a strictly increasing MSI version.
+ * Derive the Windows channel identity from the shared Nightly reservation.
  * @param {{packageVersion: string, bundleVersion: number | string, updaterPublicKey?: string}} input
  */
 export function createWindowsNightlyConfig({
@@ -17,9 +20,13 @@ export function createWindowsNightlyConfig({
   updaterPublicKey,
 }) {
   const code = Number(bundleVersion);
-  if (!Number.isSafeInteger(code) || code < 1 || code > 16777215) {
+  if (
+    !Number.isSafeInteger(code) ||
+    code < 1 ||
+    code > MAX_ANDROID_VERSION_CODE
+  ) {
     throw new Error(
-      'Windows Nightly requires a reserved bundle version in 1..16777215',
+      'Windows Nightly requires a valid reserved native bundle version',
     );
   }
   const day = Math.floor(code / 100);
@@ -33,13 +40,9 @@ export function createWindowsNightlyConfig({
     identifier: 'io.kontourai.station.nightly',
     version: nightlyVersion(packageVersion, date, build),
     bundle: {
-      targets: ['msi'],
-      createUpdaterArtifacts: updater.createUpdaterArtifacts,
-      windows: {
-        // MSI compares only three numeric fields. Encoding the reservation
-        // here avoids dropping the SemVer prerelease and rejecting upgrades.
-        wix: { version: `0.${Math.floor(code / 65536)}.${code % 65536}` },
-      },
+      targets: ['nsis'],
+      createUpdaterArtifacts: Boolean(updaterPublicKey),
+      windows: { nsis: { installMode: 'currentUser' } },
     },
     plugins: updater.plugins,
   };
@@ -124,6 +127,8 @@ export function assertWindowsNightlyReceipt(receipt, identity, installerBytes) {
     receipt.version !== identity.version ||
     receipt.bundleVersion !== Number(identity.bundleVersion) ||
     receipt.platform !== WINDOWS_NIGHTLY_PLATFORM ||
+    receipt.installerKind !== 'nsis' ||
+    receipt.updaterFormat !== 'tauri-v2' ||
     receipt.platformSigningState !== 'VERIFIED' ||
     receipt.updaterPayloadState !== 'VERIFIED' ||
     !/^[a-f0-9]{64}$/.test(receipt.packagedProvenanceSha256 ?? '') ||
@@ -140,7 +145,7 @@ export function assertWindowsNightlyManifest(
 ) {
   const entry = manifest?.platforms?.[WINDOWS_NIGHTLY_PLATFORM];
   const name = desktopPublishedAssetName(
-    'station-nightly-desktop-windows-x86_64.msi.zip',
+    'station-nightly-desktop-windows-x86_64-setup.exe',
     version,
   );
   if (

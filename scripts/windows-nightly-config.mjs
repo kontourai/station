@@ -13,6 +13,11 @@ if (process.env.STATION_WINDOWS_THUMBPRINT) {
     timestampUrl: 'http://timestamp.digicert.com',
   });
 }
+if (process.env.STATION_WINDOWS_SIGN_COMMAND) {
+  Object.assign(config.bundle.windows, {
+    signCommand: process.env.STATION_WINDOWS_SIGN_COMMAND,
+  });
+}
 writeFileSync(
   process.env.STATION_WINDOWS_CONFIG,
   `${JSON.stringify(config, null, 2)}\n`,

@@ -2,8 +2,8 @@ name: Nightly native staging
 
 # Phase one of the native cohort: the caller supplies an already source-gated
 # revision, and this workflow reserves the cohort identity, then builds, signs,
-# and stages the Android AAB, the notarized macOS assets, and the signed iOS
-# package as run artifacts with content-bound stage receipts. Nothing here
+# and stages the Android AAB, notarized macOS assets, the Windows NSIS installer,
+# and the signed iOS package as run artifacts with content-bound stage receipts. Nothing here
 # publishes: no Play upload, no release asset, no tag move, no TestFlight
 # upload, no ledger write. It therefore needs only the fast source gate, and
 # runs in parallel with the canonical full-regression receipt that phase two
@@ -464,7 +464,7 @@ jobs:
     secrets: inherit
 
   stage-windows:
-    name: Build Windows MSI (sign + verify)
+    name: Build Windows NSIS installer (sign + verify)
     needs: plan-cohort
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
     runs-on: windows-latest
@@ -488,21 +488,21 @@ jobs:
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
           BUNDLE_VERSION: ${{ needs.plan-cohort.outputs.bundle_version }}
+          WINDOWS_SIGN_COMMAND: ${{ vars.WINDOWS_SIGN_COMMAND }}
           WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
         run: |
-          $signed = -not [string]::IsNullOrEmpty($env:WINDOWS_CERTIFICATE_BASE64)
+          $signed = (-not [string]::IsNullOrEmpty($env:WINDOWS_CERTIFICATE_BASE64)) -or (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_COMMAND))
           ./scripts/build-windows-nightly.ps1 -SourceSha $env:SOURCE_SHA -BundleVersion ([int]$env:BUNDLE_VERSION) -RequireSigning:$signed
       - name: Retain packaging evidence even when signing authority is absent
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-nightly-build-${{ github.run_id }}
           path: |
-            dist-windows-nightly/*.msi
-            dist-windows-nightly/*.zip
+            dist-windows-nightly/*-setup.exe
             dist-windows-nightly/*.sig
             dist-windows-nightly/*receipt.json
             dist-windows-nightly/station-client-build.json
@@ -514,8 +514,8 @@ jobs:
           $receipt = Get-Content -Raw dist-windows-nightly/windows-build-receipt.json | ConvertFrom-Json
           if ($receipt.platformSigningState -ne 'VERIFIED') { throw 'NOT_VERIFIED: Windows Authenticode authority is missing; desktop publication withheld' }
           New-Item -ItemType Directory cohort-windows | Out-Null
-          foreach ($suffix in @('', '.zip', '.zip.sig')) {
-            Copy-Item (Join-Path dist-windows-nightly ($receipt.installer + $suffix)) (Join-Path cohort-windows ('station-nightly-desktop-windows-x86_64.msi' + $suffix))
+          foreach ($suffix in @('', '.sig')) {
+            Copy-Item (Join-Path dist-windows-nightly ($receipt.installer + $suffix)) (Join-Path cohort-windows ('station-nightly-desktop-windows-x86_64-setup.exe' + $suffix))
           }
           Copy-Item dist-windows-nightly/windows-build-receipt.json cohort-windows/
           Copy-Item dist-windows-nightly/windows-build-receipt.json windows-stage-metadata.json
@@ -558,7 +558,7 @@ jobs:
         run: |
           node scripts/release-cohort-workflow.mjs stage-input macos-stage-input.json cohort/cohort-plan.json macos latest.json=cohort/cohort-macos/latest.json station-nightly-desktop-macos-aarch64.app.tar.gz=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig station-nightly-desktop-macos-aarch64.dmg=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.dmg
           node scripts/release-cohort.mjs stage-receipt cohort/cohort-plan.json macos-stage-input.json > macos-stage-receipt.json
-          node scripts/release-cohort-workflow.mjs stage-input windows-stage-input.json cohort/cohort-plan.json windows station-nightly-desktop-windows-x86_64.msi=cohort/cohort-windows/station-nightly-desktop-windows-x86_64.msi station-nightly-desktop-windows-x86_64.msi.zip=cohort/cohort-windows/station-nightly-desktop-windows-x86_64.msi.zip station-nightly-desktop-windows-x86_64.msi.zip.sig=cohort/cohort-windows/station-nightly-desktop-windows-x86_64.msi.zip.sig windows-build-receipt.json=cohort/cohort-windows/windows-build-receipt.json
+          node scripts/release-cohort-workflow.mjs stage-input windows-stage-input.json cohort/cohort-plan.json windows station-nightly-desktop-windows-x86_64-setup.exe=cohort/cohort-windows/station-nightly-desktop-windows-x86_64-setup.exe station-nightly-desktop-windows-x86_64-setup.exe.sig=cohort/cohort-windows/station-nightly-desktop-windows-x86_64-setup.exe.sig windows-build-receipt.json=cohort/cohort-windows/windows-build-receipt.json
           node scripts/release-cohort.mjs stage-receipt cohort/cohort-plan.json windows-stage-input.json > windows-stage-receipt.json
           mkdir -p cohort-macos
           cp cohort/cohort-macos/latest.json cohort-macos/latest.json

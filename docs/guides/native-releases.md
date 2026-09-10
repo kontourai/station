@@ -107,7 +107,7 @@ when the gated SHA is the workflow event SHA.
 Phase one, `nightly-native-stage.yml`, needs only the source gate and runs in
 parallel with the full-regression receipt (#1453): it reserves the cohort
 identity, then stages a signed Android AAB (arm64-v8a only, #1456), notarized
-macOS downloads, a signed Windows MSI and updater archive, one shared desktop
+macOS downloads, a signed Windows NSIS installer and updater signature, one shared desktop
 manifest, and the signed, audited iOS package (#1454)
 as run artifacts with content-bound stage receipts. It publishes nothing: no
 Play upload, no release asset, no tag move, no TestFlight upload, no ledger

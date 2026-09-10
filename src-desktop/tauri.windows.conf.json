@@ -12,14 +12,6 @@
     "windows": {
       "nsis": {
         "installerHooks": "nsis-hooks.nsh"
-      },
-      "wix": {
-        "fragmentPaths": [
-          "windows/runtime-cleanup.wxs"
-        ],
-        "componentRefs": [
-          "StationRuntimeCleanup"
-        ]
       }
     }
   }

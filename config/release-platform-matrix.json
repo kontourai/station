@@ -162,7 +162,7 @@
       "windows": {
         "state": "configured",
         "buildJob": "nightly-native-stage.yml#stage-windows",
-        "testLane": "Windows MSI packaging and extraction, exact-SHA cohort admission, and protected signing checks",
+        "testLane": "Windows NSIS packaging and extraction, exact-SHA cohort admission, and protected signing checks",
         "publicationTarget": "shared rolling GitHub prerelease nightly-desktop",
         "updateAuthority": "signed Tauri Nightly updater feed",
         "rollbackSource": "previous version-specific desktop downloads retained beside the shared manifest",

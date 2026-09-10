@@ -545,8 +545,29 @@ export function unshippedState(claimOutcome, jobResult) {
     return 'NOT_PUBLISHED';
   return 'NOT_VERIFIED';
 }
+/** Persist the two claims for one desktop publication in one atomic file. */
+export function groupDesktopPromotionStates(inputs) {
+  const states = inputs.map((value) => state(value));
+  const claims = states.map((value) => value.promotionReceipts[0]);
+  if (
+    states.length !== 2 ||
+    states.some((value) => value.promotionReceipts.length !== 1) ||
+    canonicalJson(claims.map((claim) => claim.platform).sort()) !==
+      canonicalJson(['macos', 'windows']) ||
+    states[0].admissionContentDigest !== states[1].admissionContentDigest ||
+    claims[0].outcome !== claims[1].outcome
+  ) {
+    fail('desktop promotion states must bind one admission and shared outcome');
+  }
+  return states.sort((a, b) =>
+    a.promotionReceipts[0].platform.localeCompare(
+      b.promotionReceipts[0].platform,
+    ),
+  );
+}
+
 export function finalizeCohort(inputs) {
-  const values = Array.isArray(inputs) ? inputs : [inputs];
+  const values = (Array.isArray(inputs) ? inputs : [inputs]).flat();
   if (!values.length)
     fail('finalize requires one promotion state per required platform');
   const states = values.map((value) => state(value));
@@ -651,11 +672,13 @@ export function main(argv = process.argv.slice(2)) {
     result = beginPromotion(json(paths[0]));
   else if (cmd === 'promotion-receipt' && paths.length === 2)
     result = recordProviderPromotion(json(paths[0]), json(paths[1]));
+  else if (cmd === 'group-desktop-states' && paths.length === 2)
+    result = groupDesktopPromotionStates(paths.map(json));
   else if (cmd === 'finalize' && paths.length >= 1)
     result = finalizeCohort(paths.map(json));
   else
     fail(
-      'usage: release-cohort.mjs <plan|stage-receipt|admit|begin-promotion|promotion-receipt|finalize> ...',
+      'usage: release-cohort.mjs <plan|stage-receipt|admit|begin-promotion|promotion-receipt|group-desktop-states|finalize> ...',
     );
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   return result;

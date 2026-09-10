@@ -349,13 +349,25 @@ function platformDisclosure(platform, jobResults, statePath) {
     } catch {
       fail(`recovery ${platform} promotion state is not valid JSON`);
     }
-    const receipt = state?.promotionReceipts?.[0];
+    const states = Array.isArray(state) ? state : [state];
+    const receipts = states.flatMap((entry) =>
+      Array.isArray(entry?.promotionReceipts) ? entry.promotionReceipts : [],
+    );
+    const receipt = receipts.find((entry) => entry.platform === platform);
+    const names = receipts.map((entry) => entry.platform).sort();
+    const sharedDesktop =
+      canonicalJson(names) === canonicalJson(['macos', 'windows']);
     if (
-      state?.kind !== 'station.release-cohort-state/v1' ||
-      !Array.isArray(state.promotionReceipts) ||
-      state.promotionReceipts.length !== 1 ||
-      receipt?.platform !== platform ||
-      typeof receipt.outcome !== 'string'
+      states.some(
+        (entry) =>
+          entry?.kind !== 'station.release-cohort-state/v1' ||
+          entry.promotionReceipts?.length !== 1,
+      ) ||
+      (!sharedDesktop && canonicalJson(names) !== canonicalJson([platform])) ||
+      !receipt ||
+      typeof receipt.outcome !== 'string' ||
+      (sharedDesktop &&
+        receipts.some((entry) => entry.outcome !== receipt.outcome))
     ) {
       fail(`recovery ${platform} promotion state is not that platform's claim`);
     }
