@@ -1,6 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
+import { installNodeHttpCompatibility } from './packages/shared/src/node-http-compat.mjs';
 import { buildE2EBrowserStorageState } from './tests/helpers/e2e-browser-storage-state';
 import { PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS } from './tests/helpers/playwright-test-timeout';
+
+installNodeHttpCompatibility();
 
 const baseURL = process.env.PW_BASE_URL || 'http://localhost:3000';
 const runnerOwned = process.env.STATION_E2E_RUNNER === '1';

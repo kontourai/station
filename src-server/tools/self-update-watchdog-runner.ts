@@ -13,6 +13,7 @@
  */
 import { realpathSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
 import {
   emitRestartDiagnostic,
   type RestartStateWriteResult,
@@ -21,6 +22,8 @@ import {
   writeSelfUpdateRestartRecord,
 } from '../routes/system/self-update-restart-state.js';
 import { runSelfUpdateWatchdog } from '../routes/system/self-update-watchdog.js';
+
+installNodeHttpCompatibility();
 
 interface SelfUpdateWatchdogRunnerInput {
   pid: number;

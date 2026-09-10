@@ -21,6 +21,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { installNodeHttpCompatibility } from '../packages/shared/src/node-http-compat.mjs';
 import {
   getProductE2EExecutionPhases,
   getSpecsForSuite,
@@ -41,6 +42,8 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from './lib/owned-process.mjs';
+
+installNodeHttpCompatibility();
 
 const SUPPORTED_SUITES = [
   'pr-smoke',

@@ -117,6 +117,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real HTTP requests in isolated children exercise fatal socket-option faults.
+  'packages/shared/src/__tests__/node-http-compat.test.ts',
   // Launches Chromium to reject prompt-only evidence in the composer helper.
   'scripts/__tests__/agents-journey.test.ts',
   // The shared observer fixture also creates real POSIX FIFOs and runs two
