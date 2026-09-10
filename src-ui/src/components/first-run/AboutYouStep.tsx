@@ -40,7 +40,7 @@ import { useId, useState } from 'react';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
 import './AboutYouStep.css';
 
-export interface AboutYouStepProps {
+interface AboutYouStepProps {
   /** Persisted answers, if this step is being revisited. */
   initial?: UserProfileSettings;
   /** Both destinations preserve selected answers; undefined means unanswered. */

@@ -329,7 +329,7 @@ export type CwdShadowOutcome =
 export const CONFLATED_UNBOUND_NOTE =
   'The resolver answered `unbound` ("nothing is recorded") for a working directory the seam found declared-and-gone, which station#1594 defines as `missing`. Post-flip the seam would default this project to $HOME instead of failing closed (#791 vs #1023), so this is a FAIL-OPEN TRIPWIRE and must read zero before slice 3c flips. Two known causes: the state split has been undone, or the two sides disagree about whether a directory was DECLARED at all — the resolver trims `workingDirectory` and the seam does not, so a whitespace-only value is `unbound` to one and declared-and-gone to the other.';
 
-export interface CwdShadowComparison {
+interface CwdShadowComparison {
   outcome: CwdShadowOutcome;
   projectSlug: string;
   baseline: BaselineCwdOutcome;
@@ -347,7 +347,7 @@ export interface CwdShadowComparison {
  * that stat must not happen on the session-start stack — see
  * {@link dispatchCwdShadow}.
  */
-export type CwdShadowObservation =
+type CwdShadowObservation =
   | {
       projectSlug: string;
       provider: string;

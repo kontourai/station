@@ -23,7 +23,7 @@ import type { HomeWorkItem } from './home-view-model';
  *   their own destination (see `HomeView.continueWork`) branch on `kind`
  *   before reaching this policy at all.
  */
-export type WorkItemOpenAction =
+type WorkItemOpenAction =
   | { kind: 'focus'; chatSessionId: string }
   | {
       kind: 'rehydrate';
@@ -91,7 +91,7 @@ export function resolveWorkItemOpenAction(
  * `OrchestrationSessionSummary`s straight out of the Sessions lane model
  * rather than Home's merged work list.
  */
-export interface ConversationOpenSubject {
+interface ConversationOpenSubject {
   threadId: string;
   /** Durable conversation identity when a handoff child differs from its thread. */
   conversationId?: string;
@@ -145,7 +145,7 @@ export function resolveConversationOpenAction(
  * mirror the `'rehydrate'`/`'navigate'` branches of `WorkItemOpenAction` so
  * the listener can fall through instead of no-oping.
  */
-export interface FocusChatEventDetail {
+interface FocusChatEventDetail {
   sessionId?: string;
   conversationId?: string;
   agentSlug?: string;
@@ -215,7 +215,7 @@ export interface WorkItemOpenHandlers {
  * say why a row has no open action instead of a silent dead click (the four
  * seams of archive#3687's report that live at this layer).
  */
-export type WorkItemOpenOutcome =
+type WorkItemOpenOutcome =
   /** Focused, opened, or navigated — the row did what a click promises. */
   | 'opened'
   /** The row's agent no longer exists; Activity was revealed (archive#801). */

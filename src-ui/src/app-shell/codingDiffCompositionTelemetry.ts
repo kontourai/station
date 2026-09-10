@@ -1,6 +1,6 @@
 import type { CodingDiffCompositionReceipt } from '@kontourai/station-contracts/workspace-coding-diff-composition';
 
-export type CodingDiffCompositionTrack = (
+type CodingDiffCompositionTrack = (
   event: string,
   properties: Record<string, string | number>,
 ) => void;

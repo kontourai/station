@@ -1,6 +1,6 @@
 import type { ApprovalMode } from '@kontourai/station-contracts/provider';
 
-export type CodexReasoningEffort = 'xhigh' | 'high' | 'medium' | 'low';
+type CodexReasoningEffort = 'xhigh' | 'high' | 'medium' | 'low';
 
 export interface CodexModelOptions {
   /** Provider-neutral composer key; reasoningEffort remains a prior alias. */

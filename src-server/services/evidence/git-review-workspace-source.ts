@@ -20,15 +20,15 @@ const DEFAULT_MAX_REVIEW_WORKSPACES = 8;
 const GIT_INSPECTION_TIMEOUT_MS = 2 * 60_000;
 const GIT_MUTATION_TIMEOUT_MS = 30_000;
 
-export interface GitReviewProjectResolver {
+interface GitReviewProjectResolver {
   workspace(projectSlug: string): string | undefined;
 }
 
-export interface GitReviewWorkspaceSourceOptions {
+interface GitReviewWorkspaceSourceOptions {
   maxWorkspaces?: number;
 }
 
-export interface GitReviewRangeChange {
+interface GitReviewRangeChange {
   status: string;
   oldPath?: string;
   newPath?: string;

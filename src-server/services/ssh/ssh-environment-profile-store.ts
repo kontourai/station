@@ -75,14 +75,14 @@ const sshEnvironmentProfileWriteOperations: SshEnvironmentProfileWriteOperations
     writeFileSync,
   };
 
-export interface SshEnvironmentProfileStoreOptions {
+interface SshEnvironmentProfileStoreOptions {
   /** Injectable only for deterministic cross-process mutation tests. */
   acquireMutationLock?: FileMutationLock;
   /** Injectable only for durable-write fault-injection tests. */
   writeOperations?: Partial<SshEnvironmentProfileWriteOperations>;
 }
 
-export interface VerifiedSshEnvironmentIdentity {
+interface VerifiedSshEnvironmentIdentity {
   environmentId: string;
   hostIdentity: string;
   remoteHome: string;

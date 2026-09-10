@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { CronEditor } from './CronEditor';
 
-export type ScheduleMode = 'interval' | 'weekly' | 'cron';
-export type IntervalUnit = 'minutes' | 'hours' | 'days';
+type ScheduleMode = 'interval' | 'weekly' | 'cron';
+type IntervalUnit = 'minutes' | 'hours' | 'days';
 
 type ParsedSchedule = {
   mode: ScheduleMode;

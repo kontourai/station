@@ -23,7 +23,7 @@ export const NO_FAILURE_DETAIL_RECORDED =
   'No failure detail was recorded for this session.';
 
 /** What the session record itself carries about this session's identity. */
-export type SessionFailureFacts = Pick<
+type SessionFailureFacts = Pick<
   OrchestrationSessionSummary,
   'lifecycleState' | 'status' | 'blockedReason'
 >;

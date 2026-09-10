@@ -5,7 +5,7 @@ import type {
 import { errorMessage } from '../../utils/error-message.js';
 
 /** Narrow structural logger: the module warns, never debugs. */
-export type AdapterRetirementLogger = {
+type AdapterRetirementLogger = {
   warn(message: string, meta?: Record<string, unknown>): void;
 };
 

@@ -160,7 +160,7 @@ function decimalPerMillion(value: unknown): number | null {
   return perMillionTokens(parsed);
 }
 
-export interface OpenRouterRoutePricingDependencies {
+interface OpenRouterRoutePricingDependencies {
   /** Station home; snapshots live under <home>/pricing/openrouter/snapshots. */
   homeDir: string;
   /** Test seam: forage's snapshot store. Defaults to the filesystem store. */

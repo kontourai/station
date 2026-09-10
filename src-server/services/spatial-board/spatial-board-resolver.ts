@@ -23,18 +23,18 @@ export type SpatialBoardOwnerProjection = Readonly<{
 }>;
 
 /** One owner receives its entire bounded board group in one observation. */
-export interface SpatialBoardOwnerResolver {
+interface SpatialBoardOwnerResolver {
   resolve(
     references: readonly WorkReference[],
   ): Promise<readonly SpatialBoardOwnerProjection[]>;
 }
 
-export type SpatialBoardOwnerResolvers = Partial<
+type SpatialBoardOwnerResolvers = Partial<
   Record<WorkReferenceKind, SpatialBoardOwnerResolver>
 >;
 
 /** Creates one request-local set of owner observations for each board read. */
-export type SpatialBoardOwnerResolverFactory = () => SpatialBoardOwnerResolvers;
+type SpatialBoardOwnerResolverFactory = () => SpatialBoardOwnerResolvers;
 
 function boundedText(value: unknown, maximum: number): value is string {
   return (

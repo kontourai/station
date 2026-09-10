@@ -63,11 +63,7 @@ export const MAX_REVIEW_RENDERS = 30;
  */
 export const MAX_AUDIT_EVENTS = 100;
 
-export type ConsentTransactionStatus =
-  | 'pending'
-  | 'approved'
-  | 'denied'
-  | 'expired';
+type ConsentTransactionStatus = 'pending' | 'approved' | 'denied' | 'expired';
 export type ConsentDecision = 'approved' | 'denied';
 
 /** Exactly what would be granted, in a canonically comparable form. */
@@ -84,7 +80,7 @@ export interface ConsentTargetSnapshot {
   readonly fingerprint: string;
 }
 
-export interface ConsentDescriptionItem {
+interface ConsentDescriptionItem {
   readonly label: string;
   readonly detail: string;
 }
@@ -99,7 +95,7 @@ export interface ConsentDescription {
   readonly denyLabel: string;
 }
 
-export interface ConsentRequesterAttribution {
+interface ConsentRequesterAttribution {
   /** Who asked, e.g. `plugin-ui`. */
   readonly kind: string;
   readonly id: string;
@@ -114,7 +110,7 @@ export interface ConsentEffectProjection {
   readonly failures?: readonly string[];
 }
 
-export interface ConsentAuditEvent {
+interface ConsentAuditEvent {
   readonly at: number;
   readonly event:
     | 'created'
@@ -141,7 +137,7 @@ export class ConsentCommitRefusedError extends Error {
   }
 }
 
-export interface ConsentTransactionInit {
+interface ConsentTransactionInit {
   readonly tenantId: string;
   readonly target: ConsentTargetSnapshot;
   readonly description: ConsentDescription;
@@ -234,11 +230,11 @@ export interface ConsentTransactionView {
   readonly effect?: ConsentEffectProjection;
 }
 
-export type ConsentCreateResult =
+type ConsentCreateResult =
   | { readonly ok: true; readonly transaction: ConsentTransactionView }
   | { readonly ok: false; readonly reason: 'capacity' | 'rate_limited' };
 
-export type ConsentRenderResult =
+type ConsentRenderResult =
   | {
       readonly ok: true;
       readonly nonce: string;
@@ -250,7 +246,7 @@ export type ConsentRenderResult =
       readonly status?: ConsentTransactionStatus;
     };
 
-export type ConsentDecideRefusalReason =
+type ConsentDecideRefusalReason =
   | 'not_found'
   | 'not_pending'
   | 'decision_in_flight'
@@ -259,7 +255,7 @@ export type ConsentDecideRefusalReason =
   | 'target_changed'
   | 'commit_refused';
 
-export type ConsentDecideResult =
+type ConsentDecideResult =
   | { readonly ok: true; readonly status: ConsentDecision }
   | {
       readonly ok: false;

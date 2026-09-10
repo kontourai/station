@@ -92,7 +92,7 @@ export function parseArgs(argv: readonly string[]): Options {
  * issue nobody re-reads at flip time. A gate cited as authority must name
  * where its authority stops.
  */
-export const GATE_LIMIT_NO_PROVENANCE =
+const GATE_LIMIT_NO_PROVENANCE =
   'This record accumulates across every Station version that has ever run in this home and carries no provenance. A pass says these populations were observed AT SOME POINT — not that they were exercised by the resolver currently on disk (station#1775).';
 
 /**
@@ -111,7 +111,7 @@ export const GATE_LIMIT_NO_PROVENANCE =
  * rest of the provenance question rather than left as a claim pretending to be
  * derived.
  */
-export function seamCoverageLimit(seams: readonly string[]): string {
+function seamCoverageLimit(seams: readonly string[]): string {
   const named = seams.length > 0 ? seams.join(', ') : 'no seam at all';
   return `Coverage is observed at ${seams.length === 1 ? 'one seam' : `${seams.length} seams`} — ${named} — and only for the project-resolution sub-step within it. Caller-supplied-cwd precedence, the $HOME/ACP terminus, and the final existence check on the effective cwd are unshadowed and unproven here (station#1775).`;
 }

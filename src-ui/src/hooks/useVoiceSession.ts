@@ -12,7 +12,7 @@ import {
 
 type VoiceState = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking';
 
-export interface UseVoiceSessionResult {
+interface UseVoiceSessionResult {
   state: VoiceState;
   transcript: string;
   transcriptRole: 'user' | 'assistant' | null;

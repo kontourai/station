@@ -18,7 +18,7 @@ import {
 import { spawnGit } from '../../utils/git-exec.js';
 import { expandTilde } from '../../utils/paths.js';
 
-export type WorktreeTerminalState = 'completed' | 'failed' | 'cancelled';
+type WorktreeTerminalState = 'completed' | 'failed' | 'cancelled';
 
 export interface WorktreeProvisionRequest {
   repoPath: string;
@@ -27,14 +27,14 @@ export interface WorktreeProvisionRequest {
   isolation?: WorkspaceIsolationConfig;
 }
 
-export interface WorktreeCleanupRequest {
+interface WorktreeCleanupRequest {
   metadata: WorktreeSessionMetadata;
   terminalState: WorktreeTerminalState;
   /** Required by lifecycle cleanup; binds hostile metadata to its owner. */
   sessionId?: string;
 }
 
-export type GitCommandResult = {
+type GitCommandResult = {
   stdout: string;
   stderr: string;
   code: number;

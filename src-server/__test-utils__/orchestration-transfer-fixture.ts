@@ -6,7 +6,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
  * payload is deliberately varied: a compressor-friendly repeated fixture
  * would make a transport regression look cheaper than users' real tool work.
  */
-export const ORCHESTRATION_TRANSFER_FIXTURE_VERSION = 1;
+const ORCHESTRATION_TRANSFER_FIXTURE_VERSION = 1;
 export const ORCHESTRATION_TRANSFER_THREAD_ID = 'transfer-budget-thread';
 export const ORCHESTRATION_TRANSFER_OWNER = 'transfer-budget-owner';
 const TOOL_OUTPUT_BYTES = 48 * 1024;

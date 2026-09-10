@@ -55,7 +55,7 @@ const AUTH_LABEL: Record<
   disabled: 'key file from your SSH config',
 };
 
-export interface SshComputerCreatorDialogProps {
+interface SshComputerCreatorDialogProps {
   onClose: () => void;
   /** Focus returns here when the dialog closes (the chooser's entry button). */
   returnFocusTarget?: HTMLElement | null;

@@ -99,7 +99,7 @@ import { consentTransactionOps } from '../../telemetry/metrics.js';
 
 const CONSENT_TARGET_KIND = 'workspace-home-role';
 
-export interface PluginHomeRoleRouteDeps {
+interface PluginHomeRoleRouteDeps {
   packageMcpJournal?: PackageMcpAdmissionJournal;
   pluginsDir: string;
   projectHomeDir: string;

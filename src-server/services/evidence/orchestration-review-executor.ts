@@ -36,7 +36,7 @@ interface ReviewOrchestrationContext {
   tenantExecutionContext?: ReviewExecutionInput['context']['tenantExecutionContext'];
 }
 
-export interface OrchestrationReviewExecutorOptions {
+interface OrchestrationReviewExecutorOptions {
   orchestration: ReviewOrchestrationPort;
   supportsReadOnlyReview(provider: EngineId): boolean;
   provider?: EngineId;

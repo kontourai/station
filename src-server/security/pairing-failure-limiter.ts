@@ -1,6 +1,6 @@
 import { BoundedAttemptBudget } from './bounded-attempt-budget.js';
 
-export type PairingFailureSurface = 'pairing-request' | 'credential-exchange';
+type PairingFailureSurface = 'pairing-request' | 'credential-exchange';
 
 export interface PairingFailureState {
   failures: number;
@@ -12,7 +12,7 @@ interface FailureEntry extends PairingFailureState {
   inFlight: number;
 }
 
-export interface PairingFailureAdmission {
+interface PairingFailureAdmission {
   readonly surface: PairingFailureSurface;
   readonly source: string;
   readonly entry?: FailureEntry;
@@ -20,7 +20,7 @@ export interface PairingFailureAdmission {
   finalized: boolean;
 }
 
-export type PairingFailureAdmissionResult =
+type PairingFailureAdmissionResult =
   | { readonly kind: 'admitted'; readonly admission: PairingFailureAdmission }
   | {
       readonly kind: 'rate-limited';

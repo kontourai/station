@@ -24,7 +24,7 @@ export const GUIDANCE_TAB_MEMORY_KEY = 'station-guidance-tab';
  * bookmark, a palette entry and a deep link all have to land on the same list,
  * and a remembered-in-React filter cannot be linked to.
  */
-export type GuidanceFilter = 'commands';
+type GuidanceFilter = 'commands';
 
 export function isGuidanceFilter(value: unknown): value is GuidanceFilter {
   return value === 'commands';

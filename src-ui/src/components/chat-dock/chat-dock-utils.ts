@@ -3,7 +3,7 @@ import {
   type SelectableModel,
 } from '../../utils/modelCapabilities';
 
-export interface WorkingDirectoryParts {
+interface WorkingDirectoryParts {
   parentPath: string;
   leafName: string;
   hasWorkingDirectory: boolean;
@@ -179,7 +179,7 @@ export function mobileTaskSwitcherMounts({ isMobile }: DockChrome): boolean {
 }
 
 /** The minimal shape every project-name lookup below needs. */
-export interface ProjectNameLookup {
+interface ProjectNameLookup {
   slug: string;
   name: string;
 }
@@ -370,7 +370,7 @@ export function resolveNewChatModalDefaultProjectSlug(input: {
   return input.dockChromeProjectSlug ?? undefined;
 }
 
-export type OpenChatsCollectionRoute =
+type OpenChatsCollectionRoute =
   | { surface: 'task-switcher-sheet' }
   | {
       surface: 'inbox-panel';

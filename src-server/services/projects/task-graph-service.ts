@@ -117,7 +117,7 @@ type PersistedTaskAnswerNarrativePin = {
 };
 
 /** Internal only: routes obtain this from the association owner, never clients. */
-export type TaskAnswerNarrativePinCapture = {
+type TaskAnswerNarrativePinCapture = {
   associationRevision?: number;
   isCurrent(): boolean;
 };

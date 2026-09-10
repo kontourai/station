@@ -1,4 +1,4 @@
-export type TerminalSessionStatus = 'starting' | 'running' | 'exited';
+type TerminalSessionStatus = 'starting' | 'running' | 'exited';
 
 export interface TerminalSessionState {
   sessionId: string;

@@ -112,7 +112,7 @@ export class GrantsStoreReservedKeyError extends Error {
   }
 }
 
-export interface GrantsFileStoreOptions<T extends Record<string, unknown>> {
+interface GrantsFileStoreOptions<T extends Record<string, unknown>> {
   filePath: string;
   /** Metrics attribute + log context value naming the store file. */
   storeLabel: string;

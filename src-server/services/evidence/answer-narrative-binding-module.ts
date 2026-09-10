@@ -65,14 +65,14 @@ type FlowNarrativeContributionRead = Extract<
   ContributionRead,
   { owner: { authority: '@kontourai/flow-agents' } }
 >;
-export type AnswerNarrativeUpdate = StationAnswerNarrativeReceipt;
+type AnswerNarrativeUpdate = StationAnswerNarrativeReceipt;
 
 /**
  * Private hand-off from the association owner to TaskGraph. The callback runs
  * while the association lease is held, so a producer cannot replace or remove
  * the captured revision between the witness and the Task publication.
  */
-export type TaskAnswerNarrativePinWitness = {
+type TaskAnswerNarrativePinWitness = {
   associationRevision?: number;
   isCurrent(): boolean;
 };
