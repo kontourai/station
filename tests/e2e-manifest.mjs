@@ -307,6 +307,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/banner-stack-bound.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
     'tests/answer-quoting.spec.ts',
+    'tests/code-block-actions.spec.ts',
     'tests/model-visibility.spec.ts',
     'tests/image-preview-inspection.spec.ts',
     'tests/diagnostics-bundle.spec.ts',
@@ -546,6 +547,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Production selection toolbar, draft store, Markdown renderer and source-inspection UI with captured authority and exact HTTP source fixtures; ordinary pointer selection and keyboard activation, no live server or shared writes.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/code-block-actions.spec.ts',
+    bucket: 'product',
+    surface: 'Long transcript code blocks',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Production code-block frame and styles bundled in memory; browser layout drives the long-block boundary. Clipboard success/refusal is a browser-local fixture, with no OS clipboard or live Station writes.',
     exceptions: [],
   },
   {
