@@ -27,6 +27,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { getPathForView } from '../app-shell/routing';
 import {
   BANNER_IDS,
@@ -902,7 +903,7 @@ function SetupLauncher({
   onOpenHub: () => void;
   onDismiss: () => void;
 }) {
-  return (
+  const launcher = (
     <aside
       className="onboarding-setup-launcher"
       data-testid="setup-launcher"
@@ -967,4 +968,7 @@ function SetupLauncher({
       </div>
     </aside>
   );
+  return typeof document === 'undefined'
+    ? launcher
+    : createPortal(launcher, document.body);
 }

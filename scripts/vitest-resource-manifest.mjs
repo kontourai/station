@@ -115,6 +115,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Launches one owned, short-lived native-companion fixture and waits for its exit.
+  'packages/cli/src/__tests__/desktop-companion.test.ts',
   // The shared observer fixture also creates real POSIX FIFOs and runs two
   // bounded Node children to prove the exact open-boundary blocking race.
   'packages/shared/src/__tests__/station-home-recovery-preflight.test.ts',
@@ -428,6 +430,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/release-workflow.test.ts',
   // #1776: runs the pinned tauri-cli `icon` fan-out twice as a real child
   // process to prove the committed iOS channel sets are byte-reproducible.
+  // #1797 adds two more runs for the desktop `.icns`, whose writer was the
+  // one output that disagreed with itself between runs.
   'scripts/__tests__/generate-app-icons.test.ts',
   // #1776: on macOS, runs xcrun pngcrush + sips to prove the shipped-icon
   // pixel comparison catches a wrong channel through Apple's CgBI re-encode.
@@ -441,6 +445,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // reason content-integrity-gate.test.ts does — every one of those guardrails
   // scopes itself with `git ls-files` or `git grep`.
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts',
+  // The same argument for the rest of them: every gate `verify:static:raw`
+  // composes that no test had ever executed now runs here as a real child
+  // process — against a known-bad fixture tree where one is affordable, and
+  // against this repository where it is not. Bounded single-shot spawns, no
+  // wall-clock assertions.
+  'scripts/__tests__/guardrail-process-boundary.test.ts',
   // station#1398 security review, M-5: the content-integrity gate's own test
   // builds throwaway git repos and drives `git grep` through `execFileSync`,
   // because the scan is `git grep` over TRACKED files and a fixture written
@@ -707,6 +717,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // `@playwright/test` to measure real cascade-resolved layout (sibling
   // toolbar control x-offsets across connection states).
   'src-ui/src/__tests__/HeaderActions.connection-reflow.test.tsx',
+  'src-ui/src/__tests__/chatFeedback.geometry.test.tsx',
+  'src-ui/src/__tests__/ImportedConversationPane.test.tsx',
   // station#4474 H1 (review round): same shape again — launches a real
   // Chromium via `@playwright/test` to measure real cascade-resolved
   // layout (a marker's y-offset across the isFetching flip).

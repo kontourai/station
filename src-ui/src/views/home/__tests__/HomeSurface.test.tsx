@@ -147,7 +147,7 @@ describe('HomeSurface composition', () => {
       null,
     );
     const cta = screen.getByRole('button', { name: /Set up an agent/ });
-    expect(cta.textContent).toContain('Finish setting up an engine to chat');
+    expect(cta.textContent).toContain('Set up an AI app to start chatting');
     // And it names no agent at all.
     expect(cta.textContent).not.toContain('Codex');
   });

@@ -4,6 +4,7 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
+import { MessageContent } from '../components/chat/message-bubble/MessageContent';
 import { ToolCallBatch } from '../components/chat/ToolCallBatch';
 import { classifyToolCallRun } from '../components/chat/tool-call-groups';
 import {
@@ -234,4 +235,29 @@ describe('ToolCallBatch failure disclosure (station#2652 redesign)', () => {
     expect(screen.queryByText(/with no result/)).toBe(null);
     expect(screen.getByRole('button').textContent).toContain('Ran 2 commands');
   });
+});
+
+test('explicit batch disclosure shows tool rows when inline details are hidden', async () => {
+  render(
+    <MessageContent
+      contentParts={Array.from({ length: 4 }, (_, index) => ({
+        type: 'tool-invocation' as const,
+        toolCallId: `read-${index}`,
+        toolName: 'Read',
+        args: { file_path: `source-${index}.ts` },
+        state: 'result' as const,
+        result: 'file contents',
+      }))}
+      textContent=""
+      chatFontSize={14}
+      showReasoning={false}
+      showToolDetails={false}
+      isStreamingMessage={false}
+    />,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: /Read 4 files|Used 4 tools/ }),
+  );
+  expect(await screen.findByText('Read source-0.ts')).toBeTruthy();
+  expect(screen.getByText('Read source-3.ts')).toBeTruthy();
 });

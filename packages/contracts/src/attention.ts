@@ -100,6 +100,8 @@ export interface ApprovalAttentionItem extends AttentionItemBase {
  */
 export interface NeedsInputAttentionItem extends AttentionItemBase {
   kind: 'needs_input';
+  /** Exact input question; never an approval/permission decision. */
+  inputReference?: AttentionRequestReference;
   source: { threadId: string };
   openHref: string;
   requestType?: AttentionRequestType;
@@ -340,3 +342,16 @@ export interface AttentionProjection {
   items: AttentionItem[];
   pendingCount: number;
 }
+
+export type AttentionInputReplyContext =
+  | {
+      state: 'open';
+      reference: AttentionRequestReference;
+      agentId: string;
+      conversationId: string;
+      provider: string;
+      engineId: string;
+      modelId?: string;
+      capabilities: Array<'image-input' | 'file-input'>;
+    }
+  | { state: 'unavailable'; reference: AttentionRequestReference };

@@ -8,7 +8,7 @@ import './chat.css';
 
 export interface ToolCallBatchSheetProps<P extends ToolCallLike> {
   group: ToolCallGroup<P>;
-  renderCall: (part: P, index: number) => ReactNode;
+  renderCall: (part: P, index: number, expanded?: boolean) => ReactNode;
   titleId: string;
   onClose: () => void;
 }
@@ -52,7 +52,8 @@ export function ToolCallBatchSheet<P extends ToolCallLike>({
             key={call.part.toolCallId ?? `tool-call-row:${call.index}`}
             className="tool-call-batch-sheet__row"
           >
-            {renderCall(call.part, call.index)}
+            {/* An explicit disclosure overrides the inline visibility preference. */}
+            {renderCall(call.part, call.index, true)}
           </div>
         ))}
       </div>

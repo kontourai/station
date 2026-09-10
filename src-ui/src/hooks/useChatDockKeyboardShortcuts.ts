@@ -33,6 +33,8 @@ interface DerivedSession {
 }
 
 interface UseChatDockKeyboardShortcutsOptions {
+  onCloseCurrent?: () => void;
+  onNewChat?: () => void;
   sessions: DerivedSession[];
   activeSessionId: string | null;
   activeSession: DerivedSession | null;
@@ -58,6 +60,8 @@ interface UseChatDockKeyboardShortcutsOptions {
  */
 export function useChatDockKeyboardShortcuts({
   sessions,
+  onCloseCurrent,
+  onNewChat,
   activeSessionId,
   activeSession,
   setActiveSessionId,
@@ -74,13 +78,17 @@ export function useChatDockKeyboardShortcuts({
     ['cmd'],
     'New chat',
     useCallback(() => {
+      if (onNewChat) {
+        onNewChat();
+        return;
+      }
       if (selectedAgent) {
         const newSessionId = `session-${Date.now()}`;
         initChat(newSessionId, (selectedAgent as any) ?? undefined);
         setActiveSessionId(newSessionId);
         setActiveChat(null); // New chat, no conversation yet
       }
-    }, [selectedAgent, initChat, setActiveSessionId, setActiveChat]),
+    }, [selectedAgent, initChat, setActiveSessionId, setActiveChat, onNewChat]),
   );
 
   useDockShortcut(
@@ -99,6 +107,10 @@ export function useChatDockKeyboardShortcuts({
     ['cmd'],
     'Close tab',
     useCallback(() => {
+      if (onCloseCurrent) {
+        onCloseCurrent();
+        return;
+      }
       if (activeSessionId && sessions.length > 1) {
         const currentIndex = sessions.findIndex(
           (s) => s.id === activeSessionId,
@@ -108,7 +120,7 @@ export function useChatDockKeyboardShortcuts({
         if (nextSession) focusSession(nextSession.id);
         removeChat(activeSessionId);
       }
-    }, [activeSessionId, sessions, focusSession, removeChat]),
+    }, [activeSessionId, sessions, focusSession, removeChat, onCloseCurrent]),
   );
 
   // Session switching shortcuts (⌘1-9)

@@ -28,6 +28,7 @@ const LANE_TICK_MS = 30_000;
 
 export interface HomeWorkLanes {
   active: HomeLaneItem[];
+  external?: HomeLaneItem[];
   recentlyFinished: HomeLaneItem[];
   snoozed: HomeLaneItem[];
   settled: HomeLaneItem[];
@@ -180,6 +181,7 @@ export function useHomeWorkLanes(items: HomeWorkItem[]): HomeWorkLanes {
   const settled = sortSettledTail(partition.settled, terminalSinceRef.current);
 
   return {
+    external: partition.external,
     active,
     recentlyFinished,
     snoozed,

@@ -4210,6 +4210,7 @@ dependencies = [
  "libc",
  "log",
  "ndk-context",
+ "notify-rust",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",

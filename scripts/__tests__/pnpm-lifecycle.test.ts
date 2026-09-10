@@ -44,9 +44,13 @@ function fixture() {
   );
   temporary.push(root);
   const entry = {
+    // Select the root-hoisted entry by PATH, not by version: this fixture
+    // writes a lock whose only importer is `.`, so it must model the hoisted
+    // copy. Selecting by version picked whichever entry happened to be first
+    // once #1719 split esbuild across workspace importers, which handed the
+    // fixture an `<importer>/node_modules/...` path its own lock cannot name.
     ...policy.entries.find(
-      (entry: { name: string; version: string }) =>
-        entry.name === 'esbuild' && entry.version === '0.28.1',
+      (entry: { path: string }) => entry.path === 'node_modules/esbuild',
     ),
     lock: 'pnpm-lock.yaml',
   };
@@ -253,14 +257,8 @@ describe('pnpm lifecycle boundary', () => {
   // example's exact pin) is inventoried as `<importer>/node_modules/<pkg>`;
   // an allowlist entry naming that path must approve it end to end.
   function importerFixture() {
-    const { root, entry } = fixture();
+    const { root, entry, packageRoot } = fixture();
     const importer = 'examples/viewer';
-    const nestedEntry = { ...entry, path: `${importer}/node_modules/esbuild` };
-    const allowlist = { schemaVersion: 1, entries: [entry, nestedEntry] };
-    writeFileSync(
-      join(root, 'config/dependency-lifecycle-allowlist.json'),
-      JSON.stringify(allowlist),
-    );
     // The lock is one pnpm 11.25.0 actually wrote for a workspace with this
     // importer (esbuild dependency), a dependency-less `packages/empty`, and
     // a dependency-less root, so the cold-bootstrap importer reader and the
@@ -272,20 +270,44 @@ describe('pnpm lifecycle boundary', () => {
       ),
       join(root, 'pnpm-lock.yaml'),
     );
+    // That committed lock owns the esbuild identity for this fixture, so bind
+    // the entries and both installed manifests to what IT records rather than
+    // to whatever version the repository's own root entry currently carries.
+    const [key, meta] = Object.entries(
+      readPnpmLockfile(root).packages as Record<
+        string,
+        { resolution: { integrity: string } }
+      >,
+    ).find(([name]) => name.startsWith('esbuild@')) as [
+      string,
+      { resolution: { integrity: string } },
+    ];
+    const version = key.slice('esbuild@'.length);
+    const locked = {
+      ...entry,
+      version,
+      integrity: meta.resolution.integrity,
+      purl: `pkg:npm/esbuild@${version}`,
+    };
+    const nestedEntry = { ...locked, path: `${importer}/node_modules/esbuild` };
+    const allowlist = { schemaVersion: 1, entries: [locked, nestedEntry] };
+    writeFileSync(
+      join(root, 'config/dependency-lifecycle-allowlist.json'),
+      JSON.stringify(allowlist),
+    );
     writeFileSync(
       join(root, 'pnpm-workspace.yaml'),
       `packages:\n  - ${importer}\nverifyDepsBeforeRun: false\nignoreScripts: true\n`,
     );
+    const manifest = JSON.stringify({
+      name: locked.name,
+      version,
+      scripts: { postinstall: 'node install.js' },
+    });
+    writeFileSync(join(packageRoot, 'package.json'), manifest);
     const nestedRoot = join(root, importer, 'node_modules/esbuild');
     mkdirSync(nestedRoot, { recursive: true });
-    writeFileSync(
-      join(nestedRoot, 'package.json'),
-      JSON.stringify({
-        name: entry.name,
-        version: entry.version,
-        scripts: { postinstall: 'node install.js' },
-      }),
-    );
+    writeFileSync(join(nestedRoot, 'package.json'), manifest);
     return { root, importer, allowlist };
   }
 

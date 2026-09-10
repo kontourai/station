@@ -2151,3 +2151,17 @@ execution authority or proves a witnessed channel transfer. Do not reuse a
 cached recovery notice across API-base changes; refresh the selected Station
 before projecting it as current. The record exposes no filesystem path or
 backup manifest contents.
+
+## Files in answers to input requests
+
+`getInputReplyContext(apiBase, reference, options)` from
+`@kontourai/station-sdk/input-reply` resolves the exact open input event to its
+Agent, Conversation and declared attachment transport capabilities. It does not
+turn an approval or permission request into a text-answer operation.
+
+Use `sendExecutionMessage` with that exact current-Station target and
+`expectedInputRequest: reference`. The foreground route checks the binding, and
+the orchestration owner checks the same open event again before adapter input.
+Opaque `attachmentRefs` use the existing current-host staging path; retries
+retain the same `clientTurnId` and payload after an uncertain response. Pass the
+captured host `requestScope` to each read, staging operation and send.

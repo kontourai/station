@@ -200,6 +200,11 @@ interface SplitPaneLayoutProps {
    * component every split-pane route already shares.
    */
   listClassName?: string;
+  /** Compact constrained-height regions; footer cards may mark secondary
+   * copy with split-pane__secondary-copy and use split-pane__action-card. */
+  heightResponsive?: boolean;
+  /** Compact mobile header and consistent list gutters for dense pickers. */
+  compact?: boolean;
   // Right panel
   children: React.ReactNode;
   emptyIcon?: React.ReactNode;
@@ -280,6 +285,8 @@ export function SplitPaneLayout({
   collectionEmpty = false,
   listIntro,
   listClassName,
+  heightResponsive = false,
+  compact = false,
   children,
   emptyIcon = <DocumentGlyph />,
   emptyTitle = 'Nothing selected',
@@ -842,6 +849,18 @@ export function SplitPaneLayout({
     ) : null;
   const detailContents = (
     <>
+      {!isMobile && selectedId && onDeselect && (
+        <button
+          type="button"
+          className="split-pane__region-back"
+          onClick={() => {
+            onDeselect();
+            listRef.current?.focus();
+          }}
+        >
+          ← Back to list
+        </button>
+      )}
       {showMobileDetailSheet && (
         <button
           type="button"
@@ -906,9 +925,10 @@ export function SplitPaneLayout({
 
   return (
     <div
-      className={`split-pane${paneState.collapsed && !isMobile ? ' split-pane--collapsed' : ''}${showMobileDetailSheet ? ' split-pane--mobile-sheet-open' : ''}`}
+      className={`split-pane${compact ? ' split-pane--compact' : ''}${heightResponsive ? ' split-pane--height-responsive' : ''}${paneState.collapsed && !isMobile ? ' split-pane--collapsed' : ''}${showMobileDetailSheet ? ' split-pane--mobile-sheet-open' : ''}`}
       ref={paneRef}
       data-first-run-anchor={firstRunAnchor}
+      data-has-detail={selectedId || unselectedDetailOpen ? '' : undefined}
     >
       {!isMobile && paneState.collapsed && (
         <button

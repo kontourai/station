@@ -3,6 +3,7 @@ import { existsSync, realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
+import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConversationContextBoundaryProjection } from '@kontourai/station-contracts/conversation-context-boundary';
@@ -62,6 +63,7 @@ async function provisionProjectWorktree(
 }
 
 export interface ForegroundMessageInput {
+  expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
   message: string;
   conversationId?: string;
@@ -292,6 +294,8 @@ export interface ExecutionTargetExecutionDependencies
     startRequired: boolean;
     /** Server-owned cursor copied only from the predecessor Session. */
     resumeCursor?: unknown;
+    /** Concrete model observed on the same-engine predecessor. */
+    resumeModel?: string;
     /** Bounded provider-neutral transcript fallback when no cursor exists. */
     transcriptSeed?: string;
     /** Explicit one-shot context policy, never inferred from a restart. */
@@ -538,6 +542,21 @@ export async function executeForegroundMessage(
         )
       : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
+  const resumeModel =
+    continuation && 'resumeModel' in continuation
+      ? continuation.resumeModel
+      : undefined;
+  // A resumed conversation must not silently adopt a newly resolved Agent
+  // default. Caller overrides still win; Station-resolved model connections
+  // and adapters without resume overrides keep their existing authority path.
+  const inheritResumeModel =
+    continuation?.resumeCursor !== undefined &&
+    resumeModel &&
+    !input.target.model?.override?.trim() &&
+    resolved.modelLaunchPlan.kind === 'engine-selected' &&
+    deps.getProviderAdapter(resolved.provider)?.metadata.modelLaunch
+      ?.overrideAtResume === true;
+  const startModelId = inheritResumeModel ? resumeModel : resolved.modelId;
   const conversationProjectSlug =
     binding?.projectSlug ??
     (resolved.workspace?.kind === 'project'
@@ -604,7 +623,7 @@ export async function executeForegroundMessage(
         ...(conversationWorkspaceIsolation
           ? { workspaceIsolation: conversationWorkspaceIsolation }
           : {}),
-        ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
+        ...(startModelId ? { modelId: startModelId } : {}),
         ...(continuation?.resumeCursor !== undefined
           ? { resumeCursor: continuation.resumeCursor }
           : {}),
@@ -809,6 +828,9 @@ export async function executeForegroundMessage(
     {
       threadId: sessionId,
       input: message,
+      ...(input.expectedInputRequest
+        ? { expectedInputRequest: input.expectedInputRequest }
+        : {}),
       ...(attachments ? { attachments } : {}),
       ...(transcriptSeed || input.ambientContext
         ? {

@@ -1,6 +1,8 @@
 import { useAwsProfilesQuery } from '@kontourai/station-sdk';
 import { Fragment, useId, useMemo } from 'react';
+import { Button } from '../../components/Button';
 import { CheckGlyph, CloseGlyph } from '../../components/icons/Glyph';
+import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import {
   modelPreferenceKey,
@@ -174,6 +176,24 @@ export function ProviderConnectionForm({
           Number.MAX_SAFE_INTEGER),
     );
   }, [modelOptions, modelPreferences.order, selectedProviderId]);
+  const listedModelKeys = new Set(
+    selectedProviderId
+      ? orderedModels.map((model) =>
+          modelPreferenceKey(selectedProviderId, model.id),
+        )
+      : [],
+  );
+  const hiddenModelCount = [...listedModelKeys].filter((key) =>
+    modelPreferences.hidden.includes(key),
+  ).length;
+  const setListedVisibility = (hidden: boolean) => {
+    updateModelPickerPreferences((current) => ({
+      ...current,
+      hidden: hidden
+        ? [...current.hidden, ...listedModelKeys]
+        : current.hidden.filter((key) => !listedModelKeys.has(key)),
+    }));
+  };
   const apiKeyConfigured = form.config.apiKeyConfigured === true;
 
   /*
@@ -344,6 +364,28 @@ export function ProviderConnectionForm({
             <h3>Models</h3>
             <p>Choose favorites, order, and visibility for this device.</p>
           </div>
+          <ResponsiveSurfaceActions className="provider-detail__model-bulk">
+            <Button
+              disabled={hiddenModelCount === listedModelKeys.size}
+              onClick={() => setListedVisibility(true)}
+            >
+              Hide all ({listedModelKeys.size})
+            </Button>
+            <Button
+              disabled={hiddenModelCount === 0}
+              onClick={() => setListedVisibility(false)}
+            >
+              Show all ({listedModelKeys.size})
+            </Button>
+            <span role="status">
+              {listedModelKeys.size - hiddenModelCount} of{' '}
+              {listedModelKeys.size} visible
+            </span>
+          </ResponsiveSurfaceActions>
+          <p>
+            Applies to the listed models, including favorites and custom
+            entries.
+          </p>
           <div className="provider-detail__model-list">
             {orderedModels.map((model, index) => {
               const key = modelPreferenceKey(selectedProviderId, model.id);

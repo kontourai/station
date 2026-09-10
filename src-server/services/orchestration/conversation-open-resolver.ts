@@ -34,6 +34,7 @@ export function createConversationOpenResolver(deps: {
     messages: readonly ConversationMessage[];
     answerability: ConversationListItem['answerability'];
     canContinue: boolean;
+    continuationPending?: boolean;
   } | null>;
   reportUnavailable?(error: unknown): void;
 }): ConversationOpenResolver {
@@ -92,6 +93,9 @@ export function createConversationOpenResolver(deps: {
             messageCount: current.messages.length,
           },
           canContinue: current.canContinue,
+          ...(!current.canContinue && current.continuationPending
+            ? { continuationPending: true }
+            : {}),
           answerability: current.answerability,
           recoveryActions: [],
         };

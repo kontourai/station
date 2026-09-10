@@ -78,6 +78,22 @@ afterEach(() => {
 });
 
 describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => {
+  test('an engine-reported model missing from the catalog keeps its display name', () => {
+    const { result } = renderHook(() =>
+      useChatDockViewModel({
+        activeSessionId: 's1',
+        availableModels,
+        agents,
+        sessions: [{ ...sessions[0], model: 'claude-opus-5' }],
+      }),
+    );
+    expect(
+      result.current.effectiveModels.find(
+        (model) => model.id === 'claude-opus-5',
+      )?.name,
+    ).toBe('Opus 5');
+  });
+
   test('marks hydrated catalog data until a live fetch succeeds after mount', () => {
     queryState.modelCatalogFetchedAfterMount = false;
     const { result, rerender } = renderVM('s1');
@@ -300,12 +316,12 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
     expect(result.current.imageAttachmentRefusal).toBeUndefined();
   });
 
-  test('an engine that declares no image path refuses the paste with its own reason', () => {
+  test('Muse permits images when its live adapter advertises delivery', () => {
     queryState.agentConnections = [
       {
         id: 'muse',
         name: 'Muse Code',
-        capabilities: ['agent-runtime'],
+        capabilities: ['agent-runtime', 'image-input'],
         config: { engineId: 'muse', executionClass: 'external' },
         type: 'muse',
       },
@@ -325,10 +341,8 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
       },
     );
 
-    expect(result.current.modelSupportsAttachments).toBe(false);
-    expect(result.current.imageAttachmentRefusal).toBe(
-      'Muse Code runs a text-only prompt and cannot see images.',
-    );
+    expect(result.current.modelSupportsAttachments).toBe(true);
+    expect(result.current.imageAttachmentRefusal).toBeUndefined();
     queryState.agentConnections = [];
   });
 

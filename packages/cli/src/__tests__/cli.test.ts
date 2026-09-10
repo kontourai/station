@@ -1,7 +1,15 @@
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
 
 // Snapshot of any global the CLI reads at runtime so each test is fully
 // self-contained regardless of shuffle order. The global vitest setup
@@ -44,6 +52,32 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// Lifecycle homes and targets below used to name fixed paths under the shared
+// system temp directory (`/tmp/x`, `/tmp/station-home`, ...). That directory is
+// world-writable and shared with every other process on this host, so an
+// unrelated program leaving a regular file at one of those names made the CLI's
+// home admission check refuse the path, and these tests failed for a reason
+// with nothing to do with the parser (#1790 -- observed live with a sibling
+// shell's redirect sitting at `/tmp/x`). `mkdtempSync` hands back a directory
+// this file alone owns; the names below are leaves inside it, so they stay
+// absent on disk exactly as the originals were, without being shared.
+const TEST_TEMP_ROOT = mkdtempSync(join(tmpdir(), 'station-cli-test-'));
+const ownedPath = (name: string): string => join(TEST_TEMP_ROOT, name);
+
+const SERVICE_BASE = ownedPath('station-service');
+const PARSE_BASE = ownedPath('parse-base');
+const STATION_HOME = ownedPath('station-home');
+const PERSISTENT_HOME = ownedPath('station-persistent-home');
+const AMBIENT_HOME = ownedPath('ambient-home');
+const ENV_HOME = ownedPath('env-home');
+const KEEP_ME_HOME = ownedPath('keep-me');
+const OTHER_HOME = ownedPath('other');
+const AGENTS_MD_TARGET = ownedPath('AGENTS.md');
+
+afterAll(() => {
+  rmSync(TEST_TEMP_ROOT, { force: true, recursive: true });
+});
+
 describe('bundled client admission', () => {
   test('a TTY bare invocation refuses before credential setup or lazy-start probing', async () => {
     const lazyStart = vi.fn();
@@ -65,7 +99,7 @@ describe('bundled client admission', () => {
     expect(lazyStart).not.toHaveBeenCalled();
   });
 
-  test('denies spaced host pairing actions but admits remote SSH show commands', async () => {
+  test('admits packaged access approval and remote SSH show commands', async () => {
     const environment = vi.fn();
     vi.doMock('../commands/environment.js', async (importOriginal) => ({
       ...(await importOriginal<typeof import('../commands/environment.js')>()),
@@ -82,19 +116,16 @@ describe('bundled client admission', () => {
     const { runCli } = await import('../cli.js');
     const configureProfileCredentialStore = vi.fn();
 
-    await expect(
-      runCli(
-        [
-          'environment',
-          '--api-base',
-          'http://127.0.0.1:1',
-          'access',
-          'approve',
-        ],
-        { configureProfileCredentialStore },
-      ),
-    ).rejects.toThrow('Environment security commands require');
-    expect(configureProfileCredentialStore).not.toHaveBeenCalled();
+    await runCli(
+      ['environment', '--api-base', 'http://127.0.0.1:1', 'access', 'approve'],
+      { configureProfileCredentialStore },
+    );
+    expect(environment).toHaveBeenCalledWith(
+      ['--api-base', 'http://127.0.0.1:1', 'access', 'approve'],
+      expect.any(Object),
+    );
+    configureProfileCredentialStore.mockClear();
+    environment.mockClear();
 
     await runCli(['environment', 'show', 'ssh-environment-id'], {
       configureProfileCredentialStore,
@@ -366,14 +397,14 @@ describe('runCli', () => {
     const { runCli, service } = await loadCliWithLifecycleMocks();
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    await runCli(['service', 'install', '--base=/tmp/station-service']);
+    await runCli(['service', 'install', `--base=${SERVICE_BASE}`]);
     const installLines = log.mock.calls.map(([line]) => String(line));
     expect(
       installLines.some((line) => line.includes('station setup local')),
     ).toBe(true);
 
     log.mockClear();
-    await runCli(['service', 'status', '--base=/tmp/station-service']);
+    await runCli(['service', 'status', `--base=${SERVICE_BASE}`]);
     const statusLines = log.mock.calls.map(([line]) => String(line));
     expect(
       statusLines.some((line) => line.includes('station setup local')),
@@ -389,7 +420,7 @@ describe('runCli', () => {
       'service',
       'status',
       '--instance=hosted',
-      '--base=/tmp/station-service',
+      `--base=${SERVICE_BASE}`,
       '--port=3242',
       '--ui-port=5274',
       '--json',
@@ -399,13 +430,13 @@ describe('runCli', () => {
       [
         'status',
         '--instance=hosted',
-        '--base=/tmp/station-service',
+        `--base=${SERVICE_BASE}`,
         '--port=3242',
         '--ui-port=5274',
         '--json',
       ],
       expect.objectContaining({
-        baseDir: '/tmp/station-service',
+        baseDir: SERVICE_BASE,
         instanceName: 'hosted',
         serverPort: 3242,
         uiPort: 5274,
@@ -424,7 +455,7 @@ describe('runCli', () => {
 
     expect(
       parseLifecycleArgs([
-        '--base=/tmp/station-service',
+        `--base=${SERVICE_BASE}`,
         '--allowed-origin=https://kontour.example.ts.net',
         '--allowed-origin=https://second.example.ts.net',
       ]),
@@ -436,7 +467,7 @@ describe('runCli', () => {
       clearAllowedOrigins: false,
     });
     expect(
-      parseLifecycleArgs(['--base=/tmp/x', '--clear-allowed-origins']),
+      parseLifecycleArgs([`--base=${PARSE_BASE}`, '--clear-allowed-origins']),
     ).toMatchObject({ allowedOrigins: undefined, clearAllowedOrigins: true });
 
     for (const [flag, reason] of [
@@ -446,7 +477,9 @@ describe('runCli', () => {
       ['--allowed-origin=https://host.example/', /bare origin/],
       ['--allowed-origin=https://user:pw@host.example', /bare origin/],
     ] as const) {
-      expect(() => parseLifecycleArgs(['--base=/tmp/x', flag])).toThrow(reason);
+      expect(() => parseLifecycleArgs([`--base=${PARSE_BASE}`, flag])).toThrow(
+        reason,
+      );
     }
   });
 
@@ -824,15 +857,19 @@ describe('runCli', () => {
     }));
 
     const { runCli } = await import('../cli.js');
-    await runCli(['export', '--format=agents-md', '--output=/tmp/AGENTS.md']);
-    await runCli(['import', '/tmp/AGENTS.md']);
+    await runCli([
+      'export',
+      '--format=agents-md',
+      `--output=${AGENTS_MD_TARGET}`,
+    ]);
+    await runCli(['import', AGENTS_MD_TARGET]);
 
     expect(exportConfig).toHaveBeenCalledWith({
       format: 'agents-md',
       includeSecrets: false,
-      output: '/tmp/AGENTS.md',
+      output: AGENTS_MD_TARGET,
     });
-    expect(importConfig).toHaveBeenCalledWith('/tmp/AGENTS.md');
+    expect(importConfig).toHaveBeenCalledWith(AGENTS_MD_TARGET);
   });
 
   test('passes an explicit base through clean-before-start lifecycle calls', async () => {
@@ -842,7 +879,7 @@ describe('runCli', () => {
       'start',
       '--clean',
       '--force',
-      '--base=/tmp/station-home',
+      `--base=${STATION_HOME}`,
       '--instance=smoke-a',
       '--port=3242',
       '--ui-port=5274',
@@ -855,14 +892,14 @@ describe('runCli', () => {
       force: true,
       homeSource: '--base',
       instanceName: 'smoke-a',
-      projectHome: '/tmp/station-home',
+      projectHome: STATION_HOME,
       serverPort: 3242,
       uiPort: 5274,
     });
     expect(lifecycle.start).toHaveBeenCalledWith({
       allowSharedHome: false,
       allowedOrigins: undefined,
-      baseDir: '/tmp/station-home',
+      baseDir: STATION_HOME,
       build: false,
       features: undefined,
       force: true,
@@ -888,7 +925,7 @@ describe('runCli', () => {
 
     await runCli([
       'start',
-      '--home=/tmp/station-persistent-home',
+      `--home=${PERSISTENT_HOME}`,
       '--instance=smoke-home',
       '--port=3242',
       '--ui-port=5274',
@@ -896,7 +933,7 @@ describe('runCli', () => {
 
     expect(lifecycle.start).toHaveBeenCalledWith(
       expect.objectContaining({
-        baseDir: '/tmp/station-persistent-home',
+        baseDir: PERSISTENT_HOME,
         homeSource: '--home',
         instanceName: 'smoke-home',
       }),
@@ -904,14 +941,14 @@ describe('runCli', () => {
   });
 
   test('--home wins over an ambient STATION_HOME', async () => {
-    process.env.STATION_HOME = '/tmp/ambient-home';
+    process.env.STATION_HOME = AMBIENT_HOME;
     const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
 
-    await runCli(['start', '--home=/tmp/station-persistent-home']);
+    await runCli(['start', `--home=${PERSISTENT_HOME}`]);
 
     expect(lifecycle.start).toHaveBeenCalledWith(
       expect.objectContaining({
-        baseDir: '/tmp/station-persistent-home',
+        baseDir: PERSISTENT_HOME,
         homeSource: '--home',
       }),
     );
@@ -921,10 +958,10 @@ describe('runCli', () => {
     const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
 
     await expect(
-      runCli(['start', '--home=/tmp/keep-me', '--temp-home']),
+      runCli(['start', `--home=${KEEP_ME_HOME}`, '--temp-home']),
     ).rejects.toThrow('--temp-home cannot be combined with --home.');
     await expect(
-      runCli(['start', '--home=/tmp/keep-me', '--base=/tmp/other']),
+      runCli(['start', `--home=${KEEP_ME_HOME}`, `--base=${OTHER_HOME}`]),
     ).rejects.toThrow(
       '--home and --base set the same directory. Pass only one of them.',
     );
@@ -937,9 +974,7 @@ describe('runCli', () => {
     // the failure this flag exists to prevent.
     const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
 
-    await expect(
-      runCli(['start', '--home', '/tmp/station-persistent-home']),
-    ).rejects.toThrow(
+    await expect(runCli(['start', '--home', PERSISTENT_HOME])).rejects.toThrow(
       'Lifecycle option --home requires the --home=<value> form.',
     );
     expect(lifecycle.start).not.toHaveBeenCalled();
@@ -955,7 +990,7 @@ describe('runCli', () => {
     await runCli([
       'start',
       '--allow-shared-home',
-      '--base=/tmp/station-home',
+      `--base=${STATION_HOME}`,
       '--instance=smoke-a',
       '--port=3242',
       '--ui-port=5274',
@@ -1021,13 +1056,13 @@ describe('runCli', () => {
   });
 
   test('uses the resolved home selector when stopping with an env home override', async () => {
-    process.env.STATION_HOME = '/tmp/env-home';
+    process.env.STATION_HOME = ENV_HOME;
     const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
 
     await runCli(['stop']);
 
     expect(lifecycle.stop).toHaveBeenCalledWith({
-      baseDir: '/tmp/env-home',
+      baseDir: ENV_HOME,
       instanceName: undefined,
       serverPort: undefined,
       uiPort: undefined,
@@ -1035,7 +1070,7 @@ describe('runCli', () => {
   });
 
   test('does not inject the resolved default home when stopping a named instance', async () => {
-    process.env.STATION_HOME = '/tmp/env-home';
+    process.env.STATION_HOME = ENV_HOME;
     const { lifecycle, runCli } = await loadCliWithLifecycleMocks();
 
     await runCli(['stop', '--instance=smoke-a']);

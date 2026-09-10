@@ -1,3 +1,4 @@
+import { BLOCKING_NOTIFICATION_CATEGORIES } from '@kontourai/station-contracts/notification';
 import {
   LIVE_NOTIFICATION_STATUSES,
   useNotificationsQuery,
@@ -41,8 +42,24 @@ export function useApprovalOsAlerts(): void {
 
   useEffect(() => {
     if (!enabled || !data) return;
+    let local = false;
+    try {
+      local = ['localhost', '127.0.0.1', '[::1]'].includes(
+        new URL(apiBase).hostname,
+      );
+    } catch {
+      /* Remote/unknown targets keep their existing delivery path. */
+    }
+    // Owned local pairing requests are announced by the tray, including while
+    // this WebView is closed. Do not post the same request a second time here.
+    const alerts = local
+      ? data.filter(
+          (item) =>
+            item.category !== BLOCKING_NOTIFICATION_CATEGORIES.devicePairing,
+        )
+      : data;
     void import('../platform/native/blockingAlert').then((module) =>
-      module.reconcileBlockingAlerts(data, apiBase),
+      module.reconcileBlockingAlerts(alerts, apiBase),
     );
   }, [apiBase, data, enabled]);
 }

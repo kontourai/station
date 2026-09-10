@@ -938,3 +938,7 @@ export function parsePublicStationHandshake(
   }
   return value as unknown as PublicStationHandshake;
 }
+
+/** Same-user native access decisions; requires direct loopback and this boot's local proof. */
+export const PUBLIC_DEVICE_PAIRING_LOCAL_ACCESS_PATH =
+  '/.well-known/station/v1/pairing/local-access';

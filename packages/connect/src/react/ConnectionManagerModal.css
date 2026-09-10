@@ -699,3 +699,22 @@
   padding: 0 4px;
   text-transform: uppercase;
 }
+
+.station-connect-footer__group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-primary, #333);
+}
+.station-connect-footer__group h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-primary, #eee);
+}
+.station-connect-footer__group p {
+  margin: 0 0 4px;
+  color: var(--text-secondary, #aaa);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}

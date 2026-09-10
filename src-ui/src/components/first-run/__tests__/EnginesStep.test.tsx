@@ -209,7 +209,7 @@ describe('the checklist', () => {
     );
     // The copy states the state (SHELL-12: the old card rendered "Already set
     // up as X" beside an unticked box and a "Set up 2" button).
-    expect(row('codex').textContent).toContain('Ready — Codex');
+    expect(row('codex').textContent).toContain('Set up — Codex');
     expect(checkbox('codex')).toBeNull();
     expect(screen.getByText(/Already set up as/)).toBeTruthy();
   });

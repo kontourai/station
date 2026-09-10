@@ -110,8 +110,6 @@ function ProjectSidebarImpl() {
     platformProfile.clientBuild?.builtAt,
     { development: platformProfile.isDevBuild },
   );
-  const clientBuildLabel =
-    clientBuild.state === 'available' ? `Built ${clientBuild.age}` : undefined;
   const homeLabel = platformProfile.isTauri
     ? [
         appName,
@@ -300,8 +298,6 @@ function ProjectSidebarImpl() {
           appName={appName}
           homeLabel={homeLabel}
           channelBadge={releaseChannelBadge}
-          buildLabel={clientBuildLabel}
-          buildDescription={clientBuild.description}
           collapsed={effectiveCollapsed}
           isMobile={isMobile}
           onCloseMobile={() => setMobileOpen(false)}

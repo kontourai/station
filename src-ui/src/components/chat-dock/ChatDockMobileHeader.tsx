@@ -104,58 +104,60 @@ export function ChatDockMobileHeader({
       data-dock-drag-surface=""
       data-testid="chat-dock-mobile-header"
     >
-      {showDrawerToggle ? (
-        <button
-          type="button"
-          className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
-          aria-label="Toggle menu"
-          aria-controls="mobile-navigation"
-          data-no-dock-drag=""
-          onClick={(event) => onToggleSidebar(event.currentTarget)}
-        >
-          <MenuGlyph />
-        </button>
-      ) : dockToggle ? (
-        <button
-          type="button"
-          className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
-          aria-label={
-            dockToggle.state === 'collapsed' ? 'Expand chat' : 'Collapse chat'
-          }
-          data-no-dock-drag=""
-          onClick={
-            dockToggle.state === 'collapsed'
-              ? dockToggle.onExpand
-              : dockToggle.onCollapse
-          }
-        >
-          <ArrowDownGlyph />
-        </button>
-      ) : null}
-      {projectSwitcher && (
-        <button
-          ref={projectTriggerRef}
-          type="button"
-          className="chat-dock__mobile-project"
-          aria-label={`Switch project — ${projectSwitcher.projectName}`}
-          aria-haspopup="dialog"
-          aria-expanded={isProjectOpen}
-          data-dock-drag-passthrough=""
-          onClick={() => setIsProjectOpen(true)}
-        >
-          <span className="chat-dock__mobile-project-lines">
-            <span
-              className="chat-dock__mobile-project-caption"
-              aria-hidden="true"
-            >
-              Project
+      <div className="chat-dock__mobile-leading">
+        {showDrawerToggle ? (
+          <button
+            type="button"
+            className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
+            aria-label="Toggle menu"
+            aria-controls="mobile-navigation"
+            data-no-dock-drag=""
+            onClick={(event) => onToggleSidebar(event.currentTarget)}
+          >
+            <MenuGlyph />
+          </button>
+        ) : dockToggle ? (
+          <button
+            type="button"
+            className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
+            aria-label={
+              dockToggle.state === 'collapsed' ? 'Expand chat' : 'Collapse chat'
+            }
+            data-no-dock-drag=""
+            onClick={
+              dockToggle.state === 'collapsed'
+                ? dockToggle.onExpand
+                : dockToggle.onCollapse
+            }
+          >
+            <ArrowDownGlyph />
+          </button>
+        ) : null}
+        {projectSwitcher && (
+          <button
+            ref={projectTriggerRef}
+            type="button"
+            className="chat-dock__mobile-project"
+            aria-label={`Switch project — ${projectSwitcher.projectName}`}
+            aria-haspopup="dialog"
+            aria-expanded={isProjectOpen}
+            data-dock-drag-passthrough=""
+            onClick={() => setIsProjectOpen(true)}
+          >
+            <span className="chat-dock__mobile-project-lines">
+              <span
+                className="chat-dock__mobile-project-caption"
+                aria-hidden="true"
+              >
+                Project
+              </span>
+              <span className="chat-dock__mobile-project-name">
+                {projectSwitcher.projectName}
+              </span>
             </span>
-            <span className="chat-dock__mobile-project-name">
-              {projectSwitcher.projectName}
-            </span>
-          </span>
-        </button>
-      )}
+          </button>
+        )}
+      </div>
       {isProjectOpen && projectSwitcher && (
         <ProjectSwitcherOverlay
           anchorRef={projectTriggerRef}

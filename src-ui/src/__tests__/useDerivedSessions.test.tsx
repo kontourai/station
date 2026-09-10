@@ -96,6 +96,23 @@ describe('useDerivedSessions — ChatDock identity stability (station#726)', () 
     ).toBe('New chat');
   });
 
+  test('uses the first prompt while a conversation still carries its New chat placeholder', () => {
+    activeChatsStore.updateChat(SESSION_A, {
+      title: 'New chat',
+      messages: [{ role: 'user', content: 'Check the project build' }],
+    });
+    const { result } = renderHook(() => useDerivedSessions('', null, null));
+    expect(
+      result.current.find((session) => session.id === SESSION_A)?.title,
+    ).toBe('Check the project build');
+    act(() => {
+      activeChatsStore.updateChat(SESSION_A, { title: 'Chosen title' });
+    });
+    expect(
+      result.current.find((session) => session.id === SESSION_A)?.title,
+    ).toBe('Chosen title');
+  });
+
   test("(b) a keystroke in one session does not change another session's derived identity", () => {
     const { result } = renderHook(() => useDerivedSessions('', null, null));
 

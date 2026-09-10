@@ -8,6 +8,7 @@ import {
 } from '../../services/plugins/plugin-activation-composition.js';
 import { createLocalPluginInstallationHost } from '../../services/plugins/plugin-installation-local.js';
 import type { PluginInstallationHost } from '../../services/plugins/plugin-installation-service.js';
+import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 /**
  * VoltAgent runtime integration for Station
@@ -272,6 +273,61 @@ const AGENT_CONFIGURATION_ACTIVATION_DEADLINE_MS = 10_000;
 const AGENT_CONFIGURATION_SHUTDOWN_DRAIN_GRACE_MS = 5_000;
 
 /**
+ * How long shutdown waits for the aborted native-engine adoption window
+ * (station#1815).
+ *
+ * Two things this number is NOT, both of which earlier revisions of this
+ * comment claimed it was.
+ *
+ * It is not a wedge threshold. The window's remaining work is an
+ * agent-registry write; `saveRegistry` takes two file mutation locks in
+ * sequence, each with a 10 s admission deadline of its own
+ * (`lifecycle-events.ts` `acquireGen`), inside a load-CAS-save loop that
+ * retries up to 8 times — and each of those iterations re-enters
+ * `loadOrCreateAgentRegistry`, which has an 8-attempt loop of its own. The
+ * #1815 reviewer measured a completely healthy adoption against ONE ordinary
+ * lock holder at 10_000 ms. So expiry cannot
+ * mean "wedged" and is not reported as such — see
+ * `settleNativeEngineAdoption`.
+ *
+ * Nor is it "the time this process has". There is no such quantity. The
+ * graces Station actually runs under span three orders of magnitude, and the
+ * primary desktop product gives the tightest of the non-zero ones:
+ *
+ *   `station stop` on Windows  0 s  (`taskkill /F /T`, no graceful phase)
+ *   Desktop quit               1 s  (`terminate_desktop_child`, 20 x 50 ms)
+ *   `station stop` on Unix     5 s  (`killProcessTree`)
+ *   systemd                   30 s  (`TimeoutStopSec`)
+ *   launchd                  600 s  (`ExitTimeOut`)
+ *   a bare SIGTERM       unbounded
+ *
+ * `station-runtime-adoption-lease.test.ts` reads those numbers from their
+ * own sources and pins which of them can reach the disclosure below, so the
+ * list above cannot quietly stop being true.
+ *
+ * WHICH SUPERVISORS SEE THE DISCLOSURE. The grace starts at SIGTERM and this
+ * wait is deliberately last, so reaching `settleNativeEngineAdoption`'s
+ * warning needs `grace > budget` strictly — and even that is only necessary,
+ * not sufficient, because teardown consumes an unmeasured part of the grace
+ * first. `station stop` on Unix gives exactly this budget, so the kill always
+ * lands inside the wait: an operator who stops Station during a contended
+ * adoption write gets the lease correctly withheld and NO line saying why.
+ * That leaves systemd, launchd and a bare signal as the only supervisors
+ * under which the disclosure can appear. An earlier revision of this comment
+ * claimed the Unix stop as one of them; it never was.
+ *
+ * What the number IS, then: not a wedge threshold, not "the time this process
+ * has", and not a disclosure guarantee. It is large enough that the
+ * uncontended write — the overwhelmingly common one, milliseconds against a
+ * home this process can write — always finishes, so an ordinary shutdown
+ * releases the lease properly; and small enough that an unsupervised caller
+ * is not blocked on a wedged writer indefinitely. Its relationship to the
+ * supervisor graces is a mismatch this constant cannot fix, and raising it
+ * would only move which supervisors kill the process mid-wait.
+ */
+export const NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS = 5_000;
+
+/**
  * The configuration generation a reload prepared against. Every publication
  * gate re-captures it and refuses to commit if any component moved — see
  * `assertAgentConfigurationRevisions`.
@@ -522,6 +578,18 @@ export class StationRuntime {
   private reconciliationChurnWindowStartMs = 0;
   private reconciliationChurnCount = 0;
   private readonly nativeEngineAdoptionAbort = new AbortController();
+  /**
+   * The in-flight adoption window, held so shutdown can wait for it
+   * (station#1815).
+   *
+   * Aborting the signal above ends the retry SCHEDULE. It says nothing about
+   * a PATH probe or an agent-registry write already running, and this runtime
+   * owns the home's runtime lease until shutdown releases it — so releasing
+   * on the abort alone handed the home away with a writer still live. Live
+   * symptom (#1791): `STATION_HOME_RESET_REQUIRED` and `ENOENT: rename` out
+   * of the adoption, minutes after the case that started it had ended.
+   */
+  private nativeEngineAdoptionSettled?: Promise<unknown>;
   /**
    * station#1586 (item 6, fix round M2): aborted on shutdown so the boot-time
    * prerequisite priming settles instead of outliving the runtime, exactly
@@ -1725,6 +1793,19 @@ export class StationRuntime {
       this.agentConfigurationActivationDeadlineMs ??
       AGENT_CONFIGURATION_ACTIVATION_DEADLINE_MS
     );
+  }
+
+  /**
+   * The settle budget, as a method for the same reason as `drainGraceMs`
+   * below: a prototype-built test double has no constructor-initialized
+   * fields, so a default carried on a FIELD would need an `??` fallback that
+   * nothing running against a real runtime can ever reach — an unreachable
+   * branch, and a default no test could bind. A method lives on the
+   * prototype, so the double and the runtime read the same one and a test
+   * that does not override it is exercising the shipped value.
+   */
+  private nativeEngineAdoptionSettleBudgetMs(): number {
+    return NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS;
   }
 
   private drainGraceMs(): number {
@@ -3244,11 +3325,21 @@ export class StationRuntime {
     // under load, and a lost race must not strand the registry empty. The
     // catalog reads the registry live, so adopted agents appear on the next
     // /api/agents request without a reload.
-    void adoptDetectedNativeEngines({
+    // Retained rather than discarded (station#1815): shutdown releases this
+    // home's runtime lease, and it may only do that once this window's last
+    // registry write has finished or been cancelled.
+    this.nativeEngineAdoptionSettled = adoptDetectedNativeEngines({
       configLoader: this.configLoader,
       logger: this.logger,
       timers: this.timers,
       signal: this.nativeEngineAdoptionAbort.signal,
+    }).catch((error: unknown) => {
+      // Documented never to throw. If it ever does, the rejection is observed
+      // HERE, where it can be attributed, rather than surfacing unowned on
+      // some later tick against whatever is running then.
+      this.logger.warn('Native engine adoption window failed', {
+        error: errorMessage(error),
+      });
     });
 
     // station#1586 (item 6): warm the Claude executable resolution and its
@@ -4138,7 +4229,11 @@ export class StationRuntime {
         terminalService: this.terminalService,
         monitoringEmitter: this.monitoringEmitter,
         sshEnvironmentService: this.sshEnvironmentService,
-        configLoader: this.configLoader,
+        // Deliberately not handed over (station#1815): this loader is the
+        // adoption window's write handle, so it is disposed below, after the
+        // window has settled — never in the middle of teardown while a
+        // registry write may still be running through it.
+        configLoader: undefined,
         optionalNetworkShutdownTasks,
       });
     } catch (error) {
@@ -4202,11 +4297,33 @@ export class StationRuntime {
     } catch (error) {
       failures.push(error);
     }
-    if (failures.length === 0) {
+    // LAST, and only here (station#1815). Everything above is teardown the
+    // adoption window cannot affect and which must happen whether or not the
+    // window settles — `station stop` SIGKILLs 5 s after SIGTERM, and while
+    // this wait sat at the TOP of teardown a stop inside the adoption window
+    // meant none of it ran at all. The two steps that DO depend on the window
+    // are the two below, so they are the only ones behind the wait.
+    //
+    // One dependency in the other direction, which an earlier version of this
+    // comment claimed away (round-4 verifier): `shutdownRuntimeServices`
+    // above CLEARS `this.timers`, the same array the adoption window pushes
+    // its inter-attempt timer into. That is a no-op today only because
+    // `shutdown()` aborts the window before any of this is reached and the
+    // window's own abort listener clears its timer, so the array holds an
+    // already-cleared handle. Move or drop that abort and every shutdown
+    // burns the whole budget and reports the window as still running.
+    if (await this.settleNativeEngineAdoption()) {
       try {
-        this.stationHomeRuntimeLease?.release();
+        await this.configLoader.dispose();
       } catch (error) {
         failures.push(error);
+      }
+      if (failures.length === 0) {
+        try {
+          this.stationHomeRuntimeLease?.release();
+        } catch (error) {
+          failures.push(error);
+        }
       }
     }
     if (failures.length === 1) throw failures[0];
@@ -4216,6 +4333,51 @@ export class StationRuntime {
         'Runtime shutdown cleanup was incomplete.',
       );
     }
+  }
+
+  /**
+   * Wait for the aborted native-engine adoption window to finish.
+   *
+   * True when it did; false when the budget ran out first, which is a
+   * DISCLOSED outcome and not a failure. An earlier revision made it one, on
+   * the argument that expiry meant a wedged writer. That argument was wrong:
+   * the write can legitimately outlast any budget this shutdown can claim
+   * (see `NATIVE_ENGINE_ADOPTION_SHUTDOWN_BUDGET_MS`), so reporting expiry as
+   * a failure would have made an ordinary contended write exit non-zero —
+   * station#1814's shape, on the shutdown path.
+   *
+   * What expiry costs, exactly: the loader is left open and the home runtime
+   * lease is left held, because both are claims this runtime can no longer
+   * make. Retention is narrower than the symptom it is often mistaken for.
+   * It stops `acquireStationHomeMaintenanceLease` admitting a backup or
+   * restore in the seconds before this process exits. It does NOT stop the
+   * writer — nothing here can — so a caller that removes this home the moment
+   * `shutdown()` resolves can still see the write land on top of it, which is
+   * the `ENOENT: rename` from #1791. The lease is a statement about
+   * ownership, not a fence around the writer.
+   */
+  private async settleNativeEngineAdoption(): Promise<boolean> {
+    const pending = this.nativeEngineAdoptionSettled;
+    if (!pending) return true;
+    const budgetMs = this.nativeEngineAdoptionSettleBudgetMs();
+    if (await awaitSettlementWithin(pending, budgetMs)) return true;
+    this.logger?.warn?.(
+      'Native engine adoption was still running when shutdown ran out of ' +
+        'time for it; the Station home runtime lease and the configuration ' +
+        'loader were left in place because a registry write may still be ' +
+        'using them. This is contention or a wedge — from here the two are ' +
+        'indistinguishable — and the lease record is reaped by the next ' +
+        'lease scan after this process is gone.',
+      {
+        budgetMs,
+        // Which home, on a host running several instances. Both are already
+        // resolved by this point; neither is derived here.
+        homeDir: this.configLoader?.getProjectHomeDir?.(),
+        environmentId: this.stationEnvironmentId ?? undefined,
+        leaseOwnerId: this.stationHomeRuntimeLease?.ownerId,
+      },
+    );
+    return false;
   }
 
   private recordRuntimeLifecycle(phase: 'ready' | 'stopping'): void {

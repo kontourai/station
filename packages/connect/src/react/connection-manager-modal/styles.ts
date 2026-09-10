@@ -7,7 +7,6 @@ export const inputStyle: CSSProperties = {
   border: '1px solid var(--border-primary, #333)',
   borderRadius: 8,
   color: 'var(--text-primary, #e5e5e5)',
-  outline: 'none',
   width: '100%',
   boxSizing: 'border-box',
 };
@@ -20,7 +19,7 @@ export const primaryBtnStyle: CSSProperties = {
   border: 'none',
   cursor: 'pointer',
   background: 'var(--accent-primary, #3b82f6)',
-  color: 'white',
+  color: 'var(--text-on-accent, white)',
   minHeight: 44,
 };
 

@@ -86,8 +86,8 @@ const receipt = () =>
 describe('AttachedSessionAdoption', () => {
   it('rejects unsupported external continuation before resolving or invoking an adapter', async () => {
     const source: ProviderSession = {
-      provider: 'codex',
-      threadId: 'external:codex:fixture',
+      provider: 'acp',
+      threadId: 'external:acp:fixture',
       status: 'ready',
       cwd: '/fixture/project',
       controlMode: 'read-only-attached',
@@ -111,7 +111,9 @@ describe('AttachedSessionAdoption', () => {
     });
     await expect(
       new AttachedSessionAdoption(deps).adopt(source.threadId, receipt()),
-    ).rejects.toThrow('independent continuation is not available yet');
+    ).rejects.toThrow(
+      'Station has not established independent continuation support',
+    );
     expect(adapterRequests).toBe(0);
   });
 

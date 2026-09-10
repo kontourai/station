@@ -658,7 +658,7 @@ describe('AC4 — item order and copy are stable across renders', () => {
       ]),
     );
     expect(labels.codex).toBe('Enable Codex');
-    expect(labels['claude-code']).toBe('Ready — Claude Code');
+    expect(labels['claude-code']).toBe('Set up — Claude Code');
     // Nothing Station cannot act on is dressed up as an action.
     expect(labels.kiro).toBe('Kiro');
     expect(labels.opencode).toBe('OpenCode');

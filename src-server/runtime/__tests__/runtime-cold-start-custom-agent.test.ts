@@ -71,12 +71,31 @@ const routeMocks = vi.hoisted(() => {
     notificationService: { shutdown: ReturnType<typeof vi.fn> };
   }> = [];
   const taskDispatches: Array<Promise<unknown>> = [];
-  return {
+  let announceRoutesConfigured: () => void = () => {};
+  const state = {
     servicePairs,
     taskDispatches,
     deferServerFactory: false,
     kitLifecycleReady: Promise.resolve(),
+    /**
+     * Resolved the moment `configureRuntimeRoutes` below is called (#1791).
+     *
+     * Route configuration is an event this file's own mock receives, so a
+     * case that needs to observe it can await the event. Polling the call
+     * count against a fixed deadline instead measured a cold boot's wall
+     * time: on a loaded host the boot was still progressing when the
+     * deadline expired, and the case failed with `expected "vi.fn()" to be
+     * called at least once` for a runtime that had nothing wrong with it.
+     */
+    routesConfigured: Promise.resolve(),
+    /** Re-armed per case, so a resolved promise cannot satisfy the next one. */
+    armRoutesConfigured(): void {
+      state.routesConfigured = new Promise<void>((resolve) => {
+        announceRoutesConfigured = resolve;
+      });
+    },
     configureRuntimeRoutes: vi.fn((context: any) => {
+      announceRoutesConfigured();
       // This crosses the same Dispatcher Interface that task routes and
       // capability bindings receive while `initializeRuntime` is still
       // constructing VoltAgent/routes. Before archive#2528's ordering repair this
@@ -96,6 +115,8 @@ const routeMocks = vi.hoisted(() => {
       return services;
     }),
   };
+  state.armRoutesConfigured();
+  return state;
 });
 
 vi.mock('../routes/runtime-routes.js', () => routeMocks);
@@ -266,6 +287,57 @@ vi.mock('../bootstrap/engine-prerequisite-priming.js', () => ({
   },
 }));
 
+/**
+ * #1791. Boot also fires native-engine adoption, and the real thing probes
+ * the host's PATH for `claude`/`codex`/`muse` (`which` per candidate, on a
+ * `[0, 10s, 30s, 90s]` retry schedule) and then WRITES whatever it found into
+ * this home's agent registry. Both halves are wrong for a hermetic cold-boot
+ * regression:
+ *
+ *  - the write makes what `initializeRuntimeAgents` finds depend on which
+ *    CLIs the dev machine happens to have installed; and
+ *  - the window is fire-and-forget and outlives the case that opened it.
+ *    `shutdown()` aborts its signal, which ends the retry schedule, but does
+ *    not await the promise — so a probe or registry write already running
+ *    continues after `afterEach` has removed the home under it. On a loaded
+ *    host this file logged exactly that: `Native engine adoption failed
+ *    {"engine":"codex"} STATION_HOME_RESET_REQUIRED` and an `ENOENT: rename`
+ *    out of `materializeStationAgent`, minutes into the run, attributed to
+ *    whichever case happened to be executing.
+ *
+ * Recorded rather than deleted, for the same reason as the priming above:
+ * the call is what proves a cold boot performs the adoption at all, and the
+ * behaviour behind it is proven in
+ * `bootstrap/__tests__/native-engine-adoption.test.ts`.
+ */
+const nativeEngineAdoption = vi.hoisted(() => ({
+  calls: [] as Array<{ signal?: AbortSignal }>,
+  /**
+   * Per-case override for the window's own promise (station#1815 round-4).
+   *
+   * The default settles immediately, which is what every case but the boot
+   * one wants. The boot case needs it PENDING, because the seam it pins —
+   * the runtime retaining that promise rather than discarding it — is
+   * invisible against a promise that is already resolved.
+   */
+  result: undefined as Promise<{ outcomes: object }> | undefined,
+  adoptDetectedNativeEngines: (options: { signal?: AbortSignal }) => {
+    nativeEngineAdoption.calls.push(options);
+    return nativeEngineAdoption.result ?? Promise.resolve({ outcomes: {} });
+  },
+}));
+vi.mock('../bootstrap/native-engine-adoption.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../bootstrap/native-engine-adoption.js')
+    >();
+  return {
+    ...actual,
+    adoptDetectedNativeEngines: (options: { signal?: AbortSignal }) =>
+      nativeEngineAdoption.adoptDetectedNativeEngines(options),
+  };
+});
+
 const { StationRuntime } = await import('../bootstrap/station-runtime.js');
 const { BedrockAdapter } = await import(
   '../../providers/adapters/bedrock-adapter.js'
@@ -314,6 +386,58 @@ function replaceTerminalListener(
   return { start, stop };
 }
 
+/**
+ * Wait for the boot under test to reach route configuration (#1791).
+ *
+ * Deliberately not `vi.waitFor`: a fixed deadline polled against a call
+ * count is a measurement of the host, not of the runtime, and this file
+ * cold-boots a real `StationRuntime` — SQLite schema, skills discovery,
+ * provider seeding and agent construction — before routes are configured.
+ * Under load that boot legitimately takes longer than any deadline worth
+ * writing, and the case then failed while the runtime was still making
+ * progress. `configureRuntimeRoutes` is this file's own mock, so the event
+ * is directly observable and needs no budget at all.
+ *
+ * The race against the initialization keeps a boot that FAILS before route
+ * configuration reporting its own error, instead of parking on a promise
+ * that will never resolve until the suite's hang cap.
+ */
+async function awaitRouteConfiguration(
+  initialization: Promise<unknown>,
+): Promise<void> {
+  // Captured before the wait, deliberately. `configureRuntimeRoutes`'s
+  // `mockClear()` shares a teardown block with the deferred's re-arm, so an
+  // absolute `toHaveBeenCalled()` would be satisfied by the very stale state
+  // it is meant to catch — both survive the same skipped reset. A delta
+  // cannot be.
+  const callsBeforeWait = routeMocks.configureRuntimeRoutes.mock.calls.length;
+  const reachedRoutes = await Promise.race([
+    routeMocks.routesConfigured.then(() => true),
+    initialization.then(
+      () => false,
+      () => false,
+    ),
+  ]);
+  if (reachedRoutes) {
+    // The deferred is a signal standing in for an event; assert the event
+    // too, so a deferred left resolved by a previous case can only ever
+    // produce a failure here, never a silent pass in everything after it.
+    expect(
+      routeMocks.configureRuntimeRoutes.mock.calls.length,
+      'route configuration was signalled without this boot configuring routes',
+    ).toBeGreaterThan(callsBeforeWait);
+    return;
+  }
+  // A boot that rejects here reports its own error. One that settled to a
+  // value reports that value — including a caller that folded its rejection
+  // into one, as the Kit-failure case below does, so the message is never
+  // just "something ended early".
+  const outcome = await initialization;
+  throw new Error(
+    `initialize() settled before route services were configured: ${String(outcome)}`,
+  );
+}
+
 // archive#1019: these cases cold-boot a real StationRuntime (route services, servers,
 // terminal/voice seams) — under parallel vitest workers or a sibling agent
 // session on the same host, real spawns starve the 5s default budget and this
@@ -326,24 +450,47 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
   let runtime: InstanceType<typeof StationRuntime> | undefined;
 
   afterEach(async () => {
-    if (runtime) {
-      await runtime.shutdown();
+    try {
+      if (runtime) {
+        await runtime.shutdown();
+      }
+    } finally {
+      // Unconditional, because `shutdown()` REJECTS whenever
+      // `shutdownAfterConfigurationDrain` collects a failure — and #1814's
+      // 100ms search-reader terminate grace makes that a load-dependent
+      // event, not a rare one. Reset that a throwing teardown skipped is
+      // how one slow case fails an innocent later one: a `routesConfigured`
+      // left resolved lets `awaitRouteConfiguration` return before the next
+      // case's routes exist, and an uncleared `nativeEngineAdoption.calls`
+      // fails the priming case's `toHaveLength(1)` against a case that did
+      // nothing wrong. That misattribution is the whole subject of #1791.
       runtime = undefined;
+      storeIntegrityVerification.start.mockClear();
+      storeIntegrityVerification.stop.mockClear();
+      enginePrerequisitePriming.calls.length = 0;
+      routeMocks.configureRuntimeRoutes.mockClear();
+      routeMocks.servicePairs.length = 0;
+      routeMocks.taskDispatches.length = 0;
+      routeMocks.deferServerFactory = false;
+      routeMocks.kitLifecycleReady = Promise.resolve();
+      routeMocks.armRoutesConfigured();
+      nativeEngineAdoption.calls.length = 0;
+      nativeEngineAdoption.result = undefined;
+      if (originalHostedRegistryFile === undefined)
+        delete process.env[hostedRegistryFileEnv];
+      else process.env[hostedRegistryFileEnv] = originalHostedRegistryFile;
+      // Last, because it is the only statement here that can throw and so
+      // the only one that could skip the rest. `rmSync(force: true)`
+      // suppresses ENOENT, not EBUSY/EPERM/ENOTEMPTY, and the realistic
+      // trigger is #1814's own condition: a search reader still winding
+      // down is a live writer under the directory being removed. Every
+      // reset above is non-throwing, so the order costs nothing. Belt and
+      // braces — `awaitRouteConfiguration`'s call-count delta already turns
+      // a skipped re-arm into a loud failure rather than a vacuous pass.
+      if (home) {
+        rmDirSyncRetrying(home);
+      }
     }
-    if (home) {
-      rmDirSyncRetrying(home);
-    }
-    storeIntegrityVerification.start.mockClear();
-    storeIntegrityVerification.stop.mockClear();
-    enginePrerequisitePriming.calls.length = 0;
-    routeMocks.configureRuntimeRoutes.mockClear();
-    routeMocks.servicePairs.length = 0;
-    routeMocks.taskDispatches.length = 0;
-    routeMocks.deferServerFactory = false;
-    routeMocks.kitLifecycleReady = Promise.resolve();
-    if (originalHostedRegistryFile === undefined)
-      delete process.env[hostedRegistryFileEnv];
-    else process.env[hostedRegistryFileEnv] = originalHostedRegistryFile;
   });
 
   it('rejects an incompatible home before EventStore can create SQLite state', () => {
@@ -418,6 +565,12 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         region: 'eu-west-1',
       }),
     );
+    // Held open so the retained promise is observably PENDING after boot and
+    // shutdown has something real to wait on. Released below.
+    let landAdoption!: () => void;
+    nativeEngineAdoption.result = new Promise((resolve) => {
+      landAdoption = () => resolve({ outcomes: {} });
+    });
     runtime = new StationRuntime({
       projectHomeDir: home,
       port: TEST_PORT,
@@ -448,13 +601,84 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     // Live at boot…
     expect(primed.signal).toBeInstanceOf(AbortSignal);
     expect(primed.signal?.aborted).toBe(false);
+    // Native-engine adoption is the other fire-and-forget window boot opens,
+    // and it carries the same signal coupling for the same reason (#1791):
+    // it WRITES detected engines into this home's agent registry, so a
+    // window nothing bounds keeps writing after the runtime that opened it
+    // is gone.
+    expect(nativeEngineAdoption.calls).toHaveLength(1);
+    const [adoption] = nativeEngineAdoption.calls;
+    expect(adoption.signal).toBeInstanceOf(AbortSignal);
+    expect(adoption.signal?.aborted).toBe(false);
+    // The seam the whole of station#1815 rests on, and the one a verifier
+    // found unpinned: boot must RETAIN the window's promise, because
+    // `shutdown()` waits on that field before it disposes the loader and
+    // releases the home runtime lease. Reverting this one line to
+    // `void adoptDetectedNativeEngines({…})` restores the original defect
+    // exactly — the settle finds nothing pending and returns at once — and
+    // it left all 42 related files green, because every lease case sets the
+    // field by hand on a prototype double. This assertion is the one that
+    // reds for that reversion; the ordering assertion below is a weaker
+    // second look, in one specific way: a teardown SLOWER than its slack
+    // hides the defect, because an unfixed shutdown that has not finished yet
+    // looks exactly like a fixed one that is waiting.
+    const retained = (
+      runtime as unknown as { nativeEngineAdoptionSettled?: Promise<unknown> }
+    ).nativeEngineAdoptionSettled;
+    expect(retained).toBeInstanceOf(Promise);
+    // Two controllers are aborted three lines apart in `shutdown()`, so
+    // every assertion here stays green if the adoption window is handed the
+    // PRIMING controller. Distinguishing them is what makes the pair a
+    // coupling proof rather than an "an AbortSignal exists" proof.
+    expect(adoption.signal).not.toBe(primed.signal);
 
-    await runtime.shutdown();
+    let shutdownSettled: 'pending' | 'fulfilled' | `rejected: ${string}` =
+      'pending';
+    // Owned here, not left dangling across the assertions below: a shutdown
+    // that rejects while nothing is attached is an unhandled rejection with
+    // no owner, and this file exists because one case's leftovers get
+    // attributed to another. Recorded as a state rather than a boolean so a
+    // rejection cannot read as "still waiting", and carrying its reason so
+    // that a red reports what went wrong rather than only that something did.
+    const shutdown = runtime.shutdown().then(
+      () => {
+        shutdownSettled = 'fulfilled';
+      },
+      (error: unknown) => {
+        shutdownSettled = `rejected: ${String(error)}`;
+      },
+    );
+    try {
+      // The window is held open, so a shutdown that waits for it cannot have
+      // settled. A teardown slower than this slack would hide an unfixed
+      // shutdown here, which is why the assertion above is what carries the
+      // pin and this one is corroboration.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect(shutdownSettled).toBe('pending');
+      // Aborted at the top of `shutdown()`, long before the wait. That is
+      // what lets the window END; the wait's BOUND comes from
+      // `settleNativeEngineAdoption`'s budget, not from the abort.
+      expect(adoption.signal?.aborted).toBe(true);
+    } finally {
+      // In a `finally` because everything above can throw, and the cost of
+      // landing it only on the straight-line path was executed. The shutdown
+      // started above is already in flight and settles only when the budget
+      // expires, which is sufficient on its own — `shutdown()` memoizes, so
+      // the teardown's own call joins that same promise and adds nothing
+      // observable. It burns the whole budget and emits the PRODUCTION
+      // disclosure line into the log a reader is diagnosing the red from,
+      // then skips the loader dispose, leaves the lease unreleased, and
+      // removes a home whose configuration watcher is still open.
+      landAdoption();
+    }
+    await shutdown;
+    expect(shutdownSettled).toBe('fulfilled');
     runtime = undefined;
     // …and closed by shutdown, so the priming cannot wait on work the runtime
     // no longer has a use for. (It does not kill a probe child already
     // spawned — see `enginePrerequisitePrimingAbort`'s doc.)
     expect(primed.signal?.aborted).toBe(true);
+    expect(adoption.signal?.aborted).toBe(true);
   });
 
   it('restores a saved usage-telemetry disclosure receipt during runtime bootstrap (#2015)', async () => {
@@ -1172,12 +1396,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     const initialization = runtime.initialize().finally(() => {
       settled = true;
     });
-    await vi.waitFor(
-      () => {
-        expect(routeMocks.configureRuntimeRoutes).toHaveBeenCalled();
-      },
-      { timeout: 10_000 },
-    );
+    await awaitRouteConfiguration(initialization);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(settled).toBe(false);
     releaseDiscovery();
@@ -1204,12 +1423,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     const initialization = runtime
       .initialize()
       .catch((error: unknown) => error);
-    await vi.waitFor(
-      () => {
-        expect(routeMocks.configureRuntimeRoutes).toHaveBeenCalled();
-      },
-      { timeout: 10_000 },
-    );
+    await awaitRouteConfiguration(initialization);
     rejectDiscovery(new Error('Kit lifecycle discovery failed'));
     const initializationError = await initialization;
     expect(initializationError).toBeInstanceOf(Error);

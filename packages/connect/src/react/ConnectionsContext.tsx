@@ -369,7 +369,15 @@ export function ConnectionsProvider({
       updateConnection: (id, changes) => resolvedStore.update(id, changes),
       reconcileHandshake: (id, handshake) =>
         resolvedStore.reconcileHandshake(id, handshake),
-      ...(commitVerifiedPairing ? { commitVerifiedPairing } : {}),
+      ...(commitVerifiedPairing
+        ? {
+            commitVerifiedPairing: async (input) => {
+              const id = await commitVerifiedPairing(input);
+              if (id) resolvedStore.nativeCredentialCommitted(id);
+              return id;
+            },
+          }
+        : {}),
       ...(makeDefaultProfile ? { makeDefaultProfile } : {}),
       setCredential: (id, credential) =>
         resolvedStore.setCredential(id, credential),

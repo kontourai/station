@@ -640,27 +640,9 @@
 }
 
 .event-filter.active {
-  color: white;
-}
-.event-filter[data-type="agent"].active {
-  background: var(--event-agent-start);
-  border-color: var(--event-agent-start);
-}
-.event-filter[data-type="tool"].active {
-  background: var(--event-tool-call);
-  border-color: var(--event-tool-call);
-}
-.event-filter[data-type="planning"].active {
-  background: var(--event-planning);
-  border-color: var(--event-planning);
-}
-.event-filter[data-type="reasoning"].active {
-  background: var(--event-reasoning);
-  border-color: var(--event-reasoning);
-}
-.event-filter[data-type="health"].active {
-  background: var(--event-agent-health);
-  border-color: var(--event-agent-health);
+  color: var(--text-on-accent);
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
 }
 
 .search-wrapper {
@@ -831,9 +813,9 @@
   background: var(--bg-hover);
 }
 .live-mode-toggle.active {
-  background: var(--health-success);
-  color: white;
-  border-color: var(--health-success);
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  border-color: var(--accent-primary);
 }
 
 .live-dot {

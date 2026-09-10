@@ -71,6 +71,10 @@
    this file, so it wins at mobile widths; --titlebar-inset-left is stamped
    by PlatformBootstrap on the macOS desktop shell only. */
 .sidebar__brand-name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -80,16 +84,16 @@
   color: var(--text-primary);
 }
 
+/* `display` is declared here rather than inline so the collapsed rail's
+   `display: none` on the brand block can win: an inline style on a
+   descendant of a hidden ancestor is harmless, but an inline style on the
+   block itself is what leaked the wordmark into the 48px rail (#1795). */
 .sidebar__channel-badge {
+  display: block;
+  margin-top: 2px;
   color: var(--k-brand);
   font-size: var(--text-xs);
   text-transform: capitalize;
-}
-
-.sidebar__build-age {
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  font-weight: 500;
 }
 
 .sidebar--collapsed .sidebar__brand-name {

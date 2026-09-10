@@ -87,9 +87,10 @@ describe('backlog priority policy', () => {
   );
 
   test('does not cap the P1 queue when the policy is uncapped', () => {
-    // Owner directive (2026-08-18): every bug is P1, so the queue is uncapped.
-    // This asserts the DEFAULT policy specifically — a future reviewer changing
-    // `maxActionableP1` back to a number must change this test deliberately.
+    // The queue is uncapped, and stayed uncapped when the "every bug is P1"
+    // derivation was removed (2026-09-09). This asserts the DEFAULT policy
+    // specifically — a future reviewer changing `maxActionableP1` back to a
+    // number must change this test deliberately.
     expect(BACKLOG_POLICY.maxActionableP1).toBeNull();
     const manyP1Issues = Array.from({ length: 50 }, (_, index) =>
       issue(index + 1, [p1]),

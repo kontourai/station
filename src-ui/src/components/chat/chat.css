@@ -1498,8 +1498,8 @@
 /* Desktop: an anchored popover, not a sheet (archive#999). The overlay stays
    fixed-inset for stacking escape and click-away, but carries no scrim; the
    panel positions itself against the trigger geometry the surface exposes via
-   `data-anchored` + `--responsive-anchor-*`. These popovers always open
-   upward — their triggers live in the composer at the bottom of the dock. */
+   `data-anchored` + `--responsive-anchor-*`. Open toward the roomier edge
+   so a maximized dock header cannot push its menu above the viewport. */
 .composer-popover-overlay[data-anchored] .composer-popover-panel {
   position: fixed;
   bottom: calc(100dvh - var(--responsive-anchor-top, 100dvh) + 8px);
@@ -1507,6 +1507,17 @@
      compute a negative (clamped-to-zero, invisible) panel height. */
   max-height: max(120px, calc(var(--responsive-anchor-top, 100dvh) - 24px));
   overflow-y: auto;
+}
+.composer-popover-overlay[data-anchored][data-anchor-side="below"]
+  .composer-popover-panel {
+  top: calc(var(--responsive-anchor-bottom) + 8px);
+  bottom: auto;
+  max-height: calc(100dvh - var(--responsive-anchor-bottom) - 20px);
+}
+.composer-popover-overlay[data-anchored][data-anchor-side="below"]
+  .chat-input__model-popover-panel
+  .session-model-picker {
+  max-height: calc(100dvh - var(--responsive-anchor-bottom) - 20px);
 }
 .composer-popover-overlay--start[data-anchored] .composer-popover-panel {
   left: clamp(
@@ -1857,8 +1868,7 @@
 @media (hover: hover) {
   .turn-footer__actions {
     opacity: 0;
-    height: 0;
-    overflow: hidden;
+    /* Reserve the action row so hover and keyboard focus never move messages. */
     pointer-events: none;
   }
 
@@ -1868,8 +1878,6 @@
 
   .message:is(:hover, :focus-within) .turn-footer__actions {
     opacity: 1;
-    height: auto;
-    overflow: visible;
     pointer-events: auto;
   }
 }

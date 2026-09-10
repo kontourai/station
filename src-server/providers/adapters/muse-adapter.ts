@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
@@ -36,6 +36,10 @@ import {
   AsyncEventQueue,
   type AsyncEventStreamOptions,
 } from '../sessions/async-event-queue.js';
+import {
+  decodeChatAttachments,
+  rejectFileAttachments,
+} from '../sessions/chat-attachments.js';
 import {
   buildMuseExecArgs,
   parseMuseLine,
@@ -393,7 +397,12 @@ export class MuseAdapter implements ProviderAdapterShape {
     // NOT claimed: nothing in the observed JSONL stream describes a tool call,
     // muse exposes no approval channel, and Station implements no adoption of
     // a pre-existing muse session.
-    capabilities: ['agent-runtime', 'session-lifecycle', 'external-process'],
+    capabilities: [
+      'agent-runtime',
+      'session-lifecycle',
+      'external-process',
+      'image-input',
+    ],
     continuity: { resume: 'none', fork: 'none', rewind: 'none' },
     builtin: true,
     engineId: engineId('muse'),
@@ -677,7 +686,38 @@ export class MuseAdapter implements ProviderAdapterShape {
     this.reportProviderNoticeOnce();
     const turnId = crypto.randomUUID();
     const modelId = input.modelId ?? record.modelId;
+    const decoded = decodeChatAttachments(input.attachments);
+    rejectFileAttachments('Muse Code', decoded);
+    if (decoded.length && this.providerOverride === 'echo')
+      throw new Error('Muse echo does not accept image attachments.');
+    let imageDirectory: string | undefined;
+    const imagePaths: string[] = [];
+    const cleanupImages = () => {
+      if (!imageDirectory) return;
+      try {
+        rmSync(imageDirectory, { recursive: true, force: true, maxRetries: 3 });
+      } catch {
+        this.options.logger?.warn?.('Muse image staging cleanup was deferred.');
+      }
+      imageDirectory = undefined;
+    };
+    try {
+      if (decoded.length)
+        imageDirectory = mkdtempSync(join(tmpdir(), 'station-muse-images-'));
+      for (const [index, image] of decoded.entries()) {
+        const extension = image.attachment.mimeType.split('/')[1];
+        const path = join(imageDirectory!, `${index}.${extension}`);
+        writeFileSync(path, Buffer.from(image.base64, 'base64'), {
+          mode: 0o600,
+        });
+        imagePaths.push(path);
+      }
+    } catch (error) {
+      cleanupImages();
+      throw error;
+    }
     const args = buildMuseExecArgs({
+      imagePaths,
       sessionId: record.museSessionId,
       prompt: input.input,
       modelId,
@@ -687,11 +727,23 @@ export class MuseAdapter implements ProviderAdapterShape {
       ...(this.providerOverride ? { provider: this.providerOverride } : {}),
     });
 
-    const spawned = this.processFactory(args, record.cwd);
+    let spawned: MuseSpawnResult;
+    try {
+      spawned = this.processFactory(args, record.cwd);
+    } catch (error) {
+      cleanupImages();
+      throw error;
+    }
     const turn: MuseActiveTurn = {
       turnId,
       process: spawned.process,
-      release: spawned.release,
+      release: () => {
+        try {
+          spawned.release?.();
+        } finally {
+          cleanupImages();
+        }
+      },
       startedAt: Date.now(),
       outputText: '',
       settled: false,

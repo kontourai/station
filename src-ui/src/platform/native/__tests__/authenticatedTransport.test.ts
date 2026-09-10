@@ -41,6 +41,17 @@ function emit(message: BrokerMessage): void {
   callback(message);
 }
 
+test('blocks credential requests after the development HTTP exception is removed', async () => {
+  vi.stubGlobal('localStorage', { getItem: () => null });
+  try {
+    await expect(
+      nativeAuthenticatedTransport('http://100.77.142.114:3492/api/agents'),
+    ).rejects.toThrow('HTTP permission was removed');
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 describe('native authenticated transport', () => {
   beforeEach(() => {
     bridge.invoke.mockReset();

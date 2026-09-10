@@ -278,40 +278,36 @@ describe('applyCombinedContextToInput', () => {
     });
   });
 
-  // archive#2649 review fix (HIGH-1). This is the shape an uncaptioned
-  // attachment produces (`buildOutgoingUserMessage` pushes a text part only
-  // `if (content)`): both appliers silently drop their whole block, and
-  // `applied: false` is what stops the receipt from claiming the model read
-  // context it never received.
-  describe('reports NOT applying a block it silently dropped', () => {
+  describe('model-facing context for attachment-only input', () => {
     const attachmentOnly = () => [
       {
         role: 'user',
-        parts: [{ type: 'file', url: 'data:image/png;base64,AAAA' }],
+        parts: [{ type: 'file', url: 'data:text/plain;base64,aGk=' }],
       },
     ];
 
-    test('combined context: no user text part means nothing was injected', () => {
-      const result = applyCombinedContextToInput(
-        attachmentOnly() as any,
-        'inject',
-        'rag',
-      );
-
-      expect(result.applied).toBe(false);
-      // And the claim matches reality: the input carries neither block.
-      expect(JSON.stringify(result.input)).not.toContain('inject');
-      expect(JSON.stringify(result.input)).not.toContain('rag');
+    test('combined context adds one model text part while preserving original attachment identity', () => {
+      const input = attachmentOnly();
+      const originalFile = input[0].parts[0];
+      const result = applyCombinedContextToInput(input, 'inject', 'rag');
+      expect(result.applied).toBe(true);
+      expect(result.input).toEqual([
+        {
+          role: 'user',
+          parts: [{ type: 'text', text: 'inject\n\nrag' }, originalFile],
+        },
+      ]);
+      expect(input).toEqual(attachmentOnly());
+      expect((result.input as typeof input)[0].parts[1]).toBe(originalFile);
     });
 
-    test('ambient context: no user text part means nothing was composed', () => {
-      const result = applyAmbientContextToInput(
-        attachmentOnly() as any,
-        '[Timezone: Iceland]',
-      );
-
-      expect(result.applied).toBe(false);
-      expect(JSON.stringify(result.input)).not.toContain('Iceland');
+    test('ambient context reaches file-only input without synthesizing an authored caption', () => {
+      const input = attachmentOnly();
+      const result = applyAmbientContextToInput(input, '[Timezone: Iceland]');
+      expect(result.applied).toBe(true);
+      expect(JSON.stringify(result.input)).toContain('Iceland');
+      expect(input[0].parts).toHaveLength(1);
+      expect(input[0].parts[0].type).toBe('file');
     });
 
     test('a user message with no parts at all is also a drop', () => {

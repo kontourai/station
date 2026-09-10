@@ -1,4 +1,5 @@
 import type { AgentId, EngineId } from './agent-identity.js';
+import type { AttentionRequestReference } from './attention.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type {
@@ -36,6 +37,8 @@ export interface OrchestrationSendTurnInput
     'recoveryCorrelationId' | 'reviewIsolation'
   > {
   ambientContext?: string;
+  /** Read-only constraint checked again at actual adapter invocation. */
+  expectedInputRequest?: AttentionRequestReference;
 }
 
 /**
@@ -1010,6 +1013,8 @@ export type ConversationOpenResolution =
       };
       /** Computed from the current Session control/lifecycle facts. */
       canContinue: boolean;
+      /** Continuation is temporarily blocked only by the current active turn. */
+      continuationPending?: boolean;
       answerability: RequestAnswerability;
       recoveryActions: readonly [];
     }
