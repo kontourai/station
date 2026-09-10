@@ -496,10 +496,13 @@ export function mapClaudeSdkMessage({
         task: tracked,
         status,
         summary: message.summary,
+        outputFile: message.output_file,
+        usage: readClaudeTaskUsage(message.usage),
       });
     } else if (message.skip_transcript !== true) {
       // Untracked settle (e.g. task started before this process attached):
       // still let the client clear any stale activity affordance.
+      const untrackedUsage = readClaudeTaskUsage(message.usage);
       publish({
         eventId: crypto.randomUUID(),
         provider,
@@ -512,6 +515,8 @@ export function mapClaudeSdkMessage({
           taskId: message.task_id,
           status,
           summary: message.summary,
+          ...(message.output_file ? { outputFile: message.output_file } : {}),
+          ...(untrackedUsage ? { usage: untrackedUsage } : {}),
         },
       });
     }
@@ -1126,6 +1131,45 @@ function publishClaudeTaskRegistry(params: {
   });
 }
 
+/**
+ * station#1879: reads the SDK's optional per-task usage into Station's
+ * vocabulary. `usage` is `usage?` on `SDKTaskNotificationMessage`, so absence
+ * is ordinary and must not be reported as zeroes — a subagent that really did
+ * spend 0 tokens is not the same claim as one that never told us.
+ *
+ * Deliberately NOT summed into any session total here: Claude reports per-turn
+ * deltas while other engines report cumulative totals, and reconciling that is
+ * `foldUsageEvents`' job (see its `CUMULATIVE_USAGE_PROVIDERS` docblock).
+ */
+function readClaudeTaskUsage(
+  usage:
+    | { total_tokens?: number; tool_uses?: number; duration_ms?: number }
+    | undefined,
+):
+  | { totalTokens?: number; toolUses?: number; durationMs?: number }
+  | undefined {
+  if (!usage || typeof usage !== 'object') return undefined;
+  const read = (value: unknown): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0
+      ? value
+      : undefined;
+  const totalTokens = read(usage.total_tokens);
+  const toolUses = read(usage.tool_uses);
+  const durationMs = read(usage.duration_ms);
+  if (
+    totalTokens === undefined &&
+    toolUses === undefined &&
+    durationMs === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    ...(totalTokens !== undefined ? { totalTokens } : {}),
+    ...(toolUses !== undefined ? { toolUses } : {}),
+    ...(durationMs !== undefined ? { durationMs } : {}),
+  };
+}
+
 function settleClaudeTask(params: {
   provider: ProviderSession['provider'];
   record: ClaudeMessageState;
@@ -1134,9 +1178,35 @@ function settleClaudeTask(params: {
   task: ClaudeActiveTask;
   status: 'success' | 'error' | 'cancelled';
   summary?: string;
+  /**
+   * station#1879: the SDK's own path to the subagent's full transcript
+   * (`SDKTaskNotificationMessage.output_file`, a REQUIRED field Station was
+   * discarding). `summary` is only ever the agent's last utterance, so
+   * without this the real result of a delegated run is unreachable.
+   * Absent on the `task_updated` settle path, which carries no such field.
+   */
+  outputFile?: string;
+  /**
+   * Optional in the SDK (`usage?`), so never assume it is present — a settle
+   * with no usage is normal, not a defect.
+   */
+  usage?: {
+    totalTokens?: number;
+    toolUses?: number;
+    durationMs?: number;
+  };
 }): void {
-  const { provider, record, publish, createdAt, task, status, summary } =
-    params;
+  const {
+    provider,
+    record,
+    publish,
+    createdAt,
+    task,
+    status,
+    summary,
+    outputFile,
+    usage,
+  } = params;
   record.activeTasks?.delete(task.taskId);
   // station#1558 (fix round, H1): this publishes the call's terminal, but the
   // `tool_use` entry stays — the real `tool_result` can still arrive and is
@@ -1177,6 +1247,8 @@ function settleClaudeTask(params: {
       description: task.description,
       status,
       summary,
+      ...(outputFile ? { outputFile } : {}),
+      ...(usage ? { usage } : {}),
     },
   });
   // station#1877: publish the set this settle left behind, so a client that

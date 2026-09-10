@@ -621,6 +621,101 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
     });
   });
 
+  test('station#1879: a settle carries the SDK output_file and usage', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-1',
+        description: 'Investigate the failure',
+        subagent_type: 'general-purpose',
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'task-1',
+        status: 'completed',
+        summary: 'Now let me check the logs.',
+        output_file: '/tmp/agent-ac28dc.jsonl',
+        usage: { total_tokens: 5100, tool_uses: 23, duration_ms: 311000 },
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+
+    const settled = publish.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.type === 'task/settled');
+    expect(settled).toMatchObject({
+      payload: {
+        taskId: 'task-1',
+        status: 'success',
+        // `summary` stays the agent's last utterance — which is exactly why
+        // outputFile has to travel alongside it.
+        summary: 'Now let me check the logs.',
+        outputFile: '/tmp/agent-ac28dc.jsonl',
+        usage: { totalTokens: 5100, toolUses: 23, durationMs: 311000 },
+      },
+    });
+  });
+
+  test('station#1879: a settle with no usage omits it rather than reporting zeroes', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-1',
+        description: 'Quick lookup',
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'task-1',
+        status: 'completed',
+        summary: 'done',
+        output_file: '/tmp/agent-x.jsonl',
+        // `usage` is OPTIONAL on SDKTaskNotificationMessage. A settle that
+        // reports none must not be rendered as a 0-token, 0-tool run.
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+
+    const settled = publish.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.type === 'task/settled');
+    expect(settled.payload.outputFile).toBe('/tmp/agent-x.jsonl');
+    expect('usage' in settled.payload).toBe(false);
+  });
+
   test('station#1877: a subagent that starts and settles inside one active turn still publishes a live registry', () => {
     const publish = vi.fn();
     const record = makeRecord();
