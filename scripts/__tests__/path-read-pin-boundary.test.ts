@@ -30,8 +30,8 @@
  *    naming a target that never ran, or into a red gate. Both are asserted
  *    below against `packages/cli/src/cli.ts`, the path where it happened.
  *
- * WHAT THIS GATE DOES NOT COVER. The scan is a partial derivation: 144 test
- * files read by path with a module anchor and it reports 80. Both figures are
+ * WHAT THIS GATE DOES NOT COVER. The scan is a partial derivation: 143 test
+ * files read by path with a module anchor and it reports 79. Both figures are
  * derived and asserted below, so the fraction cannot go stale in prose. A pin
  * reached through a helper parameter (`const read = (p) =>
  * readFileSync(join(UI_SRC, p))`, at least 14 files, hiding
@@ -81,18 +81,22 @@ const derived = pathReadPinEdges({ root: ROOT });
  * reds. `PATH_READING_SUITES` counts suites the scanner could in principle
  * resolve a pin in; `REPORTED_SUITES` counts the ones it does.
  */
-const PATH_READING_SUITES = 144;
-const REPORTED_SUITES = 80;
+const PATH_READING_SUITES = 143;
+const REPORTED_SUITES = 79;
 
-/** The two Playwright pins: seen and existence-checked, never scheduled. */
+/**
+ * The one remaining Playwright pin: seen and existence-checked, never
+ * scheduled. If `station-cli.ts` moves, the boundary gate reds at
+ * fast-checks instead of the spec breaking at e2e time. The second pin this
+ * list used to carry (`mobile-surface-sweep.spec.ts` reading
+ * `destination-registry.ts`) is gone for the better reason: #1836 replaced
+ * the path read with a real import, which an import-graph selection and the
+ * module resolver now guard — a text-pin existence check would be noise.
+ */
 const E2E_PINS = Object.freeze([
   {
-    pin: 'packages/cli/src/cli.ts',
+    pin: 'scripts/station-cli.ts',
     spec: 'tests/plugin-dev-hot-reload.spec.ts',
-  },
-  {
-    pin: 'src-ui/src/app-shell/destination-registry.ts',
-    spec: 'tests/mobile-surface-sweep.spec.ts',
   },
 ]);
 
@@ -299,9 +303,8 @@ describe('a scheduled pin has to be runnable', () => {
 
   it('still existence-checks the pins only a Playwright spec makes', () => {
     // Not scheduling them is the trade; not SEEING them would give up the
-    // property #1807 exists for. If `cli.ts` or `destination-registry.ts`
-    // moves, the boundary gate reds at fast-checks instead of the spec
-    // breaking at e2e time.
+    // property #1807 exists for. If `station-cli.ts` moves, the boundary
+    // gate reds at fast-checks instead of the spec breaking at e2e time.
     for (const { pin, spec } of E2E_PINS) {
       const found = pins.find((entry: { pin: string }) => entry.pin === pin);
       expect(found?.tests, pin).toContain(spec);
