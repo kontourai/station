@@ -922,6 +922,52 @@ export interface EnrolmentCommand {
 }
 
 /**
+ * One login mechanism the installed CLI was OBSERVED to offer, with the argv
+ * that produced the observation and the literal substring that carried it.
+ * There is no mechanism without evidence: a client that wants to know whether
+ * a device-code login is available reads this list, never a boolean.
+ */
+export interface EngineLoginMechanismEvidence {
+  mechanism: 'device-code' | 'api-key-stdin';
+  observedCommand: string[];
+  observedMatch: string;
+  argument?: string;
+}
+
+/**
+ * A device-code login in flight. `verificationUri` and `userCode` are the two
+ * strings Station relays; no token passes through Station at any phase.
+ * `completed` is derived from asking the engine, never from an exit code.
+ */
+export interface DeviceCodeLogin {
+  engine: 'claude' | 'codex';
+  phase:
+    | 'starting'
+    | 'awaiting-approval'
+    | 'verifying'
+    | 'completed'
+    | 'failed'
+    | 'cancelled';
+  startedAt: string;
+  expiresAt: string;
+  verificationUri?: string;
+  userCode?: string;
+  detail?: string;
+  reason?: string;
+}
+
+/** What the engine's CLI said about how it can be signed in, and when. */
+export interface EngineLoginSurface {
+  /** Derived server-side from `evidence`; never an independent claim. */
+  mechanisms: Array<'device-code' | 'api-key-stdin'>;
+  evidence: EngineLoginMechanismEvidence[];
+  observedAt: string;
+  /** Present when the CLI could not be asked at all — distinct from "offers none". */
+  unavailableReason?: string;
+  deviceCode?: DeviceCodeLogin;
+}
+
+/**
  * The profile enrolment projection. `profileDir` is intentionally omitted:
  * it is an implementation detail and its existence does not prove sign-in.
  */
@@ -929,6 +975,7 @@ export interface EnrolmentStatus {
   authState: EnrolmentAuthState;
   detail?: string;
   command: EnrolmentCommand;
+  login: EngineLoginSurface;
 }
 
 /**
