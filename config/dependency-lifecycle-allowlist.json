@@ -8,12 +8,23 @@
       "name": "esbuild",
       "version": "0.28.1",
       "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==",
-      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
+      "hooks": [
+        {
+          "name": "postinstall",
+          "command": "node install.js"
+        }
+      ],
       "decision": "execute",
       "owner": "station-security",
       "reason": "The builder-delivery-viewer example depends on @kontourai/flow-agents 5.7.0, which pins esbuild at an exact 0.28.1 (#1719), so pnpm materializes this unhoisted copy beside the root 0.28.2 one. Same reviewed tarball and byte-identical install script; the executable artifact is verified.",
-      "platform": { "os": [], "cpu": [] },
-      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
+      "platform": {
+        "os": [],
+        "cpu": []
+      },
+      "artifact": {
+        "path": "bin/esbuild",
+        "proof": "esbuild-version"
+      },
       "purl": "pkg:npm/esbuild@0.28.1",
       "reviewedAt": "2026-09-09",
       "expiresAt": "2026-12-08",
@@ -31,12 +42,23 @@
       "name": "esbuild",
       "version": "0.28.1",
       "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==",
-      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
+      "hooks": [
+        {
+          "name": "postinstall",
+          "command": "node install.js"
+        }
+      ],
       "decision": "execute",
       "owner": "station-security",
       "reason": "@kontourai/flow-agents pins esbuild at an exact 0.28.1 (#1719), so pnpm cannot dedupe it into the root 0.28.2 copy and materializes this unhoisted one. Same reviewed tarball and byte-identical install script as the root entry; the executable artifact is verified.",
-      "platform": { "os": [], "cpu": [] },
-      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
+      "platform": {
+        "os": [],
+        "cpu": []
+      },
+      "artifact": {
+        "path": "bin/esbuild",
+        "proof": "esbuild-version"
+      },
       "purl": "pkg:npm/esbuild@0.28.1",
       "reviewedAt": "2026-09-09",
       "expiresAt": "2026-12-08",
@@ -54,12 +76,23 @@
       "name": "esbuild",
       "version": "0.25.12",
       "integrity": "sha512-bbPBYYrtZbkt6Os6FiTLCTFxvq4tt3JKall1vRwshA3fdVztsLAatFaZobhkBC8/BrPetoa0oksYoKXoG4ryJg==",
-      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
+      "hooks": [
+        {
+          "name": "postinstall",
+          "command": "node install.js"
+        }
+      ],
       "decision": "execute",
       "owner": "station-security",
       "reason": "Bundler binary is required by the VoltAgent CLI dependency and is verified by its executable artifact.",
-      "platform": { "os": [], "cpu": [] },
-      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
+      "platform": {
+        "os": [],
+        "cpu": []
+      },
+      "artifact": {
+        "path": "bin/esbuild",
+        "proof": "esbuild-version"
+      },
       "purl": "pkg:npm/esbuild@0.25.12",
       "reviewedAt": "2026-08-25",
       "expiresAt": "2026-11-23",
@@ -77,12 +110,23 @@
       "name": "esbuild",
       "version": "0.25.12",
       "integrity": "sha512-bbPBYYrtZbkt6Os6FiTLCTFxvq4tt3JKall1vRwshA3fdVztsLAatFaZobhkBC8/BrPetoa0oksYoKXoG4ryJg==",
-      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
+      "hooks": [
+        {
+          "name": "postinstall",
+          "command": "node install.js"
+        }
+      ],
       "decision": "execute",
       "owner": "station-security",
       "reason": "Bundler binary is required by bundle-require; pnpm hoists an additional copy of the already reviewed esbuild version, with identical install script bytes and executable proof.",
-      "platform": { "os": [], "cpu": [] },
-      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
+      "platform": {
+        "os": [],
+        "cpu": []
+      },
+      "artifact": {
+        "path": "bin/esbuild",
+        "proof": "esbuild-version"
+      },
       "purl": "pkg:npm/esbuild@0.25.12",
       "reviewedAt": "2026-08-25",
       "expiresAt": "2026-11-23",
@@ -109,7 +153,10 @@
       "decision": "deny",
       "owner": "station-security",
       "reason": "Optional CPU probe is not required for Station; SSH2's supported JavaScript capability is probed without its native acceleration.",
-      "platform": { "os": [], "cpu": [] },
+      "platform": {
+        "os": [],
+        "cpu": []
+      },
       "artifact": {
         "path": "lib/index.js",
         "capability": "ssh2",
@@ -132,12 +179,23 @@
       "name": "esbuild",
       "version": "0.28.2",
       "integrity": "sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA==",
-      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
+      "hooks": [
+        {
+          "name": "postinstall",
+          "command": "node install.js"
+        }
+      ],
       "decision": "execute",
       "owner": "station-security",
       "reason": "Station server and UI builds require the reviewed esbuild binary and verify its executable artifact.",
-      "platform": { "os": [], "cpu": [] },
-      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
+      "platform": {
+        "os": [],
+        "cpu": []
+      },
+      "artifact": {
+        "path": "bin/esbuild",
+        "proof": "esbuild-version"
+      },
       "purl": "pkg:npm/esbuild@0.28.2",
       "reviewedAt": "2026-09-09",
       "expiresAt": "2026-12-08",
@@ -159,8 +217,16 @@
       "decision": "execute",
       "owner": "station-security",
       "reason": "Darwin file watching needs fsevents; npm marks it native but this package ships a prebuilt binding without a manifest lifecycle hook, so the real watch proof is mandatory.",
-      "platform": { "os": ["darwin"], "cpu": [] },
-      "artifact": { "path": "fsevents.node", "proof": "fsevents-watch" },
+      "platform": {
+        "os": [
+          "darwin"
+        ],
+        "cpu": []
+      },
+      "artifact": {
+        "path": "fsevents.node",
+        "proof": "fsevents-watch"
+      },
       "purl": "pkg:npm/fsevents@2.3.3",
       "reviewedAt": "2026-08-25",
       "expiresAt": "2026-11-23",
@@ -179,12 +245,18 @@
       "version": "0.37.0",
       "integrity": "sha512-Xb78V8GZouoZFrq8cCwx7+G3WYOcJG0xb3YUbweSyE4z2EIrQCZMr3Ye/dHn4mESs6YxUMeQeUZm5IXg+iLHog==",
       "hooks": [
-        { "name": "install", "command": "prebuild-install || node-gyp rebuild" }
+        {
+          "name": "install",
+          "command": "prebuild-install || node-gyp rebuild"
+        }
       ],
       "decision": "deny",
       "owner": "station-security",
       "reason": "Optional XML native binding is not a Station runtime requirement; the CycloneDX caller is probed without that optional capability.",
-      "platform": { "os": [], "cpu": [] },
+      "platform": {
+        "os": [],
+        "cpu": []
+      },
       "artifact": {
         "path": "index.js",
         "capability": "@cyclonedx/cyclonedx-npm",
@@ -212,12 +284,18 @@
           "name": "install",
           "command": "node scripts/prebuild.js || node-gyp rebuild"
         },
-        { "name": "postinstall", "command": "node scripts/post-install.js" }
+        {
+          "name": "postinstall",
+          "command": "node scripts/post-install.js"
+        }
       ],
       "decision": "execute",
       "owner": "station-security",
       "reason": "Terminal integration needs node-pty and the exact native artifact arrays are loaded and PTY-spawned on each supported platform. Linux may consume the attested, digest-pinned prebuild channel in packaging/node-pty-prebuilds when its manifest pins this version; the artifact arrays must then name prebuilds/linux-* instead of build/Release (enforced by the prebuild consistency check).",
-      "platform": { "os": [], "cpu": [] },
+      "platform": {
+        "os": [],
+        "cpu": []
+      },
       "artifact": {
         "path": "prebuilds/{platform}-{arch}/pty.node",
         "platforms": {
@@ -229,8 +307,12 @@
             "prebuilds/darwin-x64/pty.node",
             "prebuilds/darwin-x64/spawn-helper"
           ],
-          "linux/x64": ["build/Release/pty.node"],
-          "linux/arm64": ["build/Release/pty.node"],
+          "linux/x64": [
+            "build/Release/pty.node"
+          ],
+          "linux/arm64": [
+            "build/Release/pty.node"
+          ],
           "win32/x64": [
             "prebuilds/win32-x64/pty.node",
             "prebuilds/win32-x64/conpty.node",
@@ -266,40 +348,23 @@
     {
       "scope": "root",
       "lock": "pnpm-lock.yaml",
-      "path": "node_modules/playwright/node_modules/fsevents",
-      "name": "fsevents",
-      "version": "2.3.2",
-      "integrity": "sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==",
-      "hooks": [],
-      "decision": "execute",
-      "owner": "station-security",
-      "reason": "Playwright carries the Darwin-only prebuilt watcher binding; the package exposes no install command, so the nested real watch proof is mandatory.",
-      "platform": { "os": ["darwin"], "cpu": [] },
-      "artifact": { "path": "fsevents.node", "proof": "fsevents-watch" },
-      "purl": "pkg:npm/fsevents@2.3.2",
-      "reviewedAt": "2026-08-25",
-      "expiresAt": "2026-11-23",
-      "recheck": "dependency refresh, advisory, or platform build change",
-      "triggers": [
-        "dependency refresh",
-        "fsevents advisory",
-        "Playwright upgrade"
-      ]
-    },
-    {
-      "scope": "root",
-      "lock": "pnpm-lock.yaml",
       "path": "node_modules/protobufjs",
       "name": "protobufjs",
       "version": "7.6.5",
       "integrity": "sha512-/FPD0nUc9jH6rfFjji9IBqOz4pcSE3CsT1m7Ep6Mdb0LxSUMj8hgl6GomOvZzpNpAqqGaXA0P3VSrZLFzIhQrw==",
       "hooks": [
-        { "name": "postinstall", "command": "node scripts/postinstall" }
+        {
+          "name": "postinstall",
+          "command": "node scripts/postinstall"
+        }
       ],
       "decision": "deny",
       "owner": "station-security",
       "reason": "Protobufjs code generation is not required at install time; its JavaScript runtime capability is imported without build scripts.",
-      "platform": { "os": [], "cpu": [] },
+      "platform": {
+        "os": [],
+        "cpu": []
+      },
       "artifact": {
         "path": "minimal.js",
         "capability": "protobufjs",
@@ -322,11 +387,19 @@
       "name": "ssh2",
       "version": "1.17.0",
       "integrity": "sha512-wPldCk3asibAjQ/kziWQQt1Wh3PgDFpC0XpwclzKcdT1vql6KeYxf5LIt4nlFkUeR8WuphYMKqUA56X4rjbfgQ==",
-      "hooks": [{ "name": "install", "command": "node install.js" }],
+      "hooks": [
+        {
+          "name": "install",
+          "command": "node install.js"
+        }
+      ],
       "decision": "deny",
       "owner": "station-security",
       "reason": "SSH2 optional crypto acceleration is not needed for supported Station paths; its JavaScript capability is imported without build execution.",
-      "platform": { "os": [], "cpu": [] },
+      "platform": {
+        "os": [],
+        "cpu": []
+      },
       "artifact": {
         "path": "lib/index.js",
         "capability": "ssh2",
@@ -349,12 +422,23 @@
       "name": "esbuild",
       "version": "0.28.1",
       "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==",
-      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
+      "hooks": [
+        {
+          "name": "postinstall",
+          "command": "node install.js"
+        }
+      ],
       "decision": "execute",
       "owner": "station-security",
       "reason": "This workspace package declares esbuild ^0.28.1 and pnpm keeps its existing 0.28.1 resolution rather than the root 0.28.2 copy, so the package materializes here (#1719). Same reviewed tarball and byte-identical install script as the root entry; the executable artifact is verified.",
-      "platform": { "os": [], "cpu": [] },
-      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
+      "platform": {
+        "os": [],
+        "cpu": []
+      },
+      "artifact": {
+        "path": "bin/esbuild",
+        "proof": "esbuild-version"
+      },
       "purl": "pkg:npm/esbuild@0.28.1",
       "reviewedAt": "2026-09-09",
       "expiresAt": "2026-12-08",
@@ -372,12 +456,23 @@
       "name": "esbuild",
       "version": "0.28.1",
       "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==",
-      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
+      "hooks": [
+        {
+          "name": "postinstall",
+          "command": "node install.js"
+        }
+      ],
       "decision": "execute",
       "owner": "station-security",
       "reason": "This workspace package declares esbuild ^0.28.1 and pnpm keeps its existing 0.28.1 resolution rather than the root 0.28.2 copy, so the package materializes here (#1719). Same reviewed tarball and byte-identical install script as the root entry; the executable artifact is verified.",
-      "platform": { "os": [], "cpu": [] },
-      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
+      "platform": {
+        "os": [],
+        "cpu": []
+      },
+      "artifact": {
+        "path": "bin/esbuild",
+        "proof": "esbuild-version"
+      },
       "purl": "pkg:npm/esbuild@0.28.1",
       "reviewedAt": "2026-09-09",
       "expiresAt": "2026-12-08",
@@ -395,12 +490,23 @@
       "name": "esbuild",
       "version": "0.28.1",
       "integrity": "sha512-HrJrvZv5ayxBzPfwphOoNzkzOIIlifzk0KJrGK2c8R4+LKpMtpYLQeUdjnwjWv/LZlkH2laZk+4w78pi99D4Vw==",
-      "hooks": [{ "name": "postinstall", "command": "node install.js" }],
+      "hooks": [
+        {
+          "name": "postinstall",
+          "command": "node install.js"
+        }
+      ],
       "decision": "execute",
       "owner": "station-security",
       "reason": "This workspace package declares esbuild ^0.28.1 and pnpm keeps its existing 0.28.1 resolution rather than the root 0.28.2 copy, so the package materializes here (#1719). Same reviewed tarball and byte-identical install script as the root entry; the executable artifact is verified.",
-      "platform": { "os": [], "cpu": [] },
-      "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
+      "platform": {
+        "os": [],
+        "cpu": []
+      },
+      "artifact": {
+        "path": "bin/esbuild",
+        "proof": "esbuild-version"
+      },
       "purl": "pkg:npm/esbuild@0.28.1",
       "reviewedAt": "2026-09-09",
       "expiresAt": "2026-12-08",
