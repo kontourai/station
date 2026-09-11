@@ -14,6 +14,7 @@ const enrollmentMutate = vi.fn();
 const policyMutate = vi.fn();
 const upsertMutate = vi.fn();
 const deleteProfileMutate = vi.fn();
+const resetMutate = vi.fn();
 const importProfileMutate = vi.fn();
 let saveFailure: Error | null = null;
 /**
@@ -177,7 +178,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     variables: undefined,
   }),
   useDeleteAgentConnectionMutation: () => ({
-    mutate: vi.fn(),
+    mutate: resetMutate,
     isPending: false,
   }),
   useTestAgentConnectionMutation: () => ({ mutate: vi.fn(), isPending: false }),
@@ -280,6 +281,7 @@ import { AgentConnectionView } from '../views/AgentConnectionView';
 describe('AgentConnectionView', () => {
   beforeEach(() => {
     devicePresentation = undefined;
+    resetMutate.mockClear();
     save.mockReset();
     clearMutate.mockReset();
     applyMutate.mockReset();
@@ -781,6 +783,147 @@ describe('AgentConnectionView', () => {
     // start talking about one.
     expect(screen.queryByText(/desktop-win/)).toBeNull();
     expect(screen.getAllByText('Setup required')).not.toHaveLength(0);
+  });
+
+  /*
+   * The rail used to be three static spans with the first hardcoded complete,
+   * so it rendered identically for a working engine and a broken one. These
+   * two cases differ ONLY in the engine's state, so they fail if the rail goes
+   * back to being decoration.
+   */
+  test('the setup rail stops at Connect while a prerequisite blocks the engine', () => {
+    connectionQueryData = museMissingBinaryConnection();
+
+    const { container } = render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    const steps = [
+      ...container.querySelectorAll('.provider-detail__progress-step'),
+    ];
+    expect(steps.map((step) => step.textContent)).toEqual([
+      'Choose',
+      'Connect',
+      'Ready',
+    ]);
+    const complete = steps.map((step) =>
+      step.classList.contains('provider-detail__progress-step--complete'),
+    );
+    expect(complete).toEqual([true, false, false]);
+    // Exactly one step is announced as current, and it is the first incomplete.
+    const current = steps.filter(
+      (step) => step.getAttribute('aria-current') === 'step',
+    );
+    expect(current).toHaveLength(1);
+    expect(current[0]?.textContent).toBe('Connect');
+  });
+
+  test('a ready engine completes every step and announces none as current', () => {
+    connectionQueryData = {
+      ...museMissingBinaryConnection(),
+      status: 'ready',
+      prerequisites: [
+        {
+          id: 'muse-cli',
+          name: 'Muse Code CLI',
+          description: 'Required to launch the Muse Code runtime.',
+          status: 'installed',
+          category: 'required',
+        },
+      ],
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+
+    const { container } = render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    const steps = [
+      ...container.querySelectorAll('.provider-detail__progress-step'),
+    ];
+    expect(
+      steps.map((step) =>
+        step.classList.contains('provider-detail__progress-step--complete'),
+      ),
+    ).toEqual([true, true, true]);
+    expect(
+      steps.filter((step) => step.getAttribute('aria-current') === 'step'),
+    ).toHaveLength(0);
+  });
+
+  /*
+   * "Reset to defaults" is a DELETE that also unregisters the engine. It ran on
+   * a single tap with no confirmation, while the less destructive "Clear this
+   * app home" five fields away confirmed.
+   */
+  test('resetting an engine asks before it deletes', () => {
+    connectionQueryData = museMissingBinaryConnection();
+
+    render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset to defaults' }));
+    expect(resetMutate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    expect(resetMutate).toHaveBeenCalledTimes(1);
+  });
+
+  /*
+   * A refetch overwrote the form unconditionally, so pressing the re-check
+   * button -- or any background invalidation -- silently discarded whatever the
+   * user had typed. Re-rendering with a NEW query object is exactly what the
+   * effect keyed on.
+   */
+  test('a refetch of the same engine does not discard an unsaved edit', () => {
+    connectionQueryData = museMissingBinaryConnection();
+
+    const { rerender } = render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByText('Advanced'));
+    const nameInput = screen.getByLabelText('Name') as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: 'My Muse' } });
+    expect(nameInput.value).toBe('My Muse');
+
+    // A fresh object from the server, same connection: what an invalidation
+    // produces.
+    connectionQueryData = museMissingBinaryConnection();
+    rerender(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe(
+      'My Muse',
+    );
+  });
+
+  test('selecting a different engine re-seeds the form even after an edit', () => {
+    connectionQueryData = museMissingBinaryConnection();
+
+    const { rerender } = render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByText('Advanced'));
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'My Muse' },
+    });
+
+    connectionQueryData = {
+      ...museMissingBinaryConnection(),
+      id: 'codex',
+      name: 'Codex',
+    };
+    rerender(
+      <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
+    );
+
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe(
+      'Codex',
+    );
   });
 
   test('claude shows an accessible skills-materialization multiselect, off by default, that saves the selected ids', () => {
