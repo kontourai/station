@@ -55,6 +55,32 @@ the product UI. Detection is for developers:
 `EXTENSION_NOTIFICATION_PROMOTIONS` is the mapping backlog. Bias is promote
 to a typed Station event. There is no in-product “accept unique” workflow.
 
+## Queue vs steer
+
+Two Station nouns. Engine differences live in the adapter and the capability
+matrix; the dock always sees one of these:
+
+| Noun | Station fact | When |
+| --- | --- | --- |
+| **Queue** | `queuedMessages`, drained on `turn.completed` / `runtime.error` as a **new** turn | Default. Every engine whose matrix `midTurnSteer` is false (Codex, ACP/Grok, Muse, Station). |
+| **Steer** | `steerTurn` → `turn.started` with `inputKind: 'steer'` | Additional user input on the **open** turn. Claude today (`Query.streamInput`). |
+
+Send-while-busy uses that matrix cell (`sessionAdapterSupportsSteering`), not
+a connection `capabilities` string. A steer fold appends a user row and
+**does not** reset `streamingMessage`. Attachments have no steer channel, so
+they still queue. Durable outbound replay stays durable (`skipInMemoryQueueOnBusy`)
+and is never collapsed into either path.
+
+Grok's `_x.ai/queue/changed` is the engine's own prompt queue: promote it to
+`queuedMessages`, not a fake `turn.queued` method and not steer. Grok's native
+inject (`_x.ai/interject`) would map to `adapter.steerTurn` and the same
+canonical steer event if ACP `midTurnSteer` ever becomes true. T3 Code's later
+Grok “steer” (cancel the in-flight ACP prompt and re-prompt on the same
+`turnId`) is an engine mapping, not a third Station noun.
+
+The queued-messages chrome already offers **Send as steer** when the live
+provider's matrix allows it.
+
 ## Follow-ups
 
 - Tape-backed `useSessionEventWindow` transport so **Load earlier events**

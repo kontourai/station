@@ -215,6 +215,14 @@ describe('extension notification bindings', () => {
     }
   });
 
+  test('Grok queue/changed promotes to Station follow-up queue, not steer', () => {
+    const item = EXTENSION_NOTIFICATION_PROMOTIONS.find(
+      (promotion) =>
+        promotion.namespace === '_x.ai' && promotion.type === 'queue/changed',
+    );
+    expect(item?.stationEvent).toBe('queuedMessages');
+  });
+
   test('takeUnboundExtensionNotice fires once per provider-tuple', () => {
     _resetUnboundExtensionNotices();
     expect(takeUnboundExtensionNotice('acp', '_x.ai', 'never/seen')).toBe(true);

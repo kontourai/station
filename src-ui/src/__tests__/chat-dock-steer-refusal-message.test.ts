@@ -2,7 +2,7 @@
 
 import type { SteerTurnResult } from '@kontourai/station-contracts/orchestration';
 import { describe, expect, it } from 'vitest';
-import { steerRefusalMessage } from '../components/chat-dock/ChatDockBody';
+import { steerRefusalMessage } from '../utils/steerTurn';
 
 /**
  * archive#4075: `onSteer`'s outcome→message mapping

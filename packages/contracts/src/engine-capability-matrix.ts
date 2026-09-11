@@ -998,7 +998,9 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       channel: 'native-content',
       basis: 'runtime_observation',
     },
-    // ACP permits session/prompt and session/cancel; it defines no concurrent steer operation.
+    // ACP permits session/prompt and session/cancel; it defines no concurrent
+    // steer operation. Grok's `_x.ai/interject` is an engine extension, not
+    // this protocol cell — queue/changed is follow-up queue, not steer.
     midTurnSteer: false,
     // A custom engine's toolbox is whatever the connected CLI brings; ACP
     // advertises protocol capabilities at initialize, not a tool inventory.

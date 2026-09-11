@@ -109,6 +109,32 @@ export function handleTurnStartedEvent(
         .catch(() => undefined);
     }
   }
+  if (event.inputKind === 'steer') {
+    // A steer is more user input on the OPEN turn. It must not reset
+    // `streamingMessage` the way a fresh `turn.started` does — that wipe is
+    // how a Claude course-correction used to blank the in-flight answer.
+    const prompt = event.prompt?.trim();
+    const messages = [...(currentChat?.messages ?? [])];
+    if (prompt) {
+      messages.push({
+        role: 'user',
+        content: prompt,
+        timestamp: Date.parse(event.createdAt) || undefined,
+        turnId: event.turnId,
+        sessionId: event.threadId,
+      });
+    }
+    store.updateChat(event.threadId, {
+      pendingClientTurnId: undefined,
+      status: 'sending',
+      orchestrationTurnOpen: true,
+      openTurnId: event.turnId ?? currentChat?.openTurnId,
+      orchestrationStatus: 'running',
+      ...(prompt ? { messages } : {}),
+    });
+    return;
+  }
+
   store.updateChat(event.threadId, {
     // The dispatch this turn came from has started; the pre-start cancel
     // window it named is over

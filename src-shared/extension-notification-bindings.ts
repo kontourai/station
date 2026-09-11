@@ -353,7 +353,10 @@ export const EXTENSION_NOTIFICATION_PROMOTIONS = Object.freeze([
   Object.freeze({
     namespace: '_x.ai',
     type: 'queue/changed',
-    stationEvent: 'turn.queued',
+    // Grok's engine-side prompt queue. Station's noun is queuedMessages
+    // (drain on turn.completed as a new turn). This is not steer —
+    // ACP midTurnSteer is false; Grok's native inject is `_x.ai/interject`.
+    stationEvent: 'queuedMessages',
     status: 'open',
     evidence: 'station#1935-runtime-observation',
   }),

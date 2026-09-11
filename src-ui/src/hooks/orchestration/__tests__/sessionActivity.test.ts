@@ -211,6 +211,44 @@ describe('handleTurnStartedEvent — optimistic running status', () => {
       } as any),
     ).toBe(true);
   });
+
+  test('a steer appends the user row and does not wipe the in-flight stream', () => {
+    turnStartedStore.updateChat(threadId, {
+      status: 'sending',
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-1',
+      orchestrationStatus: 'running',
+      streamingMessage: {
+        role: 'assistant',
+        content: 'partial answer',
+        contentParts: [{ type: 'text', content: 'partial answer' }],
+      },
+    });
+
+    handleTurnStartedEvent(
+      {
+        eventId: 'evt-steer',
+        provider: 'claude',
+        threadId,
+        createdAt: '2026-07-23T00:00:05.000Z',
+        method: 'turn.started',
+        turnId: 'turn-1',
+        prompt: 'course correct',
+        inputKind: 'steer',
+      } as any,
+      turnStartedStore,
+    );
+
+    const chat = turnStartedStore.getSnapshot()[threadId];
+    expect(chat?.streamingMessage?.content).toBe('partial answer');
+    expect(chat?.messages?.at(-1)).toMatchObject({
+      role: 'user',
+      content: 'course correct',
+      turnId: 'turn-1',
+    });
+    expect(chat?.openTurnId).toBe('turn-1');
+    expect(chat?.status).toBe('sending');
+  });
 });
 
 describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing transient activity state on session death', () => {
