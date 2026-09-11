@@ -105,10 +105,11 @@ function capabilitiesWith(
 const BASE_ENV = { PATH: '/usr/bin', TMPDIR: '/tmp/station-engine' };
 
 function harness(
-  overrides: Partial<DeviceCodeLoginDeps> & {
+  overrides: {
     capabilities?: EngineLoginCapabilities;
     authState?: EnrolmentAuthState;
     authDetail?: string;
+    schedule?: DeviceCodeLoginDeps['schedule'];
   } = {},
 ) {
   const children: FakeChild[] = [];
@@ -138,10 +139,7 @@ function harness(
     capabilities: capabilities as never,
     verify: verify as never,
     now: () => new Date('2026-09-11T12:00:00.000Z'),
-    schedule: scheduler.schedule,
-    ...('schedule' in overrides
-      ? { schedule: overrides.schedule as never }
-      : {}),
+    schedule: overrides.schedule ?? scheduler.schedule,
   };
   return {
     manager: new DeviceCodeLoginManager(deps),
