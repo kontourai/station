@@ -4521,6 +4521,13 @@ button.tool-call__line:hover {
   font-style: italic;
 }
 
+.tool-call-batch__progress {
+  margin: 0 0 2px 19px;
+  color: var(--text-muted);
+  font-size: 0.78em;
+  font-style: italic;
+}
+
 /* Outcome flags on the collapsed row. --bg-tertiary rather than a
    --color-bg-tertiary alias: the alias was never defined and painted nothing
    (station#1246). */
@@ -4742,6 +4749,12 @@ button.tool-call__line:hover {
   /* station#1569 (item 3): not an error colour — nothing failed. It is the
      same "we do not know" the row's own badge carries, so it reads as a
      qualifier on the summary rather than a verdict. */
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.tool-call-batch__awaiting {
+  flex-shrink: 0;
   color: var(--text-secondary);
   font-weight: 600;
 }
