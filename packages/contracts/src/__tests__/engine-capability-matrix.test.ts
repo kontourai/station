@@ -996,3 +996,84 @@ describe('resolveComposerImageSupport (station#3344)', () => {
     ).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
   });
 });
+
+describe('subagent capability cells', () => {
+  test('every engine declares both subagent cells', () => {
+    for (const [key, matrix] of Object.entries(ENGINE_CAPABILITY_MATRICES)) {
+      expect(
+        matrix.subagentObservability,
+        `${key} observability`,
+      ).toBeDefined();
+      expect(matrix.subagentControl, `${key} control`).toBeDefined();
+    }
+  });
+
+  test('a `none` cell always says why, so a refusal explains itself', () => {
+    for (const [key, matrix] of Object.entries(ENGINE_CAPABILITY_MATRICES)) {
+      if (matrix.subagentObservability.state === 'none') {
+        expect(
+          matrix.subagentObservability.reason.length,
+          `${key} observability reason`,
+        ).toBeGreaterThan(0);
+      }
+      if (matrix.subagentControl.state === 'none') {
+        expect(
+          matrix.subagentControl.reason.length,
+          `${key} control reason`,
+        ).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test('a declared observability cell names its evidence and adapter', () => {
+    for (const [key, matrix] of Object.entries(ENGINE_CAPABILITY_MATRICES)) {
+      const cell = matrix.subagentObservability;
+      if (cell.state !== 'declared') continue;
+      expect(cell.signals.length, `${key} signals`).toBeGreaterThan(0);
+      expect(cell.evidence.length, `${key} evidence`).toBeGreaterThan(0);
+      expect(cell.adapterModule, `${key} adapterModule`).toMatch(/\.ts$/);
+    }
+  });
+
+  /**
+   * The module's standing rule, applied to subagents: a control cell is what a
+   * client may render a control FROM, so it may only leave `none` when a real
+   * path exists. Station wires none today, which is why every control cell
+   * reads `none` — this test is what makes flipping one a deliberate act with
+   * evidence attached, rather than an aspirational edit.
+   */
+  test('a wired control cell must carry evidence for each action it claims', () => {
+    for (const [key, matrix] of Object.entries(ENGINE_CAPABILITY_MATRICES)) {
+      const cell = matrix.subagentControl;
+      if (cell.state !== 'wired') continue;
+      for (const [action, value] of [
+        ['stop', cell.stop],
+        ['resume', cell.resume],
+      ] as const) {
+        if (value.state !== 'available') {
+          expect(
+            value.reason.length,
+            `${key} ${action} reason`,
+          ).toBeGreaterThan(0);
+          continue;
+        }
+        expect(
+          value.evidence.length,
+          `${key} ${action} evidence`,
+        ).toBeGreaterThan(0);
+        // `model-tool` means only the engine's model can invoke it, so it can
+        // never back a per-task control a user presses.
+        if (value.invocation === 'model-tool') {
+          expect(value.scope, `${key} ${action} scope`).not.toBe('per-task');
+        }
+      }
+    }
+  });
+
+  test('an engine that reports nothing cannot claim wired control over it', () => {
+    for (const [key, matrix] of Object.entries(ENGINE_CAPABILITY_MATRICES)) {
+      if (matrix.subagentObservability.state !== 'none') continue;
+      expect(matrix.subagentControl.state, `${key} control`).toBe('none');
+    }
+  });
+});
