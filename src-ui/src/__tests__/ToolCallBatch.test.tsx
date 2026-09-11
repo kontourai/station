@@ -3,7 +3,7 @@
  */
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { MessageContent } from '../components/chat/message-bubble/MessageContent';
 import { StreamingMessageView } from '../components/chat/StreamingMessage';
 import { ToolCallBatch } from '../components/chat/ToolCallBatch';
@@ -297,6 +297,45 @@ test('two consecutive tool calls collapse to the batch summary, not two rows', a
   expect(screen.queryByText('Read source-0.ts')).toBeNull();
 });
 
+test('a run that still needs a grant stays inline so Allow Once is not behind a tap', () => {
+  const onToolApproval = vi.fn();
+  render(
+    <MessageContent
+      contentParts={[
+        {
+          type: 'tool-invocation',
+          toolCallId: 'read-0',
+          toolName: 'Read',
+          args: { file_path: 'a.ts' },
+          state: 'result',
+          result: 'ok',
+        },
+        {
+          type: 'tool-invocation',
+          toolCallId: 'write-1',
+          toolName: 'Write',
+          args: { path: 'secrets.env' },
+          needsApproval: true,
+          state: 'awaiting-approval',
+          approvalId: 'a1',
+        },
+      ]}
+      textContent=""
+      chatFontSize={14}
+      showReasoning={false}
+      showToolDetails={true}
+      isStreamingMessage={true}
+      onToolApproval={onToolApproval}
+    />,
+  );
+  expect(
+    screen.queryByRole('button', { name: /Read 1 file, edit 1 file/ }),
+  ).toBeNull();
+  expect(screen.getByText('Edit secrets.env')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
+  expect(onToolApproval).toHaveBeenCalled();
+});
+
 test('a solo tool call stays an inline row with no batch button', () => {
   render(
     <MessageContent
@@ -418,7 +457,8 @@ test('a collapsed in-progress streaming batch shows the call progress on the bat
   expect(
     await screen.findByRole('button', { name: /Running npm test/ }),
   ).toBeTruthy();
-  const progress = screen.getByText('still going');
-  expect(progress.className).toContain('tool-call__progress');
-  expect(screen.queryByText('Running bash')).toBeNull();
+  const progress = screen.getAllByText('still going');
+  expect(progress).toHaveLength(1);
+  expect(progress[0].className).toContain('tool-call__progress');
+  expect(document.querySelector('.streaming-progress')).toBeNull();
 });

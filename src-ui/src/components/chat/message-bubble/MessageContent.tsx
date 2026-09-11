@@ -6,6 +6,7 @@ import { LazyMarkdown } from '../LazyMarkdown';
 import { ReasoningSection } from '../ReasoningSection';
 import { ToolCallBatchBoundary } from '../ToolCallBatchBoundary';
 import { ToolCallDisplay } from '../ToolCallDisplay';
+import { isToolCallAwaitingApproval } from '../tool-call-labels';
 import { splitToolCallRuns } from '../tool-call-runs';
 import { UIBlockRenderer } from '../UIBlockRenderer';
 
@@ -14,7 +15,11 @@ type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 /** Consecutive tool-call runs longer than this collapse to the ToolCallBatch
  * summary + sheet. 1 means a solo call stays an inline row and any 2+ run
  * becomes one line that opens the existing overlay. Shared with
- * `StreamingMessage` so a run does not change shape when the turn settles. */
+ * `StreamingMessage` so a run does not change shape when the turn settles.
+ * The summary is transcript chrome, not "tool details"; opening the sheet
+ * is an explicit disclosure and shows each call even when details are off.
+ * A run that still needs a grant stays inline so Allow Once is not behind
+ * a tap. */
 export const INLINE_RUN_LIMIT = 1;
 
 interface MessageContentProps {
@@ -83,7 +88,10 @@ function MessageContentComponent({
             // calls collapse to one summary line that opens the sheet —
             // live and settled share this threshold so a run does not
             // change shape when the turn completes.
-            if (block.calls.length <= INLINE_RUN_LIMIT) {
+            if (
+              block.calls.length <= INLINE_RUN_LIMIT ||
+              block.calls.some(({ part }) => isToolCallAwaitingApproval(part))
+            ) {
               return block.calls.map(({ part, index }) =>
                 renderToolCall(part, index),
               );

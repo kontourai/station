@@ -56,6 +56,17 @@ export const KIND_VERBS: Record<ToolCallKind, KindVerbs> = {
  */
 export type ToolCallPhase = 'done' | 'running' | 'proposed' | 'unresolved';
 
+export interface ToolCallPhaseInput {
+  needsApproval?: boolean;
+  error?: unknown;
+  errorText?: unknown;
+  result?: unknown;
+  output?: unknown;
+  cancelled?: unknown;
+  state?: unknown;
+  approvalStatus?: unknown;
+}
+
 /**
  * Whether a tool part is still waiting on an explicit grant. One predicate
  * for the collapsed batch and the expanded row — a second copy eventually
@@ -66,15 +77,7 @@ export type ToolCallPhase = 'done' | 'running' | 'proposed' | 'unresolved';
  * `request.opened`; matching `needsApproval` alone is not enough to claim
  * the work is only proposed.
  */
-export function isToolCallAwaitingApproval(part: {
-  needsApproval?: boolean;
-  error?: unknown;
-  errorText?: unknown;
-  result?: unknown;
-  output?: unknown;
-  cancelled?: unknown;
-  state?: unknown;
-}): boolean {
+export function isToolCallAwaitingApproval(part: ToolCallPhaseInput): boolean {
   if (part.needsApproval !== true) return false;
   const error = part.error ?? part.errorText;
   const result = part.result ?? part.output;
@@ -82,6 +85,33 @@ export function isToolCallAwaitingApproval(part: {
   const failed = Boolean(error) || part.state === 'error';
   const unresolved = part.state === 'unresolved';
   return !failed && !unresolved && result === undefined && !cancelled;
+}
+
+/**
+ * Same derivation `ToolCallDisplay` uses for the row verb. `done` is only
+ * returned when a successful completion was observed — never as the
+ * leftover of "not running".
+ */
+export function toolCallPhase(part: ToolCallPhaseInput): ToolCallPhase {
+  const error = part.error ?? part.errorText;
+  const result = part.result ?? part.output;
+  const cancelled = part.cancelled === true || part.state === 'cancelled';
+  const failed = Boolean(error) || part.state === 'error';
+  const sessionUnresolved = part.state === 'unresolved';
+  const denied =
+    part.approvalStatus === 'user-denied' ||
+    part.approvalStatus === 'policy-denied';
+  if (isToolCallAwaitingApproval(part)) return 'proposed';
+  if (part.state === 'running' && !failed && !cancelled) return 'running';
+  const completed =
+    !failed &&
+    !cancelled &&
+    !denied &&
+    !sessionUnresolved &&
+    (part.state === 'completed' ||
+      part.state === 'result' ||
+      result !== undefined);
+  return completed ? 'done' : 'unresolved';
 }
 
 const READ_TOKENS = new Set(['read', 'cat', 'view']);

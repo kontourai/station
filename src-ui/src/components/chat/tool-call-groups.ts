@@ -23,6 +23,8 @@ import {
   isToolCallAwaitingApproval,
   KIND_VERBS,
   type ToolCallKind,
+  type ToolCallPhase,
+  toolCallPhase,
 } from './tool-call-labels';
 import {
   type ContentPartBlock,
@@ -72,6 +74,7 @@ interface ClassifiedToolCall<P extends ToolCallLike = ToolCallLike> {
   kind: ToolCallKind;
   /** e.g. "Read app.tsx", "Ran <short command>". */
   label: string;
+  phase: ToolCallPhase;
   inProgress: boolean;
   /** The call reached a failure terminal (error text or an error state). */
   failed: boolean;
@@ -130,25 +133,19 @@ function classifyCall<P extends ToolCallLike>(
   const toolName = toolNameOf(part);
   const kind = classifyToolName(toolName);
   const args = part.args ?? part.input;
-  const inProgress = part.state === 'running';
+  const phase = toolCallPhase(part);
+  const inProgress = phase === 'running';
   const unresolved = part.state === 'unresolved';
   const failed =
     Boolean(part.error || part.errorText) || part.state === 'error';
   const awaitingApproval = isToolCallAwaitingApproval(part);
-  // Boolean `inProgress` maps to `done` when false — a proposed or
-  // unresolved call must take the explicit phase or the header claims
-  // work that has not happened (the same overclaim as station#1569).
-  const label = callLabel(
-    kind,
-    toolName,
-    args,
-    unresolved ? 'unresolved' : awaitingApproval ? 'proposed' : inProgress,
-  );
+  const label = callLabel(kind, toolName, args, phase);
   return {
     part,
     index,
     kind,
     label,
+    phase,
     inProgress,
     failed,
     unresolved,
@@ -218,7 +215,9 @@ export function classifyToolCallRun<P extends ToolCallLike>(
   const inProgress = calls.some((c) => c.inProgress);
   const unresolvedCount = calls.filter((c) => c.unresolved).length;
   const awaitingApprovalCount = calls.filter((c) => c.awaitingApproval).length;
-  const pending = unresolvedCount > 0 || awaitingApprovalCount > 0;
+  const pending = calls.some(
+    (c) => c.phase === 'proposed' || c.phase === 'unresolved',
+  );
   const aggregateSummary = summarizeCalls(calls, inProgress, pending);
   // A live multi-call run updates to the current tool only when every
   // sibling is still allowed to claim flight. A proposed or unresolved
@@ -229,7 +228,7 @@ export function classifyToolCallRun<P extends ToolCallLike>(
       : undefined;
   const summary = liveCall ? `${liveCall.label}…` : aggregateSummary;
   const failedCount = calls.filter((c) => c.failed).length;
-  const progressSource = inProgress ? latestRunningCall(calls) : undefined;
+  const progressSource = latestRunningCall(calls);
   const rawProgress = progressSource?.part.progressMessage;
   const progressMessage =
     typeof rawProgress === 'string' && rawProgress.trim().length > 0

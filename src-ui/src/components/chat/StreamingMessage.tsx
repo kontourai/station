@@ -14,6 +14,7 @@ import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
 import { ToolCallBatchBoundary } from './ToolCallBatchBoundary';
 import { ToolProgressIndicator } from './ToolProgressIndicator';
+import { isToolCallAwaitingApproval } from './tool-call-labels';
 import { splitToolCallRuns } from './tool-call-runs';
 import { UIBlockRenderer } from './UIBlockRenderer';
 
@@ -146,7 +147,10 @@ export function StreamingMessageView({
             // (`MessageContent`'s INLINE_RUN_LIMIT) so a run does not
             // change shape when the turn settles. Solo calls stay a
             // row; 2+ consecutive calls become one updating line.
-            if (block.calls.length <= INLINE_RUN_LIMIT) {
+            if (
+              block.calls.length <= INLINE_RUN_LIMIT ||
+              block.calls.some(({ part }) => isToolCallAwaitingApproval(part))
+            ) {
               return block.calls.map(({ part, index }) =>
                 renderToolCall(part, index),
               );

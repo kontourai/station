@@ -18,7 +18,7 @@ import {
   classifyToolName,
   isToolCallAwaitingApproval,
   type ToolCallKind,
-  type ToolCallPhase,
+  toolCallPhase,
 } from './tool-call-labels';
 
 /**
@@ -128,38 +128,13 @@ function ToolCallDisplayComponent({
   const outputTruncated = toolCall.outputTruncated === true;
 
   const failed = Boolean(error) || state === 'error';
-  const running = state === 'running' && !failed && !cancelled;
   const awaitingApproval = isToolCallAwaitingApproval(toolCall);
 
   const kind = classifyToolName(toolName);
   const denied =
     approvalStatus === 'user-denied' || approvalStatus === 'policy-denied';
-  // The live path stamps `completed` on success (`streamHandlers.ts`) and the
-  // durable projection stamps `result` (`runtime-event-projection.ts`) — both
-  // are the same observation, so both count. A `state: 'call'` that survived a
-  // reconnect is a START with no observed end, and must not count.
-  const completedSuccessfully =
-    !failed &&
-    !cancelled &&
-    !denied &&
-    // station#1558: an unresolved row DOES carry a `result` — the sentence
-    // saying no result was reported. Without this it would satisfy the
-    // `result !== undefined` arm below and read as a success, which is the
-    // exact claim the status exists to refuse.
-    !unresolved &&
-    (state === 'completed' || state === 'result' || result !== undefined);
-  // Verb tense is the honest one for the call's actual phase: past ONLY for
-  // work observed to have completed, progressive only while running, bare
-  // infinitive for a proposed call and for anything unresolved. `done` is
-  // derived, never a fallback — a denied `write_file` reading "Edited file"
-  // claims an edit that never landed.
-  const phase: ToolCallPhase = awaitingApproval
-    ? 'proposed'
-    : running
-      ? 'running'
-      : completedSuccessfully
-        ? 'done'
-        : 'unresolved';
+  const phase = toolCallPhase(toolCall);
+  const running = phase === 'running';
   // Every other unresolved outcome already carries a badge below (Failed,
   // Cancelled, User denied, Blocked by Station). This is the one that does
   // not: dispatched, and no completion event ever arrived.

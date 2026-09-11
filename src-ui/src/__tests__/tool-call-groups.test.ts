@@ -7,7 +7,10 @@ import {
   type ToolCallGroup,
   type ToolCallLike,
 } from '../components/chat/tool-call-groups';
-import { isToolCallAwaitingApproval } from '../components/chat/tool-call-labels';
+import {
+  isToolCallAwaitingApproval,
+  toolCallPhase,
+} from '../components/chat/tool-call-labels';
 
 function toolCall(overrides: Partial<ToolCallLike> = {}): ToolCallLike {
   return {
@@ -322,6 +325,50 @@ describe('groupToolCallParts', () => {
     expect(group.inProgress).toBe(true);
     expect(group.summary).toBe('Read 1 file, edit 1 file');
     expect(group.summary).not.toContain('…');
+  });
+
+  test('a user-denied write in a batch never claims the edit landed', () => {
+    const parts = [
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Read',
+        args: { file_path: 'a.ts' },
+        state: 'result',
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Write',
+        args: { path: 'secrets.env' },
+        needsApproval: false,
+        state: 'awaiting-approval',
+        approvalStatus: 'user-denied',
+      }),
+    ];
+    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    expect(toolCallPhase(parts[1])).toBe('unresolved');
+    expect(group.summary).toBe('Read 1 file, edit 1 file');
+    expect(group.summary).not.toMatch(/edited/i);
+  });
+
+  test('a cancelled write in a batch never claims the edit landed', () => {
+    const parts = [
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Read',
+        args: { file_path: 'a.ts' },
+        state: 'result',
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Write',
+        args: { path: 'secrets.env' },
+        state: 'cancelled',
+        cancelled: true,
+      }),
+    ];
+    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    expect(group.summary).toBe('Read 1 file, edit 1 file');
+    expect(group.summary).not.toMatch(/edited/i);
   });
 
   test("the latest running call's progress message rides on the group", () => {

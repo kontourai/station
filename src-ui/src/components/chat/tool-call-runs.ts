@@ -31,6 +31,7 @@ export interface ToolCallLike {
   needsApproval?: boolean;
   cancelled?: boolean;
   progressMessage?: string;
+  approvalStatus?: string;
   [key: string]: unknown;
 }
 

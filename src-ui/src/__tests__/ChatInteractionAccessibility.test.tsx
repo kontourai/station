@@ -95,7 +95,8 @@ describe('chat interaction accessibility', () => {
     // Raw internal state strings never render (the old card printed
     // `state` verbatim as a badge).
     expect(screen.queryByText('running')).toBeNull();
-    expect(screen.getByText('Reading README.md')).toBeTruthy();
+    // needsApproval wins over state: 'running' — the row is proposed, so
+    // the live progress line does not render as if the call were in flight.
 
     toggle.focus();
     fireEvent.keyDown(toggle, { key: 'Enter' });

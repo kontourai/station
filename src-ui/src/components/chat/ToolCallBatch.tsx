@@ -118,7 +118,7 @@ export function ToolCallBatch<P extends ToolCallLike>({
           ›
         </span>
       </button>
-      {group.progressMessage && group.inProgress && (
+      {group.progressMessage && (
         <div className="tool-call__progress">{group.progressMessage}</div>
       )}
       {isOpen && (
