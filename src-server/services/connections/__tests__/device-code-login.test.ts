@@ -129,11 +129,13 @@ function harness(
     children.push(child);
     return child as unknown as DeviceCodeChildProcess;
   });
+  const capabilities = vi.fn(
+    async () => overrides.capabilities ?? capabilitiesWith('--device-auth'),
+  );
   const deps: DeviceCodeLoginDeps = {
     spawnLogin: spawnLogin as never,
     baseEnv: async () => ({ ...BASE_ENV }),
-    capabilities: async () =>
-      overrides.capabilities ?? capabilitiesWith('--device-auth'),
+    capabilities: capabilities as never,
     verify: verify as never,
     now: () => new Date('2026-09-11T12:00:00.000Z'),
     schedule: scheduler.schedule,
@@ -147,6 +149,7 @@ function harness(
     spawned,
     spawnLogin,
     verify,
+    capabilities,
     scheduler,
   };
 }
@@ -273,7 +276,7 @@ describe('starting a login', () => {
   });
 
   test('a second start while one is live returns the same login and spawns nothing', async () => {
-    const { manager, children, spawnLogin } = harness();
+    const { manager, children, spawnLogin, capabilities } = harness();
     await manager.start('codex', PROFILE_DIR);
     children[0].stdout.write(CODEX_DEVICE_CODE_STDOUT);
 
@@ -284,6 +287,11 @@ describe('starting a login', () => {
       CODEX_DEVICE_CODE_EXPECTED.userCode,
     );
     expect(spawnLogin).toHaveBeenCalledTimes(1);
+    // The live session short-circuits BEFORE the capability probe. Without
+    // this the pre-await guard is unobservable: the post-await re-check
+    // (which exists for the concurrent case) already covers the sequential
+    // one, so removing the first guard passed every other assertion here.
+    expect(capabilities).toHaveBeenCalledTimes(1);
   });
 
   test('concurrent starts race through the capability probe without a second process', async () => {
