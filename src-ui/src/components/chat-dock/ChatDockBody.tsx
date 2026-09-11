@@ -186,7 +186,7 @@ interface ChatDockBodyProps {
     handleSend: (
       overrideText?: string,
       overrideAttachments?: FileAttachment[],
-      options?: { ambientContext?: string },
+      options?: { ambientContext?: string; queueOnBusy?: boolean },
     ) => Promise<void>;
     handleCancel: () => void;
     handleClearInput: () => void;

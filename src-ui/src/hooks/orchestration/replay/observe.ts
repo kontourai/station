@@ -113,11 +113,13 @@ function preview(text: string): string {
 }
 
 function toolNamesFromParts(
-  parts: ChatUIState['streamingMessage'] extends infer Message
-    ? Message extends { contentParts?: infer Parts }
-      ? Parts
-      : never
-    : never,
+  parts:
+    | (ChatUIState['streamingMessage'] extends infer Message
+        ? Message extends { contentParts?: infer Parts }
+          ? Parts
+          : never
+        : never)
+    | undefined,
 ): string[] {
   if (!parts) return [];
   return parts
