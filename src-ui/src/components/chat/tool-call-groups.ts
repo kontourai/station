@@ -85,6 +85,8 @@ interface ClassifiedToolCall<P extends ToolCallLike = ToolCallLike> {
   unresolved: boolean;
   /** Live path only: the call is waiting on an explicit grant. */
   awaitingApproval: boolean;
+  denied: boolean;
+  cancelled: boolean;
 }
 
 export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
@@ -117,6 +119,8 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
    * collapsed-visible duty as `failedCount`: collapsing 2+ calls would
    * otherwise hide Allow Once / Deny behind the sheet. */
   awaitingApprovalCount: number;
+  deniedCount: number;
+  cancelledCount: number;
   /** Latest running call's `progressMessage`, if any — the collapsed line
    * is the only live surface once the run is batched. */
   progressMessage?: string;
@@ -139,6 +143,9 @@ function classifyCall<P extends ToolCallLike>(
   const failed =
     Boolean(part.error || part.errorText) || part.state === 'error';
   const awaitingApproval = isToolCallAwaitingApproval(part);
+  const denied = part.approvalStatus === 'user-denied';
+  const cancelled =
+    (part.cancelled === true || part.state === 'cancelled') && !denied;
   const label = callLabel(kind, toolName, args, phase);
   return {
     part,
@@ -150,6 +157,8 @@ function classifyCall<P extends ToolCallLike>(
     failed,
     unresolved,
     awaitingApproval,
+    denied,
+    cancelled,
   };
 }
 
@@ -228,6 +237,8 @@ export function classifyToolCallRun<P extends ToolCallLike>(
       : undefined;
   const summary = liveCall ? `${liveCall.label}…` : aggregateSummary;
   const failedCount = calls.filter((c) => c.failed).length;
+  const deniedCount = calls.filter((c) => c.denied).length;
+  const cancelledCount = calls.filter((c) => c.cancelled).length;
   const progressSource = latestRunningCall(calls);
   const rawProgress = progressSource?.part.progressMessage;
   const progressMessage =
@@ -244,6 +255,8 @@ export function classifyToolCallRun<P extends ToolCallLike>(
     failedCount,
     unresolvedCount,
     awaitingApprovalCount,
+    deniedCount,
+    cancelledCount,
     progressMessage,
   };
 }

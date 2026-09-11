@@ -14,7 +14,7 @@ import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
 import { ToolCallBatchBoundary } from './ToolCallBatchBoundary';
 import { ToolProgressIndicator } from './ToolProgressIndicator';
-import { isToolCallAwaitingApproval } from './tool-call-labels';
+import { toolCallPhase } from './tool-call-labels';
 import { splitToolCallRuns } from './tool-call-runs';
 import { UIBlockRenderer } from './UIBlockRenderer';
 
@@ -114,12 +114,21 @@ export function StreamingMessageView({
   // of its calls is still `running`, so the collapsed summary never
   // claims a batch is done before it is.
   const blocks = useMemo(() => splitToolCallRuns(contentParts), [contentParts]);
-  const collapsedInProgressBatch = blocks.some(
-    (block) =>
-      block.type === 'tool-call-run' &&
-      block.calls.length > INLINE_RUN_LIMIT &&
-      block.calls.some((call) => call.part.state === 'running'),
-  );
+  const collapsedInProgressBatch = blocks.some((block) => {
+    if (block.type !== 'tool-call-run') return false;
+    if (block.calls.length <= INLINE_RUN_LIMIT) return false;
+    let running = false;
+    let pending = false;
+    for (const { part } of block.calls) {
+      const phase = toolCallPhase(part);
+      if (phase === 'running') running = true;
+      if (phase === 'proposed' || phase === 'unresolved') pending = true;
+    }
+    // Only hide the indicator when the batch itself will headline the
+    // live call. A mixed pending run keeps the inventory phrase, so the
+    // indicator is still the only place that names what is running.
+    return running && !pending;
+  });
   useEffect(() => {
     // The numeric revision is intentionally read here: it is the O(1)
     // dependency that replaces rebuilding the complete transcript string.
@@ -147,10 +156,7 @@ export function StreamingMessageView({
             // (`MessageContent`'s INLINE_RUN_LIMIT) so a run does not
             // change shape when the turn settles. Solo calls stay a
             // row; 2+ consecutive calls become one updating line.
-            if (
-              block.calls.length <= INLINE_RUN_LIMIT ||
-              block.calls.some(({ part }) => isToolCallAwaitingApproval(part))
-            ) {
+            if (block.calls.length <= INLINE_RUN_LIMIT) {
               return block.calls.map(({ part, index }) =>
                 renderToolCall(part, index),
               );

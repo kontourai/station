@@ -114,13 +114,43 @@ export function ToolCallBatch<P extends ToolCallLike>({
               : `${group.awaitingApprovalCount} awaiting approval`}
           </span>
         )}
+        {group.deniedCount > 0 && (
+          <span className="tool-call-batch__failed">
+            {group.deniedCount === 1
+              ? '1 denied'
+              : `${group.deniedCount} denied`}
+          </span>
+        )}
+        {group.cancelledCount > 0 && (
+          <span className="tool-call-batch__unresolved">
+            {group.cancelledCount === 1
+              ? '1 cancelled'
+              : `${group.cancelledCount} cancelled`}
+          </span>
+        )}
         <span className="tool-call-batch__chevron" aria-hidden="true">
           ›
         </span>
       </button>
       {group.progressMessage && (
-        <div className="tool-call__progress">{group.progressMessage}</div>
+        <div
+          className="tool-call-batch__progress"
+          role="status"
+          aria-live="polite"
+        >
+          {group.progressMessage}
+        </div>
       )}
+      {group.calls
+        .filter((call) => call.awaitingApproval)
+        .map((call) => (
+          <div
+            key={call.part.toolCallId ?? `awaiting:${call.index}`}
+            className="tool-call-batch__pending-grant"
+          >
+            {renderCall(call.part, call.index, true)}
+          </div>
+        ))}
       {isOpen && (
         <ToolCallBatchSheetBoundary
           group={group}

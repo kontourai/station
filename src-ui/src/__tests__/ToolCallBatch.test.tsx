@@ -297,7 +297,7 @@ test('two consecutive tool calls collapse to the batch summary, not two rows', a
   expect(screen.queryByText('Read source-0.ts')).toBeNull();
 });
 
-test('a run that still needs a grant stays inline so Allow Once is not behind a tap', () => {
+test('a collapsed run still surfaces Allow Once under the summary', async () => {
   const onToolApproval = vi.fn();
   render(
     <MessageContent
@@ -323,15 +323,14 @@ test('a run that still needs a grant stays inline so Allow Once is not behind a 
       textContent=""
       chatFontSize={14}
       showReasoning={false}
-      showToolDetails={true}
+      showToolDetails={false}
       isStreamingMessage={true}
       onToolApproval={onToolApproval}
     />,
   );
   expect(
-    screen.queryByRole('button', { name: /Read 1 file, edit 1 file/ }),
-  ).toBeNull();
-  expect(screen.getByText('Edit secrets.env')).toBeTruthy();
+    await screen.findByRole('button', { name: /Read 1 file, edit 1 file/ }),
+  ).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
   expect(onToolApproval).toHaveBeenCalled();
 });
@@ -390,6 +389,59 @@ test('a collapsed batch discloses an awaiting-approval call without being opened
   expect(button.textContent).not.toMatch(/edited/i);
   const flag = screen.getByText('Awaiting approval');
   expect(flag.className).toContain('tool-call-batch__awaiting');
+});
+
+test('a collapsed batch discloses a user-denied call without being opened', () => {
+  const run = runFor([
+    {
+      type: 'tool-invocation',
+      toolCallId: 'a',
+      toolName: 'Read',
+      args: { file_path: 'a.ts' },
+      state: 'result',
+      result: 'ok',
+    },
+    {
+      type: 'tool-invocation',
+      toolCallId: 'b',
+      toolName: 'Write',
+      args: { path: 'secrets.env' },
+      needsApproval: false,
+      cancelled: true,
+      approvalStatus: 'user-denied',
+    },
+  ]);
+
+  render(<ToolCallBatch run={run} renderCall={renderCall} />);
+
+  expect(screen.getByText('1 denied')).toBeTruthy();
+  expect(screen.getByRole('button').textContent).not.toMatch(/edited/i);
+});
+
+test('a collapsed batch discloses a cancelled call without being opened', () => {
+  const run = runFor([
+    {
+      type: 'tool-invocation',
+      toolCallId: 'a',
+      toolName: 'Read',
+      args: { file_path: 'a.ts' },
+      state: 'result',
+      result: 'ok',
+    },
+    {
+      type: 'tool-invocation',
+      toolCallId: 'b',
+      toolName: 'Write',
+      args: { path: 'secrets.env' },
+      state: 'cancelled',
+      cancelled: true,
+    },
+  ]);
+
+  render(<ToolCallBatch run={run} renderCall={renderCall} />);
+
+  expect(screen.getByText('1 cancelled')).toBeTruthy();
+  expect(screen.getByRole('button').textContent).not.toMatch(/edited/i);
 });
 
 test('a live batch button names the latest running call; the sheet titles the inventory', async () => {
@@ -459,6 +511,6 @@ test('a collapsed in-progress streaming batch shows the call progress on the bat
   ).toBeTruthy();
   const progress = screen.getAllByText('still going');
   expect(progress).toHaveLength(1);
-  expect(progress[0].className).toContain('tool-call__progress');
+  expect(progress[0].className).toContain('tool-call-batch__progress');
   expect(document.querySelector('.streaming-progress')).toBeNull();
 });
