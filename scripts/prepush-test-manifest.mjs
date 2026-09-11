@@ -27,6 +27,27 @@ export const PREPUSH_TEST_GROUPS = Object.freeze({
     'scripts/__tests__/container-release.test.ts',
     'scripts/__tests__/prepush-tier.test.ts',
     'scripts/__tests__/load-reliability.test.ts',
+    // Two whole-repo census guards that changed-files selection structurally
+    // cannot reach from the side that violates them, so they belong on a lane
+    // that does not depend on selection at all.
+    //
+    // `path-read-pin-boundary` counts path-reading suites across the tree, so
+    // any test file anywhere can move the number while its edges key on the
+    // pinned SOURCE files. #1836 moved two pins among 357 changed files: the
+    // suite WAS selected, then discarded by run-changed-verification's
+    // >32-selected-tests truncation, which runs zero tests precisely when a
+    // change is largest.
+    //
+    // `pairing-route-scopes` requires every live leaf route to be declared.
+    // Its only edges are its own declaration file — which a violating PR by
+    // definition does not edit — and the mount index. It reads the 134 route
+    // modules by computed path, so neither `--related` nor the pin scanner
+    // can see them. #1855 added a route and the suite was never selected.
+    //
+    // Together 157 tests in ~3.9s, and this lane is selection-independent, so
+    // it survives both failure modes.
+    'scripts/__tests__/path-read-pin-boundary.test.ts',
+    'src-server/security/__tests__/pairing-route-scopes.test.ts',
   ]),
   contracts: Object.freeze([
     'packages/contracts/src/__tests__/runtime-events.test.ts',
