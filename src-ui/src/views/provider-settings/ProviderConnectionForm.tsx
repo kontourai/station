@@ -713,8 +713,8 @@ export function ProviderConnectionForm({
                   label="AWS profiles will appear here"
                   description={
                     awsProfilesQuery.data?.available === false
-                      ? "An AWS config file wasn't found on this computer."
-                      : 'Add named profiles to ~/.aws/config on this computer to choose one.'
+                      ? "An AWS config file wasn't found on the computer Station runs on."
+                      : 'Add named profiles to ~/.aws/config on the computer Station runs on to choose one.'
                   }
                 />
               )}

@@ -8012,6 +8012,29 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   font-size: var(--text-sm);
 }
 
+/*
+ * The blocking prerequisite's own name, and the server's ordered remedy for
+ * it. Both were on the wire and neither was rendered here -- the notice used
+ * to print bare prerequisite names, which read as broken links rather than as
+ * the subject of the sentence above them.
+ */
+.provider-detail__notice-subject {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.provider-detail__notice-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.provider-detail__notice-steps code {
+  overflow-wrap: anywhere;
+}
+
 .provider-detail__disclosure {
   margin: 8px 0 0;
   max-width: 62ch;

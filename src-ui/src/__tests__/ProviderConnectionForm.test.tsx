@@ -179,7 +179,9 @@ describe('ProviderConnectionForm — Bedrock auth modes (docs/design/connections
 
     expect(screen.queryByLabelText('AWS profile')).toBeNull();
     expect(
-      screen.getByText("An AWS config file wasn't found on this computer."),
+      screen.getByText(
+        "An AWS config file wasn't found on the computer Station runs on.",
+      ),
     ).toBeTruthy();
   });
 
