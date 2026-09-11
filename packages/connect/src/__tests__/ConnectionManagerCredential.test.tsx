@@ -194,8 +194,9 @@ describe('Connection Manager credential recovery', () => {
       screen.getByRole('button', { name: 'Request access to Remote Station' }),
     );
 
+    // #1856 reworded the direct-flow explainer; the host is still named.
     expect(
-      await screen.findByText(/Send a short-lived request to Remote Station\./),
+      await screen.findByText(/Ask to connect to Remote Station\./),
     ).toBeTruthy();
     // The panel already knows the target host — it must never ask the user
     // to type (or disambiguate) an address it already has.
@@ -277,7 +278,9 @@ describe('Connection Manager credential recovery', () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(store.getActive()?.id).toBe(current.id);
     expect(store.getCredential(target.id)).toBeNull();
-    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
+    // #1856: after a failed persistence the panel's submit reads "Try again"
+    // — authorization stays visible and retryable, not a closed modal.
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
     vi.unstubAllGlobals();
   });
 
