@@ -2254,7 +2254,7 @@ describe('ClaudeAdapter', () => {
     });
   });
 
-  test('an absent approvalMode keeps the pre-existing default permission mode (#727)', async () => {
+  test('an absent approvalMode omits permissionMode so Claude settings apply (station#1950)', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     const adapter = new ClaudeAdapter();
 
@@ -2263,9 +2263,41 @@ describe('ClaudeAdapter', () => {
       threadId: 'thread-approval-default',
     });
 
-    expect(mockQuery).toHaveBeenCalledWith({
-      prompt: expect.anything(),
-      options: expect.objectContaining({ permissionMode: 'default' }),
+    const options = mockQuery.mock.calls[0]?.[0]?.options as Record<
+      string,
+      unknown
+    >;
+    expect(options).not.toHaveProperty('permissionMode');
+  });
+
+  test('init permissionMode auto is reported as the applied approval mode (station#1950)', async () => {
+    mockQuery.mockReturnValue(
+      createMockQuery([
+        {
+          type: 'system',
+          subtype: 'init',
+          session_id: 'claude-session',
+          cwd: '/tmp',
+          model: 'claude-sonnet-4-6',
+          permissionMode: 'auto',
+          uuid: 'init-auto',
+        },
+      ]),
+    );
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-inherit-auto',
+    });
+
+    await iterator.next(); // session.started
+    await iterator.next(); // session.configured (spawn, no claimed mode)
+    const initConfigured = await iterator.next();
+    expect(initConfigured.value).toMatchObject({
+      method: 'session.configured',
+      metadata: { permissionMode: 'auto', approvalMode: 'auto' },
     });
   });
 
@@ -2321,6 +2353,23 @@ describe('ClaudeAdapter', () => {
         allowDangerouslySkipPermissions: undefined,
       }),
     });
+  });
+
+  test('a later turn without approvalMode does not reset Claude to default (station#1950)', async () => {
+    const mockedQuery = createMockQuery([]);
+    mockQuery.mockReturnValue(mockedQuery);
+    const adapter = new ClaudeAdapter();
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-keep-engine-default',
+      modelOptions: { approvalMode: 'auto' },
+    });
+    await adapter.sendTurn({
+      threadId: 'thread-keep-engine-default',
+      input: 'follow-up',
+    });
+    expect(mockedQuery.setPermissionMode).not.toHaveBeenCalled();
   });
 
   test('a per-turn approvalMode downgrade (auto -> ask) calls setPermissionMode and reaches Claude from the next turn (#727)', async () => {
@@ -2970,7 +3019,6 @@ describe('ClaudeAdapter', () => {
           TMPDIR: engineSpawnTmpDirPath(),
         }),
         canUseTool: expect.any(Function),
-        permissionMode: 'default',
         allowDangerouslySkipPermissions: undefined,
         thinking: undefined,
         effort: undefined,

@@ -18,17 +18,13 @@ export function approvalModeKnobSupported(engineId?: string | null): boolean {
 }
 
 /**
- * The adapter's own built-in posture when nothing overrides it — what a
- * brand-new, untouched connection actually does today. This is what the
- * chip resolves to (not the `'connection-default'` sentinel) so an
- * untouched Codex connection reads as full-access/never-ask at a glance,
- * per archive#727.
+ * Station no longer guesses a Claude Ask / Codex Never default (station#1950).
+ * Untouched sessions inherit the engine's own config; the chip shows
+ * `'connection-default'` until `session.configured` reports what applied.
  */
 export function adapterDefaultApprovalMode(
-  engineId?: string | null,
+  _engineId?: string | null,
 ): ApprovalMode | undefined {
-  if (engineId === 'codex') return 'never';
-  if (engineId === 'claude') return 'ask';
   return undefined;
 }
 
