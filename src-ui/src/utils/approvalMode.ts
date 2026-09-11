@@ -138,33 +138,6 @@ export function approvalModeChipLabel(mode: ApprovalMode): string {
   return APPROVAL_MODE_CHIP_LABELS[mode] ?? mode;
 }
 
-/**
- * What the chip says for an engine whose adapter reads no `approvalMode` at
- * all (archive#1010).
- *
- * This is deliberately a *capability* statement, not a mode. The old read-only
- * chip ran the same `resolveEffectiveApprovalMode` resolution as a
- * knob-supporting engine, which made it assert a posture the engine provably
- * cannot honour: `config.approvalMode` is a generic connection-config bag field
- * with no server-side gate, so a no-knob connection carrying it rendered e.g.
- * "Ask first — default" while the adapter ignored the value entirely.
- * Reporting a governing approval mode that nothing governs is worse than
- * reporting nothing.
- */
-/*
- * "Set by engine", not "Not managed" (archive#1010). ACP connections — the main
- * population that reaches this chip — DO manage approvals: `acp-adapter.ts`
- * implements the interactive `session/request_permission` handshake, and Station
- * itself surfaces those prompts. What is missing is Station's ability to set the
- * *policy*, not the existence of approvals. "Not managed" said the opposite, and
- * on touch the pill is all a user gets — the explanation below is hover and
- * screen-reader only, so the two words have to be true on their own.
- */
-export const APPROVAL_MODE_UNMANAGED_CHIP_LABEL = 'Set by engine';
-
-export const APPROVAL_MODE_UNMANAGED_EXPLANATION =
-  'Station cannot set approvals for this engine — the engine decides when to ask.';
-
 type ApprovalModeSource =
   | 'session override'
   | 'connection default'

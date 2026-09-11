@@ -15,7 +15,10 @@ import type {
   ComposerAttachmentStageSnapshot,
   FileAttachment,
 } from '../../types';
-import type { ApprovalMode } from '../../utils/approvalMode';
+import {
+  type ApprovalMode,
+  approvalModeKnobSupported,
+} from '../../utils/approvalMode';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import {
   type EffectiveModelSource,
@@ -474,21 +477,22 @@ export function ChatInputArea({
               : 'default'}
           </button>
         )}
-        {executionMode === EXECUTION_MODE.EXTERNAL && (
-          <ApprovalModeChip
-            // Structural reset (not blur-dependent) for the chip's local
-            // confirm state when the active session changes — this
-            // subtree persists across session switches with no natural
-            // remount otherwise (archive#727 3).
-            key={sessionId}
-            engineConnectionId={agentConnectionId}
-            toolPolicyDelivery={toolPolicyDelivery}
-            sessionOverride={modelRuntimeOptions?.approvalMode}
-            connectionDefault={approvalModeConnectionDefault}
-            lastAppliedApprovalMode={lastAppliedApprovalMode}
-            onChange={onApprovalModeChange}
-          />
-        )}
+        {executionMode === EXECUTION_MODE.EXTERNAL &&
+          approvalModeKnobSupported(agentConnectionId) && (
+            <ApprovalModeChip
+              // Structural reset (not blur-dependent) for the chip's local
+              // confirm state when the active session changes — this
+              // subtree persists across session switches with no natural
+              // remount otherwise (archive#727 3).
+              key={sessionId}
+              engineConnectionId={agentConnectionId}
+              toolPolicyDelivery={toolPolicyDelivery}
+              sessionOverride={modelRuntimeOptions?.approvalMode}
+              connectionDefault={approvalModeConnectionDefault}
+              lastAppliedApprovalMode={lastAppliedApprovalMode}
+              onChange={onApprovalModeChange}
+            />
+          )}
       </div>
 
       <div className="chat-input__capsule">

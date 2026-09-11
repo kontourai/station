@@ -6,8 +6,6 @@ import {
 import { isApprovalMode } from '@kontourai/station-contracts/provider';
 import { useRef, useState } from 'react';
 import {
-  APPROVAL_MODE_UNMANAGED_CHIP_LABEL,
-  APPROVAL_MODE_UNMANAGED_EXPLANATION,
   type ApprovalMode,
   approvalModeChipLabel,
   approvalModeKnobSupported,
@@ -60,12 +58,13 @@ interface ApprovalModeChipProps {
  * EFFECTIVE mode — a session override wins over the connection's default,
  * which wins over the adapter's own built-in default.
  *
- * For an engine whose adapter exposes no native knob (ACP connections and any
- * plugin-contributed connected runtime; Ollama/Bedrock/the Station engine never
- * reach this component at all, because ChatInputArea only renders it for
- * `executionMode === 'external'`) it renders an inert "Set by engine" note rather
- * than a resolved mode — see APPROVAL_MODE_UNMANAGED_CHIP_LABEL for why
- * resolving one there was actively wrong (archive#1010).
+ * For an engine whose adapter exposes no native knob (ACP, Muse, and any
+ * plugin-contributed connected runtime) this component renders nothing.
+ * A long inert "Set by engine" pill crowded the mobile composer without
+ * giving the user a control (station#1933). Claiming a resolved mode there
+ * was worse (archive#1010); omitting the chip is the remaining honest
+ * option until that engine grows a mapping. ChatInputArea also skips the
+ * mount for `executionMode !== 'external'`.
  *
  * The pill shows a SHORT label (`approvalModeChipLabel`); the full descriptive
  * label lives on `aria-label`/`title` (archive#1010).
@@ -97,43 +96,12 @@ export function ApprovalModeChip({
 }: ApprovalModeChipProps) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const supported = approvalModeKnobSupported(engineConnectionId);
+  if (!approvalModeKnobSupported(engineConnectionId)) {
+    return null;
+  }
   const policyLabel = toolPolicyDeliveryLabel(toolPolicyDelivery);
   const policyExplanation = toolPolicyDeliveryExplanation(toolPolicyDelivery);
   const policyDisclosure = `${policyLabel}. ${policyExplanation}`;
-
-  if (!supported) {
-    // Deliberately NOT `resolveEffectiveApprovalMode` (archive#1010): this
-    // engine's adapter never reads `approvalMode`, so resolving one produced a
-    // posture claim nothing honoured. Kept visible rather than hidden because
-    // approvals are a security-relevant surface — an absent chip is
-    // indistinguishable from a chip that failed to render, and a user deciding
-    // whether to let an engine run unattended needs to be told that Station is
-    // not the thing governing it. It renders inert-looking and is not a button,
-    // so there is no target inviting a click that does nothing.
-    return (
-      <span
-        className="choice-trigger chat-input__approval-chip chat-input__approval-chip--readonly"
-        role="note"
-        aria-label={`Engine approval mode: ${APPROVAL_MODE_UNMANAGED_EXPLANATION}. ${policyDisclosure}`}
-        title={`Engine approval mode: ${APPROVAL_MODE_UNMANAGED_EXPLANATION}. ${policyDisclosure}`}
-      >
-        <span className="chat-input__approval-chip-label">
-          {APPROVAL_MODE_UNMANAGED_CHIP_LABEL}
-        </span>
-        {/* Hidden below the narrow breakpoint, not truncated: on a phone this
-            second label ran off the edge and crowded out the model selector
-            beside it (station#3151). Nothing is lost by hiding it — the full
-            "Set by engine · <policy>" text is already the accessible name and
-            the tooltip above, so assistive tech and hover still get all of
-            it. The disclosure stays; only its visible projection narrows. */}
-        <span aria-hidden="true" className="chat-input__approval-chip-policy">
-          {' · '}
-          {policyLabel}
-        </span>
-      </span>
-    );
-  }
 
   const effective = resolveEffectiveApprovalMode({
     engineConnectionId,

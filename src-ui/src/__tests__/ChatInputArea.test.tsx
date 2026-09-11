@@ -754,6 +754,22 @@ describe('ChatInputArea', () => {
     expect(onApprovalModeChange).not.toHaveBeenCalled();
   });
 
+  test('omits the approval chip for an external engine with no native knob (station#1933)', () => {
+    render(
+      <ChatInputArea
+        {...renderProps({
+          executionMode: 'external',
+          agentConnectionId: 'acp',
+        })}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: /^Approval mode:/ }),
+    ).toBeNull();
+    expect(screen.queryByText(/Set by engine/)).toBeNull();
+  });
+
   describe('prompt size guard (station#2807)', () => {
     test('reports the exact overage, disables send, and never clears the draft itself', () => {
       const onSend = vi.fn(async () => {});
