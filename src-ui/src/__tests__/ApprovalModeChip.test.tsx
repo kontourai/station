@@ -280,7 +280,7 @@ describe('ApprovalModeChip', () => {
     expect(onChange).toHaveBeenCalledWith('ask');
   });
 
-  test('re-selecting the receipted mode is a no-op', async () => {
+  test('re-selecting the current mode is a no-op', async () => {
     const onChange = vi.fn();
     render(
       <ApprovalModeChip
@@ -300,14 +300,35 @@ describe('ApprovalModeChip', () => {
     ).toBeNull();
   });
 
-  test('the chip and picker follow the receipted mode over stale requested state', async () => {
-    render(
+  test('the chip and picker follow a newer request over a prior receipt (station#1933)', async () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
       <ApprovalModeChip
-        engineConnectionId="codex"
-        sessionOverride="ask"
+        engineConnectionId="claude"
+        sessionOverride={undefined}
         connectionDefault={undefined}
-        lastAppliedApprovalMode="auto"
-        onChange={vi.fn()}
+        lastAppliedApprovalMode="ask"
+        onChange={onChange}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', {
+        name: /^Approval mode: Ask first — default\./,
+      }),
+    ).toBeTruthy();
+
+    await openSheet();
+    fireEvent.click(option(/^Auto/));
+    expect(onChange).toHaveBeenCalledWith('auto');
+
+    rerender(
+      <ApprovalModeChip
+        engineConnectionId="claude"
+        sessionOverride="auto"
+        connectionDefault={undefined}
+        lastAppliedApprovalMode="ask"
+        onChange={onChange}
       />,
     );
 
@@ -319,7 +340,7 @@ describe('ApprovalModeChip', () => {
     expect(option(/^Ask first/).getAttribute('aria-checked')).toBe('false');
   });
 
-  test('a pending full-access request keeps the receipted mode visible', async () => {
+  test('a pending full-access request shows Full access, not the prior receipt', async () => {
     render(
       <ApprovalModeChip
         engineConnectionId="codex"
@@ -331,9 +352,12 @@ describe('ApprovalModeChip', () => {
     );
 
     const chip = screen.getByRole('button', {
-      name: /^Approval mode: Ask · pending — takes effect next turn\./,
+      name: /^Approval mode: Full access · pending — takes effect next turn\./,
     });
     expect(chip.className).toContain('chat-input__approval-chip--pending');
+    expect(
+      chip.querySelector('.chat-input__approval-chip-label')?.textContent,
+    ).toBe('Full access · pending');
   });
 
   test('with no lastAppliedApprovalMode reported at all yet, a never override is still shown as pending rather than assumed applied', async () => {
@@ -401,6 +425,9 @@ describe('ApprovalModeChip', () => {
     expect(trigger().className).toContain(
       'chat-input__approval-chip--override',
     );
+    expect(
+      screen.getByRole('button', { name: /^Approval mode: Auto\./ }),
+    ).toBeTruthy();
   });
 
   test('#727 review item 4: auto is provider-aware in its description, and never mentions "safe"', async () => {

@@ -48,6 +48,8 @@ interface ApprovalModeChipProps {
    * `session.configured` / `turn.started` metadata — see
    * ChatUIState.lastAppliedApprovalMode). Used only to detect "confirmed
    * client-side but not yet applied server-side" for 'never' (archive#727).
+   * It is not the chip's displayed value — a newer session override is
+   * (station#1933).
    */
   lastAppliedApprovalMode?: unknown;
   onChange: (mode: ApprovalMode) => void;
@@ -73,13 +75,15 @@ interface ApprovalModeChipProps {
  * leaves the session's mode untouched. Downgrades and every other selection
  * apply immediately. The confirm step now lives inside `ComposerModeSheet`.
  *
- * Once confirmed, the override applies optimistically client-side but the
+ * Once confirmed, the override applies optimistically client-side — the
+ * chip and picker follow the requested/effective mode immediately so a
+ * pick is not indistinguishable from a no-op (station#1933) — but the
  * live adapter only evaluates it starting with the next turn (and Claude's
  * 'never' may even be rejected outright if the process wasn't spawned with
  * the required flag — see claude-adapter.ts). While the override says
- * 'never' but the adapter hasn't confirmed it yet, the chip shows a
- * distinct pending state rather than overclaiming (archive#727). Render
- * callers MUST remount this component (e.g. `key={sessionId}`)
+ * 'never' but the adapter hasn't confirmed it yet, the chip shows
+ * "Full access · pending" rather than the prior receipt (archive#727).
+ * Render callers MUST remount this component (e.g. `key={sessionId}`)
  * when the active session changes — its local confirm state is not reset by
  * prop changes alone (archive#727).
  */
@@ -139,10 +143,10 @@ export function ApprovalModeChip({
   const appliedMode = isApprovalMode(lastAppliedApprovalMode)
     ? lastAppliedApprovalMode
     : undefined;
-  // Once the adapter has emitted a durable session/turn receipt, that fact is
-  // the chip's authority. Requested/default state remains the fallback before
-  // the first receipt and the picker input for the next turn.
-  const displayedMode = appliedMode ?? effective.mode;
+  // The chip follows the next-turn request. lastApplied is only the
+  // pending-never detector: showing the receipt over a newer pick made the
+  // control look dead after session.configured (station#1933).
+  const displayedMode = effective.mode;
   const isOverride = effective.source === 'session override';
   const isPendingApply =
     isOverride && effective.mode === 'never' && appliedMode !== 'never';
@@ -150,12 +154,10 @@ export function ApprovalModeChip({
   // Full text for assistive tech and hover; the pill itself shows the short
   // form so it stops clipping at 390px (archive#1010).
   const selectedLabel = isPendingApply
-    ? `${approvalModeLabel(displayedMode)} — full access requested for the next turn`
-    : appliedMode
-      ? approvalModeLabel(appliedMode)
-      : effective.label;
+    ? `${approvalModeLabel('never')} — full access requested for the next turn`
+    : effective.label;
   const chipText = isPendingApply
-    ? `${approvalModeChipLabel(displayedMode)} · pending`
+    ? `${approvalModeChipLabel('never')} · pending`
     : approvalModeChipLabel(displayedMode);
 
   return (
