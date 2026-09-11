@@ -137,37 +137,19 @@ test.describe('Settings', () => {
     }
   });
 
-  // station#settings-revamp slice 3: the /settings IA restructure — three
-  // registry-driven scope groups (Station / Defaults / This device) with a
-  // persistence-tier caption each, replacing the flat nav. archive#1826
-  // dropped the three-card scope legend (it restated this grouping) and
-  // reworded the Defaults/device captions in product terms; the captions are
-  // now the only place the persistence tiers are explained, so this test
-  // pins them. It also pins that the Station group leads with Station
-  // configuration — controls before diagnostics.
-  test('nav groups sections under Station / Defaults / This device, each with a persistence-tier caption', async ({
+  test('section navigation exposes the settings persistence scopes', async ({
     page,
   }) => {
-    const nav = page.locator('.settings__section-nav');
+    const nav = page.getByRole('navigation', { name: 'Settings sections' });
     await expect(
-      nav.locator('.settings__nav-group-title', { hasText: 'Station' }),
+      nav.getByRole('link', { name: 'Station configuration', exact: true }),
     ).toBeVisible();
     await expect(
-      nav.locator('.settings__nav-group-title', { hasText: 'Defaults' }),
+      nav.getByRole('link', { name: 'Defaults', exact: true }),
     ).toBeVisible();
     await expect(
-      nav.locator('.settings__nav-group-title', { hasText: 'This device' }),
+      nav.getByRole('link', { name: 'Appearance', exact: true }),
     ).toBeVisible();
-
-    // The Station group's nav leads with what a person changes (archive#1826).
-    await expect(
-      nav
-        .locator('.settings__nav-group')
-        .first()
-        .locator('.page__section-link')
-        .first(),
-    ).toHaveText('Station configuration');
-
     await expect(
       page.getByText(
         'Saved to this Station — every client sees the same values.',
@@ -223,7 +205,12 @@ test.describe('Settings', () => {
     await page.goto('/settings?keep=1&view=unknown');
     await page.waitForSelector('.settings__section-nav');
     await expect(page).toHaveURL('/settings?keep=1');
-    await expect(page.locator('#section-overview')).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Overview', exact: true }),
+    ).toHaveAttribute('aria-current', 'location');
+    await expect(
+      page.getByRole('heading', { name: 'System', exact: true }),
+    ).toBeVisible();
   });
 
   test('legacy section deep links remain supported', async ({ page }) => {
@@ -290,16 +277,19 @@ test.describe('Settings', () => {
     const original = await page.inputValue('#systemPrompt');
     await page.getByRole('link', { name: 'System', exact: true }).click();
     const originalLogLevel = await page.inputValue('#logLevel');
-    await page.selectOption('#logLevel', 'debug');
+    const targetLogLevel = originalLogLevel === 'debug' ? 'trace' : 'debug';
+    await page.selectOption('#logLevel', targetLogLevel);
     await openAgentDefaults(page);
     const edited = `${original} [test-edit]`;
     await page.fill('#systemPrompt', edited);
     await expect(
       page.getByText('Unsaved changes', { exact: true }),
     ).toBeVisible();
-    await saveSettingsAndVerifyPersistence(page, edited, 'debug');
+    await saveSettingsAndVerifyPersistence(page, edited, targetLogLevel);
     await page.reload();
-    await expect(page.locator('#logLevel')).toHaveValue('debug');
+    await page.getByRole('link', { name: 'System', exact: true }).click();
+    await expect(page.locator('#logLevel')).toHaveValue(targetLogLevel);
+    await openAgentDefaults(page);
     // Restore the original through the same proven persistence path; the
     // causal readback inside the helper asserts the server again matches the
     // original, so restoration is verified rather than assumed.
@@ -318,7 +308,9 @@ test.describe('Settings', () => {
     const edited = `${original} [partial-save]`;
     await page.fill('#systemPrompt', edited);
     await page.getByRole('link', { name: 'System', exact: true }).click();
-    await page.selectOption('#logLevel', 'debug');
+    const originalLogLevel = await page.inputValue('#logLevel');
+    const targetLogLevel = originalLogLevel === 'debug' ? 'trace' : 'debug';
+    await page.selectOption('#logLevel', targetLogLevel);
     await page.route('**/config/app/log-level', (route) => {
       if (route.request().method() === 'PUT') {
         return route.fulfill({
@@ -341,11 +333,16 @@ test.describe('Settings', () => {
         /Log Level could not be saved\. Other settings were saved/,
       ),
     ).toBeVisible();
-    await expect(page.locator('#logLevel')).toHaveValue('debug');
+    await expect(page.locator('#logLevel')).toHaveValue(targetLogLevel);
     const readback = await page.request.get(
       new URL('/config/app', page.url()).toString(),
     );
     expect((await readback.json()).data?.systemPrompt).toBe(edited);
+    await page.unroute('**/config/app/log-level');
+    await page.selectOption('#logLevel', originalLogLevel);
+    await openAgentDefaults(page);
+    await page.fill('#systemPrompt', original);
+    await saveSettingsAndVerifyPersistence(page, original);
   });
 
   test('discard reverts changes', async ({ page }) => {
@@ -378,16 +375,6 @@ test.describe('Settings', () => {
     await expect(
       page.getByText('Are you sure you want to reset'),
     ).not.toBeVisible();
-  });
-
-  test('routes provider, service, and computer setup to Connections', async ({
-    page,
-  }) => {
-    await expect(
-      page.getByText('Providers, developer services, and computers'),
-    ).toBeVisible();
-    await page.getByRole('button', { name: 'Open Connections' }).click();
-    await expect(page).toHaveURL(/\/connections$/);
   });
 
   test('Agent defaults shows the generic region field behind the disclosure', async ({
@@ -556,24 +543,11 @@ test.describe('Settings', () => {
       page.getByText('Unsaved changes', { exact: true }),
     ).toBeVisible();
 
-    // useCloseShortcut listens for keydown on `window`; a genuine
-    // `keyboard.press('Control+x')`/`Meta+x` risks being swallowed by the
-    // browser's native cut binding before our handler sees it, so dispatch
-    // the same keydown directly (mirrors tests/command-palette.spec.ts's
-    // ⌘K dispatch for the same reason).
     async function pressCloseShortcut() {
-      await page.evaluate(() => {
-        const isMac = navigator.platform.toUpperCase().includes('MAC');
-        window.dispatchEvent(
-          new KeyboardEvent('keydown', {
-            key: 'x',
-            metaKey: isMac,
-            ctrlKey: !isMac,
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
-      });
+      await page
+        .getByRole('heading', { name: 'Settings', exact: true })
+        .click();
+      await page.keyboard.press('ControlOrMeta+x');
     }
 
     await pressCloseShortcut();

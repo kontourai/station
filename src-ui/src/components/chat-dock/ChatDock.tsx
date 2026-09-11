@@ -1751,9 +1751,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessions,
     activeSessionId: importedSessionId ? null : activeSessionId,
     activeSession: importedSessionId ? null : activeSession,
-    setActiveSessionId,
     onCloseCurrent: importedSessionId ? closeImportedSession : undefined,
-    onNewChat: importedSessionId ? openNewChatDirect : undefined,
+    onNewChat: openNewChatDirect,
     setShowSessionPicker,
     focusSession: focusSessionInPane,
   });
@@ -2709,6 +2708,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   projectName,
                   model:
                     modelOverride ?? (sameAgent ? forkSource.model : undefined),
+                  requestedModel:
+                    modelOverride ?? (sameAgent ? forkSource.model : undefined),
                   modelSource:
                     modelSource ??
                     (sameAgent ? forkSource.modelSource : undefined),
@@ -2719,6 +2720,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     defaultModelSource ??
                     (sameAgent ? forkSource.defaultModelSource : undefined),
                   providerOptions:
+                    providerOptions ??
+                    (sameAgent ? forkSource.providerOptions : undefined),
+                  requestedProviderOptions:
                     providerOptions ??
                     (sameAgent ? forkSource.providerOptions : undefined),
                   providerId:

@@ -195,13 +195,32 @@ const NIGHTLY_REBUILD_INDEX_PREVALIDATION_RUN = [
 const NIGHTLY_REBUILD_INDEX_PREVALIDATION_ENV = Object.freeze({
   NIGHTLY_REBUILD_INDEX: '${' + '{ inputs.rebuild_index }}',
 });
+/**
+ * The Android toolchain revisions, declared once.
+ *
+ * Both were written out per workflow, and that is not a style question here:
+ * three lanes build Android from three separate definitions (build-android.yml
+ * verifies main, nightly-native-stage.yml ships to Play, release.yml ships a
+ * tag), so a value restated per lane can be right in the lane you are reading
+ * and wrong in the lane that ships. That is not hypothetical — #1795 put a
+ * bare `aapt` in build-android.yml while nightly-native-stage.yml resolved it
+ * correctly, so `main` was red for a day while nightly builds kept shipping,
+ * and neither lane's state told you anything about the other's.
+ *
+ * Workflows cannot import these, so the guarantee is a contract test reading
+ * them from here rather than restating them. Change the value once; the test
+ * names every workflow that has not followed.
+ */
+export const ANDROID_NDK_VERSION = '27.0.12077973';
+export const ANDROID_BUILD_TOOLS_VERSION = '36.0.0';
+
 const NIGHTLY_JOB_ENV = Object.freeze({
   GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER:
     '${' + '{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}',
   GCP_PLAY_SERVICE_ACCOUNT: '${' + '{ vars.GCP_PLAY_SERVICE_ACCOUNT }}',
   ANDROID_UPLOAD_KEY_ALIAS: '${' + '{ vars.ANDROID_UPLOAD_KEY_ALIAS }}',
   ANDROID_UPLOAD_CERT_SHA256: '${' + '{ vars.ANDROID_UPLOAD_CERT_SHA256 }}',
-  ANDROID_BUILD_TOOLS_VERSION: '36.0.0',
+  ANDROID_BUILD_TOOLS_VERSION,
   STATION_MOBILE_DEFAULT_ENDPOINT:
     '${' + '{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}',
 });
@@ -330,7 +349,7 @@ export const DEPENDENCY_REVIEW_ACTION =
  * written down is not. Landing a bump is now one deliberate edit here.
  */
 export const PNPM_SETUP_ACTION =
-  'pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c';
+  'pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b';
 const DEPENDENCY_REVIEW_CANDIDATE_GUARD = `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`;
 const DEPENDENCY_REVIEW_PR_GUARD = `\${{ github.event_name == 'pull_request_target' }}`;
 const DEPENDENCY_REVIEW_MERGE_GROUP_GUARD = `\${{ github.event_name == 'merge_group' }}`;

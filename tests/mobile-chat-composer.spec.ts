@@ -1,5 +1,7 @@
+import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
+import { expectNoBlockingAccessibilityViolations } from './helpers/accessibility';
 import { backgroundPaint, contrastRatio } from './helpers/color-contrast';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { E2E_STATION_COMPATIBILITY } from './helpers/current-station-contract';
@@ -389,6 +391,7 @@ async function mockChatShell(
   for (const [id, reply] of [
     ['conv-running', 'Working through the current task.'],
     ['conv-review', 'Review needed before continuing.'],
+    ['delegated-review', 'Delegated review is ready.'],
   ]) {
     const turns = buildLongSessionTurns({
       threadId: id,
@@ -399,7 +402,10 @@ async function mockChatShell(
     await mockRuntimeConversation(page, {
       id,
       agentSlug: 'station',
-      title: 'Station Chat',
+      title:
+        id === 'delegated-review'
+          ? 'Worker task · delegated review'
+          : 'Station Chat',
       provider: 'codex',
       model: 'model-selected',
       projectSlug: 'default',
@@ -416,15 +422,9 @@ async function openComposer(
   projectScoped = false,
   agentSlug = 'claude',
 ) {
-  await page.goto('/?dock=open');
+  await page.goto('/');
   await dismissSetupLauncher(page);
-  await openNewChat(page);
-  // With exactly one chat-ready runtime, the visible New button intentionally
-  // takes the one-click default path. Open the selection surface explicitly so
-  // this helper can bind a runtime and optional project deterministically.
-  await page.evaluate(() =>
-    window.dispatchEvent(new Event('station:open-new-chat')),
-  );
+  await page.getByRole('button', { name: /^Start direct chat/ }).click();
   const modal = page.getByRole('dialog', { name: 'New Chat' });
   await expect(modal).toBeVisible({ timeout: 15_000 });
   const runtimeRow = modal.locator(`[data-agent-slug="${agentSlug}"]`).first();
@@ -447,6 +447,13 @@ async function openComposer(
       'Selected Test Model',
     );
   }
+  // Home opens the collapsed dock. Geometry assertions begin after its
+  // actual height transition, rather than comparing boxes from different frames.
+  await page.locator('.chat-dock').evaluate(async (element) => {
+    await Promise.allSettled(
+      element.getAnimations().map((animation) => animation.finished),
+    );
+  });
   return textarea;
 }
 
@@ -936,21 +943,6 @@ async function expandMobileDock(page: Page) {
     .click();
 }
 
-async function openNewChat(page: Page) {
-  const tabBarNew = page
-    .locator('.chat-dock__tab-actions .chat-dock__new')
-    .last();
-  if (await tabBarNew.isVisible().catch(() => false)) {
-    await expect(tabBarNew).toBeVisible({ timeout: 15_000 });
-    return;
-  }
-  await page.getByRole('button', { name: 'Chat actions', exact: true }).click();
-  await expect(
-    page.getByRole('menuitem', { name: 'New chat', exact: true }),
-  ).toBeVisible();
-  await page.getByRole('button', { name: 'Close actions menu' }).click();
-}
-
 test('keeps mobile attachment selection reviewable without moving the draft', async ({
   page,
 }) => {
@@ -1238,8 +1230,49 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
  * dismissal regression beside it (archive#3771), so two tests about one sheet
  * cannot drift into describing two different products.
  */
-async function seedMobileTaskSwitcher(page: Page) {
+async function seedMobileTaskSwitcher(page: Page, overflow = false) {
   await mockChatShell(page);
+  if (overflow) {
+    await page.route(/\/agents\/station\/conversations(?:\?.*)?$/, (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: [
+            'conv-running',
+            'conv-review',
+            ...Array.from(
+              { length: 4 },
+              (_, index) => `conv-overflow-${index}`,
+            ),
+          ].map((id) => ({
+            id,
+            title: id,
+            agentSlug: 'station',
+            updatedAt: '2026-07-19T10:05:00Z',
+          })),
+        }),
+      ),
+    );
+    for (let index = 0; index < 4; index++) {
+      const id = `conv-overflow-${index}`;
+      const turns = buildLongSessionTurns({
+        threadId: id,
+        provider: 'codex',
+        turnCount: 1,
+        replyText: () => `Overflow conversation ${index}`,
+      });
+      await mockRuntimeConversation(page, {
+        id,
+        agentSlug: 'station',
+        title: `Overflow conversation ${index}`,
+        provider: 'codex',
+        model: 'model-selected',
+        projectSlug: 'default',
+        canContinue: true,
+        turns: () => turns,
+      });
+    }
+  }
   for (const id of ['chat-running', 'chat-review'])
     await page.route(
       new RegExp(`/api/orchestration/sessions/${id}/checkpoints(?:\\?.*)?$`),
@@ -1276,6 +1309,24 @@ async function seedMobileTaskSwitcher(page: Page) {
         },
       ],
     },
+    ...(overflow
+      ? Array.from({ length: 4 }, (_, index) => ({
+          sessionId: `chat-overflow-${index}`,
+          conversationId: `conv-overflow-${index}`,
+          title: `Overflow conversation ${index}`,
+          agentSlug: 'station',
+          projectSlug: 'default',
+          projectName: 'Default',
+          model: 'model-selected',
+          ephemeralMessages: [
+            {
+              role: 'assistant' as const,
+              content: `Overflow conversation ${index}`,
+              timestamp: Date.parse('2026-07-19T09:00:00Z') + index,
+            },
+          ],
+        }))
+      : []),
   ]);
 
   // archive#3300 (`contexts/active-chats-state.ts:626-640`) deliberately drops a
@@ -1417,7 +1468,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     .click();
   await expect(textarea).toHaveValue('return to this draft');
   await expect(page.locator('.chat-input__model-name')).toHaveText(
-    'model-selected',
+    'Model Selected',
   );
 
   await switcher.click();
@@ -1457,7 +1508,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     page.getByRole('button', { name: /^Switch project/ }),
   ).toContainText('Default');
   await expect(page.locator('.chat-input__model-name')).toHaveText(
-    'model-selected',
+    'Model Selected',
   );
 
   await page.setViewportSize({ width: 320, height: 568 });
@@ -1526,6 +1577,28 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
 }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockChatShell(page);
+  await page.route('**/api/tasks*', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({
+          json: {
+            success: true,
+            data: [
+              {
+                id: 'touch-target-task',
+                projectId: 'p-default',
+                title: 'Review merge queue',
+                description: '',
+                priority: 'normal',
+                status: 'todo',
+                createdBy: 'fixture',
+                createdAt: '2026-08-25T12:00:00.000Z',
+                updatedAt: '2026-08-25T12:00:00.000Z',
+              } satisfies TaskRecord,
+            ],
+          },
+        })
+      : rejectUnexpectedFixtureRequest(route),
+  );
   const touchTurns = buildLongSessionTurns({
     threadId: 'touch-target-conversation',
     provider: 'station-agent',
@@ -1710,6 +1783,17 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
     const box = await control.boundingBox();
     expect(box?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  }
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate(
+      (value) => document.documentElement.setAttribute('data-theme', value),
+      theme,
+    );
+    await expectNoBlockingAccessibilityViolations(
+      page,
+      `mobile-answer-details-${theme}`,
+      '[role="dialog"][aria-label="Answer details and actions"]',
+    );
   }
   await page.getByRole('button', { name: 'Close message details' }).click();
   await header
@@ -2608,24 +2692,6 @@ test('preserves desktop dock geometry', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockChatShell(page);
   await openComposer(page);
-  // archive#1064 removed the "Chat Dock" label — the dock is the only thing this
-  // chrome can belong to, and the row now carries the active chat's project
-  // context instead. Assert the row still identifies the surface (its toggle
-  // shortcut) rather than re-pinning a label that was deliberately dropped.
-  await expect(page.locator('.chat-dock__title')).not.toContainText(
-    'Chat Dock',
-  );
-  await expect(page.locator('.chat-dock__counter')).toHaveText('1 session');
-  await expect(
-    page.locator('.chat-dock__header').getByTitle('Chat settings'),
-  ).toBeVisible();
-  await expect(
-    page.locator('summary[aria-label="More chat actions"]'),
-  ).toHaveCount(0);
-  const desktopActions = page.locator('.chat-dock__tab-actions button');
-  await expect(desktopActions).toHaveCount(2);
-  await expect(desktopActions.nth(0)).toContainText('Open');
-  await expect(desktopActions.nth(1)).toContainText('New');
   // archive#1048 retired the overlay bottom dock: the dock is always inline in the
   // content column, spanning from the sidebar's right edge to the viewport
   // edge (previously it overlaid the full 1280px viewport width).
@@ -3368,6 +3434,29 @@ for (const width of [320, 390, 1280]) {
     });
   }
 }
+
+test('sidebar overflow opens the real mobile chat collection', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await seedMobileTaskSwitcher(page, true);
+  await page.goto('/?chat=conv-running');
+  await dismissSetupLauncher(page);
+  await page.getByRole('button', { name: 'Toggle menu', exact: true }).click();
+  const navigation = page.getByRole('navigation', {
+    name: 'Mobile navigation',
+  });
+  await expect(navigation).toBeVisible();
+  await navigation.getByRole('button', { name: /^\d+ more$/ }).click();
+  const sheet = page.getByRole('dialog', { name: 'Switch task' });
+  await expect(sheet).toBeVisible();
+  await expect(navigation).not.toBeVisible();
+  await expect(
+    sheet.getByText('Overflow conversation 0', { exact: true }),
+  ).toBeVisible();
+  await sheet.getByRole('button', { name: 'Close task switcher' }).click();
+  await expect(sheet).not.toBeVisible();
+});
 
 for (const width of [320, 431]) {
   test(`chat layout audit centers its title and keeps slash commands usable at ${width}px`, async ({

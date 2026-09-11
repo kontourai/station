@@ -937,7 +937,7 @@ export function createProjectRoutes(
           // exact project identity bound into Pane instances and state scopes.
           data: {
             ...readCurrentWorkspacePaneCatalog(
-              layoutCatalog,
+              await (layoutCatalog.captureCatalog?.() ?? layoutCatalog),
               project.id,
               {
                 resolveInput: (candidate) =>

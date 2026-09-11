@@ -122,7 +122,7 @@ test.describe('Diff review annotations', () => {
     );
 
     await page.goto('/projects/dev/layouts/code');
-    await page.getByRole('tab', { name: /coding:diff/ }).click();
+    await page.getByRole('tab', { name: 'Diff', exact: true }).click();
 
     // The panel header is always present.
     await expect(page.getByText('Git Diff')).toBeVisible();

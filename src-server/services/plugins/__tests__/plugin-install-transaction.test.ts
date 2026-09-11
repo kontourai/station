@@ -232,6 +232,27 @@ afterEach(async () => {
   );
 });
 
+test.each([false, true])(
+  'uninstalling an absent plugin reports not found without creating plugin state (journal: %s)',
+  async (withJournal) => {
+    const root = mkdtempSync(join(tmpdir(), 'station-absent-plugin-'));
+    cleanupDirs.push(root);
+    const store = withJournal
+      ? new EventStore(join(root, 'events.sqlite'))
+      : undefined;
+    if (store) packageStores.push(store);
+    await expect(
+      uninstallInstalledPlugin('missing-plugin', {
+        ...deps(root),
+        ...(store
+          ? { packageMcpJournal: store.createPackageMcpAdmissionJournal() }
+          : {}),
+      }),
+    ).rejects.toThrow('Plugin not found');
+    expect(existsSync(join(root, 'plugins'))).toBe(false);
+  },
+);
+
 describe('dependency approval from the real preview route', () => {
   const families = [
     'entrypoint',

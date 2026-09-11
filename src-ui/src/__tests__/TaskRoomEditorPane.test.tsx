@@ -36,6 +36,7 @@ const mocks = vi.hoisted(() => ({
   },
   command: vi.fn(),
   stream: 'live' as 'live' | 'terminal',
+  liveGeneration: undefined as string | undefined,
   documentListener: undefined as
     | ((document: {
         kind: 'snapshot' | 'delta';
@@ -72,7 +73,7 @@ vi.mock('../workspace-panes/ProjectTaskRoomContext', () => ({
     taskId: 'task-1',
     discovery: mocks.discovery,
     stream: mocks.stream,
-    live: { panes: [], cursors: [] },
+    live: { panes: [], cursors: [], generation: mocks.liveGeneration },
     command: mocks.command,
     commandPending: false,
     subscribeDocument: (
@@ -150,6 +151,7 @@ beforeEach(() => {
   mocks.command.mockReset();
   mocks.command.mockResolvedValue({ kind: 'available' });
   mocks.stream = 'live';
+  mocks.liveGeneration = undefined;
   mocks.documentListener = undefined;
 });
 
@@ -317,29 +319,40 @@ describe('TaskRoomEditorPane', () => {
     },
   );
 
-  test('does not submit an in-flight edit plan after document authority becomes a gap', async () => {
-    let finishPlan!: (value: ReturnType<typeof planned>) => void;
-    mocks.plan.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finishPlan = resolve;
-        }),
-    );
-    const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
-    changeDraft('pending gap draft');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Save shared document' }),
-    );
-    await waitFor(() => expect(mocks.plan).toHaveBeenCalledOnce());
-    mocks.document.data = { kind: 'gap', floor: 'floor' } as never;
-    rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
-    await act(async () => {
-      finishPlan(planned());
-    });
-    expect(mocks.batch).not.toHaveBeenCalled();
-    expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
-    expect((editor() as HTMLTextAreaElement).value).toBe('pending gap draft');
-  });
+  test.each([false, true])(
+    'does not submit an in-flight plan after a document gap (recovered=%s)',
+    async (recovered) => {
+      let finishPlan!: (value: ReturnType<typeof planned>) => void;
+      mocks.plan.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishPlan = resolve;
+          }),
+      );
+      const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
+      changeDraft('pending gap draft');
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Save shared document' }),
+      );
+      await waitFor(() => expect(mocks.plan).toHaveBeenCalledOnce());
+      mocks.document.data = { kind: 'gap', floor: 'floor' } as never;
+      rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+      if (recovered) {
+        mocks.document.data = {
+          kind: 'snapshot',
+          revision: 'new',
+          text: 'new truth',
+        };
+        rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+      }
+      await act(async () => {
+        finishPlan(planned());
+      });
+      expect(mocks.batch).not.toHaveBeenCalled();
+      expect((editor() as HTMLTextAreaElement).readOnly).toBe(!recovered);
+      expect((editor() as HTMLTextAreaElement).value).toBe('pending gap draft');
+    },
+  );
 
   test('guards browser Back and keeps the draft on cancel before replaying on confirm', async () => {
     navigationStore.navigate('/guard-back-origin');
@@ -763,6 +776,52 @@ describe('TaskRoomEditorPane', () => {
     });
   });
 
+  test('reconciles an identical retry when document recovery begins during submission', async () => {
+    let finishRetry!: (value: unknown) => void;
+    mocks.plan.mockResolvedValue(planned());
+    mocks.batch
+      .mockResolvedValueOnce({ kind: 'unavailable' })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishRetry = resolve;
+          }),
+      );
+    mocks.refetchAuthoritative.mockResolvedValue({
+      kind: 'snapshot',
+      revision: 'converged',
+      text: 'concurrent truth',
+    });
+    const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
+    changeDraft('possibly committed');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save shared document' }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Retry identical batch' }),
+    );
+    await waitFor(() => expect(mocks.batch).toHaveBeenCalledTimes(2));
+    mocks.document.data = { kind: 'unavailable' } as never;
+    rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+    await act(async () =>
+      finishRetry({
+        kind: 'duplicate',
+        revision: 'older',
+        text: 'older receipt text',
+      }),
+    );
+    expect(mocks.refetchAuthoritative).toHaveBeenCalledWith(
+      mocks.queryClient,
+      'task-1',
+    );
+    expect((editor() as HTMLTextAreaElement).value).toBe('concurrent truth');
+    expect(
+      screen.queryByRole('button', { name: 'Retry identical batch' }),
+    ).toBeNull();
+    // A readable response does not itself restore query/stream write authority.
+    expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
+  });
+
   test('does not submit a plan that resolves after authorization becomes terminal', async () => {
     let settlePlan: ((value: ReturnType<typeof planned>) => void) | undefined;
     mocks.plan.mockImplementation(
@@ -995,4 +1054,33 @@ describe('TaskRoomEditorPane', () => {
     expect((editor() as HTMLTextAreaElement).value).toBe('shared base');
     expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
   });
+});
+
+test('cursor publication serializes requests, keeps only the latest pending selection, and stops on retirement', async () => {
+  mocks.liveGeneration = 'generation';
+  const completions: Array<(value: unknown) => void> = [];
+  mocks.command.mockImplementation(
+    () => new Promise((resolve) => completions.push(resolve)),
+  );
+  const view = render(<TaskRoomEditorPane taskId="task-1" />);
+  const input = editor();
+  fireEvent.select(input, { target: { selectionStart: 1, selectionEnd: 1 } });
+  fireEvent.select(input, { target: { selectionStart: 2, selectionEnd: 2 } });
+  fireEvent.select(input, { target: { selectionStart: 3, selectionEnd: 3 } });
+  try {
+    expect(mocks.command).toHaveBeenCalledTimes(1);
+    await act(async () => completions.shift()!({ kind: 'available' }));
+    await waitFor(() => expect(mocks.command).toHaveBeenCalledTimes(2));
+    expect(mocks.command.mock.calls[1]![0]).toMatchObject({
+      command: 'cursor',
+      selection: { anchor: 3, focus: 3 },
+    });
+    fireEvent.select(input, { target: { selectionStart: 4, selectionEnd: 4 } });
+    view.unmount();
+    await act(async () => completions.shift()!({ kind: 'available' }));
+    expect(mocks.command).toHaveBeenCalledTimes(2);
+  } finally {
+    view.unmount();
+    for (const complete of completions) complete({ kind: 'available' });
+  }
 });

@@ -42,6 +42,7 @@ const TEST_PROJECTS = [
     icon: '🚀',
     description: 'Test project',
     hasWorkingDirectory: true,
+    workingDirectory: '/tmp/my-project',
     layoutCount: 1,
     hasKnowledge: false,
   },
@@ -202,12 +203,9 @@ test.describe('ACP + Project Context', () => {
   }) => {
     await seedRoutes(page);
     await page.goto('/agents');
-    const kiroRow = page.getByRole('button', { name: /Kiro/ });
+    const kiroRow = page.getByRole('button', { name: /^Kiro Ready$/ });
     await expect(kiroRow).toBeVisible({ timeout: 5000 });
-    // LOW-2: assert the engine chip itself (not just that the row's
-    // accessible name happens to contain the connection's own name) —
-    // never the literal "ACP".
-    await expect(kiroRow.locator('.engine-chip__pill')).toHaveText('Kiro');
+    await expect(kiroRow.getByText('Kiro', { exact: true })).toHaveCount(1);
     await expect(kiroRow).not.toContainText('ACP');
   });
 
@@ -216,37 +214,20 @@ test.describe('ACP + Project Context', () => {
   }) => {
     await seedRoutes(page);
     await page.goto('/agents');
-    await page.getByRole('button', { name: /Kiro/ }).click();
-    await expect(
-      page.getByText(/managed by its engine connection/i),
-    ).toBeVisible();
-    const connectionTab = page.getByRole('button', {
-      name: 'Connection',
-      exact: true,
-    });
-    await expect(connectionTab).toBeVisible();
-    await connectionTab.click();
-    await expect(connectionTab).toHaveClass(/page__tab--active/);
+    await page.getByRole('button', { name: /^Kiro Ready$/ }).click();
+    await page
+      .getByRole('button', { name: 'Configure in Connections', exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/connections\/engines\/kiro/);
   });
 
-  test('new chat can select project context from active project data', async ({
+  test('new chat can explicitly select a project from the current catalog', async ({
     page,
   }) => {
     await seedRoutes(page);
-    // Seed localStorage with a last-selected project before navigating
-    await page.addInitScript(() => {
-      localStorage.setItem('lastProject', 'my-project');
-    });
-    await page.goto('/projects/my-project?dock=open');
-
-    // Click New -- opens modal since there are 2 persisted Agents.
-    const newChatBtn = page.getByRole('button', { name: /New/ }).last();
-    await expect(newChatBtn).toBeVisible({ timeout: 5000 });
-    await newChatBtn.click();
-
-    // Modal should expose the project context before starting a chat.
-    const modal = page.getByText('New Chat');
-    await expect(modal).toBeVisible({ timeout: 3000 });
+    await page.goto('/');
+    await page.getByRole('button', { name: /^Start direct chat/ }).click();
+    await expect(page.getByRole('dialog', { name: 'New Chat' })).toBeVisible();
     await page.locator('.new-chat-modal__context-button').click();
     await page
       .locator('.new-chat-modal__dropdown')

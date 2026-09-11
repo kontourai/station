@@ -50,7 +50,6 @@ test('reader shortcuts close or replace the visible conversation without stoppin
       sessions: [{ id: 'background-chat' }],
       activeSessionId: null,
       activeSession: null,
-      setActiveSessionId: vi.fn(),
       setShowSessionPicker: vi.fn(),
       focusSession: vi.fn(),
       onCloseCurrent: close,

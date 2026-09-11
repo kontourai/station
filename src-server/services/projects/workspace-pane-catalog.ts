@@ -17,7 +17,7 @@ import {
   enumerateLayoutPanes,
 } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import type { StationKitRegistryEntry } from '../kits/kit-observability-host.js';
-import type { DistributionProfileService } from '../plugins/distribution-profile-service.js';
+import type { DistributionCatalogReadView } from '../plugins/distribution-profile-service.js';
 import { portableKitWorkspacePanes } from './portable-kit-workspace-panes.js';
 import {
   resolveWorkspacePaneCatalogAvailability,
@@ -148,7 +148,7 @@ interface WorkspacePaneCatalogLayoutOffer {
 }
 
 export function readCurrentWorkspacePaneCatalog(
-  layoutCatalog: DistributionProfileService,
+  layoutCatalog: DistributionCatalogReadView,
   projectId: string,
   availabilityOptions?: WorkspacePaneCatalogAvailabilityOptions,
   portableKits: readonly StationKitRegistryEntry[] = [],

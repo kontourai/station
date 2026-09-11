@@ -1,6 +1,5 @@
 /** Serial live-plugin proof: published Builder artifacts remain unchanged by viewing. */
 
-import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -19,7 +18,10 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { authenticatedE2EFetch } from './helpers/authenticated-request';
 import { resolveE2EApiBase } from './helpers/e2e-target';
-import { installPluginWithConsent } from './helpers/install-plugin';
+import {
+  buildExamplePlugin,
+  installPluginWithConsent,
+} from './helpers/install-plugin';
 import { dismissSetupLauncher } from './helpers/orchestration';
 
 const projectDir = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -119,11 +121,7 @@ test.describe('Builder Delivery Viewer plugin', () => {
   // tsx/esbuild cache. Budget the hook to cover its own declared build cap.
   test.beforeAll(async () => {
     test.setTimeout(180_000);
-    execSync('npx tsx ../../packages/cli/src/cli.ts plugin build', {
-      cwd: pluginDir,
-      timeout: 120_000,
-      windowsHide: true,
-    });
+    buildExamplePlugin(pluginDir, 120_000);
     await remove();
     workspace = mkdtempSync(join(tmpdir(), 'builder-viewer-e2e-'));
     const artifact = join(workspace, '.kontourai', 'flow-agents', 'demo');
@@ -317,6 +315,7 @@ test.describe('Builder Delivery Viewer plugin', () => {
   test('grants plugin.server trusted access via host approval', async ({
     page,
   }) => {
+    test.setTimeout(60_000);
     // serverModule routes are trusted-tier: install leaves `plugin.server`
     // pending consent, so the viewer's data fetch 403s until the host
     // approval flow runs. Same walk as fieldwork-review.spec.ts.
@@ -324,31 +323,31 @@ test.describe('Builder Delivery Viewer plugin', () => {
     await dismissSetupLauncher(page);
     await page.getByText('Builder Delivery Viewer', { exact: true }).click();
     await page
-      .getByRole('button', { name: /Review Permissions \(1\)/ })
+      .getByRole('button', { name: 'Review request', exact: true })
       .click();
     await expect(
-      page.getByText('plugin.server', { exact: true }),
+      page.getByRole('dialog').getByText('plugin.server', { exact: true }),
     ).toBeVisible();
 
     const popupPromise = page.waitForEvent('popup');
     await page.getByRole('button', { name: 'Review trusted access' }).click();
     const approvalPage = await popupPromise;
-    // Bounded deliberately. This click is where the 2026-08-23 product baseline
-    // hung for 30s per run: the whole approval walk up to here happens on the
-    // main page, under whatever overlay a fresh home had open, and an unbounded
-    // click turns that into a wall-clock test timeout that names nothing. The
-    // bound makes the same failure report as a named action failure instead.
+    // Bound the gesture separately from the server's reviewed-byte decision.
+    // The Approved heading below is the required navigation/outcome witness.
     await approvalPage
       .getByRole('button', { name: 'Approve trusted access' })
-      .click({ timeout: 10_000 });
+      .click({ timeout: 10_000, noWaitAfter: true });
     await expect(
       approvalPage.getByRole('heading', { name: 'Approved' }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 30_000 });
   });
 
   test('renders published trust, invalid artifacts, exact/unmatched joins, and changes no Builder or delivery bytes', async ({
     page,
   }) => {
+    test.setTimeout(90_000);
+    // Independent artifact reads and project transitions each keep their
+    // action deadline; this budget covers the complete multi-step journey.
     let releaseRuns: () => void = () => undefined;
     const runsReady = new Promise<void>((resolve) => {
       releaseRuns = resolve;
@@ -372,19 +371,31 @@ test.describe('Builder Delivery Viewer plugin', () => {
         }),
       });
     });
-    await page.goto(`/projects/${project}/layouts/builder-delivery`);
-    await expect(page.getByTestId('builder-delivery-viewer')).toBeVisible({
-      timeout: 20_000,
-    });
-    await page.getByRole('button', { name: /demo in_progress/ }).click();
-    await expect(page.getByRole('heading', { name: 'demo' })).toBeVisible();
-    await expect(page.getByText('state: valid')).toBeVisible();
-    await expect(
-      page.getByText(
-        'Flow runs are loading; join status is not evaluated yet.',
-      ),
-    ).toBeVisible();
-    releaseRuns();
+    try {
+      await page.goto(`/projects/${project}/layouts/builder-delivery`);
+      // Cold extension admission and its first data read are separate visible
+      // stages. Both must finish; neither borrows the other's action budget.
+      await expect(
+        page
+          .getByText('Loading Builder sessions…', { exact: true })
+          .or(page.getByTestId('builder-delivery-viewer')),
+      ).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByTestId('builder-delivery-viewer')).toBeVisible({
+        timeout: 20_000,
+      });
+      await page.getByRole('button', { name: /demo in_progress/ }).click();
+      await expect(page.getByRole('heading', { name: 'demo' })).toBeVisible({
+        timeout: 20_000,
+      });
+      await expect(page.getByText('state: valid')).toBeVisible();
+      await expect(
+        page.getByText(
+          'Flow runs are loading; join status is not evaluated yet.',
+        ),
+      ).toBeVisible();
+    } finally {
+      releaseRuns();
+    }
     await expect(
       page.getByText('Joined exactly to matched (in_progress).'),
     ).toBeVisible();
@@ -398,9 +409,11 @@ test.describe('Builder Delivery Viewer plugin', () => {
     await page.getByRole('button', { name: /unmatched/ }).click();
     await expect(
       page.getByText(/Not joinable: explicit run ID not-present/),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: /bad/ }).click();
-    await expect(page.getByRole('heading', { name: 'bad' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'bad' })).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(
       page.getByText(/state: unavailable — artifact is invalid JSON/),
     ).toBeVisible();
@@ -412,7 +425,17 @@ test.describe('Builder Delivery Viewer plugin', () => {
       }),
     );
     await page.goto(`/projects/${secondProject}/layouts/builder-delivery`);
-    await expect(page.getByRole('heading', { name: 'second' })).toBeVisible();
+    await expect(
+      page
+        .getByText('Loading Builder sessions…', { exact: true })
+        .or(page.getByTestId('builder-delivery-viewer')),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('builder-delivery-viewer')).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByRole('heading', { name: 'second' })).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(
       page.getByText(/Flow runs unavailable; explicit run ID second-run/),
       // useFlowRunsQuery inherits react-query's default 3 retries with

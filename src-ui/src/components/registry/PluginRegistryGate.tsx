@@ -70,6 +70,8 @@ export function PluginRegistryBootstrap() {
     activeConnection?.credentialState ?? 'none',
   ].join(':');
   const previousConnectionStatus = useRef(connectionStatus);
+  const initialConnection = useRef(connectionStatus === 'connecting');
+  const retryAfterInitialLoad = useRef(false);
   const justReconnected =
     connectionStatus === 'connected' &&
     previousConnectionStatus.current !== 'connected';
@@ -90,18 +92,28 @@ export function PluginRegistryBootstrap() {
   useEffect(() => {
     const previous = previousConnectionStatus.current;
     previousConnectionStatus.current = connectionStatus;
+    const firstConnection =
+      initialConnection.current && connectionStatus === 'connected';
+    if (connectionStatus !== 'connecting') initialConnection.current = false;
+    if (connectionStatus !== 'connected') retryAfterInitialLoad.current = false;
+    const needsRetry =
+      loadStatus.state !== 'ready' && loadStatus.failure !== 'remote-isolation';
+    if (retryAfterInitialLoad.current && loadStatus.state !== 'loading') {
+      retryAfterInitialLoad.current = false;
+      if (needsRetry) void pluginRegistry.reload();
+    }
     if (
       previous !== 'connected' &&
       connectionStatus === 'connected' &&
-      // Not just `degraded`: an outage-era attempt still in flight at the
-      // moment of reconnect settles degraded AFTER this transition is spent,
-      // so gating on the settled state loses the reload entirely and the
-      // banner then reports a failure no post-reconnect attempt produced.
-      // `reload` coalesces an in-flight pass through `reloadQueued`.
-      loadStatus.state !== 'ready' &&
-      loadStatus.failure !== 'remote-isolation'
+      needsRetry
     ) {
-      void pluginRegistry.reload();
+      // The first health result can arrive while a successful initial load is
+      // running. Queuing a reload then tears down its freshly mounted panes.
+      // An actual outage still queues a fresh pass, even before its old load
+      // settles; a failed first load gets one retry after it settles.
+      if (firstConnection && loadStatus.state === 'loading')
+        retryAfterInitialLoad.current = true;
+      else void pluginRegistry.reload();
     }
   }, [connectionStatus, loadStatus]);
 
@@ -125,7 +137,7 @@ export function PluginRegistryBootstrap() {
     }
     if (loadStatus.state === 'loading') return;
 
-    if (allowRemoteBundles) {
+    if (allowRemoteBundles && loadStatus.failure === 'remote-isolation') {
       bannerStore.dismiss(BANNER_IDS.pluginRegistry);
       return;
     }

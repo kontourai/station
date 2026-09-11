@@ -62,7 +62,7 @@ describe('GuidedConnect', () => {
     expect(screen.queryByText('Station Nightly')).toBeNull();
     expect(
       screen
-        .getByRole('link', { name: 'Connect with Station' })
+        .getByRole('link', { name: 'Open in the Station app' })
         .getAttribute('href'),
     ).toBe('station-stable://open-browser');
     expect(
@@ -74,7 +74,7 @@ describe('GuidedConnect', () => {
     native.isTauri = true;
     render(<GuidedConnect />);
     expect(
-      screen.queryByRole('link', { name: 'Connect with Station' }),
+      screen.queryByRole('link', { name: 'Open in the Station app' }),
     ).toBeNull();
     expect(screen.queryByRole('link', { name: 'Get Station' })).toBeNull();
   });
@@ -82,7 +82,7 @@ describe('GuidedConnect', () => {
   test('renders the first-run welcome copy without error framing', () => {
     render(<GuidedConnect />);
 
-    expect(screen.getByText('Connect to Station')).toBeTruthy();
+    expect(screen.getByText('Connect to a Station')).toBeTruthy();
     expect(
       screen.getByText('Choose the computer where you want to work.'),
     ).toBeTruthy();

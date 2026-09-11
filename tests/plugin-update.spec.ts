@@ -1,3 +1,4 @@
+import { dismissSetupLauncher } from './helpers/orchestration';
 /**
  * Plugin update flow — verifies update detection banner and update execution.
  * Uses page.route to mock API responses for isolation from backend state.
@@ -277,9 +278,7 @@ test.describe('Plugin Update Flow', () => {
   test('shows update banner when updates are available', async ({ page }) => {
     await seedRoutes(page);
     await page.goto('/plugins');
-    await page.evaluate(() => {
-      document.querySelector('[data-testid="setup-launcher"]')?.remove();
-    });
+    await dismissSetupLauncher(page);
     await expect(page.getByText('1 update available')).toBeVisible({
       timeout: 10000,
     });
@@ -304,9 +303,7 @@ test.describe('Plugin Update Flow', () => {
     );
 
     await page.goto('/plugins');
-    await page.evaluate(() => {
-      document.querySelector('[data-testid="setup-launcher"]')?.remove();
-    });
+    await dismissSetupLauncher(page);
     await expect(page.getByText('1 update available')).toBeVisible({
       timeout: 10000,
     });
@@ -348,9 +345,7 @@ test.describe('Plugin Update Flow', () => {
     );
 
     await page.goto('/plugins');
-    await page.evaluate(() => {
-      document.querySelector('[data-testid="setup-launcher"]')?.remove();
-    });
+    await dismissSetupLauncher(page);
     await expect(page.getByText('1 update available')).toBeVisible({
       timeout: 10000,
     });
@@ -415,9 +410,7 @@ test.describe('Plugin Update Flow', () => {
     );
 
     await page.goto('/plugins');
-    await page.evaluate(() => {
-      document.querySelector('[data-testid="setup-launcher"]')?.remove();
-    });
+    await dismissSetupLauncher(page);
     await page
       .getByRole('button', { name: 'Install plugin', exact: true })
       .click();

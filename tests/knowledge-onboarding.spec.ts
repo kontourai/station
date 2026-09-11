@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { openHeaderSettings } from './helpers/orchestration';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -85,6 +87,10 @@ async function mockKnowledgeReadRoutes(
   page: import('@playwright/test').Page,
   options: { status: string; roots: unknown[] },
 ): Promise<void> {
+  await page.route('**/api/**', async (route) => {
+    if (await fulfillStationShellRead(route)) return;
+    await route.fallback();
+  });
   await page.route('**/api/system/status', (route) =>
     route.fulfill({
       status: 200,
@@ -165,23 +171,7 @@ test.describe('Knowledge onboarding (product, mocked)', () => {
     await page.goto('/');
 
     await expect(page.getByTestId('knowledge-nudge')).toHaveCount(0);
-    const settings = page.getByTitle(/Settings/);
-    await expect(settings).toBeVisible({ timeout: 10_000 });
-    const bounds = await settings.boundingBox();
-    expect(bounds).not.toBeNull();
-    expect(
-      await page.evaluate(
-        ({ x, y }) =>
-          Boolean(
-            document.elementFromPoint(x, y)?.closest('[title*="Settings"]'),
-          ),
-        {
-          x: (bounds?.x ?? 0) + (bounds?.width ?? 0) / 2,
-          y: (bounds?.y ?? 0) + (bounds?.height ?? 0) / 2,
-        },
-      ),
-    ).toBe(true);
-    await settings.click();
+    await openHeaderSettings(page);
     await expect(page).toHaveURL(/\/settings/);
   });
 

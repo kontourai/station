@@ -110,6 +110,9 @@ test('the production Agent Plugin catalog withholds pending core and namespace c
       'independent-agent',
     ]);
     await expect(config.loadAgent('owned-agent')).rejects.toThrow('not ready');
+    expect(
+      (await config.readAgentCatalog()).map(({ metadata }) => metadata.slug),
+    ).toEqual(['independent-agent']);
     const session = createPluginActivationSession();
     const pendingPermit = registerPluginActivation(
       session,
@@ -128,6 +131,14 @@ test('the production Agent Plugin catalog withholds pending core and namespace c
     expect((await composingConfig.loadAgent('owned-agent')).name).toBe(
       'owned-agent',
     );
+    expect(
+      (await composingConfig.readAgentCatalog()).map(
+        ({ metadata }) => metadata.slug,
+      ),
+    ).toContain('owned-agent');
+    expect(
+      (await config.readAgentCatalog()).map(({ metadata }) => metadata.slug),
+    ).toEqual(['independent-agent']);
     expect((await config.listAgents()).map((agent) => agent.slug)).toEqual([
       'independent-agent',
     ]);
