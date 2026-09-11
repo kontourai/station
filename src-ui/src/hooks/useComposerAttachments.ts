@@ -1,7 +1,15 @@
 import { ATTACHMENT_STAGING_MAX_CONCURRENT_UPLOADS } from '@kontourai/station-contracts/attachment-staging';
+import {
+  CHAT_ATTACHMENT_MAX_COUNT,
+  CHAT_ATTACHMENT_MAX_TOTAL_BYTES,
+} from '@kontourai/station-contracts/chat-attachment';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComposerAttachmentStageUpdate } from '../lib/attachment-staging-queue';
+import type {
+  FileIntakeOperation,
+  FileIntakeResult,
+} from '../lib/conversation-file-intake';
 import type { ComposerAttachmentStageSnapshot, FileAttachment } from '../types';
 
 interface ComposerAttachmentCapabilities {
@@ -10,7 +18,11 @@ interface ComposerAttachmentCapabilities {
   imageRefusal?: string;
 }
 
-type StageTask = { file: FileAttachment; controller: AbortController };
+type StageTask = {
+  file: FileAttachment;
+  controller: AbortController;
+  requestScope?: ApiRequestScope & { isCurrent?: () => boolean };
+};
 
 function snapshotFor(
   attachment: FileAttachment,
@@ -71,61 +83,116 @@ function unavailable(
  */
 export function useComposerAttachments(options: {
   apiBase: string;
+  ownerKey?: string;
   requestScope?: ApiRequestScope & { isCurrent?: () => boolean };
   cancelOnUnmount?: boolean;
   attachments: FileAttachment[];
+  getCurrentAttachments?: () => FileAttachment[];
+  getCurrentStages?: () => ComposerAttachmentStageSnapshot[];
   stages: ComposerAttachmentStageSnapshot[];
   capabilities: ComposerAttachmentCapabilities;
   onAddAttachments: (attachments: FileAttachment[]) => void;
   onReplaceAttachment?: (attachment: FileAttachment) => void;
   onStagesChange: (stages: ComposerAttachmentStageSnapshot[]) => void;
 }) {
-  const [error, setError] = useState<string | null>(null);
-  const generation = useRef(0);
-  const filesById = useRef(new Map<string, FileAttachment>());
-  const tasks = useRef(new Map<string, StageTask>());
-  const pending = useRef<string[]>([]);
-  const running = useRef(new Set<string>());
-  // Reconciliation is a reconnect observation, not a poller. Remember every
-  // stage this mounted hook has already inspected so writing the resulting
-  // snapshot cannot immediately schedule the same POST again.
-  const reconciledStageIds = useRef(new Set<string>());
-  const stagesRef = useRef(options.stages);
-  const pumpRef = useRef<() => void>(() => {});
-  stagesRef.current = options.stages;
+  const ownerKey = JSON.stringify([
+    options.apiBase,
+    options.ownerKey ?? '',
+    options.requestScope?.authorityKey,
+  ]);
+  const currentOwner = useRef(ownerKey);
+  currentOwner.current = ownerKey;
+  const [errorState, setErrorState] = useState<{
+    key: string;
+    message: string | null;
+  }>({ key: ownerKey, message: null });
+  const error = errorState.key === ownerKey ? errorState.message : null;
+  const setError = useCallback(
+    (message: string | null) => {
+      if (currentOwner.current === ownerKey)
+        setErrorState({ key: ownerKey, message });
+    },
+    [ownerKey],
+  );
+  const owned = useMemo(
+    () => ({
+      key: ownerKey,
+      generation: { current: 0 },
+      filesById: { current: new Map<string, FileAttachment>() },
+      tasks: { current: new Map<string, StageTask>() },
+      fileScopes: { current: new Map<string, StageTask['requestScope']>() },
+      pending: { current: [] as string[] },
+      running: { current: new Set<string>() },
+      reconciledStageIds: { current: new Set<string>() },
+      stagesRef: { current: [] as ComposerAttachmentStageSnapshot[] },
+      lastStages: {
+        current: undefined as ComposerAttachmentStageSnapshot[] | undefined,
+      },
+      pumpRef: { current: () => {} },
+    }),
+    [ownerKey],
+  );
+  if (owned.lastStages.current !== options.stages) {
+    owned.lastStages.current = options.stages;
+    owned.stagesRef.current = options.stages;
+  }
+  for (const file of options.attachments) {
+    if (
+      typeof file.data === 'string' &&
+      file.data.startsWith('data:') &&
+      !owned.filesById.current.has(file.id)
+    ) {
+      owned.filesById.current.set(file.id, file);
+      owned.fileScopes.current.set(file.id, options.requestScope);
+    }
+  }
+  for (const id of owned.filesById.current.keys()) {
+    if (
+      !options.attachments.some((file) => file.id === id) &&
+      !owned.tasks.current.has(id) &&
+      !owned.pending.current.includes(id)
+    ) {
+      owned.filesById.current.delete(id);
+      owned.fileScopes.current.delete(id);
+    }
+  }
+  const currentStages = useCallback(
+    () => options.getCurrentStages?.() ?? owned.stagesRef.current,
+    [options.getCurrentStages, owned],
+  );
 
   useEffect(
     () => () => {
       if (!options.cancelOnUnmount) return;
-      generation.current += 1;
-      for (const task of tasks.current.values()) task.controller.abort();
-      pending.current = [];
+      owned.generation.current += 1;
+      for (const task of owned.tasks.current.values()) task.controller.abort();
+      owned.pending.current = [];
     },
-    [options.cancelOnUnmount],
+    [options.cancelOnUnmount, owned],
   );
 
   const replaceStages = useCallback(
     (next: ComposerAttachmentStageSnapshot[]) => {
-      stagesRef.current = next;
+      owned.stagesRef.current = next;
       options.onStagesChange(next);
     },
-    [options],
+    [options, owned],
   );
   const update = useCallback(
     (stageUpdate: ComposerAttachmentStageUpdate) =>
-      replaceStages(applyUpdate(stagesRef.current, stageUpdate)),
-    [replaceStages],
+      replaceStages(applyUpdate(currentStages(), stageUpdate)),
+    [replaceStages, currentStages],
   );
 
   const pump = useCallback(() => {
     while (
-      running.current.size < ATTACHMENT_STAGING_MAX_CONCURRENT_UPLOADS &&
-      pending.current.length > 0
+      owned.running.current.size < ATTACHMENT_STAGING_MAX_CONCURRENT_UPLOADS &&
+      owned.pending.current.length > 0
     ) {
-      const clientAttachmentId = pending.current.shift()!;
-      const task = tasks.current.get(clientAttachmentId);
+      const clientAttachmentId = owned.pending.current.shift()!;
+      const task = owned.tasks.current.get(clientAttachmentId);
       if (!task || task.controller.signal.aborted) continue;
-      running.current.add(clientAttachmentId);
+      owned.running.current.add(clientAttachmentId);
       void (async () => {
         try {
           // The SDK and queue are requested only by attachment interaction.
@@ -138,17 +205,22 @@ export function useComposerAttachments(options: {
             options.apiBase,
             [task.file],
             task.controller.signal,
-            update,
+            (value) => {
+              if (task.requestScope?.isCurrent?.() !== false) update(value);
+            },
             xhrAttachmentStageUpload,
-            options.requestScope,
+            task.requestScope,
           );
         } catch (failure) {
-          if (!task.controller.signal.aborted) {
+          if (
+            !task.controller.signal.aborted &&
+            task.requestScope?.isCurrent?.() !== false
+          ) {
             const message =
               failure instanceof Error
                 ? failure.message
                 : 'Attachment staging failed.';
-            const current = stagesRef.current.find(
+            const current = currentStages().find(
               (stage) => stage.clientAttachmentId === clientAttachmentId,
             );
             if (current?.state !== 'complete') {
@@ -164,60 +236,102 @@ export function useComposerAttachments(options: {
             setError(message);
           }
         } finally {
-          running.current.delete(clientAttachmentId);
-          tasks.current.delete(clientAttachmentId);
-          pumpRef.current();
+          owned.running.current.delete(clientAttachmentId);
+          owned.tasks.current.delete(clientAttachmentId);
+          owned.pumpRef.current();
         }
       })();
     }
-  }, [options.apiBase, options.requestScope, update]);
-  pumpRef.current = pump;
+  }, [options.apiBase, update, owned, setError, currentStages]);
+  owned.pumpRef.current = pump;
 
-  const enqueue = useCallback((files: readonly FileAttachment[]) => {
-    for (const file of files) {
-      filesById.current.set(file.id, file);
-      tasks.current.set(file.id, {
-        file,
-        controller: new AbortController(),
-      });
-      pending.current.push(file.id);
-    }
-    pumpRef.current();
-  }, []);
+  const enqueue = useCallback(
+    (
+      files: readonly FileAttachment[],
+      requestScope?: StageTask['requestScope'],
+    ) => {
+      for (const file of files) {
+        owned.filesById.current.set(file.id, file);
+        owned.fileScopes.current.set(file.id, requestScope);
+        owned.tasks.current.set(file.id, {
+          file,
+          controller: new AbortController(),
+          requestScope,
+        });
+        owned.pending.current.push(file.id);
+      }
+      owned.pumpRef.current();
+    },
+    [owned],
+  );
 
-  const selectFiles = useCallback(
-    async (files: File[]) => {
-      const epoch = generation.current;
-      if (options.requestScope?.isCurrent?.() === false) return;
+  const selectFilesWithResult = useCallback(
+    async (
+      files: File[],
+      operation?: FileIntakeOperation,
+    ): Promise<FileIntakeResult> => {
+      const epoch = owned.generation.current;
+      const scope = operation?.requestScope ?? options.requestScope;
+      const current = () =>
+        owned.generation.current === epoch &&
+        !operation?.signal.aborted &&
+        operation?.isCurrent?.() !== false &&
+        scope?.isCurrent?.() !== false;
+      if (!current())
+        return {
+          added: 0,
+          errors: ['Station access changed before file intake.'],
+        };
       const { readChatAttachmentFiles } = await import(
         '../utils/chatAttachments'
       );
       const result = await readChatAttachmentFiles(
         files,
-        options.attachments,
+        options.getCurrentAttachments?.() ?? options.attachments,
         options.capabilities,
       );
+      if (!current())
+        return {
+          added: 0,
+          errors: ['The target changed before file intake completed.'],
+        };
+      const existing = options.getCurrentAttachments?.() ?? options.attachments;
       if (
-        generation.current !== epoch ||
-        options.requestScope?.isCurrent?.() === false
-      )
-        return;
-      if (result.attachments.length > 0) {
+        existing.length + result.attachments.length >
+          CHAT_ATTACHMENT_MAX_COUNT ||
+        [...existing, ...result.attachments].reduce(
+          (sum, file) => sum + file.size,
+          0,
+        ) > CHAT_ATTACHMENT_MAX_TOTAL_BYTES
+      ) {
+        const message =
+          'The destination attachments changed while reading these files. Check its current files and try again.';
+        setError(message);
+        return { added: 0, errors: [message] };
+      }
+      if (result.attachments.length) {
         replaceStages([
-          ...stagesRef.current,
+          ...currentStages(),
           ...result.attachments.map(snapshotFor),
         ]);
         options.onAddAttachments(result.attachments);
-        enqueue(result.attachments);
+        enqueue(result.attachments, scope);
       }
       setError(result.errors[0] ?? null);
+      return { added: result.attachments.length, errors: result.errors };
     },
-    [enqueue, options, replaceStages],
+    [enqueue, options, replaceStages, owned, setError, currentStages],
+  );
+  const selectFiles = useCallback(
+    async (files: File[]) => {
+      await selectFilesWithResult(files);
+    },
+    [selectFilesWithResult],
   );
 
   const replaceFile = useCallback(
     async (clientAttachmentId: string, files: File[]) => {
-      const epoch = generation.current;
+      const epoch = owned.generation.current;
       if (options.requestScope?.isCurrent?.() === false) return;
       const { readChatAttachmentFiles } = await import(
         '../utils/chatAttachments'
@@ -228,7 +342,7 @@ export function useComposerAttachments(options: {
         options.capabilities,
       );
       if (
-        generation.current !== epoch ||
+        owned.generation.current !== epoch ||
         options.requestScope?.isCurrent?.() === false
       )
         return;
@@ -240,24 +354,33 @@ export function useComposerAttachments(options: {
       const stable = { ...replacement, id: clientAttachmentId };
       options.onReplaceAttachment?.(stable);
       replaceStages(
-        stagesRef.current.map((stage) =>
+        currentStages().map((stage) =>
           stage.clientAttachmentId !== clientAttachmentId
             ? stage
             : { ...snapshotFor(stable) },
         ),
       );
-      enqueue([stable]);
+      enqueue([stable], options.requestScope);
       setError(result.errors[0] ?? null);
     },
-    [enqueue, options, replaceStages],
+    [enqueue, options, replaceStages, owned, setError, currentStages],
   );
 
   const retry = useCallback(
     async (clientAttachmentId: string) => {
-      const file = filesById.current.get(clientAttachmentId);
+      const scope =
+        owned.fileScopes.current.get(clientAttachmentId) ??
+        options.requestScope;
+      if (scope?.isCurrent?.() === false) {
+        setError(
+          'The original Station access changed. Choose the files again after reconnecting.',
+        );
+        return;
+      }
+      const file = owned.filesById.current.get(clientAttachmentId);
       if (!file) {
         replaceStages(
-          stagesRef.current.map((stage) =>
+          currentStages().map((stage) =>
             stage.clientAttachmentId === clientAttachmentId
               ? unavailable(stage, false, 'Choose this file again to retry.')
               : stage,
@@ -267,20 +390,28 @@ export function useComposerAttachments(options: {
       }
       setError(null);
       update({ clientAttachmentId, state: 'queued', progress: 0 });
-      enqueue([file]);
+      enqueue([file], scope);
     },
-    [enqueue, replaceStages, update],
+    [
+      enqueue,
+      options.requestScope,
+      replaceStages,
+      update,
+      owned,
+      setError,
+      currentStages,
+    ],
   );
 
   const cancel = useCallback(
     async (clientAttachmentId: string) => {
-      const task = tasks.current.get(clientAttachmentId);
+      const task = owned.tasks.current.get(clientAttachmentId);
       task?.controller.abort();
-      tasks.current.delete(clientAttachmentId);
-      pending.current = pending.current.filter(
+      owned.tasks.current.delete(clientAttachmentId);
+      owned.pending.current = owned.pending.current.filter(
         (id) => id !== clientAttachmentId,
       );
-      const stage = stagesRef.current.find(
+      const stage = currentStages().find(
         (entry) => entry.clientAttachmentId === clientAttachmentId,
       );
       if (stage?.stageId) {
@@ -288,7 +419,9 @@ export function useComposerAttachments(options: {
           '@kontourai/station-sdk/client'
         );
         await cancelAttachmentStage(options.apiBase, stage.stageId, {
-          requestScope: options.requestScope,
+          requestScope:
+            owned.fileScopes.current.get(clientAttachmentId) ??
+            options.requestScope,
         }).catch(() => undefined);
       }
       update({
@@ -298,20 +431,21 @@ export function useComposerAttachments(options: {
         stageId: stage?.stageId,
       });
     },
-    [options.apiBase, options.requestScope, update],
+    [options.apiBase, options.requestScope, update, owned, currentStages],
   );
 
   const remove = useCallback(
     async (clientAttachmentId: string) => {
       await cancel(clientAttachmentId);
-      filesById.current.delete(clientAttachmentId);
+      owned.filesById.current.delete(clientAttachmentId);
+      owned.fileScopes.current.delete(clientAttachmentId);
       replaceStages(
-        stagesRef.current.filter(
+        currentStages().filter(
           (stage) => stage.clientAttachmentId !== clientAttachmentId,
         ),
       );
     },
-    [cancel, replaceStages],
+    [cancel, replaceStages, owned, currentStages],
   );
 
   // Reconcile at most five opaque ids on mount/reconnect, including completed
@@ -325,12 +459,13 @@ export function useComposerAttachments(options: {
           stage.stageId &&
           stage.state !== 'uploading' &&
           stage.state !== 'cancelled' &&
-          !reconciledStageIds.current.has(stage.stageId),
+          !owned.reconciledStageIds.current.has(stage.stageId),
       )
       .slice(0, 5)
       .map((stage) => stage.stageId!);
     if (stageIds.length === 0) return;
-    for (const stageId of stageIds) reconciledStageIds.current.add(stageId);
+    for (const stageId of stageIds)
+      owned.reconciledStageIds.current.add(stageId);
     void import('@kontourai/station-sdk/client')
       .then(({ reconcileAttachmentStages }) =>
         reconcileAttachmentStages(options.apiBase, stageIds, {
@@ -339,7 +474,7 @@ export function useComposerAttachments(options: {
       )
       .then((statuses) => {
         for (const status of statuses) {
-          const current = stagesRef.current.find(
+          const current = currentStages().find(
             (stage) => stage.stageId === status.stageId,
           );
           if (!current) continue;
@@ -357,7 +492,7 @@ export function useComposerAttachments(options: {
             // bytes. This is not an expired upload the user may re-stage: a
             // retry here could create a second turn after an uncertain reply.
             replaceStages(
-              stagesRef.current.map((stage) => {
+              currentStages().map((stage) => {
                 if (stage.clientAttachmentId !== current.clientAttachmentId)
                   return stage;
                 const { reference: _reference, error: _error, ...rest } = stage;
@@ -372,11 +507,11 @@ export function useComposerAttachments(options: {
             );
           } else if (status.state === 'pending') {
             replaceStages(
-              stagesRef.current.map((stage) =>
+              currentStages().map((stage) =>
                 stage.clientAttachmentId === current.clientAttachmentId
                   ? unavailable(
                       stage,
-                      filesById.current.has(stage.clientAttachmentId),
+                      owned.filesById.current.has(stage.clientAttachmentId),
                       'Attachment upload did not finish. Retry or choose the file again.',
                     )
                   : stage,
@@ -384,11 +519,11 @@ export function useComposerAttachments(options: {
             );
           } else {
             replaceStages(
-              stagesRef.current.map((stage) =>
+              currentStages().map((stage) =>
                 stage.clientAttachmentId === current.clientAttachmentId
                   ? unavailable(
                       stage,
-                      filesById.current.has(stage.clientAttachmentId),
+                      owned.filesById.current.has(stage.clientAttachmentId),
                       'Attachment stage expired. Retry or choose the file again.',
                     )
                   : stage,
@@ -402,6 +537,8 @@ export function useComposerAttachments(options: {
     options.apiBase,
     options.requestScope,
     options.stages,
+    owned,
+    currentStages,
     replaceStages,
     update,
   ]);
@@ -421,13 +558,13 @@ export function useComposerAttachments(options: {
       () => {
         const current = Date.now();
         replaceStages(
-          stagesRef.current.map((stage) =>
+          currentStages().map((stage) =>
             stage.state === 'complete' &&
             stage.reference &&
             Date.parse(stage.reference.expiresAt) <= current
               ? unavailable(
                   stage,
-                  filesById.current.has(stage.clientAttachmentId),
+                  owned.filesById.current.has(stage.clientAttachmentId),
                   'Attachment stage expired. Retry or choose the file again.',
                 )
               : stage,
@@ -437,7 +574,7 @@ export function useComposerAttachments(options: {
       Math.min(delay, 2_147_483_647),
     );
     return () => clearTimeout(timer);
-  }, [options.stages, replaceStages]);
+  }, [options.stages, replaceStages, owned, currentStages]);
 
   const hasStages = options.stages.length > 0;
   const sendBlockedReason = !hasStages
@@ -451,6 +588,7 @@ export function useComposerAttachments(options: {
   return {
     error,
     selectFiles,
+    selectFilesWithResult,
     replaceFile,
     setError,
     retry,

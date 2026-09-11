@@ -59,7 +59,7 @@ tauri-plugin-log = "=2.9.1"
 # data_local_dir() — so the log-directory writability pre-check in run() can
 # run before an AppHandle exists (already resolved transitively by tauri
 # itself at this exact version; declared directly since we call it too).
-dirs = "6"
+dirs = "7"
 # Shared application API; platform-specific native stores are selected below.
 keyring-core = "=1.0.0"
 tauri-plugin-dialog = "=2.7.3"
