@@ -103,6 +103,10 @@ export function enrolmentHomeEnv(
  * will run and the caller surfaces it, instead of a background process
  * silently opening a browser.
  */
+export function enrolmentLoginArgs(engine: EnrolmentEngine): string[] {
+  return engine === 'claude' ? ['auth', 'login'] : ['login'];
+}
+
 export function enrolmentCommand(
   engine: EnrolmentEngine,
   profileDir: string,
@@ -110,14 +114,14 @@ export function enrolmentCommand(
   return engine === 'claude'
     ? {
         command: 'claude',
-        args: ['auth', 'login'],
+        args: enrolmentLoginArgs(engine),
         env: enrolmentHomeEnv(engine, profileDir),
         description:
           "Signs in with Claude Code's own login, storing the account in this credential profile instead of your global Claude config.",
       }
     : {
         command: 'codex',
-        args: ['login'],
+        args: enrolmentLoginArgs(engine),
         env: enrolmentHomeEnv(engine, profileDir),
         description:
           "Signs in with Codex's own login, storing the account in this credential profile instead of your global Codex config.",

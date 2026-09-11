@@ -840,9 +840,31 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // sharper reason than either: it names a filesystem path inside Station's
   // profile store and the exact command that will write a credential into it.
   // That is a recipe for provisioning an account on this host, which no paired
-  // remote credential should be able to read — the fact that Station returns
-  // the command rather than running it makes the response MORE useful to a
-  // remote caller, not less.
+  // remote credential should be able to read.
+  //
+  // `method: '*'` and the family's `origin: 'explicit'` now also cover the
+  // device-code leaves (`…/enrolment/:ref/device-code`, POST/GET/DELETE),
+  // which START the engine's own login as a child process on this host. The
+  // tier is deliberately unchanged, and the reasoning is not the same as the
+  // read leaf's, so it is recorded rather than inherited:
+  //
+  //  - Device code exists to be finished on the device the operator is
+  //    holding. Raising the start/cancel mutations above `access:manage`
+  //    (say, to an operator-only refusal like the one `authorizeCredential`
+  //    applies to `/api/environments/peers` mutations) would lock the flow
+  //    out of exactly the paired phone it was built for, which is not a
+  //    security win but a feature deletion.
+  //  - What the caller gains is bounded: a verification URL and a short code
+  //    that only sign in whoever approves them. Station holds no token before
+  //    or after, and the process is single-flight, capped, and killed on a
+  //    deadline.
+  //  - The residual, disclosed rather than absorbed: `access:manage` is
+  //    inherited through DEFAULT_GRANT_PAIRING_SCOPE by migrated,
+  //    scope-omitting, and continuity-flow credentials that never chose it,
+  //    so "holder chose this" is not true of the whole population. If that
+  //    matters more than phone reachability, the fix is a new token granted
+  //    only by operator promotion — the `access:approve`/`consent:decide`
+  //    precedent — not a quiet re-tier of this family.
   {
     id: '/api/connections/agent/:id/enrolment:manage',
     method: '*',

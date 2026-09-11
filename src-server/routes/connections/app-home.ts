@@ -13,7 +13,7 @@ import type {
   CredentialProfileApplicationProjection,
   CredentialRecoveryGroupProjection,
 } from '@kontourai/station-contracts/connection-recovery';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { defaultClaudeGlobalConfigDirs } from '../../providers/adapters/claude-skills-materialization.js';
 import {
   clearAppHomeProfile,
@@ -38,10 +38,20 @@ import {
 } from '../../providers/auth/codex-auth.js';
 import type { ConnectionService } from '../../services/connections/connection-service.js';
 import {
+  type EnrolmentEngine,
   enrolmentCommand,
   verifyEnrolment,
 } from '../../services/connections/credential-enrolment.js';
 import { readCredentialUsage } from '../../services/connections/credential-usage.js';
+import {
+  type DeviceCodeLoginManager,
+  deviceCodeLoginManager,
+} from '../../services/connections/device-code-login.js';
+import {
+  type EngineLoginCapabilities,
+  engineLoginCapabilities,
+  loginMechanisms,
+} from '../../services/connections/engine-login-capabilities.js';
 import { appHomeCleared, appHomeImport } from '../../telemetry/metrics.js';
 import {
   appHomeImportRequestSchema,
@@ -161,8 +171,21 @@ type CredentialRecoveryConnectionService = Pick<
 export function createAppHomeRoutes(deps?: {
   isUseAppHomeEnabled?: (id: string) => Promise<boolean>;
   connectionService?: CredentialRecoveryConnectionService;
+  /**
+   * Injected so a route test observes a login surface without spawning the
+   * engine's CLI. The default probes for real: what an engine supports is not
+   * something this file is allowed to assert on its own.
+   */
+  loginCapabilities?: (
+    engine: EnrolmentEngine,
+  ) => Promise<EngineLoginCapabilities>;
+  deviceCodeLogins?: DeviceCodeLoginManager;
 }) {
   const app = new Hono();
+  const readLoginCapabilities =
+    deps?.loginCapabilities ?? ((engine) => engineLoginCapabilities(engine));
+  const deviceCodeLogins = () =>
+    deps?.deviceCodeLogins ?? deviceCodeLoginManager();
 
   const credentialRecoveryContext = async (
     id: string,
@@ -510,17 +533,18 @@ export function createAppHomeRoutes(deps?: {
    * `unknown` with a reason rather than a zeroed meter.
    */
   /**
-   * archive#3549: what to run to sign this profile in, and whether it already
-   * is.
+   * archive#3549: what to run to sign this profile in, whether it already is,
+   * and which login mechanisms the installed CLI was OBSERVED to offer.
    *
-   * The command is RETURNED, never spawned. The engine's login is interactive
-   * and browser-based, so the caller surfaces it and the user runs it — a
-   * background process that silently opened a browser would be exactly the
-   * "never silent" violation the provisioning rules forbid.
-   *
-   * `authState` comes from asking the ENGINE, not from reading a credential
-   * file: on macOS the credential can live in the Keychain, so an absent file
-   * proves nothing.
+   * `command` is still returned rather than run: a terminal command Station
+   * describes is the path for a mechanism Station cannot drive. `login` is
+   * the second half — the engine's own answer about what it supports, and the
+   * state of any device-code login already in flight for this profile.
+   * Neither field is a static claim: `authState` comes from asking the
+   * ENGINE (on macOS the credential can live in the Keychain, so an absent
+   * file proves nothing) and every entry in `login.evidence` carries the argv
+   * that produced it. `login.mechanisms` is derived here from that evidence,
+   * so no mechanism can be reported that nothing observed.
    */
   app.get('/agent/:id/enrolment/:ref', async (c) => {
     const id = param(c, 'id');
@@ -542,7 +566,11 @@ export function createAppHomeRoutes(deps?: {
         ref,
       );
       const command = enrolmentCommand(engine.provider, dir);
-      const verification = await verifyEnrolment(engine.provider, dir);
+      const [verification, capabilities] = await Promise.all([
+        verifyEnrolment(engine.provider, dir),
+        readLoginCapabilities(engine.provider),
+      ]);
+      const deviceCode = deviceCodeLogins().status(dir);
       return c.json({
         success: true,
         data: {
@@ -555,8 +583,132 @@ export function createAppHomeRoutes(deps?: {
             env: command.env,
             description: command.description,
           },
+          login: {
+            mechanisms: loginMechanisms(capabilities),
+            evidence: capabilities.evidence,
+            observedAt: capabilities.observedAt,
+            ...(capabilities.unavailableReason
+              ? { unavailableReason: capabilities.unavailableReason }
+              : {}),
+            ...(deviceCode ? { deviceCode } : {}),
+          },
         },
       });
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 500);
+    }
+  });
+
+  /**
+   * Device-code enrolment (start / read / cancel).
+   *
+   * These three leaves are the one place Station spawns an engine's login.
+   * That is a deliberate reversal of the "returned, never spawned" rule the
+   * route above still follows, and the reasoning is recorded in
+   * `credential-enrolment.ts`'s module docblock: a login the user pressed a
+   * button to start is not a silent spawn, and device code is the only
+   * mechanism that can be finished on the device the user is holding. Station
+   * still registers no OAuth client, still chooses no flow, and still never
+   * sees a token — the CLI authenticates as itself and writes its own store.
+   *
+   * `POST` is single-flight per profile: a second start while one is live
+   * returns the SAME login rather than a second process.
+   */
+  const deviceCodeContext = async (
+    context: Context,
+  ): Promise<
+    | { engine: AppHomeEngine; dir: string }
+    | { failure: { body: object; status: 400 | 404 } }
+  > => {
+    const id = param(context, 'id');
+    const engine = APP_HOME_ENGINES[id];
+    if (!engine) {
+      return {
+        failure: { body: unsupportedConnectionResponse(id), status: 404 },
+      };
+    }
+    const ref = profileRefFromParam(param(context, 'ref'));
+    if (!ref) {
+      return {
+        failure: {
+          body: { success: false, error: 'Validation failed' },
+          status: 400,
+        },
+      };
+    }
+    const recovery = await deps?.connectionService?.getCredentialRecovery(id);
+    if (!recovery?.profiles.some((profile) => profile.ref === ref)) {
+      return {
+        failure: {
+          body: { success: false, error: 'Credential profile not found.' },
+          status: 404,
+        },
+      };
+    }
+    return {
+      engine,
+      dir: credentialProfileAppHomeDir(engine.credentialProfileEngineId, ref),
+    };
+  };
+
+  app.post('/agent/:id/enrolment/:ref/device-code', async (c) => {
+    try {
+      const context = await deviceCodeContext(c);
+      if ('failure' in context) {
+        return c.json(context.failure.body, context.failure.status);
+      }
+      const result = await deviceCodeLogins().start(
+        context.engine.provider,
+        context.dir,
+      );
+      if (result.kind === 'unsupported') {
+        return c.json({ success: false, error: result.reason }, 409);
+      }
+      if (result.kind === 'busy') {
+        return c.json({ success: false, error: result.reason }, 429);
+      }
+      return c.json({
+        success: true,
+        data: { outcome: result.kind, login: result.record },
+      });
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 500);
+    }
+  });
+
+  app.get('/agent/:id/enrolment/:ref/device-code', async (c) => {
+    try {
+      const context = await deviceCodeContext(c);
+      if ('failure' in context) {
+        return c.json(context.failure.body, context.failure.status);
+      }
+      const record = deviceCodeLogins().status(context.dir);
+      if (!record) {
+        return c.json(
+          { success: false, error: 'No device login has been started.' },
+          404,
+        );
+      }
+      return c.json({ success: true, data: { login: record } });
+    } catch (error: unknown) {
+      return c.json({ success: false, error: errorMessage(error) }, 500);
+    }
+  });
+
+  app.delete('/agent/:id/enrolment/:ref/device-code', async (c) => {
+    try {
+      const context = await deviceCodeContext(c);
+      if ('failure' in context) {
+        return c.json(context.failure.body, context.failure.status);
+      }
+      const record = deviceCodeLogins().cancel(context.dir);
+      if (!record) {
+        return c.json(
+          { success: false, error: 'No device login is waiting for approval.' },
+          404,
+        );
+      }
+      return c.json({ success: true, data: { login: record } });
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 500);
     }

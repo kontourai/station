@@ -5,9 +5,36 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { appHomesRootDir } from '../../../providers/app-home/app-home-profiles.js';
+import {
+  type DeviceCodeChildProcess,
+  DeviceCodeLoginManager,
+} from '../../../services/connections/device-code-login.js';
+import type { EngineLoginCapabilities } from '../../../services/connections/engine-login-capabilities.js';
 import { appHomeCleared, appHomeImport } from '../../../telemetry/metrics.js';
 import { resolveHomeDir } from '../../../utils/paths.js';
 import { createAppHomeRoutes } from '../app-home.js';
+
+/**
+ * The enrolment routes ask the installed CLI how it signs in. Route tests
+ * inject that observation instead of spawning: what is under test here is the
+ * seam, not the probe (which owns its own suite).
+ */
+function loginCapabilitiesStub(
+  evidence: EngineLoginCapabilities['evidence'] = [
+    {
+      mechanism: 'device-code',
+      observedCommand: ['codex', 'login', '--help'],
+      observedMatch: '--device-auth',
+      argument: '--device-auth',
+    },
+  ],
+): () => Promise<EngineLoginCapabilities> {
+  return async () => ({
+    engine: 'codex',
+    evidence,
+    observedAt: '2026-09-11T00:00:00.000Z',
+  });
+}
 
 afterEach(() => {
   rmSync(appHomesRootDir(), { recursive: true, force: true });
@@ -866,7 +893,10 @@ describe('enrolment route (station#3549)', () => {
 
   test("returns the engine's own login pointed at the profile home", async () => {
     const { service } = credentialRecoveryFixture();
-    const app = createAppHomeRoutes({ connectionService: service as any });
+    const app = createAppHomeRoutes({
+      connectionService: service as any,
+      loginCapabilities: loginCapabilitiesStub(),
+    });
 
     const res = await app.request('/agent/codex/enrolment/profile-a');
     const body = await readJson<{
@@ -879,6 +909,11 @@ describe('enrolment route (station#3549)', () => {
           args: string[];
           env: Record<string, string>;
           description: string;
+        };
+        login: {
+          mechanisms: string[];
+          evidence: Array<{ mechanism: string; observedMatch: string }>;
+          observedAt: string;
         };
       };
     }>(res);
@@ -896,6 +931,209 @@ describe('enrolment route (station#3549)', () => {
     );
     // No enrolment has happened, and the response must not imply one has.
     expect(body.data.authState).not.toBe('authenticated');
+  });
+
+  // The mechanism list is computed at the seam from the evidence beside it,
+  // so a payload cannot advertise a login nothing observed.
+  test('reports only the mechanisms its own evidence carries', async () => {
+    const { service } = credentialRecoveryFixture();
+    const app = createAppHomeRoutes({
+      connectionService: service as any,
+      loginCapabilities: loginCapabilitiesStub([
+        {
+          mechanism: 'api-key-stdin',
+          observedCommand: ['codex', 'login', '--help'],
+          observedMatch: '--with-api-key',
+          argument: '--with-api-key',
+        },
+      ]),
+    });
+
+    const res = await app.request('/agent/codex/enrolment/profile-a');
+    const body = await readJson<{
+      data: { login: { mechanisms: string[] } };
+    }>(res);
+
+    expect(body.data.login.mechanisms).toEqual(['api-key-stdin']);
+  });
+});
+
+/**
+ * station device-code enrolment. These leaves are the one place Station
+ * spawns an engine's login, so the suite drives a REAL
+ * `DeviceCodeLoginManager` with a fake child process rather than a fake
+ * manager: a stubbed manager would prove the route calls something, not that
+ * a caller can start, read and cancel a login.
+ */
+describe('device-code enrolment routes', () => {
+  const CODEX_PROMPT = [
+    'Follow these steps to sign in with ChatGPT using device code authorization:',
+    '1. Open this link in your browser and sign in to your account',
+    '   https://auth.openai.com/codex/device',
+    '2. Enter this one-time code',
+    '   7IEZ-B1FLE',
+    '',
+  ].join('\n');
+
+  function fakeChild() {
+    let onData: ((chunk: unknown) => void) | undefined;
+    const signals: string[] = [];
+    const stream = {
+      on(_event: 'data', listener: (chunk: unknown) => void) {
+        onData = listener;
+        return stream;
+      },
+    };
+    return {
+      signals,
+      emitPrompt: () => onData?.(Buffer.from(CODEX_PROMPT, 'utf8')),
+      child: {
+        stdout: stream as unknown as NodeJS.ReadableStream,
+        stderr: null,
+        on: () => undefined,
+        kill: (signal?: NodeJS.Signals) => {
+          signals.push(signal ?? 'SIGTERM');
+          return true;
+        },
+      } as unknown as DeviceCodeChildProcess,
+    };
+  }
+
+  function routes(options: { deviceCode?: boolean } = {}) {
+    const { service } = credentialRecoveryFixture();
+    const spawned = fakeChild();
+    const spawnLogin = vi.fn(() => spawned.child);
+    const deviceCodeLogins = new DeviceCodeLoginManager({
+      spawnLogin: spawnLogin as never,
+      baseEnv: async () => ({ PATH: '/usr/bin' }),
+      capabilities: async () => ({
+        engine: 'codex' as const,
+        observedAt: '2026-09-11T00:00:00.000Z',
+        evidence:
+          options.deviceCode === false
+            ? []
+            : [
+                {
+                  mechanism: 'device-code' as const,
+                  observedCommand: ['codex', 'login', '--help'],
+                  observedMatch: '--device-auth',
+                  argument: '--device-auth',
+                },
+              ],
+      }),
+      verify: async () => ({ state: 'unauthenticated' as const }),
+      now: () => new Date('2026-09-11T12:00:00.000Z'),
+      schedule: () => () => undefined,
+    });
+    const app = createAppHomeRoutes({
+      connectionService: service as any,
+      loginCapabilities: loginCapabilitiesStub(),
+      deviceCodeLogins,
+    });
+    return { app, spawned, spawnLogin };
+  }
+
+  test('starts a login and relays the URL and code the CLI printed', async () => {
+    const { app, spawned, spawnLogin } = routes();
+
+    const started = await app.request(
+      '/agent/codex/enrolment/profile-a/device-code',
+      { method: 'POST' },
+    );
+    expect(started.status).toBe(200);
+    expect(spawnLogin).toHaveBeenCalledTimes(1);
+    spawned.emitPrompt();
+
+    const read = await app.request(
+      '/agent/codex/enrolment/profile-a/device-code',
+    );
+    const body = await readJson<{
+      success: boolean;
+      data: {
+        login: { phase: string; verificationUri: string; userCode: string };
+      };
+    }>(read);
+
+    expect(body.data.login).toMatchObject({
+      phase: 'awaiting-approval',
+      verificationUri: 'https://auth.openai.com/codex/device',
+      userCode: '7IEZ-B1FLE',
+    });
+    // Station relays two strings and holds nothing else.
+    expect(JSON.stringify(body)).not.toMatch(/token|secret|password/i);
+  });
+
+  test('a second start returns the same login rather than a second process', async () => {
+    const { app, spawnLogin } = routes();
+    await app.request('/agent/codex/enrolment/profile-a/device-code', {
+      method: 'POST',
+    });
+
+    const again = await app.request(
+      '/agent/codex/enrolment/profile-a/device-code',
+      { method: 'POST' },
+    );
+    const body = await readJson<{ data: { outcome: string } }>(again);
+
+    expect(body.data.outcome).toBe('existing');
+    expect(spawnLogin).toHaveBeenCalledTimes(1);
+  });
+
+  test('refuses, without spawning, when the engine advertises no device-code login', async () => {
+    const { app, spawnLogin } = routes({ deviceCode: false });
+
+    const res = await app.request(
+      '/agent/codex/enrolment/profile-a/device-code',
+      { method: 'POST' },
+    );
+
+    expect(res.status).toBe(409);
+    expect(spawnLogin).not.toHaveBeenCalled();
+  });
+
+  test('cancelling kills the login process', async () => {
+    const { app, spawned } = routes();
+    await app.request('/agent/codex/enrolment/profile-a/device-code', {
+      method: 'POST',
+    });
+    spawned.emitPrompt();
+
+    const res = await app.request(
+      '/agent/codex/enrolment/profile-a/device-code',
+      { method: 'DELETE' },
+    );
+    const body = await readJson<{ data: { login: { phase: string } } }>(res);
+
+    expect(body.data.login.phase).toBe('cancelled');
+    expect(spawned.signals).toContain('SIGTERM');
+  });
+
+  test('reading a login nobody started is a 404, not an invented record', async () => {
+    const { app } = routes();
+    const res = await app.request(
+      '/agent/codex/enrolment/profile-a/device-code',
+    );
+    expect(res.status).toBe(404);
+  });
+
+  test('a profile that is not enrolled cannot start a login', async () => {
+    const { app, spawnLogin } = routes();
+    const res = await app.request(
+      '/agent/codex/enrolment/not-a-profile/device-code',
+      { method: 'POST' },
+    );
+    expect(res.status).toBe(404);
+    expect(spawnLogin).not.toHaveBeenCalled();
+  });
+
+  test('a connection with no app-home channel cannot start a login', async () => {
+    const { app, spawnLogin } = routes();
+    const res = await app.request(
+      '/agent/ollama/enrolment/profile-a/device-code',
+      { method: 'POST' },
+    );
+    expect(res.status).toBe(404);
+    expect(spawnLogin).not.toHaveBeenCalled();
   });
 });
 
