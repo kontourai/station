@@ -38,6 +38,12 @@
       "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
     },
     {
+      "path": "src-ui/src/components/badges/AcpSessionModeSheet.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/__tests__/AcpSessionModeChip.test.tsx drives the advertised-mode radio rows; src-ui/src/__tests__/ChatInputArea.test.tsx opens it from the composer in place of the approval-mode chip"
+    },
+    {
       "path": "src-ui/src/components/badges/ComposerModeSheet.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
