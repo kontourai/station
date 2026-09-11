@@ -625,8 +625,9 @@ export function isManagedRuntimeConnectionId(
  * Whether a running turn can take more user input on the engine's live
  * channel (`steerTurn` / `turn.started` with `inputKind: 'steer'`).
  * Authority is the capability matrix, not a connection `capabilities`
- * string — Claude is the only built-in with `midTurnSteer: true`. Everyone
- * else queues the follow-up until `turn.completed`.
+ * string — Claude (SDK streamInput) and ACP (native extension method or
+ * cancel+reprompt fallback) are true. Codex/Muse/Station queue until
+ * `turn.completed`.
  */
 export function sessionAdapterSupportsSteering(
   agentConnectionId?: string | null,

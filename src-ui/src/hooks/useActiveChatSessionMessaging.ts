@@ -139,7 +139,7 @@ export function useSendMessage(
   } = useActiveChatActions();
   const { clearStreamingMessage } = useStreamingMessage();
   // Mid-turn send gate: matrix `midTurnSteer` (via sessionAdapterSupportsSteering)
-  // chooses steer vs queue. Claude is the only built-in that steers.
+  // chooses steer vs queue. Claude and ACP steer; Codex/Muse/Station queue.
   const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data: ConnectionConfig[];
   };

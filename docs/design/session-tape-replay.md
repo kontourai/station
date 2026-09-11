@@ -62,8 +62,8 @@ matrix; the dock always sees one of these:
 
 | Noun | Station fact | When |
 | --- | --- | --- |
-| **Queue** | `queuedMessages`, drained on `turn.completed` / `runtime.error` as a **new** turn | Default. Every engine whose matrix `midTurnSteer` is false (Codex, ACP/Grok, Muse, Station). |
-| **Steer** | `steerTurn` → `turn.started` with `inputKind: 'steer'` | Additional user input on the **open** turn. Claude today (`Query.streamInput`). |
+| **Queue** | `queuedMessages`, drained on `turn.completed` / `runtime.error` as a **new** turn | Codex, Muse, Station. Attachments on a busy turn. |
+| **Steer** | `steerTurn` → `turn.started` with `inputKind: 'steer'` | Additional user input on the **open** turn. |
 
 Send-while-busy uses that matrix cell (`sessionAdapterSupportsSteering`), not
 a connection `capabilities` string. A steer fold appends a user row and
@@ -71,12 +71,16 @@ a connection `capabilities` string. A steer fold appends a user row and
 they still queue. Durable outbound replay stays durable (`skipInMemoryQueueOnBusy`)
 and is never collapsed into either path.
 
-Grok's `_x.ai/queue/changed` is the engine's own prompt queue: promote it to
-`queuedMessages`, not a fake `turn.queued` method and not steer. Grok's native
-inject (`_x.ai/interject`) would map to `adapter.steerTurn` and the same
-canonical steer event if ACP `midTurnSteer` ever becomes true. T3 Code's later
-Grok “steer” (cancel the in-flight ACP prompt and re-prompt on the same
-`turnId`) is an engine mapping, not a third Station noun.
+Adapter mappings, same Station event:
+
+| Engine | Mechanism |
+| --- | --- |
+| Claude | `Query.streamInput` (additive) |
+| Kiro / KAS | ACP extension **method** `_session/steer` (additive; not a notification) |
+| Grok | ACP extension **method** `_x.ai/interject` (then `x.ai/interject`). `_x.ai/queue/changed` is the engine's prompt **queue**, host→agent interject is steer. |
+| Any other ACP | T3-style `session/cancel` + `session/prompt` on the same Station `turnId` (interruptive). Also the fallback when the native method returns JSON-RPC -32601. |
+
+Native Codex (app-server) still has no steer channel.
 
 The queued-messages chrome already offers **Send as steer** when the live
 provider's matrix allows it.
