@@ -10,7 +10,30 @@
  *      previously rendered plain once the turn settled).
  */
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
+
+// CodeBlockFrame measures itself with ResizeObserver (#1853); jsdom has no
+// implementation, so stub it like DiffPanel.test.tsx does.
+beforeAll(() => {
+  if (typeof globalThis.ResizeObserver === 'undefined') {
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  }
+});
+afterAll(() => {
+  delete (globalThis as Record<string, unknown>).ResizeObserver;
+});
 
 const highlightCode = vi.fn((code: string, lang: string) =>
   Promise.resolve(`<pre data-testid="hl" data-lang="${lang}">${code}</pre>`),
