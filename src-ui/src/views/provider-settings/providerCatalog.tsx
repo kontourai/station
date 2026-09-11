@@ -245,6 +245,10 @@ export function findModelProviderChoice(
 export type ProviderReadiness =
   | 'Ready'
   | 'Sign in required'
+  /** A key is pasted into this page -- there is no sign-in to perform. */
+  | 'API key required'
+  /** An ambient credential chain, configured outside Station entirely. */
+  | 'Credentials required'
   | 'Found, not connected'
   /**
    * The endpoint answered but exposes no usable model catalogue. Reachability
@@ -360,14 +364,99 @@ function normalizeBrand(input: ProviderCatalogInput): string {
     .trim();
 }
 
-function requiresSignIn(prerequisites: Prerequisite[]): boolean {
-  return prerequisites.some((prerequisite) => {
-    if (prerequisite.status === 'installed') return false;
-    return /auth|credential|log[\s-]?in|sign[\s-]?in|api[\s-]?key|token|profile/i.test(
-      `${prerequisite.id} ${prerequisite.name} ${prerequisite.description}`,
-    );
-  });
+/**
+ * What an unmet prerequisite is asking the user to DO. Four remedies, because
+ * the four are performed in four different places: a sign-in runs the engine's
+ * own login, a key is pasted into this page, an ambient credential chain is
+ * configured outside Station entirely, and setup is everything else.
+ */
+type PrerequisiteRemedy = 'sign-in' | 'api-key' | 'credentials' | 'setup';
+
+/**
+ * Matched against `id` and `name` only, never `description`. Descriptions are
+ * prose written for a human and they routinely name a remedy they are not
+ * asking for -- the missing-binary login prerequisite's own description reads
+ * "CLI must be installed before authentication can be verified", which is a
+ * sentence about installing that contains the word "authentication". Ids are
+ * structured by their producers (`<cmd>-cli`, `<cmd>-auth`,
+ * `anthropic-api-key`, `bedrock-credentials`, `ollama-server`), so they are
+ * what carries the fact.
+ */
+function prerequisiteRemedy(prerequisite: Prerequisite): PrerequisiteRemedy {
+  const subject = `${prerequisite.id} ${prerequisite.name}`;
+  if (/api[\s-]?key/i.test(subject)) return 'api-key';
+  if (/log[\s-]?in|sign[\s-]?in|auth/i.test(subject)) return 'sign-in';
+  if (/credential/i.test(subject)) return 'credentials';
+  return 'setup';
 }
+
+/**
+ * The prerequisite actually blocking this connection: the FIRST unmet one, in
+ * the order the server reported it, preferring a required entry over an
+ * optional one.
+ *
+ * ORDER IS THE FACT. Producers emit prerequisites in dependency order --
+ * `buildCliRuntimePrerequisites` pushes the CLI's presence before its login,
+ * and says why in the login entry it writes when the binary is absent: "CLI
+ * must be installed before authentication can be verified." Reading that list
+ * as a SET is what made a missing binary report "Sign in required": the former
+ * `requiresSignIn` regex-matched the `<cmd>-auth` id and returned before any
+ * presence check ran, so a user whose engine was not installed was told to
+ * sign in -- naming a remedy they could not perform, and hiding the one they
+ * could. It also caught `anthropic-api-key` and `bedrock-credentials`, so a
+ * missing API key and an unconfigured AWS credential chain both read as
+ * "Sign in" too, for providers that have no sign-in at all.
+ */
+function blockingPrerequisite(
+  prerequisites: Prerequisite[],
+): Prerequisite | undefined {
+  // Required only. An optional prerequisite does not block by definition, and
+  // the one the server actually emits (`acp-connection`, a custom engine that
+  // is not currently available) never matched the former regex either -- so
+  // widening to it here would change a state this fix has no business
+  // touching.
+  const unmet = prerequisites.filter(
+    (prerequisite) =>
+      prerequisite.category === 'required' &&
+      prerequisite.status !== 'installed',
+  );
+  // Presence outranks credential, explicitly rather than by emission order: a
+  // credential cannot be verified until the thing that holds it exists, which
+  // is what the server's own login entry says when the binary is absent. Left
+  // implicit, this guarantee would rest on every producer happening to list
+  // its prerequisites in dependency order -- a contract nothing enforces.
+  return (
+    unmet.find(
+      (prerequisite) => prerequisiteRemedy(prerequisite) === 'setup',
+    ) ?? unmet[0]
+  );
+}
+
+const REMEDY_PRESENTATION: Record<
+  PrerequisiteRemedy,
+  { readiness: ProviderReadiness; actionLabel: string; fallbackDetail: string }
+> = {
+  'sign-in': {
+    readiness: 'Sign in required',
+    actionLabel: 'Sign in',
+    fallbackDetail: 'Sign in to finish connecting.',
+  },
+  'api-key': {
+    readiness: 'API key required',
+    actionLabel: 'Add key',
+    fallbackDetail: 'Add an API key to finish connecting.',
+  },
+  credentials: {
+    readiness: 'Credentials required',
+    actionLabel: 'Set up',
+    fallbackDetail: 'Configure credentials to finish connecting.',
+  },
+  setup: {
+    readiness: 'Setup required',
+    actionLabel: 'Set up',
+    fallbackDetail: 'Finish setup before using it.',
+  },
+};
 
 export function resolveProviderPresentation(
   input: ProviderCatalogInput,
@@ -388,13 +477,18 @@ export function resolveProviderPresentation(
     };
   }
 
-  if (requiresSignIn(prerequisites)) {
+  const blocker = blockingPrerequisite(prerequisites);
+  if (blocker) {
+    const presentation = REMEDY_PRESENTATION[prerequisiteRemedy(blocker)];
     return {
       brand,
-      readiness: 'Sign in required',
+      readiness: presentation.readiness,
       tone: 'warn',
-      detail: 'Sign in to finish connecting.',
-      actionLabel: 'Sign in',
+      // The server authored a description FOR this prerequisite. Preferring it
+      // to the generic sentence is what turns "Sign in to finish connecting."
+      // into the reason this particular connection is not usable.
+      detail: blocker.description?.trim() || presentation.fallbackDetail,
+      actionLabel: presentation.actionLabel,
     };
   }
 

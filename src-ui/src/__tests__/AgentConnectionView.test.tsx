@@ -604,7 +604,7 @@ describe('AgentConnectionView', () => {
         },
       ],
       'Sign in required',
-      'Sign in to finish connecting.',
+      'Sign in to Codex.',
     ],
     [
       'available',
@@ -620,7 +620,7 @@ describe('AgentConnectionView', () => {
         },
       ],
       'Setup required',
-      'Finish setup before using it.',
+      'Claude executable required on PATH.',
     ],
   ] as const)(
     'projects the backend %s setup tuple into the provider detail',
@@ -652,6 +652,69 @@ describe('AgentConnectionView', () => {
       }
     },
   );
+
+  /*
+   * The shape `buildCliRuntimePrerequisites` ACTUALLY emits when the binary is
+   * absent, byte for byte: TWO required prerequisites, the second of them
+   * named `<Engine> login`.
+   *
+   * The table above only ever fed the one-prerequisite shape, which no
+   * producer writes for this state -- so the missing-binary case was never
+   * exercised, and the page shipped telling a user whose engine was not
+   * installed to sign in. The negative assertion is the point of the test: a
+   * remedy the user cannot perform must not be named, and it must not crowd
+   * out the one they can.
+   */
+  test('a missing engine binary reports setup, never sign-in, even though the server also reports an unmet login prerequisite', () => {
+    connectionQueryData = {
+      id: 'muse',
+      kind: 'agent',
+      type: 'muse',
+      name: 'Muse Code',
+      enabled: true,
+      status: 'missing_prerequisites',
+      capabilities: ['agent-runtime'],
+      config: { executionClass: 'connected', providerLabel: 'Muse' },
+      prerequisites: [
+        {
+          id: 'muse-cli',
+          name: 'Muse Code CLI',
+          description: 'Required to launch the Muse Code runtime.',
+          status: 'missing',
+          category: 'required',
+          installGuide: {
+            steps: ['Install the Muse Code CLI and ensure `muse` is on PATH.'],
+          },
+        },
+        {
+          id: 'muse-auth',
+          name: 'Muse Code login',
+          description:
+            'Muse Code CLI must be installed before authentication can be verified.',
+          status: 'missing',
+          category: 'required',
+          installGuide: {
+            steps: [
+              'Install the Muse Code CLI and ensure `muse` is on PATH.',
+              'Run `muse auth set --api-key-stdin` before starting Station.',
+            ],
+          },
+        },
+      ],
+      setup: { state: 'available', detected: false, configured: false },
+    };
+
+    render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    expect(screen.getAllByText('Setup required')).not.toHaveLength(0);
+    expect(
+      screen.getAllByText('Required to launch the Muse Code runtime.'),
+    ).not.toHaveLength(0);
+    expect(screen.queryByText('Sign in required')).toBeNull();
+    expect(screen.queryByText('Sign in to finish connecting.')).toBeNull();
+  });
 
   test('claude shows an accessible skills-materialization multiselect, off by default, that saves the selected ids', () => {
     connectionQueryData = {
