@@ -10,6 +10,7 @@
  * `ProjectSidebarReturnFocus.test.tsx`'s mock shape).
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { openChatsStore } from '../contexts/open-chats-store';
 
@@ -133,6 +134,16 @@ vi.mock('../hooks/useBranding', () => ({
 vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => platformProfile,
 }));
+// #1858 gave the lazy Open chats rows file intake (`FileDropRow`), so the
+// section now reads the host request authority scope from ApiBaseContext,
+// which throws outside a ConnectionsProvider. The scope itself is not under
+// test here — no assertion drops files — so the read is stubbed the same way
+// ChatDockBoundaryDialogsOnDemand stubs it, keeping this harness a sidebar
+// harness rather than a connections one.
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://test.local' }),
+  useHostRequestAuthorityScope: () => undefined,
+}));
 vi.mock('../hooks/useIsMobile', () => ({
   useIsMobile: () => false,
 }));
@@ -155,7 +166,17 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
+import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+
+// #1765 routed the sidebar status row's command-palette keycap through
+// `useShortcutDisplay`, which throws outside KeyboardShortcutsProvider; an
+// unmount/remount loop around that crash took the Open chats section with
+// it. Mounting the real provider keeps the status row in the tree instead
+// of stubbing the hook out from under every other consumer.
+function renderSidebar(ui: ReactElement) {
+  return render(<KeyboardShortcutsProvider>{ui}</KeyboardShortcutsProvider>);
+}
 
 function resetState() {
   sidebarRegion.mainOccupant = undefined;
@@ -189,7 +210,7 @@ describe('ProjectSidebar Home affordances reveal the Home surface (#928 C2a)', (
   test('the Work list Home row and the header home button call showSurface(home) and do not navigate', () => {
     resetState();
     showSurfaceStub.mockClear();
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Home' }));
     expect(showSurfaceStub).toHaveBeenCalledWith('home');
@@ -207,18 +228,18 @@ describe('ProjectSidebar Home affordances reveal the Home surface (#928 C2a)', (
     resetState();
 
     sidebarRegion.mainOccupant = 'activity';
-    const withActivity = render(<ProjectSidebar />);
+    const withActivity = renderSidebar(<ProjectSidebar />);
     expect(homeRow().classList.contains(active)).toBe(false);
     withActivity.unmount();
 
     sidebarRegion.mainOccupant = 'home';
-    const withHome = render(<ProjectSidebar />);
+    const withHome = renderSidebar(<ProjectSidebar />);
     expect(homeRow().classList.contains(active)).toBe(true);
     withHome.unmount();
 
     // A null occupant is Home on screen (`MainRegionSurface`).
     sidebarRegion.mainOccupant = null;
-    const withNull = render(<ProjectSidebar />);
+    const withNull = renderSidebar(<ProjectSidebar />);
     expect(homeRow().classList.contains(active)).toBe(true);
     withNull.unmount();
     sidebarRegion.mainOccupant = undefined;
@@ -239,7 +260,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
       platformProfile.productName = packageName;
       platformProfile.channel = channel as typeof platformProfile.channel;
       branding.appName = 'Remote Station';
-      render(<ProjectSidebar />);
+      renderSidebar(<ProjectSidebar />);
       const home = screen.getByRole('button', {
         name: `Station${badge ? ` ${badge}` : ''} v0.1.2 Build timestamp unavailable. home`,
       });
@@ -262,7 +283,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
     platformProfile.productName = 'Station Nightly';
     platformProfile.channel = 'nightly';
     branding.appName = 'Acme Station';
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     expect(
       screen.getByRole('button', { name: 'Acme Station home' }).textContent,
     ).toContain('Acme Station');
@@ -273,7 +294,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
     chats['session-a'] = { title: 'Fix login bug', agentSlug: 'a' };
     agents.push({ slug: 'a', name: 'Agent A' });
 
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     expect(screen.getByText('Open chats')).toBeTruthy();
     // The mini-inbox rows are lazy-loaded (archive#3314) — await their chunk.
     expect(await screen.findByText('Fix login bug')).toBeTruthy();
@@ -281,7 +302,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
 
   test('hides the "Open chats" heading when there are none', () => {
     resetState();
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     expect(screen.queryByText('Open chats')).toBeNull();
   });
 
@@ -291,7 +312,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
       title: 'Finish release notes',
       agentSlug: 'writer',
     };
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
 
     act(() => chatDraftsStore.set('session-draft', '  Remember migration  '));
     expect(screen.getByText('Drafts')).toBeTruthy();
@@ -328,7 +349,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
   test('rows render through the shared inbox row anatomy, and clicking focuses the chat', async () => {
     resetState();
     seedChats(1);
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
 
     const row = await screen.findByRole('button', {
       name: 'Chat 0, Station',
@@ -344,7 +365,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
   test('the section collapses through the shared disclosure anatomy and persists', async () => {
     resetState();
     seedChats(1);
-    const first = render(<ProjectSidebar />);
+    const first = renderSidebar(<ProjectSidebar />);
 
     const toggle = screen.getByRole('button', { name: 'Open chats' });
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
@@ -359,7 +380,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
 
     // Persisted device-side: a fresh mount stays collapsed.
     first.unmount();
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     expect(
       screen
         .getByRole('button', { name: 'Open chats' })
@@ -370,7 +391,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
   test('the section can be removed from the sidebar entirely', () => {
     resetState();
     seedChats(1);
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Remove Open chats from sidebar' }),
@@ -384,7 +405,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
   test('caps the list and offers "N more" that opens the dock inbox', async () => {
     resetState();
     seedChats(5);
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
 
     await screen.findByText('Chat 0');
     expect(screen.getByText('Chat 2')).toBeTruthy();
@@ -411,7 +432,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
   test('Drafts collapses and removes independently', () => {
     resetState();
     chats['session-draft'] = { title: 'Draft owner', agentSlug: 'a' };
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     act(() => chatDraftsStore.set('session-draft', 'draft text'));
 
     const toggle = screen.getByRole('button', { name: 'Drafts' });
@@ -431,7 +452,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
 describe('ProjectSidebar management navigation', () => {
   test('renders the Customize disclosure independently of deferred sidebar status', () => {
     resetState();
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
     expect(screen.getByRole('button', { name: 'Agents' })).toBeTruthy();
@@ -480,7 +501,7 @@ describe('ProjectSidebar live-work badge', () => {
       }),
     );
 
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     expect(
       screen.getByRole('button', { name: /station.*needs you: 1/i }),
     ).toBeTruthy();
@@ -502,7 +523,7 @@ describe('ProjectSidebar live-work badge', () => {
       }),
     );
 
-    const { container } = render(<ProjectSidebar />);
+    const { container } = renderSidebar(<ProjectSidebar />);
     // The number and the sentence come from the same lanes, so the badge can
     // never total something its own explanation does not account for.
     expect(
@@ -538,7 +559,7 @@ describe('ProjectSidebar live-work badge', () => {
       }),
     );
 
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     expect(screen.queryByText(/needs you: /i)).toBeNull();
     expect(
       screen.getByRole('button', { name: /station.*active now: 1/i }),
@@ -556,7 +577,7 @@ describe('ProjectSidebar live-work badge', () => {
       session({ threadId: 'broken', lifecycleState: 'failed' }),
     );
 
-    const { container } = render(<ProjectSidebar />);
+    const { container } = renderSidebar(<ProjectSidebar />);
     expect(container.querySelector('.sidebar__project-live-count')).toBeNull();
   });
 
@@ -575,7 +596,7 @@ describe('ProjectSidebar live-work badge', () => {
       }),
     );
 
-    const { container } = render(<ProjectSidebar />);
+    const { container } = renderSidebar(<ProjectSidebar />);
     const badges = container.querySelectorAll('.sidebar__project-live-count');
     expect(badges).toHaveLength(1);
     expect(
@@ -594,7 +615,7 @@ describe('ProjectSidebar live-work badge', () => {
       }),
     );
 
-    const { container } = render(<ProjectSidebar />);
+    const { container } = renderSidebar(<ProjectSidebar />);
     const count = container.querySelector('.sidebar__project-live-count');
     const label = container.querySelector('.sidebar__project-live-label');
     expect(count?.getAttribute('title')).toBe('Needs you: 1');
@@ -612,7 +633,7 @@ describe('ProjectSidebar live-work badge', () => {
       }),
     );
 
-    const { container } = render(<ProjectSidebar />);
+    const { container } = renderSidebar(<ProjectSidebar />);
     // Clicking the number is clicking the row: the badge stays decoration
     // inside the project button, and the project page it selects is where the
     // live sessions are now listed.
@@ -626,7 +647,7 @@ describe('ProjectSidebar live-work badge', () => {
 describe('ProjectSidebar New Project affordance (station#1300)', () => {
   test('renders a "+" icon button on the Projects header instead of a full-width row', () => {
     resetState();
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
 
     const trigger = screen.getByRole('button', { name: 'New Project' });
     expect(trigger).toBeTruthy();
@@ -636,7 +657,7 @@ describe('ProjectSidebar New Project affordance (station#1300)', () => {
 
   test('clicking it navigates to /projects/new, same as before', () => {
     resetState();
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
 
     fireEvent.click(screen.getByRole('button', { name: 'New Project' }));
     expect(navigate).toHaveBeenCalledWith('/projects/new');
@@ -656,7 +677,7 @@ describe('ProjectSidebar compact rail chat entry (#1348)', () => {
       openCollection: listener,
     });
 
-    render(<ProjectSidebar />);
+    renderSidebar(<ProjectSidebar />);
     fireEvent.click(screen.getByRole('button', { name: 'Open chats' }));
 
     expect(listener).toHaveBeenCalledOnce();
