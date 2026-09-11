@@ -280,6 +280,40 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     expect(chat?.orchestrationStatus).toBe('exited');
   });
 
+  test('session.exited commits buffered streaming text instead of dropping it', () => {
+    activeChatsStore.updateChat(threadId, {
+      orchestrationSessionStarted: true,
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-1',
+      status: 'sending',
+      streamingMessage: {
+        role: 'assistant',
+        content: 'TURN ONE OK.',
+        contentParts: [{ type: 'text', content: 'TURN ONE OK.' }],
+      },
+    });
+
+    handleSessionExitedEvent(
+      {
+        eventId: 'evt-1',
+        provider: 'claude',
+        threadId,
+        createdAt: '2026-07-23T00:00:00.000Z',
+        method: 'session.exited',
+        sessionId: 'session-1',
+      } as any,
+      activeChatsStore,
+    );
+
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    expect(chat?.streamingMessage).toBeUndefined();
+    expect(
+      chat?.messages?.some((message) =>
+        message.content.includes('TURN ONE OK.'),
+      ),
+    ).toBe(true);
+  });
+
   test('a terminal session.state-changed (e.g. errored) clears activityHint and backgroundTasks', () => {
     activeChatsStore.updateChat(threadId, {
       activityHint: { kind: 'compacting' },

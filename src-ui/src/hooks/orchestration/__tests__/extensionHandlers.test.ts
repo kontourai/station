@@ -65,6 +65,39 @@ describe('handleExtensionNotificationEvent', () => {
     });
   });
 
+  test('bound Grok host-chrome notifications do not create transcript rows', () => {
+    handleExtensionNotificationEvent({
+      eventId: 'evt-1',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-07-03T00:00:00.000Z',
+      method: 'extension.notification',
+      namespace: '_x.ai',
+      type: 'models/update',
+      payload: { currentModelId: 'grok-4' },
+    });
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    expect(chat?.ephemeralMessages ?? []).toEqual([]);
+    expect(chat?.messages ?? []).toEqual([]);
+  });
+
+  test('_x.ai/mcp/init_progress sets a requesting activity hint', () => {
+    handleExtensionNotificationEvent({
+      eventId: 'evt-1',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-07-03T00:00:00.000Z',
+      method: 'extension.notification',
+      namespace: '_x.ai',
+      type: 'mcp/init_progress',
+      payload: { total: 3, connected: 1, sessionId: 's' },
+    });
+    expect(activeChatsStore.getSnapshot()[threadId].activityHint).toEqual({
+      kind: 'requesting',
+      detail: 'MCP 1/3',
+    });
+  });
+
   test('_kiro.dev/compaction/status renders a plain-text status line', () => {
     handleExtensionNotificationEvent({
       eventId: 'evt-1',

@@ -229,7 +229,7 @@ describe('engine-shaped tapes through the live fold', () => {
     _resetReplayRegistry();
   });
 
-  test('a Claude-shaped turn that exits without turn.completed drops in-flight text', () => {
+  test('a Claude-shaped turn that exits without turn.completed keeps the buffered answer', () => {
     const replayId = registerReplayThread();
     seedReplayChat(replayId);
     const tape = tapeFromSessionEvents(
@@ -262,8 +262,8 @@ describe('engine-shaped tapes through the live fold', () => {
     player.seek(tape.events.length - 1);
     const observation = player.observe();
     expect(observation.streaming.present).toBe(false);
-    expect(observation.history.messageCount).toBe(0);
-    expect(observation.issues.map((issue) => issue.code)).toContain(
+    expect(observation.history.messageCount).toBeGreaterThan(0);
+    expect(observation.issues.map((issue) => issue.code)).not.toContain(
       'in-flight-content-dropped-on-session-exit',
     );
   });
@@ -296,7 +296,7 @@ describe('engine-shaped tapes through the live fold', () => {
     expect(observation.issues).toEqual([]);
   });
 
-  test('unbound ACP Grok extension notifications are flagged', () => {
+  test('observed Grok ACP chrome is bound and not flagged as unbound', () => {
     const issues = detectReplayIssues(
       {
         input: '',
@@ -310,6 +310,28 @@ describe('engine-shaped tapes through the live fold', () => {
         provider: 'acp',
         namespace: '_x.ai',
         type: 'models/update',
+      }),
+      SOURCE,
+    );
+    expect(issues.map((issue) => issue.code)).not.toContain(
+      'unbound-extension-notification',
+    );
+  });
+
+  test('unknown extension tuples stay flagged as unbound', () => {
+    const issues = detectReplayIssues(
+      {
+        input: '',
+        attachments: [],
+        queuedMessages: [],
+        inputHistory: [],
+        hasUnread: false,
+        orchestrationSessionStarted: true,
+      },
+      event('extension.notification', {
+        provider: 'acp',
+        namespace: '_x.ai',
+        type: 'never/seen',
       }),
       SOURCE,
     );
@@ -341,7 +363,7 @@ describe('engine-shaped tapes through the live fold', () => {
     );
   });
 
-  test('canonical methods the dock does not fold are flagged', () => {
+  test('canonical methods the dock now folds are not flagged as unhandled', () => {
     const issues = detectReplayIssues(
       {
         input: '',
@@ -358,7 +380,7 @@ describe('engine-shaped tapes through the live fold', () => {
       }),
       SOURCE,
     );
-    expect(issues.map((issue) => issue.code)).toContain(
+    expect(issues.map((issue) => issue.code)).not.toContain(
       'unhandled-canonical-method',
     );
   });

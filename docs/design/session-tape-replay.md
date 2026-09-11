@@ -41,6 +41,14 @@ JSON region. While a replay is active, `window.__stationReplay` exposes
 Headless station-control tools that drive those operations over `/api/ui`
 are a follow-up on this schema.
 
+## Canonical fold
+
+`handleOrchestrationEvent` is exhaustive over `CanonicalRuntimeEvent`.
+Vendor-specific extras stay on `extension.notification` (ADR 0008): exact
+`(namespace, type)` bindings, unknown tuples remain no-ops. Observed Grok
+ACP / extra Kiro tuples that are host chrome are bound to `acp.host-chrome`
+so they are folded without becoming transcript rows.
+
 ## Follow-ups
 
 - Tape-backed `useSessionEventWindow` transport so **Load earlier events**

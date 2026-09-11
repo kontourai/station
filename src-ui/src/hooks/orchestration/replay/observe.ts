@@ -26,6 +26,12 @@ export const UI_FOLDED_ORCHESTRATION_METHODS = [
   'plan.updated',
   'extension.notification',
   'token-usage.updated',
+  'session.stop-settled',
+  'policy.hooks-attached',
+  'policy.stop-verdict',
+  'platform.mutation',
+  'workflow.state-changed',
+  'conversation.forked',
 ] as const;
 
 export type ReplayIssueCode =

@@ -247,4 +247,32 @@ export function handleExtensionNotificationEvent(
     });
     return;
   }
+
+  if (binding.consumer === 'acp.host-chrome') return;
+
+  if (binding.consumer === 'ui.engine.mcp-status') {
+    const total = readPayloadNumber(event.payload, 'total');
+    const connected = readPayloadNumber(event.payload, 'connected');
+    const current = activeChatsStore.getChatForExecutionSession(
+      event.threadId,
+    )?.activityHint;
+    if (
+      event.type === 'mcp/init_progress' &&
+      total !== undefined &&
+      connected !== undefined &&
+      connected < total
+    ) {
+      const hint: ChatActivityHint = {
+        kind: 'requesting',
+        detail: `MCP ${connected}/${total}`,
+      };
+      if (!activityHintsEqual(current, hint)) {
+        activeChatsStore.updateChat(event.threadId, { activityHint: hint });
+      }
+      return;
+    }
+    if (current?.kind === 'requesting') {
+      activeChatsStore.updateChat(event.threadId, { activityHint: undefined });
+    }
+  }
 }
