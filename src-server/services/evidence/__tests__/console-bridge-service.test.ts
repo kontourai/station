@@ -37,17 +37,20 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 const require = createRequire(import.meta.url);
-const { createConsoleHubServer } =
-  require('@kontourai/console/console-server/dist/src/console-foundation/console-hub-server.js') as {
-    createConsoleHubServer: (options?: Record<string, unknown>) => {
-      server: import('node:http').Server;
-      listen(
-        options?: { host?: string; port?: number },
-        callback?: () => void,
-      ): import('node:http').Server;
-      close(callback?: (error?: Error) => void): import('node:http').Server;
-    };
+// Root export (see console-bridge.test.ts): the 2.8.0 exports map refuses
+// the deep dist path this suite used to require. `createConsoleHubServer`
+// is re-exported from the same console-foundation index the root maps to,
+// so the REAL shipped hub constructor stays the test's oracle.
+const { createConsoleHubServer } = require('@kontourai/console') as {
+  createConsoleHubServer: (options?: Record<string, unknown>) => {
+    server: import('node:http').Server;
+    listen(
+      options?: { host?: string; port?: number },
+      callback?: () => void,
+    ): import('node:http').Server;
+    close(callback?: (error?: Error) => void): import('node:http').Server;
   };
+};
 
 const THREAD = 'thread-bridge-1';
 

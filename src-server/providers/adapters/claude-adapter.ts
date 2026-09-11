@@ -64,6 +64,7 @@ import type {
   ProviderSession,
   ProviderSessionAdoptInput,
   ProviderSessionStartInput,
+  ProviderTaskStopResult,
   ProviderTurnStartResult,
 } from '../adapter-shape.js';
 import { ProviderTurnEndedError } from '../adapter-shape.js';
@@ -528,6 +529,12 @@ type ClaudeSessionRecord = {
   interruptingTurnId?: string;
   /** Mirrors `ClaudeMessageState.interruptedResultObserved`. */
   interruptedResultObserved?: boolean;
+  /**
+   * Mirrors `ClaudeMessageState.activeTasks`; same object at runtime. Only
+   * membership is read here (`stopProviderTask`), so the value stays opaque
+   * rather than importing the events module's own task shape.
+   */
+  activeTasks?: Map<string, unknown>;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
   /** Tracks the live SDK permission mode so sendTurn only calls
@@ -1404,6 +1411,26 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     };
   }
 
+  /**
+   * station#1877: stop ONE subagent, leaving the turn and its siblings
+   * running. `Query.stopTask` makes the engine emit a `task_notification`
+   * with status `stopped`, so the settle travels the ordinary path and no
+   * terminal is synthesised here.
+   */
+  async stopProviderTask(
+    threadId: string,
+    taskId: string,
+  ): Promise<ProviderTaskStopResult> {
+    const record = this.requireSession(threadId);
+    // A subagent can settle between a client rendering its stop control and
+    // this request landing. That race is a normal outcome, not an error.
+    if (!record.activeTasks?.has(taskId)) {
+      return { outcome: 'no-active-task', taskId };
+    }
+    await record.query.stopTask(taskId);
+    return { outcome: 'stopped', taskId };
+  }
+
   async interruptTurn(threadId: string, turnId?: string) {
     const record = this.requireSession(threadId);
     if (!record.activeTurnId) return { outcome: 'no-active-turn' } as const;
@@ -1950,6 +1977,26 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       resume:
         typeof input.resumeCursor === 'string' ? input.resumeCursor : undefined,
       includePartialMessages: true,
+      // station#1877 follow-up: ask the SDK to summarise what a subagent is
+      // doing, so `task_progress.summary` carries a live status line instead
+      // of nothing. Without it a five-minute background agent reports its
+      // description and then goes silent until it settles. The SDK's own
+      // docs put the cost at "typically minimal" — the summary fork reuses
+      // the session's model and prompt cache.
+      agentProgressSummaries: true,
+      /**
+       * station#1877: declares that Station renders a per-task stop control
+       * wired to `stop_task` — which `stopProviderTask` below is.
+       *
+       * This option is FAIL-CLOSED and must never be set without that
+       * control: absent, an interrupt kills every running background task;
+       * declared, an interrupt spares them and the per-task control becomes
+       * the only way to stop one. Setting it with no control would leave a
+       * runaway subagent unstoppable. It is also first-attached-client-wins
+       * on a multi-client session, so the first initialize decides the
+       * semantics for every later one.
+       */
+      perTaskStopAffordance: true,
       persistSession,
       // archive#1174: a cwd-less session materializes its skills into a
       // Station-owned overlay directory (see claude-skills-overlay.ts)

@@ -2156,6 +2156,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/orchestration/sessions/:threadId/event-window',
     },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/events' },
+    // station#1877: stops ONE provider-reported subagent inside a session the
+    // caller already reaches through this family. It mutates, but no more
+    // sensitively than `delegations/:taskId/interrupt` directly above, which
+    // is the same shape — a task-scoped stop — and inherits here too. It
+    // returns only `{outcome, taskId}` for a task on THIS Station: no other
+    // environment's data, no other Station's, and nothing about a task the
+    // caller could not already observe through this family's session reads.
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
+    },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/flow-run' },
     // archive#2802: a thread's recorded turn-checkpoint outcomes. Deliberate
     // family inheritance, considered: the records do carry the bound

@@ -1112,8 +1112,24 @@ export function renderChangedVerificationSummary(result) {
   const emptyRelated = result.emptyRelatedSelection
     ? boundedNames(result.emptyRelatedSelection.relatedPaths ?? [])
     : undefined;
+  // station#1911: how many suites were SELECTED is not how many RAN. When a
+  // lane escalates, `executionSelection` drops every test above the 32-entry
+  // cap, so the largest changes execute the fewest suites — and the summary
+  // used to report only the selected figure, which reads like coverage that
+  // did not happen. #1836 selected 153 and ran none while this line said
+  // "153 focused target(s)". State the executed count beside it so a silent
+  // truncation is legible in the log rather than only in the artifact.
+  const executedCount = Array.isArray(result.executed)
+    ? result.executed.length
+    : undefined;
+  const executedNote =
+    executedCount === undefined
+      ? ''
+      : executedCount === 0 && focusedCount(result.selection) > 0
+        ? `, 0 executed (selection deferred to a lane; none of the ${focusedCount(result.selection)} selected suites ran)`
+        : `, ${executedCount} executed`;
   return [
-    `[test:changed] ${result.paths?.length ?? 0} changed path(s); ${focusedCount(result.selection)} focused target(s), ${result.selection.lanes.length} deferred lane(s) (${mode}).`,
+    `[test:changed] ${result.paths?.length ?? 0} changed path(s); ${focusedCount(result.selection)} focused target(s)${executedNote}, ${result.selection.lanes.length} deferred lane(s) (${mode}).`,
     `[test:changed] focused: ${focused.rendered}`,
     ...(emptyRelated
       ? [

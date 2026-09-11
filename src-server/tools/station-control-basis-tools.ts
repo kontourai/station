@@ -35,7 +35,16 @@ export {
   STATION_BASIS_MCP_TOOL_NAME,
 };
 
-const MAX_RESOURCE_BYTES = 500 * 1024;
+// Re-grounded 2026-09-11 (Nightly 34573339929): the Task Basis resource
+// measured 572,702 bytes against the previous 512,000 ceiling (Basis panel
+// resource rides the same generated bundle), grown by legitimate feature
+// work riding the window (#1562 honest basis/diff panes, the
+// @kontourai/surface 3.2.0 bump in #1741). The throw happens while tools
+// REGISTER, so exceeding it 500s every station-control initialize — the
+// whole control surface, not one oversized resource. 640 KiB carries ~12%
+// headroom over the measured size; the tracked gzip budgets in
+// package-boundary.test.ts are where tightening happens.
+const MAX_RESOURCE_BYTES = 640 * 1024;
 const MAX_RESULT_BYTES = 128 * 1024;
 const identifier = z.string().refine(isStationBasisId, {
   message: 'Basis identity must be bounded, well-formed UTF-8',
@@ -111,7 +120,9 @@ export function registerBasisTools(registry: StationControlToolRegistry) {
     uri: STATION_BASIS_MCP_RESOURCE_URI,
   });
   if (Buffer.byteLength(resource.resource.text, 'utf8') > MAX_RESOURCE_BYTES)
-    throw new Error('Station Basis MCP App resource exceeds 500 KiB');
+    throw new Error(
+      'Station Basis MCP App resource exceeds the 640 KiB resource budget',
+    );
   registry.resource(
     'station-basis-v1',
     STATION_BASIS_MCP_RESOURCE_URI,
@@ -159,7 +170,9 @@ export function registerBasisTools(registry: StationControlToolRegistry) {
   );
   taskResource ??= buildStationTaskBasisMcpAppResource();
   if (Buffer.byteLength(taskResource.text, 'utf8') > MAX_RESOURCE_BYTES)
-    throw new Error('Station Task Basis MCP App resource exceeds 500 KiB');
+    throw new Error(
+      'Station Task Basis MCP App resource exceeds the 640 KiB resource budget',
+    );
   registry.resource(
     'station-task-basis-v3',
     STATION_TASK_BASIS_MCP_RESOURCE_URI,

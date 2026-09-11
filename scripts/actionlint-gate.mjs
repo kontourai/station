@@ -234,12 +234,39 @@ const NIGHTLY_JOB_ENV = Object.freeze({
  * Import this rather than writing the SHA down again. */
 export const REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA =
   '563effe7ec559c6f4fcc6c80b3532acb71d86373';
-const REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA =
+/** The reviewed revision of the org's reusable capacity workflow.
+ *
+ * Exported so fixtures stop restating it. Until #1337's pin bump these tests
+ * spelled the value as a raw literal that happened to equal the secret-scan
+ * pin, and the two were indistinguishable in the fixture text: replacing what
+ * looked like a secret-scan string broke four capacity assertions. Different
+ * files, different reviews, and now different values. */
+export const REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA =
   '02f40a67901a79ce4004c44d91e350b93782644c';
-const REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA =
-  '02f40a67901a79ce4004c44d91e350b93782644c';
+/** A reusable-workflow reference pinned at the reviewed capacity revision.
+ * Exported for the fixtures above; the path is incidental, the pin is not. */
+export const REVIEWED_CAPACITY_REUSABLE_WORKFLOW_REF = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA}`;
+/** The reviewed revision of the org's secret-scan reusable workflow.
+ *
+ * Exported for the reason stated above `REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA`:
+ * this value was restated in two test files, so the gate and the suite
+ * asserting it could disagree while both stayed green.
+ *
+ * Bumped to 28deabbf2 to pick up kontourai/.github#43, which adds
+ * `--retry-all-errors` to the gitleaks download. A single TLS reset from the
+ * release-asset CDN was failing the job before the fixture ran, turning a
+ * caller's `main` red from a network blip with nothing to attribute it to
+ * (#1337). `--retry` alone does not cover curl exit 35.
+ *
+ * Note this is deliberately NOT the same value as
+ * `REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA` any more. They pin different files
+ * in the same repository and shared a commit only because that was its HEAD
+ * when both were last reviewed; the capacity workflow is unchanged by #43 and
+ * stays at its own reviewed revision. */
+export const REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA =
+  '28deabbf24f0ab55911d311df5372d30bea0dba4';
 const SECRET_SCAN_WORKFLOW = '.github/workflows/secret-scan.yml';
-const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA}`;
+export const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA}`;
 /**
  * `owner-lifetime-seconds` is part of the host manifest, so it is one shared
  * physical-host setting rather than a per-job tuning knob. The pinned action
@@ -349,7 +376,7 @@ export const DEPENDENCY_REVIEW_ACTION =
  * written down is not. Landing a bump is now one deliberate edit here.
  */
 export const PNPM_SETUP_ACTION =
-  'pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c';
+  'pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b';
 const DEPENDENCY_REVIEW_CANDIDATE_GUARD = `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`;
 const DEPENDENCY_REVIEW_PR_GUARD = `\${{ github.event_name == 'pull_request_target' }}`;
 const DEPENDENCY_REVIEW_MERGE_GROUP_GUARD = `\${{ github.event_name == 'merge_group' }}`;

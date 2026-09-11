@@ -226,8 +226,10 @@ export {
   type SessionFlowRunView,
   type SessionSummary,
   STOP_REQUEST_BUDGET_MS,
+  type StopProviderTaskInput,
   sendOrchestrationTurn,
   steerOrchestrationTurn,
+  stopOrchestrationProviderTask,
   streamConversationTurn,
   subscribePushNotifications,
   type TerminalProcessDetail,
@@ -266,6 +268,7 @@ export {
   useSessionFlowRunQuery,
   useSessionSummaryQuery,
   useShowSessionSummaryMutation,
+  useStopProviderTaskMutation,
   useTerminalProcessesQuery,
   useTerminalProcessQuery,
 } from './query-domains/chatRuntime';

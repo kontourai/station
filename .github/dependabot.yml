@@ -32,11 +32,29 @@ updates:
         patterns:
           - "@aws-sdk/*"
           - "@smithy/*"
+      # Catch-all for everything not claimed by a named group above: the
+      # singletons (zod, ai, commander, @napi-rs/*, @kontourai/*, ...) each
+      # opened their own PR, and every one consumed a merge-queue slot while
+      # fighting the same pnpm-lock.yaml — each merge dequeued the rest as
+      # DIRTY. One grouped PR per week costs one slot instead of ten.
+      # Majors stay excluded per the policy above.
+      runtime-and-ui-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
   - package-ecosystem: cargo
     directory: /src-desktop
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      # Desktop crates move together and touch the same Cargo.lock; one PR
+      # per crate serialized the queue the same way the npm singletons did.
+      # Majors stay separate (see the jni ignore below — that lesson).
+      desktop-crates:
+        update-types:
+          - "minor"
+          - "patch"
     ignore:
       # jni 0.22 is a breaking API redesign, not a version bump: `from_raw` no
       # longer returns a Result and `attach_current_thread` became a scoped
@@ -53,3 +71,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      # Action bumps are SHA re-pins verified by the same contract tests; one
+      # grouped PR replaces a queue slot per action (pnpm/setup alone needed
+      # a companion pin edit — batching puts those edits in one review).
+      github-actions-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"

@@ -4328,12 +4328,17 @@ setInterval(() => {
 
       const first = coordinatorChild(temp.root, firstWorktree, 'one');
       const second = coordinatorChild(temp.root, secondWorktree, 'two');
-      await waitFor(() =>
-        verificationStatus({ root: temp.root, capacity: 40 }).jobs.some(
-          (job) => job.state === 'queued',
-        ),
-      );
-      const snapshot = verificationStatus({ root: temp.root, capacity: 40 });
+      // Assert the observation that SATISFIED the wait, not a fresh one taken
+      // after it. Reading status twice opens a time-of-check/time-of-use window:
+      // `waitFor` sees a queued job, the scheduler admits it, and the second
+      // read reports `waiting: 0`. That lost deterministically on the hosted
+      // Linux runner while passing here, which reads as an unrelated flake on
+      // whichever pull request happens to route this suite (#1074).
+      let snapshot = verificationStatus({ root: temp.root, capacity: 40 });
+      await waitFor(() => {
+        snapshot = verificationStatus({ root: temp.root, capacity: 40 });
+        return snapshot.jobs.some((job) => job.state === 'queued');
+      });
       expect(snapshot.waiting).toBeGreaterThan(0);
       expect(snapshot.usedWeight).toBeLessThanOrEqual(40);
       const [one, two] = await Promise.all([collect(first), collect(second)]);
@@ -5570,14 +5575,19 @@ describe('verification coordinator host-pressure admission', () => {
         signal: controller.signal,
         runner: async () => ({ status: 0 }),
       });
-      await waitFor(() =>
-        verificationStatus({ root: temp.root }).jobs.some(
-          (job) => job.queueReason === 'host_pressure',
-        ),
-      );
-      const queued = verificationStatus({ root: temp.root }).jobs.find(
-        (job) => job.state === 'queued',
-      );
+      // Wait for the job this asserts on, then assert that same observation.
+      // Waiting on one read and asserting a second lets admission land in the
+      // gap, leaving `queued` undefined and the assertion reading
+      // "expected undefined to be 10000" rather than naming the race.
+      let queued:
+        | ReturnType<typeof verificationStatus>['jobs'][number]
+        | undefined;
+      await waitFor(() => {
+        queued = verificationStatus({ root: temp.root }).jobs.find(
+          (job) => job.state === 'queued',
+        );
+        return queued?.queueReason === 'host_pressure';
+      });
       // The bound was set at the start (10_000), before the first sample — not
       // slid to a later sample time by the initial healthy-then-unavailable
       // alternation.
@@ -5712,10 +5722,19 @@ describe('verification coordinator host-pressure admission', () => {
             return { status: 0 };
           },
         });
-        await waitFor(() => samples >= 3);
-        const queued = verificationStatus({ root: temp.root }).jobs.find(
-          (job) => job.state === 'queued' && job.key !== earlierKey,
-        );
+        // `samples >= 3` says nothing about the job this then asserts on, so
+        // require both before reading: the sample count AND the queued entry
+        // actually existing. Otherwise a slow enqueue leaves `queued`
+        // undefined and two assertions fail on absence rather than on value.
+        let queued:
+          | ReturnType<typeof verificationStatus>['jobs'][number]
+          | undefined;
+        await waitFor(() => {
+          queued = verificationStatus({ root: temp.root }).jobs.find(
+            (job) => job.state === 'queued' && job.key !== earlierKey,
+          );
+          return samples >= 3 && queued !== undefined;
+        });
         expect(queued?.queueReason).toBe('host_pressure_fifo');
         expect(queued?.blockingRequestKey).toBe(earlierKey);
         rmSync(earlier, { recursive: true, force: true });
