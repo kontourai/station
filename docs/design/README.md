@@ -74,6 +74,7 @@ category.
 - [private-cloud-environment.md](private-cloud-environment.md) — Private cloud Station environment
 - [project-task-room-history.md](project-task-room-history.md) — Project/Task room history
 - [revision-bound-evidence.md](revision-bound-evidence.md) — Design: revision-bound evidence
+- [session-tape-replay.md](session-tape-replay.md) — Session tape replay
 - [settings-architecture.md](settings-architecture.md) — Settings Architecture: scope-first settings for Station
 - [shared-working-state.md](shared-working-state.md) — Shared working-state protocol
 - [shell-skeletons.md](shell-skeletons.md) — Design: Shell skeletons (#193 shell convergence)

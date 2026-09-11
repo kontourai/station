@@ -58,6 +58,7 @@ import { ChatEmptyState } from '../chat/ChatEmptyState';
 import { ChatInputArea } from '../chat/ChatInputArea';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
+import { ReplayTransport } from '../chat/ReplayTransport';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
 import { ConversationStats } from '../conversation-stats/ConversationStats';
 import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
@@ -1249,106 +1250,111 @@ export function ChatDockBody({
             .
           </div>
         )}
-      <ChatInputArea
-        sessionId={activeSession.id}
-        input={chatInput.input}
-        attachments={chatInput.attachments}
-        textareaRef={chatInput.textareaRef}
-        disabled={!agent || readOnlyOpen || resolvingOpen || busyOpen}
-        isSending={isExecutionActive}
-        turnInFlight={isTurnInFlight(activeSession)}
-        stopPending={!!activeSession.stopPending}
-        modelSupportsAttachments={modelSupportsAttachments}
-        fileAttachmentsSupported={fileAttachmentsSupported}
-        modelProviderLabel={modelProviderLabel}
-        modelProviders={modelProviders}
-        currentProviderId={activeSession.providerId}
-        fontSize={chatFontSize}
-        dockHeight={dockHeight}
-        currentModel={chatInput.currentModel}
-        currentModelSource={
-          activeSession.requestedModel === null
-            ? (activeSession.defaultModelSource ?? 'agent default')
-            : (activeSession.requestedModelSource ?? activeSession.modelSource)
-        }
-        canModelSelect={chatInput.canModelSelect}
-        modelSelectionReason={chatInput.modelSelectionReason}
-        modelsStale={chatInput.modelsStale}
-        modelsLoading={modelsLoading}
-        agentDefaultModel={agentDefaultModelId}
-        defaultModelSource={activeSession.defaultModelSource}
-        availableModels={availableModels}
-        modelQuery={chatInput.modelQuery}
-        agentConnectionId={activeSession.agentConnectionId}
-        modelRuntimeOptions={
-          activeSession.requestedProviderOptions ??
-          activeSession.providerOptions
-        }
-        secondaryActions={
-          readOnlyOpen || resolvingOpen || busyOpen
-            ? undefined
-            : secondaryActions
-        }
-        agentLabel={
-          agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
-        }
-        onOpenAgentHandoff={
-          onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff
-        }
-        agentHandoffTriggerRef={agentHandoffTriggerRef}
-        agentHandoffDisabled={secondaryActions?.handoffDisabled}
-        agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
-        executionMode={activeSession.executionMode}
-        approvalModeConnectionDefault={connectionApprovalModeDefault}
-        toolPolicyDelivery={toolPolicyDelivery}
-        lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
-        commandQuery={chatInput.commandQuery}
-        slashCommands={chatInput.slashCommands}
-        onInputChange={chatInput.handleInputChange}
-        onSend={handleSendWithContext}
-        onCancel={chatInput.handleCancel}
-        onClearInput={chatInput.handleClearInput}
-        selectAttachmentFiles={chatInput.selectAttachmentFiles}
-        attachmentError={chatInput.attachmentError}
-        attachmentStages={chatInput.attachmentStages}
-        sendBlockedReason={
-          readOnlyOpen
-            ? 'This conversation is available read-only. Retry resolution or start a new chat.'
-            : resolvingOpen || busyOpen
-              ? // The banner above already says this; repeating the SENTENCE
-                // under the composer is what made one ordinary reload read as
-                // three separate problems. `undefined` leaves the composer
-                // quietly disabled.
-                undefined
-              : chatInput.sendBlockedReason
-        }
-        onRetryAttachmentStage={chatInput.retryAttachmentStage}
-        onCancelAttachmentStage={chatInput.cancelAttachmentStage}
-        onReplaceAttachmentFile={chatInput.replaceAttachmentFile}
-        onRemoveAttachment={chatInput.handleRemoveAttachment}
-        onClearAttachments={chatInput.handleClearAttachments}
-        onModelSelect={chatInput.handleModelSelect}
-        onModelReset={chatInput.handleModelReset}
-        onModelClose={chatInput.handleModelClose}
-        onModelOpen={chatInput.handleModelOpen}
-        onModelRuntimeOptionChange={chatInput.handleModelRuntimeOptionChange}
-        onApprovalModeChange={chatInput.handleApprovalModeChange}
-        onCommandSelect={chatInput.handleCommandSelect}
-        onCommandClose={chatInput.handleCommandClose}
-        onHistoryUp={chatInput.handleHistoryUp}
-        onHistoryDown={chatInput.handleHistoryDown}
-        onRestorePortableDraft={chatInput.handleRestorePortableDraft}
-        updateFromInput={chatInput.updateFromInput}
-        closeAll={chatInput.closeAll}
-        voiceState={stt.state}
-        voiceSupported={stt.supported}
-        voiceUnsupportedReason={stt.unsupportedReason}
-        voiceError={stt.errorMessage}
-        onVoiceStart={() => stt.startListening()}
-        onVoiceStop={() => stt.stopListening()}
-        workspaceRefused={workspaceRefused}
-        onStartNewChat={onNewChat}
-      />
+      {activeSession.replay ? (
+        <ReplayTransport sessionId={activeSession.id} />
+      ) : (
+        <ChatInputArea
+          sessionId={activeSession.id}
+          input={chatInput.input}
+          attachments={chatInput.attachments}
+          textareaRef={chatInput.textareaRef}
+          disabled={!agent || readOnlyOpen || resolvingOpen || busyOpen}
+          isSending={isExecutionActive}
+          turnInFlight={isTurnInFlight(activeSession)}
+          stopPending={!!activeSession.stopPending}
+          modelSupportsAttachments={modelSupportsAttachments}
+          fileAttachmentsSupported={fileAttachmentsSupported}
+          modelProviderLabel={modelProviderLabel}
+          modelProviders={modelProviders}
+          currentProviderId={activeSession.providerId}
+          fontSize={chatFontSize}
+          dockHeight={dockHeight}
+          currentModel={chatInput.currentModel}
+          currentModelSource={
+            activeSession.requestedModel === null
+              ? (activeSession.defaultModelSource ?? 'agent default')
+              : (activeSession.requestedModelSource ??
+                activeSession.modelSource)
+          }
+          canModelSelect={chatInput.canModelSelect}
+          modelSelectionReason={chatInput.modelSelectionReason}
+          modelsStale={chatInput.modelsStale}
+          modelsLoading={modelsLoading}
+          agentDefaultModel={agentDefaultModelId}
+          defaultModelSource={activeSession.defaultModelSource}
+          availableModels={availableModels}
+          modelQuery={chatInput.modelQuery}
+          agentConnectionId={activeSession.agentConnectionId}
+          modelRuntimeOptions={
+            activeSession.requestedProviderOptions ??
+            activeSession.providerOptions
+          }
+          secondaryActions={
+            readOnlyOpen || resolvingOpen || busyOpen
+              ? undefined
+              : secondaryActions
+          }
+          agentLabel={
+            agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
+          }
+          onOpenAgentHandoff={
+            onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff
+          }
+          agentHandoffTriggerRef={agentHandoffTriggerRef}
+          agentHandoffDisabled={secondaryActions?.handoffDisabled}
+          agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
+          executionMode={activeSession.executionMode}
+          approvalModeConnectionDefault={connectionApprovalModeDefault}
+          toolPolicyDelivery={toolPolicyDelivery}
+          lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
+          commandQuery={chatInput.commandQuery}
+          slashCommands={chatInput.slashCommands}
+          onInputChange={chatInput.handleInputChange}
+          onSend={handleSendWithContext}
+          onCancel={chatInput.handleCancel}
+          onClearInput={chatInput.handleClearInput}
+          selectAttachmentFiles={chatInput.selectAttachmentFiles}
+          attachmentError={chatInput.attachmentError}
+          attachmentStages={chatInput.attachmentStages}
+          sendBlockedReason={
+            readOnlyOpen
+              ? 'This conversation is available read-only. Retry resolution or start a new chat.'
+              : resolvingOpen || busyOpen
+                ? // The banner above already says this; repeating the SENTENCE
+                  // under the composer is what made one ordinary reload read as
+                  // three separate problems. `undefined` leaves the composer
+                  // quietly disabled.
+                  undefined
+                : chatInput.sendBlockedReason
+          }
+          onRetryAttachmentStage={chatInput.retryAttachmentStage}
+          onCancelAttachmentStage={chatInput.cancelAttachmentStage}
+          onReplaceAttachmentFile={chatInput.replaceAttachmentFile}
+          onRemoveAttachment={chatInput.handleRemoveAttachment}
+          onClearAttachments={chatInput.handleClearAttachments}
+          onModelSelect={chatInput.handleModelSelect}
+          onModelReset={chatInput.handleModelReset}
+          onModelClose={chatInput.handleModelClose}
+          onModelOpen={chatInput.handleModelOpen}
+          onModelRuntimeOptionChange={chatInput.handleModelRuntimeOptionChange}
+          onApprovalModeChange={chatInput.handleApprovalModeChange}
+          onCommandSelect={chatInput.handleCommandSelect}
+          onCommandClose={chatInput.handleCommandClose}
+          onHistoryUp={chatInput.handleHistoryUp}
+          onHistoryDown={chatInput.handleHistoryDown}
+          onRestorePortableDraft={chatInput.handleRestorePortableDraft}
+          updateFromInput={chatInput.updateFromInput}
+          closeAll={chatInput.closeAll}
+          voiceState={stt.state}
+          voiceSupported={stt.supported}
+          voiceUnsupportedReason={stt.unsupportedReason}
+          voiceError={stt.errorMessage}
+          onVoiceStart={() => stt.startListening()}
+          onVoiceStop={() => stt.stopListening()}
+          workspaceRefused={workspaceRefused}
+          onStartNewChat={onNewChat}
+        />
+      )}
     </>
   );
 }

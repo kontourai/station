@@ -25,6 +25,7 @@ import {
 import { finalizeAssistantTurn } from './assistantTurn';
 import { createAssistantStreamingMessage } from './messageParts';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
+import { isReplayThread } from './replay/replay-registry';
 import type { OrchestrationEvent } from './types';
 
 function repeatedErrorText(message: string, count: number) {
@@ -90,21 +91,23 @@ export function handleTurnStartedEvent(
     currentChat?.agentSlug &&
     currentChat.executionMode !== 'station'
   ) {
-    void import('../lastChosenModel')
-      .then(
-        ({
-          buildLastChosenModelBindingKeyFromIdentity,
-          trackLastChosenModel,
-        }) =>
-          trackLastChosenModel(
-            buildLastChosenModelBindingKeyFromIdentity(
-              currentChat.agentSlug as string,
-              currentChat.providerId ?? currentChat.agentConnectionId,
+    if (!isReplayThread(event.threadId)) {
+      void import('../lastChosenModel')
+        .then(
+          ({
+            buildLastChosenModelBindingKeyFromIdentity,
+            trackLastChosenModel,
+          }) =>
+            trackLastChosenModel(
+              buildLastChosenModelBindingKeyFromIdentity(
+                currentChat.agentSlug as string,
+                currentChat.providerId ?? currentChat.agentConnectionId,
+              ),
+              effectiveModel,
             ),
-            effectiveModel,
-          ),
-      )
-      .catch(() => undefined);
+        )
+        .catch(() => undefined);
+    }
   }
   store.updateChat(event.threadId, {
     // The dispatch this turn came from has started; the pre-start cancel
@@ -222,7 +225,9 @@ export function handleTurnCompletedEvent(
     activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
     event.threadId;
   reconcileDurableTurn(chatKey, event.turnId);
-  drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
+  if (!isReplayThread(event.threadId)) {
+    drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
+  }
 }
 
 export function handleTurnAbortedEvent(
@@ -446,7 +451,9 @@ export function handleRuntimeErrorEvent(
 export function handleRuntimeWarningEvent(
   event: Extract<OrchestrationEvent, { method: 'runtime.warning' }>,
 ) {
-  toastStore.show(event.message, event.threadId, 5000);
+  if (!isReplayThread(event.threadId)) {
+    toastStore.show(event.message, event.threadId, 5000);
+  }
 
   // archive#727 item 1b (CRITICAL): a mid-session escalation to 'never'
   // that the adapter rejected (no allowDangerouslySkipPermissions granted

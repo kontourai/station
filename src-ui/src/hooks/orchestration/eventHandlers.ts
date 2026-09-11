@@ -12,6 +12,7 @@ import {
 } from './flowHandlers';
 import { handlePlanUpdatedEvent } from './planHandlers';
 import { drainQueuedMessageOnTurnCompleted } from './queueDrain';
+import { isReplayThread } from './replay/replay-registry';
 import {
   handleSessionExitedEvent,
   handleSessionLifecycleEvent,
@@ -53,7 +54,9 @@ export function handleOrchestrationEvent(
   // immediately for the high-frequency content.*-delta cases and returns the
   // identical state reference (no store notify) for every other no-op, so
   // this costs nothing for chats that never touch background tasks.
-  backgroundTasksStore.ingest(event);
+  if (!isReplayThread(event.threadId)) {
+    backgroundTasksStore.ingest(event);
+  }
 
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
@@ -116,7 +119,10 @@ export function handleOrchestrationEvent(
       // may resolve this turn without a new `turn.started`, so draining now
       // would fire a queued message while the "failed" turn is actually
       // still silently retrying.
-      if (!isDeferredRetriableTurnError(event)) {
+      if (
+        !isDeferredRetriableTurnError(event) &&
+        !isReplayThread(event.threadId)
+      ) {
         drainQueuedMessageOnTurnCompleted(
           apiBase,
           activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
