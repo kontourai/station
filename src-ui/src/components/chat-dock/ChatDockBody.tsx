@@ -24,6 +24,7 @@ import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { drainQueuedMessageOnTurnCompleted } from '../../hooks/orchestration/queueDrain';
 import { useActiveChatTranscript } from '../../hooks/orchestration/useActiveChatTranscript';
+import { useACPConnections } from '../../hooks/useACPConnections';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
 import { useShareReceiver } from '../../hooks/useShareReceiver';
 import type { SlashCommand } from '../../hooks/useSlashCommands';
@@ -31,6 +32,7 @@ import { useSTT } from '../../hooks/useSTT';
 import { useTTS } from '../../hooks/useTTS';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
+import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
 import type { ApprovalMode } from '../../utils/approvalMode';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import {
@@ -199,6 +201,7 @@ interface ChatDockBodyProps {
       value: string | number | boolean | undefined,
     ) => void;
     handleApprovalModeChange: (mode: ApprovalMode) => void;
+    handleAcpSessionModeChange?: (modeId: string) => void;
     handleCommandSelect: (command: SlashCommand) => Promise<void>;
     handleCommandClose: () => void;
     handleHistoryUp: () => void;
@@ -321,6 +324,16 @@ export function ChatDockBody({
   const { navigate } = useNavigationActions();
   const { user } = useAuth();
   const { activeConnection } = useConnections();
+  const { data: acpConnections = [] } = useACPConnections();
+  const advertisedAcpSession = useMemo(
+    () =>
+      advertisedAcpSessionModesFromConnection(
+        acpConnections.find(
+          (connection) => connection.id === activeSession.agentConnectionId,
+        ),
+      ),
+    [acpConnections, activeSession.agentConnectionId],
+  );
   // Stable across renders unless the saved Station or accountable display name
   // changes, preserving ChatMessageList's memoization.
   const owner = useMemo(
@@ -1302,6 +1315,10 @@ export function ChatDockBody({
         approvalModeConnectionDefault={connectionApprovalModeDefault}
         toolPolicyDelivery={toolPolicyDelivery}
         lastAppliedApprovalMode={activeSession.lastAppliedApprovalMode}
+        acpSessionModes={advertisedAcpSession.modes}
+        acpCurrentModeId={
+          activeSession.currentModeId ?? advertisedAcpSession.currentModeId
+        }
         commandQuery={chatInput.commandQuery}
         slashCommands={chatInput.slashCommands}
         onInputChange={chatInput.handleInputChange}
@@ -1333,6 +1350,7 @@ export function ChatDockBody({
         onModelOpen={chatInput.handleModelOpen}
         onModelRuntimeOptionChange={chatInput.handleModelRuntimeOptionChange}
         onApprovalModeChange={chatInput.handleApprovalModeChange}
+        onAcpSessionModeChange={chatInput.handleAcpSessionModeChange}
         onCommandSelect={chatInput.handleCommandSelect}
         onCommandClose={chatInput.handleCommandClose}
         onHistoryUp={chatInput.handleHistoryUp}

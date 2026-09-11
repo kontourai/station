@@ -110,6 +110,16 @@ class FakeAcpProcess {
   newSessionCalls = 0;
   /** archive#1182: overridable per-test to simulate an agent's own reported model config option. */
   newSessionConfigOptions: unknown[] = [];
+  /** station#1945: older ACP `modes` catalog when no mode config option exists. */
+  newSessionModes?: {
+    availableModes: Array<{ id: string; name: string; description?: string }>;
+    currentModeId?: string;
+  };
+  readonly setModeCalls: string[] = [];
+
+  async setMode(modeId: string): Promise<void> {
+    this.setModeCalls.push(modeId);
+  }
 
   /**
    * archive#1684: makes `session/new` REJECT, so the no-retry claim has
@@ -124,7 +134,10 @@ class FakeAcpProcess {
     if (this.newSessionError) throw this.newSessionError;
     return {
       sessionId: `native-${this.opts.command}`,
-      modes: { availableModes: [], currentModeId: 'default' },
+      modes: this.newSessionModes ?? {
+        availableModes: [],
+        currentModeId: 'default',
+      },
       configOptions: this.newSessionConfigOptions,
     };
   }
@@ -228,6 +241,8 @@ function createAdapter(
     logger?: any;
     /** archive#1182: `newSession`'s response configOptions, injected at process-construction time. */
     newSessionConfigOptions?: unknown[];
+    /** station#1945: `newSession` modes catalog when no mode config option exists. */
+    newSessionModes?: FakeAcpProcess['newSessionModes'];
     /** archive#1684: what the connected CLI advertises at `initialize`.
      * `undefined` leaves `mcpCapabilities` off the handshake entirely — the
      * ordinary shape for a CLI that does not support HTTP MCP. */
@@ -278,6 +293,9 @@ function createAdapter(
       }
       if (options.newSessionConfigOptions) {
         proc.newSessionConfigOptions = options.newSessionConfigOptions;
+      }
+      if (options.newSessionModes) {
+        proc.newSessionModes = options.newSessionModes;
       }
       if (options.newSessionError !== undefined) {
         proc.newSessionError = options.newSessionError;
@@ -3422,6 +3440,183 @@ describe('station#1182: runtime-reported model', () => {
       }),
     ).rejects.toThrow('ACP model value unsupported');
     expect(processes[0].setConfigOptionCalls).toEqual([]);
+  });
+
+  test('applies an advertised session mode via setConfigOption (station#1945)', async () => {
+    const { adapter, processes } = createAdapter({
+      newSessionConfigOptions: [
+        {
+          id: 'mode',
+          category: 'mode',
+          currentValue: 'build',
+          options: [
+            { value: 'build', name: 'Build' },
+            { value: 'plan', name: 'Plan' },
+          ],
+        },
+      ],
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-mode-applied',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+      modelOptions: { mode: 'plan' },
+    });
+    await nextEvent(iterator, 'session.started');
+    const configured = await nextEvent(iterator, 'session.configured');
+
+    expect(processes[0].setConfigOptionCalls).toEqual([
+      { configId: 'mode', value: 'plan' },
+    ]);
+    expect(processes[0].setModeCalls).toEqual([]);
+    expect(configured).toMatchObject({
+      method: 'session.configured',
+      metadata: {
+        acpSessionMode: 'plan',
+        acpSessionModes: [
+          { id: 'build', name: 'Build' },
+          { id: 'plan', name: 'Plan' },
+        ],
+      },
+    });
+
+    await adapter.stopAll();
+  });
+
+  test('applies an advertised session mode via setMode when only the older catalog exists', async () => {
+    const { adapter, processes } = createAdapter({
+      newSessionModes: {
+        currentModeId: 'ask',
+        availableModes: [
+          { id: 'ask', name: 'Ask' },
+          { id: 'code', name: 'Code' },
+        ],
+      },
+    });
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-mode-setmode',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+      modelOptions: { mode: 'code' },
+    });
+
+    expect(processes[0].setModeCalls).toEqual(['code']);
+    expect(processes[0].setConfigOptionCalls).toEqual([]);
+
+    await adapter.stopAll();
+  });
+
+  test('refuses a session mode the fresh catalog did not advertise', async () => {
+    const { adapter, processes } = createAdapter({
+      newSessionModes: {
+        availableModes: [{ id: 'build', name: 'Build' }],
+      },
+    });
+
+    await expect(
+      adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-mode-unsupported',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        modelOptions: { mode: 'yolo' },
+      }),
+    ).rejects.toThrow('ACP mode value unsupported');
+    expect(processes[0].setModeCalls).toEqual([]);
+  });
+
+  test('session.configured reports advertised modes when none was requested', async () => {
+    const { adapter, processes } = createAdapter({
+      newSessionModes: {
+        currentModeId: 'ask',
+        availableModes: [
+          { id: 'ask', name: 'Ask' },
+          { id: 'code', name: 'Code' },
+        ],
+      },
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-mode-reported',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    const configured = await nextEvent(iterator, 'session.configured');
+
+    expect(processes[0].setModeCalls).toEqual([]);
+    expect(configured).toMatchObject({
+      method: 'session.configured',
+      metadata: {
+        acpSessionMode: 'ask',
+        acpSessionModes: [
+          { id: 'ask', name: 'Ask' },
+          { id: 'code', name: 'Code' },
+        ],
+      },
+    });
+
+    await adapter.stopAll();
+  });
+
+  test('applies a later advertised session mode on the next turn (station#1945)', async () => {
+    const { adapter, processes } = createAdapter({
+      newSessionModes: {
+        currentModeId: 'ask',
+        availableModes: [
+          { id: 'ask', name: 'Ask' },
+          { id: 'code', name: 'Code' },
+        ],
+      },
+    });
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-mode-turn',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    expect(processes[0].setModeCalls).toEqual([]);
+
+    await adapter.sendTurn({
+      threadId: 'thread-mode-turn',
+      input: 'hi',
+      modelOptions: { mode: 'code' },
+    });
+    expect(processes[0].setModeCalls).toEqual(['code']);
+    processes[0].resolvePrompt('end_turn');
+
+    await adapter.stopAll();
+  });
+
+  test('sendTurn refuses a mode when the live session advertised none', async () => {
+    const { adapter, processes } = createAdapter();
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-mode-turn-absent',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+
+    await expect(
+      adapter.sendTurn({
+        threadId: 'thread-mode-turn-absent',
+        input: 'hi',
+        modelOptions: { mode: 'plan' },
+      }),
+    ).rejects.toThrow('ACP mode option unavailable');
+    expect(processes[0].setModeCalls).toEqual([]);
+    expect(processes[0].setConfigOptionCalls).toEqual([]);
+
+    await adapter.stopAll();
   });
 
   test('fails closed when the engine response does not confirm the requested currentValue', async () => {

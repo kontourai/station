@@ -62,6 +62,9 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
 vi.mock('../contexts/MessageContextContext', () => ({
   useMessageContextContext: () => ({ getComposedContext: () => '' }),
 }));
+vi.mock('../hooks/useACPConnections', () => ({
+  useACPConnections: () => ({ data: [] }),
+}));
 vi.mock('../hooks/useShareReceiver', () => ({ useShareReceiver: () => {} }));
 vi.mock('../hooks/useSTT', () => ({
   useSTT: () => ({ state: 'idle', transcript: '' }),

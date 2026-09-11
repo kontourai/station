@@ -754,6 +754,50 @@ describe('ChatInputArea', () => {
     expect(onApprovalModeChange).not.toHaveBeenCalled();
   });
 
+  test('station#1945: advertised ACP modes replace the approval-mode chip', async () => {
+    const onAcpSessionModeChange = vi.fn();
+    const onApprovalModeChange = vi.fn();
+    renderChatInputArea({
+      executionMode: 'external',
+      agentConnectionId: 'kiro',
+      acpSessionModes: [
+        { id: 'build', name: 'Build' },
+        { id: 'plan', name: 'Plan', description: 'Read-only planning' },
+      ],
+      acpCurrentModeId: 'build',
+      onAcpSessionModeChange,
+      onApprovalModeChange,
+    });
+
+    expect(
+      await screen.findByRole('button', { name: /^Session mode: Build\./ }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: /^Approval mode:/ }),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /^Session mode: Build\./ }),
+    );
+    await screen.findByRole('radiogroup', { name: 'Session mode' });
+    fireEvent.click(screen.getByRole('radio', { name: /Plan/ }));
+    expect(onAcpSessionModeChange).toHaveBeenCalledWith('plan');
+    expect(onApprovalModeChange).not.toHaveBeenCalled();
+  });
+
+  test('station#1945: an ACP chat with no advertised modes does not invent a session-mode picker', () => {
+    renderChatInputArea({
+      executionMode: 'external',
+      agentConnectionId: 'kiro',
+      acpSessionModes: [],
+      onAcpSessionModeChange: vi.fn(),
+    });
+    expect(screen.queryByRole('button', { name: /^Session mode:/ })).toBeNull();
+    expect(
+      screen.getByRole('note', { name: /Engine approval mode/ }),
+    ).toBeTruthy();
+  });
+
   describe('prompt size guard (station#2807)', () => {
     test('reports the exact overage, disables send, and never clears the draft itself', () => {
       const onSend = vi.fn(async () => {});

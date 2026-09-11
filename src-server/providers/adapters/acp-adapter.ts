@@ -104,6 +104,12 @@ import {
   resolveAcpPassthroughMcpServers,
 } from './acp-mcp-passthrough.js';
 import {
+  type AdvertisedAcpModeCatalog,
+  advertisedAcpSessionModes,
+  applyAdvertisedAcpSessionMode,
+  requestedAcpSessionMode,
+} from './acp-session-mode.js';
+import {
   AcpToolUpdateGlobalBudget,
   AcpToolUpdateSupervisor,
 } from './acp-tool-update-supervisor.js';
@@ -400,6 +406,8 @@ export interface AcpSessionRecord {
   credentialRecoveryAttempted?: boolean;
   currentModeId?: string;
   configOptions?: unknown[];
+  /** Last advertised ACP session-mode catalog (station#1945). */
+  acpModeCatalog?: AdvertisedAcpModeCatalog;
   slashCommands?: AcpSlashCommand[];
   /**
    * Fix (external autoApprove parity): the resolved session agent
@@ -1181,8 +1189,37 @@ export class AcpAdapter implements ProviderAdapterShape {
             }),
           ),
         } satisfies AcpResumeCursor;
-        record.currentModeId = sessionResult.modes?.currentModeId;
         record.configOptions = sessionResult.configOptions;
+        const modeCatalog = advertisedAcpSessionModes({
+          configOptions: sessionResult.configOptions,
+          modes: sessionResult.modes,
+        });
+        record.acpModeCatalog = modeCatalog;
+        if (modeCatalog.modes.length > 0) {
+          record.currentModeId = modeCatalog.currentModeId;
+        }
+        const requestedMode = requestedAcpSessionMode(input.modelOptions);
+        if (requestedMode) {
+          if (modeCatalog.modes.length === 0) {
+            throw new Error(
+              `ACP mode option unavailable: connection '${config.id}' did not advertise a session mode for this session.`,
+            );
+          }
+          const appliedMode = await applyAdvertisedAcpSessionMode(
+            acpProcess,
+            modeCatalog,
+            requestedMode,
+            config.id,
+          );
+          record.currentModeId = appliedMode.currentModeId;
+          record.acpModeCatalog = {
+            ...modeCatalog,
+            currentModeId: appliedMode.currentModeId,
+          };
+          if (appliedMode.configOptions) {
+            record.configOptions = appliedMode.configOptions;
+          }
+        }
         reportedModel = extractReportedModelFromConfigOptions(
           sessionResult.configOptions,
         );
@@ -1255,6 +1292,12 @@ export class AcpAdapter implements ProviderAdapterShape {
                     [MODEL_SELECTION_RECEIPT_METADATA_KEY]:
                       verifiedModelSelection,
                   }
+                : {}),
+              ...(record.currentModeId
+                ? { acpSessionMode: record.currentModeId }
+                : {}),
+              ...(record.acpModeCatalog?.modes.length
+                ? { acpSessionModes: record.acpModeCatalog.modes }
                 : {}),
             },
             'toolServers',
@@ -1352,6 +1395,29 @@ export class AcpAdapter implements ProviderAdapterShape {
       throw new Error(
         'This engine did not advertise image attachment support.',
       );
+    }
+    const requestedMode = requestedAcpSessionMode(input.modelOptions);
+    if (requestedMode && requestedMode !== record.currentModeId) {
+      const catalog = record.acpModeCatalog ?? { modes: [] };
+      if (catalog.modes.length === 0) {
+        throw new Error(
+          `ACP mode option unavailable: this session did not advertise a session mode.`,
+        );
+      }
+      const appliedMode = await applyAdvertisedAcpSessionMode(
+        record.process,
+        { ...catalog, currentModeId: record.currentModeId },
+        requestedMode,
+        record.connectionId,
+      );
+      record.currentModeId = appliedMode.currentModeId;
+      record.acpModeCatalog = {
+        ...catalog,
+        currentModeId: appliedMode.currentModeId,
+      };
+      if (appliedMode.configOptions) {
+        record.configOptions = appliedMode.configOptions;
+      }
     }
     record.activeTurnId = turnId;
     record.session.status = 'running';

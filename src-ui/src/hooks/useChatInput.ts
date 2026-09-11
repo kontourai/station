@@ -59,6 +59,7 @@ type ComposerChatSlice = Pick<
   | 'requestedModelSource'
   | 'requestedProviderOptions'
   | 'agentConnectionId'
+  | 'currentModeId'
   | 'providerOptions'
   | 'executionMode'
   | 'provider'
@@ -83,6 +84,7 @@ function selectComposerSlice(
     requestedModelSource: state.requestedModelSource,
     requestedProviderOptions: state.requestedProviderOptions,
     agentConnectionId: state.agentConnectionId,
+    currentModeId: state.currentModeId,
     providerOptions: state.providerOptions,
     executionMode: state.executionMode,
     provider: state.provider,
@@ -782,6 +784,37 @@ export function useChatInput({
     ],
   );
 
+  const handleAcpSessionModeChange = useCallback(
+    (modeId: string) => {
+      if (!sessionId) return;
+      const previousMode =
+        activeChatState?.requestedProviderOptions?.mode ??
+        activeChatState?.currentModeId;
+      if (previousMode === modeId) return;
+      updateChat(sessionId, {
+        currentModeId: modeId,
+        requestedProviderOptions: {
+          ...(activeChatState?.requestedProviderOptions ??
+            activeChatState?.providerOptions ??
+            {}),
+          mode: modeId,
+        },
+      });
+      addEphemeralMessage(sessionId, {
+        role: 'system',
+        content: `Session mode changed to **${modeId}**`,
+      });
+    },
+    [
+      activeChatState?.currentModeId,
+      activeChatState?.providerOptions,
+      activeChatState?.requestedProviderOptions,
+      sessionId,
+      updateChat,
+      addEphemeralMessage,
+    ],
+  );
+
   const handleModelReset = useCallback(() => {
     if (!sessionId) return;
     const defaultModel =
@@ -934,6 +967,7 @@ export function useChatInput({
       handleModelReset,
       handleModelRuntimeOptionChange,
       handleApprovalModeChange,
+      handleAcpSessionModeChange,
       handleModelOpen,
       handleModelClose: closeModel,
       handleCommandSelect,
@@ -973,6 +1007,7 @@ export function useChatInput({
       handleModelReset,
       handleModelRuntimeOptionChange,
       handleApprovalModeChange,
+      handleAcpSessionModeChange,
       handleModelOpen,
       closeModel,
       handleCommandSelect,

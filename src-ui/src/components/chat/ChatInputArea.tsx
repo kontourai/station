@@ -15,6 +15,7 @@ import type {
   ComposerAttachmentStageSnapshot,
   FileAttachment,
 } from '../../types';
+import type { AdvertisedAcpMode } from '../../utils/acpSessionMode';
 import type { ApprovalMode } from '../../utils/approvalMode';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import {
@@ -52,6 +53,12 @@ const SessionModelPicker = React.lazy(() =>
 const PortableDraftsMenu = React.lazy(() =>
   import('./PortableDraftsMenu').then((module) => ({
     default: module.PortableDraftsMenu,
+  })),
+);
+
+const AcpSessionModeChip = React.lazy(() =>
+  import('../badges/AcpSessionModeChip').then((module) => ({
+    default: module.AcpSessionModeChip,
   })),
 );
 
@@ -123,6 +130,8 @@ interface ChatInputAreaProps {
   approvalModeConnectionDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
   lastAppliedApprovalMode?: unknown;
+  acpSessionModes?: AdvertisedAcpMode[];
+  acpCurrentModeId?: string;
   // Slash commands
   commandQuery: string | null;
   slashCommands: SlashCommand[];
@@ -149,6 +158,7 @@ interface ChatInputAreaProps {
     value: string | number | boolean | undefined,
   ) => void;
   onApprovalModeChange: (mode: ApprovalMode) => void;
+  onAcpSessionModeChange?: (modeId: string) => void;
   onCommandSelect: (command: SlashCommand) => Promise<void>;
   onCommandClose: () => void;
   onHistoryUp: () => void;
@@ -218,6 +228,8 @@ export function ChatInputArea({
   approvalModeConnectionDefault,
   toolPolicyDelivery,
   lastAppliedApprovalMode,
+  acpSessionModes = [],
+  acpCurrentModeId,
   commandQuery,
   slashCommands,
   onInputChange,
@@ -239,6 +251,7 @@ export function ChatInputArea({
   onModelOpen,
   onModelRuntimeOptionChange,
   onApprovalModeChange,
+  onAcpSessionModeChange,
   onCommandSelect,
   onCommandClose,
   onHistoryUp,
@@ -474,20 +487,35 @@ export function ChatInputArea({
               : 'default'}
           </button>
         )}
-        {executionMode === EXECUTION_MODE.EXTERNAL && (
-          <ApprovalModeChip
-            // Structural reset (not blur-dependent) for the chip's local
-            // confirm state when the active session changes — this
-            // subtree persists across session switches with no natural
-            // remount otherwise (archive#727 3).
-            key={sessionId}
-            engineConnectionId={agentConnectionId}
-            toolPolicyDelivery={toolPolicyDelivery}
-            sessionOverride={modelRuntimeOptions?.approvalMode}
-            connectionDefault={approvalModeConnectionDefault}
-            lastAppliedApprovalMode={lastAppliedApprovalMode}
-            onChange={onApprovalModeChange}
-          />
+        {acpSessionModes.length > 0 && onAcpSessionModeChange ? (
+          <React.Suspense fallback={null}>
+            <AcpSessionModeChip
+              key={sessionId}
+              modes={acpSessionModes}
+              currentModeId={
+                typeof modelRuntimeOptions?.mode === 'string'
+                  ? modelRuntimeOptions.mode
+                  : acpCurrentModeId
+              }
+              onChange={onAcpSessionModeChange}
+            />
+          </React.Suspense>
+        ) : (
+          executionMode === EXECUTION_MODE.EXTERNAL && (
+            <ApprovalModeChip
+              // Structural reset (not blur-dependent) for the chip's local
+              // confirm state when the active session changes — this
+              // subtree persists across session switches with no natural
+              // remount otherwise (archive#727 3).
+              key={sessionId}
+              engineConnectionId={agentConnectionId}
+              toolPolicyDelivery={toolPolicyDelivery}
+              sessionOverride={modelRuntimeOptions?.approvalMode}
+              connectionDefault={approvalModeConnectionDefault}
+              lastAppliedApprovalMode={lastAppliedApprovalMode}
+              onChange={onApprovalModeChange}
+            />
+          )
         )}
       </div>
 

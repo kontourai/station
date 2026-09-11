@@ -85,6 +85,9 @@ vi.mock('../contexts/MessageContextContext', () => ({
   useMessageContextContext: () => ({ getComposedContext: () => '' }),
 }));
 
+vi.mock('../hooks/useACPConnections', () => ({
+  useACPConnections: () => ({ data: [] }),
+}));
 vi.mock('../hooks/useShareReceiver', () => ({
   useShareReceiver: () => {},
 }));
