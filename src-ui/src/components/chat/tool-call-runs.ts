@@ -28,6 +28,10 @@ export interface ToolCallLike {
   error?: string;
   errorText?: string;
   state?: string;
+  needsApproval?: boolean;
+  cancelled?: boolean;
+  progressMessage?: string;
+  approvalStatus?: string;
   [key: string]: unknown;
 }
 
