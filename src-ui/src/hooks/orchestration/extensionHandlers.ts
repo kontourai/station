@@ -58,7 +58,10 @@ function activityHintsEqual(
   return a.kind === b.kind && a.detail === b.detail;
 }
 
-function readRegistryTasks(payload: unknown): ChatBackgroundTask[] {
+function readRegistryTasks(
+  payload: unknown,
+  sessionThreadId: string,
+): ChatBackgroundTask[] {
   if (!payload || typeof payload !== 'object') return [];
   const active = (payload as { active?: unknown }).active;
   if (!Array.isArray(active)) return [];
@@ -83,6 +86,7 @@ function readRegistryTasks(payload: unknown): ChatBackgroundTask[] {
         raw.spawnDepth > 0
           ? raw.spawnDepth
           : undefined,
+      sessionThreadId,
     });
   }
   return tasks;
@@ -137,7 +141,7 @@ function handleClaudeNotification(
 
   if (consumer === 'ui.claude.task-registry') {
     activeChatsStore.updateChat(event.threadId, {
-      backgroundTasks: readRegistryTasks(event.payload),
+      backgroundTasks: readRegistryTasks(event.payload, event.threadId),
     });
     return;
   }
