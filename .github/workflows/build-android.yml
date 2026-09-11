@@ -38,12 +38,17 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
+    # Pin the same build-tools release nightly-native-stage.yml pins. The
+    # verification below needs `aapt`, which lives in build-tools and is NOT
+    # on PATH: setup-android exports cmdline-tools and platform-tools only.
+    env:
+      ANDROID_BUILD_TOOLS_VERSION: '36.0.0'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -53,7 +58,7 @@ jobs:
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with: { distribution: temurin, java-version: 17 }
       - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
-      - run: sdkmanager "ndk;27.0.12077973"
+      - run: sdkmanager "ndk;27.0.12077973" "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
       - run: npm run dependencies:ci && npm run build:sdk && npm run build:connect && npm run build:desktop:resources
       # Run from the app directory, not the repo root. Without a cwd inside
       # it the CLI DISCOVERS an app by walking the tree, and
@@ -111,7 +116,8 @@ jobs:
         run: |
           apk=src-desktop/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
           node scripts/read-android-build-provenance.mjs "$apk"
-          aapt dump xmltree "$apk" AndroidManifest.xml | grep -E 'android:usesCleartextTraffic.*0xffffffff'
+          aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/aapt"
+          "$aapt" dump xmltree "$apk" AndroidManifest.xml | grep -E 'android:usesCleartextTraffic.*0xffffffff'
       # Name matches what android-test.yml's `Android Tests` workflow_run
       # chain downloads (two `download-artifact` steps, name:
       # station-android-debug) — this workflow's completion is what triggers

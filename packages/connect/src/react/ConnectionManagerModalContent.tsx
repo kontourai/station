@@ -91,6 +91,7 @@ interface ConnectionManagerModalContentProps {
   originIsStation?: boolean;
   /** Native shell name, when this UI is not running in a browser. */
   hostAppName?: string;
+  pairingClientChannel?: 'stable' | 'beta' | 'nightly';
   /** Native desktop keeps bearer values host-side and disables manual entry. */
   allowManualCredentials?: boolean;
   /** Host-owned request transport for native management routes. */
@@ -161,6 +162,7 @@ export function ConnectionManagerModalContent({
   onPairingReviewDismissed,
   originIsStation = true,
   hostAppName,
+  pairingClientChannel,
   allowManualCredentials = true,
   authenticatedRequest,
   onRestartInjectedConnection,
@@ -214,6 +216,9 @@ export function ConnectionManagerModalContent({
           name: activeConnection.name,
         }
       : null;
+  const [hostPairingReturnPanel, setHostPairingReturnPanel] = useState<
+    'list' | 'devices'
+  >('devices');
   const [panel, setPanel] = useState<ConnectionManagerPanel>(
     // An untargeted request-access panel is the FIRST-RUN shape: it asks for a
     // host address. Showing that to someone re-pairing a saved connection
@@ -977,6 +982,10 @@ export function ConnectionManagerModalContent({
               restorePairingCodeFocusRef.current = true;
               setPanel('pair-code');
             }}
+            onPairPhone={() => {
+              setHostPairingReturnPanel('list');
+              setPanel('pair-host');
+            }}
             onViewDevices={() => setPanel('devices')}
             discoveryAvailable={providerCount > 0}
             onDiscover={() => {
@@ -1090,22 +1099,26 @@ export function ConnectionManagerModalContent({
             request={authenticatedRequest}
             allowManualCredentials={allowManualCredentials}
             hostAppName={hostAppName}
-            onPairDevice={() => setPanel('pair-host')}
+            onPairDevice={() => {
+              setHostPairingReturnPanel('devices');
+              setPanel('pair-host');
+            }}
             onBack={() => setPanel('list')}
           />
         )}
 
         {panel === 'pair-host' && (
           <HostDevicePairingPanel
+            initialClientChannel={pairingClientChannel}
             apiBase={activeConnection?.url ?? window.location.origin}
-            publicEndpoint={window.location.origin}
+            publicEndpoint={activeConnection?.url ?? window.location.origin}
             getCredential={() =>
               activeConnection
                 ? getConnectionCredential(activeConnection.id)
                 : undefined
             }
             request={authenticatedRequest}
-            onCancel={() => setPanel('devices')}
+            onCancel={() => setPanel(hostPairingReturnPanel)}
           />
         )}
 

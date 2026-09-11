@@ -71,7 +71,7 @@ export interface FirstRunEngineOption {
   note?: string;
 }
 
-export interface FirstRunEnablePlanItem {
+interface FirstRunEnablePlanItem {
   engineId: string;
   name: string;
   /** The only thing the create needs: the server names the Agent. */

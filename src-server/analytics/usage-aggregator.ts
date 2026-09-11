@@ -33,7 +33,7 @@ const logger = createLogger({ name: 'usage-aggregator' });
  * inherits archive#3201's unreported-vs-zero discipline from the fold for
  * free. `OrchestrationService.listSessionUsage` is the only implementation.
  */
-export interface OrchestrationUsageSource {
+interface OrchestrationUsageSource {
   listSessionUsage(): OrchestrationSessionUsage[];
   /**
    * The request-scoped version keeps hosted analytics inside the same

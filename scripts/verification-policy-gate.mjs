@@ -83,6 +83,9 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'channel-ports:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'gate:workflows'])]),
   Object.freeze(['npm', Object.freeze(['run', 'content:integrity'])]),
+  // CLI help ↔ docs/reference/cli.md parity. Pure source read, ~50ms; see
+  // run-ci-fast.mjs for why this belongs on the PR-visible lane.
+  Object.freeze(['npm', Object.freeze(['run', 'docs:cli-parity:check'])]),
   // Generates the git-ignored Basis MCP app bundles the typecheck lanes
   // resolve; a precondition of the aggregate below, like `build:connect`.
   Object.freeze([

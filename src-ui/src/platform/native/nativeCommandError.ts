@@ -19,7 +19,7 @@
  * `undefined`, exactly the "no code" case
  * `classifyNativeTransportRefusal` already treats conservatively.
  */
-export interface NativeCommandErrorShape {
+interface NativeCommandErrorShape {
   code: string | undefined;
   message: string;
 }

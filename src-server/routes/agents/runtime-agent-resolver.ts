@@ -3,7 +3,7 @@ import {
   agentId,
 } from '@kontourai/station-contracts/agent-identity';
 
-export interface RuntimeResolvedAgent {
+interface RuntimeResolvedAgent {
   slug: AgentId;
   name: string;
   project?: string;

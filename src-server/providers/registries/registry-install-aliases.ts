@@ -6,7 +6,7 @@ import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 export const AGENT_PLUGINS_1_0_MANIFEST_SCHEMA_URL =
   'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json' as const;
 
-export interface RegistryInstallAlias {
+interface RegistryInstallAlias {
   pluginName: string;
   registryKey: string;
   /** Optional until a registry is installed through the signed-package path. */

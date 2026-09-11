@@ -12,7 +12,7 @@ const TRANSPORT_FAILURE_MESSAGES = {
   voiceTool: 'The requested tool could not be completed.',
 } as const;
 
-export type OutwardTransport = keyof typeof TRANSPORT_FAILURE_MESSAGES;
+type OutwardTransport = keyof typeof TRANSPORT_FAILURE_MESSAGES;
 
 /**
  * Stable public transport text. Provider, engine, command, and filesystem

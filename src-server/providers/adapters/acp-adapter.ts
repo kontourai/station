@@ -215,7 +215,7 @@ export function isAcpResumeCursor(value: unknown): value is AcpResumeCursor {
  * added to this parameter list and `AcpExecutionIdentity` DELIBERATELY, by
  * a human deciding it belongs in the resume identity, never by accident.
  */
-export interface AcpExecutionIdentity {
+interface AcpExecutionIdentity {
   command: string;
   args: string[];
   effectiveCwd: string;
@@ -312,7 +312,7 @@ export interface AcpAdapterOptions {
 }
 
 /** Last-known slash command surfaced by a live ACP session (aggregated across sessions in `getCommands()` — see Risks: no per-connection threadId param on the shared shape). */
-export interface AcpSlashCommand {
+interface AcpSlashCommand {
   name: string;
   description: string;
   argumentHint?: string;
@@ -367,7 +367,7 @@ function findAcpModelConfigOption(
  * maps the decision + `options` into the ACP `RequestPermissionOutcome` via
  * `mapAcpDecisionToOutcome` (acp-adapter-events.ts).
  */
-export interface AcpPendingRequest {
+interface AcpPendingRequest {
   resolve: (decision: AcpDecision) => void;
   options: PermissionOption[];
 }

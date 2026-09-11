@@ -28,11 +28,8 @@ import type {
 } from '../hooks/orchestration/types';
 import type { ChatBackgroundTask } from './active-chats-state';
 
-export type BackgroundTaskKind = 'tool' | 'agent';
-export type BackgroundTaskSource =
-  | 'tool-event'
-  | 'delegate-session'
-  | 'provider-task';
+type BackgroundTaskKind = 'tool' | 'agent';
+type BackgroundTaskSource = 'tool-event' | 'delegate-session' | 'provider-task';
 export type BackgroundTaskState =
   | 'running'
   | 'completed'
@@ -60,8 +57,16 @@ export interface BackgroundTaskEntry {
   state: BackgroundTaskState;
   /** Transcript link for an agent/delegate card. */
   delegateThreadId?: string;
+  /**
+   * station#1877: the execution-session thread a provider task belongs to,
+   * which a task-scoped stop must address. Absent on delegate and tool cards,
+   * whose controls key off `delegateThreadId` and the chat thread instead.
+   */
+  sessionThreadId?: string;
   /** A task-scoped stop seam that the UI may safely expose. */
-  stop?: { kind: 'delegate-interrupt' | 'turn-interrupt' };
+  stop?: {
+    kind: 'delegate-interrupt' | 'turn-interrupt' | 'provider-task-stop';
+  };
 }
 
 export interface BackgroundTasksState {
@@ -502,6 +507,17 @@ function makeProviderEntry(
     detail: task.subagentType,
     startedAt,
     state: 'running',
+    ...(task.sessionThreadId
+      ? {
+          sessionThreadId: task.sessionThreadId,
+          // station#1877: task-scoped, so stopping one subagent leaves its
+          // siblings and the turn running. Deliberately NOT 'turn-interrupt'
+          // as a fallback — that ends every other subagent too. Offered only
+          // when the reporting session is known, since without it there is
+          // nothing to address and a dead button is worse than none.
+          stop: { kind: 'provider-task-stop' as const },
+        }
+      : {}),
   };
 }
 

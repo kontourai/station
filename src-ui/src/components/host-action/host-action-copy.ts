@@ -26,7 +26,7 @@
 
 import type { DevicePresentation } from '@kontourai/station-contracts/system-status';
 
-export type HostActionReach = 'remote-safe' | 'host-hands';
+type HostActionReach = 'remote-safe' | 'host-hands';
 
 export type HostActionId =
   /** archive#3843 — the SSH creator's trust command (archive#3733's creator). */
@@ -46,7 +46,7 @@ export type HostActionId =
   /** archive#3843 — the Developer surface's redacted log read. */
   | 'developer-logs';
 
-export interface HostActionCopyEntry {
+interface HostActionCopyEntry {
   reach: HostActionReach;
   /** What the person sitting at the host machine reads. */
   host: string;

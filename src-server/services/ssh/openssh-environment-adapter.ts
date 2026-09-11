@@ -48,7 +48,7 @@ export type OpenSshTunnelState =
       reason: 'remote-closed' | 'transport-error' | 'stopped';
     };
 
-export interface OpenSshTunnelOptions {
+interface OpenSshTunnelOptions {
   alias: string;
   remotePort: number;
   onStateChange?: (state: OpenSshTunnelState) => void;

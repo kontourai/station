@@ -27,7 +27,7 @@ type MonitorSession = {
   }) => void;
 };
 
-export type MonitorTaskTurnSupervisorOptions = {
+type MonitorTaskTurnSupervisorOptions = {
   eventBus: EventBus;
   registerTurnAdmission: (admission: OrchestrationTurnAdmission) => () => void;
   interruptTurn: (sessionId: string) => Promise<unknown>;

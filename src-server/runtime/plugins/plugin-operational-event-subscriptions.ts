@@ -55,7 +55,7 @@ interface ActiveSubscription {
   timer?: ReturnType<typeof setTimeout>;
 }
 
-export type PluginOperationalEventSubscriptionReconcileOutcome =
+type PluginOperationalEventSubscriptionReconcileOutcome =
   | { kind: 'applied'; active: number }
   | { kind: 'unavailable' };
 
@@ -68,7 +68,7 @@ export interface PluginOperationalEventSubscriptionService {
   close(): Promise<OperationalEventSubscriptionCloseOutcome>;
 }
 
-export interface PluginOperationalEventSubscriptionQuiescence {
+interface PluginOperationalEventSubscriptionQuiescence {
   release(): void;
 }
 

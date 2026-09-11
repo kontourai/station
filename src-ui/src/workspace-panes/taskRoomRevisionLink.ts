@@ -4,7 +4,7 @@ import type {
 } from '@kontourai/station-contracts/project-task-room-browser';
 
 /** UI seam for #3546; resolution remains unavailable until its durable store lands. */
-export type TaskRoomRevisionLink =
+type TaskRoomRevisionLink =
   | { readonly state: 'available'; readonly link: ProjectTaskRoomBrowserLink }
   | { readonly state: 'unavailable'; readonly reason: string };
 

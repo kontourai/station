@@ -11,11 +11,11 @@ import {
   readPlannedHomeOwner,
 } from './planned-home-transfer-store.js';
 
-export type PlannedHomeAdmissionBegin = Omit<
+type PlannedHomeAdmissionBegin = Omit<
   PlannedHomeAdmissionRecord,
   'state' | 'receiptDigest'
 >;
-export type PlannedHomeAdmissionFinish = PlannedHomeAdmissionBegin & {
+type PlannedHomeAdmissionFinish = PlannedHomeAdmissionBegin & {
   receiptDigest: string;
 };
 export type PlannedHomeAdmissionStoreResult<T> =

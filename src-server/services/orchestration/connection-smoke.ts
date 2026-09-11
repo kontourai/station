@@ -23,7 +23,7 @@ function redactSmokeFailure(value: unknown): string {
     .slice(0, 500);
 }
 
-export interface ConnectionSmokeDeps {
+interface ConnectionSmokeDeps {
   /**
    * The service's PUBLIC dispatch — carries the initialize() latch (T9)
    * and is the only entry accepting the third `internal` argument the

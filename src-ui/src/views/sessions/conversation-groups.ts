@@ -1,7 +1,7 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { ActivitySessionPresentation } from './run-groups';
 
-export interface ConversationTurnFold {
+interface ConversationTurnFold {
   /** Input order preserved; folded-away sibling turn-sessions removed. */
   presentations: ActivitySessionPresentation[];
   /**

@@ -54,7 +54,7 @@ export interface LiveWorkIdentity {
   /** Server-issued request identity used only for restart/TTL closure. */
   readonly ttlClosureRequestId: string;
 }
-export interface LiveWorkIdentityAuthority {
+interface LiveWorkIdentityAuthority {
   resolve(input: {
     readonly actorId: string;
     readonly scope: LiveWorkScope;
@@ -63,7 +63,7 @@ export interface LiveWorkIdentityAuthority {
     | { readonly state: 'AVAILABLE'; readonly identity: LiveWorkIdentity }
     | { readonly state: 'UNAVAILABLE' };
 }
-export interface LiveWorkRecoveryAuthority {
+interface LiveWorkRecoveryAuthority {
   authorize(input: {
     readonly authorization: LiveWorkRecoveryAuthorization;
     readonly operation: 'export' | 'restore' | 'reconcile';
@@ -183,8 +183,8 @@ export interface LiveWorkPorts {
 export type LiveWorkPortCloseOutcome = {
   readonly outcome: 'closed' | 'pending' | 'unavailable';
 };
-export type LiveWorkCloseOutcome = LiveWorkPortCloseOutcome;
-export interface LiveWorkRevisionAuthority {
+type LiveWorkCloseOutcome = LiveWorkPortCloseOutcome;
+interface LiveWorkRevisionAuthority {
   resolveEvidence(reference: unknown): RevisionReferenceResolution;
 }
 export interface LiveWorkDependencies {
@@ -219,8 +219,8 @@ export type LiveWorkMutationOutcome =
         | 'capacity_exceeded'
         | 'rate_limited';
     };
-export type LiveWorkReplayEvent = LiveWorkHistoryIntent;
-export interface LiveWorkSnapshot {
+type LiveWorkReplayEvent = LiveWorkHistoryIntent;
+interface LiveWorkSnapshot {
   readonly schemaVersion: typeof LIVE_WORK_SESSION_SCHEMA_VERSION;
   readonly scope: LiveWorkScope;
   readonly state: 'active' | 'stale' | 'degraded';
@@ -241,10 +241,10 @@ export interface LiveWorkSnapshot {
     readonly expiresAt: number;
   }[];
 }
-export type LiveWorkReadOutcome =
+type LiveWorkReadOutcome =
   | { readonly outcome: 'available'; readonly snapshot: LiveWorkSnapshot }
   | { readonly outcome: 'unavailable' | 'invalid' | 'rate_limited' };
-export type LiveWorkReplayOutcome =
+type LiveWorkReplayOutcome =
   | {
       readonly outcome: 'available';
       readonly events: readonly LiveWorkReplayEvent[];
@@ -330,7 +330,7 @@ export interface LiveWorkRecoveryState {
   readonly transitionTimes: readonly RateEntry[];
   readonly recoveryTimes: readonly RateEntry[];
 }
-export type LiveWorkRecoveryExportOutcome =
+type LiveWorkRecoveryExportOutcome =
   | { readonly outcome: 'available'; readonly state: LiveWorkRecoveryState }
   | {
       readonly outcome:
@@ -339,7 +339,7 @@ export type LiveWorkRecoveryExportOutcome =
         | 'capacity_exceeded'
         | 'rate_limited';
     };
-export type LiveWorkRestoreOutcome =
+type LiveWorkRestoreOutcome =
   | { readonly outcome: 'available'; readonly session: LiveWorkSession }
   | {
       readonly outcome:

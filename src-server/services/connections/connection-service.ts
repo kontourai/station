@@ -170,7 +170,7 @@ export class ModelSelectionRequiredError extends Error {
 }
 
 /** Opaque, in-memory handoff between selection/staging and provider adoption. */
-export interface CredentialProfileApplicationAttempt {
+interface CredentialProfileApplicationAttempt {
   connectionId: string;
   attemptId: string;
   candidateProfileRef: string;

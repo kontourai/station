@@ -120,7 +120,7 @@ const conversationHandoffLaunchCapabilityBrand = Symbol(
   'conversationHandoffLaunchCapability',
 );
 
-export type ConversationHandoffLaunchCapability = Readonly<{
+type ConversationHandoffLaunchCapability = Readonly<{
   conversationId: string;
   predecessorSessionId: string;
   sessionId: string;
@@ -148,7 +148,7 @@ export function createConversationHandoffLaunchCapability(
 }
 
 const conversationHandoffIntentBrand = Symbol('conversationHandoffIntent');
-export type ConversationHandoffIntent = Readonly<{
+type ConversationHandoffIntent = Readonly<{
   idempotencyKey: string;
   [conversationHandoffIntentBrand]: true;
 }>;

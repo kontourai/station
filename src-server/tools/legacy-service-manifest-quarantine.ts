@@ -85,19 +85,19 @@ const LEGACY_MANIFEST_LABELS = [
   'io.kontourai.station.default',
 ] as const;
 
-export type LegacyServiceManifestDisposition =
+type LegacyServiceManifestDisposition =
   | 'absent'
   | 'new'
   | 'already'
   | 'recovered'
   | 'refused';
 
-export interface LegacyServiceManifestQuarantineResult {
+interface LegacyServiceManifestQuarantineResult {
   readonly kind: LegacyServiceManifestDisposition;
 }
 
 /** Test-only failpoints model a crash at each durable transaction boundary. */
-export interface LegacyServiceManifestQuarantineHooks {
+interface LegacyServiceManifestQuarantineHooks {
   /** Test-only process liveness seam; production uses `process.kill(pid, 0)`. */
   readonly registryProcessProbe?: (pid: number) => void;
   readonly beforePreparedFsync?: () => void;

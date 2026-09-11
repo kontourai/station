@@ -10,7 +10,7 @@ import {
   type ReviewLensRouting,
 } from './review-lens-router.js';
 
-export interface RepoMapReviewSelectionOptions {
+interface RepoMapReviewSelectionOptions {
   target(
     projectSlug: string,
   ):

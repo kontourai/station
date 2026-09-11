@@ -10,7 +10,7 @@ import type { RuntimeResourcePostureProbe } from '../../services/infra/resource-
 import { systemOps } from '../../telemetry/metrics.js';
 import { errorMessage } from '../schemas/schemas.js';
 
-export interface ResourcePostureRouteDeps {
+interface ResourcePostureRouteDeps {
   resourcePosture?: RuntimeResourcePostureProbe;
 }
 

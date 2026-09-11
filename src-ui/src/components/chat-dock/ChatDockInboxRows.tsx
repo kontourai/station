@@ -172,7 +172,7 @@ export function SnoozeActions({
   );
 }
 
-export interface InboxRowProps {
+interface InboxRowProps {
   item: HomeWorkItem;
   isCurrent: boolean;
   isSnoozed: boolean;

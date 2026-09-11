@@ -526,7 +526,7 @@ export const conversationHandoffSchema = foregroundMessageObjectSchema.extend({
   idempotencyKey: z.string().min(1).max(200),
 });
 
-export const conversationContextBoundarySchema = z.object({
+const conversationContextBoundarySchema = z.object({
   policy: z.enum(['continue-from-history', 'empty-next-cold-start']),
   idempotencyKey: z.string().min(1).max(200),
   expectedCurrentSessionId: z.string().min(1).max(512),
@@ -776,7 +776,7 @@ export function resolveStreamResumePlan(
  * `env`/`req.raw`/`req.header` and more, which is fine — a wider object
  * satisfies a narrower structural type).
  */
-export interface PrincipalResolutionContext {
+interface PrincipalResolutionContext {
   env: unknown;
   req: {
     raw: Request;
@@ -1871,6 +1871,23 @@ export function createOrchestrationRoutes(
       }
     },
   );
+
+  /**
+   * station#1877: stop ONE provider-reported subagent without ending the
+   * turn. Task-scoped by construction — there is deliberately no fallback to
+   * a turn interrupt, because that would stop every sibling subagent too.
+   */
+  app.post('/sessions/:threadId/provider-tasks/:taskId/stop', async (c) => {
+    try {
+      const data = await orchestrationService.stopProviderTask(
+        param(c, 'threadId'),
+        param(c, 'taskId'),
+      );
+      return c.json({ success: true, data });
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  });
 
   app.get('/session-board/projects/:projectSlug', async (c) => {
     try {

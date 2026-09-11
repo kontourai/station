@@ -58,7 +58,7 @@ export type RuntimeConnectionProjection = Omit<AgentConnectionView, 'id'> & {
  * the same handshake now also feeds `controlPlaneObservation` below — the
  * binding/picker layer's evidence half. Still NOT the session-delivery map,
  * which stays static per matrix (agent-engine-unification.md §4.1b). */
-export type ACPConnectionCapabilitiesStatus = {
+type ACPConnectionCapabilitiesStatus = {
   loadSession?: boolean;
   mcpCapabilities?: { http?: boolean; sse?: boolean };
   promptCapabilities?: {

@@ -38,7 +38,7 @@ export interface ProjectTaskRoomServerGrantIssuer {
   >;
 }
 
-export interface ProjectTaskRoomLiveWorkReceipt {
+interface ProjectTaskRoomLiveWorkReceipt {
   readonly kind: 'station.project-task-live-work-room-receipt/v1';
   readonly proposalId: string;
   readonly disposition: 'committed' | 'duplicate';

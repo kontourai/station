@@ -6,7 +6,7 @@ import {
   ResponsiveSurfaceActions,
 } from './ResponsiveDialogSurface';
 
-export interface DialogProps {
+interface DialogProps {
   /** Small uppercase line above the title (New Project's `PROJECT SETUP`). */
   eyebrow?: ReactNode;
   title: ReactNode;

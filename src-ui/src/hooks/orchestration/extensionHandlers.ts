@@ -23,6 +23,15 @@ function readPayloadNumber(payload: unknown, key: string): number | undefined {
     : undefined;
 }
 
+function readPayloadBoolean(
+  payload: unknown,
+  key: string,
+): boolean | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === 'boolean' ? value : undefined;
+}
+
 function formatApproxTokens(tokens: number): string {
   if (tokens >= 1000) {
     const thousands = tokens / 1000;
@@ -49,7 +58,10 @@ function activityHintsEqual(
   return a.kind === b.kind && a.detail === b.detail;
 }
 
-function readRegistryTasks(payload: unknown): ChatBackgroundTask[] {
+function readRegistryTasks(
+  payload: unknown,
+  sessionThreadId: string,
+): ChatBackgroundTask[] {
   if (!payload || typeof payload !== 'object') return [];
   const active = (payload as { active?: unknown }).active;
   if (!Array.isArray(active)) return [];
@@ -67,6 +79,14 @@ function readRegistryTasks(payload: unknown): ChatBackgroundTask[] {
       subagentType:
         typeof raw.subagentType === 'string' ? raw.subagentType : undefined,
       backgrounded: raw.backgrounded === true,
+      // Absent depth stays absent: "not reported" is not "top level".
+      spawnDepth:
+        typeof raw.spawnDepth === 'number' &&
+        Number.isFinite(raw.spawnDepth) &&
+        raw.spawnDepth > 0
+          ? raw.spawnDepth
+          : undefined,
+      sessionThreadId,
     });
   }
   return tasks;
@@ -121,7 +141,7 @@ function handleClaudeNotification(
 
   if (consumer === 'ui.claude.task-registry') {
     activeChatsStore.updateChat(event.threadId, {
-      backgroundTasks: readRegistryTasks(event.payload),
+      backgroundTasks: readRegistryTasks(event.payload, event.threadId),
     });
     return;
   }
@@ -132,16 +152,36 @@ function handleClaudeNotification(
     const remaining = (chat?.backgroundTasks || []).filter(
       (task) => task.taskId !== taskId,
     );
-    const wasTracked =
-      (chat?.backgroundTasks || []).length !== remaining.length;
+    // station#1877: the registry carries every live subagent, not only ones
+    // that outlived their turn, so registry membership alone does not mean the
+    // user saw this as "still working" — an inline tool part already reports a
+    // same-turn completion. Gate on `backgrounded`, which is what "survived
+    // past its turn" actually meant.
+    //
+    // station#1892: read `backgrounded` off the PAYLOAD rather than off the
+    // registry entry. The SDK sends two terminals per task; the first removes
+    // the entry, so by the time the one carrying the result arrives there is
+    // no entry left to read — which is exactly why the real result used to be
+    // dropped. The adapter now stamps `backgrounded` on every settle.
+    // The registry entry is the fallback for a settle that carries no stamp —
+    // an older server, or the untracked path — so this never silently stops
+    // announcing work a client was already tracking as backgrounded.
+    const announceable =
+      readPayloadBoolean(event.payload, 'backgrounded') === true ||
+      (chat?.backgroundTasks || []).find((task) => task.taskId === taskId)
+        ?.backgrounded === true;
     activeChatsStore.updateChat(event.threadId, {
       backgroundTasks: remaining,
     });
-    // Only announce settles for tasks the user could see as "still working"
-    // (i.e. ones that survived past their turn into the registry) — inline
-    // tool parts already report same-turn completions.
-    if (wasTracked) {
-      const summary = readPayloadString(event.payload, 'summary');
+    // station#1892: announce only the settle that actually carries an outcome.
+    // The SDK's first terminal has identity but no result and its second has
+    // the result; announcing the first produced the empty "Background task
+    // finished" the user saw while the real findings went unreported. The
+    // adapter publishes at most one settle bearing a result per task, so this
+    // fires exactly once.
+    const summary = readPayloadString(event.payload, 'summary');
+    const outputFile = readPayloadString(event.payload, 'outputFile');
+    if (announceable && (summary || outputFile)) {
       const description = readPayloadString(event.payload, 'description');
       const status = readPayloadString(event.payload, 'status');
       const heading =

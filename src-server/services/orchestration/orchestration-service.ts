@@ -98,6 +98,7 @@ import { engineIdForAdapter } from '../../providers/adapter-identity.js';
 import type {
   ProviderAdapterShape,
   ProviderSessionStartInput,
+  ProviderTaskStopResult,
   ProviderTurnStartResult,
 } from '../../providers/adapter-shape.js';
 import { ProviderTurnEndedError } from '../../providers/adapter-shape.js';
@@ -475,7 +476,7 @@ export class SessionReattachConflictError extends Error {
  * typed error rather than falling through to the dormant write, which would
  * report success around a live start (the original archive#3493 lie).
  */
-export class SessionStopWhileStartingError extends Error {
+class SessionStopWhileStartingError extends Error {
   readonly code = 'session_start_in_flight';
 
   constructor(threadId: string, timeoutMs: number) {
@@ -512,7 +513,7 @@ export class SessionEndedError extends Error {
 
 export const ATTACHED_SESSION_READ_ONLY_ERROR =
   'Attached sessions are read-only.';
-export const PEER_DELEGATION_ACTIVITY_READ_ONLY_ERROR =
+const PEER_DELEGATION_ACTIVITY_READ_ONLY_ERROR =
   'Peer delegation Activity records are read-only.';
 
 /** A request authority or deliberately named process-wide aggregate scope. */
@@ -714,7 +715,7 @@ interface OrchestrationServiceOptions {
   };
 }
 
-export interface PeerDelegationActivityDispatch {
+interface PeerDelegationActivityDispatch {
   taskId: string;
   conversationId: string;
   prompt: string;
@@ -2172,6 +2173,32 @@ export class OrchestrationService {
     this.assertAdapterCurrent(adapter);
     await adapter.interruptTurn(threadId, turnId);
     this.assertAdapterCurrentAfterCommand(adapter);
+  }
+
+  /**
+   * station#1877: stop ONE provider-reported subagent, leaving the turn and
+   * its siblings running.
+   *
+   * Deliberately does NOT fall back to `interruptTurn` when the adapter has
+   * no task-scoped stop: a turn interrupt ends every other running subagent
+   * too, which is the outcome this exists to avoid. An engine without the
+   * seam answers `unsupported` and the caller renders no control.
+   */
+  async stopProviderTask(
+    threadId: string,
+    taskId: string,
+  ): Promise<ProviderTaskStopResult> {
+    const adapter = await resolveOrchestrationAdapterForThread({
+      threadId,
+      threadProviders: this.threadProviders,
+      requireAdapter: (provider) => this.requireAdapter(provider),
+      adapters: this.options.adapterRegistry.list(),
+    });
+    this.assertAdapterCurrent(adapter);
+    if (!adapter.stopProviderTask) return { outcome: 'unsupported' };
+    const result = await adapter.stopProviderTask(threadId, taskId);
+    this.assertAdapterCurrentAfterCommand(adapter);
+    return result;
   }
 
   /**

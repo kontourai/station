@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   symlinkSync,
   writeFileSync,
@@ -139,10 +140,15 @@ describe('clean Android channel release generation', () => {
         'node scripts/apply-android-native-bootstrap.mjs',
       );
       const build = workflow.indexOf('tauri android build');
+      // The release lane names the signature proof by its flags rather than by
+      // `apksigner verify`. This assertion is about ORDER; matching the binary
+      // coupled it to that binary being reached through PATH, so resolving it
+      // by path instead — the only way it resolves at all — broke an ordering
+      // test with no stake in the question.
       const verify = workflow.indexOf(
         _lane === 'nightly'
           ? 'node scripts/verify-android-apk-signature.mjs'
-          : 'apksigner verify',
+          : 'verify --verbose --print-certs',
         build,
       );
       expect(reset).toBeGreaterThanOrEqual(0);
@@ -161,6 +167,43 @@ describe('clean Android channel release generation', () => {
       ).toBeGreaterThan(build);
     },
   );
+
+  // `aapt` and `apksigner` ship in `$ANDROID_HOME/build-tools/<version>/`, and
+  // `android-actions/setup-android` puts only cmdline-tools and platform-tools
+  // on PATH. A bare invocation therefore does not fail at review time or at
+  // build time — it fails as `aapt: command not found` in the last step of a
+  // ~50-minute Android job, after the artefact it was going to verify already
+  // exists. #1795 shipped exactly that into build-android.yml and reddened
+  // main for a day; release.yml carried the same shape unexercised, because
+  // no tagged release has ever reached that step (#1243). Assert the property
+  // across every workflow rather than per call site, so the next one is caught
+  // where it is written.
+  it('never invokes a build-tools binary through PATH in any workflow', () => {
+    // Not anchored to `aapt`: `zipalign` and `apksigner` sit in the same
+    // directory and are equally absent from PATH.
+    const buildTools = /(?<![\w/"$.-])(aapt2?|apksigner|zipalign)(?![\w.-])/;
+    const boundToAPath = /(?:aapt2?|apksigner|zipalign)=/;
+    const names = readdirSync('.github/workflows').filter((name) =>
+      name.endsWith('.yml'),
+    );
+    expect(names.length).toBeGreaterThan(0);
+
+    const offenders = names.flatMap((name) =>
+      readFileSync(`.github/workflows/${name}`, 'utf8')
+        .split('\n')
+        .map((line, index) => ({ line, lineNumber: index + 1 }))
+        .filter(
+          ({ line }) =>
+            !/^\s*#/.test(line) &&
+            // An assignment is how the resolved path gets bound; every use
+            // after it reads `"$aapt"`, which the lookbehind already excludes.
+            !boundToAPath.test(line) &&
+            buildTools.test(line),
+        )
+        .map(({ line, lineNumber }) => `${name}:${lineNumber}: ${line.trim()}`),
+    );
+    expect(offenders).toEqual([]);
+  });
 
   it('installs and resolves pinned Android build tools for nightly artifact verification', () => {
     const nightly = readFileSync(

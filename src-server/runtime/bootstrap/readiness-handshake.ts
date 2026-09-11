@@ -7,13 +7,13 @@
  * actually-bound base port (which is self-allocated when `PORT=0`) without
  * scanning the human-readable banner.
  */
-export interface ReadinessHandshake {
+interface ReadinessHandshake {
   event: 'listening';
   port: number;
   host: string;
 }
 
-export interface ErrorObservableWritable {
+interface ErrorObservableWritable {
   write(chunk: string): boolean;
   on?(event: 'error', listener: (error: unknown) => void): unknown;
 }

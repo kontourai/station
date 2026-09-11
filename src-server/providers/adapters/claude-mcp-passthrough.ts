@@ -60,7 +60,7 @@ export interface ClaudeToolServerSkip {
   detail?: string;
 }
 
-export interface ResolveClaudeMcpServersResult {
+interface ResolveClaudeMcpServersResult {
   servers: Record<string, McpServerConfig>;
   skipped: ClaudeToolServerSkip[];
 }

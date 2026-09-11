@@ -1,6 +1,6 @@
 import { CompletionTracker } from './completion-tracker.js';
 
-export interface KeyedCoalescingWorkerOptions<V> {
+interface KeyedCoalescingWorkerOptions<V> {
   /**
    * Combine a newly enqueued value with one already queued (not yet
    * started) for the same key. Defaults to "keep latest" — the new value

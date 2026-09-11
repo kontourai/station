@@ -18,7 +18,7 @@ export const DEFAULT_EVENT_LOG_RETENTION = {
   maxBytes: 256 * MIB,
 } as const;
 
-export interface EventLogRetentionPolicy {
+interface EventLogRetentionPolicy {
   maxAgeDays: number;
   maxBytes: number;
 }

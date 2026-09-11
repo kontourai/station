@@ -59,7 +59,7 @@ export type DestinationIconId =
  */
 export const DEVELOPER_TOOLS_FLAG = 'device:developer-tools';
 
-export interface DestinationBadgeContext {
+interface DestinationBadgeContext {
   attentionCount: number;
 }
 

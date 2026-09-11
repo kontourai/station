@@ -19,7 +19,7 @@ export function sshForwardProvenanceWarning(
  * had completed, and equally for a malformed response or an auth failure.
  * Three states, because the boolean was conflating three facts:
  */
-export type SshForwardProbeState =
+type SshForwardProbeState =
   /** The probe has not produced a verdict yet. Claim nothing. */
   | 'checking'
   /** The probe completed and the instance answered. */

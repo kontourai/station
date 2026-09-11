@@ -44,7 +44,7 @@ export type {
   FlowRunBinding,
 } from './contexts/active-chats-state';
 
-export interface AgentCommands {
+interface AgentCommands {
   [commandName: string]: SlashCommand;
 }
 
@@ -237,9 +237,9 @@ export interface ChatMessage {
   changedFiles?: TurnChangedFiles;
 }
 
-export type ChatSessionSource = 'manual' | 'prompt' | 'workflow';
+type ChatSessionSource = 'manual' | 'prompt' | 'workflow';
 
-export type ChatSessionStatus = 'idle' | 'sending' | 'error' | 'queued';
+type ChatSessionStatus = 'idle' | 'sending' | 'error' | 'queued';
 
 /**
  * One permanently refused follow-up (archive#3706). `content` is the user's

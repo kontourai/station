@@ -21,9 +21,7 @@
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import type { LLMModelCatalog } from './model-provider-types.js';
 
-export type BedrockCatalogFailureKind = NonNullable<
-  LLMModelCatalog['reasonKind']
->;
+type BedrockCatalogFailureKind = NonNullable<LLMModelCatalog['reasonKind']>;
 
 /**
  * An IAM policy may grant `bedrock:InvokeModel` and withhold

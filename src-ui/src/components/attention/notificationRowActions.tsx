@@ -39,11 +39,11 @@
  * rather than written beside each mutation, so if the vocabulary does change
  * it changes in one place instead of five.
  */
-export type NotificationRowMechanism =
+type NotificationRowMechanism =
   | 'acknowledge-attention'
   | 'dismiss-notification';
 
-export interface NotificationRowAction {
+interface NotificationRowAction {
   mechanism: NotificationRowMechanism;
   /** The word the user reads. Never chosen at the call site. */
   label: string;

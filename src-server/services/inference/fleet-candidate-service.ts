@@ -95,7 +95,7 @@ export interface FleetPeerCredential {
   credential: string;
 }
 
-export interface FleetPeerCredentialSource {
+interface FleetPeerCredentialSource {
   listFleetPeers(): FleetPeerCredential[];
 }
 
