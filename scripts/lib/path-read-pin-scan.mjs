@@ -29,12 +29,14 @@
  *   rather than a guessed one.
  *
  * WHAT THIS DOES NOT SEE. The scan is a partial derivation, not a census of
- * path-read pins, and it must not be read as one. 143 test files read by path
- * with a module anchor; this reports 79. Both figures are asserted by
- * `path-read-pin-boundary.test.ts`, which derives them from `listSuiteFiles`
- * and `readsFileByPath` — a stale fraction in this paragraph is a red test,
- * not a footnote. Two idioms account for most of the remainder, and both are
- * missed by construction rather than by accident:
+ * path-read pins, and it must not be read as one. Many test files read by
+ * path with a module anchor; this reports only the subset it can resolve.
+ * The remainder is pinned BY NAME in
+ * `path-read-pin-boundary.test.ts`'s `UNREPORTED_PATH_READING_SUITES`, so
+ * the gap is a reviewable list rather than a fraction in prose that drifts
+ * out of date silently — a count here said only "re-measure" and never which
+ * suite had moved. Two idioms account for most of that remainder, and both
+ * are missed by construction rather than by accident:
  *
  * - A HELPER PARAMETER. `const read = (p) => readFileSync(join(UI_SRC, p))`
  *   called with a literal never puts that literal syntactically inside an
