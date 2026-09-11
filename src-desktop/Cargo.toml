@@ -62,8 +62,8 @@ tauri-plugin-log = "=2.9.1"
 dirs = "6"
 # Shared application API; platform-specific native stores are selected below.
 keyring-core = "=1.0.0"
-tauri-plugin-dialog = "=2.7.2"
-tauri-plugin-opener = "=2.5.4"
+tauri-plugin-dialog = "=2.7.3"
+tauri-plugin-opener = "=2.5.5"
 
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 # Self-update (#575). Desktop-only, matching this plugin's own supported
@@ -90,7 +90,7 @@ tauri-plugin-process = "=2.3.1"
 # matters beyond tidiness: on Windows/Linux a pairing deep link launches a NEW
 # process, and without this forwarding the URL lands in a doomed secondary
 # instead of the running app (the claim guards the sidecar slot, not the app).
-tauri-plugin-single-instance = { version = "=2.4.3", features = ["deep-link"] }
+tauri-plugin-single-instance = { version = "=2.4.4", features = ["deep-link"] }
 # Loopback-only embedded WebDriver for the real-shell E2E harness. Optional and
 # feature-gated so production artifacts do not carry an automation server.
 tauri-plugin-wdio-webdriver = { version = "=1.4.0", optional = true }
