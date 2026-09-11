@@ -44,6 +44,9 @@ vi.mock('../contexts/AgentsContext', () => ({
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: null }),
 }));
+vi.mock('../hooks/useACPConnections', () => ({
+  useACPConnections: () => ({ data: [] }),
+}));
 vi.mock('../hooks/useActiveChatSessions', () => ({
   useCreateChatSession: () => () => SESSION_ID,
 }));

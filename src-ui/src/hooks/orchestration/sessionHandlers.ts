@@ -44,6 +44,10 @@ export function handleSessionLifecycleEvent(
     orchestrationProvider: event.provider,
     orchestrationSessionStarted: true,
     ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
+    ...(event.method === 'session.configured' &&
+    typeof event.metadata?.acpSessionMode === 'string'
+      ? { currentModeId: event.metadata.acpSessionMode }
+      : {}),
     ...(effectiveModel
       ? { model: effectiveModel, orchestrationModel: effectiveModel }
       : {}),

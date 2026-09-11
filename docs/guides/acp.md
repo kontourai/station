@@ -94,7 +94,9 @@ Independently of any chat session, each configured connection is periodically pr
 
 Each configured ACP engine connection owns **one persisted default Agent** in the picker, not one per mode. For a connection configured with `id: "kiro"`, both the `EngineConnectionId` and its distinct `AgentId` have the clean text value `kiro`.
 
-This is a deliberate, adapter-inherited scope reduction: the `acp` provider adapter's `ProviderAdapterShape` has no mode concept — `ProviderSessionStartInput`/`ProviderSendTurnInput` carry no `modeId` field, and the adapter never calls `ACPProcess.setMode()`. Per-mode virtual agents (the previous `{connectionId}-{modeId}` slug shape, e.g. `kiro-chat` / `kiro-agent`) could not be routed through the orchestration seam regardless of slug format, so collapsing to one agent per connection is the shape the adapter can serve today. Mode-switching support is filed as a follow-up, not silently dropped.
+This is a deliberate, adapter-inherited scope reduction: per-mode virtual agents (the previous `{connectionId}-{modeId}` slug shape, e.g. `kiro-chat` / `kiro-agent`) could not be routed through the orchestration seam regardless of slug format, so collapsing to one agent per connection is the shape the adapter can serve today.
+
+Advertised session modes are honored on that one agent (station#1945). `ProviderSessionStartInput`/`ProviderSendTurnInput` carry the requested id as `modelOptions.mode`. The adapter prefers `session/set_config_option` when the fresh session advertised a `category: "mode"` config option, and otherwise calls `session/set_mode`. Ids and labels are whatever the agent advertised — Station does not map them onto `ask`/`auto`/`never`. The composer shows that advertised picker when the connection has modes, and shows nothing when it advertised none. Remaining permission-policy gaps (OpenCode HTTP rulesets, engines that never advertise modes, ACP v2 dropping `session/set_mode`, `_meta.permission`) are tracked in station#1944.
 
 The agent entry still surfaces:
 - `model` — current model name from the connection's config options
