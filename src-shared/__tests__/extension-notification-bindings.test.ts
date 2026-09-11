@@ -4,7 +4,6 @@ import {
   EXTENSION_NOTIFICATION_BINDINGS,
   EXTENSION_NOTIFICATION_EVIDENCE_GAPS,
   EXTENSION_NOTIFICATION_PROMOTIONS,
-  EXTENSION_NOTIFICATION_UNIQUE,
   extensionNotificationBinding,
   isBoundExtensionNotification,
   takeUnboundExtensionNotice,
@@ -207,11 +206,8 @@ describe('extension notification bindings', () => {
     ).toBeUndefined();
   });
 
-  test('every promotion and unique-acceptance is bound so it is not an unresolved no-op', () => {
-    for (const item of [
-      ...EXTENSION_NOTIFICATION_PROMOTIONS,
-      ...EXTENSION_NOTIFICATION_UNIQUE,
-    ]) {
+  test('every promotion stays bound until the adapter emits the Station event', () => {
+    for (const item of EXTENSION_NOTIFICATION_PROMOTIONS) {
       expect(
         isBoundExtensionNotification(item.namespace, item.type),
         `${item.namespace}/${item.type} must stay bound until resolved`,

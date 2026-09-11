@@ -322,47 +322,42 @@ export const EXTENSION_NOTIFICATION_PROMOTIONS = Object.freeze([
     status: 'open',
     evidence: 'station#1935-runtime-observation',
   }),
-]) satisfies readonly ExtensionNotificationPromotion[];
-
-/**
- * Observed tuples we will not promote: too vendor-specific to become a
- * Station noun. They stay bound (`acp.host-chrome`) so they are not logged
- * as unresolved no-ops.
- */
-export type ExtensionNotificationUniqueAcceptance = {
-  readonly namespace: string;
-  readonly type: string;
-  readonly reason: string;
-  readonly evidence: ExtensionNotificationEvidence;
-};
-
-export const EXTENSION_NOTIFICATION_UNIQUE = Object.freeze([
   Object.freeze({
     namespace: '_x.ai',
-    type: 'announcements/update',
-    reason: 'Vendor marketing banners, not session activity.',
+    type: 'models/update',
+    stationEvent: 'session.configured',
+    status: 'open',
     evidence: 'station#1935-runtime-observation',
   }),
   Object.freeze({
     namespace: '_x.ai',
     type: 'settings/update',
-    reason: 'Grok client settings dump; Station has its own settings.',
+    stationEvent: 'session.configured',
+    status: 'open',
     evidence: 'station#1935-runtime-observation',
   }),
   Object.freeze({
     namespace: '_x.ai',
     type: 'sessions/changed',
-    reason: 'Their session list, not this conversation.',
+    stationEvent: 'session.attached',
+    status: 'open',
     evidence: 'station#1935-runtime-observation',
   }),
   Object.freeze({
     namespace: '_x.ai',
-    type: 'models/update',
-    reason:
-      'Their model picker; Station model selection is the capability matrix.',
+    type: 'announcements/update',
+    stationEvent: 'session.notice',
+    status: 'open',
     evidence: 'station#1935-runtime-observation',
   }),
-]) satisfies readonly ExtensionNotificationUniqueAcceptance[];
+  Object.freeze({
+    namespace: '_x.ai',
+    type: 'queue/changed',
+    stationEvent: 'turn.queued',
+    status: 'open',
+    evidence: 'station#1935-runtime-observation',
+  }),
+]) satisfies readonly ExtensionNotificationPromotion[];
 
 const unboundFirstSeen = new Set<string>();
 

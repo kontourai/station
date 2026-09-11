@@ -45,12 +45,15 @@ are a follow-up on this schema.
 
 `handleOrchestrationEvent` is exhaustive over `CanonicalRuntimeEvent`.
 Vendor-specific extras stay on `extension.notification` (ADR 0008): exact
-`(namespace, type)` bindings. Unbound tuples are **tracked**, not silent:
-the adapter increments `station.runtime.extension_notifications` and logs
-`namespace`/`type`/`provider` once per process (never the payload). Session
-diagnostics label them `(unbound)`. Resolve each either by promoting to a
-canonical Station event (`EXTENSION_NOTIFICATION_PROMOTIONS`) or accepting
-it as too unique (`EXTENSION_NOTIFICATION_UNIQUE`). Bias is promote.
+`(namespace, type)` bindings. Station does **not** handle unbound tuples in
+the product UI. Detection is for developers:
+
+- server log (namespace/type/provider once per process, never the payload)
+- session diagnostics (`namespace/type (unbound)`)
+- `station.runtime.extension_notifications` if an OTLP exporter is set (field)
+
+`EXTENSION_NOTIFICATION_PROMOTIONS` is the mapping backlog. Bias is promote
+to a typed Station event. There is no in-product “accept unique” workflow.
 
 ## Follow-ups
 
