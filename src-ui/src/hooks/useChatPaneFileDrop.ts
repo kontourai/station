@@ -132,10 +132,15 @@ export function useChatPaneFileDrop({
       reject(event, 'Folders cannot be attached. Choose individual files.');
       return;
     }
-    const files = filesFromDataTransfer(event.dataTransfer);
-    if (files.length === 0) return;
+    // During an external drag the browser protects file bytes until drop.
+    // Items remain enumerable, while getAsFile() and files can be empty.
+    const count =
+      Array.from(event.dataTransfer.items ?? []).filter(
+        (item) => item.kind === 'file',
+      ).length || event.dataTransfer.files.length;
+    if (count === 0) return;
     event.preventDefault();
-    setFileCount(files.length);
+    setFileCount(count);
   };
   const onDragOver = (event: DragEventLike) => {
     if (active() && isFileDrag(event.dataTransfer)) event.preventDefault();

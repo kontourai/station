@@ -46,6 +46,86 @@ describe('useComposerAttachments', () => {
 
   afterEach(() => vi.useRealTimers());
 
+  test('late upload progress stays with its original chat after the selected composer changes', async () => {
+    const records: Record<string, ComposerAttachmentStageSnapshot[]> = {
+      a: [],
+      b: [],
+    };
+    const selected: Record<string, FileAttachment[]> = { a: [], b: [] };
+    const controls = new Map<
+      string,
+      {
+        update: (value: {
+          clientAttachmentId: string;
+          state: 'complete';
+          progress: number;
+          delivery: 'legacy-inline';
+        }) => void;
+        finish: () => void;
+      }
+    >();
+    stageComposerAttachments.mockImplementation(
+      async (_api, files, _signal, update) =>
+        new Promise<void>((resolve) => {
+          controls.set(files[0].id, { update, finish: resolve });
+        }),
+    );
+    readChatAttachmentFiles
+      .mockResolvedValueOnce({ attachments: [attachment('a')], errors: [] })
+      .mockResolvedValueOnce({ attachments: [attachment('b')], errors: [] });
+    const hook = renderHook(
+      ({ owner }) =>
+        useComposerAttachments({
+          apiBase: 'http://station.test',
+          ownerKey: owner,
+          attachments: selected[owner],
+          stages: records[owner],
+          getCurrentAttachments: () => selected[owner],
+          getCurrentStages: () => records[owner],
+          capabilities: { images: true, files: true },
+          onAddAttachments: (files) => {
+            selected[owner] = [...selected[owner], ...files];
+          },
+          onStagesChange: (value) => {
+            records[owner] = value;
+          },
+        }),
+      { initialProps: { owner: 'a' } },
+    );
+    await act(async () => {
+      await hook.result.current.selectFiles([new File(['hello'], 'a.txt')]);
+    });
+    await waitFor(() => expect(controls.has('a')).toBe(true));
+    hook.rerender({ owner: 'b' });
+    await act(async () => {
+      await hook.result.current.selectFiles([new File(['hello'], 'b.txt')]);
+    });
+    await waitFor(() => expect(controls.has('b')).toBe(true));
+    await act(async () => {
+      controls.get('a')!.update({
+        clientAttachmentId: 'a',
+        state: 'complete',
+        progress: 1,
+        delivery: 'legacy-inline',
+      });
+      controls.get('a')!.finish();
+    });
+    expect(records.a).toMatchObject([
+      { clientAttachmentId: 'a', state: 'complete' },
+    ]);
+    expect(records.b.map((stage) => stage.clientAttachmentId)).toEqual(['b']);
+    await act(async () => {
+      controls.get('b')!.update({
+        clientAttachmentId: 'b',
+        state: 'complete',
+        progress: 1,
+        delivery: 'legacy-inline',
+      });
+      controls.get('b')!.finish();
+    });
+    expect(records.a.map((stage) => stage.clientAttachmentId)).toEqual(['a']);
+  });
+
   test('a scoped answer cancels late file preparation when its owner unmounts', async () => {
     let finish:
       | ((value: { attachments: FileAttachment[]; errors: string[] }) => void)
