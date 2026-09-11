@@ -18,7 +18,7 @@ const COMMON_ICON_NAMES = [
   'logo.webp',
 ] as const;
 
-export type IntegrationIconAsset = {
+type IntegrationIconAsset = {
   body: Buffer;
   contentType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/x-icon';
   etag: string;

@@ -3,6 +3,7 @@ import {
   BUILD_OUTPUT_PRUNE_PATTERNS,
   classifyWorktree,
   countStatusEntries,
+  detachedReason,
   findNestedWorktrees,
   freshnessFindArgs,
   HYGIENE_POLICY,
@@ -168,10 +169,13 @@ describe('worktree list parsing', () => {
       'worktree /repo\0HEAD abc\0branch refs/heads/main\0\0' +
       'worktree /w/lane-a\0HEAD def\0branch refs/heads/fix/a\0\0' +
       'worktree /w/detached\0HEAD 123\0detached\0\0';
+    // `head` is captured so a detached worktree can be checked against what its
+    // own directory name claims (#516): a transfer-gate baseline is regenerable,
+    // a bisect or review pin is not, and both are detached.
     expect(parseWorktreeList(output)).toEqual([
-      { path: '/repo', branch: 'main', isPrimary: true },
-      { path: '/w/lane-a', branch: 'fix/a', isPrimary: false },
-      { path: '/w/detached', branch: null, isPrimary: false },
+      { path: '/repo', branch: 'main', head: 'abc', isPrimary: true },
+      { path: '/w/lane-a', branch: 'fix/a', head: 'def', isPrimary: false },
+      { path: '/w/detached', branch: null, head: '123', isPrimary: false },
     ]);
   });
 
@@ -180,7 +184,7 @@ describe('worktree list parsing', () => {
     // form was left in place long enough to become a latent parser bug.
     const output = 'worktree /w/od\nd\0HEAD abc\0branch refs/heads/x\0\0';
     expect(parseWorktreeList(output)).toEqual([
-      { path: '/w/od\nd', branch: 'x', isPrimary: true },
+      { path: '/w/od\nd', branch: 'x', head: 'abc', isPrimary: true },
     ]);
   });
 });
@@ -479,5 +483,63 @@ describe('nesting', () => {
       nested: 2,
       nestedActionable: 1,
     });
+  });
+});
+
+describe('detached worktrees are named, not lumped', () => {
+  // #516: 76 of 111 worktrees carried their own node_modules while the report
+  // classified 1 as FINISHED, so there was "no sweep-the-obvious-ones remedy
+  // available". The space was reclaimable; nothing said which trees were safe
+  // to reclaim, because a bisect, a review pin and a regenerable transfer
+  // baseline all read as the same three words.
+  const base = '/w/4294-transfer-baseline-0cdd76b6c228';
+
+  test('an ordinary detached worktree keeps the plain reason', () => {
+    expect(detachedReason({ path: '/w/bisect', head: 'deadbeef' })).toBe(
+      'detached HEAD',
+    );
+  });
+
+  test('a baseline whose HEAD matches its name is named regenerable', () => {
+    const reason = detachedReason({ path: base, head: '0cdd76b6c228aaaa' });
+    expect(reason).toContain('transfer-gate baseline for 0cdd76b6c228');
+    expect(reason).toContain('npm run transfer:gate');
+  });
+
+  // The directory name is a claim. Honouring it without checking would let a
+  // renamed or re-pointed checkout be described as disposable when it is not,
+  // which is the failure mode that matters: this text is what a reader acts on.
+  test('a baseline name whose HEAD disagrees is not called regenerable', () => {
+    const reason = detachedReason({ path: base, head: 'ffffffffffff' });
+    expect(reason).toContain('HEAD does not match');
+    expect(reason).not.toContain('regenerable');
+  });
+
+  test('a missing HEAD is not treated as agreement', () => {
+    expect(detachedReason({ path: base })).toContain('HEAD does not match');
+  });
+
+  test('a baseline-ish name that is not a real sha is left alone', () => {
+    expect(
+      detachedReason({ path: '/w/4294-transfer-baseline-notahex', head: 'x' }),
+    ).toBe('detached HEAD');
+  });
+
+  test('naming a baseline still does not make it FINISHED', () => {
+    const classified = classifyWorktree({
+      path: base,
+      branch: null,
+      head: '0cdd76b6c228aaaa',
+      isPrimary: false,
+      isCurrent: false,
+      untrackedFiles: 0,
+      modifiedTrackedFiles: 0,
+      commitsNotInBase: 0,
+      touchedWithinWindow: false,
+    });
+    expect(classified.finished).toBe(false);
+    expect(classified.keepReasons.join(' ')).toContain(
+      'transfer-gate baseline',
+    );
   });
 });

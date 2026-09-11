@@ -386,12 +386,24 @@ test.describe('Profile Page', () => {
   });
 
   test('loading state appears before data loads', async ({ page }) => {
-    // Delay the usage response
+    let release!: () => void;
+    const responseGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     await page.route('**/api/analytics/usage*', async (route) => {
-      await new Promise((r) => setTimeout(r, 2000));
+      await responseGate;
       await route.fulfill({ json: { data: MOCK_USAGE } });
     });
     await page.goto('/profile');
-    await expect(page.getByText('Loading profile...')).toBeVisible();
+    try {
+      await expect(
+        page.getByRole('status', { name: 'Loading profile', exact: true }),
+      ).toBeVisible();
+    } finally {
+      release();
+    }
+    await expect(
+      page.getByRole('heading', { name: 'Usage Statistics', exact: true }),
+    ).toBeVisible();
   });
 });

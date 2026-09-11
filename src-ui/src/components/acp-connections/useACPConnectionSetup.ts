@@ -19,7 +19,7 @@ export type ACPConnectionSetupStage =
   | 'result'
   | 'error';
 
-export interface ACPConnectionSetupState {
+interface ACPConnectionSetupState {
   stage: ACPConnectionSetupStage;
   selectedEntry: ACPConnectionRegistryEntry | null;
   resultConnectionId: string | null;

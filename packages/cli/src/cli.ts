@@ -31,6 +31,7 @@ import {
   TaskToolResultRequestError,
   TaskUserInputReferenceRequestError,
 } from '@kontourai/station-sdk/client';
+import { installNodeHttpCompatibility } from '@kontourai/station-shared/node-http-compat';
 import { Command } from 'commander';
 import { build as buildPlugin } from './commands/build.js';
 import { runCheckpointsCommand } from './commands/checkpoints.js';
@@ -1434,6 +1435,7 @@ export async function runCli(
   argv: string[],
   dependencies: CliDependencies = {},
 ): Promise<void> {
+  installNodeHttpCompatibility();
   const [command, ...args] = argv;
   const recoveryObservation = command === 'home' && args[0] === 'recovery-plan';
   const interactive =

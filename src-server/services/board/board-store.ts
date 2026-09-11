@@ -46,7 +46,7 @@ export class BoardReferenceInvalidError extends Error {}
 export class BoardWidgetNameConflictError extends Error {}
 
 /** Input to {@link BoardStore.pin} — the block is already host-accepted (archive#1399's pin-boundary gate runs before this store is ever called). */
-export interface PinWidgetInput {
+interface PinWidgetInput {
   readonly block: UIBlock;
   readonly name: string;
   readonly tabId?: string;
@@ -56,7 +56,7 @@ export interface PinWidgetInput {
   readonly after?: string;
 }
 
-export interface MoveWidgetInput {
+interface MoveWidgetInput {
   readonly tabId?: string;
   readonly after?: string;
 }

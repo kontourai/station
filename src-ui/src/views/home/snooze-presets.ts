@@ -11,7 +11,7 @@
  * bundle.
  */
 
-export interface SnoozePreset {
+interface SnoozePreset {
   id: 'in-1-hour' | 'this-evening' | 'tomorrow-9am' | 'next-week-mon-9am';
   label: string;
   wakeAt: number;

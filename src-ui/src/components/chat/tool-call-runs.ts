@@ -44,7 +44,7 @@ export interface ToolCallRun<P extends ToolCallLike = ToolCallLike> {
   calls: { part: P; index: number }[];
 }
 
-export type RunBlock<P extends ToolCallLike = ToolCallLike> =
+type RunBlock<P extends ToolCallLike = ToolCallLike> =
   | ContentPartBlock<P>
   | ToolCallRun<P>;
 

@@ -47,7 +47,7 @@ export interface WorkspacePaneAvailabilityCatalogEntry {
   rendererResolution?: 'pending';
 }
 
-export interface WorkspacePaneAvailabilityPresentation {
+interface WorkspacePaneAvailabilityPresentation {
   state: WorkspacePaneAvailabilityState;
   stateLabel: string;
   reasonCode: WorkspacePaneAvailabilityReasonCode;
@@ -128,7 +128,7 @@ const ACTION_LABELS: Record<WorkspacePaneAvailabilityAction['code'], string> = {
  * Turns an authoritative, bounded availability result into shared copy. No
  * host diagnostics, paths, URLs, or renderer details enter this projection.
  */
-export const WORKSPACE_PANE_AVAILABILITY_PENDING_LABEL = 'Loading…';
+const WORKSPACE_PANE_AVAILABILITY_PENDING_LABEL = 'Loading…';
 
 export function presentWorkspacePaneAvailability(
   availability: WorkspacePaneAvailability,

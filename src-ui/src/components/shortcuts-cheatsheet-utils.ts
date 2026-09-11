@@ -21,7 +21,7 @@ export function categoryLabel(id: string): string {
   return CATEGORY_LABELS[prefix] ?? CATEGORY_LABELS[id] ?? 'Other';
 }
 
-export interface ShortcutGroup {
+interface ShortcutGroup {
   label: string;
   items: KeyboardShortcut[];
 }

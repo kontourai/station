@@ -101,12 +101,12 @@ const ADOPTION_ATTEMPT_DELAYS_MS = [0, 10_000, 30_000, 90_000] as const;
  */
 export const ADOPTION_PROBE_TIMEOUT_MS = 10_000;
 
-export type NativeEngineDetect = (
+type NativeEngineDetect = (
   cli: string,
   options?: CliDetectionOptions,
 ) => Promise<boolean>;
 
-export interface NativeEngineAdoptionDeps {
+interface NativeEngineAdoptionDeps {
   configLoader: ConfigLoader;
   logger: {
     info: (message: string, fields?: Record<string, unknown>) => void;
@@ -127,40 +127,40 @@ export interface NativeEngineAdoptionDeps {
   env?: NodeJS.ProcessEnv;
 }
 
-export interface NativeEngineAdoptionSummary {
-  /**
-   * What the window OBSERVED per candidate.
-   *
-   * 'absent' means an UNCANCELLED probe came back falsy. It cannot separate
-   * "the locator said no" from "the ceiling killed the locator", because
-   * `detectCliOnPath` has one answer channel and collapses both into `false`;
-   * `ADOPTION_PROBE_TIMEOUT_MS` records that limit. What it does exclude is a
-   * probe the shutdown signal cancelled, whose `false` is not an answer about
-   * the host at all.
-   *
-   * 'interrupted' is that case: the window closed before this candidate got a
-   * usable answer, or got one and was stopped before it could act on it.
-   * Added in station#1815, corrected in its second review round — the first
-   * version consulted the signal only BEFORE the probe, which is a few
-   * instructions, while the window an abort actually lands in is the probe's
-   * whole duration.
-   *
-   * Two edges of that split, recorded rather than closed. An abort landing
-   * between a probe RESOLVING and the loop reading the signal turns a genuine
-   * uncancelled absence into 'interrupted', so for a production caller the
-   * first sentence describes a superset: everything called 'absent' came from
-   * an uncancelled falsy probe, but not every uncancelled falsy probe is
-   * called 'absent'. That is the conservative direction — it withholds a
-   * claim, it never invents one. The other edge breaks the first sentence
-   * outright, which is why it is scoped to production callers: with an EMPTY
-   * `deps.delaysMs` the loop never runs at all and the backfill reports
-   * 'absent' with nothing having looked at the host. `delaysMs` exists only
-   * for tests and no production caller passes one, so the guarantee holds
-   * where it is read and is stated here where it does not.
-   *
-   * 'suppressed' is the screenshot containment: no probe was made, by policy.
-   * It used to report 'absent' for a host nothing looked at.
-   */
+/**
+ * What the window OBSERVED per candidate.
+ *
+ * 'absent' means an UNCANCELLED probe came back falsy. It cannot separate
+ * "the locator said no" from "the ceiling killed the locator", because
+ * `detectCliOnPath` has one answer channel and collapses both into `false`;
+ * `ADOPTION_PROBE_TIMEOUT_MS` records that limit. What it does exclude is a
+ * probe the shutdown signal cancelled, whose `false` is not an answer about
+ * the host at all.
+ *
+ * 'interrupted' is that case: the window closed before this candidate got a
+ * usable answer, or got one and was stopped before it could act on it.
+ * Added in station#1815, corrected in its second review round — the first
+ * version consulted the signal only BEFORE the probe, which is a few
+ * instructions, while the window an abort actually lands in is the probe's
+ * whole duration.
+ *
+ * Two edges of that split, recorded rather than closed. An abort landing
+ * between a probe RESOLVING and the loop reading the signal turns a genuine
+ * uncancelled absence into 'interrupted', so for a production caller the
+ * first sentence describes a superset: everything called 'absent' came from
+ * an uncancelled falsy probe, but not every uncancelled falsy probe is
+ * called 'absent'. That is the conservative direction — it withholds a
+ * claim, it never invents one. The other edge breaks the first sentence
+ * outright, which is why it is scoped to production callers: with an EMPTY
+ * `deps.delaysMs` the loop never runs at all and the backfill reports
+ * 'absent' with nothing having looked at the host. `delaysMs` exists only
+ * for tests and no production caller passes one, so the guarantee holds
+ * where it is read and is stated here where it does not.
+ *
+ * 'suppressed' is the screenshot containment: no probe was made, by policy.
+ * It used to report 'absent' for a host nothing looked at.
+ */
+interface NativeEngineAdoptionSummary {
   outcomes: Record<
     string,
     | NativeEngineAdoptionOutcome

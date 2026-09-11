@@ -245,7 +245,7 @@ export function startingPoint(
 ): Locator {
   const label = {
     model: /^Run it on Station/,
-    cli: /^Wrap an installed agent CLI/,
+    cli: /^Run it on another engine/,
     copy: /^Copy an existing agent/,
   }[which];
   return page.getByRole('button', { name: label });
@@ -387,6 +387,11 @@ export async function sendComposerTurn(
   await composer.fill(text);
   await composer.press('Enter');
   await expect(
-    page.locator('#chat-dock, #chat-workspace-pane').getByText(expected),
+    page
+      .locator(
+        '#chat-dock .message.assistant, #chat-workspace-pane .message.assistant',
+      )
+      .filter({ hasText: expected })
+      .last(),
   ).toBeVisible({ timeout });
 }

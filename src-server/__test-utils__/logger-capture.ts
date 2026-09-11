@@ -15,13 +15,13 @@ import {
   setGlobalLogLevel,
 } from '../utils/logger.js';
 
-export interface CapturedLogLine {
+interface CapturedLogLine {
   level: string;
   msg: string;
   [key: string]: unknown;
 }
 
-export interface LoggerCapture {
+interface LoggerCapture {
   /** Every line written since the capture started, in write order. */
   lines(): CapturedLogLine[];
   /** Only the lines at one level. */

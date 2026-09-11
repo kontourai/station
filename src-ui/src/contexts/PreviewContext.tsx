@@ -6,7 +6,7 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { Button } from '../components/Button';
+import type { PreviewItem } from '../components/ImagePreviewContent';
 import { LazyBoundary } from '../components/LazyBoundary';
 import {
   ResponsiveDialogHeader,
@@ -14,16 +14,8 @@ import {
 } from '../components/ResponsiveDialogSurface';
 import { SkeletonBlock } from '../components/state';
 
-const loadImageInspector = () =>
-  import('../components/ImageInspector').then((module) => ({
-    default: module.ImageInspector,
-  }));
-
-interface PreviewItem {
-  url: string;
-  mediaType: string;
-  name?: string;
-}
+const loadImagePreviewContent = () =>
+  import('../components/ImagePreviewContent');
 
 interface PreviewContextType {
   openPreview: (item: PreviewItem, items?: PreviewItem[]) => void;
@@ -49,14 +41,6 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
     setItems([]);
   }, []);
 
-  const currentIdx = current
-    ? items.findIndex((i) => i.url === current.url)
-    : -1;
-  const canPrev = currentIdx > 0;
-  const canNext = currentIdx < items.length - 1;
-
-  const canPreview = (mediaType?: string) => mediaType?.startsWith('image/');
-
   // archive#3796: one memoised value per provider — a fresh object literal
   // here republishes the context to every consumer on any render of this
   // provider, whatever the render was actually about.
@@ -68,7 +52,7 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
   return (
     <PreviewContext.Provider value={value}>
       {children}
-      {current && canPreview(current.mediaType) && (
+      {current?.mediaType?.startsWith('image/') && (
         <ResponsiveDialogSurface
           onClose={closePreview}
           ariaLabel="Preview"
@@ -81,43 +65,12 @@ export function PreviewProvider({ children }: { children: ReactNode }) {
             closeLabel="Close preview"
             onClose={closePreview}
           />
-          {items.length > 1 && (
-            <fieldset
-              className="image-preview-navigation"
-              aria-label="Image navigation"
-            >
-              <Button
-                aria-disabled={!canPrev}
-                onClick={() => {
-                  if (canPrev) setCurrent(items[currentIdx - 1]);
-                }}
-              >
-                Previous image
-              </Button>
-              <span>
-                {currentIdx + 1} / {items.length}
-              </span>
-              <Button
-                aria-disabled={!canNext}
-                onClick={() => {
-                  if (canNext) setCurrent(items[currentIdx + 1]);
-                }}
-              >
-                Next image
-              </Button>
-            </fieldset>
-          )}
           <LazyBoundary
-            load={loadImageInspector}
+            load={loadImagePreviewContent}
             componentProps={{
-              src: current.url,
-              name: current.name || 'Preview',
-              onNavigate: (direction: -1 | 1) => {
-                if (direction === -1 && canPrev)
-                  setCurrent(items[currentIdx - 1]);
-                if (direction === 1 && canNext)
-                  setCurrent(items[currentIdx + 1]);
-              },
+              current,
+              items,
+              onSelect: setCurrent,
             }}
             pending={<SkeletonBlock count={1} label="Loading image preview" />}
           />

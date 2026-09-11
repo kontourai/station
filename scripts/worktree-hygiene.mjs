@@ -70,6 +70,7 @@ import { dirname, join, resolve, sep } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
+import { transferBaselineShaFromPath } from './orchestration-transfer-gate.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -145,12 +146,41 @@ Exit codes: 0 success, 2 usage error.`;
  *   freshnessError: string | null,
  * }} worktree
  */
+/**
+ * Why a detached worktree is being kept, said as precisely as the facts allow.
+ *
+ * "detached HEAD" is true of a bisect, a review pin, and a transfer-gate
+ * baseline alike, so the inventory could not distinguish the one category that
+ * is disposable by construction from the two that are not. #516 records the
+ * consequence: 76 of 111 worktrees carried their own `node_modules` and the
+ * report classified 1 as FINISHED, so there was "no sweep-the-obvious-ones
+ * remedy available" — not because the space was unreclaimable, but because
+ * nothing named which trees were safe to reclaim.
+ *
+ * A baseline still is not FINISHED and this still does not remove anything:
+ * the reader decides and `git worktree remove` refuses a dirty tree. What
+ * changes is that the line now says which kind of detached tree this is.
+ *
+ * The directory name is a CLAIM, not evidence. It is only honoured when the
+ * worktree's actual HEAD agrees with it, so a renamed or re-pointed checkout
+ * falls back to the plain reason rather than being described as regenerable.
+ */
+export function detachedReason(worktree) {
+  const claimed = transferBaselineShaFromPath(worktree.path ?? '');
+  if (!claimed) return 'detached HEAD';
+  const head = String(worktree.head ?? '');
+  if (!head.startsWith(claimed)) {
+    return `detached HEAD — named a transfer baseline for ${claimed}, but HEAD does not match`;
+  }
+  return `detached HEAD — transfer-gate baseline for ${claimed}, regenerable by \`npm run transfer:gate -- --prepare-baseline\``;
+}
+
 export function classifyWorktree(worktree) {
   const keepReasons = [];
 
   if (worktree.isPrimary) keepReasons.push('primary checkout');
   if (worktree.isCurrent) keepReasons.push('current worktree');
-  if (!worktree.branch) keepReasons.push('detached HEAD');
+  if (!worktree.branch) keepReasons.push(detachedReason(worktree));
 
   if (worktree.branch) {
     // ONE derivation, not two. `merge-base --is-ancestor B ref` is true iff
@@ -288,9 +318,18 @@ export function parseWorktreeList(porcelain) {
   for (const line of porcelain.split(porcelain.includes('\0') ? '\0' : '\n')) {
     if (line.startsWith('worktree ')) {
       if (current) entries.push(current);
-      current = { path: line.slice('worktree '.length), branch: null };
+      current = {
+        path: line.slice('worktree '.length),
+        branch: null,
+        head: null,
+      };
     } else if (line.startsWith('branch refs/heads/')) {
       if (current) current.branch = line.slice('branch refs/heads/'.length);
+    } else if (line.startsWith('HEAD ')) {
+      // Captured so a detached worktree can be checked against what its own
+      // directory name claims. Trusting the name alone would let a rename or a
+      // re-pointed checkout read as a regenerable baseline.
+      if (current) current.head = line.slice('HEAD '.length).trim();
     }
   }
   if (current) entries.push(current);
@@ -538,6 +577,7 @@ export async function collectWorktreeFacts(entry, context) {
   return {
     path: entry.path,
     branch: entry.branch,
+    head: entry.head ?? null,
     isPrimary,
     isCurrent,
     commitsNotInBase,

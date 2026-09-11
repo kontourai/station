@@ -37,7 +37,7 @@ export class ConversationContextBoundaryConflictError extends Error {
   }
 }
 
-export interface ConversationContextBoundaryPersistence {
+interface ConversationContextBoundaryPersistence {
   reserve(input: ConversationContextBoundaryMarker): {
     marker: ConversationContextBoundaryMarker;
     outcome: 'created' | 'existing';

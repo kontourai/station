@@ -3,6 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, type Page, type Route } from '@playwright/test';
 import {
+  seedE2EFirstRunDecision,
+  seedE2EUsageTelemetryDisclosure,
+} from '../scripts/run-e2e-suite.mjs';
+import {
   e2eOperatorAuthorizationHeaders,
   readE2EOperatorCredential,
 } from './helpers/e2e-operator-credential';
@@ -18,6 +22,7 @@ import {
   startStation,
   stopStation,
 } from './helpers/live-station-task';
+import { pairBrowser } from './live/helpers/station-instance.mjs';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -107,7 +112,6 @@ test.describe
     let fixtureRoot = '';
     let controlRoot = '';
     let taskRoomControlSocket = '';
-    let bootstrapToken = '';
 
     // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
     test.beforeAll(async ({}, testInfo) => {
@@ -121,9 +125,13 @@ test.describe
         'station-room-acceptance-home-',
         'room-acceptance',
       );
-      bootstrapToken = await startStation(live, true, {
+      await startStation(live, true, {
         taskRoomControlSocket,
+        logFile: testInfo.outputPath(`${live.instance}.log`),
       });
+      const credential = readE2EOperatorCredential(live.home);
+      await seedE2EFirstRunDecision(live.api, credential);
+      await seedE2EUsageTelemetryDisclosure(live.api, credential);
     });
 
     // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
@@ -155,15 +163,12 @@ test.describe
     test('shows an actual server refusal before an explicit successful Join', async ({
       page,
     }, testInfo) => {
-      await page.goto(`${live.ui}/#station-ui-bootstrap=${bootstrapToken}`);
-      await page.evaluate(() =>
-        localStorage.setItem('station:onboarding-setup-dismissed', '1'),
-      );
-      const telemetry = page.getByRole('dialog', {
-        name: 'What Station sends',
+      await pairBrowser(page, {
+        root: process.cwd(),
+        instance: live.instance,
+        serverPort: live.serverPort,
+        uiOrigin: live.ui,
       });
-      if (await telemetry.isVisible())
-        await telemetry.getByRole('button', { name: 'Not now' }).click();
       const repository = join(fixtureRoot, 'refusal-worktree');
       await createRepository(repository, 'room-refusal');
       await createProject(page, 'room-refusal', repository);
@@ -253,18 +258,15 @@ test.describe
       page: owner,
     }, testInfo) => {
       testInfo.setTimeout(180_000);
-      await owner.goto(`${live.ui}/#station-ui-bootstrap=${bootstrapToken}`);
+      await pairBrowser(owner, {
+        root: process.cwd(),
+        instance: live.instance,
+        serverPort: live.serverPort,
+        uiOrigin: live.ui,
+      });
       await expect(
         owner.getByRole('region', { name: 'Station access required' }),
       ).toHaveCount(0);
-      await owner.evaluate(() =>
-        localStorage.setItem('station:onboarding-setup-dismissed', '1'),
-      );
-      const telemetryDialog = owner.getByRole('dialog', {
-        name: 'What Station sends',
-      });
-      if (await telemetryDialog.isVisible())
-        await telemetryDialog.getByRole('button', { name: 'Not now' }).click();
 
       const repository = join(fixtureRoot, 'shared-worktree');
       await createRepository(repository, 'room-acceptance');

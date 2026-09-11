@@ -1864,8 +1864,16 @@ function stopRecord(
   // so they don't accumulate. Persistent instances keep theirs for fast restarts.
   if (record.homeSource === '--temp-home') {
     const buildPaths = resolveBuildPaths(record.instanceId);
-    rmSync(join(CWD, buildPaths.server), { recursive: true, force: true });
-    rmSync(join(CWD, buildPaths.ui), { recursive: true, force: true });
+    // Finder can create .DS_Store during removal. Let Node retry transient
+    // ENOTEMPTY/EBUSY for these owned outputs; a persistent failure still fails.
+    for (const output of [buildPaths.server, buildPaths.ui]) {
+      rmSync(join(CWD, output), {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100,
+      });
+    }
   }
   if (announce) {
     console.log('  ✓ Stopped');

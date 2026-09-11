@@ -14,7 +14,7 @@ import type { ProviderTypeOption } from './types';
  * observation. Screens must not manufacture a setup state from booleans.
  */
 
-export interface ProviderPreset {
+interface ProviderPreset {
   id: string;
   name: string;
   desc: string;
@@ -206,7 +206,7 @@ const OPENAI_COMPATIBLE_PROVIDER_TYPE = PROVIDER_TYPES.find(
   (option) => option.type === 'openai-compat',
 )!;
 
-export type ModelProviderChoice = {
+type ModelProviderChoice = {
   id: string;
   type: string;
   name: string;
@@ -273,9 +273,9 @@ export type ProviderReadiness =
   | 'Disabled'
   | 'Unreachable';
 
-export type ProviderTone = 'ready' | 'warn' | 'error' | 'disabled';
+type ProviderTone = 'ready' | 'warn' | 'error' | 'disabled';
 
-export type ProviderCatalogKind = 'model' | 'agent' | 'command';
+type ProviderCatalogKind = 'model' | 'agent' | 'command';
 
 interface ProviderCatalogInputBase {
   id: string;
@@ -305,7 +305,7 @@ interface ProviderCatalogInputBase {
  * callers may attach the one discovery fact the row actually observed, but
  * may not synthesize a three-state setup tuple from it.
  */
-export type ProviderCatalogInput =
+type ProviderCatalogInput =
   | (ProviderCatalogInputBase & {
       setup: AgentConnectionView['setup'];
       discovery?: never;
@@ -315,7 +315,7 @@ export type ProviderCatalogInput =
       discovery?: 'detected-unconfigured';
     });
 
-export type ProviderCatalogItem = ProviderCatalogInput & {
+type ProviderCatalogItem = ProviderCatalogInput & {
   brand: string;
   readiness: ProviderReadiness;
   tone: ProviderTone;
@@ -326,7 +326,7 @@ export type ProviderCatalogItem = ProviderCatalogInput & {
   duplicateBrandCount: number;
 };
 
-export interface ProviderChoicePresentation {
+interface ProviderChoicePresentation {
   badge?: string;
   detail: string;
 }

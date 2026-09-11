@@ -46,7 +46,7 @@ export type LegacyCredentialProfileRegistryState = RegistryState & {
   applicationReceipts?: LegacyApplicationReceipt[];
 };
 
-export type CredentialProfileRegistryTransition =
+type CredentialProfileRegistryTransition =
   | 'staged'
   | 'adopted'
   | 'rolled_back'
@@ -54,7 +54,7 @@ export type CredentialProfileRegistryTransition =
   | 'rejected'
   | 'ignored';
 
-export interface CredentialProfileRegistryTransitionResult {
+interface CredentialProfileRegistryTransitionResult {
   state: LegacyCredentialProfileRegistryState;
   transition: CredentialProfileRegistryTransition;
 }

@@ -13,7 +13,7 @@
 const TERMINAL_SINCE_STORAGE_KEY = 'station.activity.terminalSince';
 
 /** item id -> epoch ms of the first observed terminal transition. */
-export type TerminalSinceMap = Record<string, number>;
+type TerminalSinceMap = Record<string, number>;
 
 /**
  * `maxAgeMs` prunes anchors older than the linger window plus a safety

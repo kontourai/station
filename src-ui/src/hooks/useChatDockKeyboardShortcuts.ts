@@ -1,7 +1,6 @@
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { isTurnInFlight } from '../contexts/active-chats-state';
-import { useNavigation } from '../contexts/NavigationContext';
 import { describeStopTurnOutcome } from './useActiveChatSessionMessaging';
 import { useCancelMessage } from './useActiveChatSessions';
 import { useKeyboardShortcut } from './useKeyboardShortcut';
@@ -34,11 +33,10 @@ interface DerivedSession {
 
 interface UseChatDockKeyboardShortcutsOptions {
   onCloseCurrent?: () => void;
-  onNewChat?: () => void;
   sessions: DerivedSession[];
   activeSessionId: string | null;
   activeSession: DerivedSession | null;
-  setActiveSessionId: (id: string | null) => void;
+  onNewChat: () => void;
   setShowSessionPicker: (v: boolean) => void;
   focusSession: (id: string) => void;
 }
@@ -61,35 +59,16 @@ interface UseChatDockKeyboardShortcutsOptions {
 export function useChatDockKeyboardShortcuts({
   sessions,
   onCloseCurrent,
-  onNewChat,
   activeSessionId,
   activeSession,
-  setActiveSessionId,
+  onNewChat,
   setShowSessionPicker,
   focusSession,
 }: UseChatDockKeyboardShortcutsOptions) {
-  const { selectedAgent, setActiveChat } = useNavigation();
-  const { initChat, removeChat, addEphemeralMessage } = useActiveChatActions();
+  const { removeChat, addEphemeralMessage } = useActiveChatActions();
   const cancelMessage = useCancelMessage();
 
-  useDockShortcut(
-    'dock.newChat',
-    't',
-    ['cmd'],
-    'New chat',
-    useCallback(() => {
-      if (onNewChat) {
-        onNewChat();
-        return;
-      }
-      if (selectedAgent) {
-        const newSessionId = `session-${Date.now()}`;
-        initChat(newSessionId, (selectedAgent as any) ?? undefined);
-        setActiveSessionId(newSessionId);
-        setActiveChat(null); // New chat, no conversation yet
-      }
-    }, [selectedAgent, initChat, setActiveSessionId, setActiveChat, onNewChat]),
-  );
+  useDockShortcut('dock.newChat', 't', ['cmd'], 'New chat', onNewChat);
 
   useDockShortcut(
     'dock.openConversation',

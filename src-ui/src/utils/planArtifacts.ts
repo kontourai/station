@@ -1,8 +1,8 @@
 import type { ChatMessage, ChatUIState } from '../contexts/active-chats-state';
 
-export type PlanArtifactStepStatus = 'pending' | 'in_progress' | 'completed';
+type PlanArtifactStepStatus = 'pending' | 'in_progress' | 'completed';
 
-export interface PlanArtifactStep {
+interface PlanArtifactStep {
   content: string;
   status: PlanArtifactStepStatus;
 }

@@ -12,7 +12,7 @@ const SOURCE_ROOTS = ['src-ui/src', 'packages/connect/src/react'];
 const SURFACE_FILE = /(Modal|Drawer|Popover|Sheet)[^/]*\.tsx$/;
 const ACTION_CLASS =
   /className=(?:"[^"]*(?:actions|footer|toolbar)[^"]*"|\{`[^`]*(?:actions|footer|toolbar)[^`]*`\})/i;
-const SHARED_DIALOG_CONTRACT = 'ResponsiveDialogSurface';
+const SHARED_DIALOG_CONTRACTS = new Set(['ResponsiveDialogSurface', 'Dialog']);
 
 function walk(directory) {
   return readdirSync(directory).flatMap((name) => {
@@ -76,12 +76,13 @@ export function validateResponsiveSurfaceInventory() {
   );
   const invalidContracts = entries.filter(
     (entry) =>
-      entry.contract !== undefined && entry.contract !== SHARED_DIALOG_CONTRACT,
+      entry.contract !== undefined &&
+      !SHARED_DIALOG_CONTRACTS.has(entry.contract),
   );
   const missingContractAdoption = entries.filter((entry) => {
-    if (entry.contract !== SHARED_DIALOG_CONTRACT) return false;
+    if (!SHARED_DIALOG_CONTRACTS.has(entry.contract)) return false;
     return !readFileSync(join(ROOT, entry.path), 'utf8').includes(
-      SHARED_DIALOG_CONTRACT,
+      `<${entry.contract}`,
     );
   });
   const actionEntries = parseActionInventory(
@@ -136,8 +137,8 @@ export function validateResponsiveSurfaceInventory() {
     actionTotal: discoveredActions.length,
     actionCovered: actionEntries.filter((entry) => entry.strategy === 'covered')
       .length,
-    sharedDialogContracts: entries.filter(
-      (entry) => entry.contract === SHARED_DIALOG_CONTRACT,
+    sharedDialogContracts: entries.filter((entry) =>
+      SHARED_DIALOG_CONTRACTS.has(entry.contract),
     ).length,
   };
 }

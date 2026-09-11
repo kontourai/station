@@ -25,7 +25,7 @@ import {
 /** Warning code carried on the emitted `runtime.warning` event. */
 export const UNREACHABLE_GATE_CLAIMS_CODE = 'flow.unreachable-gate-claims';
 
-export interface UnreachableGate {
+interface UnreachableGate {
   gateId: string;
   /** The gate's expected claim types, none of which the policy can produce. */
   unproducibleClaimTypes: string[];
@@ -59,7 +59,7 @@ export interface UnreachableGateClaims {
  * this diagnostic's trust boundary, so its errors, return values, and claim
  * names must never be reflected into a runtime warning.
  */
-export interface ReachabilityNotEvaluable {
+interface ReachabilityNotEvaluable {
   kind: 'reachability-not-evaluable';
   severity: 'not-evaluable';
   reason: 'routable-claim-types-unavailable';

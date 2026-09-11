@@ -14,7 +14,7 @@ export interface UIBlockFormSubmission {
   values: Array<{ name: string; label: string; value: string | boolean }>;
 }
 
-export interface UIBlockActions {
+interface UIBlockActions {
   submitForm: (submission: UIBlockFormSubmission) => void;
   /** Block keys already submitted this session — used to lock a form after submit. */
   submittedBlockIds: ReadonlySet<string>;

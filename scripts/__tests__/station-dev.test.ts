@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   install,
   isOnPath,
@@ -30,6 +30,17 @@ import {
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const shimPath = join(repoRoot, 'scripts', 'station-dev.mjs');
+
+import { resolveNpmCli } from '../dependency-lifecycle.mjs';
+
+beforeAll(() => {
+  const built = spawnSync(
+    process.execPath,
+    [resolveNpmCli(), 'run', 'build:cli'],
+    { cwd: repoRoot, encoding: 'utf8', windowsHide: true, timeout: 60_000 },
+  );
+  expect(built.status, `${built.stdout}\n${built.stderr}`).toBe(0);
+}, 65_000);
 
 const tempDirs: string[] = [];
 function makeTempDir(prefix: string): string {
@@ -355,7 +366,7 @@ describe('station-dev as a real subprocess', () => {
       encoding: 'utf8',
       windowsHide: true,
     });
-    expect(result.status).toBe(0);
+    expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).toMatch(/^station-dev: .+\n$/);
     expect(result.stdout).toContain('Station CLI (@kontourai/station-cli)');
   });
@@ -442,7 +453,7 @@ describe('install-station-dev: install (filesystem)', () => {
       encoding: 'utf8',
       windowsHide: true,
     });
-    expect(spawned.status).toBe(0);
+    expect(spawned.status, spawned.stderr).toBe(0);
     expect(spawned.stdout).toContain('Station CLI (@kontourai/station-cli)');
   });
 

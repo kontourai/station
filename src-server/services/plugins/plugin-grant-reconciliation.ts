@@ -11,12 +11,12 @@ export interface PluginGrantRuntimeSnapshot {
   readonly grants: readonly string[];
 }
 
-export type PluginGrantRuntimeGenerationFence = Pick<
+type PluginGrantRuntimeGenerationFence = Pick<
   PluginGrantRuntimeSnapshot,
   'installed' | 'installationGeneration' | 'providerGeneration'
 >;
 
-export interface PluginGrantQuiescence {
+interface PluginGrantQuiescence {
   release(): void;
 }
 
@@ -42,7 +42,7 @@ export interface PluginGrantReconciliationAdapters {
   reconcileSubscriptions(): Promise<{ kind: 'applied' | 'unavailable' }>;
 }
 
-export type PluginGrantReconciliationStage =
+type PluginGrantReconciliationStage =
   | 'module-quiescence'
   | 'subscription-quiescence'
   | 'provider-retirement'
@@ -53,7 +53,7 @@ export type PluginGrantReconciliationStage =
   | 'snapshot'
   | 'capacity';
 
-export type PluginGrantReconciliationResult =
+type PluginGrantReconciliationResult =
   | {
       readonly status: 'completed';
       readonly operationId: string;

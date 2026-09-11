@@ -531,7 +531,7 @@ export const conversationHandoffSchema = foregroundMessageObjectSchema.extend({
   idempotencyKey: z.string().min(1).max(200),
 });
 
-export const conversationContextBoundarySchema = z.object({
+const conversationContextBoundarySchema = z.object({
   policy: z.enum(['continue-from-history', 'empty-next-cold-start']),
   idempotencyKey: z.string().min(1).max(200),
   expectedCurrentSessionId: z.string().min(1).max(512),
@@ -781,7 +781,7 @@ export function resolveStreamResumePlan(
  * `env`/`req.raw`/`req.header` and more, which is fine — a wider object
  * satisfies a narrower structural type).
  */
-export interface PrincipalResolutionContext {
+interface PrincipalResolutionContext {
   env: unknown;
   req: {
     raw: Request;

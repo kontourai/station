@@ -271,6 +271,10 @@ describe('e2e manifest', () => {
       flakePolicy: 'fail-and-fix-no-retry',
     });
     expect(PR_BROWSER_SMOKE_CONTRACT.journeys).toEqual([
+      expect.objectContaining({ path: 'tests/connect-modal.spec.ts' }),
+      expect.objectContaining({
+        path: 'tests/connect-remote-auth-recovery.spec.ts',
+      }),
       expect.objectContaining({ path: 'tests/csp-shell.spec.ts' }),
       expect.objectContaining({ path: 'tests/ui-crud-smoke.spec.ts' }),
       expect.objectContaining({

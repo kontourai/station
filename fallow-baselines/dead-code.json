@@ -829,10 +829,6 @@
     "src-server/services/webhooks/inbound-webhook-authorization.ts:InboundWebhookAuthorizationService.recordFailure",
     "src-server/services/webhooks/inbound-webhook-authorization.ts:InboundWebhookAuthorizationService.recordSuccess",
     "src-server/utils/sqlite-wal.ts:WalJournalModeUnavailableError.code",
-    "src-ui/src/core/PluginRegistry.ts:PluginRegistry.getComponent",
-    "src-ui/src/core/PluginRegistry.ts:PluginRegistry.hasComponent",
-    "src-ui/src/core/PluginRegistry.ts:PluginRegistry.listComponents",
-    "src-ui/src/core/PluginRegistry.ts:PluginRegistry.getComponentManifest",
     "src-ui/src/platform/native/stationProfileStorage.ts:NativeStationProfileStorage.credentialReferences",
     "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts:NovaVoiceSessionAdapter.toggleMuted",
     "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts:NovaVoiceSessionAdapter.destroy",
@@ -870,9 +866,7 @@
   "duplicate_exports": [],
   "type_only_dependencies": [],
   "test_only_dependencies": [],
-  "dev_dependencies_in_production": [
-    "package.json:react"
-  ],
+  "dev_dependencies_in_production": ["package.json:react"],
   "boundary_violations": [],
   "boundary_coverage_violations": [],
   "boundary_call_violations": [],

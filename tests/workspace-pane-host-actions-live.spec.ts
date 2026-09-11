@@ -246,7 +246,7 @@ test('retained plugin recovers through responsive UI and its host default Agent 
     .getByRole('button', { name: 'Recover plugin', exact: true })
     .click();
   const consent = page.getByRole('dialog', {
-    name: 'Recover plugin permissions',
+    name: 'Recover this plugin?',
   });
   await expect(consent).toBeVisible();
   await expect(

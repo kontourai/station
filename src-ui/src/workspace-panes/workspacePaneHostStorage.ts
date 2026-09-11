@@ -27,7 +27,7 @@ const liveDocuments = new WeakMap<
   Map<symbol, WorkspacePaneHostDocumentV1>
 >();
 
-export interface WorkspacePaneHostHydrationResult {
+interface WorkspacePaneHostHydrationResult {
   document: WorkspacePaneHostDocumentV1 | null;
   failures: readonly WorkspacePaneHostRestorationFailure[];
 }

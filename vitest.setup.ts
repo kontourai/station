@@ -1,7 +1,10 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { stationTempRoot } from '@kontourai/station-shared/temp-dir';
+import { installNodeHttpCompatibility } from './packages/shared/src/node-http-compat.mjs';
 import { enableFixtureSqliteSynchronousOffForTest } from './src-server/utils/sqlite-fixture-durability.js';
+
+installNodeHttpCompatibility();
 
 /**
  * Give every test file an isolated Station root and runtime home.

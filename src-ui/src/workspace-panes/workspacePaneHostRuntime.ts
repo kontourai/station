@@ -1,7 +1,7 @@
 import type { WorkspacePaneInstanceId } from '@kontourai/station-contracts/workspace-pane';
 
-export type WorkspacePaneCloseReason = 'dirty' | 'pending';
-export type WorkspacePaneBeforeCloseResult =
+type WorkspacePaneCloseReason = 'dirty' | 'pending';
+type WorkspacePaneBeforeCloseResult =
   | 'allow'
   | { confirm: WorkspacePaneCloseReason };
 
@@ -15,18 +15,18 @@ export interface WorkspacePaneRuntimeCallbacks {
     | Promise<WorkspacePaneBeforeCloseResult>;
 }
 
-export type WorkspacePaneCloseDecision =
+type WorkspacePaneCloseDecision =
   | { status: 'closed' }
   | { status: 'confirm'; reason: WorkspacePaneCloseReason }
   | { status: 'missing' }
   | { status: 'error' };
 
 /** Reported only after the corresponding renderer callback completed successfully. */
-export type WorkspacePaneRuntimeTransition =
+type WorkspacePaneRuntimeTransition =
   | { kind: 'ready'; instanceId: WorkspacePaneInstanceId }
   | { kind: 'resumed'; instanceId: WorkspacePaneInstanceId }
   | { kind: 'suspended'; instanceId: WorkspacePaneInstanceId };
-export type WorkspacePaneRuntimeTransitionObserver = (
+type WorkspacePaneRuntimeTransitionObserver = (
   transition: WorkspacePaneRuntimeTransition,
 ) => void;
 

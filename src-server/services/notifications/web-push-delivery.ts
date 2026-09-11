@@ -52,7 +52,7 @@ interface WebPushDeliveryLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
 }
 
-export interface WebPushDeliveryOptions {
+interface WebPushDeliveryOptions {
   /**
    * Hosted paired-device records have no durable tenant binding. Keep their
    * delivery listener absent until subscriptions can be tenant-authorized.

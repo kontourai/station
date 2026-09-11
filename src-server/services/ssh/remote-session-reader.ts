@@ -90,7 +90,7 @@ export interface RemoteMessageSearchMatch {
   agentSlug?: string;
 }
 
-export type RemoteMessageSearchStatus =
+type RemoteMessageSearchStatus =
   | 'available'
   | 'empty'
   | 'authentication_required'
@@ -99,20 +99,20 @@ export type RemoteMessageSearchStatus =
   | 'unreachable'
   | 'deferred';
 
-export interface RemoteMessageSearchInstance {
+interface RemoteMessageSearchInstance {
   instanceId: string;
   instanceName: string;
   status: RemoteMessageSearchStatus;
 }
 
-export interface RemoteMessageSearchResult {
+interface RemoteMessageSearchResult {
   matches: RemoteMessageSearchMatch[];
   instances: RemoteMessageSearchInstance[];
   /** Connected Stations omitted by the fixed search fan-out budget. */
   deferredInstanceCount: number;
 }
 
-export type RemoteMessageSearchFetcher = (
+type RemoteMessageSearchFetcher = (
   apiBase: string,
   query: string,
   options?: ClientRequestOptions,

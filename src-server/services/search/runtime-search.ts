@@ -17,7 +17,7 @@ import type { TaskGraphService } from '../projects/task-graph-service.js';
 import { createStationMessageSearchProvider } from './station-search-providers.js';
 import { UnifiedSearchService } from './unified-search-service.js';
 
-export interface SearchReadContext {
+interface SearchReadContext {
   authority: SessionReadAuthority;
   current: () => boolean;
   signal?: AbortSignal;

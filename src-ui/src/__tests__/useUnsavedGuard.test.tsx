@@ -40,6 +40,27 @@ function Harness({ cancelled }: { cancelled?: () => void } = {}) {
   );
 }
 
+test('confirming one local action preserves a newly requested guarded continuation', () => {
+  const continued = vi.fn();
+  function ChainedGuard() {
+    const { guard, DiscardModal } = useUnsavedGuard(true);
+    return (
+      <>
+        <button type="button" onClick={() => guard(() => guard(continued))}>
+          Two decisions
+        </button>
+        <DiscardModal />
+      </>
+    );
+  }
+  render(<ChainedGuard />);
+  fireEvent.click(screen.getByRole('button', { name: 'Two decisions' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+  expect(continued).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+  expect(continued).toHaveBeenCalledOnce();
+});
+
 test('explicit guard cancellation settles an awaiting navigation admission', () => {
   const cancelled = vi.fn();
   render(<Harness cancelled={cancelled} />);

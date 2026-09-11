@@ -37,7 +37,7 @@ interface HomeActionSectionProps {
  * (`actionsLoading`), so an unmatched slug here means the project is gone from
  * the catalog, and the slug is then the only handle anything has on it.
  */
-export function continuationProjectLabel(
+function continuationProjectLabel(
   continuation: HomeViewNavigation,
   projects: { slug: string; name?: string }[] | undefined,
 ): string {

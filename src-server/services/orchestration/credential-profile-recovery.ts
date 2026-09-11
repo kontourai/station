@@ -15,7 +15,7 @@ import {
   type RecoveryDispatchReplay,
 } from './recovery-dispatch-adapter.js';
 
-export interface CredentialProfileRecoveryDeps {
+interface CredentialProfileRecoveryDeps {
   /**
    * The service's PUBLIC dispatch — never a lower-level send: it carries
    * the initialize() latch (T9), so the first recovery replay after boot

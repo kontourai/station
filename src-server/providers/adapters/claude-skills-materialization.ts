@@ -113,14 +113,14 @@ const MANIFEST_VERSION = 2 as const;
 const DEFAULT_STALE_AFTER_MS = 5 * 60 * 1000;
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
 
-export interface SkillMaterializationDirEntry {
+interface SkillMaterializationDirEntry {
   name: string;
   isDirectory(): boolean;
   isFile(): boolean;
   isSymbolicLink(): boolean;
 }
 
-export interface SkillMaterializationStat {
+interface SkillMaterializationStat {
   isSymbolicLink: boolean;
   isFile: boolean;
   isDirectory: boolean;
@@ -244,7 +244,7 @@ function defaultFsPort(): SkillMaterializationFsPort {
   };
 }
 
-export type SkillMaterializationSkipReason =
+type SkillMaterializationSkipReason =
   | 'unsafe-id'
   | 'unsafe-session-id'
   | 'not-found'
@@ -254,7 +254,7 @@ export type SkillMaterializationSkipReason =
   | 'copy-failed'
   | 'global-config-target';
 
-export interface SkillMaterializationSkip {
+interface SkillMaterializationSkip {
   id: string;
   reason: SkillMaterializationSkipReason;
   detail?: string;
@@ -281,7 +281,7 @@ export interface MaterializeSkillsInput {
   fs?: SkillMaterializationFsPort;
 }
 
-export interface MaterializeSkillsResult {
+interface MaterializeSkillsResult {
   materialized: string[];
   skipped: SkillMaterializationSkip[];
 }
@@ -1085,7 +1085,7 @@ export async function materializeSkills(
   return { materialized, skipped };
 }
 
-export interface CleanupMaterializedSkillsInput {
+interface CleanupMaterializedSkillsInput {
   cwd: string;
   /** This session's own identity — cleans exactly this session's own manifest, never another session's. */
   sessionId: string;
@@ -1095,7 +1095,7 @@ export interface CleanupMaterializedSkillsInput {
   fs?: SkillMaterializationFsPort;
 }
 
-export interface CleanupMaterializedSkillsResult {
+interface CleanupMaterializedSkillsResult {
   /** Skill ids fully removed (every tracked file matched and was deleted; tracked-only empty dirs pruned). */
   removedSkillIds: string[];
   /** Skill ids left in place because at least one tracked file no longer matched its recorded identity/hash — logged, not deleted. */
@@ -1200,7 +1200,7 @@ export async function cleanupMaterializedSkills(
   return { removedSkillIds, retainedSkillIds };
 }
 
-export interface SweepStaleManifestsInput {
+interface SweepStaleManifestsInput {
   cwd: string;
   /** `true` for a session id that must never be swept — the caller's live session set PLUS its own about-to-start session id. */
   isLiveSessionId: (sessionId: string) => boolean;
@@ -1213,7 +1213,7 @@ export interface SweepStaleManifestsInput {
   now?: () => number;
 }
 
-export interface SweepStaleManifestsResult {
+interface SweepStaleManifestsResult {
   swept: Array<{ sessionId: string; result: CleanupMaterializedSkillsResult }>;
   skippedLive: string[];
   skippedRecent: string[];

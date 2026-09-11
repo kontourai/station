@@ -9,13 +9,10 @@ import { readApprovalMode } from '@kontourai/station-contracts/provider';
  * maps to it), so it's intentionally omitted here rather than carried as
  * dead vocabulary.
  */
-export type CodexApprovalPolicy = 'untrusted' | 'on-request' | 'never';
-export type CodexSandboxMode =
-  | 'read-only'
-  | 'workspace-write'
-  | 'danger-full-access';
+type CodexApprovalPolicy = 'untrusted' | 'on-request' | 'never';
+type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
 
-export interface CodexApprovalKnobs {
+interface CodexApprovalKnobs {
   approvalPolicy: CodexApprovalPolicy;
   sandbox: CodexSandboxMode;
 }

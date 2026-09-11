@@ -475,7 +475,7 @@ export class SessionReattachConflictError extends Error {
  * typed error rather than falling through to the dormant write, which would
  * report success around a live start (the original archive#3493 lie).
  */
-export class SessionStopWhileStartingError extends Error {
+class SessionStopWhileStartingError extends Error {
   readonly code = 'session_start_in_flight';
 
   constructor(threadId: string, timeoutMs: number) {
@@ -512,7 +512,7 @@ export class SessionEndedError extends Error {
 
 export const ATTACHED_SESSION_READ_ONLY_ERROR =
   'Attached sessions are read-only.';
-export const PEER_DELEGATION_ACTIVITY_READ_ONLY_ERROR =
+const PEER_DELEGATION_ACTIVITY_READ_ONLY_ERROR =
   'Peer delegation Activity records are read-only.';
 
 /** A request authority or deliberately named process-wide aggregate scope. */
@@ -714,7 +714,7 @@ interface OrchestrationServiceOptions {
   };
 }
 
-export interface PeerDelegationActivityDispatch {
+interface PeerDelegationActivityDispatch {
   taskId: string;
   conversationId: string;
   prompt: string;
@@ -4052,7 +4052,7 @@ export class OrchestrationService {
         },
       },
       launchPolicy: {
-        assertStartAllowed: (input, context, internal) => {
+        assertStartAllowed: async (input, context, internal) => {
           if (
             this.options.requireTenantExecutionContext?.() &&
             !context.tenantExecutionContext
@@ -4073,12 +4073,15 @@ export class OrchestrationService {
               throw new Error(
                 'Room execution binding is unavailable in hosted mode.',
               );
-            const bound = this.options.eventStore?.bindProjectTaskRoomExecution(
-              {
+            const bound =
+              await this.options.eventStore?.bindProjectTaskRoomExecution({
                 ...internal.roomExecutionBinding,
                 sessionId: input.threadId,
-              },
-            );
+              });
+            if (this.options.requireTenantExecutionContext?.())
+              throw new Error(
+                'Room execution binding is unavailable in hosted mode.',
+              );
             if (bound?.kind !== 'bound')
               throw new Error(
                 'Room execution binding is unavailable; the provider was not started.',
@@ -4349,16 +4352,18 @@ export class OrchestrationService {
    * route handling a client-supplied command body.
    */
   /** Server-only Task reservation admission, before any assignment/provider effect. */
-  claimTaskDispatchBoundary(input: {
+  async claimTaskDispatchBoundary(input: {
     projectId: string;
     taskId: string;
     sessionId: string;
-  }): ReturnType<SessionTurnBoundaryAuthority['claimTaskDispatch']> {
+  }): Promise<ReturnType<SessionTurnBoundaryAuthority['claimTaskDispatch']>> {
     if (
       this.options.requireTenantExecutionContext?.() ||
-      this.options.eventStore?.bindProjectTaskRoomExecution(input).kind !==
-        'bound'
+      (await this.options.eventStore?.bindProjectTaskRoomExecution(input))
+        ?.kind !== 'bound'
     )
+      return { kind: 'unavailable' };
+    if (this.options.requireTenantExecutionContext?.())
       return { kind: 'unavailable' };
     return this.sessionStartBoundaries.claimTaskDispatch(
       input.sessionId,

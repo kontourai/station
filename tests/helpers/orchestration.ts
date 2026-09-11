@@ -1,3 +1,4 @@
+import type { ConversationOpenExecution } from '@kontourai/station-contracts/orchestration';
 import type { WorkspacePaneHostActionCatalog } from '@kontourai/station-contracts/workspace-pane-host-contribution';
 import { expect, type Page } from '@playwright/test';
 import {
@@ -6,6 +7,14 @@ import {
 } from './current-station-contract';
 import { rejectUnexpectedFixtureRequest } from './fixture-audit';
 import { placeSurfaceThroughLayoutPicker } from './region-placement';
+
+type ConversationLookupFixture = {
+  id: string;
+  currentSessionId: string;
+  agentSlug: string;
+  projectSlug?: string;
+  title?: string;
+};
 
 const E2E_ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
 const emittedOrchestrationEvents = new WeakMap<
@@ -466,6 +475,10 @@ type StoredChat = {
   agentSlug: string;
   title?: string;
   model?: string;
+  requestedModel?: string;
+  requestedProviderOptions?: Record<string, unknown>;
+  agentConnectionId?: string;
+  executionMode?: 'external' | 'station';
   provider?: string;
   providerOptions?: Record<string, unknown>;
   projectSlug?: string;
@@ -618,6 +631,35 @@ export async function installMockOrchestrationEventWindow(
  * current clients may carry distinct Conversation and Session identities, so a
  * synthetic 404 cannot safely fall back to the Session route.
  */
+/** Capture the observed source prefix once; retries must not recopy later turns. */
+export function forkMockOrchestrationTranscript(
+  page: Page,
+  sourceSessionIds: readonly string[],
+  targetSessionId: string,
+  branchPointTurnId: string,
+): Record<string, unknown>[] {
+  const historical = historicalOrchestrationEvents.get(page);
+  if (!historical)
+    throw new Error('Orchestration history fixture is not installed');
+  if (historical[targetSessionId]) return historical[targetSessionId];
+  const sources = new Set(sourceSessionIds);
+  const events = [
+    ...sourceSessionIds.flatMap((id) => historical[id] ?? []),
+    ...(emittedOrchestrationEvents.get(page) ?? []).filter(
+      (event) =>
+        typeof event.threadId === 'string' && sources.has(event.threadId),
+    ),
+  ];
+  const end = events.findIndex(
+    (event) =>
+      event.turnId === branchPointTurnId && event.method === 'turn.completed',
+  );
+  if (end < 0) throw new Error('Fork fixture has no completed source turn');
+  const prefix = structuredClone(events.slice(0, end + 1));
+  historical[targetSessionId] = prefix;
+  return prefix;
+}
+
 export async function installMockOrchestrationConversationEventWindow(
   page: Page,
   readSessionIds: (conversationId: string) => string[],
@@ -696,7 +738,14 @@ export async function emitMockOrchestrationEvent(
     payload.event !== null
   ) {
     const events = emittedOrchestrationEvents.get(page) ?? [];
-    events.push(payload.event as Record<string, unknown>);
+    const event = payload.event as Record<string, unknown>;
+    // EventStore assigns identity before both live delivery and replay.
+    // Negative fixtures can still explicitly supply a malformed identity.
+    const identified = Object.hasOwn(event, 'eventId')
+      ? event
+      : { ...event, eventId: `e2e-live-${events.length + 1}` };
+    payload = { ...payload, event: identified };
+    events.push(identified);
     emittedOrchestrationEvents.set(page, events);
   }
   await page.evaluate(
@@ -742,18 +791,13 @@ export async function openHeaderSettings(page: Page): Promise<void> {
 }
 
 export async function dismissSetupLauncher(page: Page): Promise<void> {
-  const continueButton = page.getByRole('button', {
-    name: 'Continue Without Setup',
-  });
-  await continueButton.click({ timeout: 1000 }).catch(async () => {
-    await page.evaluate(() => {
-      document.querySelector('[data-testid="setup-launcher"]')?.remove();
-    });
-  });
-  await page.getByTestId('setup-launcher').waitFor({
-    state: 'detached',
-    timeout: 3000,
-  });
+  const launcher = page.getByTestId('setup-launcher');
+  if (await launcher.isVisible()) {
+    await launcher
+      .getByRole('button', { name: 'Dismiss setup launcher', exact: true })
+      .click();
+    await expect(launcher).toBeHidden();
+  }
 }
 
 export async function seedOrchestrationRoutes(
@@ -771,16 +815,8 @@ export async function seedOrchestrationRoutes(
       updatedAt: string;
       messageCount?: number;
     }>;
-    conversationLookups?: Record<
-      string,
-      {
-        id: string;
-        currentSessionId: string;
-        agentSlug: string;
-        projectSlug?: string;
-        title?: string;
-      }
-    >;
+    conversationLookups?: Record<string, ConversationLookupFixture>;
+    executionBySession?: Record<string, ConversationOpenExecution>;
   },
 ): Promise<void> {
   await installMockOrchestrationEventWindow(page);
@@ -821,8 +857,16 @@ export async function seedOrchestrationRoutes(
   const providerSummaries =
     options?.providerSummaries ?? DEFAULT_PROVIDER_SUMMARIES;
   const conversations = options?.conversations ?? DEFAULT_CONVERSATIONS;
-  const conversationLookups =
+  const conversationLookups: Record<string, ConversationLookupFixture> =
     options?.conversationLookups ?? DEFAULT_CONVERSATION_LOOKUPS;
+  // A test may replace the default catalog after its beforeEach setup. Its
+  // event-window/open resolver must follow the same replacement snapshot.
+  if (!conversationSessionReaders.has(page) || options?.conversationLookups) {
+    await installMockOrchestrationConversationEventWindow(page, (id) => {
+      const conversation = conversationLookups[id];
+      return conversation ? [conversation.currentSessionId] : [];
+    });
+  }
 
   await Promise.all([
     page.route('**/.well-known/station/v1', (r) =>
@@ -950,18 +994,7 @@ export async function seedOrchestrationRoutes(
       const parts = url.pathname.split('/').filter(Boolean);
       const conversationId =
         (parts.at(-1) === 'open' ? parts.at(-2) : parts.at(-1)) ?? '';
-      const conversation = (
-        conversationLookups as Record<
-          string,
-          {
-            id: string;
-            currentSessionId: string;
-            agentSlug: string;
-            projectSlug?: string;
-            title?: string;
-          }
-        >
-      )[conversationId];
+      const conversation = conversationLookups[conversationId];
       if (parts.at(-1) === 'open' && conversation) {
         const inventory = conversations.find(
           (candidate) => candidate.id === conversationId,
@@ -980,6 +1013,17 @@ export async function seedOrchestrationRoutes(
         const currentSessionId = sessionReader
           ? sessionReader(conversationId).at(-1)
           : conversation.currentSessionId;
+        const execution = currentSessionId
+          ? options?.executionBySession?.[currentSessionId]
+          : undefined;
+        if (
+          execution &&
+          (execution.sessionId !== currentSessionId ||
+            execution.agentId !== conversation.agentSlug)
+        )
+          throw new Error(
+            'Conversation fixture execution identity is inconsistent',
+          );
         const { currentSessionId: _seededCurrentSessionId, ...identity } =
           conversation;
         const exactConversation = {
@@ -1001,6 +1045,7 @@ export async function seedOrchestrationRoutes(
               status: currentSessionId ? 'resolved' : 'missing-session',
               conversation: exactConversation,
               ...(currentSessionId ? { currentSessionId } : {}),
+              ...(execution ? { execution } : {}),
               transcript: {
                 available: Boolean(currentSessionId),
                 owner: 'runtime',

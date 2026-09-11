@@ -32,7 +32,7 @@ interface GatewaySocket {
   close(): void;
 }
 
-export interface DiscordGatewayServiceOptions {
+interface DiscordGatewayServiceOptions {
   homeDir: string;
   logger: Logger;
   socketFactory?: (url: string) => GatewaySocket;

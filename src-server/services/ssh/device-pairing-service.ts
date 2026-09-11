@@ -13,7 +13,6 @@ import {
   lstatSync,
   openSync,
   readFileSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -35,6 +34,8 @@ import {
   type TailscaleServeRequester,
   type WebPushSubscription,
 } from '@kontourai/station-contracts';
+
+import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 
 const REGISTRY_SCHEMA_VERSION = 2 as const;
 const PRE_ACTIVITY_REGISTRY_SCHEMA_VERSION = 1;
@@ -249,7 +250,7 @@ export type PairingApproval =
   | { readonly kind: 'ui-bootstrap' }
   | { readonly kind: 'unauthenticated' };
 
-export type DeviceRevocationActor = 'operator-credential';
+type DeviceRevocationActor = 'operator-credential';
 
 /**
  * Whether an exact Station-internal caller with no pairing credential may
@@ -298,7 +299,7 @@ function unauthenticatedApprovalAllowed(offer: PairingOfferState): boolean {
   return offer.requesterPosition === 'off-box';
 }
 
-export interface DevicePairingServiceOptions {
+interface DevicePairingServiceOptions {
   homeDir: string;
   environmentId: string;
   now?: () => number;
@@ -1787,7 +1788,7 @@ export class DevicePairingService {
       fsyncSync(descriptor);
       closeSync(descriptor);
       descriptor = undefined;
-      renameSync(temporaryPath, this.#registryPath);
+      renameFileSyncRetrying(temporaryPath, this.#registryPath);
     } finally {
       if (descriptor !== undefined) closeSync(descriptor);
       rmSync(temporaryPath, { force: true });

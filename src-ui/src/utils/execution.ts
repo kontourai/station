@@ -205,6 +205,9 @@ export type ChatExecutionMetadata = {
   defaultProviderId?: string;
   model?: string;
   modelSource?: EffectiveModelSource;
+  requestedModel?: string | null;
+  requestedModelSource?: EffectiveModelSource;
+  requestedProviderOptions?: Record<string, unknown>;
   defaultModel?: string;
   defaultModelSource?: EffectiveModelSource;
   providerOptions: Record<string, unknown>;

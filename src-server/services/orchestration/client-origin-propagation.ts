@@ -30,7 +30,7 @@ export function withPrincipal<T extends { principal?: PrincipalRef }>(
 }
 
 /** What a turn-start reserves for its eventual `turn.started` event. */
-export interface TurnAttribution {
+interface TurnAttribution {
   clientOrigin?: ClientOrigin;
   principal?: PrincipalRef;
 }

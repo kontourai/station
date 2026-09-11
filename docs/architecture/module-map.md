@@ -1000,3 +1000,42 @@ validation do not establish AWS provisioning or application readiness.
 **Seams and adapters.** Typed engine and runtime-conversation factories in `tests/helpers` describe the backend fixture. `fixture-audit.ts` owns unknown-request failure at test teardown. `journey-profile.ts` instruments the real browser through CDP and the React commit hook; it adds no production endpoint. `run-test-mutations.mjs` reuses `lib/owned-process.mjs`, records exact replacement bytes, and restores only its own changes. The existing E2E runner owns app lifecycle and ports.
 
 **Evidence.** Policy known-bad/control tests, factory-to-execution binding tests, mutation restoration/verdict tests, profile schema tests, and the measured browser journeys exercise these interfaces. Do not copy the fixture defaults into a new catch-all router, replace the process owner, or treat a static PASS as behavioral coverage.
+
+## Monitoring history and Agent catalog reads
+
+`RuntimeEventLog.queryEvents` owns a bounded metadata index of actual per-file
+timestamp ranges. The first observation reads a file; later disjoint queries
+skip unchanged files. Each request checks inode, size, and nanosecond change
+metadata. Appends/replacements invalidate bounds, and backfill is never pruned
+by filename date. This is not a persistent payload cache. Missing history is
+empty; other filesystem failures propagate to the request boundary.
+
+`AgentService.getAgentCatalog` owns the registered/store-only catalog assembly
+used by both the Agent route and boot aggregation. `ConfigLoader.readAgentCatalog`
+reads each definition once for that request, retaining its metadata and spec
+through projection. Subsequent requests read afresh; no process-wide spec cache
+supplies authorization or availability.
+
+Monitoring's store owns chronological ordering and the retained window. The
+view preserves that order when filtering; native disclosures defer tool payload
+construction until expansion. The SDK window response retains truncation so the
+view discloses that local search covers loaded events only.
+
+## Transport and diagnostic leaf modules
+
+`packages/shared/src/mcp-connection.ts` owns transport construction and MCP
+negotiation. Local custody imports that leaf; `mcp.ts` keeps the published
+factory exports and connection collection manager. The factory no longer imports
+its own custody owner through a facade.
+
+Foreground and queued chat messages share `dispatchForeground` for target/model
+and attachment mapping. It calls the SDK client directly. Queue completion no
+longer imports a React hook that initializes the same SSE event graph.
+
+Release variant definitions live in `scripts/lib/release-variants.mjs`, shared
+by inventory and SBOM validation without an inventory/SBOM import cycle.
+
+The native login-shell PATH observation owns a process group, nonblocking output,
+a five-second deadline, and a 64 KiB output budget. Its framed PATH value excludes
+startup banners. Native sidecar error details retain at most 64 KiB and 16 lines,
+including after lossy UTF-8 decoding; an I/O error stops the reader.

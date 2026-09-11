@@ -207,9 +207,7 @@ test.describe('Android — Mobile Layout', () => {
       '.app-toolbar button[title^="Settings"]',
     );
     await expect(settingsButton).toBeVisible();
-    await settingsButton.evaluate((element) =>
-      element.dispatchEvent(new MouseEvent('click', { bubbles: true })),
-    );
+    await settingsButton.click();
 
     await expect(page.locator('.settings__section-nav')).toBeVisible();
     await page.getByRole('link', { name: 'System', exact: true }).click();
