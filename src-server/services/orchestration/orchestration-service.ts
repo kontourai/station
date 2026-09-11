@@ -98,6 +98,7 @@ import { engineIdForAdapter } from '../../providers/adapter-identity.js';
 import type {
   ProviderAdapterShape,
   ProviderSessionStartInput,
+  ProviderTaskStopResult,
   ProviderTurnStartResult,
 } from '../../providers/adapter-shape.js';
 import { ProviderTurnEndedError } from '../../providers/adapter-shape.js';
@@ -2172,6 +2173,32 @@ export class OrchestrationService {
     this.assertAdapterCurrent(adapter);
     await adapter.interruptTurn(threadId, turnId);
     this.assertAdapterCurrentAfterCommand(adapter);
+  }
+
+  /**
+   * station#1877: stop ONE provider-reported subagent, leaving the turn and
+   * its siblings running.
+   *
+   * Deliberately does NOT fall back to `interruptTurn` when the adapter has
+   * no task-scoped stop: a turn interrupt ends every other running subagent
+   * too, which is the outcome this exists to avoid. An engine without the
+   * seam answers `unsupported` and the caller renders no control.
+   */
+  async stopProviderTask(
+    threadId: string,
+    taskId: string,
+  ): Promise<ProviderTaskStopResult> {
+    const adapter = await resolveOrchestrationAdapterForThread({
+      threadId,
+      threadProviders: this.threadProviders,
+      requireAdapter: (provider) => this.requireAdapter(provider),
+      adapters: this.options.adapterRegistry.list(),
+    });
+    this.assertAdapterCurrent(adapter);
+    if (!adapter.stopProviderTask) return { outcome: 'unsupported' };
+    const result = await adapter.stopProviderTask(threadId, taskId);
+    this.assertAdapterCurrentAfterCommand(adapter);
+    return result;
   }
 
   /**

@@ -204,6 +204,13 @@ export type ChatBackgroundTask = {
    * depth, which is not the same claim as depth 1.
    */
   spawnDepth?: number;
+  /**
+   * station#1877: the EXECUTION SESSION thread that reported this subagent,
+   * which is what the engine adapter keys its sessions by. The store groups
+   * tasks under the owning chat's thread, and the two are not the same id —
+   * addressing a task-scoped stop needs this one.
+   */
+  sessionThreadId?: string;
 };
 
 /**

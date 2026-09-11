@@ -800,6 +800,48 @@ describe('claude-adapter-events — subagent/background task lifecycle', () => {
     expect('spawnDepth' in registry.payload.active[0]).toBe(false);
   });
 
+  test('station#1877: activeTasks membership is what a task-scoped stop keys off', () => {
+    const publish = vi.fn();
+    const record = makeRecord();
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-1',
+        description: 'Long investigation',
+        uuid: 'u-1',
+        session_id: 's-1',
+      } as any,
+    });
+    // Live: the adapter's stop path finds it and calls Query.stopTask.
+    expect(record.activeTasks?.has('task-1')).toBe(true);
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'task-1',
+        status: 'stopped',
+        summary: 'stopped',
+        output_file: '/tmp/a.jsonl',
+        uuid: 'u-2',
+        session_id: 's-1',
+      } as any,
+    });
+    // Settled: a stop arriving now is the documented `no-active-task` race,
+    // not an error — a client can render a control for a task that settles
+    // before the request lands.
+    expect(record.activeTasks?.has('task-1')).toBe(false);
+  });
+
   test('station#1879: a settle carries the SDK output_file and usage', () => {
     const publish = vi.fn();
     const record = makeRecord();

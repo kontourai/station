@@ -2960,6 +2960,10 @@ describe('ClaudeAdapter', () => {
         // status only when this is on, so without it a background subagent
         // reports its description once and then goes silent.
         agentProgressSummaries: true,
+        // station#1877: declares that Station renders a per-task stop control
+        // wired to `stop_task`. Fail-closed both ways, so it ships with that
+        // control and never without it.
+        perTaskStopAffordance: true,
         persistSession: false,
         env: scrubBootInternalSecrets({
           ...process.env,
