@@ -14,7 +14,7 @@ import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
 import { ToolCallBatchBoundary } from './ToolCallBatchBoundary';
 import { ToolProgressIndicator } from './ToolProgressIndicator';
-import { toolCallPhase } from './tool-call-labels';
+import { isToolCallBatchPending, toolCallPhase } from './tool-call-labels';
 import { splitToolCallRuns } from './tool-call-runs';
 import { UIBlockRenderer } from './UIBlockRenderer';
 
@@ -120,13 +120,9 @@ export function StreamingMessageView({
     let running = false;
     let pending = false;
     for (const { part } of block.calls) {
-      const phase = toolCallPhase(part);
-      if (phase === 'running') running = true;
-      if (phase === 'proposed' || phase === 'unresolved') pending = true;
+      if (toolCallPhase(part) === 'running') running = true;
+      if (isToolCallBatchPending(part)) pending = true;
     }
-    // Only hide the indicator when the batch itself will headline the
-    // live call. A mixed pending run keeps the inventory phrase, so the
-    // indicator is still the only place that names what is running.
     return running && !pending;
   });
   useEffect(() => {

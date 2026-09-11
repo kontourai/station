@@ -114,6 +114,24 @@ export function toolCallPhase(part: ToolCallPhaseInput): ToolCallPhase {
   return completed ? 'done' : 'unresolved';
 }
 
+/**
+ * Whether a batch containing this call must not claim flight or completion.
+ * Proposed, session-unresolved, denied, and cancelled suppress the live
+ * headline. A plain failure does not — its `failedCount` badge is the
+ * disclosure, and a running sibling should still headline.
+ */
+export function isToolCallBatchPending(part: ToolCallPhaseInput): boolean {
+  if (isToolCallAwaitingApproval(part)) return true;
+  if (part.state === 'unresolved') return true;
+  if (
+    part.approvalStatus === 'user-denied' ||
+    part.approvalStatus === 'policy-denied'
+  ) {
+    return true;
+  }
+  return part.cancelled === true || part.state === 'cancelled';
+}
+
 const READ_TOKENS = new Set(['read', 'cat', 'view']);
 const WRITE_TOKENS = new Set(['write', 'edit', 'patch']);
 const EXEC_TOKENS = new Set([

@@ -141,16 +141,17 @@ export function ToolCallBatch<P extends ToolCallLike>({
           {group.progressMessage}
         </div>
       )}
-      {group.calls
-        .filter((call) => call.awaitingApproval)
-        .map((call) => (
-          <div
-            key={call.part.toolCallId ?? `awaiting:${call.index}`}
-            className="tool-call-batch__pending-grant"
-          >
-            {renderCall(call.part, call.index, true)}
-          </div>
-        ))}
+      {!isOpen &&
+        group.calls
+          .filter((call) => call.awaitingApproval)
+          .map((call) => (
+            <div
+              key={call.part.toolCallId ?? `awaiting:${call.index}`}
+              className="tool-call-batch__pending-grant"
+            >
+              {renderCall(call.part, call.index, true)}
+            </div>
+          ))}
       {isOpen && (
         <ToolCallBatchSheetBoundary
           group={group}

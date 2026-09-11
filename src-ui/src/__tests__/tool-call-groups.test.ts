@@ -276,6 +276,29 @@ describe('groupToolCallParts', () => {
     expect(group.summary).toBe('Running npm test…');
   });
 
+  test('a failed sibling does not stop a running call from headlining', () => {
+    const parts = [
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Read',
+        args: { file_path: 'a.ts' },
+        state: 'error',
+        error: 'missing',
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Bash',
+        args: { command: 'npm test' },
+        state: 'running',
+        progressMessage: 'compiling',
+      }),
+    ];
+    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    expect(group.summary).toBe('Running npm test…');
+    expect(group.progressMessage).toBe('compiling');
+    expect(group.failedCount).toBe(1);
+  });
+
   test('a batch with a call waiting on approval uses the pending verb, not past tense', () => {
     // Producer shape: `runtime-event-projection.ts` stamps both
     // `needsApproval` and `state: 'awaiting-approval'` on request.opened.
@@ -325,6 +348,28 @@ describe('groupToolCallParts', () => {
     expect(group.inProgress).toBe(true);
     expect(group.summary).toBe('Read 1 file, edit 1 file');
     expect(group.summary).not.toContain('…');
+  });
+
+  test('a known failure does not strip past tense from successful siblings', () => {
+    const parts = [
+      toolCall({
+        toolCallId: 'a',
+        toolName: 'Bash',
+        args: { command: 'npm test' },
+        state: 'completed',
+        result: 'ok',
+      }),
+      toolCall({
+        toolCallId: 'b',
+        toolName: 'Bash',
+        args: { command: 'npm run lint' },
+        state: 'error',
+        error: 'exit 1',
+      }),
+    ];
+    const [group] = groupToolCallParts(parts) as ToolCallGroup[];
+    expect(group.summary).toBe('Ran 2 commands');
+    expect(group.failedCount).toBe(1);
   });
 
   test('a user-denied write in a batch never claims the edit landed', () => {

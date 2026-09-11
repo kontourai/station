@@ -155,7 +155,7 @@ function ToolCallDisplayComponent({
   // show. A chevron over an empty panel is a promise nothing derives.
   const hasDetail = Boolean(hasArgs) || result !== undefined || Boolean(error);
 
-  if (!showDetails && !awaitingApproval) return null;
+  if (!showDetails && !(awaitingApproval && onApprove)) return null;
 
   const Glyph = KIND_GLYPH[kind];
   const lineContent = (

@@ -21,6 +21,7 @@ import {
   callLabel,
   classifyToolName,
   isToolCallAwaitingApproval,
+  isToolCallBatchPending,
   KIND_VERBS,
   type ToolCallKind,
   type ToolCallPhase,
@@ -140,12 +141,15 @@ function classifyCall<P extends ToolCallLike>(
   const phase = toolCallPhase(part);
   const inProgress = phase === 'running';
   const unresolved = part.state === 'unresolved';
-  const failed =
-    Boolean(part.error || part.errorText) || part.state === 'error';
   const awaitingApproval = isToolCallAwaitingApproval(part);
-  const denied = part.approvalStatus === 'user-denied';
+  const denied =
+    part.approvalStatus === 'user-denied' ||
+    part.approvalStatus === 'policy-denied';
   const cancelled =
     (part.cancelled === true || part.state === 'cancelled') && !denied;
+  const failed =
+    (Boolean(part.error || part.errorText) || part.state === 'error') &&
+    !denied;
   const label = callLabel(kind, toolName, args, phase);
   return {
     part,
@@ -224,9 +228,7 @@ export function classifyToolCallRun<P extends ToolCallLike>(
   const inProgress = calls.some((c) => c.inProgress);
   const unresolvedCount = calls.filter((c) => c.unresolved).length;
   const awaitingApprovalCount = calls.filter((c) => c.awaitingApproval).length;
-  const pending = calls.some(
-    (c) => c.phase === 'proposed' || c.phase === 'unresolved',
-  );
+  const pending = calls.some((c) => isToolCallBatchPending(c.part));
   const aggregateSummary = summarizeCalls(calls, inProgress, pending);
   // A live multi-call run updates to the current tool only when every
   // sibling is still allowed to claim flight. A proposed or unresolved
@@ -239,7 +241,7 @@ export function classifyToolCallRun<P extends ToolCallLike>(
   const failedCount = calls.filter((c) => c.failed).length;
   const deniedCount = calls.filter((c) => c.denied).length;
   const cancelledCount = calls.filter((c) => c.cancelled).length;
-  const progressSource = latestRunningCall(calls);
+  const progressSource = liveCall;
   const rawProgress = progressSource?.part.progressMessage;
   const progressMessage =
     typeof rawProgress === 'string' && rawProgress.trim().length > 0

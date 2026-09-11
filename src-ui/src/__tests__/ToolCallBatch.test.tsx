@@ -331,6 +331,12 @@ test('a collapsed run still surfaces Allow Once under the summary', async () => 
   expect(
     await screen.findByRole('button', { name: /Read 1 file, edit 1 file/ }),
   ).toBeTruthy();
+  expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(1);
+  fireEvent.click(
+    screen.getByRole('button', { name: /Read 1 file, edit 1 file/ }),
+  );
+  expect(await screen.findByText('Edit secrets.env')).toBeTruthy();
+  expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
   expect(onToolApproval).toHaveBeenCalled();
 });
@@ -389,6 +395,33 @@ test('a collapsed batch discloses an awaiting-approval call without being opened
   expect(button.textContent).not.toMatch(/edited/i);
   const flag = screen.getByText('Awaiting approval');
   expect(flag.className).toContain('tool-call-batch__awaiting');
+});
+
+test('a policy-denied write is disclosed as denied, not as a generic failure', () => {
+  const run = runFor([
+    {
+      type: 'tool-invocation',
+      toolCallId: 'a',
+      toolName: 'Read',
+      args: { file_path: 'a.ts' },
+      state: 'result',
+      result: 'ok',
+    },
+    {
+      type: 'tool-invocation',
+      toolCallId: 'b',
+      toolName: 'Write',
+      args: { path: 'secrets.env' },
+      state: 'error',
+      error: 'blocked',
+      approvalStatus: 'policy-denied',
+    },
+  ]);
+
+  render(<ToolCallBatch run={run} renderCall={renderCall} />);
+
+  expect(screen.getByText('1 denied')).toBeTruthy();
+  expect(screen.queryByText('1 failed')).toBeNull();
 });
 
 test('a collapsed batch discloses a user-denied call without being opened', () => {
@@ -513,4 +546,43 @@ test('a collapsed in-progress streaming batch shows the call progress on the bat
   expect(progress).toHaveLength(1);
   expect(progress[0].className).toContain('tool-call-batch__progress');
   expect(document.querySelector('.streaming-progress')).toBeNull();
+});
+
+test('a running call beside an awaiting grant keeps a single progress line on the indicator', async () => {
+  render(
+    <StreamingMessageView
+      sessionId="s1"
+      agentIcon={null}
+      agentIconStyle={{}}
+      fontSize={14}
+      streamingText=""
+      hasContent
+      contentParts={[
+        {
+          type: 'tool-invocation',
+          toolCallId: 'a',
+          toolName: 'Bash',
+          args: { command: 'npm test' },
+          state: 'running',
+          progressMessage: 'still going',
+        },
+        {
+          type: 'tool-invocation',
+          toolCallId: 'b',
+          toolName: 'Write',
+          args: { path: 'secrets.env' },
+          needsApproval: true,
+          state: 'awaiting-approval',
+        },
+      ]}
+      contentRevision={1}
+      renderToolCall={(part, index) => (
+        <div key={index}>{String(part.toolName ?? part.name)}</div>
+      )}
+    />,
+  );
+  expect(await screen.findByText('still going')).toBeTruthy();
+  expect(screen.getAllByText('still going')).toHaveLength(1);
+  expect(document.querySelector('.streaming-progress')).toBeTruthy();
+  expect(document.querySelector('.tool-call-batch__progress')).toBeNull();
 });
