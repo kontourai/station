@@ -334,6 +334,14 @@ interface ClaudeActiveTask {
   description: string;
   subagentType?: string;
   backgrounded?: boolean;
+  /**
+   * station#1877 follow-up: the SDK's `spawn_depth` — 1 for a top-level
+   * spawn, N+1 when spawned from inside a depth-N agent. Station tracked no
+   * nesting at all, so a subagent's own subagents were indistinguishable
+   * from its siblings. Optional because the field is only present on
+   * `task_started`.
+   */
+  spawnDepth?: number;
 }
 
 /** Namespace for Claude-Code-specific `extension.notification` events. */
@@ -431,6 +439,11 @@ export function mapClaudeSdkMessage({
       toolName,
       description: message.description ?? '',
       subagentType: message.subagent_type,
+      ...(typeof message.spawn_depth === 'number' &&
+      Number.isFinite(message.spawn_depth) &&
+      message.spawn_depth > 0
+        ? { spawnDepth: message.spawn_depth }
+        : {}),
     });
     publish({
       eventId: crypto.randomUUID(),
@@ -1176,6 +1189,9 @@ function publishClaudeTaskRegistry(params: {
         description: task.description,
         subagentType: task.subagentType,
         backgrounded: task.backgrounded === true,
+        ...(task.spawnDepth !== undefined
+          ? { spawnDepth: task.spawnDepth }
+          : {}),
       })),
     },
   });

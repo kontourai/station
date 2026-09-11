@@ -1950,6 +1950,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       resume:
         typeof input.resumeCursor === 'string' ? input.resumeCursor : undefined,
       includePartialMessages: true,
+      // station#1877 follow-up: ask the SDK to summarise what a subagent is
+      // doing, so `task_progress.summary` carries a live status line instead
+      // of nothing. Without it a five-minute background agent reports its
+      // description and then goes silent until it settles. The SDK's own
+      // docs put the cost at "typically minimal" — the summary fork reuses
+      // the session's model and prompt cache.
+      agentProgressSummaries: true,
       persistSession,
       // archive#1174: a cwd-less session materializes its skills into a
       // Station-owned overlay directory (see claude-skills-overlay.ts)

@@ -198,6 +198,12 @@ export type ChatBackgroundTask = {
   description?: string;
   subagentType?: string;
   backgrounded?: boolean;
+  /**
+   * Nesting depth reported by the provider: 1 for a top-level spawn, N+1 for
+   * one spawned inside a depth-N agent. Absent when the provider reports no
+   * depth, which is not the same claim as depth 1.
+   */
+  spawnDepth?: number;
 };
 
 /**
