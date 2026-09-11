@@ -3,8 +3,9 @@
  */
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { MessageContent } from '../components/chat/message-bubble/MessageContent';
+import { StreamingMessageView } from '../components/chat/StreamingMessage';
 import { ToolCallBatch } from '../components/chat/ToolCallBatch';
 import { classifyToolCallRun } from '../components/chat/tool-call-groups';
 import {
@@ -260,4 +261,328 @@ test('explicit batch disclosure shows tool rows when inline details are hidden',
   );
   expect(await screen.findByText('Read source-0.ts')).toBeTruthy();
   expect(screen.getByText('Read source-3.ts')).toBeTruthy();
+});
+
+test('two consecutive tool calls collapse to the batch summary, not two rows', async () => {
+  render(
+    <MessageContent
+      contentParts={[
+        {
+          type: 'tool-invocation',
+          toolCallId: 'read-0',
+          toolName: 'Read',
+          args: { file_path: 'source-0.ts' },
+          state: 'result',
+          result: 'file contents',
+        },
+        {
+          type: 'tool-invocation',
+          toolCallId: 'read-1',
+          toolName: 'Read',
+          args: { file_path: 'source-1.ts' },
+          state: 'result',
+          result: 'file contents',
+        },
+      ]}
+      textContent=""
+      chatFontSize={14}
+      showReasoning={false}
+      showToolDetails={false}
+      isStreamingMessage={false}
+    />,
+  );
+  expect(
+    await screen.findByRole('button', { name: /Read 2 files|Used 2 tools/ }),
+  ).toBeTruthy();
+  expect(screen.queryByText('Read source-0.ts')).toBeNull();
+});
+
+test('a collapsed run still surfaces Allow Once under the summary', async () => {
+  const onToolApproval = vi.fn();
+  render(
+    <MessageContent
+      contentParts={[
+        {
+          type: 'tool-invocation',
+          toolCallId: 'read-0',
+          toolName: 'Read',
+          args: { file_path: 'a.ts' },
+          state: 'result',
+          result: 'ok',
+        },
+        {
+          type: 'tool-invocation',
+          toolCallId: 'write-1',
+          toolName: 'Write',
+          args: { path: 'secrets.env' },
+          needsApproval: true,
+          state: 'awaiting-approval',
+          approvalId: 'a1',
+        },
+      ]}
+      textContent=""
+      chatFontSize={14}
+      showReasoning={false}
+      showToolDetails={false}
+      isStreamingMessage={true}
+      onToolApproval={onToolApproval}
+    />,
+  );
+  expect(
+    await screen.findByRole('button', { name: /Read 1 file, edit 1 file/ }),
+  ).toBeTruthy();
+  expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(1);
+  fireEvent.click(
+    screen.getByRole('button', { name: /Read 1 file, edit 1 file/ }),
+  );
+  expect(await screen.findByText('Edit secrets.env')).toBeTruthy();
+  expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
+  expect(onToolApproval).toHaveBeenCalled();
+});
+
+test('a solo tool call stays an inline row with no batch button', () => {
+  render(
+    <MessageContent
+      contentParts={[
+        {
+          type: 'tool-invocation',
+          toolCallId: 'read-0',
+          toolName: 'Read',
+          args: { file_path: 'source-0.ts' },
+          state: 'result',
+          result: 'file contents',
+        },
+      ]}
+      textContent=""
+      chatFontSize={14}
+      showReasoning={false}
+      showToolDetails={true}
+      isStreamingMessage={false}
+    />,
+  );
+  expect(screen.getByText('Read source-0.ts')).toBeTruthy();
+  expect(
+    screen.queryByRole('button', { name: /Read 1 file|Used 1 tool/ }),
+  ).toBeNull();
+});
+
+test('a collapsed batch discloses an awaiting-approval call without being opened', () => {
+  const run = runFor([
+    {
+      type: 'tool-invocation',
+      toolCallId: 'a',
+      toolName: 'Read',
+      args: { file_path: 'a.ts' },
+      state: 'result',
+      result: 'ok',
+    },
+    {
+      type: 'tool-invocation',
+      toolCallId: 'b',
+      toolName: 'Write',
+      args: { path: 'secrets.env' },
+      needsApproval: true,
+      state: 'awaiting-approval',
+    },
+  ]);
+
+  render(<ToolCallBatch run={run} renderCall={renderCall} />);
+
+  const button = screen.getByRole('button', {
+    name: /Read 1 file, edit 1 file/,
+  });
+  expect(button.textContent).not.toMatch(/edited/i);
+  const flag = screen.getByText('Awaiting approval');
+  expect(flag.className).toContain('tool-call-batch__awaiting');
+});
+
+test('a policy-denied write is disclosed as denied, not as a generic failure', () => {
+  const run = runFor([
+    {
+      type: 'tool-invocation',
+      toolCallId: 'a',
+      toolName: 'Read',
+      args: { file_path: 'a.ts' },
+      state: 'result',
+      result: 'ok',
+    },
+    {
+      type: 'tool-invocation',
+      toolCallId: 'b',
+      toolName: 'Write',
+      args: { path: 'secrets.env' },
+      state: 'error',
+      error: 'blocked',
+      approvalStatus: 'policy-denied',
+    },
+  ]);
+
+  render(<ToolCallBatch run={run} renderCall={renderCall} />);
+
+  expect(screen.getByText('1 denied')).toBeTruthy();
+  expect(screen.queryByText('1 failed')).toBeNull();
+});
+
+test('a collapsed batch discloses a user-denied call without being opened', () => {
+  const run = runFor([
+    {
+      type: 'tool-invocation',
+      toolCallId: 'a',
+      toolName: 'Read',
+      args: { file_path: 'a.ts' },
+      state: 'result',
+      result: 'ok',
+    },
+    {
+      type: 'tool-invocation',
+      toolCallId: 'b',
+      toolName: 'Write',
+      args: { path: 'secrets.env' },
+      needsApproval: false,
+      cancelled: true,
+      approvalStatus: 'user-denied',
+    },
+  ]);
+
+  render(<ToolCallBatch run={run} renderCall={renderCall} />);
+
+  expect(screen.getByText('1 denied')).toBeTruthy();
+  expect(screen.getByRole('button').textContent).not.toMatch(/edited/i);
+});
+
+test('a collapsed batch discloses a cancelled call without being opened', () => {
+  const run = runFor([
+    {
+      type: 'tool-invocation',
+      toolCallId: 'a',
+      toolName: 'Read',
+      args: { file_path: 'a.ts' },
+      state: 'result',
+      result: 'ok',
+    },
+    {
+      type: 'tool-invocation',
+      toolCallId: 'b',
+      toolName: 'Write',
+      args: { path: 'secrets.env' },
+      state: 'cancelled',
+      cancelled: true,
+    },
+  ]);
+
+  render(<ToolCallBatch run={run} renderCall={renderCall} />);
+
+  expect(screen.getByText('1 cancelled')).toBeTruthy();
+  expect(screen.getByRole('button').textContent).not.toMatch(/edited/i);
+});
+
+test('a live batch button names the latest running call; the sheet titles the inventory', async () => {
+  const run = runFor([
+    {
+      type: 'tool-invocation',
+      toolCallId: 'a',
+      toolName: 'Read',
+      args: { file_path: 'a.ts' },
+      state: 'completed',
+    },
+    {
+      type: 'tool-invocation',
+      toolCallId: 'b',
+      toolName: 'Bash',
+      args: { command: 'npm test' },
+      state: 'running',
+    },
+  ]);
+  const group = classifyToolCallRun(run);
+
+  render(<ToolCallBatch run={run} renderCall={renderCall} />);
+
+  fireEvent.click(screen.getByRole('button', { name: group.summary }));
+  expect(await screen.findByTestId('tool-call-detail-0')).toBeTruthy();
+  expect(
+    screen.getByRole('heading', { name: group.aggregateSummary }),
+  ).toBeTruthy();
+  expect(group.summary).toBe('Running npm test…');
+  expect(group.aggregateSummary).not.toBe(group.summary);
+});
+
+test('a collapsed in-progress streaming batch shows the call progress on the batch, not a second indicator', async () => {
+  render(
+    <StreamingMessageView
+      sessionId="s1"
+      agentIcon={null}
+      agentIconStyle={{}}
+      fontSize={14}
+      streamingText=""
+      hasContent
+      contentParts={[
+        {
+          type: 'tool-invocation',
+          toolCallId: 'a',
+          toolName: 'Read',
+          args: { file_path: 'a.ts' },
+          state: 'completed',
+        },
+        {
+          type: 'tool-invocation',
+          toolCallId: 'b',
+          toolName: 'Bash',
+          args: { command: 'npm test' },
+          state: 'running',
+          progressMessage: 'still going',
+        },
+      ]}
+      contentRevision={1}
+      renderToolCall={(part, index) => (
+        <div key={index}>{String(part.toolName ?? part.name)}</div>
+      )}
+    />,
+  );
+  expect(
+    await screen.findByRole('button', { name: /Running npm test/ }),
+  ).toBeTruthy();
+  const progress = screen.getAllByText('still going');
+  expect(progress).toHaveLength(1);
+  expect(progress[0].className).toContain('tool-call-batch__progress');
+  expect(document.querySelector('.streaming-progress')).toBeNull();
+});
+
+test('a running call beside an awaiting grant keeps a single progress line on the indicator', async () => {
+  render(
+    <StreamingMessageView
+      sessionId="s1"
+      agentIcon={null}
+      agentIconStyle={{}}
+      fontSize={14}
+      streamingText=""
+      hasContent
+      contentParts={[
+        {
+          type: 'tool-invocation',
+          toolCallId: 'a',
+          toolName: 'Bash',
+          args: { command: 'npm test' },
+          state: 'running',
+          progressMessage: 'still going',
+        },
+        {
+          type: 'tool-invocation',
+          toolCallId: 'b',
+          toolName: 'Write',
+          args: { path: 'secrets.env' },
+          needsApproval: true,
+          state: 'awaiting-approval',
+        },
+      ]}
+      contentRevision={1}
+      renderToolCall={(part, index) => (
+        <div key={index}>{String(part.toolName ?? part.name)}</div>
+      )}
+    />,
+  );
+  expect(await screen.findByText('still going')).toBeTruthy();
+  expect(screen.getAllByText('still going')).toHaveLength(1);
+  expect(document.querySelector('.streaming-progress')).toBeTruthy();
+  expect(document.querySelector('.tool-call-batch__progress')).toBeNull();
 });
