@@ -167,6 +167,12 @@ export function useSendMessage(
       // stay durable, rather than also entering this legacy in-memory queue.
       options?: {
         skipInMemoryQueueOnBusy?: boolean;
+        /**
+         * When a turn is already running on a steering engine, still hold
+         * this as a follow-up instead of injecting it. Steer remains the
+         * default send-while-busy path.
+         */
+        queueOnBusy?: boolean;
         /** State-bound capability supplied only by OutboundDispatchModule. */
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
@@ -195,11 +201,13 @@ export function useSendMessage(
             : undefined;
         }
         const steeringCapable =
+          !options?.queueOnBusy &&
           sessionAdapterSupportsSteering(
             currentState.agentConnectionId,
             agentConnections,
             currentState.orchestrationProvider,
-          ) && !(attachments && attachments.length > 0);
+          ) &&
+          !(attachments && attachments.length > 0);
         if (!steeringCapable) {
           clearInput(sessionId);
           updateChat(sessionId, {

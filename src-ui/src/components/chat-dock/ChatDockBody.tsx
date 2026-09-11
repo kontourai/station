@@ -40,7 +40,10 @@ import {
   elidedHistoryNoticeText,
   summarizeElidedReasons,
 } from '../../utils/elidedHistory';
-import { isSessionExecutionActive } from '../../utils/execution';
+import {
+  isSessionExecutionActive,
+  sessionAdapterSupportsSteering,
+} from '../../utils/execution';
 import type {
   ModelProviderOption,
   SelectableModel,
@@ -522,6 +525,26 @@ export function ChatDockBody({
     );
     return chatInput.handleSend(undefined, undefined, { ambientContext });
   }, [getComposedContext, chatInput]);
+  const handleQueueFollowUp = useCallback((): Promise<void> => {
+    const ambientContext = ambientContextForSend(
+      getComposedContext(),
+      chatInput.input,
+    );
+    return chatInput.handleSend(undefined, undefined, {
+      ambientContext,
+      queueOnBusy: true,
+    });
+  }, [getComposedContext, chatInput]);
+  const busyFollowUp =
+    isTurnInFlight(activeSession) &&
+    sessionAdapterSupportsSteering(
+      activeSession.agentConnectionId,
+      [],
+      activeSession.orchestrationProvider,
+    ) &&
+    chatInput.attachments.length === 0
+      ? 'steer'
+      : 'queue';
   const isExecutionActive = isSessionExecutionActive(activeSession);
 
   // TTS readback when streaming ends
@@ -1229,6 +1252,8 @@ export function ChatDockBody({
           disabled={!agent || readOnlyOpen || resolvingOpen || busyOpen}
           isSending={isExecutionActive}
           turnInFlight={isTurnInFlight(activeSession)}
+          busyFollowUp={busyFollowUp}
+          onQueueFollowUp={handleQueueFollowUp}
           stopPending={!!activeSession.stopPending}
           modelSupportsAttachments={modelSupportsAttachments}
           fileAttachmentsSupported={fileAttachmentsSupported}

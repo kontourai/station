@@ -1157,6 +1157,34 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     ).toBe('partial answer');
   });
 
+  it('queues on a steering engine when queueOnBusy is requested', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      openTurnId: 'turn-open',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'claude',
+        sessionId,
+        'wait for this turn',
+        undefined,
+        undefined,
+        undefined,
+        { queueOnBusy: true },
+      );
+    });
+
+    expect(steerOrchestrationTurnMock).not.toHaveBeenCalled();
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
+      'wait for this turn',
+    ]);
+  });
+
   it('steers a mid-turn message on Codex instead of queueing a new turn', async () => {
     steerOrchestrationTurnMock.mockResolvedValueOnce({
       outcome: 'steered',

@@ -86,6 +86,12 @@ Muse still binds one prompt to one process — no live input channel. That is a 
 The queued-messages chrome already offers **Send as steer** when the live
 provider's matrix allows it.
 
+While a turn is in flight, Enter **steers** on engines that can (Claude,
+Codex, ACP). A **Queue** control next to Stop holds the draft as a follow-up
+instead. Engines without a live channel, and any send that carries
+attachments, still queue. There is no persistent follow-up-mode setting;
+steer is the default whenever the engine can.
+
 ## Follow-ups
 
 - Tape-backed `useSessionEventWindow` transport so **Load earlier events**

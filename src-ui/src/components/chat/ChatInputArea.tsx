@@ -87,6 +87,14 @@ interface ChatInputAreaProps {
    */
   turnInFlight: boolean;
   /**
+   * What Enter does while a turn is in flight. Steer is the default on
+   * engines that can take mid-turn input; queue is the only path otherwise
+   * (and whenever this send carries attachments).
+   */
+  busyFollowUp?: 'steer' | 'queue';
+  /** Hold the draft as a follow-up instead of steering the open turn. */
+  onQueueFollowUp?: () => Promise<void>;
+  /**
    * a Stop request is in flight. The control stays visible (the
    * turn is still the thing on screen) but is disabled and labelled with what
    * is actually happening, so a second press cannot dispatch a second cancel.
@@ -194,6 +202,8 @@ export function ChatInputArea({
   disabled,
   isSending,
   turnInFlight,
+  busyFollowUp = 'queue',
+  onQueueFollowUp,
   stopPending = false,
   modelSupportsAttachments,
   fileAttachmentsSupported = modelSupportsAttachments,
@@ -321,13 +331,14 @@ export function ChatInputArea({
     .join(' ');
   const agentAccessibleLabel = `Agent: ${agentLabel ?? 'current Agent'}. ${agentHandoffDisabled ? (agentHandoffDisabledReason ?? 'Unavailable') : 'Change Agent'}`;
   const isMobile = useIsMobile();
-  // A turn is in flight, so this send queues behind it rather than starting
-  // one. Say so in the placeholder instead of letting "Type a message" imply
-  // the agent is idle — Station really does queue (see QueuedMessages).
+  // A turn is in flight. Steer is the default on engines that can take
+  // mid-turn input; otherwise Enter queues until this turn finishes.
   const placeholder = workspaceRefused
     ? 'This conversation continues from its original workspace — start a new chat to work here'
     : turnInFlight
-      ? 'Queue a follow-up...'
+      ? busyFollowUp === 'steer'
+        ? 'Steer this turn… (Enter steers; Queue waits)'
+        : 'Queue a follow-up…'
       : isMobile
         ? 'Type a message...'
         : 'Type a message... (Enter to send, Shift+Enter for new line)';
@@ -683,6 +694,21 @@ export function ChatInputArea({
             </button>
           )}
           <span className="chat-controls-row__spacer" />
+          {turnInFlight && busyFollowUp === 'steer' && onQueueFollowUp ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (input.trim() && !isOverLimit) void onQueueFollowUp();
+              }}
+              disabled={isOverLimit || !input.trim()}
+              tabIndex={0}
+              className="chat-input__queue-btn"
+              aria-label="Queue this follow-up until the turn finishes"
+              title="Wait until this turn finishes, then send as a new turn"
+            >
+              Queue
+            </button>
+          ) : null}
           {turnInFlight ? (
             <button
               type="button"

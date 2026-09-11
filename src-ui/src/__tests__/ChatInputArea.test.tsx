@@ -236,6 +236,50 @@ describe('ChatInputArea', () => {
     expect(props.onCancel).toHaveBeenCalled();
   });
 
+  test('steer-default busy composer offers Queue and Enter still sends', () => {
+    const onQueueFollowUp = vi.fn(async () => {});
+    const onSend = vi.fn(async () => {});
+    renderChatInputArea({
+      turnInFlight: true,
+      busyFollowUp: 'steer',
+      onQueueFollowUp,
+      onSend,
+      input: 'course correct',
+    });
+
+    expect(
+      screen.getByPlaceholderText(
+        'Steer this turn… (Enter steers; Queue waits)',
+      ),
+    ).toBeTruthy();
+    const queue = screen.getByRole('button', {
+      name: 'Queue this follow-up until the turn finishes',
+    });
+    fireEvent.click(queue);
+    expect(onQueueFollowUp).toHaveBeenCalledTimes(1);
+    expect(onSend).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(screen.getByPlaceholderText(/Steer this turn/), {
+      key: 'Enter',
+    });
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
+  test('queue-only busy composer has no Queue control', () => {
+    renderChatInputArea({
+      turnInFlight: true,
+      busyFollowUp: 'queue',
+      input: 'later',
+    });
+
+    expect(screen.getByPlaceholderText('Queue a follow-up…')).toBeTruthy();
+    expect(
+      screen.queryByRole('button', {
+        name: 'Queue this follow-up until the turn finishes',
+      }),
+    ).toBeNull();
+  });
+
   test('opens the model picker when model selection is available', () => {
     const props = renderChatInputArea();
 
