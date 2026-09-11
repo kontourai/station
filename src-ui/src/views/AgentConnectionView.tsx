@@ -50,6 +50,7 @@ import {
   useACPConnectionRegistry,
 } from '../hooks/useACPConnections';
 import { useDevicePresentation } from '../hooks/useDevicePresentation';
+import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import type { NavigationView } from '../types';
 import {
   capabilityLabel,
@@ -138,7 +139,7 @@ export function AgentConnectionView({
     [acpRegistryEntries],
   );
   const onChooseCommand = (choice: ACPConnectionRegistryEntry | 'custom') =>
-    onNavigate({
+    guardedNavigate({
       type: 'connections-engine-new',
       providerId: choice === 'custom' ? 'custom' : choice.id,
     });
@@ -155,7 +156,12 @@ export function AgentConnectionView({
   );
 
   const [dirty, setDirty] = useState(false);
+  const { guard, DiscardModal } = useUnsavedGuard(dirty);
   const seededConnectionId = useRef<string | null>(null);
+
+  function guardedNavigate(view: NavigationView) {
+    guard(() => onNavigate(view));
+  }
 
   useEffect(() => {
     if (!runtime) {
@@ -361,11 +367,13 @@ export function AgentConnectionView({
       breadcrumbLinks={
         selectedRuntimeId
           ? {
-              connections: () => onNavigate({ type: 'connections' }),
+              connections: () => guardedNavigate({ type: 'connections' }),
               engines: () =>
-                onNavigate({ type: 'connections-engines' } as NavigationView),
+                guardedNavigate({
+                  type: 'connections-engines',
+                } as NavigationView),
             }
-          : { connections: () => onNavigate({ type: 'connections' }) }
+          : { connections: () => guardedNavigate({ type: 'connections' }) }
       }
       title="Engines"
       subtitle="Connect installed engines for chats and delegated work"
@@ -375,12 +383,13 @@ export function AgentConnectionView({
       items={items}
       selectedId={isAddRoute ? null : (selectedRuntimeId ?? null)}
       onSelect={(id) => {
+        if (id === selectedRuntimeId) return;
         setShowAddCatalog(false);
-        onNavigate({ type: 'connections-engine-edit', id });
+        guardedNavigate({ type: 'connections-engine-edit', id });
       }}
       onDeselect={() => {
         setShowAddCatalog(false);
-        onNavigate({ type: 'connections-engines' } as NavigationView);
+        guardedNavigate({ type: 'connections-engines' } as NavigationView);
       }}
       onSearch={setSearch}
       searchValue={search}
@@ -906,6 +915,7 @@ export function AgentConnectionView({
           label="Select an engine to review its status and setup."
         />
       )}
+      <DiscardModal />
     </SplitPaneLayout>
   );
 }
