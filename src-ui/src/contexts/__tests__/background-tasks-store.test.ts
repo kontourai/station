@@ -564,6 +564,37 @@ describe('selectChatBackgroundTasks — provider-task dedup by toolCallId', () =
     });
   });
 
+  test('station#1877: a provider task with a reporting session offers a task-scoped stop', () => {
+    const view = selectChatBackgroundTasks(
+      createEmptyBackgroundTasksState(),
+      'chat-1',
+      [
+        {
+          taskId: 'provider-task-1',
+          description: 'Long investigation',
+          sessionThreadId: 'session-9',
+        },
+      ],
+    );
+    expect(view.running[0]).toMatchObject({
+      id: 'provider-task-1',
+      sessionThreadId: 'session-9',
+      // Task-scoped, never 'turn-interrupt' — that would stop every sibling.
+      stop: { kind: 'provider-task-stop' },
+    });
+  });
+
+  test('station#1877: a provider task with no reporting session offers no stop at all', () => {
+    const view = selectChatBackgroundTasks(
+      createEmptyBackgroundTasksState(),
+      'chat-1',
+      [{ taskId: 'provider-task-1', description: 'Long investigation' }],
+    );
+    // Nothing to address, so no control: a dead Stop button is worse than
+    // none, and falling back to the turn interrupt would stop the siblings.
+    expect(view.running[0]?.stop).toBeUndefined();
+  });
+
   test('a tool card with no matching provider task is not suppressed', () => {
     const state = ingestBackgroundTaskEvent(
       createEmptyBackgroundTasksState(),

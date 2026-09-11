@@ -35,7 +35,13 @@ export const STATION_SESSION_INVENTORY_MCP_V2_RESOURCE_NAME =
 export const STATION_SESSION_INVENTORY_MCP_V2_META_KEY =
   'station.session-inventory-app/v2';
 
-const MAX_RESOURCE_BYTES = 500 * 1024;
+// Re-grounded 2026-09-11 alongside station-control-basis-tools.ts: the
+// generated basis bundles grew past 512,000 bytes in the same window
+// (#1562 honest basis/diff panes, @kontourai/surface 3.2.0 in #1741), and
+// these registration-time throws 500 every station-control initialize.
+// 640 KiB carries ~12% headroom over the measured 574,724-byte Task
+// resource; the tracked gzip budgets live in package-boundary.test.ts.
+const MAX_RESOURCE_BYTES = 640 * 1024;
 const MAX_STRUCTURED_CONTENT_BYTES = 120 * 1024;
 const MAX_RESULT_BYTES = 128 * 1024;
 const identifier = z.string().min(1).max(512);
@@ -166,7 +172,7 @@ export function registerSessionInventoryTools(
   v2Resource ??= buildStationSessionInventoryMcpV2AppResource();
   if (Buffer.byteLength(resource.text, 'utf8') > MAX_RESOURCE_BYTES)
     throw new Error(
-      'Station Session inventory MCP App resource exceeds 500 KiB',
+      'Station Session inventory MCP App resource exceeds the 640 KiB resource budget',
     );
   registry.resource(
     STATION_SESSION_INVENTORY_MCP_RESOURCE_NAME,
@@ -175,7 +181,7 @@ export function registerSessionInventoryTools(
   );
   if (Buffer.byteLength(v2Resource.text, 'utf8') > MAX_RESOURCE_BYTES)
     throw new Error(
-      'Station Session inventory MCP App v2 resource exceeds 500 KiB',
+      'Station Session inventory MCP App v2 resource exceeds the 640 KiB resource budget',
     );
   registry.resource(
     STATION_SESSION_INVENTORY_MCP_V2_RESOURCE_NAME,

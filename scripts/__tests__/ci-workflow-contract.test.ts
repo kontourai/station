@@ -11,6 +11,7 @@ import {
   CHECKOUT_ACTION,
   PNPM_SETUP_ACTION,
   REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
+  REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA,
   readWorkflowDocuments,
 } from '../actionlint-gate.mjs';
 import { readPnpmLockfile } from '../lib/pnpm-lockfile.mjs';
@@ -223,7 +224,7 @@ describe('CI verification workflow contracts', () => {
     expect(secretScan).toMatch(/^ {4}permissions:\n {6}contents: read$/m);
     expect(secretScan).toContain('cancel-in-progress: true');
     expect(secretScan).toContain(
-      'secret-scan.yml@02f40a67901a79ce4004c44d91e350b93782644c',
+      `secret-scan.yml@${REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA}`,
     );
     expect(secretScan).toContain('runner: \'"ubuntu-22.04"\'');
     expect(secretScan).not.toContain('capacity-coordination-root:');

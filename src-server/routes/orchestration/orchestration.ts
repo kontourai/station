@@ -1872,6 +1872,23 @@ export function createOrchestrationRoutes(
     },
   );
 
+  /**
+   * station#1877: stop ONE provider-reported subagent without ending the
+   * turn. Task-scoped by construction — there is deliberately no fallback to
+   * a turn interrupt, because that would stop every sibling subagent too.
+   */
+  app.post('/sessions/:threadId/provider-tasks/:taskId/stop', async (c) => {
+    try {
+      const data = await orchestrationService.stopProviderTask(
+        param(c, 'threadId'),
+        param(c, 'taskId'),
+      );
+      return c.json({ success: true, data });
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  });
+
   app.get('/session-board/projects/:projectSlug', async (c) => {
     try {
       const data = await orchestrationService.listProjectSessionBoard(

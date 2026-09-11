@@ -305,6 +305,9 @@ describe('handleExtensionNotificationEvent', () => {
         description: 'Deep research',
         subagentType: 'researcher',
         backgrounded: true,
+        // station#1877: the execution-session thread that reported the task,
+        // which is what a task-scoped stop has to address.
+        sessionThreadId: threadId,
       },
     ]);
 

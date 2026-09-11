@@ -323,7 +323,7 @@
     "@tauri-apps/plugin-haptics": "2.3.3",
     "@tauri-apps/plugin-notification": "2.4.0",
     "@tauri-apps/plugin-process": "2.3.1",
-    "@tauri-apps/plugin-updater": "2.10.1",
+    "@tauri-apps/plugin-updater": "2.11.0",
     "@types/dompurify": "^3.2.0",
     "@voltagent/core": "^2.9.2",
     "@voltagent/logger": "^2.0.2",
@@ -353,7 +353,7 @@
     "sqlite-vec": "0.1.9",
     "web-push": "3.6.7",
     "ws": "^8.21.3",
-    "zod": "^4.4.3",
+    "zod": "^4.5.4",
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {

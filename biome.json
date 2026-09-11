@@ -13,8 +13,8 @@
       "!!**/dist-ui",
       "!!**/archive",
       "!!docs/strategy/dogfood/**/evidence",
-    "!!.veritas/**",
-    "!!veritas.claims.json"
+      "!!.veritas/**",
+      "!!veritas.claims.json"
     ]
   },
   "formatter": {
