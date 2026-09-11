@@ -30,6 +30,8 @@ interface FileClassification {
 
 /** Narrow filesystem port so descriptor/path race behavior is testable. */
 export interface WorkspaceFilePreviewFsPort {
+  /** Kernel no-follow flag when available; identity checks also guard the fallback. */
+  noFollow?: number;
   realpath(path: string): string;
   lstat(path: string): Stats;
   open(path: string, flags: number): number;
@@ -56,6 +58,7 @@ export interface WorkspaceFilePreviewDownload {
 }
 
 const DEFAULT_FILE_PREVIEW_FS: WorkspaceFilePreviewFsPort = {
+  noFollow: fsConstants.O_NOFOLLOW,
   realpath: realpathSync,
   lstat: lstatSync,
   open: openSync,
@@ -446,12 +449,15 @@ function readPreviewTarget(
   expectedIdentity: Stats,
   classification: FileClassification,
 ): Pick<WorkspaceFilePreview, 'status' | 'sizeBytes' | 'content' | 'dataUrl'> {
-  if (fsConstants.O_NOFOLLOW === undefined) return { status: 'unreadable' };
   let descriptor: number | undefined;
   try {
-    descriptor = fs.open(target, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    descriptor = fs.open(target, fsConstants.O_RDONLY | (fs.noFollow ?? 0));
     const stat = fs.fstat(descriptor);
+    const currentPath = fs.lstat(target);
     if (
+      currentPath.isSymbolicLink() ||
+      currentPath.dev !== expectedIdentity.dev ||
+      currentPath.ino !== expectedIdentity.ino ||
       stat.dev !== expectedIdentity.dev ||
       stat.ino !== expectedIdentity.ino
     ) {
@@ -479,12 +485,15 @@ function readDownloadTarget(
   target: string,
   expectedIdentity: Stats,
 ): Uint8Array | null {
-  if (fsConstants.O_NOFOLLOW === undefined) return null;
   let descriptor: number | undefined;
   try {
-    descriptor = fs.open(target, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    descriptor = fs.open(target, fsConstants.O_RDONLY | (fs.noFollow ?? 0));
     const stat = fs.fstat(descriptor);
+    const currentPath = fs.lstat(target);
     if (
+      currentPath.isSymbolicLink() ||
+      currentPath.dev !== expectedIdentity.dev ||
+      currentPath.ino !== expectedIdentity.ino ||
       stat.dev !== expectedIdentity.dev ||
       stat.ino !== expectedIdentity.ino ||
       !stat.isFile() ||

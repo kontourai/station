@@ -5465,6 +5465,58 @@ describe('EventStore', () => {
   // superset queries grouped in memory), so agreement here is real evidence,
   // not tautology.
   describe('listSessionProjectionEventsForThreads (station#4466 batched read)', () => {
+    test('the latest-any slot seeks once per requested thread instead of ranking history', () => {
+      for (const threadId of ['seek-a', 'seek-b']) {
+        seedProjectionThread(threadId, 'ordinary');
+        for (let index = 0; index < 100; index++) {
+          store.appendEvent({
+            eventId: `${threadId}-delta-${index}`,
+            provider: 'claude',
+            threadId,
+            method: 'content.text-delta',
+            createdAt: '2026-08-20T01:00:00Z',
+            turnId: 'turn-seek',
+            itemId: `item-${index}`,
+            delta: String(index),
+          });
+        }
+      }
+      const database = (store as any).db;
+      const prepared = vi.spyOn(database, 'prepare');
+      const rows = store.listSessionProjectionEventsForThreads([
+        'seek-a',
+        'seek-b',
+        'seek-absent',
+      ]);
+      const sql = prepared.mock.calls.map(([query]) => String(query));
+      prepared.mockRestore();
+      expect(rows.get('seek-a')?.map((event) => event.id)).toContain(
+        'seek-a-delta-99',
+      );
+      expect(rows.get('seek-b')?.map((event) => event.id)).toContain(
+        'seek-b-delta-99',
+      );
+      expect(rows.get('seek-absent')).toEqual([]);
+      const latest = sql.find(
+        (query) =>
+          query.includes('requested(thread_id)') &&
+          !query.includes('methods(method)'),
+      );
+      expect(latest).toBeDefined();
+      const plan = database
+        .prepare(`EXPLAIN QUERY PLAN ${latest}`)
+        .all('seek-a', 'seek-b', 'seek-absent') as Array<{ detail: string }>;
+      expect(
+        plan.some((row) => row.detail.includes('CORRELATED SCALAR SUBQUERY')),
+      ).toBe(true);
+      expect(
+        plan.some((row) => /COVERING INDEX.*\(thread_id=\?\)/.test(row.detail)),
+      ).toBe(true);
+      expect(plan.some((row) => row.detail.includes('USE TEMP B-TREE'))).toBe(
+        false,
+      );
+    });
+
     function seedProjectionThread(
       threadId: string,
       variant:

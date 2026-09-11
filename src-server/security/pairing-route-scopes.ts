@@ -1738,6 +1738,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // caller's own Session. Their GET leaves inherit read; narrative and
     // assessment replacement/removal are owner mutations and inherit operate.
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/outputs' },
+    // The input-reply context read (#1855) resolves ONE pending input
+    // request inside the caller's own thread: it requires the request
+    // principal to be current (checked before AND after the service call)
+    // and passes the caller's read authority into the service, so it
+    // discloses no thread the family's session reads do not already expose
+    // and crosses no Environment/Station boundary. Read tier is intended.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/input-requests/:requestId',
+    },
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/turns/:turnId/narrative/target',

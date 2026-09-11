@@ -210,6 +210,10 @@ export function NewChatModal({
     scopedAgents = [],
     compatibilityMessage,
   } = viewModel;
+  const preferredAgentSlug = mode?.preferredAgentSlug;
+  const preferredAgentIndex = preferredAgentSlug
+    ? flatList.findIndex((agent) => agent.slug === preferredAgentSlug)
+    : 0;
   const setupReturn = useNewChatSetupReturn({
     authority: requestAuthority,
     onCancel: onClose,
@@ -293,12 +297,9 @@ export function NewChatModal({
   // A fork starts on the current Agent even when recency would normally put
   // another row first. The user may still choose any other eligible row.
   useEffect(() => {
-    if (!mode || agentSearch) return;
-    const preferredIndex = flatList.findIndex(
-      (agent) => agent.slug === mode.preferredAgentSlug,
-    );
-    if (preferredIndex >= 0) setSelectedAgentIndex(preferredIndex);
-  }, [agentSearch, flatList, mode]);
+    if (!preferredAgentSlug || agentSearch) return;
+    if (preferredAgentIndex >= 0) setSelectedAgentIndex(preferredAgentIndex);
+  }, [agentSearch, preferredAgentIndex, preferredAgentSlug]);
   // archive#1089: the directory the highlighted agent will actually be
   // launched in. Derived from the agent, not just the project, because an
   // engine connection's own Working Directory outranks `$HOME` for a project
@@ -373,7 +374,7 @@ export function NewChatModal({
       setSelectedContext(
         resolveNewChatInitialContext(activeProjectSlug, projects),
       );
-      setSelectedAgentIndex(0);
+      setSelectedAgentIndex(Math.max(0, preferredAgentIndex));
       return;
     }
     if (
@@ -386,7 +387,7 @@ export function NewChatModal({
       );
       if (preferredContext !== GLOBAL_CONTEXT) {
         setSelectedContext(preferredContext);
-        setSelectedAgentIndex(0);
+        setSelectedAgentIndex(Math.max(0, preferredAgentIndex));
       }
     }
   }, [
@@ -395,6 +396,7 @@ export function NewChatModal({
     selectedContext,
     returnedFromSetup,
     projectCatalogResolved,
+    preferredAgentIndex,
     setSelectFeedback,
   ]);
 

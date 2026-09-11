@@ -29,8 +29,8 @@ import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
  *    (`src-ui/src/components/agent-provenance.ts`);
  *  - a Ready row's action is Chat, and it opens a chat with that agent through
  *    the same picker §5 describes;
- *  - a non-ready row prints the SERVER's `unavailableReason` verbatim and
- *    exactly ONE fixing verb, mapped from the server's `unavailableFix.kind`
+ *  - a non-ready row offers exactly ONE fixing verb, mapped from the server's
+ *    `unavailableFix.kind`, and details preserve its `unavailableReason`
  *    by `src-ui/src/components/AgentReadinessCell.tsx`.
  *
  * Nothing in the browser is mocked. The non-ready row is seeded through the

@@ -183,7 +183,19 @@ describe('changed verification selection', () => {
   ])('selects related %s edge', (path, reason) => {
     const selection = selectChangedVerification([path]);
     expect(selection.relatedPaths).toEqual([path]);
-    expect(selection.tests).toEqual([]);
+    // Every src-ui change additionally carries the supplemental glossary
+    // copy ratchet, which reads UI sources by path (no import edge).
+    const supplementalVocabulary = path.startsWith('src-ui/src/')
+      ? [
+          {
+            path: 'src-ui/src/__tests__/station-vocabulary.test.ts',
+            reasons: [
+              `glossary copy ratchet scans all src-ui sources by path: ${path}`,
+            ],
+          },
+        ]
+      : [];
+    expect(selection.tests).toEqual(supplementalVocabulary);
     expect(selection.lanes).toEqual([]);
     expect(selection.escalated, reason).toBe(false);
   });
@@ -191,11 +203,24 @@ describe('changed verification selection', () => {
     for (const path of Object.values(scenarios.testFiles)) {
       const selection = selectChangedVerification([path]);
       expect(selection.relatedPaths).toEqual([]);
+      // A changed src-ui test also carries the supplemental glossary copy
+      // ratchet on top of its own changed-test selection.
+      const supplementalVocabulary = path.startsWith('src-ui/src/')
+        ? [
+            {
+              path: 'src-ui/src/__tests__/station-vocabulary.test.ts',
+              reasons: [
+                `glossary copy ratchet scans all src-ui sources by path: ${path}`,
+              ],
+            },
+          ]
+        : [];
       expect(selection.tests).toEqual([
         {
           path,
           reasons: [`changed test file: ${path}`],
         },
+        ...supplementalVocabulary,
       ]);
     }
   });

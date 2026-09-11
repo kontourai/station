@@ -245,6 +245,10 @@ async function fillCron(
   page: Page,
   cron: [string, string, string, string, string],
 ) {
+  await page
+    .getByRole('group', { name: 'Schedule type', exact: true })
+    .getByRole('button', { name: 'Cron', exact: true })
+    .click();
   const labels = ['minute', 'hour', 'day', 'month', 'weekday'];
   for (const [index, value] of cron.entries()) {
     await page.getByLabel(labels[index], { exact: true }).fill(value);

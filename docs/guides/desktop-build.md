@@ -4,6 +4,26 @@ Station's desktop app is a Tauri v2 application. A normal build consumes only
 committed repository inputs: it must not require generating icons, schemas, or
 a Cargo lockfile by hand.
 
+## Release updates
+
+In the desktop shell, Settings → System → **Check for Desktop Updates** checks
+the signed update channel embedded in the installed app. An available update
+can be installed with **Install and restart**. Manual checks expose failures
+and can be retried; the automatic launch check remains quiet on check failure.
+
+**Connected Station updates** is a separate server operation. Its source
+checkout/build-stamp provenance does not establish the installed desktop app's
+update channel. A GitHub DMG must not require a local Git checkout or a fabricated
+`station-nightly-source.json` stamp to check its signed release feed.
+
+When changing update controls, test native check failures, retries, installation
+failure without restart, and desktop-only routing alongside server update tests.
+Release native update handles when checks are replaced or their UI unmounts,
+including late check responses. An active installation retains its handle until
+the operation settles.
+An HTTP-successful release feed or mocked plugin test does not prove installation
+and restart of a packaged app; retain that runtime verification separately.
+
 ## Prerequisites
 
 - Node 24, as declared by `.nvmrc` and `package.json`

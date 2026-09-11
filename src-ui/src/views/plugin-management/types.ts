@@ -1,4 +1,5 @@
 import type {
+  ConflictInfo,
   PermissionTier,
   PluginInstallationReadiness,
   PluginInstallationRevision,
@@ -89,7 +90,7 @@ export interface PreviewData {
   error?: string;
   manifest?: ReadyPlugin;
   components: PreviewComponent[];
-  conflicts: Array<{ type: string; id: string; existingSource?: string }>;
+  conflicts: ConflictInfo[];
   /**
    * SHA-256 of the staged source the preview inspected (archive#4288).
    * Carried back into `POST /install` so the server can refuse — before it

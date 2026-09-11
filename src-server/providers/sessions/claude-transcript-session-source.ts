@@ -69,6 +69,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
   constructor(options: ClaudeTranscriptSessionSourceOptions = {}) {
     const configDir =
       options.configDir ??
+      process.env.STATION_EXTERNAL_CLAUDE_SOURCE_ROOT ??
       process.env.CLAUDE_CONFIG_DIR ??
       join(homedir(), '.claude');
     this.projectsDir = join(configDir, 'projects');

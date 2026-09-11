@@ -13,8 +13,12 @@
       "packages/",
       "docs/"
     ],
-    "toolingRoots": ["scripts/"],
-    "testRoots": ["tests/"],
+    "toolingRoots": [
+      "scripts/"
+    ],
+    "testRoots": [
+      "tests/"
+    ],
     "productRoots": [
       "delivery/",
       "deploy/",
@@ -34,7 +38,12 @@
     "enableWorkAreaEvidenceRouting": true,
     "baseRef": "chore/veritas-governance-rollout",
     "packageManager": "npm",
-    "matchedScripts": ["ci:fast", "verify", "test", "build"],
+    "matchedScripts": [
+      "ci:fast",
+      "verify",
+      "test",
+      "build"
+    ],
     "evidenceCheckConfidence": "medium",
     "evidenceCheckSource": "repo-declared AI instructions",
     "existingVerification": {
@@ -109,7 +118,9 @@
           }
         }
       ],
-      "authoritativeCommands": ["npm run verify"],
+      "authoritativeCommands": [
+        "npm run verify"
+      ],
       "selectedAuthoritativeCommand": "npm run verify",
       "provenance": [
         {
@@ -174,7 +185,9 @@
       "defaultResolution": {
         "phase": "Phase S1 (The Wedge)",
         "workstream": "Kontour-native agent workspace",
-        "matchedArtifacts": ["docs/strategy/roadmap.md"]
+        "matchedArtifacts": [
+          "docs/strategy/roadmap.md"
+        ]
       },
       "nonSliceableInvariants": [
         "CLI/API/UI parity",
@@ -194,23 +207,31 @@
         {
           "id": "initiative-plan",
           "match": {
-            "patterns": ["docs/plans/"]
+            "patterns": [
+              "docs/plans/"
+            ]
           },
           "resolution": {
             "phase": "Phase S1 (The Wedge)",
             "workstream": "Kontour-native agent workspace",
-            "matchedArtifacts": ["docs/plans/**"]
+            "matchedArtifacts": [
+              "docs/plans/**"
+            ]
           }
         },
         {
           "id": "veritas-governance",
           "match": {
-            "patterns": [".veritas/"]
+            "patterns": [
+              ".veritas/"
+            ]
           },
           "resolution": {
             "phase": "Phase S1 (The Wedge)",
             "workstream": "Veritas 1.5 governance dogfood",
-            "matchedArtifacts": [".veritas/**"]
+            "matchedArtifacts": [
+              ".veritas/**"
+            ]
           }
         }
       ],
@@ -219,104 +240,156 @@
           "id": "product.src-server",
           "kind": "product-area",
           "label": "src-server",
-          "patterns": ["src-server/"],
-          "owners": ["station-runtime"],
+          "patterns": [
+            "src-server/"
+          ],
+          "owners": [
+            "station-runtime"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "product.src-ui",
           "kind": "product-area",
           "label": "src-ui",
-          "patterns": ["src-ui/"],
-          "owners": ["station-frontend"],
+          "patterns": [
+            "src-ui/"
+          ],
+          "owners": [
+            "station-frontend"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "product.src-shared",
           "kind": "product-area",
           "label": "src-shared",
-          "patterns": ["src-shared/"],
-          "owners": ["station-runtime"],
+          "patterns": [
+            "src-shared/"
+          ],
+          "owners": [
+            "station-runtime"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "product.src-desktop",
           "kind": "product-area",
           "label": "src-desktop",
-          "patterns": ["src-desktop/"],
-          "owners": ["station-desktop"],
+          "patterns": [
+            "src-desktop/"
+          ],
+          "owners": [
+            "station-desktop"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "package.cli",
           "kind": "shared-package-area",
           "label": "packages/cli",
-          "patterns": ["packages/cli/"],
-          "owners": ["station-architecture"],
+          "patterns": [
+            "packages/cli/"
+          ],
+          "owners": [
+            "station-architecture"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "package.connect",
           "kind": "shared-package-area",
           "label": "packages/connect",
-          "patterns": ["packages/connect/"],
-          "owners": ["station-architecture"],
+          "patterns": [
+            "packages/connect/"
+          ],
+          "owners": [
+            "station-architecture"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "package.contracts",
           "kind": "shared-contract-area",
           "label": "packages/contracts",
-          "patterns": ["packages/contracts/"],
-          "owners": ["station-architecture"],
+          "patterns": [
+            "packages/contracts/"
+          ],
+          "owners": [
+            "station-architecture"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "package.sdk",
           "kind": "shared-contract-area",
           "label": "packages/sdk",
-          "patterns": ["packages/sdk/"],
-          "owners": ["station-architecture"],
+          "patterns": [
+            "packages/sdk/"
+          ],
+          "owners": [
+            "station-architecture"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "package.shared",
           "kind": "shared-package-area",
           "label": "packages/shared",
-          "patterns": ["packages/shared/"],
-          "owners": ["station-architecture"],
+          "patterns": [
+            "packages/shared/"
+          ],
+          "owners": [
+            "station-architecture"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "example.catalog",
           "kind": "example-area",
           "label": "examples/**",
-          "patterns": ["examples/"],
-          "owners": ["shared"],
+          "patterns": [
+            "examples/"
+          ],
+          "owners": [
+            "shared"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "delivery.github",
           "kind": "delivery-area",
           "label": ".github/**",
-          "patterns": [".github/"],
-          "owners": ["repo-core"],
+          "patterns": [
+            ".github/"
+          ],
+          "owners": [
+            "repo-core"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "tooling.scripts",
           "kind": "tooling-area",
           "label": "scripts/**",
-          "patterns": ["scripts/"],
-          "owners": ["repo-core"],
+          "patterns": [
+            "scripts/"
+          ],
+          "owners": [
+            "repo-core"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "documentation.general",
           "kind": "product-area",
           "label": "docs/**",
-          "patterns": ["docs/"],
-          "owners": ["docs-team"],
+          "patterns": [
+            "docs/"
+          ],
+          "owners": [
+            "docs-team"
+          ],
           "boundary": "advisory"
         },
         {
@@ -324,32 +397,48 @@
           "kind": "protected-area",
           "label": ".veritas/**",
           "governance-locked": true,
-          "patterns": [".veritas/"],
-          "owners": ["repo-core"],
+          "patterns": [
+            ".veritas/"
+          ],
+          "owners": [
+            "repo-core"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "governance.strategy",
           "kind": "protected-area",
           "label": "docs/strategy/**",
-          "patterns": ["docs/strategy/"],
-          "owners": ["repo-core"],
+          "patterns": [
+            "docs/strategy/"
+          ],
+          "owners": [
+            "repo-core"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "governance.plans",
           "kind": "protected-area",
           "label": "docs/plans/**",
-          "patterns": ["docs/plans/"],
-          "owners": ["repo-core"],
+          "patterns": [
+            "docs/plans/"
+          ],
+          "owners": [
+            "repo-core"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "verification.tests",
           "kind": "verification-area",
           "label": "tests/**",
-          "patterns": ["tests/"],
-          "owners": ["shared"],
+          "patterns": [
+            "tests/"
+          ],
+          "owners": [
+            "shared"
+          ],
           "boundary": "advisory"
         },
         {
@@ -373,70 +462,94 @@
             "esbuild.config.mjs",
             ".gitignore"
           ],
-          "owners": ["repo-core"],
+          "owners": [
+            "repo-core"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "governance.flow",
           "kind": "protected-area",
           "label": ".flow/**",
-          "patterns": [".flow/"],
-          "owners": ["repo-core"],
+          "patterns": [
+            ".flow/"
+          ],
+          "owners": [
+            "repo-core"
+          ],
           "boundary": "advisory"
         },
         {
           "id": "product.delivery",
           "kind": "product-area",
           "label": "delivery/**",
-          "patterns": ["delivery/"]
+          "patterns": [
+            "delivery/"
+          ]
         },
         {
           "id": "product.deploy",
           "kind": "product-area",
           "label": "deploy/**",
-          "patterns": ["deploy/"]
+          "patterns": [
+            "deploy/"
+          ]
         },
         {
           "id": "product.fallow.baselines",
           "kind": "product-area",
           "label": "fallow-baselines/**",
-          "patterns": ["fallow-baselines/"]
+          "patterns": [
+            "fallow-baselines/"
+          ]
         },
         {
           "id": "product.gallery",
           "kind": "product-area",
           "label": "gallery/**",
-          "patterns": ["gallery/"]
+          "patterns": [
+            "gallery/"
+          ]
         },
         {
           "id": "product.kits",
           "kind": "product-area",
           "label": "kits/**",
-          "patterns": ["kits/"]
+          "patterns": [
+            "kits/"
+          ]
         },
         {
           "id": "product.monitoring",
           "kind": "product-area",
           "label": "monitoring/**",
-          "patterns": ["monitoring/"]
+          "patterns": [
+            "monitoring/"
+          ]
         },
         {
           "id": "product.ops",
           "kind": "product-area",
           "label": "ops/**",
-          "patterns": ["ops/"]
+          "patterns": [
+            "ops/"
+          ]
         },
         {
           "id": "product.schemas",
           "kind": "product-area",
           "label": "schemas/**",
-          "patterns": ["schemas/"]
+          "patterns": [
+            "schemas/"
+          ]
         },
         {
           "id": "product.seed",
           "kind": "product-area",
           "label": "seed/**",
-          "patterns": ["seed/"]
+          "patterns": [
+            "seed/"
+          ]
         }
       ]
     },
@@ -524,8 +637,12 @@
           }
         }
       ],
-      "requiredEvidenceCheckIds": ["repo-governance"],
-      "defaultEvidenceCheckIds": ["repo-governance"],
+      "requiredEvidenceCheckIds": [
+        "repo-governance"
+      ],
+      "defaultEvidenceCheckIds": [
+        "repo-governance"
+      ],
       "evidenceCheckRoutes": [
         {
           "nodeIds": [
@@ -535,7 +652,9 @@
             "package.shared",
             "package.cli"
           ],
-          "evidenceCheckIds": ["architecture-boundaries"],
+          "evidenceCheckIds": [
+            "architecture-boundaries"
+          ],
           "componentIds": [
             "package.sdk",
             "package.contracts",
@@ -545,14 +664,27 @@
           ]
         },
         {
-          "nodeIds": ["product.src-ui"],
-          "evidenceCheckIds": ["ui-data-access"],
-          "componentIds": ["product.src-ui"]
+          "nodeIds": [
+            "product.src-ui"
+          ],
+          "evidenceCheckIds": [
+            "ui-data-access"
+          ],
+          "componentIds": [
+            "product.src-ui"
+          ]
         },
         {
-          "nodeIds": ["product.src-server"],
-          "evidenceCheckIds": ["runtime-contracts", "connected-agents"],
-          "componentIds": ["product.src-server"]
+          "nodeIds": [
+            "product.src-server"
+          ],
+          "evidenceCheckIds": [
+            "runtime-contracts",
+            "connected-agents"
+          ],
+          "componentIds": [
+            "product.src-server"
+          ]
         }
       ],
       "evidenceInventoryManifests": [
@@ -644,10 +776,16 @@
           ],
           "exampleGood": "Keep Station-specific notes outside the marker block and regenerate the block.",
           "exampleBad": "Delete the governance block from AGENTS.md.",
-          "contextLinks": [".veritas/GOVERNANCE.md", "AGENTS.md"]
+          "contextLinks": [
+            ".veritas/GOVERNANCE.md",
+            "AGENTS.md"
+          ]
         },
         "match": {
-          "governance-block": ["AGENTS.md", "CLAUDE.md"]
+          "governance-block": [
+            "AGENTS.md",
+            "CLAUDE.md"
+          ]
         }
       },
       {
@@ -668,7 +806,9 @@
           ],
           "exampleGood": "import { buildPlugin } from '@kontourai/station-shared/build';",
           "exampleBad": "import { PluginManifest } from '@kontourai/station-shared';",
-          "contextLinks": ["docs/reference/contracts.md"]
+          "contextLinks": [
+            "docs/reference/contracts.md"
+          ]
         },
         "match": {
           "files": [
@@ -701,7 +841,9 @@
           ],
           "exampleGood": "Add a dated entry to docs/strategy/veritas/brownfield-gap-log.md.",
           "exampleBad": "Delete the migration record after the migration lands.",
-          "contextLinks": ["docs/strategy/veritas/brownfield-gap-log.md"]
+          "contextLinks": [
+            "docs/strategy/veritas/brownfield-gap-log.md"
+          ]
         },
         "match": {
           "artifacts": [
@@ -723,11 +865,17 @@
     },
     "review_preferences": {
       "human_signoff_required_for_stage_promotion": true,
-      "reviewer_confidence_scale": ["low", "medium", "high"],
+      "reviewer_confidence_scale": [
+        "low",
+        "medium",
+        "high"
+      ],
       "major_rewrite_definition": "A major rewrite replaces the main structure or control flow instead of making local edits."
     },
     "promotion_preferences": {
-      "evidence_checks_required_before_require": ["npm run verify:static"],
+      "evidence_checks_required_before_require": [
+        "npm run verify:static"
+      ],
       "warnings_block_in_ci": false,
       "require_consistent_feedback_before_promotion": true
     }
@@ -904,7 +1052,9 @@
         }
       }
     ],
-    "authoritativeCommands": ["npm run verify"],
+    "authoritativeCommands": [
+      "npm run verify"
+    ],
     "selectedAuthoritativeCommand": "npm run verify",
     "provenance": [
       {
@@ -967,7 +1117,9 @@
       "id": "governance.guidance",
       "kind": "protected-area",
       "label": ".veritas/**",
-      "patterns": [".veritas/"],
+      "patterns": [
+        ".veritas/"
+      ],
       "governance-locked": true,
       "risk": "high",
       "reason": "Detected .veritas/** as protected-area."
@@ -990,7 +1142,9 @@
       "id": "delivery.workflows",
       "kind": "delivery-area",
       "label": ".github/**",
-      "patterns": [".github/"],
+      "patterns": [
+        ".github/"
+      ],
       "risk": "medium",
       "reason": "Detected .github/** as delivery-area."
     },
@@ -998,7 +1152,9 @@
       "id": "tooling.scripts",
       "kind": "tooling-area",
       "label": "scripts/**",
-      "patterns": ["scripts/"],
+      "patterns": [
+        "scripts/"
+      ],
       "risk": "medium",
       "reason": "Detected scripts/** as tooling-area."
     },
@@ -1006,7 +1162,9 @@
       "id": "app.src.server",
       "kind": "product-area",
       "label": "src-server/**",
-      "patterns": ["src-server/"],
+      "patterns": [
+        "src-server/"
+      ],
       "risk": "medium",
       "reason": "Detected src-server/** as product-area."
     },
@@ -1014,7 +1172,9 @@
       "id": "app.src.ui",
       "kind": "product-area",
       "label": "src-ui/**",
-      "patterns": ["src-ui/"],
+      "patterns": [
+        "src-ui/"
+      ],
       "risk": "medium",
       "reason": "Detected src-ui/** as product-area."
     },
@@ -1022,7 +1182,9 @@
       "id": "app.src.shared",
       "kind": "product-area",
       "label": "src-shared/**",
-      "patterns": ["src-shared/"],
+      "patterns": [
+        "src-shared/"
+      ],
       "risk": "medium",
       "reason": "Detected src-shared/** as product-area."
     },
@@ -1030,7 +1192,9 @@
       "id": "workspace.packages",
       "kind": "shared-package",
       "label": "packages/**",
-      "patterns": ["packages/"],
+      "patterns": [
+        "packages/"
+      ],
       "risk": "medium",
       "reason": "Detected packages/** as shared-package."
     },
@@ -1038,7 +1202,9 @@
       "id": "docs.docs",
       "kind": "product-area",
       "label": "docs/**",
-      "patterns": ["docs/"],
+      "patterns": [
+        "docs/"
+      ],
       "risk": "medium",
       "reason": "Detected docs/** as product-area."
     },
@@ -1046,7 +1212,9 @@
       "id": "verification.tests",
       "kind": "verification-area",
       "label": "tests/**",
-      "patterns": ["tests/"],
+      "patterns": [
+        "tests/"
+      ],
       "risk": "medium",
       "reason": "Detected tests/** as verification-area."
     },
@@ -1054,7 +1222,9 @@
       "id": "product.delivery",
       "kind": "product-area",
       "label": "delivery/**",
-      "patterns": ["delivery/"],
+      "patterns": [
+        "delivery/"
+      ],
       "risk": "medium",
       "reason": "Detected delivery/** as product-area."
     },
@@ -1062,7 +1232,9 @@
       "id": "product.deploy",
       "kind": "product-area",
       "label": "deploy/**",
-      "patterns": ["deploy/"],
+      "patterns": [
+        "deploy/"
+      ],
       "risk": "medium",
       "reason": "Detected deploy/** as product-area."
     },
@@ -1070,7 +1242,9 @@
       "id": "product.examples",
       "kind": "product-area",
       "label": "examples/**",
-      "patterns": ["examples/"],
+      "patterns": [
+        "examples/"
+      ],
       "risk": "medium",
       "reason": "Detected examples/** as product-area."
     },
@@ -1078,7 +1252,9 @@
       "id": "product.fallow.baselines",
       "kind": "product-area",
       "label": "fallow-baselines/**",
-      "patterns": ["fallow-baselines/"],
+      "patterns": [
+        "fallow-baselines/"
+      ],
       "risk": "medium",
       "reason": "Detected fallow-baselines/** as product-area."
     },
@@ -1086,7 +1262,9 @@
       "id": "product.gallery",
       "kind": "product-area",
       "label": "gallery/**",
-      "patterns": ["gallery/"],
+      "patterns": [
+        "gallery/"
+      ],
       "risk": "medium",
       "reason": "Detected gallery/** as product-area."
     },
@@ -1094,7 +1272,9 @@
       "id": "product.kits",
       "kind": "product-area",
       "label": "kits/**",
-      "patterns": ["kits/"],
+      "patterns": [
+        "kits/"
+      ],
       "risk": "medium",
       "reason": "Detected kits/** as product-area."
     },
@@ -1102,7 +1282,9 @@
       "id": "product.monitoring",
       "kind": "product-area",
       "label": "monitoring/**",
-      "patterns": ["monitoring/"],
+      "patterns": [
+        "monitoring/"
+      ],
       "risk": "medium",
       "reason": "Detected monitoring/** as product-area."
     },
@@ -1110,7 +1292,9 @@
       "id": "product.ops",
       "kind": "product-area",
       "label": "ops/**",
-      "patterns": ["ops/"],
+      "patterns": [
+        "ops/"
+      ],
       "risk": "medium",
       "reason": "Detected ops/** as product-area."
     },
@@ -1118,7 +1302,9 @@
       "id": "product.schemas",
       "kind": "product-area",
       "label": "schemas/**",
-      "patterns": ["schemas/"],
+      "patterns": [
+        "schemas/"
+      ],
       "risk": "medium",
       "reason": "Detected schemas/** as product-area."
     },
@@ -1126,7 +1312,9 @@
       "id": "product.seed",
       "kind": "product-area",
       "label": "seed/**",
-      "patterns": ["seed/"],
+      "patterns": [
+        "seed/"
+      ],
       "risk": "medium",
       "reason": "Detected seed/** as product-area."
     },
@@ -1134,7 +1322,9 @@
       "id": "product.src.desktop",
       "kind": "product-area",
       "label": "src-desktop/**",
-      "patterns": ["src-desktop/"],
+      "patterns": [
+        "src-desktop/"
+      ],
       "risk": "medium",
       "reason": "Detected src-desktop/** as product-area."
     }
@@ -1189,7 +1379,9 @@
       "required": true
     }
   ],
-  "generated_output_ignores": [".kontourai/"],
+  "generated_output_ignores": [
+    ".kontourai/"
+  ],
   "owner_questions": [
     {
       "id": "canonical-evidenceCheck",

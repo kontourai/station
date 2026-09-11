@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -29,6 +30,27 @@ import {
   type PairingApproval,
   type PairingRequesterPosition,
 } from '../device-pairing-service.js';
+
+// Exercise the Windows rename boundary with real files on every host.
+vi.mock('node:fs', async (original) => {
+  const actual = await original<typeof import('node:fs')>();
+  return { ...actual, renameSync: vi.fn(actual.renameSync) };
+});
+vi.mock('@kontourai/station-shared/fs-windows-compat', async (original) => {
+  const actual =
+    await original<
+      typeof import('@kontourai/station-shared/fs-windows-compat')
+    >();
+  return {
+    ...actual,
+    renameFileSyncRetrying: (source: string, destination: string) =>
+      actual.renameFileSyncRetrying(source, destination, 'win32'),
+  };
+});
+const actualRename = vi.mocked(renameSync).getMockImplementation()!;
+afterEach(() => {
+  vi.mocked(renameSync).mockImplementation(actualRename).mockClear();
+});
 
 const ENVIRONMENT_ID = '11111111-1111-4111-8111-111111111111';
 /**
@@ -1157,6 +1179,46 @@ describe('DevicePairingService', () => {
       environmentId: ENVIRONMENT_ID,
     });
     expect(restarted.verifyCredential(paired.credential)).toBe(false);
+  });
+
+  test('transient Windows rename locks preserve exactly one durable activity increment', () => {
+    const { service, homeDir } = harness();
+    const paired = pair(service).result;
+    vi.mocked(renameSync)
+      .mockClear()
+      .mockImplementationOnce(() => {
+        throw Object.assign(new Error('sharing violation'), { code: 'EPERM' });
+      });
+    expect(service.recordCredentialActivity(paired.credential, 'lan')).toBe(
+      true,
+    );
+    expect(renameSync).toHaveBeenCalledTimes(2);
+    const restarted = new DevicePairingService({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+    });
+    expect(restarted.identifyDevice(paired.credential)?.usageCount).toBe(1);
+  });
+
+  test('persistent Windows rename locks remain failures without advancing memory or disk', () => {
+    const { service, homeDir } = harness();
+    const paired = pair(service).result;
+    vi.mocked(renameSync)
+      .mockClear()
+      .mockImplementation(() => {
+        throw Object.assign(new Error('sharing violation'), { code: 'EPERM' });
+      });
+    expect(() =>
+      service.recordCredentialActivity(paired.credential, 'lan'),
+    ).toThrow('sharing violation');
+    expect(renameSync).toHaveBeenCalledTimes(5);
+    vi.mocked(renameSync).mockImplementation(actualRename);
+    expect(service.identifyDevice(paired.credential)?.usageCount).toBe(0);
+    const restarted = new DevicePairingService({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+    });
+    expect(restarted.identifyDevice(paired.credential)?.usageCount).toBe(0);
   });
 
   test('recorded activity survives restart', () => {

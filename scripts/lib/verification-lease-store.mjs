@@ -9,7 +9,7 @@ import {
   statfsSync,
   writeFileSync,
 } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 
 /**
  * The lease FILE STORE: every byte the verification coordinator persists for
@@ -60,10 +60,11 @@ export function readJsonRecord(path) {
       // owner/state is conservative and keeps crash recovery possible.
       try {
         const directory = resolve(path, '..');
-        const name = path.slice(directory.length + 1);
-        const previous = requireDirectoryEntries(directory).find((entry) =>
-          entry.startsWith(`${name}.previous-`),
-        );
+        const name = basename(path);
+        const previous = readdirSync(directory, { withFileTypes: true }).find(
+          (entry) =>
+            entry.isFile() && entry.name.startsWith(`${name}.previous-`),
+        )?.name;
         if (previous)
           return {
             value: JSON.parse(readFileSync(join(directory, previous), 'utf8')),

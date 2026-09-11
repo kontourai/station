@@ -7,11 +7,7 @@
  * archive#3354 — highlighting is async and worker-backed: the Shiki call runs
  * in the highlight worker pool (loaded via dynamic import, so the worker
  * bootstrap stays out of the entry bundle) and the block renders a plain
- * <pre> until the HTML arrives. An in-progress (unclosed) fence never
- * reaches this module at all: `MarkdownRenderer`'s `rendersAsSource` sends a
- * block whose `provisionalReason` is `'open-fence'` to a bare <pre><code>
- * instead of the markdown code components, so a growing block is never
- * tokenized.
+ * <pre> until the HTML arrives. StreamingMarkdown owns unfinished fences.
  *
  * This module is referenced only from the async MarkdownRenderer chunk —
  * never from the entry bundle.

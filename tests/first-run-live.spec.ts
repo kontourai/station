@@ -137,11 +137,7 @@ test('desktop first run boots to a coherent zero-project Home view', async ({
   const chapter = page.getByTestId('first-run-engines');
   await expect(chapter).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Step 2 of 4')).toBeVisible();
-  // Same archive#3656 shell move as tests/first-run-engines.spec.ts — the `main`
-  // landmark is the shell's, Home is a `section` inside it (archive#3877).
-  await expect(
-    page.locator('main.main-content .home-view .first-run-engines'),
-  ).toHaveCount(1);
+  await expect(page.getByRole('dialog').filter({ has: chapter })).toBeVisible();
 
   // Deferring is a decision, and it is written down: the chapter closes, Home
   // keeps the card that offers it, and a reload does not re-open it.

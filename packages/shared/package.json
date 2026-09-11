@@ -41,6 +41,7 @@
     "./mcp": "./src/mcp.ts",
     "./mcp-ui-csp": "./src/mcp-ui-csp.ts",
     "./node-runtime": "./src/node-runtime.ts",
+    "./node-http-compat": "./src/node-http-compat.mjs",
     "./parsers": "./src/parsers.ts",
     "./portability": "./src/portability.ts",
     "./ports": "./src/ports.ts",

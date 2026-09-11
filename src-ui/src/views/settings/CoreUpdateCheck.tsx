@@ -374,7 +374,9 @@ export function CoreUpdateCheck({ apiBase }: { apiBase: string }) {
           ? 'Rebuilds from this machine’s source checkout and restarts the app.'
           : status?.applyMethod === 'reinstall'
             ? `Compares this install's build stamp against the latest on its channel.`
-            : 'Pull latest changes from the git remote. Server restarts automatically after update.'}
+            : status?.installKind === 'source-checkout'
+              ? 'Pull latest changes from the git remote. Server restarts automatically after update.'
+              : 'Checks the connected Station server. Desktop release updates use the app’s signed update channel.'}
       </span>
     </div>
   );

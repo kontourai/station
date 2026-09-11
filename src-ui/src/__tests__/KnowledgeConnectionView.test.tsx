@@ -8,6 +8,7 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { navigationStore } from '../contexts/navigation-store';
 
 let connectionsQueryData: unknown[] = [];
 let connectionsQueryState: Record<string, unknown> = {};
@@ -29,9 +30,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
 }));
 
-const navigateMock = vi.fn();
 vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ navigate: navigateMock }),
+  useNavigation: () => ({
+    navigate: navigationStore.navigate.bind(navigationStore),
+  }),
 }));
 
 vi.mock('../hooks/useCloseShortcut', () => ({
@@ -43,11 +45,10 @@ import { KnowledgeConnectionView } from '../views/KnowledgeConnectionView';
 
 describe('KnowledgeConnectionView (#242 shell port)', () => {
   beforeEach(() => {
-    window.history.replaceState({}, '', '/connections/knowledge');
+    navigationStore.navigate('/connections/knowledge');
     connectionsQueryData = [];
     connectionsQueryState = {};
     knowledgeStatusQueryState = {};
-    navigateMock.mockClear();
   });
 
   it('renders no page header of its own — the frame owns it', () => {
@@ -136,11 +137,7 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
     expect(window.location.search).toBe('?section=embedding-model');
   });
 
-  // archive#settings-revamp: this
-  // cross-link already routed through the internal `guard` correctly
-  // (`guard(() => navigate(...))`, the pattern the other four cross-link
-  // sites were fixed to match) — this file just never asserted the target or
-  // the dirty-intercept behavior.
+  // Exercise the registered navigation guard at the committed URL boundary.
   describe('the "Open Settings → My knowledge store" cross-link', () => {
     it('navigates to /settings with the section param when the page is not dirty', () => {
       render(<KnowledgeConnectionView />);
@@ -151,10 +148,13 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
         }),
       );
 
-      expect(navigateMock).toHaveBeenCalledWith('/settings', {
-        view: 'knowledge',
-        highlight: 'personal-knowledge-store',
-      });
+      expect(window.location.pathname).toBe('/settings');
+      expect(new URLSearchParams(window.location.search).get('view')).toBe(
+        'knowledge',
+      );
+      expect(new URLSearchParams(window.location.search).get('highlight')).toBe(
+        'personal-knowledge-store',
+      );
       expect(screen.queryByText('Unsaved Changes')).toBeNull();
     });
 
@@ -186,8 +186,13 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
         }),
       );
 
-      expect(navigateMock).not.toHaveBeenCalled();
+      expect(window.location.pathname).toBe('/connections/knowledge');
       expect(screen.getByText('Unsaved Changes')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+      expect(window.location.pathname).toBe('/settings');
+      expect(new URLSearchParams(window.location.search).get('view')).toBe(
+        'knowledge',
+      );
     });
   });
 
@@ -231,7 +236,10 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Add a knowledge source →' }),
     );
-    expect(navigateMock).toHaveBeenCalledWith('/settings?view=knowledge');
+    expect(window.location.pathname).toBe('/settings');
+    expect(new URLSearchParams(window.location.search).get('view')).toBe(
+      'knowledge',
+    );
   });
 
   // CI-R5: a zero is the index receipt that matters most — hiding the section

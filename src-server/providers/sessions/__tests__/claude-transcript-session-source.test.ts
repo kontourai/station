@@ -8,7 +8,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { projectSessionLifecycle } from '../../../services/orchestration/session-lifecycle-service.js';
 import { ClaudeTranscriptSessionSource } from '../claude-transcript-session-source.js';
 
@@ -25,11 +25,42 @@ function record(value: unknown): string {
 }
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const dir of dirs.splice(0))
     rmSync(dir, { recursive: true, force: true });
 });
 
 describe('ClaudeTranscriptSessionSource', () => {
+  test('an isolated history root does not scan the authenticated CLI home', async () => {
+    const authenticatedHome = fixtureDir();
+    const isolatedHistory = fixtureDir();
+    const directory = join(authenticatedHome, 'projects', 'project');
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      join(directory, 'host-session.jsonl'),
+      record({
+        type: 'user',
+        uuid: 'user-1',
+        sessionId: 'host-session',
+        cwd: '/workspace',
+        timestamp: '2026-09-08T00:00:00Z',
+        message: { role: 'user', content: 'Host-only history' },
+      }),
+    );
+    vi.stubEnv('CLAUDE_CONFIG_DIR', authenticatedHome);
+    vi.stubEnv('STATION_EXTERNAL_CLAUDE_SOURCE_ROOT', isolatedHistory);
+    expect(
+      (await new ClaudeTranscriptSessionSource().discover()).sessions,
+    ).toHaveLength(0);
+    expect(
+      (
+        await new ClaudeTranscriptSessionSource({
+          configDir: authenticatedHome,
+        }).discover()
+      ).sessions,
+    ).toHaveLength(1);
+    expect(process.env.CLAUDE_CONFIG_DIR).toBe(authenticatedHome);
+  });
   test('exposes its stable source-owned kind', () => {
     const source = new ClaudeTranscriptSessionSource({
       configDir: fixtureDir(),

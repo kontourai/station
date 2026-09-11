@@ -55,6 +55,120 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'latest-event-seek-order',
+    test: 'src-server/services/orchestration/__tests__/event-store.test.ts',
+    failure:
+      'the latest-any slot seeks once per requested thread instead of ranking history',
+    files: [
+      {
+        path: 'src-server/services/orchestration/event-store.ts',
+        change: (source) => {
+          const start = source.indexOf('  private fetchLatestAnyEvent(');
+          const end = source.indexOf('\n  /**', start);
+          if (start < 0 || end < start)
+            throw new Error('Latest-event method not found');
+          return (
+            source.slice(0, start) +
+            exactReplace(
+              source.slice(start, end),
+              'ORDER BY sequence DESC LIMIT 1',
+              'ORDER BY sequence ASC LIMIT 1',
+            ) +
+            source.slice(end)
+          );
+        },
+      },
+    ],
+  },
+  {
+    id: 'api-base-publication-race',
+    test: 'packages/sdk/src/__tests__/api-initialization.test.ts',
+    failure:
+      'pending readers observe the latest base at continuation rather than a superseded publication',
+    files: [
+      {
+        path: 'packages/sdk/src/api-core.ts',
+        change: (source) => {
+          let changed = exactReplace(
+            source,
+            'const deadline = performance.now() + 500;',
+            'const deadline = performance.now() + 500;\n  let observedBase = _apiBase;',
+          );
+          changed = exactReplace(
+            changed,
+            'const receive = () => {',
+            'const receive = () => {\n        observedBase = _apiBase;',
+          );
+          return exactReplace(
+            changed,
+            'return _apiBase;',
+            'return observedBase || _apiBase;',
+          );
+        },
+      },
+    ],
+  },
+
+  {
+    id: 'monitoring-file-reads',
+    test: 'src-server/runtime/conversation/__tests__/runtime-event-log.test.ts',
+    failure:
+      'skips unchanged disjoint files, but re-reads appended backfill and replaced files for each principal',
+    files: [
+      {
+        path: 'src-server/runtime/conversation/runtime-event-log.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'known?.signature === before &&',
+            'false && known?.signature === before &&',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'agent-catalog-reads',
+    test: 'src-server/routes/agents/__tests__/agents.routes.test.ts',
+    failure:
+      'GET / reads each persisted definition once and refreshes the catalog on the next request',
+    files: [
+      {
+        path: 'src-server/services/agents/agent-service.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'const specs = new Map(',
+            'await this.configLoader.readAgentCatalog();\n    const specs = new Map(',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'collapsed-monitoring-payload',
+    test: 'src-ui/src/components/monitoring/event-entry/__tests__/EventEntrySections.doubleEncode.test.tsx',
+    failure: 'an object result renders as pretty-printed JSON',
+    files: [
+      {
+        path: 'src-ui/src/components/monitoring/event-entry/EventEntrySections.tsx',
+        change: (source) =>
+          exactReplace(source, '{open ? children() : null}', '{children()}'),
+      },
+    ],
+  },
+  {
+    id: 'retired-feature-settings',
+    test: 'src-ui/src/lib/__tests__/device-settings-store.test.ts',
+    failure: 'migrates featureSettings while retiring removed switches',
+    files: [
+      {
+        path: 'src-ui/src/lib/device-settings-store.ts',
+        change: (source) =>
+          exactReplace(source, 'delete value[key];', 'void key;'),
+      },
+    ],
+  },
+
+  {
     id: 'eager-highlighter',
     test: 'src-ui/src/__tests__/SyntaxHighlighterContext.test.tsx',
     failure:

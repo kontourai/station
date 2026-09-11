@@ -1,10 +1,60 @@
+import { rmSync } from 'node:fs';
 import {
   type BrowserContext,
+  test as base,
   expect,
   type Locator,
   type Page,
-  test,
 } from '@playwright/test';
+import {
+  seedE2EFirstRunDecision,
+  seedE2EUsageTelemetryDisclosure,
+} from '../scripts/run-e2e-suite.mjs';
+import { readE2EOperatorCredential } from './helpers/e2e-operator-credential';
+import {
+  allocateLiveStation,
+  type LiveStation,
+  startStation,
+  stationRootForLiveHome,
+  stopStation,
+} from './helpers/live-station-task';
+
+let isolatedStation: LiveStation | undefined;
+let isolatedCredential: string | undefined;
+const test = base.extend({
+  baseURL: async ({ baseURL }, use) => {
+    await use(isolatedStation?.ui ?? baseURL);
+  },
+});
+
+test.beforeAll(async () => {
+  // Container runs already own their Station. The shared product runner does
+  // not: earlier files can spend this peer's real access-request quota.
+  if (process.env.STATION_E2E_RUNNER !== '1') return;
+  test.setTimeout(150_000);
+  isolatedStation = await allocateLiveStation(
+    'station-pairing-',
+    'pairing-proof',
+  );
+  await startStation(isolatedStation, true, {
+    logFile: test.info().outputPath(`${isolatedStation.instance}.log`),
+  });
+  isolatedCredential = readE2EOperatorCredential(isolatedStation.home);
+  await seedE2EFirstRunDecision(isolatedStation.api, isolatedCredential);
+  await seedE2EUsageTelemetryDisclosure(
+    isolatedStation.api,
+    isolatedCredential,
+  );
+});
+
+test.afterAll(async () => {
+  if (!isolatedStation) return;
+  await stopStation(isolatedStation);
+  rmSync(stationRootForLiveHome(isolatedStation.home), {
+    recursive: true,
+    force: true,
+  });
+});
 
 const CONNECTION_ENTRY_TIMEOUT_MS = 15_000;
 
@@ -109,6 +159,7 @@ async function pairedApiStatus(page: import('@playwright/test').Page) {
  */
 function hostCredential() {
   return (
+    isolatedCredential ||
     process.env.STATION_E2E_HOST_CREDENTIAL ||
     process.env.STATION_CONTAINER_HOST_CREDENTIAL
   );
@@ -575,7 +626,7 @@ for (const width of [320, 1280]) {
       await expect(local).not.toContainText('Installed app');
       await expect(local).not.toContainText('Nightly');
       const open = local.getByRole('link', {
-        name: 'Connect with Station',
+        name: 'Open in the Station app',
         exact: true,
       });
       await expect(open).toHaveAttribute(

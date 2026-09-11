@@ -13,18 +13,11 @@
       "rollback_switch": null,
       "explain": {
         "summary": "Keep the repository trust contract present: Veritas 1.5 governance baseline, CI workflows, issue/PR templates, security and contract docs.",
-        "mustDo": [
-          "Restore any missing governance, CI, or Veritas artifact before finishing."
-        ],
-        "mustNotDo": [
-          "Do not delete or weaken governance files to make a readiness run pass."
-        ],
+        "mustDo": ["Restore any missing governance, CI, or Veritas artifact before finishing."],
+        "mustNotDo": ["Do not delete or weaken governance files to make a readiness run pass."],
         "exampleGood": "Update .veritas/repo-map.json and this standards file together when the repo layout changes.",
         "exampleBad": "Remove .github/workflows/ci.yml or .veritas/repo-standards/default.repo-standards.json.",
-        "contextLinks": [
-          ".veritas/GOVERNANCE.md",
-          "docs/strategy/veritas/migration-0.5-record.md"
-        ]
+        "contextLinks": [".veritas/GOVERNANCE.md", "docs/strategy/veritas/migration-0.5-record.md"]
       },
       "match": {
         "artifacts": [
@@ -60,12 +53,8 @@
       "rollback_switch": null,
       "explain": {
         "summary": "AGENTS.md (and its CLAUDE.md symlink) must carry the canonical marker-bounded governance block.",
-        "mustDo": [
-          "Reapply the governance block (veritas apply governance-blocks) after editing instruction files."
-        ],
-        "mustNotDo": [
-          "Do not hand-edit the marker-bounded block into a different meaning."
-        ],
+        "mustDo": ["Reapply the governance block (veritas apply governance-blocks) after editing instruction files."],
+        "mustNotDo": ["Do not hand-edit the marker-bounded block into a different meaning."],
         "exampleGood": "Keep Station-specific notes outside the marker block and regenerate the block.",
         "exampleBad": "Delete the governance block from AGENTS.md.",
         "contextLinks": [".veritas/GOVERNANCE.md", "AGENTS.md"]
@@ -84,12 +73,8 @@
       "rollback_switch": "disable-shared-root-import-check",
       "explain": {
         "summary": "Contract types are owned by @kontourai/station-contracts; shared helpers are imported via explicit subpaths (e.g. @kontourai/station-shared/build).",
-        "mustDo": [
-          "Import contract types from @kontourai/station-contracts/* and helpers from @kontourai/station-shared/<subpath>."
-        ],
-        "mustNotDo": [
-          "Do not import from the bare @kontourai/station-shared package root (nor the legacy @stallion-ai/shared root)."
-        ],
+        "mustDo": ["Import contract types from @kontourai/station-contracts/* and helpers from @kontourai/station-shared/<subpath>."],
+        "mustNotDo": ["Do not import from the bare @kontourai/station-shared package root (nor the legacy @stallion-ai/shared root)."],
         "exampleGood": "import { buildPlugin } from '@kontourai/station-shared/build';",
         "exampleBad": "import { PluginManifest } from '@kontourai/station-shared';",
         "contextLinks": ["docs/reference/contracts.md"]
@@ -117,12 +102,8 @@
       "rollback_switch": "skip-brownfield-gap-log",
       "explain": {
         "summary": "Record Veritas product gaps and migration dispositions instead of hiding them in one-off workarounds.",
-        "mustDo": [
-          "Append to the gap log when Veritas lacks a needed abstraction."
-        ],
-        "mustNotDo": [
-          "Do not silently drop a previously required protection without a recorded disposition."
-        ],
+        "mustDo": ["Append to the gap log when Veritas lacks a needed abstraction."],
+        "mustNotDo": ["Do not silently drop a previously required protection without a recorded disposition."],
         "exampleGood": "Add a dated entry to docs/strategy/veritas/brownfield-gap-log.md.",
         "exampleBad": "Delete the migration record after the migration lands.",
         "contextLinks": ["docs/strategy/veritas/brownfield-gap-log.md"]

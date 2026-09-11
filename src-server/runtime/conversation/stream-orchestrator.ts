@@ -10,7 +10,6 @@ import { parseToolName } from '../../utils/tool-name-normalizer.js';
 import { CompletionHandler } from '../streaming/handlers/CompletionHandler.js';
 import { MetadataHandler } from '../streaming/handlers/MetadataHandler.js';
 import { ReasoningHandler } from '../streaming/handlers/ReasoningHandler.js';
-import { TextDeltaHandler } from '../streaming/handlers/TextDeltaHandler.js';
 import { ToolCallHandler } from '../streaming/handlers/ToolCallHandler.js';
 import type { InjectableStream } from '../streaming/InjectableStream.js';
 import { StreamPipeline } from '../streaming/StreamPipeline.js';
@@ -138,7 +137,6 @@ export function createStreamingPipeline(
   // Add handlers in order (elicitation handled via callback + injectable stream)
   pipeline
     .use(new ReasoningHandler({ enableThinking: true }))
-    .use(new TextDeltaHandler())
     .use(new ToolCallHandler())
     .use(metadataHandler)
     .use(completionHandler);

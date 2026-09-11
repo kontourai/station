@@ -21,6 +21,7 @@ import type {
   InstallResult,
   RegistryItem,
 } from '@kontourai/station-contracts/catalog';
+import type { ConflictInfo } from '@kontourai/station-contracts/plugin';
 import {
   isCanonicalPluginId,
   type PluginManifest,
@@ -68,11 +69,7 @@ export interface PluginGitInfo {
   remote?: string;
 }
 
-export interface PluginConflict {
-  type: string;
-  id: string;
-  existingSource?: string;
-}
+export type PluginConflict = ConflictInfo;
 
 export interface ResolvedPluginDependency {
   id: string;
