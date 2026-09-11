@@ -1,8 +1,10 @@
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+
 const replayThreads = new Set<string>();
 
 /** Opaque replay chat ids. Membership, not a name prefix, is the test. */
 export function registerReplayThread(id?: string): string {
-  const replayId = id ?? `replay:${crypto.randomUUID()}`;
+  const replayId = id ?? `replay:${randomCorrelationId()}`;
   replayThreads.add(replayId);
   return replayId;
 }
