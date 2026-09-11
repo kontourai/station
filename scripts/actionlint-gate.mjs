@@ -376,7 +376,7 @@ export const DEPENDENCY_REVIEW_ACTION =
  * written down is not. Landing a bump is now one deliberate edit here.
  */
 export const PNPM_SETUP_ACTION =
-  'pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c';
+  'pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b';
 const DEPENDENCY_REVIEW_CANDIDATE_GUARD = `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`;
 const DEPENDENCY_REVIEW_PR_GUARD = `\${{ github.event_name == 'pull_request_target' }}`;
 const DEPENDENCY_REVIEW_MERGE_GROUP_GUARD = `\${{ github.event_name == 'merge_group' }}`;

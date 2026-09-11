@@ -626,7 +626,7 @@ for (const width of [320, 1280]) {
       await expect(local).not.toContainText('Installed app');
       await expect(local).not.toContainText('Nightly');
       const open = local.getByRole('link', {
-        name: 'Connect with Station',
+        name: 'Open in the Station app',
         exact: true,
       });
       await expect(open).toHaveAttribute(
