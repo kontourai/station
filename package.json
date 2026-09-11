@@ -383,7 +383,7 @@
     "esbuild": "^0.28.2",
     "fallow": "^3.22.0",
     "js-tiktoken": "1.0.21",
-    "node-gyp": "11.5.0",
+    "node-gyp": "13.0.2",
     "object-hash": "3.0.0",
     "pngjs": "^7.0.0",
     "react": "^19.2.8",
