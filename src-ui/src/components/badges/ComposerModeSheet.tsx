@@ -25,7 +25,7 @@ const MODE_GLYPH: Record<ApprovalMode, ReactNode> = {
 
 interface ComposerModeSheetProps {
   triggerRef: RefObject<HTMLButtonElement | null>;
-  /** The resolved effective mode this session is running under. */
+  /** The next-turn effective mode the picker treats as selected. */
   effectiveMode: ApprovalMode;
   engineConnectionId?: string | null;
   onClose: () => void;

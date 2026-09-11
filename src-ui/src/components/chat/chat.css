@@ -1391,33 +1391,12 @@
   .turn-footer .turn-footer__actions {
     align-self: flex-start;
   }
-
-  /* station#3151's `.chat-input__approval-chip-policy { display: none }`
-     rule that used to live here moved (review round 2, M2/L5) to the wider
-     mobile block below — 480px is a subset of that block's condition, so a
-     second, narrower copy of the same declaration here could never change
-     a computed value. See that rule's comment for the full reasoning. */
 }
 
 .chat-input__meta .chat-input__approval-chip--override {
   color: var(--accent-yellow-text);
   font-weight: 600;
   background: color-mix(in srgb, var(--accent-yellow) 12%, transparent);
-}
-
-/* Inert, and it has to LOOK inert (archive#1010). No fill and a dashed
-   outline read as "not a button" in both skins, `--text-disabled` matches the
-   disabled treatment used elsewhere, and `cursor: default` removes the last
-   cue that suggested a click would do something. Distinct from --pending,
-   which is dashed but yellow, filled and italic. */
-.chat-input__meta .chat-input__approval-chip--readonly {
-  /* --text-tertiary, not --text-disabled: this renders `role="note"`, which is
-     content, so the "inactive controls are WCAG-exempt" rationale attached to
-     --text-disabled does not transfer. It measured 3.97:1 in dark. */
-  color: var(--text-tertiary);
-  background: transparent;
-  border: 1px dashed var(--border-dashed);
-  cursor: default;
 }
 
 /* The fill stays derived from the SAME yellow as this chip's border and text —
@@ -2199,10 +2178,6 @@
     flex: 0 0 auto;
     max-width: 40%;
   }
-  /* Long policy explanations stay in the accessible name and tooltip. */
-  .chat-input__approval-chip-policy {
-    display: none;
-  }
   .chat-input__meta .chat-input__agent-btn {
     min-width: 44px;
     min-height: 44px;
@@ -2212,9 +2187,7 @@
        label made the chip 152px wide anyway; with the short label it measures
        40px, and this scoped rule now outranks the `.chat-input button` touch
        floor that used to guarantee the width. Both dimensions are pinned here
-       so the floor cannot be lost again — the inert chip is a <span> and never
-       had the floor at all, which also left the row ragged (44px pill beside a
-       32px one). */
+       so the floor cannot be lost again. */
     min-width: 44px;
     overflow: hidden;
     text-overflow: ellipsis;

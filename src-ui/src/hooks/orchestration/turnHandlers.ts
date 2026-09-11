@@ -457,11 +457,21 @@ export function handleRuntimeWarningEvent(
     const revertTo = event.details?.revertToApprovalMode;
     if (isApprovalMode(revertTo)) {
       const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
+      // The composer chip reads requestedProviderOptions first (station#1933).
+      // Reverting only providerOptions left a rejected 'never' still painted
+      // as the session override.
+      const nextRequested = chat?.requestedProviderOptions
+        ? {
+            ...chat.requestedProviderOptions,
+            approvalMode: revertTo,
+          }
+        : undefined;
       activeChatsStore.updateChat(event.threadId, {
         providerOptions: {
           ...(chat?.providerOptions ?? {}),
           approvalMode: revertTo,
         },
+        ...(nextRequested ? { requestedProviderOptions: nextRequested } : {}),
       });
     }
   }

@@ -6,8 +6,6 @@ import {
 import { isApprovalMode } from '@kontourai/station-contracts/provider';
 import { useRef, useState } from 'react';
 import {
-  APPROVAL_MODE_UNMANAGED_CHIP_LABEL,
-  APPROVAL_MODE_UNMANAGED_EXPLANATION,
   type ApprovalMode,
   approvalModeChipLabel,
   approvalModeKnobSupported,
@@ -48,6 +46,8 @@ interface ApprovalModeChipProps {
    * `session.configured` / `turn.started` metadata — see
    * ChatUIState.lastAppliedApprovalMode). Used only to detect "confirmed
    * client-side but not yet applied server-side" for 'never' (archive#727).
+   * It is not the chip's displayed value — a newer session override is
+   * (station#1933).
    */
   lastAppliedApprovalMode?: unknown;
   onChange: (mode: ApprovalMode) => void;
@@ -58,12 +58,13 @@ interface ApprovalModeChipProps {
  * EFFECTIVE mode — a session override wins over the connection's default,
  * which wins over the adapter's own built-in default.
  *
- * For an engine whose adapter exposes no native knob (ACP connections and any
- * plugin-contributed connected runtime; Ollama/Bedrock/the Station engine never
- * reach this component at all, because ChatInputArea only renders it for
- * `executionMode === 'external'`) it renders an inert "Set by engine" note rather
- * than a resolved mode — see APPROVAL_MODE_UNMANAGED_CHIP_LABEL for why
- * resolving one there was actively wrong (archive#1010).
+ * For an engine whose adapter exposes no native knob (ACP, Muse, and any
+ * plugin-contributed connected runtime) this component renders nothing.
+ * A long inert "Set by engine" pill crowded the mobile composer without
+ * giving the user a control (station#1933). Claiming a resolved mode there
+ * was worse (archive#1010); omitting the chip is the remaining honest
+ * option until that engine grows a mapping. ChatInputArea also skips the
+ * mount for `executionMode !== 'external'`.
  *
  * The pill shows a SHORT label (`approvalModeChipLabel`); the full descriptive
  * label lives on `aria-label`/`title` (archive#1010).
@@ -73,13 +74,15 @@ interface ApprovalModeChipProps {
  * leaves the session's mode untouched. Downgrades and every other selection
  * apply immediately. The confirm step now lives inside `ComposerModeSheet`.
  *
- * Once confirmed, the override applies optimistically client-side but the
+ * Once confirmed, the override applies optimistically client-side — the
+ * chip and picker follow the requested/effective mode immediately so a
+ * pick is not indistinguishable from a no-op (station#1933) — but the
  * live adapter only evaluates it starting with the next turn (and Claude's
  * 'never' may even be rejected outright if the process wasn't spawned with
  * the required flag — see claude-adapter.ts). While the override says
- * 'never' but the adapter hasn't confirmed it yet, the chip shows a
- * distinct pending state rather than overclaiming (archive#727). Render
- * callers MUST remount this component (e.g. `key={sessionId}`)
+ * 'never' but the adapter hasn't confirmed it yet, the chip shows
+ * "Full access · pending" rather than the prior receipt (archive#727).
+ * Render callers MUST remount this component (e.g. `key={sessionId}`)
  * when the active session changes — its local confirm state is not reset by
  * prop changes alone (archive#727).
  */
@@ -93,43 +96,12 @@ export function ApprovalModeChip({
 }: ApprovalModeChipProps) {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const supported = approvalModeKnobSupported(engineConnectionId);
+  if (!approvalModeKnobSupported(engineConnectionId)) {
+    return null;
+  }
   const policyLabel = toolPolicyDeliveryLabel(toolPolicyDelivery);
   const policyExplanation = toolPolicyDeliveryExplanation(toolPolicyDelivery);
   const policyDisclosure = `${policyLabel}. ${policyExplanation}`;
-
-  if (!supported) {
-    // Deliberately NOT `resolveEffectiveApprovalMode` (archive#1010): this
-    // engine's adapter never reads `approvalMode`, so resolving one produced a
-    // posture claim nothing honoured. Kept visible rather than hidden because
-    // approvals are a security-relevant surface — an absent chip is
-    // indistinguishable from a chip that failed to render, and a user deciding
-    // whether to let an engine run unattended needs to be told that Station is
-    // not the thing governing it. It renders inert-looking and is not a button,
-    // so there is no target inviting a click that does nothing.
-    return (
-      <span
-        className="choice-trigger chat-input__approval-chip chat-input__approval-chip--readonly"
-        role="note"
-        aria-label={`Engine approval mode: ${APPROVAL_MODE_UNMANAGED_EXPLANATION}. ${policyDisclosure}`}
-        title={`Engine approval mode: ${APPROVAL_MODE_UNMANAGED_EXPLANATION}. ${policyDisclosure}`}
-      >
-        <span className="chat-input__approval-chip-label">
-          {APPROVAL_MODE_UNMANAGED_CHIP_LABEL}
-        </span>
-        {/* Hidden below the narrow breakpoint, not truncated: on a phone this
-            second label ran off the edge and crowded out the model selector
-            beside it (station#3151). Nothing is lost by hiding it — the full
-            "Set by engine · <policy>" text is already the accessible name and
-            the tooltip above, so assistive tech and hover still get all of
-            it. The disclosure stays; only its visible projection narrows. */}
-        <span aria-hidden="true" className="chat-input__approval-chip-policy">
-          {' · '}
-          {policyLabel}
-        </span>
-      </span>
-    );
-  }
 
   const effective = resolveEffectiveApprovalMode({
     engineConnectionId,
@@ -139,10 +111,10 @@ export function ApprovalModeChip({
   const appliedMode = isApprovalMode(lastAppliedApprovalMode)
     ? lastAppliedApprovalMode
     : undefined;
-  // Once the adapter has emitted a durable session/turn receipt, that fact is
-  // the chip's authority. Requested/default state remains the fallback before
-  // the first receipt and the picker input for the next turn.
-  const displayedMode = appliedMode ?? effective.mode;
+  // The chip follows the next-turn request. lastApplied is only the
+  // pending-never detector: showing the receipt over a newer pick made the
+  // control look dead after session.configured (station#1933).
+  const displayedMode = effective.mode;
   const isOverride = effective.source === 'session override';
   const isPendingApply =
     isOverride && effective.mode === 'never' && appliedMode !== 'never';
@@ -150,12 +122,10 @@ export function ApprovalModeChip({
   // Full text for assistive tech and hover; the pill itself shows the short
   // form so it stops clipping at 390px (archive#1010).
   const selectedLabel = isPendingApply
-    ? `${approvalModeLabel(displayedMode)} — full access requested for the next turn`
-    : appliedMode
-      ? approvalModeLabel(appliedMode)
-      : effective.label;
+    ? `${approvalModeLabel('never')} — full access requested for the next turn`
+    : effective.label;
   const chipText = isPendingApply
-    ? `${approvalModeChipLabel(displayedMode)} · pending`
+    ? `${approvalModeChipLabel('never')} · pending`
     : approvalModeChipLabel(displayedMode);
 
   return (
