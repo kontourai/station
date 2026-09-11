@@ -1,12 +1,41 @@
+import { extensionNotificationBinding } from '@shared/extension-notification-bindings';
 import type { ChatUIState } from '../../../contexts/active-chats-state';
 import { isTurnStreamLive } from '../../../utils/execution';
 import type { OrchestrationEvent } from '../types';
+
+/** Methods `handleOrchestrationEvent` actually folds. Keep in lockstep with its switch. */
+export const UI_FOLDED_ORCHESTRATION_METHODS = [
+  'session.started',
+  'session.configured',
+  'session.state-changed',
+  'session.exited',
+  'turn.started',
+  'content.text-delta',
+  'content.reasoning-delta',
+  'tool.started',
+  'tool.progress',
+  'tool.completed',
+  'request.opened',
+  'request.resolved',
+  'turn.completed',
+  'turn.aborted',
+  'runtime.error',
+  'runtime.warning',
+  'flow.run-attached',
+  'flow.gate-verdict',
+  'plan.updated',
+  'extension.notification',
+  'token-usage.updated',
+] as const;
 
 export type ReplayIssueCode =
   | 'duplicate-streaming-and-settled'
   | 'streaming-after-turn-completed'
   | 'lineage-leak'
-  | 'empty-after-completed-turn';
+  | 'empty-after-completed-turn'
+  | 'unhandled-canonical-method'
+  | 'unbound-extension-notification'
+  | 'in-flight-content-dropped-on-session-exit';
 
 export interface ReplayIssue {
   code: ReplayIssueCode;
@@ -164,6 +193,36 @@ export function detectReplayIssues(
       detail:
         'A turn completed but the transcript has no messages and no streaming shell.',
     });
+  }
+  if (
+    event &&
+    !UI_FOLDED_ORCHESTRATION_METHODS.includes(
+      event.method as (typeof UI_FOLDED_ORCHESTRATION_METHODS)[number],
+    )
+  ) {
+    issues.push({
+      code: 'unhandled-canonical-method',
+      detail: `The dock does not fold ${event.method}; replay applied it as a no-op.`,
+    });
+  }
+  if (event?.method === 'extension.notification') {
+    const bound = extensionNotificationBinding(event.namespace, event.type);
+    if (!bound) {
+      issues.push({
+        code: 'unbound-extension-notification',
+        detail: `No extension binding for ${event.namespace}/${event.type}; the dock ignores it.`,
+      });
+    }
+  }
+  if (event?.method === 'session.exited') {
+    const droppedText = chat.streamingMessage?.content?.trim() ?? '';
+    if (droppedText.length > 0 && (chat.messages ?? []).length === 0) {
+      issues.push({
+        code: 'in-flight-content-dropped-on-session-exit',
+        detail:
+          'The session exited while streaming text was buffered and never committed as a settled row.',
+      });
+    }
   }
   return issues;
 }

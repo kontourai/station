@@ -220,3 +220,146 @@ describe('session tape player', () => {
     expect(isReplayThread(replayId)).toBe(false);
   });
 });
+
+describe('engine-shaped tapes through the live fold', () => {
+  afterEach(() => {
+    for (const id of Object.keys(activeChatsStore.getSnapshot())) {
+      activeChatsStore.removeChat(id);
+    }
+    _resetReplayRegistry();
+  });
+
+  test('a Claude-shaped turn that exits without turn.completed drops in-flight text', () => {
+    const replayId = registerReplayThread();
+    seedReplayChat(replayId);
+    const tape = tapeFromSessionEvents(
+      { threadId: SOURCE, agentSlug: 'dev-agent', provider: 'claude' },
+      [
+        event('turn.started', { turnId: 'turn-1', provider: 'claude' }),
+        event('content.text-delta', {
+          turnId: 'turn-1',
+          itemId: 'i',
+          delta: 'TURN ONE OK.',
+          provider: 'claude',
+        }),
+        event('tool.started', {
+          turnId: 'turn-1',
+          toolCallId: 'toolu_1',
+          toolName: 'Bash',
+          provider: 'claude',
+        }),
+        event('tool.completed', {
+          turnId: 'turn-1',
+          toolCallId: 'toolu_1',
+          toolName: 'Bash',
+          status: 'success',
+          provider: 'claude',
+        }),
+        event('session.exited', { provider: 'claude', sessionId: SOURCE }),
+      ],
+    );
+    const player = new SessionTapePlayer(tape, replayId);
+    player.seek(tape.events.length - 1);
+    const observation = player.observe();
+    expect(observation.streaming.present).toBe(false);
+    expect(observation.history.messageCount).toBe(0);
+    expect(observation.issues.map((issue) => issue.code)).toContain(
+      'in-flight-content-dropped-on-session-exit',
+    );
+  });
+
+  test('a Muse-shaped happy path settles without issues', () => {
+    const replayId = registerReplayThread();
+    seedReplayChat(replayId);
+    const tape = tapeFromSessionEvents(
+      { threadId: SOURCE, agentSlug: 'dev-agent', provider: 'muse' },
+      [
+        event('turn.started', { turnId: 'turn-1', provider: 'muse' }),
+        event('content.text-delta', {
+          turnId: 'turn-1',
+          itemId: 'i',
+          delta: 'echo: say hello',
+          provider: 'muse',
+        }),
+        event('turn.completed', {
+          turnId: 'turn-1',
+          outputText: 'echo: say hello',
+          provider: 'muse',
+        }),
+      ],
+    );
+    const player = new SessionTapePlayer(tape, replayId);
+    player.seek(tape.events.length - 1);
+    const observation = player.observe();
+    expect(observation.streaming.present).toBe(false);
+    expect(observation.history.messageCount).toBeGreaterThan(0);
+    expect(observation.issues).toEqual([]);
+  });
+
+  test('unbound ACP Grok extension notifications are flagged', () => {
+    const issues = detectReplayIssues(
+      {
+        input: '',
+        attachments: [],
+        queuedMessages: [],
+        inputHistory: [],
+        hasUnread: false,
+        orchestrationSessionStarted: true,
+      },
+      event('extension.notification', {
+        provider: 'acp',
+        namespace: '_x.ai',
+        type: 'models/update',
+      }),
+      SOURCE,
+    );
+    expect(issues.map((issue) => issue.code)).toContain(
+      'unbound-extension-notification',
+    );
+  });
+
+  test('bound Claude thinking tokens are not flagged as unbound', () => {
+    const issues = detectReplayIssues(
+      {
+        input: '',
+        attachments: [],
+        queuedMessages: [],
+        inputHistory: [],
+        hasUnread: false,
+        orchestrationSessionStarted: true,
+      },
+      event('extension.notification', {
+        provider: 'claude',
+        namespace: 'claude-code',
+        type: 'thinking/tokens',
+        payload: { estimatedTokens: 1200 },
+      }),
+      SOURCE,
+    );
+    expect(issues.map((issue) => issue.code)).not.toContain(
+      'unbound-extension-notification',
+    );
+  });
+
+  test('canonical methods the dock does not fold are flagged', () => {
+    const issues = detectReplayIssues(
+      {
+        input: '',
+        attachments: [],
+        queuedMessages: [],
+        inputHistory: [],
+        hasUnread: false,
+        orchestrationSessionStarted: true,
+      },
+      event('policy.hooks-attached', {
+        cwd: '/workspace',
+        profile: 'standard',
+        engine: 'native',
+      }),
+      SOURCE,
+    );
+    expect(issues.map((issue) => issue.code)).toContain(
+      'unhandled-canonical-method',
+    );
+  });
+});
