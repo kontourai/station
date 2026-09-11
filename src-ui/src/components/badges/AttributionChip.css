@@ -23,7 +23,7 @@
   white-space: nowrap;
   line-height: 1.4;
   background: var(--bg-tertiary);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   /* archive#1424: a long owner display name must truncate
      inside the message bubble's own 70%-width cap on a narrow dock, not
      overflow it — `flex-shrink: 0` (the previous rule) prevented exactly

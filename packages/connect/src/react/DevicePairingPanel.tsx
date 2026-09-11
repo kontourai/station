@@ -30,6 +30,7 @@ import {
   savePendingExchange,
 } from '../core/devicePairing';
 import { normalizeHostInput } from '../core/hostInput';
+import { MOBILE_APP_DOWNLOADS } from '../core/mobileAppDownloads';
 import {
   encodePairingDeepLink,
   type PairingDeepLinkChannel,
@@ -1023,6 +1024,7 @@ export function HostDevicePairingPanel({
   initialClientChannel?: Exclude<PairingDeepLinkChannel, 'dev'>;
 }) {
   const [offer, setOffer] = useState<DevicePairingOffer | null>(null);
+  const [qrTarget, setQrTarget] = useState<'app' | 'scanner'>('app');
   const [requests, setRequests] = useState<DevicePairingRequest[]>([]);
   const [devices, setDevices] = useState<PairedDevice[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -1051,6 +1053,8 @@ export function HostDevicePairingPanel({
       payload ? encodePairingDeepLink({ payload, clientChannel }) : undefined,
     [clientChannel, payload],
   );
+
+  const downloads = MOBILE_APP_DOWNLOADS[clientChannel];
 
   const authenticatedFetch = useCallback(
     async (path: string, init: RequestInit = {}) =>
@@ -1362,9 +1366,10 @@ export function HostDevicePairingPanel({
       {!offer ? (
         <>
           <p style={{ margin: 0, color: 'var(--text-secondary, #999)' }}>
-            Open Station on your other device and choose{' '}
-            <strong>Request access</strong>. You can approve it here, or create
-            a pairing code below.
+            Create a code and scan it with your phone camera to open Station.
+            Review the connection on your phone, then approve access here. Both
+            devices connect to the same Station server. Your phone must be able
+            to reach its address.
           </p>
           <fieldset
             style={{
@@ -1406,20 +1411,9 @@ export function HostDevicePairingPanel({
           <button type="button" onClick={createOffer} style={primaryBtnStyle}>
             Create pairing code
           </button>
-          <details>
-            <summary
-              style={{
-                color: 'var(--text-secondary, #999)',
-                cursor: 'pointer',
-                minHeight: 44,
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              Use a different Station address
-            </summary>
+          <div>
             <label style={{ display: 'grid', gap: 6 }}>
-              Address the other device can reach
+              Station server address your phone can reach
               <input
                 aria-label="Pairing endpoint"
                 inputMode="url"
@@ -1429,14 +1423,39 @@ export function HostDevicePairingPanel({
                 style={inputStyle}
               />
             </label>
-          </details>
+            <small style={{ color: 'var(--text-secondary, #999)' }}>
+              Use this server’s LAN or tailnet address. Localhost and 127.0.0.1
+              point to the phone itself when opened there.
+            </small>
+          </div>
         </>
       ) : (
         <div style={{ display: 'grid', justifyItems: 'center', gap: 10 }}>
+          <p style={{ margin: 0, overflowWrap: 'anywhere' }}>
+            Connect to Station at <strong>{offer.endpoint}</strong>
+          </p>
+          <label style={{ display: 'grid', gap: 6, width: '100%' }}>
+            Scan with
+            <select
+              aria-label="Pairing QR destination"
+              value={qrTarget}
+              onChange={(event) =>
+                setQrTarget(event.target.value as 'app' | 'scanner')
+              }
+              style={inputStyle}
+            >
+              <option value="app">Phone camera — open Station app</option>
+              <option value="scanner">Scanner inside Station</option>
+            </select>
+          </label>
           <QRDisplay
-            url={payload}
-            size={200}
-            label="Single-use Station offer"
+            url={qrTarget === 'app' ? (pairingLink ?? payload) : payload}
+            size={240}
+            label={
+              qrTarget === 'app'
+                ? 'Open Station on your phone'
+                : 'Scan inside Station'
+            }
           />
           <div>
             Manual code: <strong>{offer.manualCode}</strong>
@@ -1448,7 +1467,7 @@ export function HostDevicePairingPanel({
             Expires {new Date(offer.expiresAt).toLocaleTimeString()}
           </small>
           <label style={{ display: 'grid', gap: 6, width: '100%' }}>
-            Open this installed Station client
+            Station app on your phone
             <select
               aria-label="Pairing client channel"
               value={clientChannel}
@@ -1464,6 +1483,35 @@ export function HostDevicePairingPanel({
               <option value="nightly">Station Nightly</option>
             </select>
           </label>
+          <section
+            aria-label="Get Station on your phone"
+            style={{ display: 'grid', gap: 8 }}
+          >
+            {downloads.ios && (
+              <a href={downloads.ios} target="_blank" rel="noopener noreferrer">
+                {clientChannel === 'stable'
+                  ? 'Download on the App Store'
+                  : 'Join the iPhone beta'}
+              </a>
+            )}
+            {downloads.android && (
+              <a
+                href={downloads.android}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {clientChannel === 'stable'
+                  ? 'Get it on Google Play'
+                  : 'Join the Android beta'}
+              </a>
+            )}
+            {!downloads.ios && !downloads.android && (
+              <small>
+                Public mobile downloads for this channel are not available yet.
+                You can pair an app you already have installed.
+              </small>
+            )}
+          </section>
           <button
             type="button"
             onClick={() =>
@@ -1474,9 +1522,10 @@ export function HostDevicePairingPanel({
             Copy pairing link
           </button>
           <small style={{ color: 'var(--text-secondary, #999)' }}>
-            The QR code remains the raw pairing payload for scanners. If no app
-            handles the copied custom scheme, install the selected channel,
-            select another channel, or paste the raw payload into Join.
+            Install the selected Station app on your phone before scanning with
+            its camera. Already in Station? Choose “Scanner inside Station”
+            above, then “Scan a QR code” on your phone. Without a camera, use
+            “Enter a pairing code” with the manual code and Station address.
           </small>
         </div>
       )}

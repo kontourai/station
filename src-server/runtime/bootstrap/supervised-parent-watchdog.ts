@@ -23,7 +23,7 @@ export function shouldStopForMissingSupervisor(
 
 type Timer = ReturnType<typeof setTimeout>;
 
-export interface SupervisedParentWatchdogDependencies {
+interface SupervisedParentWatchdogDependencies {
   env?: NodeJS.ProcessEnv;
   exit?: (code: number) => void;
   getParentPid?: () => number;

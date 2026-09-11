@@ -131,6 +131,10 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'channel-ports:check']],
       ['npm', ['run', 'gate:workflows']],
       ['npm', ['run', 'content:integrity']],
+      // CLI help ↔ docs/reference/cli.md parity: a help topic without a
+      // reference heading must red the PR lane, not the nightly (the `open`
+      // verb shipped green and failed Nightly a day later).
+      ['npm', ['run', 'docs:cli-parity:check']],
       // The git-ignored Basis MCP app bundles are generated, not checked:
       // nothing is tracked, so the only freshness question is "does the
       // generator succeed on this tree", and the typecheck aggregate below

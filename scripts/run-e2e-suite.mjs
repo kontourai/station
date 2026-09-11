@@ -1,13 +1,16 @@
 import { spawn, spawnSync } from 'node:child_process';
 import {
   chmodSync,
+  closeSync,
   existsSync,
   linkSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -18,6 +21,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { installNodeHttpCompatibility } from '../packages/shared/src/node-http-compat.mjs';
 import {
   getProductE2EExecutionPhases,
   getSpecsForSuite,
@@ -38,6 +42,8 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from './lib/owned-process.mjs';
+
+installNodeHttpCompatibility();
 
 const SUPPORTED_SUITES = [
   'pr-smoke',
@@ -120,7 +126,7 @@ export function retainE2EBucketFailureEvidence({
   copyBoundedE2EEvidence(
     testResultsRoot,
     join(evidenceRoot, 'buckets', suite),
-    { allowMissing: true, ignoredBasenames: ['.last-run.json'] },
+    { allowMissing: true, ignoredBasenames: ['.last-run.json', '.DS_Store'] },
   );
   return true;
 }
@@ -194,7 +200,9 @@ export function assertSupportedE2EPlatform(platform = process.platform) {
 
 const E2E_SETTLEMENT_MS = 5_000;
 const E2E_STARTUP_DEADLINE_MS = 120_000;
-const E2E_STOP_DEADLINE_MS = 15_000;
+// The CLI can spend 5s on each of two tracked process groups, then 15s on
+// managed shutdown convergence. Leave bounded time for CLI startup and I/O.
+const E2E_STOP_DEADLINE_MS = 45_000;
 const E2E_STOP_SETTLEMENT_MS = 7_500;
 const E2E_LEASE_DIRECTORY = '.kontourai/e2e-runs';
 const E2E_STARTUP_CAPTURE_BYTES = 16 * 1024;
@@ -338,12 +346,6 @@ export async function runE2EExecutionPhases(phases, execute) {
         .join('; '),
     );
   }
-}
-
-export function e2ePhaseOutputRoot(testResultsRoot, suite, phaseName) {
-  return suite === 'product'
-    ? join(testResultsRoot, phaseName)
-    : testResultsRoot;
 }
 
 async function runWithinOwnedDeadline(
@@ -567,23 +569,28 @@ function readLeaseAt(path) {
 export function processIdentity(pid, runPs = spawnSync) {
   if (!Number.isInteger(pid) || pid < 1 || process.platform === 'win32')
     return null;
-  const started = runPs('ps', ['-o', 'lstart=', '-p', String(pid)], {
-    encoding: 'utf8',
-    // lstart is locale- and TZ-shaped; pin so identity is env-independent
-    // (#3049).
-    env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
-    windowsHide: true,
-  });
-  if (started.status !== 0 || !started.stdout.trim()) return null;
-  const grouped = runPs('ps', ['-o', 'pgid=', '-p', String(pid)], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
-  const pgid = Number.parseInt(grouped.stdout.trim(), 10);
+  const observed = runPs(
+    'ps',
+    ['-o', 'lstart=,pgid=,stat=', '-p', String(pid)],
+    {
+      encoding: 'utf8',
+      // lstart is locale- and TZ-shaped; pin so identity is env-independent
+      // (#3049).
+      env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
+      windowsHide: true,
+    },
+  );
+  if (observed.status !== 0) return null;
+  const identity = /^(.*?)\s+(\d+)\s+(\S+)$/.exec(observed.stdout.trim());
+  // A defunct process cannot own a live daemon, even before its parent reaps
+  // the PID. Read birth, group and state together rather than mixing probes.
+  if (!identity || identity[3].startsWith('Z')) return null;
+  const pgid = Number(identity[2]);
+  if (!Number.isInteger(pgid) || pgid <= 0) return null;
   return {
     pid,
-    processStart: started.stdout.trim(),
-    pgid: Number.isInteger(pgid) && pgid > 0 ? pgid : null,
+    processStart: identity[1].trim(),
+    pgid,
   };
 }
 
@@ -952,7 +959,12 @@ function removeExactLeaseAndOutputs(
       const info = lstatSync(target, { throwIfNoEntry: false });
       if (info?.isSymbolicLink())
         throw new Error(`refusing symlink output: ${target}`);
-      rmSync(target, { recursive: true, force: true });
+      rmSync(target, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100,
+      });
     }
   }
   const leaseInfo = lstatSync(leasePath, { throwIfNoEntry: false });
@@ -1406,6 +1418,14 @@ export async function startWithPortRetry({
     const serverPort = await pickServerPort(serverBias);
     const uiPort = await pickUiPort(uiBias, serverPort);
 
+    // The daemon writes bind errors to its own log, not necessarily CLI stdout.
+    // Snapshot each attempt so a previous attempt cannot authorize a retry.
+    let priorLog;
+    try {
+      priorLog = statSync(logPath);
+    } catch {
+      // A first start commonly has no log yet.
+    }
     const result = await startInstance(serverPort, uiPort);
     if (result.code === 0) {
       onStarted({
@@ -1418,14 +1438,45 @@ export async function startWithPortRetry({
       return { serverPort, uiPort };
     }
 
-    const failureKind = classifyStartFailure(result.output, serverPort);
+    let output = result.output;
+    let descriptor;
+    try {
+      const current = statSync(logPath);
+      const start =
+        priorLog &&
+        priorLog.ino === current.ino &&
+        priorLog.dev === current.dev &&
+        current.size >= priorLog.size
+          ? priorLog.size
+          : 0;
+      const offset = Math.max(start, current.size - 16_384);
+      const bytes = Buffer.alloc(current.size - offset);
+      descriptor = openSync(logPath, 'r');
+      const count = readSync(descriptor, bytes, 0, bytes.length, offset);
+      const freshLog = bytes.subarray(0, count).toString('utf8');
+      // Only the selected port's explicit bind failure is sufficient here.
+      // Generic daemon errors remain fatal; the CLI classifier owns its other
+      // documented retry signals.
+      if (
+        freshLog.includes(
+          `Port ${serverPort} is already in use or unavailable.`,
+        )
+      ) {
+        output += `\n${freshLog}`;
+      }
+    } catch {
+      // Missing/unreadable daemon evidence cannot authorize a retry.
+    } finally {
+      if (descriptor !== undefined) closeSync(descriptor);
+    }
+    const failureKind = classifyStartFailure(output, serverPort);
     if (failureKind === 'fatal') {
       throw new Error(
         `./station start failed for ${label} (exit ${result.code}) — not a port collision; aborting.` +
           renderE2EStartupFailureTail(result.output, logPath),
       );
     }
-    lastFailure = { kind: failureKind, output: result.output };
+    lastFailure = { kind: failureKind, output };
     warn(
       failureKind === 'port-overlap'
         ? `[e2e] ports ${serverPort}/${uiPort} overlap a live Station instance — ` +
@@ -1728,6 +1779,17 @@ export function establishedUserPlaywrightEnv(suite) {
     : { STATION_E2E_ESTABLISHED_USER: '1' };
 }
 
+/** Isolate imported history without removing authentication from live engines. */
+export function e2eProviderConfigEnv(suite, roots, inheritedEnv = process.env) {
+  return {
+    STATION_EXTERNAL_CLAUDE_SOURCE_ROOT: roots.claude,
+    STATION_EXTERNAL_CODEX_SOURCE_ROOT: roots.codex,
+    CLAUDE_CONFIG_DIR:
+      suite === 'smoke-live' ? inheritedEnv.CLAUDE_CONFIG_DIR : roots.claude,
+    CODEX_HOME: suite === 'smoke-live' ? inheritedEnv.CODEX_HOME : roots.codex,
+  };
+}
+
 /**
  * Reclaim build output left behind by interrupted runs.
  *
@@ -1886,8 +1948,8 @@ async function main() {
   // Keep startup diagnostics in the instance-owned Playwright artifact root so
   // hosted CI is secure and failures remain uploadable.
   const serverLog = join(testResultsRoot, 'station.log');
-  // External-session coverage reads only isolated provider config roots. This
-  // keeps every E2E instance away from a developer's real terminal history.
+  // Fixture writers and external-session readers share isolated history roots.
+  // The live server can retain CLI authentication without importing host history.
   const claudeConfigDir = mkdtempSync(join(tmpdir(), `${instance}-claude-`));
   const codexConfigDir = mkdtempSync(join(tmpdir(), `${instance}-codex-`));
   const suitePorts = E2E_SUITE_PORTS[suite];
@@ -1945,6 +2007,7 @@ async function main() {
               `--port=${chosenServerPort}`,
               `--ui-port=${chosenUiPort}`,
               `--log=${serverLog}`,
+              `--lifecycle-journal=${join(testResultsRoot, 'lifecycle.ndjson')}`,
             ],
             {
               // The selected status mode must reach the SERVER, not just
@@ -1954,8 +2017,10 @@ async function main() {
               env: {
                 ...process.env,
                 ...stationE2EEnv,
-                CLAUDE_CONFIG_DIR: claudeConfigDir,
-                CODEX_HOME: codexConfigDir,
+                ...e2eProviderConfigEnv(suite, {
+                  claude: claudeConfigDir,
+                  codex: codexConfigDir,
+                }),
               },
               onSpawn: (child) => {
                 const launcher = processIdentity(child.pid);
@@ -2104,8 +2169,11 @@ async function main() {
       !grep &&
       specs.length === PR_BROWSER_SMOKE_CONTRACT.journeys.length;
     const reporter = [
-      process.env.PW_REPORTER || 'line',
-      ...(criticalSmoke ? ['./scripts/critical-browser-reporter.mjs'] : []),
+      ...new Set([
+        ...(process.env.PW_REPORTER || 'line').split(','),
+        'json',
+        ...(criticalSmoke ? ['./scripts/critical-browser-reporter.mjs'] : []),
+      ]),
     ].join(',');
     const phases =
       suite === 'product'
@@ -2119,7 +2187,9 @@ async function main() {
             },
           ];
     await runE2EExecutionPhases(phases, async (phase) => {
-      const outputRoot = e2ePhaseOutputRoot(testResultsRoot, suite, phase.name);
+      // Playwright clears outputDir before running. Keep the live Station log
+      // in its parent so startup does not unlink the daemon's open log file.
+      const outputRoot = join(testResultsRoot, phase.name);
       console.log(
         `[e2e] ${suite} phase ${phase.name}: ${phase.specs.length} spec(s), ${phase.workers} worker(s)`,
       );
@@ -2137,6 +2207,7 @@ async function main() {
         {
           env: {
             ...process.env,
+            PLAYWRIGHT_JSON_OUTPUT_FILE: join(outputRoot, 'report.json'),
             PLAYWRIGHT_BROWSERS_PATH:
               process.env.PLAYWRIGHT_BROWSERS_PATH ?? '0',
             PW_BASE_URL: `http://localhost:${uiPort}`,

@@ -41,7 +41,7 @@ const SIGNATURE = /^[A-Za-z0-9+/]+={0,2}$/;
 const MAX_SOURCE_CHARS = 2_048;
 const MAX_KEY_CHARS = 16 * 1_024;
 
-export interface RegistryPackageSignature {
+interface RegistryPackageSignature {
   readonly algorithm: 'ed25519';
   readonly keyId: string;
   readonly value: string;
@@ -66,7 +66,7 @@ export interface RegistrySupplyChainPolicy {
   readonly trustedEd25519Keys: Readonly<Record<string, string>>;
 }
 
-export type RegistryPackageRefusalReason =
+type RegistryPackageRefusalReason =
   | 'invalid-claim'
   | 'unsigned-package'
   | 'untrusted-signing-key'
@@ -74,14 +74,14 @@ export type RegistryPackageRefusalReason =
   | 'content-mismatch'
   | 'pin-mismatch';
 
-export interface VerifiedRegistryPackage {
+interface VerifiedRegistryPackage {
   readonly claim: RegistryPackageClaim;
   readonly verification: RegistrySupplyChainPinRecord['verification'];
   /** Existing installer must rebind grants before loading replacement code. */
   readonly invalidateExistingGrants: boolean;
 }
 
-export type RegistryPackageVerification =
+type RegistryPackageVerification =
   | { readonly kind: 'verified'; readonly package: VerifiedRegistryPackage }
   | {
       readonly kind: 'refused';

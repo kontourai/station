@@ -38,6 +38,7 @@ export interface FilePreviewCommitMark {
 }
 
 export interface FilePreviewScrollMark {
+  readonly scrolledEpochMs: number;
   readonly projectSlug: string;
   readonly path: string;
   readonly scrollTop: number;
@@ -68,7 +69,7 @@ export interface ReconnectStrategyMark {
   readonly revision?: string;
   readonly receivedEpochMs: number;
 }
-export interface ReconnectCheckpointMark {
+interface ReconnectCheckpointMark {
   readonly taskId: string;
   readonly id: string;
   readonly receivedEpochMs: number;

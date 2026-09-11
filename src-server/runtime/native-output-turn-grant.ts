@@ -21,7 +21,7 @@ import type { NativeOutputDeclarationOperation } from './native-output-declarati
 declare const nativeOutputGrantBrand: unique symbol;
 declare const nativeOutputCallBrand: unique symbol;
 
-export type NativeOutputTurnGrant = Readonly<{
+type NativeOutputTurnGrant = Readonly<{
   readonly [nativeOutputGrantBrand]: true;
 }>;
 export type NativeOutputCallScope = Readonly<{

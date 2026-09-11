@@ -3,7 +3,7 @@ export type TrayNavigationDestination =
   | 'pairedDevices'
   | 'coreUpdates';
 
-export type TrayNavigationTarget = {
+type TrayNavigationTarget = {
   pathname: string;
   params?: Record<string, string | null>;
 };

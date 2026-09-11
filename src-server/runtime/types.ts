@@ -94,7 +94,7 @@ export interface ITool {
 
 // ── Memory ─────────────────────────────────────────────
 
-export interface IConversation {
+interface IConversation {
   id: string;
   resourceId: string;
   userId: string;

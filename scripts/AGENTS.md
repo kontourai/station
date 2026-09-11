@@ -7,3 +7,11 @@ Every new `spawn`, `spawnSync`, or `execFile` call must pass `windowsHide: true`
 The generated verification schedule and detailed reuse/failure policy have one owner: [docs/guides/testing.md](../docs/guides/testing.md). Regenerate from `scripts/verification-lanes.mjs`; do not copy generated blocks into an instruction file. Use the focused policy tests, not a broad verification lane, while iterating.
 
 For evidence tooling, use the [fixture/profile/mutation commands](../docs/guides/testing.md#fixture-fidelity-and-test-effectiveness) rather than another bespoke runner. Reuse `scripts/lib/owned-process.mjs` for process-tree ownership and bounded output. A nonzero command exit is not automatically a caught mutation: distinguish assertion failure from missing dependencies, empty selection, timeout, and wrong-root execution. Restoration must preserve intervening edits. New policy needs known-bad catch tests and false-positive controls before joining `verification:policy:gate`.
+
+For asynchronous verification, collect the process exit status before reporting PASS. A log containing only the command header, or no error yet, is still pending. Resolve retained artifact paths before passing them to owners that require absolute paths; relative report directories are valid caller inputs.
+
+Before a scripted bulk edit, assert the expected match count and anchor replacement boundaries within the intended owner. Repeated loop names are not unique anchors. Inspect the complete diff and its size before committing; a green source guard does not prove unrelated checks survived its own edit.
+
+One Vitest worker bounds one invocation, not aggregate disk I/O across worktrees. Use coordinated lanes for broad verification selections. Before interpreting browser latency failures, check for concurrent bulk tests and retain the host-load observation; do not increase product deadlines to compensate for a saturated host.
+
+After the final autofix, run read-only `npm run lint:check` before freezing a long verification run. A successful autofix command does not establish that another formatter pass would leave the result unchanged.

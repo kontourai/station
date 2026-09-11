@@ -114,7 +114,7 @@ export interface PeerCredentialStoreOptions {
 }
 
 /** Server-owned current-authority recheck for externally reachable mutations. */
-export type PeerCredentialMutationAuthorizer = () => boolean;
+type PeerCredentialMutationAuthorizer = () => boolean;
 
 export class PeerCredentialMutationAuthorizationError extends Error {
   constructor() {

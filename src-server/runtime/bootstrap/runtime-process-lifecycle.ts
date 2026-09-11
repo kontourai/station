@@ -3,7 +3,7 @@ import {
   type LifecycleIdentity,
 } from '@kontourai/station-shared/lifecycle-events';
 
-export type RuntimeProcessLifecycle = {
+type RuntimeProcessLifecycle = {
   identity: LifecycleIdentity | null;
   observeShutdown(
     reason: 'SIGINT' | 'SIGTERM' | 'uncaughtException' | 'startup_failure',

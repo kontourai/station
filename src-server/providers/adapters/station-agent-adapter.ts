@@ -163,7 +163,7 @@ interface StationAgentSessionRecord {
   openToolCalls: Map<string, { toolName: string; turnId: string }>;
 }
 
-export interface StationAgentAdapterOptions {
+interface StationAgentAdapterOptions {
   apiBase: string;
   /**
    * Must recognize any agent the `/api/agents/:slug/chat` route can serve —

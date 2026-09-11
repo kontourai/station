@@ -144,18 +144,32 @@ describe('PluginRegistry remote authentication', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(document.head.querySelector('[data-station-plugin]')).toBeNull();
     expect((window as any).__station_ai_plugins).toBeUndefined();
+    const contribution = {
+      id: 'plugin:remote-layout:remote-panel',
+      version: '1.0.0',
+      sourceIdentity: {
+        id: 'remote-layout',
+        kind: 'remote' as const,
+        source: 'plugins/remote-layout',
+      },
+      provenance: { origin: 'plugin' as const, pluginId: 'remote-layout' },
+    };
+    const layout = registry.getTrustedLayout('remote-panel', contribution);
+    expect(layout).not.toBeNull();
+    // A new component type on each lookup remounts the iframe on every host render.
+    expect(registry.getTrustedLayout('remote-panel', contribution)).toBe(
+      layout,
+    );
     expect(
       registry.getTrustedLayout('remote-panel', {
-        id: 'plugin:remote-layout:remote-panel',
-        version: '1.0.0',
-        sourceIdentity: {
-          id: 'remote-layout',
-          kind: 'remote',
-          source: 'plugins/remote-layout',
-        },
-        provenance: { origin: 'plugin', pluginId: 'remote-layout' },
+        ...contribution,
+        version: 'revoked',
       }),
-    ).not.toBeNull();
+    ).toBeNull();
+    await registry.reload();
+    expect(registry.getTrustedLayout('remote-panel', contribution)).not.toBe(
+      layout,
+    );
   });
 
   test('loads remote bundles only with explicit connection consent', async () => {

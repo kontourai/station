@@ -18,15 +18,19 @@ import {
 } from '../console-bridge.js';
 
 const require = createRequire(import.meta.url);
-// The published package has no root entry (`main`/`exports` are absent —
-// upstream C1), so the shipped dist is loaded by file path.
-const { validateEvent } =
-  require('@kontourai/console/console-server/dist/src/console-foundation/index.js') as {
-    validateEvent: (
-      event: unknown,
-      basePath: string,
-    ) => Array<{ severity: string; path: string; message: string }>;
-  };
+// Upstream C1 (the published package had no root entry) is fixed as of
+// @kontourai/console 2.8.0: the package now declares an `exports` map whose
+// `.` entry resolves to the shipped console-foundation dist, and that map
+// refuses the deep file path this suite used to require. Resolve the root
+// export — the validator is still the REAL shipped one, so the tripwire
+// property is unchanged: if upstream tightens the contract, these tests
+// fail honestly.
+const { validateEvent } = require('@kontourai/console') as {
+  validateEvent: (
+    event: unknown,
+    basePath: string,
+  ) => Array<{ severity: string; path: string; message: string }>;
+};
 
 const THREAD = 'thread-console-1';
 

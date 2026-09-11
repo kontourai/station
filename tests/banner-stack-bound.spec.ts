@@ -827,40 +827,50 @@ test.describe('the stack only takes pointer events when it is genuinely scrollab
     // `page.waitForTimeout` polling from the Playwright side) both avoids the
     // E2E product-suite audit's fixed-sleep pattern and samples at the
     // browser's real frame rate instead of an arbitrary poll interval; the
-    // dismiss click happens inside the same evaluate so sampling starts in
-    // the same task as the click, with no round-trip gap between them.
-    const samples = await page.evaluate(
+    // native click listener starts sampling in the same event task as the
+    // ordinary Playwright click, with no round-trip gap between them.
+    await page.evaluate(
       ({ x, y, durationMs }) => {
-        return new Promise<{ t: number; owner: string; scrollable: boolean }[]>(
-          (resolve) => {
-            const stack = document.querySelector('.banner-host__stack');
-            const dismissButton = document.querySelector(
-              '.banner-host__dismiss',
-            ) as HTMLButtonElement | null;
-            const out: { t: number; owner: string; scrollable: boolean }[] = [];
-            const start = performance.now();
-            dismissButton?.click();
-            function tick() {
-              const el = document.elementFromPoint(x, y);
-              out.push({
-                t: performance.now() - start,
-                owner: el?.id ?? 'none',
-                scrollable:
-                  stack?.classList.contains('banner-host__stack--scrollable') ??
-                  false,
-              });
-              if (performance.now() - start < durationMs) {
-                requestAnimationFrame(tick);
-              } else {
-                resolve(out);
+        (window as any).__bannerExitSamples = new Promise<
+          { t: number; owner: string; scrollable: boolean }[]
+        >((resolve) => {
+          const stack = document.querySelector('.banner-host__stack');
+          const dismissButton = document.querySelector(
+            '.banner-host__dismiss',
+          ) as HTMLButtonElement | null;
+          const out: { t: number; owner: string; scrollable: boolean }[] = [];
+          if (!dismissButton) throw new Error('Dismiss button did not mount');
+          dismissButton.addEventListener(
+            'click',
+            () => {
+              const start = performance.now();
+              function tick() {
+                const el = document.elementFromPoint(x, y);
+                out.push({
+                  t: performance.now() - start,
+                  owner: el?.id ?? 'none',
+                  scrollable:
+                    stack?.classList.contains(
+                      'banner-host__stack--scrollable',
+                    ) ?? false,
+                });
+                if (performance.now() - start < durationMs) {
+                  requestAnimationFrame(tick);
+                } else {
+                  resolve(out);
+                }
               }
-            }
-            requestAnimationFrame(tick);
-          },
-        );
+              requestAnimationFrame(tick);
+            },
+            { once: true, capture: true },
+          );
+        });
       },
       { x: probe.x, y: probe.y, durationMs: 260 },
     );
+    await dismiss.click();
+    const samples: Array<{ t: number; owner: string; scrollable: boolean }> =
+      await page.evaluate(() => (window as any).__bannerExitSamples);
     expect(samples.length, 'no animation frames were sampled').toBeGreaterThan(
       0,
     );

@@ -14,7 +14,7 @@ import {
   readCheckoutRemotes,
 } from '../projects/checkout-remote-reader.js';
 
-export type PullRequestRepositoryContextResolution =
+type PullRequestRepositoryContextResolution =
   | { available: true; context: PullRequestRepositoryContext }
   | {
       available: false;
@@ -23,7 +23,7 @@ export type PullRequestRepositoryContextResolution =
       cause?: PullRequestUnavailableCause;
     };
 
-export interface PullRequestRepositoryContextInput {
+interface PullRequestRepositoryContextInput {
   projectWorkingDirectory?: string;
   workspaceIsolation?: WorkspaceIsolationMetadata;
   requestedWorkingDirectory?: string;

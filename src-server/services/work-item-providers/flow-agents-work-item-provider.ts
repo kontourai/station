@@ -103,7 +103,7 @@ interface FlowAgentsProviderLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
 }
 
-export interface FlowAgentsWorkItemProviderOptions {
+interface FlowAgentsWorkItemProviderOptions {
   /** Root of the @kontourai/flow-agents package (the directory containing
    * `build/src/cli/`). When provided but invalid, resolution does NOT fall
    * back to auto-discovery — an explicit but wrong override must surface

@@ -16,12 +16,16 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
  * spread in `src-ui/src/lib/foregroundMessageDispatch.ts:36-59`.
  */
 const sendExecutionMessage = vi.fn(
-  async (_input: { target: Record<string, unknown> }) => ({}) as unknown,
+  async (
+    _apiBase: string,
+    _input: { target: Record<string, unknown> },
+    _options?: unknown,
+  ) => ({}) as unknown,
 );
 const attachmentQueueImported = vi.hoisted(() => vi.fn());
-vi.mock('../hooks/useOrchestration', () => ({
-  sendExecutionMessage: (input: { target: Record<string, unknown> }) =>
-    sendExecutionMessage(input),
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
+  sendExecutionMessage,
 }));
 vi.mock('../lib/attachment-staging-queue', () => {
   attachmentQueueImported();
@@ -49,7 +53,7 @@ function baseInput(overrides: Partial<DispatchInput> = {}): DispatchInput {
 function dispatchedTarget(): Record<string, unknown> {
   expect(sendExecutionMessage).toHaveBeenCalledTimes(1);
   const [call] = sendExecutionMessage.mock.calls;
-  return call[0].target;
+  return call[1].target;
 }
 
 describe('dispatchForeground target', () => {
@@ -115,9 +119,11 @@ describe('dispatchForeground target', () => {
       }),
     );
     expect(sendExecutionMessage).toHaveBeenCalledWith(
+      expect.any(String),
       expect.objectContaining({
         attachmentRefs: [expect.objectContaining({ stageId: 'stage-1' })],
       }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 
@@ -178,9 +184,11 @@ describe('dispatchForeground target', () => {
       }),
     );
     expect(sendExecutionMessage).toHaveBeenCalledWith(
+      expect.any(String),
       expect.objectContaining({
         attachments: [expect.objectContaining({ name: 'legacy.txt' })],
       }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 

@@ -304,7 +304,7 @@ describe('primary CI workflow governance', () => {
     expect(fastChecks?.concurrency).toEqual({
       group:
         // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-        'ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}',
+        'ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}',
       'cancel-in-progress': true,
     });
     const forkSmoke = parsedJob(workflow, 'fork-smoke');

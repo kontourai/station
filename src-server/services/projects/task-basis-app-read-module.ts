@@ -16,9 +16,9 @@ export const TASK_BASIS_APP_MAX_SESSIONS = 128;
 export const TASK_BASIS_APP_MAX_PER_CALLER = 16;
 // A valid collection can contain 64 answers, 64 outputs, and 100 published
 // kept results. A byte-limited page may advance by one item.
-export const TASK_BASIS_APP_MAX_PAGES = 64 + 64 + 100;
+const TASK_BASIS_APP_MAX_PAGES = 64 + 64 + 100;
 export const TASK_BASIS_APP_TTL_MS = 5 * 60_000;
-export const TASK_BASIS_APP_MAX_RATE_CALLERS = 128;
+const TASK_BASIS_APP_MAX_RATE_CALLERS = 128;
 const PAGE_BUDGET = 120 * 1024;
 const RATE_WINDOW_MS = 60_000;
 const MAX_CALLER_READS_PER_WINDOW = 64;

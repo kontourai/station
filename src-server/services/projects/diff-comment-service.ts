@@ -31,7 +31,7 @@ type DiffCommentStoreFactory = (storePath: string) => DiffCommentStore;
 const GENERATED_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-export interface DiffCommentServiceOptions {
+interface DiffCommentServiceOptions {
   /** Injectable only for deterministic cross-process mutation tests. */
   acquireMutationLock?: FileMutationLock;
   /** Injectable only for durable-write fault-injection tests. */

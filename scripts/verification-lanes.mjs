@@ -171,6 +171,13 @@ export const FULL_REGRESSION_TIMEOUT_MS = FULL_REGRESSION_PHASES.reduce(
  * coordinator schedules it, whether its receipt is completion evidence, and
  * how the policy gate describes it.
  */
+// The reference test and its containing lane consume the same budgets.
+export const INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS = Object.freeze({
+  default: 55 * 60_000,
+  oneHour: 90 * 60_000,
+  workBoard: 80 * 60_000,
+});
+
 export const LANE_CLASSES = Object.freeze({
   /** The one canonical completion gate (full-regression only). */
   COMPLETION: 'completion',
@@ -346,6 +353,23 @@ export const LANES = Object.freeze([
       'Full static Vitest pass (trigger: diagnostic). Scope: the resource-profiled Vitest corpus plus the serialized dogfood-reconcile corpus. The package bundle group mutates packages/cli/dist/. Evidence: diagnostic. Invalidation: command-only.',
   }),
   Object.freeze({
+    id: 'test-full-audit',
+    command: 'npm run test:full:audit',
+    publicScript: 'test:full:audit',
+    privateScript: 'test:full:audit:raw',
+    class: LANE_CLASSES.INTEGRATION,
+    completion: false,
+    diagnostic: true,
+    weight: 80,
+    timeoutMs: 60 * 60_000,
+    ownedOutputs: Object.freeze(['packages/cli/dist/']),
+    manifest: MANIFEST_NONE,
+    trigger: 'repository-wide diagnostic audit',
+    scope: 'complete Vitest corpus, retaining independent failures',
+    description:
+      'Diagnostic keep-going corpus. Assertion failures remain failures; cancellation and unsafe cleanup stop the run.',
+  }),
+  Object.freeze({
     id: 'test-coverage',
     command: 'npm run test:coverage',
     publicScript: 'test:coverage',
@@ -411,7 +435,11 @@ export const LANES = Object.freeze([
     completion: false,
     diagnostic: true,
     weight: 100,
-    timeoutMs: 45 * 60_000,
+    // Includes a 55-minute reference test (90 minutes when its long profile
+    // is selected), plus the other browser buckets and owned teardown.
+    timeoutMs:
+      Math.max(...Object.values(INTERACTIVE_WORKSPACE_REFERENCE_TIMEOUT_MS)) +
+      30 * 60_000,
     ownedOutputs: Object.freeze([
       'dist-server-e2e-*/',
       'dist-ui-e2e-*/',

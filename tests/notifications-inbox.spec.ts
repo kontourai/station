@@ -81,8 +81,6 @@ test.describe('Notifications hierarchy', () => {
     ];
     const continuedTurnBodies: unknown[] = [];
     const approvalActions: string[] = [];
-    const dismissedNotificationIds: string[] = [];
-    let ordinaryDismissed = false;
     const approvalStatuses = new Map([
       ['notif-1', 'delivered'],
       ['notif-2', 'delivered'],
@@ -105,19 +103,6 @@ test.describe('Notifications hierarchy', () => {
         }),
       }),
     );
-    await page.route('**/notifications/activity', (route) => {
-      if (route.request().method() !== 'DELETE') return route.fallback();
-      dismissedNotificationIds.push('activity-bulk');
-      ordinaryDismissed = true;
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          success: true,
-          data: { clearedCount: 1 },
-        }),
-      });
-    });
     await page.route('**/notifications', (route) => {
       if (route.request().resourceType() === 'document') {
         return route.fallback();
@@ -148,20 +133,16 @@ test.describe('Notifications hierarchy', () => {
               createdAt: now,
               updatedAt: now,
             },
-            ...(!ordinaryDismissed
-              ? [
-                  {
-                    id: 'ordinary',
-                    source: 'scheduler',
-                    category: 'job',
-                    title: 'Job failed',
-                    priority: 'normal',
-                    status: 'delivered',
-                    createdAt: now,
-                    updatedAt: now,
-                  },
-                ]
-              : []),
+            {
+              id: 'ordinary',
+              source: 'scheduler',
+              category: 'job',
+              title: 'Job failed',
+              priority: 'normal',
+              status: 'delivered',
+              createdAt: now,
+              updatedAt: now,
+            },
           ],
         }),
       });
@@ -209,7 +190,7 @@ test.describe('Notifications hierarchy', () => {
     ).toBeVisible();
     await expect(page.getByText('Needs attention (4)')).toBeVisible();
     await expect(
-      page.getByRole('heading', { name: 'Recent activity', level: 2 }),
+      page.getByRole('heading', { name: 'Activity', level: 2 }),
     ).toBeVisible();
     const notificationsButton = page.getByRole('button', {
       name: 'Notifications (4 need attention)',
@@ -230,7 +211,7 @@ test.describe('Notifications hierarchy', () => {
     ).toBeVisible();
     await expect(
       compactNotifications.getByRole('heading', {
-        name: 'Recent activity',
+        name: 'Activity',
         level: 2,
       }),
     ).toBeVisible();
@@ -288,18 +269,7 @@ test.describe('Notifications hierarchy', () => {
       fullPage: true,
     });
 
-    await page.getByRole('button', { name: 'Clear notifications' }).click();
-    const clearDialog = page.getByRole('dialog');
-    await expect(clearDialog).toContainText(
-      'Active attention stays until its source changes.',
-    );
-    await clearDialog
-      .getByRole('button', { name: 'Clear notifications' })
-      .click();
-    await expect
-      .poll(() => dismissedNotificationIds)
-      .toEqual(['activity-bulk']);
-    await expect(page.getByText('Job failed')).toHaveCount(0);
+    await expect(page.getByText('Job failed')).toBeVisible();
     await expect(page.getByText('Needs attention (4)')).toBeVisible();
     await expect(
       page.getByText('Approval needed', { exact: true }),

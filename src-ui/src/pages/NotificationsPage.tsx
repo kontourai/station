@@ -96,6 +96,9 @@ export function NotificationsPage() {
       ? [exactApproval, ...pending]
       : pending;
   }, [exactApproval, filtered.items]);
+  const dismissibleItems = attentionItems.filter(
+    isAcknowledgeableAttentionItem,
+  );
   const activityNotifications = useMemo(
     () =>
       exactApprovalNotification &&
@@ -121,9 +124,9 @@ export function NotificationsPage() {
       // acknowledgement, and posting one anyway would report a failure for
       // every batch that contained it.
       const outcomes = await Promise.allSettled(
-        attentionItems
-          .filter(isAcknowledgeableAttentionItem)
-          .map((item) => acknowledgeAttentionItem(item.id, apiBase)),
+        dismissibleItems.map((item) =>
+          acknowledgeAttentionItem(item.id, apiBase),
+        ),
       );
       const failures = outcomes.filter(
         (outcome) => outcome.status === 'rejected',
@@ -225,7 +228,7 @@ export function NotificationsPage() {
     <>
       <div className="notifications-page">
         <NotificationsHeader
-          attentionCount={attentionItems.length}
+          attentionCount={dismissibleItems.length}
           onDismissAll={() => setShowDismissConfirm(true)}
           isDismissing={dismissAllAttention.isPending}
           onOpenSettings={() =>
@@ -294,9 +297,9 @@ export function NotificationsPage() {
         isOpen={showDismissConfirm}
         title={`${ACKNOWLEDGE_ATTENTION_ACTION.label} attention items`}
         message={`${ACKNOWLEDGE_ATTENTION_ACTION.label} ${
-          attentionItems.length
+          dismissibleItems.length
         } item${
-          attentionItems.length === 1 ? '' : 's'
+          dismissibleItems.length === 1 ? '' : 's'
         } needing attention? Activity stays.`}
         confirmLabel={`${ACKNOWLEDGE_ATTENTION_ACTION.label} all attention items`}
         variant="warning"

@@ -597,9 +597,12 @@ describe('NotificationsPage', () => {
       ],
     };
 
-    renderPage();
+    const view = renderPage();
 
     fireEvent.click(screen.getByText('Dismiss all attention items'));
+    expect(screen.getByRole('dialog').textContent).toContain(
+      'Dismiss 1 item needing attention? Activity stays.',
+    );
     fireEvent.click(
       within(screen.getByRole('dialog')).getByRole('button', {
         name: 'Dismiss all attention items',
@@ -617,6 +620,16 @@ describe('NotificationsPage', () => {
       'setup-incomplete:model-connection:station',
       expect.anything(),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    attention = { pendingCount: 1, items: [attention.items[1]!] };
+    view.refresh();
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Dismiss all attention items',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 
   test('bulk dismissal confirms and dismisses only attention items', async () => {

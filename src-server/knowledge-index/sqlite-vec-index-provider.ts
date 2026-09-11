@@ -97,7 +97,7 @@ function toVectorBuffer(vector: number[]): Uint8Array {
   return new Uint8Array(new Float32Array(vector).buffer);
 }
 
-export interface SqliteVecIndexProviderOptions {
+interface SqliteVecIndexProviderOptions {
   /** Override the db file path — used by tests; defaults to
    * `{resolveHomeDir()}/knowledge-index/index.db`, matching `lancedb-provider.ts`'s
    * `dataDir` convention (constructor-overridable, `resolveHomeDir()`-derived default). */

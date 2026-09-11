@@ -60,7 +60,7 @@ import {
  * — the read is re-authorized at dereference time exactly like every other
  * reference in the envelope (archive#1410 R4).
  */
-export interface AnswerShareSessionReader {
+interface AnswerShareSessionReader {
   readSessionMessages(
     threadId: string,
     authority: SessionReadAuthority,
@@ -124,7 +124,7 @@ export const NO_CHANNEL_LOG_OBSERVER: AnswerShareChannelObserver = {
   observeBinding: () => ({ binding: 'none' }),
 };
 
-export interface AnswerShareServiceDeps {
+interface AnswerShareServiceDeps {
   store: AnswerShareStore;
   sessions: AnswerShareSessionReader;
   now?: () => number;

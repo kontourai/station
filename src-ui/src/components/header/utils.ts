@@ -5,7 +5,7 @@ export interface HeaderHelpPrompt {
   prompt: string;
 }
 
-export interface HeaderBreadcrumb {
+interface HeaderBreadcrumb {
   /** Set for project/layout views — the project the user is inside. */
   projectSlug?: string;
   layoutSlug?: string;

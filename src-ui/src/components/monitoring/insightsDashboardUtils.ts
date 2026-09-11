@@ -1,4 +1,4 @@
-export interface InsightsUsageData {
+interface InsightsUsageData {
   toolUsage: Record<
     string,
     {
@@ -13,7 +13,7 @@ export interface InsightsUsageData {
   agentUsage: Record<string, { chats: number; tokens: number }>;
 }
 
-export interface MessageRatingSummary {
+interface MessageRatingSummary {
   id: string;
   rating: 'thumbs_up' | 'thumbs_down';
   reason?: string;

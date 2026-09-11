@@ -105,7 +105,7 @@ export interface HealthIntegration {
 
 // ── Agent telemetry v0.2.0 ingest types ─────────────────────────────
 
-export interface AgentTelemetryContext {
+interface AgentTelemetryContext {
   cwd?: string;
   tty?: string;
   os?: string;
@@ -113,7 +113,7 @@ export interface AgentTelemetryContext {
   pid?: number;
 }
 
-export interface AgentTelemetryEnrichment {
+interface AgentTelemetryEnrichment {
   system?: {
     os?: string;
     os_version?: string;
@@ -160,7 +160,7 @@ export interface AgentTelemetryIngestEvent {
 
 // ── OTLP JSON envelope types (subset for receiver) ──────────────────
 
-export interface OtlpSpan {
+interface OtlpSpan {
   traceId: string;
   spanId: string;
   parentSpanId?: string;
@@ -173,7 +173,7 @@ export interface OtlpSpan {
   status?: { code: number; message?: string };
 }
 
-export interface OtlpSpanEvent {
+interface OtlpSpanEvent {
   timeUnixNano: string;
   name: string;
   attributes: OtlpKeyValue[];
@@ -192,7 +192,7 @@ export interface OtlpAnyValue {
   arrayValue?: { values: OtlpAnyValue[] };
 }
 
-export interface OtlpLogRecord {
+interface OtlpLogRecord {
   timeUnixNano: string;
   severityNumber?: number;
   severityText?: string;

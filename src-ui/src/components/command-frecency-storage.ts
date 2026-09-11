@@ -8,7 +8,7 @@ import {
 
 export const COMMAND_FRECENCY_STORAGE_KEY = 'station-command-frecency-v1';
 
-export interface CommandFrecencyStorage {
+interface CommandFrecencyStorage {
   read(): readonly CommandFrecencyEntry[];
   record(commandId: string): boolean;
   reset(): boolean;

@@ -683,7 +683,7 @@ if (monitoringContext.includes('fetch(')) {
   errors.push('MonitoringContext must not issue raw fetch() calls.');
 }
 for (const requiredHook of [
-  'fetchMonitoringEvents',
+  'fetchMonitoringEventWindow',
   'useMonitoringStatsQuery',
 ]) {
   if (!monitoringContext.includes(requiredHook)) {
@@ -4274,34 +4274,17 @@ if (!activeChatsContext.includes('../hooks/usePruneActiveChats')) {
   );
 }
 
-const orchestrationHook = readRequiredSource(
-  '../src-ui/src/hooks/useOrchestration.ts',
+const foregroundDispatch = readRequiredSource(
+  '../src-ui/src/lib/foregroundMessageDispatch.ts',
 );
-for (const requiredHelper of [
-  './orchestration/ensureOrchestrationEventStream',
-  'sendExecutionMessageRequest',
-  'useOrchestrationProvidersQuery',
-]) {
-  if (!orchestrationHook.includes(requiredHelper)) {
-    errors.push(`useOrchestration must use ${requiredHelper}.`);
-  }
+if (
+  !foregroundDispatch.includes('@kontourai/station-sdk/client') ||
+  !foregroundDispatch.includes('sendExecutionMessage(')
+) {
+  errors.push(
+    'Foreground dispatch must use the portable SDK execution request.',
+  );
 }
-for (const retiredInlineOrchestrationSnippet of [
-  'type OrchestrationEvent =',
-  'function upsertTextPart(',
-  'function upsertToolPart(',
-  'function finalizeAssistantTurn(',
-  'async function resolveApproval(',
-  'function handleEvent(',
-  'const activeSources = new Map<string, EventSource>();',
-]) {
-  if (orchestrationHook.includes(retiredInlineOrchestrationSnippet)) {
-    errors.push(
-      `useOrchestration must not inline extracted orchestration helper ${retiredInlineOrchestrationSnippet}.`,
-    );
-  }
-}
-
 const orchestrationDirChecks = [
   [
     '../src-ui/src/hooks/orchestration/types.ts',
@@ -5758,7 +5741,7 @@ const pluginBundles = readRequiredSource(
   '../src-server/routes/plugins/plugin-bundles.ts',
 );
 for (const requiredHelper of [
-  'export function resolvePluginBundle',
+  'export async function readPluginBundle',
   'export async function buildPlugin',
   '@kontourai/station-shared/build',
 ]) {

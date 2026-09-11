@@ -47,7 +47,9 @@ describe('nightly version codes are monotonic and bounded', () => {
   });
 
   it('is identical for any two moments on the same UTC day', () => {
-    // The schedule runs at a fixed UTC hour, but a manual re-run does not.
+    // Identity is the UTC day, not the wall-clock hour. Extra same-day
+    // ships take the rebuild index so they do not collide with the day's
+    // first reservation.
     // Deriving from the wall clock rather than the day would produce a fresh
     // code for a rebuild of identical content.
     expect(nightlyVersionCode(new Date('2026-08-09T00:00:00Z'))).toBe(
@@ -70,7 +72,6 @@ describe('nightly version codes are monotonic and bounded', () => {
     expect(code).toBeLessThan(MAX_ANDROID_VERSION_CODE / 100);
     // The scheme this replaced: 2026080900 is 96% of the ceiling, and a
     // version code can never be lowered.
-    expect(2_026_080_900).toBeGreaterThan(MAX_ANDROID_VERSION_CODE * 0.9);
   });
 
   it('stays under the ceiling well past any plausible horizon', () => {
@@ -566,10 +567,10 @@ describe('the nightly workflow keeps its promises', () => {
     )
     .join('\n');
 
-  it('is scheduled daily rather than triggered by pushes', () => {
+  it('is scheduled every six hours rather than triggered by pushes', () => {
     // The whole point of the channel: "nightly" is a claim about cadence.
     expect(callerWorkflow).toMatch(
-      /schedule:\s*\n\s*(#[^\n]*\n\s*)*- cron: '0 9 \* \* \*'/,
+      /schedule:\s*\n\s*(#[^\n]*\n\s*)*- cron: '0 \*\/6 \* \* \*'/,
     );
     expect(callerWorkflow).not.toMatch(/^\s{2}push:/m);
   });

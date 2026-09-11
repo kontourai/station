@@ -297,7 +297,18 @@ function validateFeatureSettings(
     }
   }
 
-  return { valid: true, value: candidate };
+  // These switches were retired; migration/import must not keep resurrecting
+  // them in the canonical envelope. Preserve unknown future fields otherwise.
+  const value = { ...candidate };
+  for (const key of [
+    'voiceModeEnabled',
+    'meetingTranscriptionEnabled',
+    'locationContextEnabled',
+    'offlineQueueEnabled',
+  ]) {
+    delete value[key];
+  }
+  return { valid: true, value };
 }
 
 /**
@@ -747,6 +758,15 @@ class DeviceSettingsStore {
         priorRaw,
         definition.defaultValue,
       );
+      if (definition.key === 'featureSettings') {
+        const normalized = validateImportedValue(
+          definition,
+          values.featureSettings,
+        );
+        values.featureSettings = normalized.valid
+          ? (normalized.value as DeviceSettings['featureSettings'])
+          : (definition.defaultValue as DeviceSettings['featureSettings']);
+      }
       migratedPriorKeys.add(priorStorageKey);
     }
 

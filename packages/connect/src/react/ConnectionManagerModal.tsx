@@ -57,6 +57,7 @@ export interface ConnectionManagerModalProps {
   originIsStation?: boolean;
   /** Native shell name, when this UI is not running in a browser. */
   hostAppName?: string;
+  pairingClientChannel?: 'stable' | 'beta' | 'nightly';
   /** Native desktop keeps bearer values host-side and disables manual entry. */
   allowManualCredentials?: boolean;
   /** Host-owned request transport for native management routes. */
@@ -89,6 +90,7 @@ export function ConnectionManagerModal({
   onPairingReviewDismissed,
   originIsStation,
   hostAppName,
+  pairingClientChannel,
   allowManualCredentials,
   authenticatedRequest,
   onRestartInjectedConnection,
@@ -109,6 +111,7 @@ export function ConnectionManagerModal({
         onPairingReviewDismissed={onPairingReviewDismissed}
         originIsStation={originIsStation}
         hostAppName={hostAppName}
+        pairingClientChannel={pairingClientChannel}
         allowManualCredentials={allowManualCredentials}
         authenticatedRequest={authenticatedRequest}
         onRestartInjectedConnection={onRestartInjectedConnection}

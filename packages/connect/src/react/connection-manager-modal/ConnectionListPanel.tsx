@@ -53,6 +53,7 @@ interface ConnectionListPanelProps {
   onScanQr: () => void;
   onEnterPairingCode: () => void;
   enterPairingCodeRef?: Ref<HTMLButtonElement>;
+  onPairPhone?: () => void;
   onViewDevices: () => void;
   onDiscover: () => void;
   /**
@@ -450,6 +451,7 @@ export function ConnectionListPanel({
   onScanQr,
   onEnterPairingCode,
   enterPairingCodeRef,
+  onPairPhone,
   onViewDevices,
   onDiscover,
   discoveryAvailable,
@@ -659,8 +661,23 @@ export function ConnectionListPanel({
           className="station-connect-footer__group"
           aria-label="Manage access to this Station"
         >
-          <h3>Connected devices</h3>
-          <p>Choose which devices can connect.</p>
+          <h3>Connect another device to this Station</h3>
+          <p>
+            Invite your phone to{' '}
+            {connections.find(
+              (connection) => connection.id === activeConnectionId,
+            )?.name ?? 'the selected Station'}
+            . Both devices use the same Station server.
+          </p>
+          {onPairPhone && (
+            <button
+              type="button"
+              onClick={onPairPhone}
+              className="station-connect-btn station-connect-btn--primary"
+            >
+              Connect another device
+            </button>
+          )}
           <button
             type="button"
             onClick={onViewDevices}

@@ -109,7 +109,7 @@ export interface AppHomeDirEntry {
   isSymbolicLink(): boolean;
 }
 
-export interface AppHomeStat {
+interface AppHomeStat {
   isSymbolicLink: boolean;
   isFile: boolean;
   isDirectory: boolean;
@@ -125,7 +125,7 @@ export interface AppHomeStat {
  * swapped after the check (mirrors
  * `claude-skills-materialization.ts`'s `SkillMaterializationFileHandle`).
  */
-export interface AppHomeFileHandle {
+interface AppHomeFileHandle {
   isFile: boolean;
   size: number;
   read(): Promise<Buffer>;
@@ -559,7 +559,7 @@ export async function ensureAppHomeProfile(
   return { dir, created: outcome === 'created' };
 }
 
-export type MarkAppHomeProfileImportedResult =
+type MarkAppHomeProfileImportedResult =
   | { ok: true }
   | { ok: false; reason: 'marker-not-regular-file' | 'temp-marker-collision' };
 
@@ -677,7 +677,7 @@ export async function markAppHomeProfileImported(
   return { ok: true };
 }
 
-export interface ImportClaudeGlobalSnapshotOptions {
+interface ImportClaudeGlobalSnapshotOptions {
   /** The user's real global Claude config dir (read-only — never written to). */
   globalDir: string;
   /** The Station-owned profile dir being seeded — must resolve inside `appHomesRootDir(homeDir)`. */
@@ -1165,7 +1165,7 @@ export async function importCodexGlobalSnapshot(
  */
 export const APP_HOME_USAGE_MAX_ENTRIES = 10_000;
 
-export interface AppHomeProfileUsage {
+interface AppHomeProfileUsage {
   sizeBytes: number;
   entryCount: number;
   truncated: boolean;

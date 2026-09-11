@@ -194,7 +194,7 @@ export const LOCAL_OPERATOR_PRINCIPAL_ID = `human:${LOCAL_OPERATOR_PROVIDER}:${L
 
 const DEFAULT_OPERATOR_DISPLAY = 'Operator';
 
-export interface ResolvePrincipalOptions {
+interface ResolvePrincipalOptions {
   /**
    * Cosmetic display only (never the id) for the local single-operator
    * principal. Optional and defaulted so this resolver adds minimal

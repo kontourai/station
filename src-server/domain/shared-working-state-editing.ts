@@ -83,12 +83,12 @@ export interface SharedWorkingStateEditBatch {
   readonly selection: { readonly anchor: number; readonly focus: number };
 }
 
-export type SharedWorkingStateEditPlan =
+type SharedWorkingStateEditPlan =
   | { readonly outcome: 'planned'; readonly batch: SharedWorkingStateEditBatch }
   | { readonly outcome: 'unchanged' }
   | { readonly outcome: 'refused'; readonly reason: string };
 
-export type SharedWorkingStatePendingProjection =
+type SharedWorkingStatePendingProjection =
   | {
       readonly outcome: 'projected';
       readonly text: string;
