@@ -25,6 +25,13 @@ vi.mock('@kontourai/station-sdk', () => ({
 import { ProviderConnectionForm } from '../views/provider-settings/ProviderConnectionForm';
 import type { ProviderConnection } from '../views/provider-settings/types';
 
+// The device projection this page now reads. `undefined` is the honest
+// default: what a server that has not answered yet returns, where HostAction
+// makes no claim about a second machine.
+vi.mock('../hooks/useDevicePresentation', () => ({
+  useDevicePresentation: () => undefined,
+}));
+
 function bedrockForm(
   config: Record<string, unknown> = { region: '' },
 ): Omit<ProviderConnection, 'id'> {
@@ -40,6 +47,82 @@ function bedrockForm(
     lastCheckedAt: null,
   };
 }
+
+/*
+ * Before the shared notice, this page surfaced one ONLY when a check had been
+ * refused or the endpoint was unreachable -- so the most common reason a model
+ * connection cannot be used, no key saved, produced no notice at all, while the
+ * engine page named the prerequisite, its remedy and the machine. These two
+ * cases are the states that used to be silent.
+ */
+describe('ProviderConnectionForm — the readiness notice covers every not-ready state', () => {
+  function unmetKeyForm(): Omit<ProviderConnection, 'id'> {
+    return {
+      kind: 'model',
+      type: 'anthropic',
+      name: 'My Anthropic',
+      config: {},
+      enabled: true,
+      capabilities: ['llm'],
+      status: 'missing_prerequisites',
+      prerequisites: [
+        {
+          id: 'anthropic-api-key',
+          name: 'Anthropic API Key',
+          description: 'Add an API key to use this provider.',
+          status: 'missing',
+          category: 'required',
+        },
+      ],
+      lastCheckedAt: null,
+    };
+  }
+
+  function renderSaved(form: Omit<ProviderConnection, 'id'>) {
+    return render(
+      <ProviderConnectionForm
+        form={form}
+        selectedProviderId="anthropic-1"
+        testResult={null}
+        testError={null}
+        isTesting={false}
+        onSetField={vi.fn()}
+        onSetConfigField={vi.fn()}
+        onTypeChange={vi.fn()}
+        onTestConnection={vi.fn()}
+      />,
+    );
+  }
+
+  test('a saved connection with no key names the remedy and the prerequisite', () => {
+    renderSaved(unmetKeyForm());
+
+    // The remedy, not a generic "not ready": there is no sign-in to perform.
+    expect(screen.getAllByText('API key required')).not.toHaveLength(0);
+    expect(
+      screen.getAllByText('Add an API key to use this provider.'),
+    ).not.toHaveLength(0);
+    expect(screen.getAllByText('Anthropic API Key')).not.toHaveLength(0);
+  });
+
+  test('a ready connection shows no notice', () => {
+    renderSaved({
+      ...unmetKeyForm(),
+      status: 'ready',
+      prerequisites: [
+        {
+          id: 'anthropic-api-key',
+          name: 'Anthropic API Key',
+          description: 'Add an API key to use this provider.',
+          status: 'installed',
+          category: 'required',
+        },
+      ],
+    });
+
+    expect(screen.queryByText('API key required')).toBeNull();
+  });
+});
 
 describe('ProviderConnectionForm — Bedrock auth modes (docs/design/connections-onboarding.md §3.1)', () => {
   beforeEach(() => {
