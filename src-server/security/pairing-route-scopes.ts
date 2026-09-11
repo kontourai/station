@@ -1753,6 +1753,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/orchestration/sessions/:threadId/turns/:turnId/narrative/target',
     },
     {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/turns/:turnId/quote-source',
+    },
+    {
       method: 'PUT',
       path: '/api/orchestration/sessions/:threadId/turns/:turnId/narrative',
     },
