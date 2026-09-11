@@ -2955,6 +2955,11 @@ describe('ClaudeAdapter', () => {
         model: undefined,
         resume: undefined,
         includePartialMessages: true,
+        // station#1877: asks the SDK to summarise what a subagent is doing.
+        // task_progress.summary is documented as carrying the model-generated
+        // status only when this is on, so without it a background subagent
+        // reports its description once and then goes silent.
+        agentProgressSummaries: true,
         persistSession: false,
         env: scrubBootInternalSecrets({
           ...process.env,
