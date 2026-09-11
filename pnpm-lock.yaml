@@ -234,13 +234,13 @@ importers:
         version: 3.2.0
       '@voltagent/core':
         specifier: ^2.9.2
-        version: 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
+        version: 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
       '@voltagent/logger':
         specifier: ^2.0.2
         version: 2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0)
       '@voltagent/server-hono':
         specifier: ^2.0.14
-        version: 2.0.14(patch_hash=1ed9acb7ad00289d710ebe5f24822fef3f189794d80d8ec34469405808622ce5)(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.235(zod@4.5.4))(supports-color@7.2.0)(zod@4.5.4)
+        version: 2.0.14(patch_hash=1ed9acb7ad00289d710ebe5f24822fef3f189794d80d8ec34469405808622ce5)(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.280(zod@4.5.4))(supports-color@7.2.0)(zod@4.5.4)
       '@xterm/addon-fit':
         specifier: ^0.11.0
         version: 0.11.0
@@ -251,8 +251,8 @@ importers:
         specifier: ^2.4.2
         version: 2.4.2
       ai:
-        specifier: ^6.0.235
-        version: 6.0.235(zod@4.5.4)
+        specifier: ^6.0.280
+        version: 6.0.280(zod@4.5.4)
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
@@ -391,7 +391,7 @@ importers:
         version: 4.1.11(vitest@4.1.11)
       '@voltagent/cli':
         specifier: ^0.1.21
-        version: 0.1.21(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@types/node@26.2.0)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(@voltagent/scorers@2.1.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.235(zod@4.5.4))(encoding@0.1.13)(ws@8.21.3)(zod@4.5.4))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
+        version: 0.1.21(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.16)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@types/node@26.2.0)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(@voltagent/scorers@2.1.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.280(zod@4.5.4))(encoding@0.1.13)(ws@8.21.3)(zod@4.5.4))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -652,7 +652,7 @@ importers:
         version: 5.1.1(supports-color@7.2.0)
       '@kontourai/flow-agents':
         specifier: 6.2.0
-        version: 6.2.0(@ai-sdk/provider@3.0.15)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)
+        version: 6.2.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)
       '@kontourai/surface':
         specifier: ^3.2.0
         version: 3.2.0(supports-color@7.2.0)
@@ -670,7 +670,7 @@ importers:
         version: 5.1.1(supports-color@7.2.0)
       '@kontourai/flow-agents':
         specifier: 6.2.0
-        version: 6.2.0(@ai-sdk/provider@3.0.15)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)
+        version: 6.2.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)
       '@kontourai/station-contracts':
         specifier: ^0.7.0
         version: link:../contracts
@@ -789,6 +789,18 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
+  '@ai-sdk/gateway@3.0.189':
+    resolution: {integrity: sha512-roPKojHenQm7U77kNNE0w586jP2vnjxaNx/+KFSQkJRLLAxrg7yUwZQfyOEizoTxdaltu+ZIlLRTw09X3XbGvQ==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  '@ai-sdk/gateway@3.0.191':
+    resolution: {integrity: sha512-7f9h+Vb/kmBTiqj6wtoKZbOuckvnpRp/eoxzYZg0GOAfYkdnixs+8JTGW3+nlHZXza17riNL5FpC0pEuh8aV1Q==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
   '@ai-sdk/google-vertex@3.0.170':
     resolution: {integrity: sha512-qiAdxLQOStAxbZulllPf21pCPqgtIL76DVoxb62VElaA7mOIzc5ixsX4Z3SLeB/Txo+6o6LydwKgD4Hr/aS0aw==}
     engines: {node: '>=18'}
@@ -861,6 +873,12 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
+  '@ai-sdk/provider-utils@4.0.51':
+    resolution: {integrity: sha512-ukLTs9x1Xm6lxSIwbJIxYQxbZHmVeIczNntARZrBcOa6pjdBhqeZnATNnJMHa7M9dZ8Ji5NJbpKpvz7o5XyBtg==}
+    engines: {node: '>=18.17'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
   '@ai-sdk/provider@2.0.3':
     resolution: {integrity: sha512-h88OPkavHTiN9tMn2l5awAznGB0lXzjcLhgR1/rvjB2zlLprsNxbM2tt6OJsHUxduLC3klq0/eqaSf6fX5XVww==}
     engines: {node: '>=18'}
@@ -871,6 +889,10 @@ packages:
 
   '@ai-sdk/provider@3.0.15':
     resolution: {integrity: sha512-XeZW1CcDF2GMbH4wejW6xBRI2QCOgnkVYUnxoeDadB1mf85riL2bMUeDoh+6gJ/r4mjNfzUPW8OjLjvwTP0u1Q==}
+    engines: {node: '>=18'}
+
+  '@ai-sdk/provider@3.0.16':
+    resolution: {integrity: sha512-9Av6kg0t/IN/dcYAAmEJ4B9OPhcEJqwSR+GfHEA8olRkindXpUHadc3p3cyvgFUQFTVm1G5thtsmgZ9yVb2w3A==}
     engines: {node: '>=18'}
 
   '@ai-sdk/togetherai@2.0.67':
@@ -3954,8 +3976,14 @@ packages:
     resolution: {integrity: sha512-kja8j7PjmncONqaTsB8fQ+wE2mSU2DJ9D4XKoJ5PFWIdRMa6SLSN1ff4mOr4jCbfRSsxR4keIiySJU0N9T5hIQ==}
     engines: {node: '>= 8.0.0'}
 
-  ai@6.0.235:
-    resolution: {integrity: sha512-Uyeuvowo20XChpFC0lUaQq8xf0Kg7OElA56fEjUYoeWMJIzqshDTz4S57KXobcJ4m+iDQxMeJoUj06CIxSLx7A==}
+  ai@6.0.277:
+    resolution: {integrity: sha512-fYlPj2QsisCH66SsEfWM8gV0ZR+6NLuRYSnVw3GKUKlvP+iIAUQR1bUJn1Y6lcAKeoEWQeZaann2ahXZY2HXtQ==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
+  ai@6.0.280:
+    resolution: {integrity: sha512-Fx45QI6+HDeqpDQsqNJXxOnH26ye0LRRbrDGNDqlBb9UrqOpkh6Z9mvCtnq2HVSeRWFF8FFtFGMnaUzLAJeA1g==}
     engines: {node: '>=18'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -7526,6 +7554,20 @@ snapshots:
       '@vercel/oidc': 3.2.0
       zod: 4.5.4
 
+  '@ai-sdk/gateway@3.0.189(zod@4.5.4)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.15
+      '@ai-sdk/provider-utils': 4.0.50(zod@4.5.4)
+      '@vercel/oidc': 3.2.0
+      zod: 4.5.4
+
+  '@ai-sdk/gateway@3.0.191(zod@4.5.4)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.16
+      '@ai-sdk/provider-utils': 4.0.51(zod@4.5.4)
+      '@vercel/oidc': 3.2.0
+      zod: 4.5.4
+
   '@ai-sdk/google-vertex@3.0.170(supports-color@7.2.0)(zod@4.5.4)':
     dependencies:
       '@ai-sdk/anthropic': 2.0.99(zod@4.5.4)
@@ -7609,6 +7651,14 @@ snapshots:
       undici: 6.28.0
       zod: 4.5.4
 
+  '@ai-sdk/provider-utils@4.0.51(zod@4.5.4)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.16
+      '@standard-schema/spec': 1.1.0
+      eventsource-parser: 3.1.0
+      undici: 6.28.0
+      zod: 4.5.4
+
   '@ai-sdk/provider@2.0.3':
     dependencies:
       json-schema: 0.4.0
@@ -7618,6 +7668,10 @@ snapshots:
       json-schema: 0.4.0
 
   '@ai-sdk/provider@3.0.15':
+    dependencies:
+      json-schema: 0.4.0
+
+  '@ai-sdk/provider@3.0.16':
     dependencies:
       json-schema: 0.4.0
 
@@ -8620,6 +8674,29 @@ snapshots:
       - utf-8-validate
       - ws
 
+  '@gitlab/gitlab-ai-provider@3.6.1(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.16)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.16
+      '@ai-sdk/provider-utils': 4.0.50(zod@4.5.4)
+      '@anthropic-ai/sdk': 0.71.2(zod@3.25.76)
+      '@anycable/core': 0.9.2
+      graphql-request: 6.1.0(encoding@0.1.13)(graphql@16.14.2)
+      isomorphic-ws: 5.0.0(ws@8.21.3)
+      openai: 6.49.0(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(ws@8.21.3)(zod@3.25.76)
+      socket.io-client: 4.8.3(supports-color@7.2.0)
+      vscode-jsonrpc: 8.2.1
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - '@aws-sdk/credential-provider-node'
+      - '@smithy/hash-node'
+      - '@smithy/signature-v4'
+      - bufferutil
+      - encoding
+      - graphql
+      - supports-color
+      - utf-8-validate
+      - ws
+
   '@graphql-typed-document-node/core@3.2.0(graphql@16.14.2)':
     dependencies:
       graphql: 16.14.2
@@ -8765,6 +8842,16 @@ snapshots:
     transitivePeerDependencies:
       - '@anthropic-ai/sdk'
 
+  '@kontourai/dispatch@0.3.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.116.0(zod@4.5.4))(@kontourai/bearing@0.2.0(playwright@1.62.1))(@kontourai/datum@0.7.0(playwright@1.62.1))':
+    dependencies:
+      '@kontourai/relay': 0.2.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.116.0(zod@4.5.4))
+    optionalDependencies:
+      '@ai-sdk/provider': 3.0.16
+      '@kontourai/bearing': 0.2.0(playwright@1.62.1)
+      '@kontourai/datum': 0.7.0(playwright@1.62.1)
+    transitivePeerDependencies:
+      - '@anthropic-ai/sdk'
+
   '@kontourai/dispatch@0.5.0(@ai-sdk/provider@3.0.15)(@anthropic-ai/sdk@0.122.0(zod@4.5.4))(@kontourai/bearing@0.2.0(playwright@1.62.1))(@kontourai/datum@0.7.0(playwright@1.62.1))':
     dependencies:
       '@kontourai/relay': 0.6.0(@ai-sdk/provider@3.0.15)(@anthropic-ai/sdk@0.122.0(zod@4.5.4))
@@ -8839,6 +8926,28 @@ snapshots:
       '@kontourai/dispatch': 0.3.0(@ai-sdk/provider@3.0.15)(@anthropic-ai/sdk@0.116.0(zod@4.5.4))(@kontourai/bearing@0.2.0(playwright@1.62.1))(@kontourai/datum@0.7.0(playwright@1.62.1))
       '@kontourai/flow': 5.0.0(supports-color@7.2.0)
       '@kontourai/relay': 0.6.0(@ai-sdk/provider@3.0.15)(@anthropic-ai/sdk@0.116.0(zod@4.5.4))
+      '@kontourai/surface': 2.17.0(supports-color@7.2.0)
+      '@kontourai/survey': 2.0.0(supports-color@7.2.0)(typescript@5.9.3)
+      esbuild: 0.28.1
+    optionalDependencies:
+      '@anthropic-ai/sdk': 0.116.0(zod@4.5.4)
+      neo4j-driver: 5.28.3
+    transitivePeerDependencies:
+      - '@ai-sdk/provider'
+      - '@kontourai/bearing'
+      - kerberos
+      - playwright
+      - supports-color
+      - typescript
+      - zod
+
+  '@kontourai/flow-agents@6.2.0(@ai-sdk/provider@3.0.16)(@kontourai/bearing@0.2.0(playwright@1.62.1))(playwright@1.62.1)(supports-color@7.2.0)(typescript@5.9.3)(zod@4.5.4)':
+    dependencies:
+      '@kontourai/conduit': 0.2.1
+      '@kontourai/datum': 0.7.0(playwright@1.62.1)
+      '@kontourai/dispatch': 0.3.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.116.0(zod@4.5.4))(@kontourai/bearing@0.2.0(playwright@1.62.1))(@kontourai/datum@0.7.0(playwright@1.62.1))
+      '@kontourai/flow': 5.0.0(supports-color@7.2.0)
+      '@kontourai/relay': 0.6.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.116.0(zod@4.5.4))
       '@kontourai/surface': 2.17.0(supports-color@7.2.0)
       '@kontourai/survey': 2.0.0(supports-color@7.2.0)(typescript@5.9.3)
       esbuild: 0.28.1
@@ -8934,6 +9043,12 @@ snapshots:
     optionalDependencies:
       '@anthropic-ai/sdk': 0.74.0(zod@4.5.4)
 
+  '@kontourai/relay@0.2.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.116.0(zod@4.5.4))':
+    dependencies:
+      '@ai-sdk/provider': 3.0.16
+    optionalDependencies:
+      '@anthropic-ai/sdk': 0.116.0(zod@4.5.4)
+
   '@kontourai/relay@0.4.0(@ai-sdk/provider@3.0.15)(@anthropic-ai/sdk@0.74.0(zod@4.5.4))':
     dependencies:
       '@ai-sdk/provider': 3.0.15
@@ -8951,6 +9066,12 @@ snapshots:
       '@ai-sdk/provider': 3.0.15
     optionalDependencies:
       '@anthropic-ai/sdk': 0.122.0(zod@4.5.4)
+
+  '@kontourai/relay@0.6.0(@ai-sdk/provider@3.0.16)(@anthropic-ai/sdk@0.116.0(zod@4.5.4))':
+    dependencies:
+      '@ai-sdk/provider': 3.0.16
+    optionalDependencies:
+      '@anthropic-ai/sdk': 0.116.0(zod@4.5.4)
 
   '@kontourai/surface@1.3.1(supports-color@7.2.0)':
     optionalDependencies:
@@ -9125,12 +9246,12 @@ snapshots:
       '@modelcontextprotocol/core': 2.0.0
       zod: 4.5.4
 
-  '@mymediset/sap-ai-provider@2.1.0(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)':
+  '@mymediset/sap-ai-provider@2.1.0(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)':
     dependencies:
       '@ai-sdk/provider': 3.0.15
       '@ai-sdk/provider-utils': 4.0.50(zod@4.5.4)
       '@sap-ai-sdk/orchestration': 2.13.0(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
-      ai: 6.0.235(zod@4.5.4)
+      ai: 6.0.280(zod@4.5.4)
       zod: 4.5.4
       zod-to-json-schema: 3.25.2(zod@4.5.4)
     transitivePeerDependencies:
@@ -10631,20 +10752,20 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.1
 
-  '@voltagent/a2a-server@2.0.3(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(supports-color@7.2.0)':
+  '@voltagent/a2a-server@2.0.3(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(supports-color@7.2.0)':
     dependencies:
       '@a2a-js/sdk': 0.2.5(supports-color@7.2.0)
-      '@voltagent/core': 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
+      '@voltagent/core': 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
       '@voltagent/internal': 1.0.3
       zod: 3.25.76
     transitivePeerDependencies:
       - supports-color
 
-  '@voltagent/cli@0.1.21(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@types/node@26.2.0)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(@voltagent/scorers@2.1.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.235(zod@4.5.4))(encoding@0.1.13)(ws@8.21.3)(zod@4.5.4))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)':
+  '@voltagent/cli@0.1.21(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.16)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@types/node@26.2.0)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(@voltagent/scorers@2.1.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.280(zod@4.5.4))(encoding@0.1.13)(ws@8.21.3)(zod@4.5.4))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)':
     dependencies:
-      '@voltagent/evals': 2.0.5(@voltagent/scorers@2.1.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.235(zod@4.5.4))(encoding@0.1.13)(ws@8.21.3)(zod@4.5.4))(@voltagent/sdk@2.0.3(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))
+      '@voltagent/evals': 2.0.5(@voltagent/scorers@2.1.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.280(zod@4.5.4))(encoding@0.1.13)(ws@8.21.3)(zod@4.5.4))(@voltagent/sdk@2.0.3(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.16)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))
       '@voltagent/internal': 1.0.3
-      '@voltagent/sdk': 2.0.3(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
+      '@voltagent/sdk': 2.0.3(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.16)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
       adm-zip: 0.6.0
       boxen: 5.1.2
       bundle-require: 5.1.0(esbuild@0.25.12)
@@ -10685,7 +10806,7 @@ snapshots:
       - ws
       - zod
 
-  '@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)':
+  '@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)':
     dependencies:
       '@ai-sdk/amazon-bedrock': 3.0.125(zod@4.5.4)
       '@ai-sdk/anthropic': 3.0.102(zod@4.5.4)
@@ -10708,7 +10829,7 @@ snapshots:
       '@aihubmix/ai-sdk-provider': 1.0.3(zod@4.5.4)
       '@gitlab/gitlab-ai-provider': 3.6.1(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)
       '@modelcontextprotocol/sdk': 1.30.0(supports-color@7.2.0)(zod@4.5.4)
-      '@mymediset/sap-ai-provider': 2.1.0(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
+      '@mymediset/sap-ai-provider': 2.1.0(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/api-logs': 0.204.0
       '@opentelemetry/context-async-hooks': 2.10.0(@opentelemetry/api@1.9.1)
@@ -10722,7 +10843,7 @@ snapshots:
       '@opentelemetry/sdk-trace-node': 2.10.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/semantic-conventions': 1.43.0
       '@voltagent/internal': 1.0.3
-      ai: 6.0.235(zod@4.5.4)
+      ai: 6.0.280(zod@4.5.4)
       fast-glob: 3.3.3
       gray-matter: 4.0.3
       micromatch: 4.0.8
@@ -10730,7 +10851,7 @@ snapshots:
       ts-pattern: 5.9.0
       type-fest: 4.41.0
       uuid: 9.0.1
-      workers-ai-provider: 3.3.1(@ai-sdk/anthropic@3.0.102(zod@4.5.4))(@ai-sdk/google@3.0.101(zod@4.5.4))(@ai-sdk/openai@3.0.88(zod@4.5.4))(@ai-sdk/provider@3.0.15)(ai@6.0.235(zod@4.5.4))
+      workers-ai-provider: 3.3.1(@ai-sdk/anthropic@3.0.102(zod@4.5.4))(@ai-sdk/google@3.0.101(zod@4.5.4))(@ai-sdk/openai@3.0.88(zod@4.5.4))(@ai-sdk/provider@3.0.15)(ai@6.0.280(zod@4.5.4))
       zod: 4.5.4
       zod-from-json-schema: 0.5.6
       zod-from-json-schema-v3: zod-from-json-schema@0.0.5
@@ -10750,11 +10871,76 @@ snapshots:
       - utf-8-validate
       - ws
 
-  '@voltagent/evals@2.0.5(@voltagent/scorers@2.1.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.235(zod@4.5.4))(encoding@0.1.13)(ws@8.21.3)(zod@4.5.4))(@voltagent/sdk@2.0.3(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))':
+  '@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.16)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)':
+    dependencies:
+      '@ai-sdk/amazon-bedrock': 3.0.125(zod@4.5.4)
+      '@ai-sdk/anthropic': 3.0.102(zod@4.5.4)
+      '@ai-sdk/azure': 3.0.93(zod@4.5.4)
+      '@ai-sdk/cerebras': 2.0.68(zod@4.5.4)
+      '@ai-sdk/cohere': 3.0.49(zod@4.5.4)
+      '@ai-sdk/deepinfra': 2.0.66(zod@4.5.4)
+      '@ai-sdk/gateway': 3.0.157(zod@4.5.4)
+      '@ai-sdk/google': 3.0.101(zod@4.5.4)
+      '@ai-sdk/google-vertex': 3.0.170(supports-color@7.2.0)(zod@4.5.4)
+      '@ai-sdk/groq': 3.0.53(zod@4.5.4)
+      '@ai-sdk/mistral': 3.0.51(zod@4.5.4)
+      '@ai-sdk/openai': 3.0.88(zod@4.5.4)
+      '@ai-sdk/openai-compatible': 2.0.62(zod@4.5.4)
+      '@ai-sdk/perplexity': 3.0.47(zod@4.5.4)
+      '@ai-sdk/provider-utils': 4.0.50(zod@4.5.4)
+      '@ai-sdk/togetherai': 2.0.67(zod@4.5.4)
+      '@ai-sdk/vercel': 2.0.64(zod@4.5.4)
+      '@ai-sdk/xai': 3.0.111(zod@4.5.4)
+      '@aihubmix/ai-sdk-provider': 1.0.3(zod@4.5.4)
+      '@gitlab/gitlab-ai-provider': 3.6.1(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.16)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)
+      '@modelcontextprotocol/sdk': 1.30.0(supports-color@7.2.0)(zod@4.5.4)
+      '@mymediset/sap-ai-provider': 2.1.0(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
+      '@opentelemetry/api': 1.9.1
+      '@opentelemetry/api-logs': 0.204.0
+      '@opentelemetry/context-async-hooks': 2.10.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/core': 2.10.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/exporter-logs-otlp-http': 0.204.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/exporter-trace-otlp-http': 0.203.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/otlp-transformer': 0.204.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/resources': 2.10.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-logs': 0.204.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace-base': 2.10.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-trace-node': 2.10.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/semantic-conventions': 1.43.0
+      '@voltagent/internal': 1.0.3
+      ai: 6.0.280(zod@4.5.4)
+      fast-glob: 3.3.3
+      gray-matter: 4.0.3
+      micromatch: 4.0.8
+      ollama-ai-provider-v2: 1.5.5(zod@4.5.4)
+      ts-pattern: 5.9.0
+      type-fest: 4.41.0
+      uuid: 9.0.1
+      workers-ai-provider: 3.3.1(@ai-sdk/anthropic@3.0.102(zod@4.5.4))(@ai-sdk/google@3.0.101(zod@4.5.4))(@ai-sdk/openai@3.0.88(zod@4.5.4))(@ai-sdk/provider@3.0.16)(ai@6.0.280(zod@4.5.4))
+      zod: 4.5.4
+      zod-from-json-schema: 0.5.6
+      zod-from-json-schema-v3: zod-from-json-schema@0.0.5
+    optionalDependencies:
+      '@voltagent/logger': 2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0)
+    transitivePeerDependencies:
+      - '@ai-sdk/provider'
+      - '@aws-sdk/credential-provider-node'
+      - '@cfworker/json-schema'
+      - '@smithy/hash-node'
+      - '@smithy/signature-v4'
+      - bufferutil
+      - debug
+      - encoding
+      - graphql
+      - supports-color
+      - utf-8-validate
+      - ws
+
+  '@voltagent/evals@2.0.5(@voltagent/scorers@2.1.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.280(zod@4.5.4))(encoding@0.1.13)(ws@8.21.3)(zod@4.5.4))(@voltagent/sdk@2.0.3(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.16)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))':
     dependencies:
       '@voltagent/internal': 1.0.3
-      '@voltagent/scorers': 2.1.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.235(zod@4.5.4))(encoding@0.1.13)(ws@8.21.3)(zod@4.5.4)
-      '@voltagent/sdk': 2.0.3(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
+      '@voltagent/scorers': 2.1.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.280(zod@4.5.4))(encoding@0.1.13)(ws@8.21.3)(zod@4.5.4)
+      '@voltagent/sdk': 2.0.3(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.16)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
 
   '@voltagent/internal@1.0.3':
     dependencies:
@@ -10773,39 +10959,39 @@ snapshots:
       - '@opentelemetry/api'
       - supports-color
 
-  '@voltagent/mcp-server@2.2.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(supports-color@7.2.0)(zod@4.5.4)':
+  '@voltagent/mcp-server@2.2.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(supports-color@7.2.0)(zod@4.5.4)':
     dependencies:
       '@modelcontextprotocol/sdk': 1.30.0(supports-color@7.2.0)(zod@4.5.4)
-      '@voltagent/core': 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
+      '@voltagent/core': 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
       '@voltagent/internal': 1.0.3
       zod: 4.5.4
     transitivePeerDependencies:
       - '@cfworker/json-schema'
       - supports-color
 
-  '@voltagent/resumable-streams@2.0.2(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.235(zod@4.5.4))':
+  '@voltagent/resumable-streams@2.0.2(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.280(zod@4.5.4))':
     dependencies:
-      '@voltagent/core': 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
+      '@voltagent/core': 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
       '@voltagent/internal': 1.0.3
-      ai: 6.0.235(zod@4.5.4)
+      ai: 6.0.280(zod@4.5.4)
       redis: 4.7.1
       resumable-stream: 2.2.12
 
-  '@voltagent/scorers@2.1.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.235(zod@4.5.4))(encoding@0.1.13)(ws@8.21.3)(zod@4.5.4)':
+  '@voltagent/scorers@2.1.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.280(zod@4.5.4))(encoding@0.1.13)(ws@8.21.3)(zod@4.5.4)':
     dependencies:
-      '@voltagent/core': 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
+      '@voltagent/core': 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
       '@voltagent/internal': 1.0.3
       autoevals: 0.0.131(encoding@0.1.13)(ws@8.21.3)
       zod: 4.5.4
     optionalDependencies:
-      ai: 6.0.235(zod@4.5.4)
+      ai: 6.0.280(zod@4.5.4)
     transitivePeerDependencies:
       - encoding
       - ws
 
-  '@voltagent/sdk@2.0.3(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)':
+  '@voltagent/sdk@2.0.3(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.16)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)':
     dependencies:
-      '@voltagent/core': 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
+      '@voltagent/core': 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.16)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
       '@voltagent/internal': 1.0.3
     transitivePeerDependencies:
       - '@ai-sdk/provider'
@@ -10825,12 +11011,12 @@ snapshots:
       - ws
       - zod
 
-  '@voltagent/server-core@2.1.20(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(supports-color@7.2.0)(zod@4.5.4)':
+  '@voltagent/server-core@2.1.20(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(supports-color@7.2.0)(zod@4.5.4)':
     dependencies:
       '@modelcontextprotocol/sdk': 1.30.0(supports-color@7.2.0)(zod@4.5.4)
-      '@voltagent/core': 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
+      '@voltagent/core': 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
       '@voltagent/internal': 1.0.3
-      ai: 6.0.235(zod@4.5.4)
+      ai: 6.0.277(zod@4.5.4)
       jsonwebtoken: 9.0.3
       ws: 8.21.3
       zod: 4.5.4
@@ -10842,16 +11028,16 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@voltagent/server-hono@2.0.14(patch_hash=1ed9acb7ad00289d710ebe5f24822fef3f189794d80d8ec34469405808622ce5)(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.235(zod@4.5.4))(supports-color@7.2.0)(zod@4.5.4)':
+  '@voltagent/server-hono@2.0.14(patch_hash=1ed9acb7ad00289d710ebe5f24822fef3f189794d80d8ec34469405808622ce5)(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.280(zod@4.5.4))(supports-color@7.2.0)(zod@4.5.4)':
     dependencies:
       '@hono/node-server': 1.19.15(hono@4.13.7)
       '@hono/swagger-ui': 0.5.3(hono@4.13.7)
-      '@voltagent/a2a-server': 2.0.3(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(supports-color@7.2.0)
-      '@voltagent/core': 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
+      '@voltagent/a2a-server': 2.0.3(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(supports-color@7.2.0)
+      '@voltagent/core': 2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4)
       '@voltagent/internal': 1.0.3
-      '@voltagent/mcp-server': 2.2.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(supports-color@7.2.0)(zod@4.5.4)
-      '@voltagent/resumable-streams': 2.0.2(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.235(zod@4.5.4))
-      '@voltagent/server-core': 2.1.20(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.235(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(supports-color@7.2.0)(zod@4.5.4)
+      '@voltagent/mcp-server': 2.2.0(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(supports-color@7.2.0)(zod@4.5.4)
+      '@voltagent/resumable-streams': 2.0.2(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(ai@6.0.280(zod@4.5.4))
+      '@voltagent/server-core': 2.1.20(@voltagent/core@2.10.0(patch_hash=8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a)(@ai-sdk/provider-utils@4.0.50(zod@4.5.4))(@ai-sdk/provider@3.0.15)(@aws-sdk/credential-provider-node@3.972.82)(@smithy/signature-v4@5.6.12)(@voltagent/logger@2.0.2(@opentelemetry/api@1.9.1)(supports-color@7.2.0))(ai@6.0.280(zod@4.5.4))(debug@4.4.3(supports-color@7.2.0))(encoding@0.1.13)(graphql@16.14.2)(supports-color@7.2.0)(ws@8.21.3)(zod@4.5.4))(supports-color@7.2.0)(zod@4.5.4)
       fetch-to-node: 2.1.0
       hono: 4.13.7
       openapi3-ts: 4.6.0
@@ -10913,11 +11099,19 @@ snapshots:
     dependencies:
       humanize-ms: 1.2.1
 
-  ai@6.0.235(zod@4.5.4):
+  ai@6.0.277(zod@4.5.4):
     dependencies:
-      '@ai-sdk/gateway': 3.0.157(zod@4.5.4)
-      '@ai-sdk/provider': 3.0.14
-      '@ai-sdk/provider-utils': 4.0.40(zod@4.5.4)
+      '@ai-sdk/gateway': 3.0.189(zod@4.5.4)
+      '@ai-sdk/provider': 3.0.15
+      '@ai-sdk/provider-utils': 4.0.50(zod@4.5.4)
+      '@opentelemetry/api': 1.9.1
+      zod: 4.5.4
+
+  ai@6.0.280(zod@4.5.4):
+    dependencies:
+      '@ai-sdk/gateway': 3.0.191(zod@4.5.4)
+      '@ai-sdk/provider': 3.0.16
+      '@ai-sdk/provider-utils': 4.0.51(zod@4.5.4)
       '@opentelemetry/api': 1.9.1
       zod: 4.5.4
 
@@ -14905,10 +15099,19 @@ snapshots:
       triple-beam: 1.4.1
       winston-transport: 4.9.0
 
-  workers-ai-provider@3.3.1(@ai-sdk/anthropic@3.0.102(zod@4.5.4))(@ai-sdk/google@3.0.101(zod@4.5.4))(@ai-sdk/openai@3.0.88(zod@4.5.4))(@ai-sdk/provider@3.0.15)(ai@6.0.235(zod@4.5.4)):
+  workers-ai-provider@3.3.1(@ai-sdk/anthropic@3.0.102(zod@4.5.4))(@ai-sdk/google@3.0.101(zod@4.5.4))(@ai-sdk/openai@3.0.88(zod@4.5.4))(@ai-sdk/provider@3.0.15)(ai@6.0.280(zod@4.5.4)):
     dependencies:
       '@ai-sdk/provider': 3.0.15
-      ai: 6.0.235(zod@4.5.4)
+      ai: 6.0.280(zod@4.5.4)
+    optionalDependencies:
+      '@ai-sdk/anthropic': 3.0.102(zod@4.5.4)
+      '@ai-sdk/google': 3.0.101(zod@4.5.4)
+      '@ai-sdk/openai': 3.0.88(zod@4.5.4)
+
+  workers-ai-provider@3.3.1(@ai-sdk/anthropic@3.0.102(zod@4.5.4))(@ai-sdk/google@3.0.101(zod@4.5.4))(@ai-sdk/openai@3.0.88(zod@4.5.4))(@ai-sdk/provider@3.0.16)(ai@6.0.280(zod@4.5.4)):
+    dependencies:
+      '@ai-sdk/provider': 3.0.16
+      ai: 6.0.280(zod@4.5.4)
     optionalDependencies:
       '@ai-sdk/anthropic': 3.0.102(zod@4.5.4)
       '@ai-sdk/google': 3.0.101(zod@4.5.4)
