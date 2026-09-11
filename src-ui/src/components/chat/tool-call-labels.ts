@@ -56,6 +56,34 @@ export const KIND_VERBS: Record<ToolCallKind, KindVerbs> = {
  */
 export type ToolCallPhase = 'done' | 'running' | 'proposed' | 'unresolved';
 
+/**
+ * Whether a tool part is still waiting on an explicit grant. One predicate
+ * for the collapsed batch and the expanded row — a second copy eventually
+ * disagrees about `state: 'error'` with no text, `unresolved` that still
+ * carries `needsApproval`, or `result: null`.
+ *
+ * `runtime-event-projection.ts` stamps `state: 'awaiting-approval'` on
+ * `request.opened`; matching `needsApproval` alone is not enough to claim
+ * the work is only proposed.
+ */
+export function isToolCallAwaitingApproval(part: {
+  needsApproval?: boolean;
+  error?: unknown;
+  errorText?: unknown;
+  result?: unknown;
+  output?: unknown;
+  cancelled?: unknown;
+  state?: unknown;
+}): boolean {
+  if (part.needsApproval !== true) return false;
+  const error = part.error ?? part.errorText;
+  const result = part.result ?? part.output;
+  const cancelled = part.cancelled === true || part.state === 'cancelled';
+  const failed = Boolean(error) || part.state === 'error';
+  const unresolved = part.state === 'unresolved';
+  return !failed && !unresolved && result === undefined && !cancelled;
+}
+
 const READ_TOKENS = new Set(['read', 'cat', 'view']);
 const WRITE_TOKENS = new Set(['write', 'edit', 'patch']);
 const EXEC_TOKENS = new Set([

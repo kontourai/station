@@ -16,6 +16,7 @@ import {
 import {
   callLabel,
   classifyToolName,
+  isToolCallAwaitingApproval,
   type ToolCallKind,
   type ToolCallPhase,
 } from './tool-call-labels';
@@ -115,7 +116,6 @@ function ToolCallDisplayComponent({
   const args = toolCall.args ?? toolCall.input;
   const result = toolCall.result ?? toolCall.output;
   const error = toolCall.error ?? toolCall.errorText;
-  const needsApproval = toolCall.needsApproval;
   const cancelled = toolCall.cancelled || toolCall.state === 'cancelled';
   // station#1558: a call whose SESSION ended before any result arrived. Both
   // write paths stamp the same state — `runtime-event-projection.ts` on
@@ -129,8 +129,7 @@ function ToolCallDisplayComponent({
 
   const failed = Boolean(error) || state === 'error';
   const running = state === 'running' && !failed && !cancelled;
-  const awaitingApproval =
-    Boolean(needsApproval) && !error && result === undefined && !cancelled;
+  const awaitingApproval = isToolCallAwaitingApproval(toolCall);
 
   const kind = classifyToolName(toolName);
   const denied =

@@ -107,10 +107,20 @@ export function ToolCallBatch<P extends ToolCallLike>({
               : `${group.unresolvedCount} with no result`}
           </span>
         )}
+        {group.awaitingApprovalCount > 0 && (
+          <span className="tool-call-batch__awaiting">
+            {group.awaitingApprovalCount === 1
+              ? 'Awaiting approval'
+              : `${group.awaitingApprovalCount} awaiting approval`}
+          </span>
+        )}
         <span className="tool-call-batch__chevron" aria-hidden="true">
           ›
         </span>
       </button>
+      {group.progressMessage && group.inProgress && (
+        <div className="tool-call__progress">{group.progressMessage}</div>
+      )}
       {isOpen && (
         <ToolCallBatchSheetBoundary
           group={group}

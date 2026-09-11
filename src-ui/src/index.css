@@ -4746,6 +4746,12 @@ button.tool-call__line:hover {
   font-weight: 600;
 }
 
+.tool-call-batch__awaiting {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
 .tool-call-batch__chevron {
   flex-shrink: 0;
   opacity: 0.6;
