@@ -1,8 +1,13 @@
 import { describe, expect, test } from 'vitest';
 import {
+  _resetUnboundExtensionNotices,
   EXTENSION_NOTIFICATION_BINDINGS,
   EXTENSION_NOTIFICATION_EVIDENCE_GAPS,
+  EXTENSION_NOTIFICATION_PROMOTIONS,
+  EXTENSION_NOTIFICATION_UNIQUE,
   extensionNotificationBinding,
+  isBoundExtensionNotification,
+  takeUnboundExtensionNotice,
 } from '../extension-notification-bindings.js';
 
 describe('extension notification bindings', () => {
@@ -200,5 +205,29 @@ describe('extension notification bindings', () => {
     expect(
       extensionNotificationBinding('_kiro.dev', 'unknown'),
     ).toBeUndefined();
+  });
+
+  test('every promotion and unique-acceptance is bound so it is not an unresolved no-op', () => {
+    for (const item of [
+      ...EXTENSION_NOTIFICATION_PROMOTIONS,
+      ...EXTENSION_NOTIFICATION_UNIQUE,
+    ]) {
+      expect(
+        isBoundExtensionNotification(item.namespace, item.type),
+        `${item.namespace}/${item.type} must stay bound until resolved`,
+      ).toBe(true);
+    }
+  });
+
+  test('takeUnboundExtensionNotice fires once per provider-tuple', () => {
+    _resetUnboundExtensionNotices();
+    expect(takeUnboundExtensionNotice('acp', '_x.ai', 'never/seen')).toBe(true);
+    expect(takeUnboundExtensionNotice('acp', '_x.ai', 'never/seen')).toBe(
+      false,
+    );
+    expect(takeUnboundExtensionNotice('claude', '_x.ai', 'never/seen')).toBe(
+      true,
+    );
+    _resetUnboundExtensionNotices();
   });
 });

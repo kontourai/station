@@ -230,3 +230,162 @@ export function extensionNotificationBinding(
     (binding) => binding.namespace === namespace && binding.type === type,
   );
 }
+
+export function isBoundExtensionNotification(
+  namespace: string,
+  type: string,
+): boolean {
+  return extensionNotificationBinding(namespace, type) !== undefined;
+}
+
+/**
+ * Open work to stop using the escape hatch for facts Station already has
+ * (or should have) a noun for. Bindings stay operational until the adapter
+ * emits the target method and the UI consumer of the extension is removed.
+ */
+export type ExtensionNotificationPromotion = {
+  readonly namespace: string;
+  readonly type: string;
+  readonly stationEvent: string;
+  readonly status: 'open';
+  readonly evidence: ExtensionNotificationEvidence;
+};
+
+export const EXTENSION_NOTIFICATION_PROMOTIONS = Object.freeze([
+  Object.freeze({
+    namespace: 'claude-code',
+    type: 'thinking/tokens',
+    stationEvent: 'session.activity',
+    status: 'open',
+    evidence: 'station#1815-runtime-observation',
+  }),
+  Object.freeze({
+    namespace: 'claude-code',
+    type: 'session/status',
+    stationEvent: 'session.activity',
+    status: 'open',
+    evidence: 'station#1815-runtime-observation',
+  }),
+  Object.freeze({
+    namespace: '_kiro.dev',
+    type: 'compaction/status',
+    stationEvent: 'session.activity',
+    status: 'open',
+    evidence: 'station#1815-runtime-observation',
+  }),
+  Object.freeze({
+    namespace: '_x.ai',
+    type: 'mcp/init_progress',
+    stationEvent: 'session.activity',
+    status: 'open',
+    evidence: 'station#1935-runtime-observation',
+  }),
+  Object.freeze({
+    namespace: 'claude-code',
+    type: 'task/registry',
+    stationEvent: 'agent.tasks',
+    status: 'open',
+    evidence: 'station#1815-runtime-observation',
+  }),
+  Object.freeze({
+    namespace: 'claude-code',
+    type: 'task/settled',
+    stationEvent: 'agent.tasks',
+    status: 'open',
+    evidence: 'station#1815-runtime-observation',
+  }),
+  Object.freeze({
+    namespace: '_kiro.dev',
+    type: 'subagent/list_update',
+    stationEvent: 'agent.tasks',
+    status: 'open',
+    evidence: 'station#1935-runtime-observation',
+  }),
+  Object.freeze({
+    namespace: '_kiro.dev',
+    type: 'metadata',
+    stationEvent: 'token-usage.updated',
+    status: 'open',
+    evidence: 'station#1935-runtime-observation',
+  }),
+  Object.freeze({
+    namespace: '_kiro.dev',
+    type: 'mcp/oauth_request',
+    stationEvent: 'request.opened',
+    status: 'open',
+    evidence: 'station#1815-runtime-observation',
+  }),
+  Object.freeze({
+    namespace: '_x.ai',
+    type: 'session/prompt_complete',
+    stationEvent: 'turn.completed',
+    status: 'open',
+    evidence: 'station#1935-runtime-observation',
+  }),
+]) satisfies readonly ExtensionNotificationPromotion[];
+
+/**
+ * Observed tuples we will not promote: too vendor-specific to become a
+ * Station noun. They stay bound (`acp.host-chrome`) so they are not logged
+ * as unresolved no-ops.
+ */
+export type ExtensionNotificationUniqueAcceptance = {
+  readonly namespace: string;
+  readonly type: string;
+  readonly reason: string;
+  readonly evidence: ExtensionNotificationEvidence;
+};
+
+export const EXTENSION_NOTIFICATION_UNIQUE = Object.freeze([
+  Object.freeze({
+    namespace: '_x.ai',
+    type: 'announcements/update',
+    reason: 'Vendor marketing banners, not session activity.',
+    evidence: 'station#1935-runtime-observation',
+  }),
+  Object.freeze({
+    namespace: '_x.ai',
+    type: 'settings/update',
+    reason: 'Grok client settings dump; Station has its own settings.',
+    evidence: 'station#1935-runtime-observation',
+  }),
+  Object.freeze({
+    namespace: '_x.ai',
+    type: 'sessions/changed',
+    reason: 'Their session list, not this conversation.',
+    evidence: 'station#1935-runtime-observation',
+  }),
+  Object.freeze({
+    namespace: '_x.ai',
+    type: 'models/update',
+    reason:
+      'Their model picker; Station model selection is the capability matrix.',
+    evidence: 'station#1935-runtime-observation',
+  }),
+]) satisfies readonly ExtensionNotificationUniqueAcceptance[];
+
+const unboundFirstSeen = new Set<string>();
+
+export function unboundExtensionNoticeKey(
+  provider: string,
+  namespace: string,
+  type: string,
+): string {
+  return `${provider}\0${namespace}\0${type}`;
+}
+
+/** True the first time this process sees an unbound (namespace, type, provider). */
+export function takeUnboundExtensionNotice(
+  provider: string,
+  namespace: string,
+  type: string,
+): boolean {
+  const key = unboundExtensionNoticeKey(provider, namespace, type);
+  if (unboundFirstSeen.has(key)) return false;
+  unboundFirstSeen.add(key);
+  return true;
+}
+
+export function _resetUnboundExtensionNotices(): void {
+  unboundFirstSeen.clear();
+}

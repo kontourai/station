@@ -45,9 +45,12 @@ are a follow-up on this schema.
 
 `handleOrchestrationEvent` is exhaustive over `CanonicalRuntimeEvent`.
 Vendor-specific extras stay on `extension.notification` (ADR 0008): exact
-`(namespace, type)` bindings, unknown tuples remain no-ops. Observed Grok
-ACP / extra Kiro tuples that are host chrome are bound to `acp.host-chrome`
-so they are folded without becoming transcript rows.
+`(namespace, type)` bindings. Unbound tuples are **tracked**, not silent:
+the adapter increments `station.runtime.extension_notifications` and logs
+`namespace`/`type`/`provider` once per process (never the payload). Session
+diagnostics label them `(unbound)`. Resolve each either by promoting to a
+canonical Station event (`EXTENSION_NOTIFICATION_PROMOTIONS`) or accepting
+it as too unique (`EXTENSION_NOTIFICATION_UNIQUE`). Bias is promote.
 
 ## Follow-ups
 

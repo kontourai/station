@@ -1,3 +1,4 @@
+import { _resetUnboundExtensionNotices } from '@shared/extension-notification-bindings';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 let activeChatsStore: import('../../../contexts/active-chats-store').ActiveChatsStore;
@@ -35,6 +36,7 @@ describe('handleExtensionNotificationEvent', () => {
       agentName: 'Kiro',
       title: 'Kiro Chat',
     });
+    _resetUnboundExtensionNotices();
   });
 
   afterEach(() => {
@@ -63,6 +65,37 @@ describe('handleExtensionNotificationEvent', () => {
         '[Open authentication page](https://example.com/oauth/authorize)',
       ),
     });
+  });
+
+  test('unbound extension notifications log once and stay out of the transcript', async () => {
+    const { log } = await import('../../../utils/logger');
+    const spy = vi.spyOn(log, 'chat').mockImplementation(() => {});
+    handleExtensionNotificationEvent({
+      eventId: 'evt-unbound',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-07-03T00:00:00.000Z',
+      method: 'extension.notification',
+      namespace: '_x.ai',
+      type: 'never/seen',
+      payload: { secret: 'do-not-log' },
+    });
+    handleExtensionNotificationEvent({
+      eventId: 'evt-unbound-2',
+      provider: 'acp',
+      threadId,
+      createdAt: '2026-07-03T00:00:01.000Z',
+      method: 'extension.notification',
+      namespace: '_x.ai',
+      type: 'never/seen',
+      payload: { secret: 'do-not-log' },
+    });
+    expect(spy).toHaveBeenCalledOnce();
+    expect(spy.mock.calls[0]?.join(' ')).not.toContain('do-not-log');
+    expect(
+      activeChatsStore.getSnapshot()[threadId].ephemeralMessages ?? [],
+    ).toEqual([]);
+    spy.mockRestore();
   });
 
   test('bound Grok host-chrome notifications do not create transcript rows', () => {

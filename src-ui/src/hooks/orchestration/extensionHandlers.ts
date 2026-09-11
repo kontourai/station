@@ -1,12 +1,14 @@
 import {
   type ExtensionNotificationConsumer,
   extensionNotificationBinding,
+  takeUnboundExtensionNotice,
 } from '@shared/extension-notification-bindings';
 import type {
   ChatActivityHint,
   ChatBackgroundTask,
 } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { log } from '../../utils/logger';
 import type { OrchestrationEvent } from './types';
 
 function readPayloadString(payload: unknown, key: string): string | undefined {
@@ -215,7 +217,19 @@ export function handleExtensionNotificationEvent(
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   if (!chat) return;
   const binding = extensionNotificationBinding(event.namespace, event.type);
-  if (!binding) return;
+  if (!binding) {
+    if (
+      takeUnboundExtensionNotice(event.provider, event.namespace, event.type)
+    ) {
+      log.chat(
+        'Unbound extension.notification; map it to a Station event or accept it as unique: %s/%s (%s)',
+        event.namespace,
+        event.type,
+        event.provider,
+      );
+    }
+    return;
+  }
 
   if (binding.consumer.startsWith('ui.claude.')) {
     handleClaudeNotification(event, binding.consumer);
