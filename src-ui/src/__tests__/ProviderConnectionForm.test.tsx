@@ -82,6 +82,7 @@ describe('ProviderConnectionForm — the readiness notice covers every not-ready
     return render(
       <ProviderConnectionForm
         form={form}
+        isNew={false}
         selectedProviderId="anthropic-1"
         testResult={null}
         testError={null}
