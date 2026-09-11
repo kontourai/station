@@ -5,6 +5,7 @@ import {
   type Prerequisite,
 } from '@kontourai/station-contracts/tool';
 import type { ReactNode } from 'react';
+import type { HostActionId } from '../../components/host-action/host-action-copy';
 import type { ProviderTypeOption } from './types';
 
 /**
@@ -382,7 +383,9 @@ type PrerequisiteRemedy = 'sign-in' | 'api-key' | 'credentials' | 'setup';
  * `anthropic-api-key`, `bedrock-credentials`, `ollama-server`), so they are
  * what carries the fact.
  */
-function prerequisiteRemedy(prerequisite: Prerequisite): PrerequisiteRemedy {
+export function prerequisiteRemedy(
+  prerequisite: Prerequisite,
+): PrerequisiteRemedy {
   const subject = `${prerequisite.id} ${prerequisite.name}`;
   if (/api[\s-]?key/i.test(subject)) return 'api-key';
   if (/log[\s-]?in|sign[\s-]?in|auth/i.test(subject)) return 'sign-in';
@@ -407,7 +410,7 @@ function prerequisiteRemedy(prerequisite: Prerequisite): PrerequisiteRemedy {
  * missing API key and an unconfigured AWS credential chain both read as
  * "Sign in" too, for providers that have no sign-in at all.
  */
-function blockingPrerequisite(
+export function blockingPrerequisite(
   prerequisites: Prerequisite[],
 ): Prerequisite | undefined {
   // Required only. An optional prerequisite does not block by definition, and
@@ -430,6 +433,34 @@ function blockingPrerequisite(
       (prerequisite) => prerequisiteRemedy(prerequisite) === 'setup',
     ) ?? unmet[0]
   );
+}
+
+/**
+ * Which host-naming entry describes this remedy. The map owns the sentences;
+ * this owns only the choice of which one applies, and it is deliberately the
+ * ONE place that choice is made -- `HostAction` reads `reach` from the entry
+ * rather than from the call site, precisely so that a surface cannot decide
+ * that something requiring the host's hands is remote-safe.
+ *
+ * An engine that is not installed takes `engine-missing`, whose copy is about
+ * agent CLIs specifically. A model provider's unmet setup is not that -- its
+ * remedy is a field on this very page -- so it takes the api-key entry, which
+ * is remote-safe and names the machine that will hold the value.
+ */
+export function hostActionIdForRemedy(
+  remedy: PrerequisiteRemedy,
+  kind: ProviderCatalogKind,
+): HostActionId {
+  switch (remedy) {
+    case 'sign-in':
+      return 'connection-sign-in';
+    case 'credentials':
+      return 'connection-credentials';
+    case 'api-key':
+      return 'connection-api-key';
+    default:
+      return kind === 'agent' ? 'engine-missing' : 'connection-api-key';
+  }
 }
 
 const REMEDY_PRESENTATION: Record<
@@ -517,7 +548,7 @@ export function resolveProviderPresentation(
       brand,
       readiness: 'Found, not connected',
       tone: 'warn',
-      detail: 'Found on this computer — not yet connected to this Station.',
+      detail: 'Found on the computer Station runs on — not yet connected.',
       actionLabel: 'Connect',
     };
   }
@@ -527,7 +558,7 @@ export function resolveProviderPresentation(
       brand,
       readiness: 'Found, not connected',
       tone: 'warn',
-      detail: 'Found on this computer — not yet connected to this Station.',
+      detail: 'Found on the computer Station runs on — not yet connected.',
       actionLabel: 'Connect',
     };
   }
@@ -678,7 +709,7 @@ export function resolveProviderPresentation(
     detail:
       input.description ??
       (input.setup?.detected
-        ? 'Station found it on this computer. Finish setup to use it.'
+        ? 'Station found it on the computer it runs on. Finish setup to use it.'
         : 'Finish setup before using it.'),
     actionLabel: 'Set up',
   };

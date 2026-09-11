@@ -311,7 +311,7 @@ describe('provider catalog presentation', () => {
       }),
     ).toEqual({
       badge: 'Found, not connected',
-      detail: 'Found on this computer — not yet connected to this Station.',
+      detail: 'Found on the computer Station runs on — not yet connected.',
     });
   });
 

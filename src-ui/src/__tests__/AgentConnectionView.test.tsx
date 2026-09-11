@@ -5,6 +5,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
+import { hostActionCopy } from '../components/host-action/host-action-copy';
+
 const save = vi.fn();
 const clearMutate = vi.fn();
 const applyMutate = vi.fn();
@@ -14,6 +16,68 @@ const upsertMutate = vi.fn();
 const deleteProfileMutate = vi.fn();
 const importProfileMutate = vi.fn();
 let saveFailure: Error | null = null;
+/**
+ * The device projection this page reads. `undefined` is the honest default --
+ * it is what a server that has not answered yet returns, and `HostAction`
+ * takes its host branch there, claiming nothing about a second machine. Each
+ * test that cares sets it.
+ */
+let devicePresentation:
+  | { deviceClass: 'host' | 'paired'; hostName: string }
+  | undefined;
+vi.mock('../hooks/useDevicePresentation', () => ({
+  useDevicePresentation: () => devicePresentation,
+}));
+
+/**
+ * What `buildCliRuntimePrerequisites` ACTUALLY writes when the binary is
+ * absent: TWO required prerequisites, the second named `<Engine> login` --
+ * whose own description says the CLI must be installed BEFORE authentication
+ * can be verified.
+ *
+ * Hand-written single-prerequisite fixtures are what let the missing-binary
+ * case ship untested: no producer emits that shape, so the assertion could
+ * not reach the branch it named.
+ */
+function museMissingBinaryConnection() {
+  return {
+    id: 'muse',
+    kind: 'agent',
+    type: 'muse',
+    name: 'Muse Code',
+    enabled: true,
+    status: 'missing_prerequisites',
+    capabilities: ['agent-runtime'],
+    config: { executionClass: 'connected', providerLabel: 'Muse' },
+    prerequisites: [
+      {
+        id: 'muse-cli',
+        name: 'Muse Code CLI',
+        description: 'Required to launch the Muse Code runtime.',
+        status: 'missing',
+        category: 'required',
+        installGuide: {
+          steps: ['Install the Muse Code CLI and ensure `muse` is on PATH.'],
+        },
+      },
+      {
+        id: 'muse-auth',
+        name: 'Muse Code login',
+        description:
+          'Muse Code CLI must be installed before authentication can be verified.',
+        status: 'missing',
+        category: 'required',
+        installGuide: {
+          steps: [
+            'Install the Muse Code CLI and ensure `muse` is on PATH.',
+            'Run `muse auth set --api-key-stdin` before starting Station.',
+          ],
+        },
+      },
+    ],
+    setup: { state: 'available', detected: false, configured: false },
+  };
+}
 let connectionQueryData: unknown = null;
 let appHomeProfileQueryData: unknown = null;
 let credentialRecoveryQueryData: unknown = null;
@@ -215,6 +279,7 @@ import { AgentConnectionView } from '../views/AgentConnectionView';
 
 describe('AgentConnectionView', () => {
   beforeEach(() => {
+    devicePresentation = undefined;
     save.mockReset();
     clearMutate.mockReset();
     applyMutate.mockReset();
@@ -666,44 +731,7 @@ describe('AgentConnectionView', () => {
    * out the one they can.
    */
   test('a missing engine binary reports setup, never sign-in, even though the server also reports an unmet login prerequisite', () => {
-    connectionQueryData = {
-      id: 'muse',
-      kind: 'agent',
-      type: 'muse',
-      name: 'Muse Code',
-      enabled: true,
-      status: 'missing_prerequisites',
-      capabilities: ['agent-runtime'],
-      config: { executionClass: 'connected', providerLabel: 'Muse' },
-      prerequisites: [
-        {
-          id: 'muse-cli',
-          name: 'Muse Code CLI',
-          description: 'Required to launch the Muse Code runtime.',
-          status: 'missing',
-          category: 'required',
-          installGuide: {
-            steps: ['Install the Muse Code CLI and ensure `muse` is on PATH.'],
-          },
-        },
-        {
-          id: 'muse-auth',
-          name: 'Muse Code login',
-          description:
-            'Muse Code CLI must be installed before authentication can be verified.',
-          status: 'missing',
-          category: 'required',
-          installGuide: {
-            steps: [
-              'Install the Muse Code CLI and ensure `muse` is on PATH.',
-              'Run `muse auth set --api-key-stdin` before starting Station.',
-            ],
-          },
-        },
-      ],
-      setup: { state: 'available', detected: false, configured: false },
-    };
-
+    connectionQueryData = museMissingBinaryConnection();
     render(
       <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
     );
@@ -714,6 +742,45 @@ describe('AgentConnectionView', () => {
     ).not.toHaveLength(0);
     expect(screen.queryByText('Sign in required')).toBeNull();
     expect(screen.queryByText('Sign in to finish connecting.')).toBeNull();
+  });
+
+  /*
+   * The page is a REMOTE ADMINISTRATION surface: every prerequisite on it is a
+   * fact about the machine Station runs on, while the person reading may be
+   * holding a phone. Before this, nothing here named that machine -- so a
+   * correct observation ("Muse is not installed on desktop-win") was read as a
+   * broken screen, and the remedy was a POSIX shell command for a Windows box
+   * the reader was not sitting at.
+   *
+   * Compared against `hostActionCopy` rather than a transcribed sentence: the
+   * map is the single source, so this asserts ADOPTION. Re-wording the map
+   * must not fail this test; failing to go through the map must.
+   */
+  test('a paired device is told which machine the engine is missing from', () => {
+    devicePresentation = { deviceClass: 'paired', hostName: 'desktop-win' };
+    connectionQueryData = museMissingBinaryConnection();
+
+    render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    const expected = hostActionCopy('engine-missing', devicePresentation);
+    expect(expected).toContain('desktop-win');
+    expect(screen.getAllByText(expected)).not.toHaveLength(0);
+  });
+
+  test('on the host the same state names no second machine', () => {
+    devicePresentation = { deviceClass: 'host', hostName: 'desktop-win' };
+    connectionQueryData = museMissingBinaryConnection();
+
+    render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+
+    // Branch 1: there is no second machine to name, so the page must not
+    // start talking about one.
+    expect(screen.queryByText(/desktop-win/)).toBeNull();
+    expect(screen.getAllByText('Setup required')).not.toHaveLength(0);
   });
 
   test('claude shows an accessible skills-materialization multiselect, off by default, that saves the selected ids', () => {

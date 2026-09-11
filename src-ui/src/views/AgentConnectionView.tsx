@@ -34,6 +34,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { Checkbox } from '../components/Checkbox';
 import { DetailHeader } from '../components/DetailHeader';
+import { HostAction } from '../components/host-action/HostAction';
 import { BrandIcon } from '../components/icons/BrandIcon';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
@@ -48,6 +49,7 @@ import {
   type ACPConnectionRegistryEntry,
   useACPConnectionRegistry,
 } from '../hooks/useACPConnections';
+import { useDevicePresentation } from '../hooks/useDevicePresentation';
 import type { NavigationView } from '../types';
 import {
   capabilityLabel,
@@ -59,7 +61,12 @@ import {
   runtimeCatalogSourceSentence,
 } from '../utils/execution';
 import { CredentialProfileEnrolment } from './CredentialProfileEnrolment';
-import { resolveProviderPresentation } from './provider-settings/providerCatalog';
+import {
+  blockingPrerequisite,
+  hostActionIdForRemedy,
+  prerequisiteRemedy,
+  resolveProviderPresentation,
+} from './provider-settings/providerCatalog';
 import './PluginManagementView.css';
 import './page-layout.css';
 import './editor-layout.css';
@@ -292,6 +299,9 @@ export function AgentConnectionView({
         href: '',
       })
     : null;
+  const devicePresentation = useDevicePresentation();
+  // The SAME derivation the presentation used, not a second copy of it.
+  const blocker = form ? blockingPrerequisite(form.prerequisites) : undefined;
   const reportedModelCount = runtimeCatalog
     ? runtimeCatalog.models.length || runtimeCatalog.builtInModels.length
     : 0;
@@ -413,14 +423,42 @@ export function AgentConnectionView({
             </div>
 
             {providerPresentation?.readiness !== 'Ready' && (
-              <div className="provider-detail__notice">
+              <div className="provider-detail__notice" role="status">
                 <strong>{providerPresentation?.readiness}</strong>
                 <span>{providerPresentation?.detail}</span>
-                {form.prerequisites
-                  .filter((item) => item.status !== 'installed')
-                  .map((item) => (
-                    <span key={item.id}>{item.name}</span>
-                  ))}
+                {/*
+                 * The one blocking prerequisite, said in the vocabulary of the
+                 * machine it is about. Everything here was already on the
+                 * wire: the server authored a description, an ordered install
+                 * guide and (where one exists) the exact command, and this
+                 * notice used to render the prerequisite's NAME and discard
+                 * all three -- leaving a bare noun that reads like a broken
+                 * link. The steps sit outside `HostAction` because they are
+                 * true for whoever is reading; only the sentence naming a
+                 * second machine is device-dependent.
+                 */}
+                {blocker && (
+                  <>
+                    <HostAction
+                      id={hostActionIdForRemedy(
+                        prerequisiteRemedy(blocker),
+                        'agent',
+                      )}
+                      presentation={devicePresentation}
+                      command={blocker.installGuide?.commands?.[0]}
+                    />
+                    <span className="provider-detail__notice-subject">
+                      {blocker.name}
+                    </span>
+                    {blocker.installGuide?.steps?.length ? (
+                      <ol className="provider-detail__notice-steps">
+                        {blocker.installGuide.steps.map((step) => (
+                          <li key={step}>{step}</li>
+                        ))}
+                      </ol>
+                    ) : null}
+                  </>
+                )}
               </div>
             )}
 
