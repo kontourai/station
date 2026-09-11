@@ -222,6 +222,12 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
       'release availability reads the terminal workflow topology directly',
   }),
   Object.freeze({
+    pattern: '.github/workflows/codex-pr-review.yml',
+    tests: Object.freeze(['scripts/__tests__/codex-review-workflow.test.ts']),
+    reason:
+      'the review-workflow contract test parses this YAML by path (#1722 red the nightly a day after its dependabot bump)',
+  }),
+  Object.freeze({
     pattern: '.github/labels.json',
     tests: Object.freeze([
       'scripts/__tests__/label-manifest.test.ts',
@@ -676,6 +682,17 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
       'src-ui/src/__tests__/placement-vocabulary.test.ts',
     ],
     reason: 'app destination registry declarations (routes, labels, nav, docs)',
+  },
+  {
+    // The glossary copy ratchet reads every src-ui source file by path, so
+    // no import edge ever reaches it: a copy edit ("Connect to Station" in
+    // GuidedConnect.tsx) shipped green and Nightly redded a day later.
+    // Supplemental: ADDS the ratchet to any src-ui change without replacing
+    // the related-graph selection for that path (#1563).
+    pattern: 'src-ui/src/**',
+    supplemental: true,
+    tests: ['src-ui/src/__tests__/station-vocabulary.test.ts'],
+    reason: 'glossary copy ratchet scans all src-ui sources by path',
   },
   {
     pattern: 'justfile',
