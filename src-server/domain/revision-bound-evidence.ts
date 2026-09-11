@@ -80,27 +80,6 @@ export interface RevisionAttributionBinding {
   readonly canonicalPayload: RevisionIdentityPayload;
 }
 
-type RevisionEvidenceState =
-  | {
-      readonly state: 'live_buffer';
-      readonly scope: WorkingStateScope;
-      readonly sharedRevision: SharedWorkingStateRevisionId;
-    }
-  | {
-      readonly state: 'locally_pending';
-      readonly scope: WorkingStateScope;
-      readonly sharedRevision: SharedWorkingStateRevisionId;
-    }
-  | {
-      readonly state: 'committed_revision';
-      readonly revision: CommittedRevision;
-    }
-  | {
-      readonly state: 'proposed_change';
-      readonly proposedChangeId: string;
-      readonly status: ProposedChange['status'];
-    };
-
 /** Station-local immutable reference, not a Surface/Flow/Veritas shape. */
 export interface ImmutableRevisionReference {
   readonly revisionId: EvidenceRevisionId;
