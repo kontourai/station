@@ -44,7 +44,7 @@ tauri-plugin-notification = "=2.4.0"
 # Mobile haptic feedback (station#1954). Official Tauri plugin — listed in the
 # shared table so capability ACL generation can resolve `haptics:*` permissions
 # on every target; `lib.rs` only `.plugin()`-inits it under `cfg(mobile)`.
-tauri-plugin-haptics = "=2.3.2"
+tauri-plugin-haptics = "=2.3.3"
 tauri-plugin-deep-link = "=2.4.10"
 # `log` is the standard facade; the desktop shell has never emitted through it
 # before (#1899). Commodity crate, so a loose version like the other
