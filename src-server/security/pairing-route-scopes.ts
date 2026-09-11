@@ -67,6 +67,7 @@ import {
 } from '@kontourai/station-contracts';
 import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
 import {
+  PAIRING_SCOPE_ENGINE_LOGIN,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
@@ -842,34 +843,42 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // That is a recipe for provisioning an account on this host, which no paired
   // remote credential should be able to read.
   //
-  // `method: '*'` and the family's `origin: 'explicit'` now also cover the
-  // device-code leaves (`…/enrolment/:ref/device-code`, POST/GET/DELETE),
-  // which START the engine's own login as a child process on this host. The
-  // tier is deliberately unchanged, and the reasoning is not the same as the
-  // read leaf's, so it is recorded rather than inherited:
   //
-  //  - Device code exists to be finished on the device the operator is
-  //    holding. Raising the start/cancel mutations above `access:manage`
-  //    (say, to an operator-only refusal like the one `authorizeCredential`
-  //    applies to `/api/environments/peers` mutations) would lock the flow
-  //    out of exactly the paired phone it was built for, which is not a
-  //    security win but a feature deletion.
-  //  - What the caller gains is bounded: a verification URL and a short code
-  //    that only sign in whoever approves them. Station holds no token before
-  //    or after, and the process is single-flight, capped, and killed on a
-  //    deadline.
-  //  - The residual, disclosed rather than absorbed: `access:manage` is
-  //    inherited through DEFAULT_GRANT_PAIRING_SCOPE by migrated,
-  //    scope-omitting, and continuity-flow credentials that never chose it,
-  //    so "holder chose this" is not true of the whole population. If that
-  //    matters more than phone reachability, the fix is a new token granted
-  //    only by operator promotion — the `access:approve`/`consent:decide`
-  //    precedent — not a quiet re-tier of this family.
+  // The device-code leaves (`…/enrolment/:ref/device-code`, POST/GET/DELETE)
+  // are deliberately NOT part of this rule. They carry their own, more
+  // specific rule below, at `engine:login`.
   {
     id: '/api/connections/agent/:id/enrolment:manage',
     method: '*',
     prefix: '/api/connections/agent/:id/enrolment',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  // The device-code leaves, which START the engine's own login as a child
+  // process on this host. A LONGER, more specific prefix than the enrolment
+  // family above, so it wins rather than inheriting that family's tier.
+  //
+  // `access:manage` was the obvious reuse and is the wrong answer in both
+  // directions. The pairing UI's `standard` preset WITHHOLDS `access:manage`,
+  // so gating here would close the flow to exactly the paired phone device
+  // code exists for; meanwhile `access:manage` IS in
+  // DEFAULT_GRANT_PAIRING_SCOPE, so the population that would have been able
+  // to start a login is the migrated and scope-omitting one that never chose
+  // it. Simultaneously unreachable for the intended caller and granted to an
+  // unintended one.
+  //
+  // `engine:login` is in no preset and no default grant: it reaches a device
+  // only by operator promotion, the `access:approve` posture. A preset was the
+  // first choice and is unavailable — `parsePairingScope` refuses a whole
+  // scope string on one unknown token, so shipping this token inside
+  // `standard` would make every newly issued standard grant unparseable to any
+  // peer built before it. Promotion after pairing is the only shape that is
+  // both additive and backward-compatible; see the token's docblock.
+  {
+    id: '/api/connections/agent/:id/enrolment/:ref/device-code:engine-login',
+    method: '*',
+    prefix: '/api/connections/agent/:id/enrolment/:ref/device-code',
+    scope: PAIRING_SCOPE_ENGINE_LOGIN,
     origin: 'explicit',
   },
   // archive#1398 (docs/design/inference-fleet.md §3.3): the fleet

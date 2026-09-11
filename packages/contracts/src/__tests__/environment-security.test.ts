@@ -10,6 +10,7 @@ import {
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_CONSENT_DECIDE,
+  PAIRING_SCOPE_ENGINE_LOGIN,
   PAIRING_SCOPE_GRANT_PATHS,
   PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_INFERENCE_INVOKE,
@@ -211,7 +212,7 @@ describe('handshake capability flags (station#1095, AC1: two-way fixture decode)
 });
 
 describe('scoped pairing (station#1098)', () => {
-  test('defines exactly the eight-token vocabulary, including explicit home transfer authority', () => {
+  test('defines exactly the nine-token vocabulary, including explicit home transfer and engine login authority', () => {
     expect(PAIRING_SCOPES).toEqual([
       'orchestration:read',
       'orchestration:operate',
@@ -221,27 +222,39 @@ describe('scoped pairing (station#1098)', () => {
       'access:approve',
       'consent:decide',
       'home:transfer',
+      'engine:login',
     ]);
   });
 
-  test('the read-only preset is exactly orchestration:read', () => {
-    expect(PAIRING_SCOPE_PRESETS['read-only']).toEqual([
-      PAIRING_SCOPE_ORCHESTRATION_READ,
+  /*
+   * The widening this token was reviewed against. `engine:login` joins the
+   * vocabulary and ONE preset; a default grant is what would hand it to every
+   * migrated, scope-omitting and bootstrap credential that never chose it,
+   * which is the case DEFAULT_GRANT_PAIRING_SCOPE's docblock exists to
+   * prevent. Pinned literally so adding a token to that constant has to be a
+   * deliberate edit here too.
+   */
+  /*
+   * The backward-compatibility constraint that decided this token's grant
+   * path, asserted rather than described. `parsePairingScope` refuses a whole
+   * scope string on one unknown token, so a token placed in a preset an older
+   * peer can be issued makes that entire grant unparseable to it. Keeping
+   * engine:login out of every preset AND out of the default grant is what
+   * leaves every scope string an older peer can receive byte-identical.
+   */
+  test('engine:login reaches a device only by operator promotion', () => {
+    expect(PAIRING_SCOPES).toContain(PAIRING_SCOPE_ENGINE_LOGIN);
+    expect(PAIRING_SCOPE_GRANT_PATHS[PAIRING_SCOPE_ENGINE_LOGIN]).toEqual([
+      'operator-promotion',
     ]);
-    expect(pairingScopePresetString('read-only')).toBe('orchestration:read');
-  });
-
-  test('the standard preset grants read, operate, and terminal but withholds access:manage', () => {
-    expect(PAIRING_SCOPE_PRESETS.standard).toEqual([
-      PAIRING_SCOPE_ORCHESTRATION_READ,
-      PAIRING_SCOPE_ORCHESTRATION_OPERATE,
-      PAIRING_SCOPE_TERMINAL_OPERATE,
-    ]);
-    expect(pairingScopePresetString('standard')).toBe(
-      'orchestration:read orchestration:operate terminal:operate',
+    for (const preset of Object.values(PAIRING_SCOPE_PRESETS)) {
+      expect(preset).not.toContain(PAIRING_SCOPE_ENGINE_LOGIN);
+    }
+    expect(DEFAULT_GRANT_PAIRING_SCOPE.split(' ')).not.toContain(
+      PAIRING_SCOPE_ENGINE_LOGIN,
     );
-    expect(PAIRING_SCOPE_PRESETS.standard).not.toContain(
-      PAIRING_SCOPE_ACCESS_MANAGE,
+    expect(DEFAULT_GRANT_PAIRING_SCOPE).toBe(
+      'orchestration:read orchestration:operate terminal:operate access:manage',
     );
   });
 
@@ -307,15 +320,16 @@ describe('scoped pairing (station#1098)', () => {
     // The decoupling itself: derived-from-the-vocabulary is exactly what
     // this constant must never be again.
     expect(DEFAULT_GRANT_PAIRING_SCOPE).not.toBe(PAIRING_SCOPES.join(' '));
-    // station#1887 grew this to six, station#3677 to seven, and home transfer
-    // to eight. The default
+    // station#1887 grew this to six, station#3677 to seven, home transfer
+    // to eight, and engine login to nine. The default
     // grant is unchanged and still four tokens — which is the whole point of
     // the decoupling: a vocabulary addition must not reach a single live
     // credential.
-    expect(PAIRING_SCOPES).toHaveLength(8);
+    expect(PAIRING_SCOPES).toHaveLength(9);
     expect(granted).not.toContain(PAIRING_SCOPE_ACCESS_APPROVE);
     expect(granted).not.toContain(PAIRING_SCOPE_CONSENT_DECIDE);
     expect(granted).not.toContain(PAIRING_SCOPE_HOME_TRANSFER);
+    expect(granted).not.toContain(PAIRING_SCOPE_ENGINE_LOGIN);
   });
 
   // station#1883: the trip-wire for the defect that produced `access:manage`'s
