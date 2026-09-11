@@ -14,6 +14,7 @@ import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
 import { ToolCallBatchBoundary } from './ToolCallBatchBoundary';
 import { ToolProgressIndicator } from './ToolProgressIndicator';
+import { isToolCallBatchPending, toolCallPhase } from './tool-call-labels';
 import { splitToolCallRuns } from './tool-call-runs';
 import { UIBlockRenderer } from './UIBlockRenderer';
 
@@ -109,10 +110,21 @@ export function StreamingMessageView({
   const activityLabel = deriveActivityLabel(activityHint, hasReasoningPart);
   // Consecutive tool-call parts collapse into one batch while the turn is
   // still streaming too — classification (inside the lazy ToolCallBatch
-  // chunk) marks a batch in-progress (progressive-tense summary) whenever
-  // one of its calls is still `running`, so the collapsed summary never
+  // chunk) marks a batch in-progress (latest-call headline) whenever one
+  // of its calls is still `running`, so the collapsed summary never
   // claims a batch is done before it is.
   const blocks = useMemo(() => splitToolCallRuns(contentParts), [contentParts]);
+  const collapsedInProgressBatch = blocks.some((block) => {
+    if (block.type !== 'tool-call-run') return false;
+    if (block.calls.length <= INLINE_RUN_LIMIT) return false;
+    let running = false;
+    let pending = false;
+    for (const { part } of block.calls) {
+      if (toolCallPhase(part) === 'running') running = true;
+      if (isToolCallBatchPending(part)) pending = true;
+    }
+    return running && !pending;
+  });
   useEffect(() => {
     // The numeric revision is intentionally read here: it is the O(1)
     // dependency that replaces rebuilding the complete transcript string.
@@ -138,17 +150,22 @@ export function StreamingMessageView({
             if (!renderToolCall) return null;
             // Same inline threshold as the settled renderer
             // (`MessageContent`'s INLINE_RUN_LIMIT) so a run does not
-            // change shape when the turn settles.
+            // change shape when the turn settles. Solo calls stay a
+            // row; 2+ consecutive calls become one updating line.
             if (block.calls.length <= INLINE_RUN_LIMIT) {
               return block.calls.map(({ part, index }) =>
                 renderToolCall(part, index),
               );
             }
+            const inlineRows = block.calls.map(({ part, index }) =>
+              renderToolCall(part, index),
+            );
             return (
               <ToolCallBatchBoundary
                 key={block.key}
                 run={block}
                 renderCall={renderToolCall}
+                pending={inlineRows}
               />
             );
           }
@@ -190,13 +207,16 @@ export function StreamingMessageView({
           </div>
         )}
 
-        {progressSummary && <ToolProgressIndicator summary={progressSummary} />}
+        {progressSummary && !collapsedInProgressBatch && (
+          <ToolProgressIndicator summary={progressSummary} />
+        )}
 
         {/* Loading indicator. Before any content arrives (redacted thinking,
             SDK spawn latency) a bare dots row reads as "stuck" — pair it
             with a live activity label so the agent never looks idle while
             working. Once content flows, the compact dots row suffices; tool
-            activity is covered by ToolProgressIndicator above. */}
+            activity is the collapsed batch headline when 2+ calls are in
+            flight, otherwise ToolProgressIndicator above. */}
         {hasContent ? (
           <div className="streaming-loading">
             <LoadingDots />

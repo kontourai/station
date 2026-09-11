@@ -4521,6 +4521,13 @@ button.tool-call__line:hover {
   font-style: italic;
 }
 
+.tool-call-batch__progress {
+  margin: 0 0 2px 19px;
+  color: var(--text-muted);
+  font-size: 0.78em;
+  font-style: italic;
+}
+
 /* Outcome flags on the collapsed row. --bg-tertiary rather than a
    --color-bg-tertiary alias: the alias was never defined and painted nothing
    (station#1246). */
@@ -4742,6 +4749,12 @@ button.tool-call__line:hover {
   /* station#1569 (item 3): not an error colour — nothing failed. It is the
      same "we do not know" the row's own badge carries, so it reads as a
      qualifier on the summary rather than a verdict. */
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.tool-call-batch__awaiting {
+  flex-shrink: 0;
   color: var(--text-secondary);
   font-weight: 600;
 }
@@ -7997,6 +8010,29 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   border-radius: 9px;
   color: var(--text-secondary);
   font-size: var(--text-sm);
+}
+
+/*
+ * The blocking prerequisite's own name, and the server's ordered remedy for
+ * it. Both were on the wire and neither was rendered here -- the notice used
+ * to print bare prerequisite names, which read as broken links rather than as
+ * the subject of the sentence above them.
+ */
+.provider-detail__notice-subject {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.provider-detail__notice-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.provider-detail__notice-steps code {
+  overflow-wrap: anywhere;
 }
 
 .provider-detail__disclosure {
