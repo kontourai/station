@@ -817,8 +817,8 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
       channel: 'native-content',
       basis: 'declared',
     },
-    // codex app-server exposes turn/start and turn/interrupt, but no input/steer method for an active turn.
-    midTurnSteer: false,
+    // Codex app-server `turn/steer` appends input to the in-flight turn.
+    midTurnSteer: true,
     // Codex's core loop is command execution and patch application, and the
     // adapter's EVENT seam observes both identities: codex-adapter-events.ts
     // handles `item/commandExecution/requestApproval` and maps

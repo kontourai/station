@@ -1104,12 +1104,12 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
   it('queues a mid-turn message when the bound adapter cannot steer', async () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
-      orchestrationProvider: 'codex',
+      orchestrationProvider: 'muse',
     });
     const { result } = renderHook(() => useSendMessage('http://api.test'));
 
     await act(async () => {
-      await result.current(sessionId, 'codex', sessionId, 'next');
+      await result.current(sessionId, 'muse', sessionId, 'next');
     });
 
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
@@ -1155,6 +1155,36 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(
       activeChatsStore.getSnapshot()[sessionId].streamingMessage?.content,
     ).toBe('partial answer');
+  });
+
+  it('steers a mid-turn message on Codex instead of queueing a new turn', async () => {
+    steerOrchestrationTurnMock.mockResolvedValueOnce({
+      outcome: 'steered',
+      threadId: 'exec-codex-1',
+      turnId: 'turn-open',
+    });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'codex',
+      currentSessionId: 'exec-codex-1',
+      openTurnId: 'turn-open',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', sessionId, 'focus on fails');
+    });
+
+    expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
+      threadId: 'exec-codex-1',
+      text: 'focus on fails',
+      turnId: 'turn-open',
+      apiBase: 'http://api.test',
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual(
+      [],
+    );
   });
 
   it('queues a Claude follow-up that carries attachments (steer has no file channel)', async () => {

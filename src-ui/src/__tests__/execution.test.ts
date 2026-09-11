@@ -1103,6 +1103,17 @@ describe('execution utils', () => {
         prerequisites: [],
       },
       {
+        id: 'muse-runtime',
+        kind: 'agent',
+        type: 'muse',
+        name: 'Muse Runtime',
+        enabled: true,
+        capabilities: ['agent-runtime'],
+        config: { engineId: 'muse' },
+        status: 'ready',
+        prerequisites: [],
+      },
+      {
         id: 'codex-runtime',
         kind: 'agent',
         type: 'codex',
@@ -1130,14 +1141,17 @@ describe('execution utils', () => {
       true,
     );
     expect(sessionAdapterSupportsSteering('codex-runtime', connections)).toBe(
+      true,
+    );
+    expect(sessionAdapterSupportsSteering('muse-runtime', connections)).toBe(
       false,
     );
     // The live session's provider wins over the bound connection.
     expect(
-      sessionAdapterSupportsSteering('codex-runtime', connections, 'claude'),
+      sessionAdapterSupportsSteering('muse-runtime', connections, 'claude'),
     ).toBe(true);
     expect(
-      sessionAdapterSupportsSteering('claude-runtime', connections, 'codex'),
+      sessionAdapterSupportsSteering('claude-runtime', connections, 'muse'),
     ).toBe(false);
     // A stale `capabilities: ['steering']` string is not authority.
     expect(

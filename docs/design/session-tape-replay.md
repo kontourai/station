@@ -62,7 +62,7 @@ matrix; the dock always sees one of these:
 
 | Noun | Station fact | When |
 | --- | --- | --- |
-| **Queue** | `queuedMessages`, drained on `turn.completed` / `runtime.error` as a **new** turn | Codex, Muse, Station. Attachments on a busy turn. |
+| **Queue** | `queuedMessages`, drained on `turn.completed` / `runtime.error` as a **new** turn | Muse, Station. Attachments on a busy turn. |
 | **Steer** | `steerTurn` → `turn.started` with `inputKind: 'steer'` | Additional user input on the **open** turn. |
 
 Send-while-busy uses that matrix cell (`sessionAdapterSupportsSteering`), not
@@ -76,11 +76,12 @@ Adapter mappings, same Station event:
 | Engine | Mechanism |
 | --- | --- |
 | Claude | `Query.streamInput` (additive) |
+| Codex | app-server `turn/steer` `{ threadId, input, expectedTurnId }` (additive; does not emit a Codex `turn/started`) |
 | Kiro / KAS | ACP extension **method** `_session/steer` (additive; not a notification) |
 | Grok | ACP extension **method** `_x.ai/interject` (then `x.ai/interject`). `_x.ai/queue/changed` is the engine's prompt **queue**, host→agent interject is steer. |
 | Any other ACP | T3-style `session/cancel` + `session/prompt` on the same Station `turnId` (interruptive). Also the fallback when the native method returns JSON-RPC -32601. |
 
-Native Codex (app-server) still has no steer channel.
+Muse still binds one prompt to one process — no live input channel. That is a separate backlog item, not invented here.
 
 The queued-messages chrome already offers **Send as steer** when the live
 provider's matrix allows it.

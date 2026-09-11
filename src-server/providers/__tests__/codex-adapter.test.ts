@@ -1721,6 +1721,120 @@ describe('CodexAdapter', () => {
     ).toHaveLength(1);
   });
 
+  test('steerTurn sends app-server turn/steer on the open turn', async () => {
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => processHandle!,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    const startSessionPromise = adapter.startSession({
+      provider: 'codex',
+      threadId: 'thread-steer',
+      cwd: '/tmp/project',
+      modelId: 'gpt-5-codex',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-steer', {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-steer', {
+      id: '2',
+      result: { thread: { id: 'codex-thread-steer' }, model: 'gpt-5-codex' },
+    });
+    await withTimeout(startSessionPromise, 'startSession');
+    await flushIo();
+
+    const sendTurnPromise = adapter.sendTurn({
+      threadId: 'thread-steer',
+      input: 'run the tests',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-steer', {
+      id: '3',
+      result: { turn: { id: 'turn-steer-1' } },
+    });
+    await withTimeout(sendTurnPromise, 'sendTurn');
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    await nextEvent(iterator, 'turn.started');
+
+    const steerPromise = adapter.steerTurn(
+      'thread-steer',
+      'focus on failing tests',
+      'turn-steer-1',
+    );
+    await flushIo();
+    const record = (adapter as any).transport.requireSession('thread-steer');
+    const pendingIds = [
+      ...(record.pendingRpcRequests as Map<string, unknown>).keys(),
+    ];
+    expect(pendingIds).toHaveLength(1);
+    writeServerMessage(adapter, 'thread-steer', {
+      id: pendingIds[0],
+      result: { turnId: 'turn-steer-1' },
+    });
+    await withTimeout(steerPromise, 'steerTurn');
+
+    const steerRequest = processHandle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'turn/steer');
+    expect(steerRequest?.params).toEqual({
+      threadId: 'codex-thread-steer',
+      input: [
+        {
+          type: 'text',
+          text: 'focus on failing tests',
+          text_elements: [],
+        },
+      ],
+      expectedTurnId: 'turn-steer-1',
+    });
+    await expect(
+      nextEvent(iterator, 'steer turn.started'),
+    ).resolves.toMatchObject({
+      method: 'turn.started',
+      turnId: 'turn-steer-1',
+      prompt: 'focus on failing tests',
+      inputKind: 'steer',
+    });
+    expect(record.activeTurnId).toBe('turn-steer-1');
+    await adapter.stopAll();
+  });
+
+  test('steerTurn maps a dead turn to ProviderTurnEndedError', async () => {
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => processHandle!,
+    });
+    const startSessionPromise = adapter.startSession({
+      provider: 'codex',
+      threadId: 'thread-steer-ended',
+      cwd: '/tmp/project',
+      modelId: 'gpt-5-codex',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-steer-ended', {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-steer-ended', {
+      id: '2',
+      result: {
+        thread: { id: 'codex-thread-steer-ended' },
+        model: 'gpt-5-codex',
+      },
+    });
+    await withTimeout(startSessionPromise, 'startSession');
+    await expect(
+      adapter.steerTurn('thread-steer-ended', 'too late', 'missing-turn'),
+    ).rejects.toMatchObject({ name: 'ProviderTurnEndedError' });
+    await adapter.stopAll();
+  });
+
   // archive#3451 finding B1 (fix #2): mirrors claude-adapter.ts's and
   // acp-adapter.ts's own target-mismatch guard, which codex previously
   // lacked. Given an explicit turnId that does not match the CURRENT
