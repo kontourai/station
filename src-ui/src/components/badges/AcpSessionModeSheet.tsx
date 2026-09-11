@@ -25,9 +25,17 @@ export function AcpSessionModeSheet({
       layer="popover"
       ariaLabel="Session mode"
       onClose={onClose}
-      triggerRef={triggerRef}
+      historyMode="entry"
+      returnFocusTarget={triggerRef.current}
+      anchorRef={triggerRef}
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+      panelClassName="composer-popover-panel composer-mode-sheet"
     >
-      <ResponsiveDialogHeader title="Session mode" onClose={onClose} />
+      <ResponsiveDialogHeader
+        title="Session mode"
+        closeLabel="Close session mode picker"
+        onClose={onClose}
+      />
       <div role="radiogroup" aria-label="Session mode">
         {modes.map((mode) => {
           const isSelected = mode.id === currentModeId;
