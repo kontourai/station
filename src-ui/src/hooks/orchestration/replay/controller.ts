@@ -1,4 +1,3 @@
-import { getOrchestrationSession } from '@kontourai/station-sdk';
 import { activeChatsStore } from '../../../contexts/active-chats-store';
 import { navigationStore } from '../../../contexts/navigation-store';
 import { SessionTapePlayer } from './player';
@@ -63,6 +62,9 @@ export async function openReplayFromThread(input: {
   title?: string;
   provider?: string;
 }): Promise<ActiveReplay> {
+  const { getOrchestrationSession } = await import(
+    '@kontourai/station-sdk/client'
+  );
   const detail = await getOrchestrationSession<{
     session?: { model?: string };
     events: SessionTape['events'];

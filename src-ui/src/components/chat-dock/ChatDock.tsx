@@ -47,7 +47,6 @@ import { useProjects } from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { ensureOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
-import { openReplayFromThread } from '../../hooks/orchestration/replay/controller';
 import { useRehydrateSessions } from '../../hooks/useActiveChatSessions';
 import { useActiveProject } from '../../hooks/useActiveProject';
 import { useChatBackgroundTasksRunningCount } from '../../hooks/useBackgroundTasks';
@@ -731,20 +730,24 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       activeSession?.conversationId ??
       activeSession?.id;
     if (!sourceThreadId || !activeSession || activeSession.replay) return;
-    void openReplayFromThread({
-      apiBase,
-      sourceThreadId,
-      agentSlug: activeSession.agentSlug,
-      agentName: activeSession.agentName,
-      title: activeSession.title,
-      provider: activeSession.provider,
-    }).catch((error: unknown) => {
-      showToast(
-        error instanceof Error
-          ? error.message
-          : 'Could not open event replay for this conversation.',
-      );
-    });
+    void import('../../hooks/orchestration/replay/controller')
+      .then(({ openReplayFromThread }) =>
+        openReplayFromThread({
+          apiBase,
+          sourceThreadId,
+          agentSlug: activeSession.agentSlug,
+          agentName: activeSession.agentName,
+          title: activeSession.title,
+          provider: activeSession.provider,
+        }),
+      )
+      .catch((error: unknown) => {
+        showToast(
+          error instanceof Error
+            ? error.message
+            : 'Could not open event replay for this conversation.',
+        );
+      });
   }, [activeSession, apiBase, showToast]);
   // The occurrence store's key for THIS dock's inventory. Owned here because
   // #1536 F split the inventory's control (a row of the header's More menu)

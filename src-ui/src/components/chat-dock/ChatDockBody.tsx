@@ -61,7 +61,6 @@ import { ChatEmptyState } from '../chat/ChatEmptyState';
 import { ChatInputArea } from '../chat/ChatInputArea';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
-import { ReplayTransport } from '../chat/ReplayTransport';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
 import { ConversationStats } from '../conversation-stats/ConversationStats';
 import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
@@ -91,6 +90,11 @@ const loadOutboundQueuedMessages = () =>
 const loadConversationOpenRecoveryNotice = () =>
   import('./ConversationOpenRecoveryNotice').then((module) => ({
     default: module.ConversationOpenRecoveryNotice,
+  }));
+
+const loadReplayTransport = () =>
+  import('../chat/ReplayTransport').then(({ ReplayTransport }) => ({
+    default: ReplayTransport,
   }));
 
 const loadQueuedMessages = () =>
@@ -1242,7 +1246,11 @@ export function ChatDockBody({
           </div>
         )}
       {activeSession.replay ? (
-        <ReplayTransport sessionId={activeSession.id} />
+        <LazyBoundary
+          load={loadReplayTransport}
+          pending={null}
+          componentProps={{ sessionId: activeSession.id }}
+        />
       ) : (
         <ChatInputArea
           sessionId={activeSession.id}
