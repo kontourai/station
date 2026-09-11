@@ -3410,8 +3410,9 @@ describe('CodexAdapter', () => {
       sandbox: 'workspace-write',
     });
 
-    // First turn carries no override — falls back to the pre-existing
-    // hardcoded default rather than "remembering" the session-start mode.
+    // First turn carries no override — omit knobs so the thread keeps the
+    // engine/session policy rather than resetting to Station's old Never
+    // default (station#1950).
     const firstTurnPromise = adapter.sendTurn({
       threadId: 'thread-approval',
       input: 'first turn',
@@ -3443,14 +3444,43 @@ describe('CodexAdapter', () => {
       .map(parseLine)
       .filter((line) => line.method === 'turn/start');
     expect(turnStartCalls).toHaveLength(2);
-    expect(turnStartCalls[0].params).toMatchObject({
-      approvalPolicy: 'never',
-      sandbox: 'danger-full-access',
-    });
+    expect(turnStartCalls[0].params).not.toHaveProperty('approvalPolicy');
+    expect(turnStartCalls[0].params).not.toHaveProperty('sandbox');
     expect(turnStartCalls[1].params).toMatchObject({
       approvalPolicy: 'on-request',
       sandbox: 'workspace-write',
     });
+
+    await adapter.stopAll();
+  });
+
+  test('an absent approvalMode omits approvalPolicy/sandbox so Codex config applies (station#1950)', async () => {
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({ processFactory: () => processHandle! });
+
+    const sessionPromise = adapter.startSession({
+      provider: 'codex',
+      threadId: 'thread-inherit-default',
+      cwd: '/tmp/project',
+      modelId: 'gpt-5-codex',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-inherit-default', {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-inherit-default', {
+      id: '2',
+      result: { thread: { id: 'codex-thread-inherit' }, model: 'gpt-5-codex' },
+    });
+    await withTimeout(sessionPromise, 'startSession inherit default');
+
+    const threadStart = processHandle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'thread/start');
+    expect(threadStart.params).not.toHaveProperty('approvalPolicy');
+    expect(threadStart.params).not.toHaveProperty('sandbox');
 
     await adapter.stopAll();
   });
