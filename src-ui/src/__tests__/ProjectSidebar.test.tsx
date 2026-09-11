@@ -165,8 +165,8 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
-import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
+import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
 // #1765 routed the sidebar status row's command-palette keycap through
