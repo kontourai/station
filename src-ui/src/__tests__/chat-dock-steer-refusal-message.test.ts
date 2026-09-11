@@ -2,7 +2,7 @@
 
 import type { SteerTurnResult } from '@kontourai/station-contracts/orchestration';
 import { describe, expect, it } from 'vitest';
-import { steerRefusalMessage } from '../components/chat-dock/ChatDockBody';
+import { steerRefusalMessage } from '../utils/steerTurn';
 
 /**
  * archive#4075: `onSteer`'s outcome→message mapping
@@ -17,11 +17,11 @@ describe('steerRefusalMessage (station#4075 stage 2 review round 2)', () => {
     const result: Exclude<SteerTurnResult, { outcome: 'steered' }> = {
       outcome: 'unsupported-engine',
       threadId: 'thread-1',
-      engineId: 'codex' as never,
-      engineName: 'Codex',
+      engineId: 'muse' as never,
+      engineName: 'Muse',
     };
     expect(steerRefusalMessage(result)).toBe(
-      'Codex does not support mid-turn steering.',
+      'Muse does not support mid-turn steering.',
     );
   });
 

@@ -724,6 +724,31 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     orchestrationSessions,
     orchestrationSessionsStatus,
   });
+  const handleReplayConversation = useCallback(() => {
+    const sourceThreadId =
+      activeSession?.currentSessionId ??
+      activeSession?.conversationId ??
+      activeSession?.id;
+    if (!sourceThreadId || !activeSession || activeSession.replay) return;
+    void import('../../hooks/orchestration/replay/controller')
+      .then(({ openReplayFromThread }) =>
+        openReplayFromThread({
+          apiBase,
+          sourceThreadId,
+          agentSlug: activeSession.agentSlug,
+          agentName: activeSession.agentName,
+          title: activeSession.title,
+          provider: activeSession.provider,
+        }),
+      )
+      .catch((error: unknown) => {
+        showToast(
+          error instanceof Error
+            ? error.message
+            : 'Could not open event replay for this conversation.',
+        );
+      });
+  }, [activeSession, apiBase, showToast]);
   // The occurrence store's key for THIS dock's inventory. Owned here because
   // #1536 F split the inventory's control (a row of the header's More menu)
   // from its host (`ChatDockSessionInventoryHost`, lazily mounted), and both
@@ -2607,6 +2632,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           showReasoning,
           showToolDetails,
           autoHideEnabled,
+          onReplayConversation: handleReplayConversation,
           onSelectNewChat: (
             agent,
             projectSlug,

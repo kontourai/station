@@ -412,6 +412,8 @@ export function useChatInput({
          * out-of-band (archive#685) — never spliced into the sent/persisted text.
          */
         ambientContext?: string;
+        /** Hold this as a follow-up even when the engine can steer. */
+        queueOnBusy?: boolean;
       },
     ) => {
       if (!sessionId || !agentSlug) return;
@@ -446,6 +448,8 @@ export function useChatInput({
         text.trim(),
         selectedAttachments,
         options?.ambientContext,
+        undefined,
+        options?.queueOnBusy ? { queueOnBusy: true } : undefined,
       );
       // A durable offline row owns queued text. Clearing its draft prevents
       // the composer from rendering a second editable copy after a resume.

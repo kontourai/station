@@ -211,6 +211,44 @@ describe('handleTurnStartedEvent — optimistic running status', () => {
       } as any),
     ).toBe(true);
   });
+
+  test('a steer appends the user row and does not wipe the in-flight stream', () => {
+    turnStartedStore.updateChat(threadId, {
+      status: 'sending',
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-1',
+      orchestrationStatus: 'running',
+      streamingMessage: {
+        role: 'assistant',
+        content: 'partial answer',
+        contentParts: [{ type: 'text', content: 'partial answer' }],
+      },
+    });
+
+    handleTurnStartedEvent(
+      {
+        eventId: 'evt-steer',
+        provider: 'claude',
+        threadId,
+        createdAt: '2026-07-23T00:00:05.000Z',
+        method: 'turn.started',
+        turnId: 'turn-1',
+        prompt: 'course correct',
+        inputKind: 'steer',
+      } as any,
+      turnStartedStore,
+    );
+
+    const chat = turnStartedStore.getSnapshot()[threadId];
+    expect(chat?.streamingMessage?.content).toBe('partial answer');
+    expect(chat?.messages?.at(-1)).toMatchObject({
+      role: 'user',
+      content: 'course correct',
+      turnId: 'turn-1',
+    });
+    expect(chat?.openTurnId).toBe('turn-1');
+    expect(chat?.status).toBe('sending');
+  });
 });
 
 describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing transient activity state on session death', () => {
@@ -278,6 +316,40 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     expect(chat?.activityHint).toBeUndefined();
     expect(chat?.backgroundTasks).toBeUndefined();
     expect(chat?.orchestrationStatus).toBe('exited');
+  });
+
+  test('session.exited commits buffered streaming text instead of dropping it', () => {
+    activeChatsStore.updateChat(threadId, {
+      orchestrationSessionStarted: true,
+      orchestrationTurnOpen: true,
+      openTurnId: 'turn-1',
+      status: 'sending',
+      streamingMessage: {
+        role: 'assistant',
+        content: 'TURN ONE OK.',
+        contentParts: [{ type: 'text', content: 'TURN ONE OK.' }],
+      },
+    });
+
+    handleSessionExitedEvent(
+      {
+        eventId: 'evt-1',
+        provider: 'claude',
+        threadId,
+        createdAt: '2026-07-23T00:00:00.000Z',
+        method: 'session.exited',
+        sessionId: 'session-1',
+      } as any,
+      activeChatsStore,
+    );
+
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    expect(chat?.streamingMessage).toBeUndefined();
+    expect(
+      chat?.messages?.some((message) =>
+        message.content.includes('TURN ONE OK.'),
+      ),
+    ).toBe(true);
   });
 
   test('a terminal session.state-changed (e.g. errored) clears activityHint and backgroundTasks', () => {

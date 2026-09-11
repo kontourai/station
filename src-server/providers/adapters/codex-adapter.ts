@@ -39,16 +39,17 @@ import {
 } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
-import type {
-  ProviderAdapterModelCatalog,
-  ProviderAdapterShape,
-  ProviderAdoptionHooks,
-  ProviderDiscardSessionRecovery,
-  ProviderSendTurnInput,
-  ProviderSession,
-  ProviderSessionAdoptInput,
-  ProviderSessionStartInput,
-  ProviderTurnStartResult,
+import {
+  type ProviderAdapterModelCatalog,
+  type ProviderAdapterShape,
+  type ProviderAdoptionHooks,
+  type ProviderDiscardSessionRecovery,
+  type ProviderSendTurnInput,
+  type ProviderSession,
+  type ProviderSessionAdoptInput,
+  type ProviderSessionStartInput,
+  ProviderTurnEndedError,
+  type ProviderTurnStartResult,
 } from '../adapter-shape.js';
 import { buildCliRuntimePrerequisites } from '../auth/cli-auth.js';
 import {
@@ -1570,6 +1571,47 @@ export class CodexAdapter implements ProviderAdapterShape {
       turnId,
       resumeCursor: { codexThreadId: record.codexThreadId, turnId },
     };
+  }
+
+  async steerTurn(
+    threadId: string,
+    input: string,
+    turnId: string,
+  ): Promise<void> {
+    const record = this.transport.requireSession(threadId);
+    if (record.activeTurnId !== turnId) {
+      throw new ProviderTurnEndedError();
+    }
+    const text = input.trim();
+    if (!text) {
+      throw new Error('Steer input is empty.');
+    }
+    try {
+      await this.transport.sendRequest(record, 'turn/steer', {
+        threadId: record.codexThreadId,
+        input: [{ type: 'text', text, text_elements: [] }],
+        expectedTurnId: turnId,
+      });
+    } catch (error) {
+      const message = errorMessage(error).toLowerCase();
+      if (
+        message.includes('no active turn') ||
+        message.includes('cannot accept same-turn steering')
+      ) {
+        throw new ProviderTurnEndedError();
+      }
+      throw error;
+    }
+    this.transport.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: this.now().toISOString(),
+      turnId,
+      method: 'turn.started',
+      prompt: text,
+      inputKind: 'steer',
+    });
   }
 
   async interruptTurn(threadId: string, turnId?: string) {

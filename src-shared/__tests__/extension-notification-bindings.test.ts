@@ -1,8 +1,12 @@
 import { describe, expect, test } from 'vitest';
 import {
+  _resetUnboundExtensionNotices,
   EXTENSION_NOTIFICATION_BINDINGS,
   EXTENSION_NOTIFICATION_EVIDENCE_GAPS,
+  EXTENSION_NOTIFICATION_PROMOTIONS,
   extensionNotificationBinding,
+  isBoundExtensionNotification,
+  takeUnboundExtensionNotice,
 } from '../extension-notification-bindings.js';
 
 describe('extension notification bindings', () => {
@@ -92,6 +96,97 @@ describe('extension notification bindings', () => {
         observedAgainst: ['claude-adapter'],
         evidence: 'station#1815-runtime-observation',
       },
+      {
+        namespace: '_kiro.dev',
+        type: 'mcp/server_initialized',
+        consumer: 'ui.engine.mcp-status',
+        observedAgainst: ['kiro-v2'],
+        evidence: 'station#1935-runtime-observation',
+      },
+      {
+        namespace: '_kiro.dev',
+        type: 'metadata',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['kiro-v2'],
+        evidence: 'station#1935-runtime-observation',
+      },
+      {
+        namespace: '_kiro.dev',
+        type: 'subagent/list_update',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['kiro-v2'],
+        evidence: 'station#1935-runtime-observation',
+      },
+      {
+        namespace: '_x.ai',
+        type: 'models/update',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['xai-acp'],
+        evidence: 'station#1935-runtime-observation',
+      },
+      {
+        namespace: '_x.ai',
+        type: 'settings/update',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['xai-acp'],
+        evidence: 'station#1935-runtime-observation',
+      },
+      {
+        namespace: '_x.ai',
+        type: 'sessions/changed',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['xai-acp'],
+        evidence: 'station#1935-runtime-observation',
+      },
+      {
+        namespace: '_x.ai',
+        type: 'announcements/update',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['xai-acp'],
+        evidence: 'station#1935-runtime-observation',
+      },
+      {
+        namespace: '_x.ai',
+        type: 'queue/changed',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['xai-acp'],
+        evidence: 'station#1935-runtime-observation',
+      },
+      {
+        namespace: '_x.ai',
+        type: 'session_notification',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['xai-acp'],
+        evidence: 'station#1935-runtime-observation',
+      },
+      {
+        namespace: '_x.ai',
+        type: 'session/prompt_complete',
+        consumer: 'acp.host-chrome',
+        observedAgainst: ['xai-acp'],
+        evidence: 'station#1935-runtime-observation',
+      },
+      {
+        namespace: '_x.ai',
+        type: 'mcp/init_progress',
+        consumer: 'ui.engine.mcp-status',
+        observedAgainst: ['xai-acp'],
+        evidence: 'station#1935-runtime-observation',
+      },
+      {
+        namespace: '_x.ai',
+        type: 'mcp_initialized',
+        consumer: 'ui.engine.mcp-status',
+        observedAgainst: ['xai-acp'],
+        evidence: 'station#1935-runtime-observation',
+      },
+      {
+        namespace: '_x.ai',
+        type: 'mcp/servers_updated',
+        consumer: 'ui.engine.mcp-status',
+        observedAgainst: ['xai-acp'],
+        evidence: 'station#1935-runtime-observation',
+      },
     ]);
   });
 
@@ -109,5 +204,34 @@ describe('extension notification bindings', () => {
     expect(
       extensionNotificationBinding('_kiro.dev', 'unknown'),
     ).toBeUndefined();
+  });
+
+  test('every promotion stays bound until the adapter emits the Station event', () => {
+    for (const item of EXTENSION_NOTIFICATION_PROMOTIONS) {
+      expect(
+        isBoundExtensionNotification(item.namespace, item.type),
+        `${item.namespace}/${item.type} must stay bound until resolved`,
+      ).toBe(true);
+    }
+  });
+
+  test('Grok queue/changed promotes to Station follow-up queue, not steer', () => {
+    const item = EXTENSION_NOTIFICATION_PROMOTIONS.find(
+      (promotion) =>
+        promotion.namespace === '_x.ai' && promotion.type === 'queue/changed',
+    );
+    expect(item?.stationEvent).toBe('queuedMessages');
+  });
+
+  test('takeUnboundExtensionNotice fires once per provider-tuple', () => {
+    _resetUnboundExtensionNotices();
+    expect(takeUnboundExtensionNotice('acp', '_x.ai', 'never/seen')).toBe(true);
+    expect(takeUnboundExtensionNotice('acp', '_x.ai', 'never/seen')).toBe(
+      false,
+    );
+    expect(takeUnboundExtensionNotice('claude', '_x.ai', 'never/seen')).toBe(
+      true,
+    );
+    _resetUnboundExtensionNotices();
   });
 });
