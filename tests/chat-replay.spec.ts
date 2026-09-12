@@ -249,6 +249,13 @@ test.describe('replay state coverage', () => {
       name: 'Conversation transcript',
     });
     await expect(transcript.locator('[data-chat-role="user"]')).toHaveCount(8);
+    expect(
+      await transcript
+        .locator('[data-chat-role]')
+        .evaluateAll((nodes) =>
+          nodes.map((node) => node.getAttribute('data-chat-role')),
+        ),
+    ).toEqual(Array.from({ length: 8 }, () => ['user', 'assistant']).flat());
     await expect(
       transcript.locator('[data-chat-role="assistant"]'),
     ).toHaveCount(8);

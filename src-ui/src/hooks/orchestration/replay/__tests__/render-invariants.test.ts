@@ -62,6 +62,15 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+test('terminal replay messages retain recorded time rather than the playback clock', () => {
+  const { player, replayId } = open();
+  player.seek(2);
+  const messages = activeChatsStore.getSnapshot()[replayId].messages;
+  expect(
+    messages?.find((message) => message.role === 'assistant')?.timestamp,
+  ).toBe(Date.parse(base.createdAt));
+});
+
 test('a settled answer absent from the mounted transcript is an issue', async () => {
   const { player } = open();
   const { container } = transcript();

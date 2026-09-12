@@ -139,6 +139,7 @@ export function handleSessionExitedEvent(
     // the buffered answer (replay: in-flight-content-dropped-on-session-exit).
     finalizeAssistantTurn(event.threadId, undefined, {
       turnId: chat.openTurnId,
+      createdAt: event.createdAt,
       answerEligible: false,
     });
   }
@@ -159,6 +160,7 @@ export function handleSessionStopSettledEvent(
   if (chat?.streamingMessage || chat?.orchestrationTurnOpen) {
     finalizeAssistantTurn(event.threadId, undefined, {
       turnId: event.turnId ?? chat.openTurnId,
+      createdAt: event.createdAt,
       answerEligible: false,
     });
   }

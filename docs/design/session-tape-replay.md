@@ -58,6 +58,9 @@ Mounted messages that all fall outside the viewport report
 `empty-transcript-viewport`; a bounded DOM count alone cannot prove a usable
 virtualized transcript. The virtualizer attaches its parent scroll ref after
 the commit, when that ref is available.
+Terminal message timestamps come from their runtime event, so replay and
+reconnect preserve question/answer order instead of sorting answers by the
+time the recording was played.
 
 Record a live conversation from chat developer settings to include committed
 history reads, runtime events, transport transitions, snapshots, and the
