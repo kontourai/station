@@ -6,8 +6,8 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -95,6 +95,29 @@ function harness(
 }
 
 describe('portable Project attachment', () => {
+  test('expands a tilde path for checkout verification while preserving its exact authored spelling and retry identity', async () => {
+    const checkout = mkdtempSync(join(homedir(), '.station-identity-test-'));
+    roots.push(checkout);
+    const reader = vi.fn(readRemotes);
+    const { service, storage } = harness({ reader });
+    const workingDirectory = `~/${basename(checkout)}`;
+    const input = {
+      name: 'Local',
+      slug: 'local',
+      workingDirectory,
+      identity: identity(),
+    };
+
+    expect((await service.attach(input)).outcome).toBe('created');
+    expect(reader).toHaveBeenCalledWith(checkout);
+    expect(storage.getProject('local').workingDirectory).toBe(workingDirectory);
+    expect((await service.attach(input)).outcome).toBe('existing');
+    await expect(
+      service.attach({ ...input, workingDirectory: checkout }),
+    ).rejects.toBeInstanceOf(FileStorageConflictError);
+    expect(storage.getProject('local').workingDirectory).toBe(workingDirectory);
+  });
+
   test('two isolated homes and real Git checkouts retain one portable identity and distinct local IDs and paths', async () => {
     const sourcePath = directory();
     const destinationPath = directory();

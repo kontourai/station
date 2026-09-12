@@ -70,6 +70,8 @@ export class ProjectIdentityService {
       );
     }
     const identity = parseProjectPortableIdentity(input.identity);
+    // Capture the authored path verbatim for persistence and exact retry
+    // comparison. verifyDirectory expands it before every filesystem/Git read.
     const config = {
       name: input.name,
       slug: input.slug,
@@ -89,6 +91,8 @@ export class ProjectIdentityService {
       try {
         return await this.withProject(config.slug, async (project) => {
           const view = this.view(project);
+          // Identity attachment does not rewrite an existing local config,
+          // including its chosen path spelling; this is not a filesystem read.
           if (
             !isDeepStrictEqual(view.identity, identity) ||
             project.name !== config.name ||
