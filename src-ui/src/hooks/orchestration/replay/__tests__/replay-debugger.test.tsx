@@ -9,7 +9,6 @@ import { applyOrchestrationSnapshot } from '../../snapshotHandlers';
 import type { OrchestrationEvent } from '../../types';
 import { closeActiveReplay, openReplayFromTape } from '../controller';
 import { EMPTY_REPLAY_HISTORY, getReplayHistory } from '../history';
-import { collectReplayScroll } from '../observe';
 import {
   getCapturedTape,
   publishHistoryForCapture,
@@ -224,7 +223,9 @@ test('render observation reads the DOM after the fold and excludes offscreen row
   below.dataset.chatMessageKey = 'below';
   below.getBoundingClientRect = () => ({ top: 105, bottom: 140 }) as DOMRect;
   element.append(row, below);
-  expect(collectReplayScroll(element)?.visibleMessageKeys).toEqual(['visible']);
+  expect(replay.player.observe(element).scroll?.visibleMessageKeys).toEqual([
+    'visible',
+  ]);
   replay.player.step();
   expect(replay.player.lastObservation?.scroll).toBeUndefined();
   const observed = replay.player.observeRendered(() => element);
