@@ -408,9 +408,7 @@ describe('NotificationsPage', () => {
     // what this page still owns is its sections and their empty copy.
     expect(screen.getByText('All caught up')).toBeTruthy();
     expect(
-      screen.getByText(
-        'Nothing needs your attention right now.',
-      ),
+      screen.getByText('Nothing needs your attention right now.'),
     ).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Dismiss all attention items' }),
