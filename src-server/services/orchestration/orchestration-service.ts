@@ -3671,6 +3671,7 @@ export class OrchestrationService {
     threadId: string,
     options: {
       cursor?: string;
+      direction?: 'newest';
       turnLimit: number;
       authority: SessionReadScope;
       signal?: AbortSignal;
@@ -3684,6 +3685,7 @@ export class OrchestrationService {
     conversationId: string,
     options: {
       cursor?: string;
+      direction?: 'newest';
       turnLimit: number;
       authority: SessionReadScope;
       signal?: AbortSignal;

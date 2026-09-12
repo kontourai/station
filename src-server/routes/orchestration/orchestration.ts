@@ -583,6 +583,7 @@ const sessionEventPageQuerySchema = z.object({
 });
 
 const sessionEventWindowQuerySchema = z.object({
+  direction: z.literal('newest').optional(),
   cursor: z.string().min(1).max(512).optional(),
   turnLimit: z.coerce.number().int().min(1).max(20).default(10),
 });
@@ -2141,6 +2142,7 @@ export function createOrchestrationRoutes(
   app.get('/sessions/:threadId/event-window', async (c) => {
     const parsed = sessionEventWindowQuerySchema.safeParse({
       cursor: c.req.query('cursor'),
+      direction: c.req.query('direction'),
       turnLimit: c.req.query('turnLimit'),
     });
     if (!parsed.success)
@@ -2157,6 +2159,7 @@ export function createOrchestrationRoutes(
   app.get('/conversations/:conversationId/event-window', async (c) => {
     const parsed = sessionEventWindowQuerySchema.safeParse({
       cursor: c.req.query('cursor'),
+      direction: c.req.query('direction'),
       turnLimit: c.req.query('turnLimit'),
     });
     if (!parsed.success)

@@ -72,7 +72,7 @@ async function readConversationWindow(
     return await fetchOrchestrationConversationEventWindow(
       conversationId,
       apiBase,
-      input,
+      { ...input, direction: 'newest' },
       options,
     );
   } catch (error) {
@@ -87,7 +87,7 @@ async function readConversationWindow(
     const legacy = await fetchOrchestrationSessionEventWindow(
       legacySessionId,
       apiBase,
-      input,
+      { ...input, direction: 'newest' },
       options,
     );
     return {

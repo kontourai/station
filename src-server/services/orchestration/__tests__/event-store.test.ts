@@ -20,6 +20,7 @@ import {
 } from '@kontourai/station-contracts/chat-attachment';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { CHAT_INPUT_MAX_CHARS } from '../../../../src-shared/chat-input-limits.js';
 import {
@@ -331,6 +332,110 @@ describe('EventStore', () => {
   afterEach(() => {
     store.close();
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('newest chat history exposes a complete answer ahead of 9014 progress events and pages backward without losing events', () => {
+    const threadId = 'noisy-cold-chat';
+    const turnId = 'first-turn';
+    const fields = {
+      provider: 'codex' as const,
+      threadId,
+      turnId,
+      itemId: 'noisy-item',
+      createdAt: '2026-09-12T00:00:00Z',
+    };
+    store.appendEvent({
+      ...fields,
+      eventId: 'noisy-start',
+      method: 'turn.started',
+      prompt: 'Explain shared streaming.',
+    });
+    for (let i = 0; i < 9014; i++)
+      store.appendEvent({
+        ...fields,
+        eventId: `progress-${i}`,
+        method: 'tool.progress',
+        toolCallId: 'inspect',
+        message: 'Reading',
+      });
+    const reply = 'The complete answer is restored after reopening. '.repeat(
+      110,
+    );
+    let chunks = 0;
+    for (let i = 0; i < reply.length; i += 24)
+      store.appendEvent({
+        ...fields,
+        eventId: `delta-${chunks++}`,
+        method: 'content.text-delta',
+        delta: reply.slice(i, i + 24),
+      });
+    store.appendEvent({
+      ...fields,
+      eventId: 'noisy-complete',
+      method: 'turn.completed',
+      outputText: reply,
+      finishReason: 'stop',
+    });
+    for (const read of [
+      (cursor?: string) =>
+        store.listEventWindowByTurn(threadId, {
+          turnLimit: 1,
+          direction: 'newest',
+          cursor,
+        }),
+      (cursor?: string) =>
+        store.listConversationEventWindowByTurn([threadId], {
+          turnLimit: 1,
+          direction: 'newest',
+          cursor,
+        }),
+    ]) {
+      let page = read();
+      const terminal = page.events.find(
+        (event) => event.id === 'noisy-complete',
+      );
+      expect(terminal?.elided).toBeUndefined();
+      expect(terminal?.payload).toMatchObject({ outputText: reply });
+      expect(page.events[0].id).toBe('noisy-start');
+      const messages = projectRuntimeEventsToMessages(
+        page.events.map((event) => event.payload),
+      );
+      expect(
+        messages
+          .at(-1)
+          ?.parts.filter((part) => part.type === 'text')
+          .map((part) => part.text)
+          .join(''),
+      ).toBe(reply);
+      const ids = new Set<string>();
+      const cursors = new Set<string>();
+      for (let pages = 0; ; pages++) {
+        expect(pages).toBeLessThan(100);
+        expect(page.events.length).toBeLessThanOrEqual(150);
+        expect(
+          Buffer.byteLength(
+            JSON.stringify({
+              success: true,
+              data: {
+                ...page,
+                events: page.events.map((event) => ({
+                  sequence: event.globalSequence,
+                  event: event.payload,
+                  ...(event.elided ? { elided: event.elided } : {}),
+                })),
+              },
+            }),
+          ),
+        ).toBeLessThan(64000);
+        for (const event of page.events) ids.add(event.id);
+        if (!page.hasMore) break;
+        expect(page.nextCursor).toBeDefined();
+        expect(cursors.has(page.nextCursor!)).toBe(false);
+        cursors.add(page.nextCursor!);
+        page = read(page.nextCursor);
+      }
+      expect(ids.size).toBe(9014 + chunks + 2);
+    }
   });
 
   test('appends canonical events with monotonically increasing per-thread sequence numbers', () => {

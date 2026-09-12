@@ -182,6 +182,7 @@ export class SessionEventReads {
     threadId: string,
     options: {
       cursor?: string;
+      direction?: 'newest';
       turnLimit: number;
       authority: SessionReadScope;
       signal?: AbortSignal;
@@ -255,6 +256,7 @@ export class SessionEventReads {
     conversationId: string,
     options: {
       cursor?: string;
+      direction?: 'newest';
       turnLimit: number;
       authority: SessionReadScope;
       signal?: AbortSignal;

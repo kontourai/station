@@ -201,11 +201,12 @@ export async function getOrchestrationSessionEventPage<T>(
 export async function getOrchestrationSessionEventWindow<T>(
   apiBase: string,
   threadId: string,
-  input?: { cursor?: string; turnLimit?: number },
+  input?: { cursor?: string; turnLimit?: number; direction?: 'newest' },
   opts?: ClientRequestOptions,
 ): Promise<T> {
   const query = new URLSearchParams();
   if (input?.cursor) query.set('cursor', input.cursor);
+  if (input?.direction) query.set('direction', input.direction);
   if (input?.turnLimit !== undefined) {
     query.set('turnLimit', String(input.turnLimit));
   }
@@ -220,11 +221,12 @@ export async function getOrchestrationSessionEventWindow<T>(
 export async function getOrchestrationConversationEventWindow<T>(
   apiBase: string,
   conversationId: string,
-  input?: { cursor?: string; turnLimit?: number },
+  input?: { cursor?: string; turnLimit?: number; direction?: 'newest' },
   opts?: ClientRequestOptions,
 ): Promise<T> {
   const query = new URLSearchParams();
   if (input?.cursor) query.set('cursor', input.cursor);
+  if (input?.direction) query.set('direction', input.direction);
   if (input?.turnLimit !== undefined)
     query.set('turnLimit', String(input.turnLimit));
   const response = await getJson(

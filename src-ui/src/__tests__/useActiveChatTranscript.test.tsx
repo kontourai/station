@@ -363,7 +363,7 @@ describe('useActiveChatTranscript', () => {
       2,
       'thread-1',
       'http://station.test',
-      { cursor: 'older', turnLimit: 20 },
+      { cursor: 'older', turnLimit: 20, direction: 'newest' },
       { signal: expect.any(AbortSignal) },
     );
   });
