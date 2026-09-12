@@ -53,7 +53,10 @@ import {
 } from '@kontourai/station-contracts/project-identity';
 import { expandTilde } from '../../utils/paths.js';
 import type { CheckoutRemoteReader } from './checkout-remote-reader.js';
-import { canonicalizeCheckoutRemotes } from './project-binding-store.js';
+import {
+  compareProjectGitRemotes,
+  PROJECT_GIT_REMOTE_COMPARISON_UNAVAILABLE,
+} from './project-git-remote-comparison.js';
 import { describeCheckoutRemotes } from './project-resource-resolver.js';
 
 /**
@@ -280,17 +283,25 @@ export async function bindProjectResource(
     };
   }
 
-  // Decision 4: aliases rewrite the checkout side only (§3.3(a)); the
-  // manifest's values are compared verbatim.
-  const checkoutRemotes = canonicalizeCheckoutRemotes(
-    remotes.remotes.map((remote) => remote.url),
-    deps.bindings.hostAliases(),
-  );
+  // Aliases rewrite the checkout side only. The comparison understands legacy
+  // SCP spellings without rewriting the manifest or stored binding identities.
   const manifestRemotes = [
     resource.canonicalRemote,
     ...(resource.aliases ?? []),
   ];
-  if (!checkoutRemotes.some((remote) => manifestRemotes.includes(remote))) {
+  const { outcome, checkoutRemotes } = compareProjectGitRemotes(
+    remotes.remotes.map((remote) => remote.url),
+    deps.bindings.hostAliases(),
+    manifestRemotes,
+  );
+  if (outcome === 'unverifiable') {
+    return {
+      ok: false,
+      code: 'unverifiable',
+      reason: `${PROJECT_GIT_REMOTE_COMPARISON_UNAVAILABLE} Nothing was recorded.`,
+    };
+  }
+  if (outcome === 'different') {
     // Decision 4 applies to the DESCRIPTION as well as the comparison. An
     // empty canonical set has two causes and NEITHER supports a positive
     // identity claim: `readCheckoutRemotes` returns `{ok: true, remotes: []}`
