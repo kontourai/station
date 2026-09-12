@@ -5277,6 +5277,87 @@ fn resolve_local_self_provision_client_instance_id(profile: &CredentialProfile) 
 }
 
 #[cfg(not(mobile))]
+fn validate_local_self_provision_owner(
+    store: &CredentialProfileStore,
+    profile_name: &str,
+    launch: &SidecarLaunchContext,
+    status: &BundledServerStatus,
+    resolve_service: impl FnOnce() -> Result<
+        Option<(String, service_state::ResolvedLocalService)>,
+        String,
+    >,
+) -> Result<(), NativeCommandError> {
+    let denied = || {
+        NativeCommandError::new(
+            "local_profile_not_owned",
+            "the selected Station does not match the running desktop runtime",
+        )
+    };
+    let profile = selected_profile_from_store(store, profile_name)?;
+    let local = profile.local_service.as_ref().ok_or_else(&denied)?;
+    let home = launch.station_home.to_str().ok_or_else(&denied)?;
+    let origin = exact_origin(&profile.endpoint)?;
+    if profile.setup_source != "local"
+        || status.fail_closed
+        || status.phase != bundled_server_state::ServerPhase::Running
+        || !credential_endpoint_uses_secure_transport(&origin)
+        || status.api_base.as_deref() != Some(origin.as_str())
+        || status.port != Some(local.server_port)
+        || status.instance_id.as_deref() != Some(local.instance_id.as_str())
+        || !same_runtime_home_identity(&local.base_dir, home, &launch.station_root)
+    {
+        return Err(denied());
+    }
+    match status.ownership {
+        bundled_server_state::ServerOwnership::Sidecar => {
+            // A sidecar has a live native supervisor, not a service installer
+            // manifest. Requiring service/<id>.json here stranded fresh apps
+            // before the profile could acquire its environment binding.
+            if status.instance_id.as_deref() != Some(launch.instance_id.as_str())
+                || !status.generation.is_some_and(|generation| generation > 0)
+                || !status
+                    .boot_id
+                    .as_deref()
+                    .is_some_and(|boot| !boot.is_empty())
+            {
+                return Err(denied());
+            }
+            let owners = store
+                .profiles
+                .iter()
+                .filter(|candidate| {
+                    candidate.setup_source == "local"
+                        && candidate.local_service.as_ref().is_some_and(|service| {
+                            same_runtime_home_identity(
+                                &service.base_dir,
+                                home,
+                                &launch.station_root,
+                            )
+                        })
+                })
+                .collect::<Vec<_>>();
+            if owners.len() != 1 || !owners[0].name.eq_ignore_ascii_case(profile_name) {
+                return Err(denied());
+            }
+        }
+        bundled_server_state::ServerOwnership::Service => {
+            let (name, service) = resolve_service()
+                .map_err(|error| NativeCommandError::new("local_profile_not_owned", error))?
+                .ok_or_else(&denied)?;
+            let service_home = service.base_dir.to_str().ok_or_else(&denied)?;
+            if !name.eq_ignore_ascii_case(profile_name)
+                || service.manifest.instance_id != local.instance_id
+                || !same_runtime_home_identity(service_home, home, &launch.station_root)
+            {
+                return Err(denied());
+            }
+        }
+        _ => return Err(denied()),
+    }
+    Ok(())
+}
+
+#[cfg(not(mobile))]
 #[tauri::command]
 fn station_local_self_provision(
     app: AppHandle,
@@ -5303,21 +5384,6 @@ fn station_local_self_provision(
     })?;
     let station_root = &state.supervisor.context.launch.station_root;
     let station_home = &state.supervisor.context.launch.station_home;
-    let (owned_name, owned_service) =
-        service_state::resolve_runtime_owned_service(station_root, station_home)
-            .map_err(|error| NativeCommandError::new("local_profile_not_owned", error))?
-            .ok_or_else(|| {
-                NativeCommandError::new(
-                    "local_profile_not_owned",
-                    "no saved Station is owned by this desktop runtime",
-                )
-            })?;
-    if !owned_name.eq_ignore_ascii_case(&profile_name) {
-        return Err(NativeCommandError::new(
-            "local_profile_not_owned",
-            "the selected Station belongs to another desktop runtime",
-        ));
-    }
     let origin = exact_origin(&profile.endpoint)?;
     if !credential_endpoint_uses_secure_transport(&origin) {
         return Err(NativeCommandError::new(
@@ -5332,23 +5398,13 @@ fn station_local_self_provision(
             "the selected Station has no local service",
         )
     })?;
-    if status.phase != bundled_server_state::ServerPhase::Running
-        || !matches!(
-            status.ownership,
-            bundled_server_state::ServerOwnership::Sidecar
-                | bundled_server_state::ServerOwnership::Service
-        )
-        || status.api_base.as_deref() != Some(origin.as_str())
-        || status.port != Some(local.server_port)
-        || status.instance_id.as_deref() != Some(local.instance_id.as_str())
-        || owned_service.base_dir != *station_home
-        || owned_service.manifest.instance_id != local.instance_id
-    {
-        return Err(NativeCommandError::new(
-            "local_profile_not_owned",
-            "the selected Station does not match the running desktop runtime",
-        ));
-    }
+    validate_local_self_provision_owner(
+        &store,
+        &profile_name,
+        &state.supervisor.context.launch,
+        &status,
+        || service_state::resolve_runtime_owned_service(station_root, station_home),
+    )?;
     // The full consequential tail lives behind one FnOnce. The readable
     // credential gate below invokes this exact closure only after a server
     // confirms `{ "eligible": false }`, or returns without making the local-grant request,
@@ -13277,6 +13333,131 @@ mod tests {
             }"#,
         )
         .unwrap()
+    }
+
+    #[cfg(not(mobile))]
+    fn native_provision_owner_fixture() -> (
+        tempfile::TempDir,
+        CredentialProfileStore,
+        SidecarLaunchContext,
+        BundledServerStatus,
+    ) {
+        let directory = tempfile::tempdir().unwrap();
+        let mut launch = sample_sidecar_context(Some(3141));
+        launch.station_root = directory.path().join("shared");
+        launch.station_home = launch.station_root.join("instances/nightly");
+        launch.instance_id = "inst".into();
+        std::fs::create_dir_all(&launch.station_home).unwrap();
+        let mut store = local_self_provision_fixture_store();
+        store.profiles[0].local_service.as_mut().unwrap().base_dir =
+            launch.station_home.to_string_lossy().into_owned();
+        let mut status = BundledServerStatus::initial(String::new(), String::new());
+        status.phase = bundled_server_state::ServerPhase::Running;
+        status.port = Some(3141);
+        status.api_base = Some("http://127.0.0.1:3141".into());
+        status.instance_id = Some("inst".into());
+        status.generation = Some(1);
+        status.boot_id = Some("boot-1".into());
+        (directory, store, launch, status)
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn native_sidecar_owner_admission_needs_no_service_install_manifest() {
+        let (_directory, store, launch, status) = native_provision_owner_fixture();
+        assert!(!launch.station_home.join("service").exists());
+        validate_local_self_provision_owner(&store, "local", &launch, &status, || {
+            panic!("a sidecar must not require service installer metadata")
+        })
+        .unwrap();
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn native_sidecar_provision_refuses_foreign_or_ambiguous_profiles_and_stale_status() {
+        let (_directory, store, launch, status) = native_provision_owner_fixture();
+        let check = |store: &CredentialProfileStore, status: &BundledServerStatus| {
+            validate_local_self_provision_owner(store, "local", &launch, status, || {
+                panic!("wrong owner route")
+            })
+        };
+        let mut foreign = store.clone();
+        foreign.profiles[0].local_service.as_mut().unwrap().base_dir = launch
+            .station_root
+            .join("instances/other")
+            .to_string_lossy()
+            .into_owned();
+        assert!(check(&foreign, &status).is_err());
+        foreign = store.clone();
+        foreign.profiles[0]
+            .local_service
+            .as_mut()
+            .unwrap()
+            .instance_id = "foreign".into();
+        assert!(check(&foreign, &status).is_err());
+        foreign = store.clone();
+        foreign.profiles[0].endpoint = "https://remote.example".into();
+        assert!(check(&foreign, &status).is_err());
+        foreign = store.clone();
+        foreign.profiles[0].setup_source = "paired".into();
+        assert!(check(&foreign, &status).is_err());
+        let mut duplicate = store.clone();
+        let mut extra = duplicate.profiles[0].clone();
+        extra.name = "duplicate".into();
+        duplicate.profiles.push(extra);
+        assert!(check(&duplicate, &status).is_err());
+        let mut stale = status.clone();
+        stale.generation = None;
+        assert!(check(&store, &stale).is_err());
+        stale = status.clone();
+        stale.boot_id = None;
+        assert!(check(&store, &stale).is_err());
+        stale = status.clone();
+        stale.fail_closed = true;
+        assert!(check(&store, &stale).is_err());
+        stale = status.clone();
+        stale.phase = bundled_server_state::ServerPhase::Starting;
+        assert!(check(&store, &stale).is_err());
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn native_service_provision_still_requires_its_manifest_owner() {
+        let (_directory, store, launch, mut status) = native_provision_owner_fixture();
+        status.ownership = bundled_server_state::ServerOwnership::Service;
+        let resolve = || service_state::ResolvedLocalService {
+            base_dir: std::fs::canonicalize(&launch.station_home).unwrap(),
+            manifest: service_state::ServiceManifest {
+                host: "localhost".into(),
+                instance_id: "inst".into(),
+                node_path: "node".into(),
+                platform: std::env::consts::OS.into(),
+                repo_path: "/repo".into(),
+                server_port: 3141,
+                ui_port: 3000,
+            },
+        };
+        validate_local_self_provision_owner(&store, "local", &launch, &status, || {
+            Ok(Some(("local".into(), resolve())))
+        })
+        .unwrap();
+        assert!(
+            validate_local_self_provision_owner(&store, "local", &launch, &status, || Ok(None))
+                .is_err()
+        );
+        assert!(
+            validate_local_self_provision_owner(&store, "local", &launch, &status, || Err(
+                "manifest invalid".into()
+            ))
+            .is_err()
+        );
+        assert!(
+            validate_local_self_provision_owner(&store, "local", &launch, &status, || Ok(Some((
+                "foreign".into(),
+                resolve()
+            ))))
+            .is_err()
+        );
     }
 
     /// A test-only CAS publisher with the same native profile lock and
