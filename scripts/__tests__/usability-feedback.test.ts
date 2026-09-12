@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { museReviewResponse } from '../lib/muse-image-review.mjs';
 import {
+  capturedControls,
   reviewScreens,
   summarizeGallery,
   summarizeJourneys,
@@ -14,6 +15,76 @@ const goodWalk = {
   expectedFailures: [],
 };
 describe('usability feedback coverage and reviewer failures', () => {
+  test('control observations require the exact successful image and bounded data', () => {
+    const controls = [{ label: 'Add Job', disabled: true }];
+    const capture = {
+      screens: [
+        { file: 'schedule.png', ok: true, sha256: 'image-digest', controls },
+      ],
+    };
+    expect(capturedControls(capture, 'schedule.png', 'image-digest')).toEqual(
+      controls,
+    );
+    expect(
+      capturedControls(capture, 'schedule.png', 'replacement-image'),
+    ).toBeNull();
+    expect(capturedControls(capture, 'other.png', 'image-digest')).toBeNull();
+    expect(
+      capturedControls(
+        { screens: [{ ...capture.screens[0], ok: false }] },
+        'schedule.png',
+        'image-digest',
+      ),
+    ).toBeNull();
+    expect(
+      capturedControls(
+        {
+          screens: [
+            {
+              ...capture.screens[0],
+              controls: [{ label: 'Add', disabled: 'false' }],
+            },
+          ],
+        },
+        'schedule.png',
+        'image-digest',
+      ),
+    ).toBeNull();
+  });
+
+  test('the reviewer receives observed disabled states alongside the image', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: 'completed',
+        output: [
+          {
+            type: 'message',
+            content: [
+              {
+                type: 'output_text',
+                text: JSON.stringify({ reviewed: ['a'], findings: [] }),
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const result = await reviewScreens(
+      [
+        {
+          id: 'a',
+          bytes: Buffer.from('png'),
+          controls: [{ label: 'Add Job', disabled: true }],
+        },
+      ],
+      { apiKey: 'test', model: 'test', fetchImpl },
+    );
+    expect(result.status).toBe('PASS');
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    expect(JSON.stringify(body)).toContain('Captured control states:');
+    expect(JSON.stringify(body)).toContain('disabled');
+  });
   test('a green job with unexercised real chat stays NOT_VERIFIED', () => {
     const checks = summarizeJourneys(goodWalk, {
       results: [
