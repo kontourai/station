@@ -318,12 +318,22 @@ export async function checkLocalCollaborationSecurity(
     );
     const hostile = await relay(a, 'relay-tamper', 'tamper');
     const beforeTamper = a.requests();
+    const rejectedBefore = a.rejectedTlsHandshakes();
     await assert.rejects(
       client(a, hostile.port)('/api/projects/local-lab-probe', {
         credential: one.credential,
       }),
+      (error: unknown) =>
+        error instanceof Error &&
+        'code' in error &&
+        (error.code === 'EPROTO' || error.code === 'ECONNRESET'),
     );
     assert.equal(a.requests(), beforeTamper);
+    assert(
+      a.rejectedTlsHandshakes() > rejectedBefore,
+      'TLS implementation must reject the modified handshake',
+    );
+    await probe(sendA, one.credential);
     checks.push('modified TLS traffic cannot reach the application');
 
     const revoked = await sendA(`/api/pairing/devices/${first.deviceId}`, {

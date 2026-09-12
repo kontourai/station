@@ -73,6 +73,10 @@ export async function startLocalSecurityEndpoint(home: string, marker: string) {
     getRequestListener(app.fetch),
   );
   let requests = 0;
+  let rejectedTlsHandshakes = 0;
+  server.on('tlsClientError', (error: NodeJS.ErrnoException) => {
+    if (error.code?.startsWith('ERR_SSL_')) rejectedTlsHandshakes++;
+  });
   server.on('request', () => {
     requests++;
   });
@@ -94,6 +98,7 @@ export async function startLocalSecurityEndpoint(home: string, marker: string) {
     operatorCredential: record.credential,
     security,
     requests: () => requests,
+    rejectedTlsHandshakes: () => rejectedTlsHandshakes,
     close() {
       if (closing) return closing;
       closing = new Promise<void>((resolve, reject) => {
