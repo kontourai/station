@@ -44,10 +44,56 @@ test.afterEach(async ({ authenticatedRequest }) => {
 async function requireInstalledCli(
   request: AuthenticatedE2ERequest,
 ): Promise<AgentConnectionRecord> {
-  const ready = await readyAgentConnections(request);
-  const named = ready.filter((connection) =>
+  const named = (await readyAgentConnections(request)).filter((connection) =>
     ['claude', 'codex'].includes(connection.id),
   );
+  if (named.length === 0) {
+    const response = await request.get('/api/connections/agents');
+    expect(response.ok()).toBe(true);
+    const body = (await response.json()) as {
+      data: Array<
+        AgentConnectionRecord & {
+          setup?: { state?: string; detected?: boolean };
+        }
+      >;
+    };
+    const available = body.data.filter(
+      (connection) =>
+        ['claude', 'codex'].includes(connection.id) &&
+        connection.enabled !== false &&
+        connection.setup?.state === 'available' &&
+        connection.setup.detected === true,
+    );
+    const candidate =
+      available.find((connection) => connection.id === 'claude') ??
+      available[0];
+    expect(
+      candidate,
+      'A real installed Claude Code or Codex engine is required',
+    ).toBeDefined();
+    // The fresh test home has discovered CLIs but has not added them yet.
+    // This is the same real save used by Connections' one-click Add action.
+    const saved = await request.put(
+      `/api/connections/${encodeURIComponent(candidate!.id)}`,
+      { data: candidate },
+    );
+    expect(
+      saved.ok(),
+      `Adding the detected CLI returned HTTP ${saved.status()}`,
+    ).toBe(true);
+    await expect
+      .poll(
+        async () => {
+          const configured = (await readyAgentConnections(request)).filter(
+            (connection) => connection.id === candidate!.id,
+          );
+          named.splice(0, named.length, ...configured);
+          return named.length;
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(1);
+  }
   expect(
     named.map((connection) => connection.id),
     'neither the Claude Code nor the Codex engine connection is ready on this host, so the installed-CLI journey cannot run',

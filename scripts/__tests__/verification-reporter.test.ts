@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os';
 import { join, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
+import { summarizeLaneResults } from '../lib/npm-lane-aggregate.mjs';
 import { captureOwnedProcessOutput } from '../lib/owned-process.mjs';
 import { executionEquivalenceKey } from '../lib/verification-coordinator.mjs';
 import {
@@ -284,6 +285,77 @@ describe('verification reporter', () => {
       maxBytes: 2048,
     });
     expect(summary.failingStep).toBe('typecheck:scripts');
+  });
+
+  test('a failed coverage aggregate does not accuse its passing Android bucket', () => {
+    const summary = summarizeVerificationOutput({
+      stdout: [
+        '> station@0.1.0 test:android',
+        '20 passed (1.0m)',
+        '════ Playwright coverage summary ════',
+        '  FAIL  smoke-live 3629s  3 failed, 26 passed',
+        '  PASS  android 103s  20 passed',
+      ].join('\n'),
+      terminal: { status: 'failed', exitCode: 1 },
+      counts: { executed: 49, passed: 46, failed: 3, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+    });
+    expect(summary.failingStep).toBeUndefined();
+    expect(summary.firstCausalExcerpt).toContain('FAIL  smoke-live');
+  });
+
+  test('a lane aggregate keeps its declared failure instead of blaming nested asset copying', () => {
+    const aggregate = summarizeLaneResults(
+      [
+        {
+          id: 'typecheck:scripts',
+          ok: false,
+          exitCode: 2,
+          seconds: 1,
+          stderr: 'scripts/probe.ts(1,1): error TS2322: wrong type',
+        },
+        {
+          id: 'typecheck:ui',
+          ok: true,
+          exitCode: 0,
+          seconds: 2,
+          stdout: '> station@0.1.0 copy-assets\nCopied assets',
+        },
+      ],
+      { label: 'typecheck' },
+    );
+    const summary = summarizeVerificationOutput({
+      stdout: aggregate.text,
+      terminal: { status: 'failed', exitCode: 1 },
+      counts: { executed: 2, passed: 1, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+    });
+    expect(summary.failingStep).toBeUndefined();
+    expect(summary.firstCausalExcerpt).toContain('typecheck:scripts');
+  });
+
+  test('cleanup failure after a passing aggregate does not blame its final test bucket', () => {
+    const summary = summarizeVerificationOutput({
+      stdout:
+        '> station@0.1.0 test:android\n20 passed\n════ Playwright coverage summary ════\n  PASS android 103s 20 passed',
+      stderr: 'Error: owned cleanup failed',
+      terminal: { status: 'failed', exitCode: 1 },
+      counts: { executed: 20, passed: 20, failed: 0, infrastructureErrors: 0 },
+      cleanup: { status: 'failed', survivingOwnedChildren: 1 },
+    });
+    expect(summary.failingStep).toBeUndefined();
+    expect(summary.firstCausalExcerpt).toContain('owned cleanup failed');
+  });
+
+  test('a later independent failing step remains attributable after an aggregate passed', () => {
+    const summary = summarizeVerificationOutput({
+      stdout:
+        'OK: typecheck -- all 13 lane(s) passed.\n> station@0.1.0 lint:check\nError: invalid syntax',
+      terminal: { status: 'failed', exitCode: 1 },
+      counts: { executed: 1, passed: 0, failed: 1, infrastructureErrors: 0 },
+      cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+    });
+    expect(summary.failingStep).toBe('lint:check');
   });
 
   // The release lane reported `failingStep: test:full:ordinary:raw` and a

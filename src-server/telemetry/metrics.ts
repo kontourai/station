@@ -91,6 +91,20 @@ export const tokensOutput = meter.createCounter('station.tokens.output', {
 export const toolCalls = meter.createCounter('station.tool.calls', {
   description: 'Tool INVOCATIONS by an agent (attributes: tool, plugin)',
 });
+/**
+ * Inbound engine `extension.notification` events by whether Station has a
+ * binding. Labels are a closed pair: `disposition` is `bound` | `unbound`,
+ * `provider` is the engine id. Namespace/type stay in logs — they are
+ * engine-controlled and unbounded (same cardinality rule as ACP outbound
+ * extension counters).
+ */
+export const inboundExtensionNotifications = meter.createCounter(
+  'station.runtime.extension_notifications',
+  {
+    description:
+      "Inbound extension.notification by disposition ('bound' | 'unbound') and provider; namespace/type are log-only",
+  },
+);
 /** ACP redraw supervisor actions with a closed, content-free outcome tag. */
 export const acpToolUpdateSupervisorOperations = meter.createCounter(
   'station.acp.tool_update_supervisor.operations',

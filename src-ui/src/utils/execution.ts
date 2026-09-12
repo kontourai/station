@@ -1,4 +1,8 @@
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
+import {
+  ENGINE_CAPABILITY_MATRICES,
+  resolveEngineCapabilityMatrix,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { EngineId } from '@kontourai/station-contracts/provider';
 import {
@@ -205,6 +209,9 @@ export type ChatExecutionMetadata = {
   defaultProviderId?: string;
   model?: string;
   modelSource?: EffectiveModelSource;
+  requestedModel?: string | null;
+  requestedModelSource?: EffectiveModelSource;
+  requestedProviderOptions?: Record<string, unknown>;
   defaultModel?: string;
   defaultModelSource?: EffectiveModelSource;
   providerOptions: Record<string, unknown>;
@@ -615,25 +622,32 @@ export function isManagedRuntimeConnectionId(
 }
 
 /**
- * Whether the session's bound adapter has declared the 'steering'
- * capability — i.e. it accepts a new user message mid-turn and folds it
- * into the current turn instead of waiting for the turn boundary (archive#613).
- * No built-in adapter declares this today, so this always resolves false
- * in production; it exists so the mid-turn send gate has an honest,
- * testable seam to branch on once an adapter can prove real interleaved
- * steering.
+ * Whether a running turn can take more user input on the engine's live
+ * channel (`steerTurn` / `turn.started` with `inputKind: 'steer'`).
+ * Authority is the capability matrix, not a connection `capabilities`
+ * string — Claude, Codex (`turn/steer`), and ACP (native method or
+ * cancel+reprompt) are true. Muse and Station queue until `turn.completed`.
  */
 export function sessionAdapterSupportsSteering(
   agentConnectionId?: string | null,
   agentConnections: ConnectionConfig[] = [],
+  orchestrationProvider?: string | null,
 ): boolean {
-  if (!agentConnectionId) {
-    return false;
+  if (
+    orchestrationProvider &&
+    orchestrationProvider in ENGINE_CAPABILITY_MATRICES
+  ) {
+    return (
+      ENGINE_CAPABILITY_MATRICES[orchestrationProvider].midTurnSteer === true
+    );
   }
-  const connection = agentConnections.find(
-    (candidate) => candidate.id === agentConnectionId,
+  const connection = agentConnectionId
+    ? agentConnections.find((candidate) => candidate.id === agentConnectionId)
+    : undefined;
+  return (
+    resolveEngineCapabilityMatrix(agentConnectionId, connection)
+      .midTurnSteer === true
   );
-  return !!connection?.capabilities.includes('steering');
 }
 
 export function defaultManagedRuntimeConnection(

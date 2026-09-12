@@ -57,33 +57,117 @@ describe('provider catalog presentation', () => {
     },
   );
 
-  test('distinguishes sign-in prerequisites from general setup', () => {
-    const presentation = resolveProviderPresentation({
-      id: 'bedrock-work',
-      kind: 'model',
-      type: 'bedrock',
-      name: 'Work Bedrock',
-      enabled: true,
-      status: 'missing_prerequisites',
-      setup: { state: 'configured', detected: true, configured: true },
-      href: '/connections/providers/bedrock-work',
-      prerequisites: [
-        {
-          id: 'aws-credentials',
-          name: 'AWS credentials',
-          description: 'Sign in with an AWS profile.',
-          status: 'missing',
-          category: 'required',
-        },
-      ],
-    });
+  /*
+   * One unmet prerequisite, four remedies -- because the four are performed in
+   * four different places, and a single "Sign in required" for all of them
+   * names a remedy the user often cannot perform. Bedrock is the sharpest
+   * case: its credential chain has no sign-in at all.
+   *
+   * The detail is the prerequisite's OWN description, not a generic sentence,
+   * so the page states why THIS connection is unusable.
+   */
+  test.each([
+    [
+      'a CLI that is not installed',
+      { id: 'muse-cli', name: 'Muse Code CLI' },
+      'Setup required',
+      'Set up',
+    ],
+    [
+      'an engine that is not signed in',
+      { id: 'muse-auth', name: 'Muse Code login' },
+      'Sign in required',
+      'Sign in',
+    ],
+    [
+      'a provider with no API key saved',
+      { id: 'anthropic-api-key', name: 'Anthropic API Key' },
+      'API key required',
+      'Add key',
+    ],
+    [
+      'an ambient credential chain',
+      { id: 'bedrock-credentials', name: 'Bedrock Credentials' },
+      'Credentials required',
+      'Set up',
+    ],
+  ] as const)(
+    'names the remedy for %s',
+    (_label, prerequisite, readiness, actionLabel) => {
+      const presentation = resolveProviderPresentation({
+        id: 'bedrock-work',
+        kind: 'model',
+        type: 'bedrock',
+        name: 'Work Bedrock',
+        enabled: true,
+        status: 'missing_prerequisites',
+        setup: { state: 'configured', detected: true, configured: true },
+        href: '/connections/providers/bedrock-work',
+        prerequisites: [
+          {
+            ...prerequisite,
+            description: 'The reason this one is unusable.',
+            status: 'missing',
+            category: 'required',
+          },
+        ],
+      });
 
-    expect(presentation).toMatchObject({
-      brand: 'Amazon Bedrock',
-      readiness: 'Sign in required',
-      actionLabel: 'Sign in',
-    });
-  });
+      expect(presentation).toMatchObject({
+        brand: 'Amazon Bedrock',
+        readiness,
+        actionLabel,
+        detail: 'The reason this one is unusable.',
+      });
+    },
+  );
+
+  /*
+   * The ordering guarantee, stated as a test: presence outranks credential.
+   * The former derivation read this list as a set and matched `<cmd>-auth`
+   * first, which is how a not-installed engine came to read "Sign in
+   * required". Both orderings are asserted so the fix cannot be reverted by
+   * re-sorting the producer.
+   */
+  test.each([
+    ['presence first', ['muse-cli', 'muse-auth']],
+    ['credential first', ['muse-auth', 'muse-cli']],
+  ] as const)(
+    'reports the presence failure when both are unmet (%s)',
+    (_label, order) => {
+      const byId = {
+        'muse-cli': {
+          id: 'muse-cli',
+          name: 'Muse Code CLI',
+          description: 'Required to launch the Muse Code runtime.',
+        },
+        'muse-auth': {
+          id: 'muse-auth',
+          name: 'Muse Code login',
+          description:
+            'Muse Code CLI must be installed before authentication can be verified.',
+        },
+      } as const;
+
+      const presentation = resolveProviderPresentation({
+        id: 'muse',
+        kind: 'agent',
+        type: 'muse',
+        name: 'Muse Code',
+        enabled: true,
+        status: 'missing_prerequisites',
+        setup: { state: 'available', detected: false, configured: false },
+        href: '/connections/engines/muse',
+        prerequisites: order.map((id) => ({
+          ...byId[id],
+          status: 'missing' as const,
+          category: 'required' as const,
+        })),
+      });
+
+      expect(presentation.readiness).toBe('Setup required');
+    },
+  );
 
   test('deduplicates exact connection ids but preserves same-brand instances', () => {
     const catalog = buildProviderCatalog([
@@ -227,7 +311,7 @@ describe('provider catalog presentation', () => {
       }),
     ).toEqual({
       badge: 'Found, not connected',
-      detail: 'Found on this computer — not yet connected to this Station.',
+      detail: 'Found on the computer Station runs on — not yet connected.',
     });
   });
 

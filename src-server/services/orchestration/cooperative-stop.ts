@@ -34,7 +34,7 @@ type StopSettlement = 'acknowledged' | 'completed' | 'deadline';
  * with no key at all (a caller that sent none) keeps the old
  * first-turn-wins behaviour, bounded by the TTL.
  */
-export interface PendingTurnInterrupt {
+interface PendingTurnInterrupt {
   expiresAt: number;
   clientTurnId?: string;
   /** Bound by `sendTurn` once its dispatch resolves to a provider turn. */

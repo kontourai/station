@@ -3,7 +3,7 @@ import { createLogger } from '../../utils/logger.js';
 
 const logger = createLogger({ name: 'launchability-revision' });
 
-export type LaunchabilityRevisionListener = (revision: number) => void;
+type LaunchabilityRevisionListener = (revision: number) => void;
 
 export interface AppConfigLaunchabilitySnapshot {
   revision: number;

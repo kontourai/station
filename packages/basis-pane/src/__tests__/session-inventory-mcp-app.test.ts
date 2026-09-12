@@ -163,7 +163,12 @@ describe('portable Session inventory MCP App', () => {
 
   test('emits a bounded React-free browser resource and keeps capability/page calls opaque', () => {
     const resource = buildStationSessionInventoryMcpAppResource();
-    expect(Buffer.byteLength(resource.text)).toBeLessThanOrEqual(480 * 1024);
+    // Re-grounded 2026-09-11 to the measured resource: the generated bundle
+    // grew past the previous 480 KiB pin with #1562's honest basis panes and
+    // the @kontourai/surface 3.2.0 bump (#1741). Exact cap: any growth reds
+    // here and re-grounding is a conscious act (the #1207 precedent); the
+    // runtime guard's last-line ceiling is 640 KiB.
+    expect(Buffer.byteLength(resource.text)).toBeLessThanOrEqual(573_335);
     expect(resource.text).not.toMatch(/react|node:|surface-trust-panel/i);
     const source = readFileSync(
       join(import.meta.dirname, '..', 'session-inventory-mcp-app.browser.ts'),

@@ -59,7 +59,22 @@ jobs:
     concurrency:
       # PR numbers isolate candidate feedback from main's push lane. Event
       # type keeps dispatches isolated from pushes on refs/heads/main.
-      group: ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+      #
+      # The head sha is part of the identity because the WORK is a commit, not
+      # a pull request. Without it, two runs for the same PR at different heads
+      # share a group, and `cancel-in-progress` resolves that collision by
+      # arrival order — which is not commit recency. Observed four times in one
+      # day (#1445): on #1345 the stale pre-rebase run survived and the current
+      # head's run was cancelled; on #1348, #1352 and #1353 the current head's
+      # own run was cancelled with nothing to replace it, leaving a required
+      # check in a state that is neither pass nor fail. #1348 had auto-merge
+      # armed and merged within minutes of a manual re-run.
+      #
+      # `cancel-in-progress` is kept and still does real work: it collapses
+      # duplicate runs for the SAME sha, which is what `edited` firing beside
+      # `synchronize` produces. What it can no longer do is cancel a run for a
+      # commit it is not about.
+      group: ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
       cancel-in-progress: true
     runs-on: ubuntu-22.04
     # A bounded 20-minute Chromium installation, the twelve-minute raw
@@ -94,7 +109,7 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -230,7 +245,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -283,7 +298,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -352,7 +367,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

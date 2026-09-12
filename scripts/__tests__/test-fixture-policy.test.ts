@@ -11,6 +11,18 @@ const inspect = (source: string) => inspectBrowserFixture(source, file);
 describe('browser fixture syntax policy', () => {
   test.each([
     ['await button.click({ force: true });', 'forced-user-action'],
+    [
+      "execSync('npx tsx ../../packages/cli/src/cli.ts plugin build');",
+      'private-cli-entry',
+    ],
+    [
+      "spawn(process.execPath, ['packages/cli/src/cli.ts', 'plugin', 'build']);",
+      'private-cli-entry',
+    ],
+    [
+      "const CLI_ENTRY = join(root, 'packages/cli/src/cli.ts');",
+      'private-cli-entry',
+    ],
     ["await button.fill('x', { force: true });", 'forced-user-action'],
     ["await button.dispatchEvent('click');", 'synthetic-click'],
     [
@@ -41,6 +53,9 @@ describe('browser fixture syntax policy', () => {
     expect(
       inspect(`
       rmSync(path, {force:true});
+      readFileSync('packages/cli/src/cli.ts');
+      execSync('cat packages/cli/src/cli.ts');
+      execFile(process.execPath, ['scripts/station-cli.ts', 'plugin', 'build']);
       if (await shell.isVisible()) return;
       await page.evaluate(() => window.dispatchEvent(new MessageEvent('message')));
       page.route('**/api/projects', route => { return route.fulfill(json({success:true,data:[]})); });
@@ -84,4 +99,44 @@ test('removing a disabled guard in browser evaluation is an interaction bypass',
       'tests/settings.spec.ts',
     ).map((entry) => entry.rule),
   ).toEqual(['removes-interaction-guard']);
+});
+
+test('catches assertions skipped when a browser storage observation is absent', () => {
+  expect(
+    inspect(`const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('settings')));
+    if (stored) { expect(stored).toHaveProperty('enabled'); }`).map(
+      (entry) => entry.rule,
+    ),
+  ).toEqual(['optional-storage-assertions']);
+});
+
+test('allows unconditional storage assertions and explicit absent-state expectations', () => {
+  expect(
+    inspect(`const stored = await page.evaluate(() => localStorage.getItem('settings'));
+    expect(stored).not.toBeNull();
+    if (stored) { await use(stored); }
+    if (stored) { expect(stored).toBe('value'); } else { expect(emptyState).toBeVisible(); }
+    const prose = "if (stored) expect(stored)";`),
+  ).toEqual([]);
+});
+
+test('does not confuse a shadowed local name with a storage observation', () => {
+  expect(
+    inspect(`const stored = localStorage.getItem('x');
+    function verify(stored) { if (stored) { expect(stored).toBe(true); } }
+    function another() { const stored = options.enabled; if (stored) { expect(stored).toBe(true); } }`),
+  ).toEqual([]);
+});
+
+test('rejects deleting the setup reminder to bypass an obstructed user action', () => {
+  expect(
+    inspect(
+      `await page.evaluate(() => document.querySelector('[data-testid="setup-launcher"]')?.remove());`,
+    ).map((entry) => entry.rule),
+  ).toEqual(['removes-setup-launcher']);
+  expect(
+    inspect(
+      `await page.evaluate(() => document.querySelector('#temporary-measurement')?.remove());`,
+    ),
+  ).toEqual([]);
 });

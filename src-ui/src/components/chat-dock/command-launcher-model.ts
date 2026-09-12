@@ -1,4 +1,4 @@
-export interface CommandLauncherSuggestion {
+interface CommandLauncherSuggestion {
   id: string;
   label: string;
   intent: string;
@@ -30,7 +30,7 @@ export interface CommandLauncherContext {
   attachments: string[];
 }
 
-export interface CommandLauncherPreview {
+interface CommandLauncherPreview {
   intent: string;
   project: string;
   agent: string;
@@ -67,7 +67,7 @@ export function buildCommandLauncherPreview(
   };
 }
 
-export interface CommandLauncherSendBoundary<TAttachment> {
+interface CommandLauncherSendBoundary<TAttachment> {
   handleInputChange: (intent: string) => void;
   handleSend: (
     intent: string,

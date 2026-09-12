@@ -33,7 +33,7 @@ export interface SetupBannerContent {
  * the producer simply stopped producing it. If the picker returns, add the
  * variant back together with the branch that emits it, not ahead of it.
  */
-export type SetupBannerVariant =
+type SetupBannerVariant =
   | 'hidden'
   | 'engine-needs-attention'
   | 'detected-provider'

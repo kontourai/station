@@ -9,6 +9,9 @@ const useChatBackgroundTasks = vi.fn();
 const interruptTask = vi.fn();
 const useOrchestrationSessionQuery = vi.fn();
 const useInterruptDelegatedTaskMutation = vi.fn();
+// station#1877: the provider card's own task-scoped stop.
+const useStopProviderTaskMutation = vi.fn();
+const stopProviderTask = vi.fn();
 vi.mock('../hooks/useBackgroundTasks', () => ({
   useChatBackgroundTasks: (...args: unknown[]) =>
     useChatBackgroundTasks(...args),
@@ -18,6 +21,8 @@ vi.mock('@kontourai/station-sdk', () => ({
     useOrchestrationSessionQuery(...args),
   useInterruptDelegatedTaskMutation: (...args: unknown[]) =>
     useInterruptDelegatedTaskMutation(...args),
+  useStopProviderTaskMutation: (...args: unknown[]) =>
+    useStopProviderTaskMutation(...args),
 }));
 
 import { BackgroundTasksSheet } from '../components/chat-dock/BackgroundTasksSheet';
@@ -86,6 +91,14 @@ describe('BackgroundTasksSheet', () => {
     useInterruptDelegatedTaskMutation.mockReset();
     useInterruptDelegatedTaskMutation.mockReturnValue({
       mutate: interruptTask,
+      isPending: false,
+      isSuccess: false,
+      isError: false,
+    });
+    stopProviderTask.mockReset();
+    useStopProviderTaskMutation.mockReset();
+    useStopProviderTaskMutation.mockReturnValue({
+      mutate: stopProviderTask,
       isPending: false,
       isSuccess: false,
       isError: false,

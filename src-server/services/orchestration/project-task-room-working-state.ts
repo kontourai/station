@@ -125,11 +125,11 @@ export interface RevisionPublication {
   readonly createdAt: string;
 }
 
-export type RevisionPublicationRead =
+type RevisionPublicationRead =
   | { readonly kind: 'available'; readonly publication: RevisionPublication }
   | { readonly kind: 'missing' | 'unavailable' };
 
-export interface ProjectTaskRoomWorkingStateTestOptions {
+interface ProjectTaskRoomWorkingStateTestOptions {
   /** Test-only worker source for terminal/timeout ownership proofs. */
   workerSourceUrl?: URL;
   /** Test-only bound; production uses the room worker response budget. */

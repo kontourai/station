@@ -39,7 +39,7 @@ type ConnectionSmokeStore = Pick<
 >;
 type ConnectionSmokeStoreFactory = (filePath: string) => ConnectionSmokeStore;
 
-export interface FileConnectionSmokeEvidenceStoreOptions {
+interface FileConnectionSmokeEvidenceStoreOptions {
   /** Injectable only for deterministic cross-process mutation tests. */
   acquireMutationLock?: FileMutationLock;
   /** Injectable only for durable-write fault-injection tests. */

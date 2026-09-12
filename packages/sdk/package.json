@@ -45,7 +45,8 @@
     "./spatial-board": "./src/spatial-board.ts",
     "./testing": "./src/voice/testing.ts",
     "./voice": "./src/voice/session.ts",
-    "./pull-request-review": "./src/client/pull-request-review.ts"
+    "./pull-request-review": "./src/client/pull-request-review.ts",
+    "./input-reply": "./src/client/input-reply.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",
@@ -83,7 +84,7 @@
     "@kontourai/flow-agents": "6.2.0",
     "@kontourai/station-contracts": "^0.7.0",
     "@kontourai/station-shared": "^0.7.0",
-    "@kontourai/surface": "^3.0.0",
+    "@kontourai/surface": "^3.2.0",
     "@kontourai/thread": "0.5.0",
     "@kontourai/ui": "^1.12.0"
   },

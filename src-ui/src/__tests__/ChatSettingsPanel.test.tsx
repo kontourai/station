@@ -77,6 +77,35 @@ describe('ChatSettingsPanel accessibility', () => {
     expect(screen.queryByRole('menuitemradio')).toBeNull();
   });
 
+  test('offers event replay only when developer tools are on and a handler exists', () => {
+    deviceSettingsStore.set('developerToolsEnabled', false);
+    const onReplayConversation = vi.fn();
+    const hidden = render(
+      <ChatSettingsPanel
+        {...props()}
+        onReplayConversation={onReplayConversation}
+      />,
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Step through this conversation' }),
+    ).toBeNull();
+    hidden.unmount();
+
+    deviceSettingsStore.set('developerToolsEnabled', true);
+    const shown = render(
+      <ChatSettingsPanel
+        {...props()}
+        onReplayConversation={onReplayConversation}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Step through this conversation' }),
+    );
+    expect(onReplayConversation).toHaveBeenCalledOnce();
+    shown.unmount();
+    deviceSettingsStore.reset('developerToolsEnabled');
+  });
+
   test('dismisses from the non-tabbable overlay without exposing a backdrop button', () => {
     const panelProps = props();
     render(<ChatSettingsPanel {...panelProps} />);

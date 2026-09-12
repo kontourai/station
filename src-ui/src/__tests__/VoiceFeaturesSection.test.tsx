@@ -76,7 +76,7 @@ function renderRows() {
   render(
     <>
       <VoiceFeaturesSection />
-      <NotificationsSection apiBase="http://host" guard={(cb) => cb()} />
+      <NotificationsSection apiBase="http://host" />
     </>,
   );
 }

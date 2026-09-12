@@ -38,7 +38,7 @@ export function dispatchableChatAttachments(
   return resolved;
 }
 
-export interface DecodedChatAttachment {
+interface DecodedChatAttachment {
   attachment: ChatAttachmentInput;
   base64: string;
 }

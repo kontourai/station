@@ -30,9 +30,12 @@
  *    naming a target that never ran, or into a red gate. Both are asserted
  *    below against `packages/cli/src/cli.ts`, the path where it happened.
  *
- * WHAT THIS GATE DOES NOT COVER. The scan is a partial derivation: 144 test
- * files read by path with a module anchor and it reports 80. Both figures are
- * derived and asserted below, so the fraction cannot go stale in prose. A pin
+ * WHAT THIS GATE DOES NOT COVER. The scan is a partial derivation: many test
+ * files read by path with a module anchor and it reports only the subset it
+ * can resolve. The remainder is pinned by name below in
+ * `UNREPORTED_PATH_READING_SUITES`, so the gap is a reviewable list whose
+ * failure names the suite that moved, rather than a count whose failure only
+ * said "re-measure". A pin
  * reached through a helper parameter (`const read = (p) =>
  * readFileSync(join(UI_SRC, p))`, at least 14 files, hiding
  * `ChatDockHeader.tsx`, `DockShell.tsx` and `ProjectLayoutRenderer.tsx`) or
@@ -77,22 +80,111 @@ const pins = invertPathReadPins(entries);
 const derived = pathReadPinEdges({ root: ROOT });
 
 /**
- * The disclosure fraction, re-measure and update BOTH docblocks when this
- * reds. `PATH_READING_SUITES` counts suites the scanner could in principle
- * resolve a pin in; `REPORTED_SUITES` counts the ones it does.
+ * The coverage gap, pinned BY IDENTITY rather than as a count.
+ *
+ * This used to be two numbers (`PATH_READING_SUITES` / `REPORTED_SUITES`).
+ * A count drifts from any pull request that adds or removes a path read
+ * ANYWHERE in the tree, and its failure only ever said "re-measure" — so
+ * #1836 moved two pins among 357 files, this went 144 -> 143, and the number
+ * carried no hint of which suite had moved. Naming the suites instead makes
+ * the failure a diff: a new entry is a suite whose path read the scanner
+ * cannot resolve, a disappearing entry is one that gained a real import (the
+ * good outcome #1836 actually produced). That is the pattern
+ * `orchestration-source-invariants.test.ts` adopted for the same reason,
+ * after a `files.length > 300` floor against an actual 960 masked a dropped
+ * subtree.
+ *
+ * Every entry here is a suite that reads a file by path in a way the scanner
+ * misses — mostly cwd-relative reads and computed paths, both missed by
+ * construction. Shrinking this list is the goal; growing it is a decision.
  */
-const PATH_READING_SUITES = 144;
-const REPORTED_SUITES = 80;
+const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  'packages/cli/src/__tests__/dev-security.test.ts',
+  'packages/contracts/src/__tests__/answer-share-channel-corpus.test.ts',
+  'packages/contracts/src/__tests__/flow-agents-vocabulary-drift.test.ts',
+  'packages/sdk/src/__tests__/client-entry-portability.test.ts',
+  'packages/sdk/src/__tests__/keyedQueryDefaults.test.ts',
+  'packages/shared/src/__tests__/plugin-build.test.ts',
+  'packages/shared/src/__tests__/plugin-dependency-install.test.ts',
+  'packages/shared/src/__tests__/turn-provenance-ref-slot-producers.test.ts',
+  'scripts/__tests__/android-network-policy.test.ts',
+  'scripts/__tests__/basis-mcp-apps.test.ts',
+  'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
+  'scripts/__tests__/changed-verification.test.ts',
+  'scripts/__tests__/guardrail-known-bad-fixtures.test.ts',
+  'scripts/__tests__/guardrail-process-boundary.test.ts',
+  // This file. It reads suites through a computed `join(ROOT, file)`, which
+  // the scanner refuses by design; it previously also made an anchored
+  // self-read, which is what used to keep it reported. Being listed here is
+  // correct and safe: #1913 puts this suite on the unconditional prepush
+  // floor, so it no longer depends on a pin to be scheduled.
+  'scripts/__tests__/path-read-pin-boundary.test.ts',
+  'scripts/__tests__/publish-oidc-exchange-status.test.ts',
+  'scripts/__tests__/publish-surface.test.ts',
+  'scripts/__tests__/release-sbom-generation.test.ts',
+  'scripts/__tests__/repo-guardrail-source.test.ts',
+  'scripts/__tests__/screenshot-diff.test.ts',
+  'scripts/__tests__/tauri-webdriver-boundary.test.ts',
+  'scripts/__tests__/trust-bundle-claim-prose.test.ts',
+  'scripts/__tests__/verification-lanes.test.ts',
+  'scripts/__tests__/verification-reporter.test.ts',
+  'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',
+  'src-server/providers/__tests__/agent-tool-server-mapping.test.ts',
+  'src-server/providers/__tests__/claude-adapter.test.ts',
+  'src-server/routes/__tests__/smart-routing-plugin.test.ts',
+  'src-server/routes/__tests__/sse-response-tripwire.test.ts',
+  'src-server/routes/chat/__tests__/chat-turn-dedup.test.ts',
+  'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
+  'src-server/security/__tests__/svg-response-tripwire.test.ts',
+  'src-server/services/__tests__/flow-agents-skills.test.ts',
+  'src-server/services/evidence/__tests__/console-bridge-service.test.ts',
+  'src-server/services/orchestration/__tests__/event-store.test.ts',
+  'src-server/services/orchestration/__tests__/orchestration-source-invariants.test.ts',
+  'src-server/services/plugins/__tests__/plugin-installation-restart.test.ts',
+  'src-server/services/plugins/__tests__/plugin-installation.integration.test.ts',
+  'src-server/services/projects/__tests__/task-graph-service.dispatch-claim.test.ts',
+  'src-server/services/scheduling/__tests__/scheduler-ledger-corruption.test.ts',
+  'src-server/services/scheduling/__tests__/scheduler-ledger.test.ts',
+  'src-server/services/search/__tests__/isolated-task-search.test.ts',
+  'src-server/tools/__tests__/station-docs-mcp-server.test.ts',
+  'src-ui/src/__tests__/activity-rename-sweep.test.ts',
+  'src-ui/src/__tests__/chat-input-model-loading-surface.test.tsx',
+  'src-ui/src/__tests__/connection-host-copy.test.ts',
+  'src-ui/src/__tests__/copy-affordance-cascade.test.ts',
+  'src-ui/src/__tests__/dev-build-identity.test.ts',
+  'src-ui/src/__tests__/keepPreviousDataConsumers.test.ts',
+  'src-ui/src/__tests__/mobile-chrome-safety.test.ts',
+  'src-ui/src/__tests__/outbound-queue-css-boundary.test.ts',
+  'src-ui/src/__tests__/package-css-fork.test.ts',
+  'src-ui/src/__tests__/responsive-dialog-header.test.tsx',
+  'src-ui/src/__tests__/session-history-error-css.test.ts',
+  'src-ui/src/__tests__/sessionStatusWordCallers.test.ts',
+  'src-ui/src/__tests__/shell-chrome-notice-primitive.test.ts',
+  'src-ui/src/__tests__/toolbar-safe-area-geometry.test.ts',
+  'src-ui/src/app-shell/__tests__/RoutePendingSkeleton.test.tsx',
+  'src-ui/src/components/__tests__/PageCallout.test.tsx',
+  'src-ui/src/components/first-run/__tests__/tour-steps.test.ts',
+  'src-ui/src/views/connections-hub/__tests__/peer-credential-command-parity.test.ts',
+  'src-ui/src/views/project-settings/__tests__/ResourcesSection.test.tsx',
+  'tests/basis-mcp-interop.spec.ts',
+  'tests/builder-delivery-viewer.spec.ts',
+  'tests/session-inventory-mcp-interop.spec.ts',
+  'tests/survey-review-workbench.spec.ts',
+]);
 
-/** The two Playwright pins: seen and existence-checked, never scheduled. */
+/**
+ * The one remaining Playwright pin: seen and existence-checked, never
+ * scheduled. If `station-cli.ts` moves, the boundary gate reds at
+ * fast-checks instead of the spec breaking at e2e time. The second pin this
+ * list used to carry (`mobile-surface-sweep.spec.ts` reading
+ * `destination-registry.ts`) is gone for the better reason: #1836 replaced
+ * the path read with a real import, which an import-graph selection and the
+ * module resolver now guard — a text-pin existence check would be noise.
+ */
 const E2E_PINS = Object.freeze([
   {
-    pin: 'packages/cli/src/cli.ts',
+    pin: 'scripts/station-cli.ts',
     spec: 'tests/plugin-dev-hot-reload.spec.ts',
-  },
-  {
-    pin: 'src-ui/src/app-shell/destination-registry.ts',
-    spec: 'tests/mobile-surface-sweep.spec.ts',
   },
 ]);
 
@@ -130,35 +222,31 @@ describe('path-read pins are discovered', () => {
     );
   });
 
-  it('states the coverage fraction it actually has', () => {
-    // A count-ratchet reason string goes stale silently; this one cannot.
-    // Both docblocks quote these figures and both are checked against the
-    // live derivation.
+  it('names every suite whose path read the scanner cannot resolve', () => {
     const reading = listSuiteFiles(ROOT).filter((file) =>
       readsFileByPath(readFileSync(join(ROOT, file), 'utf8')),
     );
+    const reported = new Set(entries.map(({ test }) => test));
+    const unreported = reading
+      .filter((file) => !reported.has(file))
+      .sort((left, right) => left.localeCompare(right));
+
+    // A diff of names, not a moved number. Vitest prints the added and
+    // removed entries, so the failure says WHICH suite changed and in which
+    // direction — an added name is a new blind spot, a removed one is a path
+    // read that became a real import and is now guarded by the module graph.
     expect(
-      reading.length,
-      'suites that read by path moved: re-measure and update the WHAT THIS ' +
-        'DOES NOT SEE paragraph in path-read-pin-scan.mjs and this file',
-    ).toBe(PATH_READING_SUITES);
-    expect(
-      entries.length,
-      'reported pinning suites moved: same paragraphs',
-    ).toBe(REPORTED_SUITES);
-    const disclosure = readFileSync(
-      join(ROOT, 'scripts/lib/path-read-pin-scan.mjs'),
-      'utf8',
-    );
-    expect(disclosure).toContain(
-      `${PATH_READING_SUITES} test files read by path`,
-    );
-    expect(disclosure).toContain(`this reports ${REPORTED_SUITES}`);
-    const self = readFileSync(fileURLToPath(import.meta.url), 'utf8');
-    expect(self).toContain(
-      `${PATH_READING_SUITES} test\n * files read by path`,
-    );
-    expect(self).toContain(`it reports ${REPORTED_SUITES}`);
+      unreported,
+      'the set of path-reading suites the scanner cannot resolve changed. ' +
+        'An ADDED entry is a new blind spot: prefer converting the read to ' +
+        'an import, or anchor it (new URL(..., import.meta.url)) so the ' +
+        'scanner can pin it. A REMOVED entry is the good case — drop it ' +
+        'from UNREPORTED_PATH_READING_SUITES.',
+    ).toEqual([...UNREPORTED_PATH_READING_SUITES]);
+
+    // The scanner still has to be doing real work: an empty reported set
+    // would satisfy the pin above by reporting nothing at all.
+    expect(entries.length).toBeGreaterThan(unreported.length / 2);
   });
 
   it('finds a pin the read call site alone cannot resolve', () => {
@@ -299,9 +387,8 @@ describe('a scheduled pin has to be runnable', () => {
 
   it('still existence-checks the pins only a Playwright spec makes', () => {
     // Not scheduling them is the trade; not SEEING them would give up the
-    // property #1807 exists for. If `cli.ts` or `destination-registry.ts`
-    // moves, the boundary gate reds at fast-checks instead of the spec
-    // breaking at e2e time.
+    // property #1807 exists for. If `station-cli.ts` moves, the boundary
+    // gate reds at fast-checks instead of the spec breaking at e2e time.
     for (const { pin, spec } of E2E_PINS) {
       const found = pins.find((entry: { pin: string }) => entry.pin === pin);
       expect(found?.tests, pin).toContain(spec);

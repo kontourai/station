@@ -106,7 +106,7 @@ type ExistingSession = {
  * Private composition root. Each capability owns a coherent concern; no
  * public caller can use these operations to bypass the closed command intent.
  */
-export interface SessionCommandDependencies {
+interface SessionCommandDependencies {
   receiptLedger: {
     initialize(): void;
     recordDispatch(input: OrchestrationStartSessionInput): void;
@@ -152,7 +152,7 @@ export interface SessionCommandDependencies {
       input: OrchestrationStartSessionInput,
       context: SessionCommandContext,
       internal: SessionCommandInternalOptions | undefined,
-    ): void;
+    ): void | Promise<void>;
     validateReattach(
       input: OrchestrationStartSessionInput,
       existing: Required<ExistingSession>,
@@ -360,27 +360,34 @@ export function createSessionCommandModule(
         return fail(error);
       }
 
-      const boundTenant = deps.sessionState.boundTenant(input.threadId);
-      if (
-        boundTenant &&
-        context.tenantExecutionContext &&
-        boundTenant.tenantId !== context.tenantExecutionContext.tenantId
-      ) {
-        deps.sessionState.recordTenantMismatch();
-        return fail(
-          `Tenant execution context does not match session: ${input.threadId}`,
-          true,
-        );
-      }
-      if (deps.sessionState.isQuarantined(input.threadId)) {
-        return fail(`Session is unavailable: ${input.threadId}`, true);
-      }
-      if (deps.sessionState.isReadOnlyAttached(input.threadId)) {
-        deps.sessionState.recordAttachedMutationRejection();
-        return fail(deps.attachedSessionReadOnlyMessage, true);
-      }
+      const checkSessionAccess = (): SessionCommandOutcome | undefined => {
+        const boundTenant = deps.sessionState.boundTenant(input.threadId);
+        if (
+          boundTenant &&
+          context.tenantExecutionContext &&
+          boundTenant.tenantId !== context.tenantExecutionContext.tenantId
+        ) {
+          deps.sessionState.recordTenantMismatch();
+          return fail(
+            `Tenant execution context does not match session: ${input.threadId}`,
+            true,
+          );
+        }
+        if (deps.sessionState.isQuarantined(input.threadId)) {
+          return fail(`Session is unavailable: ${input.threadId}`, true);
+        }
+        if (deps.sessionState.isReadOnlyAttached(input.threadId)) {
+          deps.sessionState.recordAttachedMutationRejection();
+          return fail(deps.attachedSessionReadOnlyMessage, true);
+        }
+      };
+      const beforeAdmission = checkSessionAccess();
+      if (beforeAdmission) return beforeAdmission;
+      await deps.launchPolicy.assertStartAllowed(input, context, internal);
+      // Admission may yield for a room write lock; access must still hold.
+      const afterAdmission = checkSessionAccess();
+      if (afterAdmission) return afterAdmission;
 
-      deps.launchPolicy.assertStartAllowed(input, context, internal);
       if (!deps.sessionState.claimStart(input.threadId)) {
         throw new Error(
           `Session is already starting for thread: ${input.threadId}`,

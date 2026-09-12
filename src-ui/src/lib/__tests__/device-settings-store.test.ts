@@ -48,10 +48,17 @@ describe('device-settings-store', () => {
       expect(localStorage.getItem('station-accent-color')).toBeNull();
     });
 
-    test('featureSettings', async () => {
+    test('migrates featureSettings while retiring removed switches', async () => {
       localStorage.setItem(
         'station-feature-settings',
-        JSON.stringify({ ttsReadbackEnabled: true, voiceS2SEnabled: true }),
+        JSON.stringify({
+          ttsReadbackEnabled: true,
+          voiceS2SEnabled: true,
+          voiceModeEnabled: true,
+          meetingTranscriptionEnabled: true,
+          locationContextEnabled: true,
+          offlineQueueEnabled: true,
+        }),
       );
       const { deviceSettingsStore } = await freshStore();
 
@@ -63,6 +70,19 @@ describe('device-settings-store', () => {
         notificationSounds: DEFAULT_NOTIFICATION_SOUND_PREFERENCES,
       });
       expect(localStorage.getItem('station-feature-settings')).toBeNull();
+      const raw = localStorage.getItem(ENVELOPE_KEY);
+      expect(raw).not.toBeNull();
+      const persisted = JSON.parse(raw!).values.featureSettings;
+      expect(persisted).toEqual(deviceSettingsStore.get('featureSettings'));
+      expect(persisted).toHaveProperty('pushNotificationsEnabled', false);
+      for (const retired of [
+        'voiceModeEnabled',
+        'meetingTranscriptionEnabled',
+        'locationContextEnabled',
+        'offlineQueueEnabled',
+      ]) {
+        expect(persisted).not.toHaveProperty(retired);
+      }
     });
 
     test('sttProvider', async () => {

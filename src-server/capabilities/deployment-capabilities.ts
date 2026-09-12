@@ -10,7 +10,7 @@ export type DeploymentCapabilityId = (typeof DEPLOYMENT_CAPABILITY_IDS)[number];
 
 export type DeploymentCapabilityState = 'supported' | 'unsupported' | 'unknown';
 
-export interface DeploymentCapability {
+interface DeploymentCapability {
   state: DeploymentCapabilityState;
 }
 

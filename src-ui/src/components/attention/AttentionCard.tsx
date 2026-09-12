@@ -49,6 +49,11 @@ import {
   DISMISS_NOTIFICATION_ACTION,
 } from './notificationRowActions';
 
+const loadNeedsInputReply = () =>
+  import('./NeedsInputReply').then((module) => ({
+    default: module.NeedsInputReply,
+  }));
+
 export function AttentionCard({
   item,
   focused = false,
@@ -402,6 +407,35 @@ function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
 }
 
 function NeedsInputAction({ item }: { item: NeedsInputAttentionItem }) {
+  return item.requestType === 'input' && item.inputReference ? (
+    <ScopedInputReply item={{ ...item, inputReference: item.inputReference }} />
+  ) : (
+    <LegacyNeedsInputAction item={item} />
+  );
+}
+function ScopedInputReply({
+  item,
+}: {
+  item: NeedsInputAttentionItem & { inputReference: AttentionRequestReference };
+}) {
+  const scope = useHostRequestAuthorityScope();
+  return (
+    <>
+      {scope?.isCurrent() ? (
+        <LazyBoundary
+          key={`${scope.apiBase}:${scope.authorityKey}:${item.source.threadId}`}
+          load={loadNeedsInputReply}
+          componentProps={{ item, scope }}
+          pending={<SkeletonList count={1} label="Loading answer controls" />}
+        />
+      ) : (
+        <p role="status">Connect to this Station to answer.</p>
+      )}
+      <OpenSessionLink href={item.openHref} />
+    </>
+  );
+}
+function LegacyNeedsInputAction({ item }: { item: NeedsInputAttentionItem }) {
   const [answer, setAnswer] = useState('');
   const queryClient = useQueryClient();
   const mutation = useMutation({

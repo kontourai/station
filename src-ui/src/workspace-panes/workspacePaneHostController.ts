@@ -71,7 +71,7 @@ import {
   WorkspacePaneOperationalEventTracker,
 } from './workspacePaneOperationalEvents';
 
-export interface WorkspacePaneHostControllerOptions {
+interface WorkspacePaneHostControllerOptions {
   document: WorkspacePaneHostDocumentV1;
   compact: boolean;
   runtime?: WorkspacePaneHostRuntime;

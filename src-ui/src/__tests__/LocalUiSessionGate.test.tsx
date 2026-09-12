@@ -55,7 +55,7 @@ describe('LocalUiSessionGate (station#2093)', () => {
     renderGate(<ProtectedDataProbe onMount={protectedMount} />);
 
     await screen.findByRole('heading', {
-      name: 'Connect to Station',
+      name: 'Connect to a Station',
     });
     expect(
       screen.getByRole('button', { name: 'Pair with a code' }),

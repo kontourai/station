@@ -180,7 +180,7 @@ export interface ProjectResourceShadowRecord {
   entries: ShadowRecordEntry[];
 }
 
-export type ShadowRecordRead =
+type ShadowRecordRead =
   /** No file. The observer has never recorded a comparison in this home. */
   | { state: 'never-observed'; path: string }
   /**
@@ -520,7 +520,7 @@ export function recordShadowComparison(
  * would let one blind spot hide behind another (protocol §6, "prefer an
  * exact set to a floor").
  */
-export interface ShadowPopulation {
+interface ShadowPopulation {
   id: string;
   /** What real-world shape produces it, for the reader's own output. */
   description: string;

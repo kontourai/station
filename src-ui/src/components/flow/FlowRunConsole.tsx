@@ -630,7 +630,7 @@ function RunDetailBody({
   );
 }
 
-export interface FlowRunConsoleProps {
+interface FlowRunConsoleProps {
   /**
    * Overrides `navigation.selectedProject` — the deterministic
    * `/projects/:slug/flow-console` route (archive#612) passes this

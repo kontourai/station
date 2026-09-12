@@ -42,7 +42,7 @@ export const STATION_RESERVED_PLUGIN_IDENTITIES = Object.freeze([
   'reload',
 ]);
 
-export function isReservedPluginIdentity(pluginName: string): boolean {
+function isReservedPluginIdentity(pluginName: string): boolean {
   return STATION_RESERVED_PLUGIN_IDENTITIES.includes(pluginName);
 }
 

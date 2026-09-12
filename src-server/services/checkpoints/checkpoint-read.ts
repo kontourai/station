@@ -43,11 +43,11 @@ interface CheckpointReadBounds {
  * past, not claims about present git state — they are served verbatim
  * with no annotation.
  */
-export type ServedTurnPhaseCheckpoint = TurnPhaseCheckpoint & {
+type ServedTurnPhaseCheckpoint = TurnPhaseCheckpoint & {
   objectStatus?: 'ok' | 'missing' | 'object_pruned';
 };
 
-export type ServedTurnCheckpointRecord = Omit<
+type ServedTurnCheckpointRecord = Omit<
   TurnCheckpointRecord,
   'baseline' | 'settle'
 > & {

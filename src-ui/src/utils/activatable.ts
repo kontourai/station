@@ -31,7 +31,7 @@
 
 import type { FocusEvent, KeyboardEvent, MouseEvent } from 'react';
 
-export interface ActivatableOptions {
+interface ActivatableOptions {
   /**
    * Announced role. `'button'` (default) performs an action in place;
    * `'link'` navigates. Screen reader users act on this distinction — it
@@ -77,7 +77,7 @@ export type ActivateEvent = MouseEvent<Element> | KeyboardEvent<Element>;
  * Several call sites here are conditionally inert (a breadcrumb segment with
  * no route behind it), so this case is real, not defensive.
  */
-export type InertProps = Record<string, never>;
+type InertProps = Record<string, never>;
 
 /**
  * Which elements have a LIVE, unprevented Space press on them — press

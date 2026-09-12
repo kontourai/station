@@ -65,7 +65,7 @@ export function collectOpenRequests(
  * briefly answer `unanswerable` for a session about to be re-attached, and
  * hiding a live approval is the harm the attachment check exists to prevent.
  */
-export type SessionThreadAttachment = 'attached' | 'detached' | 'unknown';
+type SessionThreadAttachment = 'attached' | 'detached' | 'unknown';
 
 /**
  * Everything about the SERVING PROCESS that the answerability decoration

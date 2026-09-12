@@ -437,10 +437,6 @@ export function SkillsView({
     });
   }
 
-  function navigateWithGuard(path: string) {
-    guard(() => navigate(path));
-  }
-
   // The SERVER's writability decision, projected onto the listing and read
   // here — never re-derived (#1655). This read `selected.source === 'local'`,
   // which is the install record's statement about where a package CAME FROM
@@ -525,7 +521,7 @@ export function SkillsView({
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => navigateWithGuard('/registry/skills')}
+            onClick={() => navigate('/registry/skills')}
           >
             Browse Registry Skills
           </Button>

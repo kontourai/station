@@ -54,7 +54,7 @@ export interface ChatErrorTranslation {
   disclosureRaw?: boolean;
 }
 
-export interface ChatErrorInput {
+interface ChatErrorInput {
   /** HTTP status code, when known (pre-stream fetch failures, 401s). */
   status?: number;
   /**

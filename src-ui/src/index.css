@@ -1729,18 +1729,10 @@ button:hover {
    `.dock-placement-menu__item.dock-placement-menu__item` rule that carried it
    for one member of this family is where the shared rule now sits. */
 
-/* Opens UPWARD. The handle lives in the dock's header, and a bottom dock sits
-   at the very bottom of the viewport — so `top: 100%` put the menu below the
-   fold: measured at y=895 with a height of 102 in a 900px viewport, five
-   pixels of it on screen. Playwright still called it visible, because a
-   non-empty box with visible CSS is visible by that definition even when it
-   is off the bottom of the window, which is why an E2E assertion passed on a
-   menu nobody could reach. The dock is the lowest chrome there is; there is
-   nothing below it to open into.
- *
- * Visual spec (radius, padding, row height, inset, group treatment) comes from
- * `.menu-surface` above; what is left here is where this one opens.
- */
+/* Fallback before DockPlacementControl measures the available space. The
+   control chooses above/below and bounds height before paint; side and
+   maximized headers cannot use the bottom dock's upward-only assumption.
+   Visual treatment remains owned by the shared menu surface. */
 .dock-placement-menu {
   position: absolute;
   z-index: var(--layer-popover);
@@ -4529,6 +4521,13 @@ button.tool-call__line:hover {
   font-style: italic;
 }
 
+.tool-call-batch__progress {
+  margin: 0 0 2px 19px;
+  color: var(--text-muted);
+  font-size: 0.78em;
+  font-style: italic;
+}
+
 /* Outcome flags on the collapsed row. --bg-tertiary rather than a
    --color-bg-tertiary alias: the alias was never defined and painted nothing
    (station#1246). */
@@ -4750,6 +4749,12 @@ button.tool-call__line:hover {
   /* station#1569 (item 3): not an error colour — nothing failed. It is the
      same "we do not know" the row's own badge carries, so it reads as a
      qualifier on the summary rather than a verdict. */
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.tool-call-batch__awaiting {
+  flex-shrink: 0;
   color: var(--text-secondary);
   font-weight: 600;
 }
@@ -8005,6 +8010,29 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   border-radius: 9px;
   color: var(--text-secondary);
   font-size: var(--text-sm);
+}
+
+/*
+ * The blocking prerequisite's own name, and the server's ordered remedy for
+ * it. Both were on the wire and neither was rendered here -- the notice used
+ * to print bare prerequisite names, which read as broken links rather than as
+ * the subject of the sentence above them.
+ */
+.provider-detail__notice-subject {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.provider-detail__notice-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.provider-detail__notice-steps code {
+  overflow-wrap: anywhere;
 }
 
 .provider-detail__disclosure {

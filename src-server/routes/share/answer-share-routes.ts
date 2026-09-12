@@ -154,7 +154,7 @@ export function createAnswerShareRoutes(
 /** Maximum bytes of a share-view request body. A token and nothing else. */
 export const ANSWER_SHARE_VIEW_MAX_BODY_BYTES = 512;
 
-export type AnswerShareViewResponse =
+type AnswerShareViewResponse =
   | { kind: 'rate-limited' }
   | {
       kind: 'result';
@@ -207,7 +207,7 @@ export type AnswerShareViewResponse =
  *    reservation refunded, so legitimate holders never consume the budget an
  *    attacker is spending, and exhausting it can never lock them out.
  */
-export interface AnswerShareViewBudget {
+interface AnswerShareViewBudget {
   /** Charged for a request whose token resolves to a stored share. */
   consumeForToken: (tokenKey: string) => boolean;
   /**

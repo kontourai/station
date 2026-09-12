@@ -1738,6 +1738,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // caller's own Session. Their GET leaves inherit read; narrative and
     // assessment replacement/removal are owner mutations and inherit operate.
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/outputs' },
+    // The input-reply context read (#1855) resolves ONE pending input
+    // request inside the caller's own thread: it requires the request
+    // principal to be current (checked before AND after the service call)
+    // and passes the caller's read authority into the service, so it
+    // discloses no thread the family's session reads do not already expose
+    // and crosses no Environment/Station boundary. Read tier is intended.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/input-requests/:requestId',
+    },
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/turns/:turnId/narrative/target',
@@ -2146,6 +2156,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/orchestration/sessions/:threadId/event-window',
     },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/events' },
+    // station#1877: stops ONE provider-reported subagent inside a session the
+    // caller already reaches through this family. It mutates, but no more
+    // sensitively than `delegations/:taskId/interrupt` directly above, which
+    // is the same shape — a task-scoped stop — and inherits here too. It
+    // returns only `{outcome, taskId}` for a task on THIS Station: no other
+    // environment's data, no other Station's, and nothing about a task the
+    // caller could not already observe through this family's session reads.
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
+    },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/flow-run' },
     // archive#2802: a thread's recorded turn-checkpoint outcomes. Deliberate
     // family inheritance, considered: the records do carry the bound

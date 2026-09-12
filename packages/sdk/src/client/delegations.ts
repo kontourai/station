@@ -540,6 +540,31 @@ export type DelegatedTaskInterruptResult = DelegatedTaskSnapshot & {
  * turn while keeping the task resumable. The server-side handler validates
  * an empty JSON object body, so this always sends `{}` at minimum.
  */
+/**
+ * station#1877: stop ONE provider-reported subagent without ending the turn.
+ * Task-scoped by construction — a caller must not substitute a turn interrupt
+ * when this is unavailable, since that stops every sibling subagent too.
+ */
+export type ProviderTaskStopResult =
+  | { outcome: 'stopped'; taskId: string }
+  | { outcome: 'no-active-task'; taskId: string }
+  | { outcome: 'unsupported' };
+
+export async function stopProviderTask(
+  apiBase: string,
+  threadId: string,
+  taskId: string,
+  opts?: ClientRequestOptions,
+): Promise<ProviderTaskStopResult> {
+  const response = await mutateJson(
+    `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/provider-tasks/${encodeURIComponent(taskId)}/stop`,
+    'POST',
+    opts,
+    {},
+  );
+  return unwrapDelegationResponse<ProviderTaskStopResult>(response);
+}
+
 export async function interruptDelegatedTask(
   apiBase: string,
   taskId: string,

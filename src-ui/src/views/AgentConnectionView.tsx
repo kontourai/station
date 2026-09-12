@@ -31,8 +31,9 @@ import {
   useTestAgentConnectionMutation,
   useUpsertCredentialProfileMutation,
 } from '@kontourai/station-sdk';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Checkbox } from '../components/Checkbox';
+import { ConnectionReadinessNotice } from '../components/connections/ConnectionReadinessNotice';
 import { DetailHeader } from '../components/DetailHeader';
 import { BrandIcon } from '../components/icons/BrandIcon';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
@@ -48,6 +49,8 @@ import {
   type ACPConnectionRegistryEntry,
   useACPConnectionRegistry,
 } from '../hooks/useACPConnections';
+import { useDevicePresentation } from '../hooks/useDevicePresentation';
+import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import type { NavigationView } from '../types';
 import {
   capabilityLabel,
@@ -59,7 +62,10 @@ import {
   runtimeCatalogSourceSentence,
 } from '../utils/execution';
 import { CredentialProfileEnrolment } from './CredentialProfileEnrolment';
-import { resolveProviderPresentation } from './provider-settings/providerCatalog';
+import {
+  blockingPrerequisite,
+  resolveProviderPresentation,
+} from './provider-settings/providerCatalog';
 import './PluginManagementView.css';
 import './page-layout.css';
 import './editor-layout.css';
@@ -133,7 +139,7 @@ export function AgentConnectionView({
     [acpRegistryEntries],
   );
   const onChooseCommand = (choice: ACPConnectionRegistryEntry | 'custom') =>
-    onNavigate({
+    guardedNavigate({
       type: 'connections-engine-new',
       providerId: choice === 'custom' ? 'custom' : choice.id,
     });
@@ -149,24 +155,59 @@ export function AgentConnectionView({
     },
   );
 
+  const [dirty, setDirty] = useState(false);
+  const { guard, DiscardModal } = useUnsavedGuard(dirty);
+  const seededConnectionId = useRef<string | null>(null);
+
+  function guardedNavigate(view: NavigationView) {
+    guard(() => onNavigate(view));
+  }
+
   useEffect(() => {
     if (!runtime) {
       setForm(null);
+      setDirty(false);
+      seededConnectionId.current = null;
       setError(null);
       return;
     }
+    /*
+     * A refetch used to overwrite the form unconditionally, so pressing
+     * "Re-check prerequisites" -- or any background invalidation, or the
+     * five-minute stale window elapsing -- silently discarded whatever the user
+     * had typed. The server copy wins only when the user has not edited this
+     * connection; selecting a DIFFERENT engine always re-seeds, which is what
+     * the id comparison distinguishes.
+     *
+     * Deliberately not a merge: reconciling a stale edit against a changed
+     * server record is a conflict, and quietly picking a winner per field is
+     * how you get a form that is neither.
+     */
+    // Re-seeding is keyed on which connection the form was last seeded FROM,
+    // not on the form's current contents: selecting a different engine must
+    // always re-seed even mid-edit, while a refetch of the same one must not.
+    if (seededConnectionId.current === runtime.id && dirty) {
+      setError(null);
+      return;
+    }
+    seededConnectionId.current = runtime.id;
     setForm({
       ...runtime,
       capabilities: [...runtime.capabilities],
       config: { ...runtime.config },
       prerequisites: [...runtime.prerequisites],
     });
+    setDirty(false);
     setError(null);
-  }, [runtime]);
+  }, [runtime, dirty]);
 
   const saveMutation = useSaveAgentConnectionMutation({
     onSuccess: (saved) => {
       setForm(saved);
+      // Saved edits are no longer unsaved: the next refetch must be allowed to
+      // re-seed, or the form would pin itself to a stale copy forever.
+      setDirty(false);
+      seededConnectionId.current = saved.id;
       setError(null);
       setShowAddCatalog(false);
       onNavigate({ type: 'connections-engine-edit', id: saved.id });
@@ -249,10 +290,12 @@ export function AgentConnectionView({
     key: K,
     value: ConnectionConfig[K],
   ) {
+    setDirty(true);
     setForm((current) => (current ? { ...current, [key]: value } : current));
   }
 
   function setConfigField(key: string, value: unknown) {
+    setDirty(true);
     setForm((current) =>
       current
         ? {
@@ -292,6 +335,22 @@ export function AgentConnectionView({
         href: '',
       })
     : null;
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const devicePresentation = useDevicePresentation();
+  // The SAME derivation the presentation used, not a second copy of it.
+  const blocker = form ? blockingPrerequisite(form.prerequisites) : undefined;
+  /*
+   * Each step is a fact, not a decoration. "Choose" is complete because this
+   * page only ever shows an engine that has been added. "Connect" is complete
+   * when nothing required is still unmet -- Station can launch it. "Ready" is
+   * the resolver's own verdict, the same one the Status tile and the hub cards
+   * read.
+   */
+  const engineSetupSteps = [
+    { label: 'Choose', complete: true },
+    { label: 'Connect', complete: !blocker },
+    { label: 'Ready', complete: providerPresentation?.readiness === 'Ready' },
+  ];
   const reportedModelCount = runtimeCatalog
     ? runtimeCatalog.models.length || runtimeCatalog.builtInModels.length
     : 0;
@@ -308,11 +367,13 @@ export function AgentConnectionView({
       breadcrumbLinks={
         selectedRuntimeId
           ? {
-              connections: () => onNavigate({ type: 'connections' }),
+              connections: () => guardedNavigate({ type: 'connections' }),
               engines: () =>
-                onNavigate({ type: 'connections-engines' } as NavigationView),
+                guardedNavigate({
+                  type: 'connections-engines',
+                } as NavigationView),
             }
-          : { connections: () => onNavigate({ type: 'connections' }) }
+          : { connections: () => guardedNavigate({ type: 'connections' }) }
       }
       title="Engines"
       subtitle="Connect installed engines for chats and delegated work"
@@ -322,12 +383,13 @@ export function AgentConnectionView({
       items={items}
       selectedId={isAddRoute ? null : (selectedRuntimeId ?? null)}
       onSelect={(id) => {
+        if (id === selectedRuntimeId) return;
         setShowAddCatalog(false);
-        onNavigate({ type: 'connections-engine-edit', id });
+        guardedNavigate({ type: 'connections-engine-edit', id });
       }}
       onDeselect={() => {
         setShowAddCatalog(false);
-        onNavigate({ type: 'connections-engines' } as NavigationView);
+        guardedNavigate({ type: 'connections-engines' } as NavigationView);
       }}
       onSearch={setSearch}
       searchValue={search}
@@ -376,17 +438,42 @@ export function AgentConnectionView({
             }
           />
           <div className="agent-editor__section">
+            {/*
+             * Three static spans used to sit here with the first hardcoded
+             * complete, so the rail read "Choose" forever and a fully working
+             * engine displayed exactly what a broken one did. Each step is now
+             * the fact it names. The sibling model-connection form fixed the
+             * identical markup under RT-18; this is that fix, applied to the
+             * page it was never applied to.
+             */}
             <nav
               className="provider-detail__progress"
               aria-label="Engine setup"
             >
-              <span className="provider-detail__progress-step provider-detail__progress-step--complete">
-                Choose
-              </span>
-              <span aria-hidden="true">→</span>
-              <span className="provider-detail__progress-step">Connect</span>
-              <span aria-hidden="true">→</span>
-              <span className="provider-detail__progress-step">Ready</span>
+              {engineSetupSteps.map((step, index) => (
+                <Fragment key={step.label}>
+                  {index > 0 && <span aria-hidden="true">→</span>}
+                  <span
+                    className={`provider-detail__progress-step${
+                      step.complete
+                        ? ' provider-detail__progress-step--complete'
+                        : ''
+                    }`}
+                    // Announced, not left to a colour and a private class
+                    // name. Exactly one step carries it: the first incomplete.
+                    aria-current={
+                      !step.complete &&
+                      engineSetupSteps
+                        .slice(0, index)
+                        .every((earlier) => earlier.complete)
+                        ? 'step'
+                        : undefined
+                    }
+                  >
+                    {step.label}
+                  </span>
+                </Fragment>
+              ))}
             </nav>
 
             <div className="provider-detail__summary" aria-live="polite">
@@ -400,28 +487,25 @@ export function AgentConnectionView({
                   {reportedModelCount > 0 ? reportedModelCount : 'Not reported'}
                 </strong>
               </div>
-              <div>
-                <span className="provider-detail__summary-label">
-                  Last check
-                </span>
-                <strong>
-                  {form.lastCheckedAt
-                    ? new Date(form.lastCheckedAt).toLocaleString()
-                    : 'Not checked'}
-                </strong>
-              </div>
+              {/*
+               * A "Last check" tile stood here and was a constant. Only a
+               * model connection ever gets `lastCheckedAt` written
+               * (`connection-service.ts` sets it behind `kind === 'model'`),
+               * so for an engine it is permanently null and the tile read
+               * "Not checked" forever, beside a button that could not change
+               * it. A constant rendered as a measurement is worse than an
+               * absent one, so it is absent.
+               */}
             </div>
 
             {providerPresentation?.readiness !== 'Ready' && (
-              <div className="provider-detail__notice">
-                <strong>{providerPresentation?.readiness}</strong>
-                <span>{providerPresentation?.detail}</span>
-                {form.prerequisites
-                  .filter((item) => item.status !== 'installed')
-                  .map((item) => (
-                    <span key={item.id}>{item.name}</span>
-                  ))}
-              </div>
+              <ConnectionReadinessNotice
+                readiness={providerPresentation?.readiness ?? ''}
+                detail={providerPresentation?.detail ?? ''}
+                kind="agent"
+                prerequisites={form.prerequisites}
+                devicePresentation={devicePresentation}
+              />
             )}
 
             <details className="provider-detail__advanced">
@@ -736,9 +820,7 @@ export function AgentConnectionView({
                   <button
                     type="button"
                     className="editor-btn editor-btn--ghost"
-                    onClick={() =>
-                      resetMutation.mutate(engineConnectionId(form.id))
-                    }
+                    onClick={() => setConfirmResetOpen(true)}
                     disabled={saveMutation.isPending || resetMutation.isPending}
                   >
                     {resetMutation.isPending
@@ -748,6 +830,27 @@ export function AgentConnectionView({
                 </div>
               </div>
             </details>
+
+            {/*
+             * "Reset to defaults" is a DELETE. It removes the settings
+             * override and calls `agentRegistry.unregister`, which drops the
+             * engine out of the list entirely -- and it had no confirmation,
+             * while "Clear this app home" five fields away, which is less
+             * destructive, did. The label also said nothing about losing the
+             * connection, so the message says it.
+             */}
+            <ConfirmModal
+              isOpen={confirmResetOpen}
+              title="Reset this engine"
+              message={`This removes ${form.name}'s saved settings and disconnects it from this Station. It returns to the Add list and can be connected again. This cannot be undone.`}
+              confirmLabel="Reset"
+              cancelLabel="Cancel"
+              onCancel={() => setConfirmResetOpen(false)}
+              onConfirm={() => {
+                setConfirmResetOpen(false);
+                resetMutation.mutate(engineConnectionId(form.id));
+              }}
+            />
 
             <div className="editor-field">
               <span className="editor-label">Actions</span>
@@ -762,25 +865,37 @@ export function AgentConnectionView({
                 >
                   {saveMutation.isPending ? 'Saving…' : 'Save'}
                 </button>
+                {/*
+                 * Named for what it does. `testConnection`'s agent branch runs
+                 * no probe at all -- it returns
+                 * `!hasRequiredMissing(connection.prerequisites)`, derived from
+                 * the projection already on screen. What genuinely re-checks is
+                 * the query invalidation the mutation triggers, which re-reads
+                 * the server's prerequisite probe. "Check again" promised a
+                 * connection test and delivered a refresh.
+                 */}
                 <button
                   type="button"
                   className="editor-btn"
                   onClick={() => testMutation.mutate(form.id)}
                   disabled={testMutation.isPending}
                 >
-                  {testMutation.isPending ? 'Checking…' : 'Check again'}
+                  {testMutation.isPending
+                    ? 'Re-checking…'
+                    : 'Re-check prerequisites'}
                 </button>
               </div>
+              {/*
+               * This used to print "Healthy · <status>" from a boolean the
+               * agent branch derived from the prerequisites already rendered
+               * above -- a restatement presented as a verdict from a check
+               * that never ran. Status and the readiness notice are the live
+               * region; they update from the refetch. All this needs to say is
+               * that the refetch happened.
+               */}
               {testMutation.data && (
-                <p
-                  className={`editor-help ${
-                    testMutation.data.healthy
-                      ? 'editor-help--healthy'
-                      : 'editor-help--unhealthy'
-                  }`}
-                >
-                  {testMutation.data.healthy ? 'Healthy' : 'Unavailable'} ·{' '}
-                  {connectionStatusLabel(testMutation.data.status ?? 'unknown')}
+                <p className="editor-help">
+                  Prerequisites re-checked. Status above reflects the result.
                 </p>
               )}
               {testMutation.error && (
@@ -800,6 +915,7 @@ export function AgentConnectionView({
           label="Select an engine to review its status and setup."
         />
       )}
+      <DiscardModal />
     </SplitPaneLayout>
   );
 }

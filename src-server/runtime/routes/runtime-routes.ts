@@ -89,10 +89,7 @@ import {
   registerPullRequestProvider,
 } from '../../providers/registries/registry.js';
 import { createAgentToolRoutes } from '../../routes/agents/agent-tools.js';
-import {
-  createAgentRoutes,
-  deriveAgentCatalog,
-} from '../../routes/agents/agents.js';
+import { createAgentRoutes } from '../../routes/agents/agents.js';
 import {
   agentCatalogReadSeam,
   createEnrichedAgentRoutes,
@@ -1607,14 +1604,16 @@ export function configureRuntimeRoutes(
     ),
   );
 
-  // #749: these route families are the only public conversation discovery and
-  // open surfaces. Bind the same principal-derived authority used by
-  // orchestration before either route can inspect inventory or transcript.
+  // Discovery, reopening, and Task references must use the same verified
+  // principal as the chat that produced the answer. An OS-alias fallback here
+  // rejects new principal-owned Sessions and can select legacy-owned history.
   context.app.use('/agents/*', bindConversationReadAuthority);
   context.app.use('/api/conversations', bindConversationReadAuthority);
   context.app.use('/api/conversations/*', bindConversationReadAuthority);
   context.app.use('/api/search', bindConversationReadAuthority);
   context.app.use('/api/search/*', bindConversationReadAuthority);
+  context.app.use('/api/tasks', bindConversationReadAuthority);
+  context.app.use('/api/tasks/*', bindConversationReadAuthority);
   context.app.route(
     '/agents',
     createAgentRoutes(
@@ -2019,7 +2018,7 @@ export function configureRuntimeRoutes(
     createTaskOutputRoutes(taskOutputs, {
       taskGraph: context.taskGraphService,
       sessionOutputs: context.orchestrationService.sessionOutputs,
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       canReadSession: (sessionId, authority) =>
         context.orchestrationService.canUserReadSession(sessionId, authority),
       isRequestPrincipalCurrent,
@@ -2030,7 +2029,7 @@ export function configureRuntimeRoutes(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
       taskDispatcher: context.taskDispatcher,
-      readAuthorityForRequest,
+      readAuthorityForRequest: conversationReadAuthorityForRequest,
       canReadSession: (sessionId, authority) =>
         context.orchestrationService.canUserReadSession(sessionId, authority),
       sessionInventory,
@@ -3450,14 +3449,10 @@ export function configureRuntimeRoutes(
         ).json(),
       branding: async () => (await createBrandingRoutes().request('/')).json(),
       agents: async () => {
-        const enrichedAgents = await context.agentService.getEnrichedAgents(
-          await context.getVoltAgent()!.getAgents(),
-        );
         return {
           success: true,
-          data: await deriveAgentCatalog(
-            context.agentService,
-            enrichedAgents,
+          data: await context.agentService.getAgentCatalog(
+            await context.getVoltAgent()!.getAgents(),
             // This site also omitted `gatedConnectionIds` entirely, so
             // `/api/boot`'s catalog reported an agent bound to a faulted
             // connection as runnable.

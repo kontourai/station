@@ -4,6 +4,7 @@ import {
   parseStationAnswerNarrativeRemoveInput,
 } from '@kontourai/station-contracts/answer-narrative-binding';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
+import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
 import { ATTENTION_REQUEST_ID_MAX_CHARS } from '@kontourai/station-contracts/attention';
 import {
   CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES,
@@ -383,7 +384,13 @@ export const delegateTaskSchema = z.object({
   parentTaskId: z.string().min(1).max(512).optional(),
 });
 
+const inputRequestReferenceSchema = z.object({
+  threadId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+  requestId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+  requestEventId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+});
 export const foregroundMessageObjectSchema = z.object({
+  expectedInputRequest: inputRequestReferenceSchema.optional(),
   target: executionTargetSchema,
   // An image-only turn is meaningful: the attachment is the prompt. Keep the
   // text bound, but let the object-level check below require either text or an
@@ -519,7 +526,7 @@ export const conversationHandoffSchema = foregroundMessageObjectSchema.extend({
   idempotencyKey: z.string().min(1).max(200),
 });
 
-export const conversationContextBoundarySchema = z.object({
+const conversationContextBoundarySchema = z.object({
   policy: z.enum(['continue-from-history', 'empty-next-cold-start']),
   idempotencyKey: z.string().min(1).max(200),
   expectedCurrentSessionId: z.string().min(1).max(512),
@@ -585,6 +592,7 @@ interface DelegateTaskRequest {
 }
 
 interface ForegroundMessageRequest {
+  expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
   message: string;
   conversationId?: string;
@@ -768,7 +776,7 @@ export function resolveStreamResumePlan(
  * `env`/`req.raw`/`req.header` and more, which is fine — a wider object
  * satisfies a narrower structural type).
  */
-export interface PrincipalResolutionContext {
+interface PrincipalResolutionContext {
   env: unknown;
   req: {
     raw: Request;
@@ -1058,6 +1066,30 @@ export function createOrchestrationRoutes(
     Buffer.byteLength(value) <=
       Math.min(MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES, 1_024);
 
+  app.get('/sessions/:threadId/input-requests/:requestId', (c) => {
+    const parsed = inputRequestReferenceSchema.safeParse({
+      threadId: param(c, 'threadId'),
+      requestId: param(c, 'requestId'),
+      requestEventId: c.req.query('eventId'),
+    });
+    if (!parsed.success || deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json(
+        { success: false, error: 'Input request unavailable' },
+        404,
+      );
+    const data = orchestrationService.inspectInputReplyContext(
+      parsed.data,
+      readAuthorityFor(c),
+    );
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json(
+        { success: false, error: 'Input request unavailable' },
+        404,
+      );
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ success: true, data });
+  });
+
   app.get('/sessions/:threadId/requests/:requestId', (c) => {
     c.header('Cache-Control', 'private, no-store');
     const parsed = z
@@ -1156,6 +1188,31 @@ export function createOrchestrationRoutes(
         automaticBackground?: true;
       };
       const { principal, userId } = resolveActorPrincipal(deps, c);
+      if (body.expectedInputRequest) {
+        const context = orchestrationService.inspectInputReplyContext(
+          body.expectedInputRequest,
+          readAuthorityFor(c),
+        );
+        if (
+          deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
+          context.state !== 'open' ||
+          context.conversationId !== body.conversationId ||
+          context.agentId !== body.target.agent ||
+          body.target.environment?.kind !== 'current' ||
+          body.target.workspace ||
+          body.target.model
+        ) {
+          return c.json(
+            {
+              success: false,
+              error:
+                'The input request or its conversation binding changed. Inspect the current request.',
+              code: 'input_request_changed',
+            },
+            409,
+          );
+        }
+      }
       const stagedAttachments = body.attachmentRefs as
         | StagedAttachmentReference[]
         | undefined;
@@ -1814,6 +1871,23 @@ export function createOrchestrationRoutes(
       }
     },
   );
+
+  /**
+   * station#1877: stop ONE provider-reported subagent without ending the
+   * turn. Task-scoped by construction — there is deliberately no fallback to
+   * a turn interrupt, because that would stop every sibling subagent too.
+   */
+  app.post('/sessions/:threadId/provider-tasks/:taskId/stop', async (c) => {
+    try {
+      const data = await orchestrationService.stopProviderTask(
+        param(c, 'threadId'),
+        param(c, 'taskId'),
+      );
+      return c.json({ success: true, data });
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
+    }
+  });
 
   app.get('/session-board/projects/:projectSlug', async (c) => {
     try {

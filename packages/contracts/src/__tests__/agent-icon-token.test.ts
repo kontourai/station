@@ -24,7 +24,6 @@ describe('Agent icon token contract', () => {
   });
 
   test('recognizes the exact longest supported brand token', () => {
-    expect('brand:opencode').toHaveLength(14);
     expect(agentIconBrandKey('brand:opencode')).toBe('opencode');
   });
 });

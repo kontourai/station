@@ -31,7 +31,7 @@ export const DEFAULT_ATTACHMENT_BLOB_RETENTION = {
   maxBytes: 512 * MIB,
 } as const;
 
-export interface AttachmentBlobRetentionPolicy {
+interface AttachmentBlobRetentionPolicy {
   maxAgeDays: number;
   maxBytes: number;
 }
@@ -48,7 +48,7 @@ export function isAttachmentBlobRef(value: unknown): value is string {
   return typeof value === 'string' && BLOB_REF_PATTERN.test(value);
 }
 
-export interface AttachmentBlobStoreOptions {
+interface AttachmentBlobStoreOptions {
   rootDir: string;
   logger?: BlobStoreLogger;
   retention?: Partial<AttachmentBlobRetentionPolicy>;

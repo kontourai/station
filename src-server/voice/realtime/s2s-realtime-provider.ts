@@ -12,7 +12,7 @@ import type {
   S2STranscript,
 } from '../s2s-types.js';
 
-export type S2SRealtimeProviderFactory = () => IS2SProvider;
+type S2SRealtimeProviderFactory = () => IS2SProvider;
 
 /** Server-only Nova bridge; AWS SDK construction remains in provider code. */
 export function createS2SRealtimeProvider(

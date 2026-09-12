@@ -124,3 +124,9 @@ compatibility with adapters that do not implement in-app review.
 and indeterminate attempts. A forge review is not a Station gate verdict.
 `PullRequestMergeInput.expectedHeadSha` optionally constrains merge admission to
 the inspected revision; review-origin merges observe the resulting provider state.
+
+`AttentionInputReplyContext` on the attention subpath projects one exact open
+input request's reply binding and declared file/image transport. `needs_input`
+items may carry `inputReference`; approval/permission references keep their
+separate meaning. `OrchestrationSendTurnInput.expectedInputRequest` is a
+ constraint, not a grant, and is removed before the adapter receives input.

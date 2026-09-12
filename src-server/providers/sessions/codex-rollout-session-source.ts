@@ -62,7 +62,7 @@ interface MappedRecord {
   state: ParserState;
 }
 
-export interface CodexRolloutSessionSourceOptions {
+interface CodexRolloutSessionSourceOptions {
   /** Codex config directory, not its sessions child. */
   homeDir?: string;
   maxCandidates?: number;
@@ -97,7 +97,10 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
 
   constructor(options: CodexRolloutSessionSourceOptions = {}) {
     const homeDir =
-      options.homeDir ?? process.env.CODEX_HOME ?? join(homedir(), '.codex');
+      options.homeDir ??
+      process.env.STATION_EXTERNAL_CODEX_SOURCE_ROOT ??
+      process.env.CODEX_HOME ??
+      join(homedir(), '.codex');
     this.sessionsDir = join(homeDir, 'sessions');
     this.maxCandidates = boundedInteger(
       'maxCandidates',

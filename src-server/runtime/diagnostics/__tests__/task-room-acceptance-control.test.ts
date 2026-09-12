@@ -103,6 +103,71 @@ test('dispatches exactly one bounded command only after peer EOF', async () => {
   expect(existsSync(socketPath)).toBe(false);
 });
 
+test('versioned frames dispatch while the client keeps its write side open', async () => {
+  const socketPath = join(privateRoot(), 'control.sock');
+  const publishAgentEdit = vi.fn(async () => receipt);
+  const control = await startTaskRoomAcceptanceControl({
+    socketPath,
+    e2eSystemStatusReady: '1',
+    publishAgentEdit,
+  });
+  try {
+    const response = await exchange(socketPath, (socket) => {
+      socket.setTimeout(500, () =>
+        socket.destroy(new Error('response requires peer EOF')),
+      );
+      socket.write(
+        `${JSON.stringify({
+          protocol: 'station.task-room-control/v1',
+          request: {
+            command: 'publish-agent-edit',
+            taskId: 'task-1',
+            agentId: 'agent-1',
+            desiredText: 'hello',
+          },
+        })}\n`,
+      );
+    });
+    expect(JSON.parse(response)).toEqual(receipt);
+    expect(publishAgentEdit).toHaveBeenCalledOnce();
+  } finally {
+    await control.close();
+  }
+});
+
+test.each([
+  { protocol: 'unknown', request: {} },
+  { protocol: 'station.task-room-control/v1', request: {}, extra: true },
+  {
+    protocol: 'station.task-room-control/v1',
+    request: {
+      command: 'seed-performance-operations',
+      taskId: 'task-1',
+      count: 11,
+    },
+  },
+])('refuses invalid versioned frames without executing: %j', async (frame) => {
+  const socketPath = join(privateRoot(), 'control.sock');
+  const publishAgentEdit = vi.fn(async () => receipt);
+  const control = await startTaskRoomAcceptanceControl({
+    socketPath,
+    e2eSystemStatusReady: '1',
+    publishAgentEdit,
+  });
+  try {
+    expect(
+      JSON.parse(
+        await exchange(socketPath, (socket) =>
+          socket.write(`${JSON.stringify(frame)}\n`),
+        ),
+      ),
+    ).toEqual({ kind: 'refused' });
+    expect(publishAgentEdit).not.toHaveBeenCalled();
+  } finally {
+    await control.close();
+  }
+});
+
 test('dispatches only the two bounded performance fixture commands', async () => {
   const socketPath = join(privateRoot(), 'control.sock');
   const preparePerformanceCorpus = vi.fn(async () => ({

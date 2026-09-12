@@ -32,9 +32,9 @@ import './PageCallout.css';
  * a second vocabulary for the same idea, and the two would diverge the first
  * time either was extended.
  */
-export type PageCalloutTone = BannerTone;
+type PageCalloutTone = BannerTone;
 
-export interface PageCalloutProps {
+interface PageCalloutProps {
   /**
    * Identifies the callout, not the instance. It is what makes a stack
    * dedupable: two surfaces that both decide to offer the same thing render

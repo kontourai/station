@@ -5,7 +5,7 @@ import {
 } from '@kontourai/station-contracts/skill-command';
 
 /** The subset of an agent this derivation reads. */
-export interface CommandAgent {
+interface CommandAgent {
   slug: string;
   skills?: readonly string[];
 }
@@ -82,7 +82,7 @@ export interface SubstitutableSkillVariable {
   default?: string;
 }
 
-export type SkillVariableSubstitution =
+type SkillVariableSubstitution =
   | { ok: true; content: string }
   | { ok: false; missing: string[] };
 
@@ -124,9 +124,7 @@ export function substituteSkillVariables(
   return missing.length > 0 ? { ok: false, missing } : { ok: true, content };
 }
 
-export type ShellWords =
-  | { ok: true; words: string[] }
-  | { ok: false; error: string };
+type ShellWords = { ok: true; words: string[] } | { ok: false; error: string };
 
 /**
  * Split a typed command line the way a shell would — the ONE parser every
@@ -196,7 +194,7 @@ export function parseShellWords(input: string): ShellWords {
   return { ok: true, words };
 }
 
-export type SkillVariableArgs =
+type SkillVariableArgs =
   | { ok: true; provided: Record<string, string> }
   | { ok: false; error: string };
 

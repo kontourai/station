@@ -195,13 +195,32 @@ const NIGHTLY_REBUILD_INDEX_PREVALIDATION_RUN = [
 const NIGHTLY_REBUILD_INDEX_PREVALIDATION_ENV = Object.freeze({
   NIGHTLY_REBUILD_INDEX: '${' + '{ inputs.rebuild_index }}',
 });
+/**
+ * The Android toolchain revisions, declared once.
+ *
+ * Both were written out per workflow, and that is not a style question here:
+ * three lanes build Android from three separate definitions (build-android.yml
+ * verifies main, nightly-native-stage.yml ships to Play, release.yml ships a
+ * tag), so a value restated per lane can be right in the lane you are reading
+ * and wrong in the lane that ships. That is not hypothetical — #1795 put a
+ * bare `aapt` in build-android.yml while nightly-native-stage.yml resolved it
+ * correctly, so `main` was red for a day while nightly builds kept shipping,
+ * and neither lane's state told you anything about the other's.
+ *
+ * Workflows cannot import these, so the guarantee is a contract test reading
+ * them from here rather than restating them. Change the value once; the test
+ * names every workflow that has not followed.
+ */
+export const ANDROID_NDK_VERSION = '27.0.12077973';
+export const ANDROID_BUILD_TOOLS_VERSION = '36.0.0';
+
 const NIGHTLY_JOB_ENV = Object.freeze({
   GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER:
     '${' + '{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}',
   GCP_PLAY_SERVICE_ACCOUNT: '${' + '{ vars.GCP_PLAY_SERVICE_ACCOUNT }}',
   ANDROID_UPLOAD_KEY_ALIAS: '${' + '{ vars.ANDROID_UPLOAD_KEY_ALIAS }}',
   ANDROID_UPLOAD_CERT_SHA256: '${' + '{ vars.ANDROID_UPLOAD_CERT_SHA256 }}',
-  ANDROID_BUILD_TOOLS_VERSION: '36.0.0',
+  ANDROID_BUILD_TOOLS_VERSION,
   STATION_MOBILE_DEFAULT_ENDPOINT:
     '${' + '{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}',
 });
@@ -215,12 +234,39 @@ const NIGHTLY_JOB_ENV = Object.freeze({
  * Import this rather than writing the SHA down again. */
 export const REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA =
   '563effe7ec559c6f4fcc6c80b3532acb71d86373';
-const REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA =
+/** The reviewed revision of the org's reusable capacity workflow.
+ *
+ * Exported so fixtures stop restating it. Until #1337's pin bump these tests
+ * spelled the value as a raw literal that happened to equal the secret-scan
+ * pin, and the two were indistinguishable in the fixture text: replacing what
+ * looked like a secret-scan string broke four capacity assertions. Different
+ * files, different reviews, and now different values. */
+export const REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA =
   '02f40a67901a79ce4004c44d91e350b93782644c';
-const REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA =
-  '02f40a67901a79ce4004c44d91e350b93782644c';
+/** A reusable-workflow reference pinned at the reviewed capacity revision.
+ * Exported for the fixtures above; the path is incidental, the pin is not. */
+export const REVIEWED_CAPACITY_REUSABLE_WORKFLOW_REF = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA}`;
+/** The reviewed revision of the org's secret-scan reusable workflow.
+ *
+ * Exported for the reason stated above `REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA`:
+ * this value was restated in two test files, so the gate and the suite
+ * asserting it could disagree while both stayed green.
+ *
+ * Bumped to 28deabbf2 to pick up kontourai/.github#43, which adds
+ * `--retry-all-errors` to the gitleaks download. A single TLS reset from the
+ * release-asset CDN was failing the job before the fixture ran, turning a
+ * caller's `main` red from a network blip with nothing to attribute it to
+ * (#1337). `--retry` alone does not cover curl exit 35.
+ *
+ * Note this is deliberately NOT the same value as
+ * `REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA` any more. They pin different files
+ * in the same repository and shared a commit only because that was its HEAD
+ * when both were last reviewed; the capacity workflow is unchanged by #43 and
+ * stays at its own reviewed revision. */
+export const REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA =
+  '28deabbf24f0ab55911d311df5372d30bea0dba4';
 const SECRET_SCAN_WORKFLOW = '.github/workflows/secret-scan.yml';
-const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA}`;
+export const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA}`;
 /**
  * `owner-lifetime-seconds` is part of the host manifest, so it is one shared
  * physical-host setting rather than a per-job tuning knob. The pinned action
@@ -317,6 +363,20 @@ export const CODEQL_ANALYZE_ACTION =
   'github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938';
 export const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
+/**
+ * The pinned pnpm bootstrap for `pull_request_target` router jobs.
+ *
+ * This lived as a bare literal inside `isPinnedPnpmSetup`, where it acted as an
+ * allowlist key: a step whose `uses` did not match it exactly was reported as
+ * an unreviewed custom action. That is the correct security property — an
+ * unreviewed action in a `pull_request_target` job runs beside a write-scoped
+ * token — but it also means a Dependabot bump of `pnpm/setup` can never be
+ * green, because the bump changes the workflows and nothing updates the pin
+ * (#1042, #1725). Reviewing the new SHA is the point; hunting for where it is
+ * written down is not. Landing a bump is now one deliberate edit here.
+ */
+export const PNPM_SETUP_ACTION =
+  'pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b';
 const DEPENDENCY_REVIEW_CANDIDATE_GUARD = `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`;
 const DEPENDENCY_REVIEW_PR_GUARD = `\${{ github.event_name == 'pull_request_target' }}`;
 const DEPENDENCY_REVIEW_MERGE_GROUP_GUARD = `\${{ github.event_name == 'merge_group' }}`;
@@ -1246,7 +1306,7 @@ function securityAnalysisTopologyFindings(file, jobs) {
 // before the reviewed lifecycle entrypoint gets to apply its policy.
 function isPinnedPnpmSetup(step) {
   return (
-    step?.uses === 'pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c' &&
+    step?.uses === PNPM_SETUP_ACTION &&
     step?.name === 'Setup pinned pnpm' &&
     Object.keys(step).every(
       (key) => key === 'name' || key === 'uses' || key === 'with',

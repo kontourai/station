@@ -265,7 +265,7 @@ export function parseWorkspacePaneHostContribution(
   });
 }
 
-export type LegacyLayoutHostMigration =
+type LegacyLayoutHostMigration =
   | { readonly state: 'not-applicable' }
   | {
       readonly state: 'migrated';
@@ -441,7 +441,7 @@ export function migrateLegacyLayoutHostContribution(input: {
     : { state: 'manual-review', reasons: ['migration-result-invalid'] };
 }
 
-export interface WorkspacePaneHostAgentResolver {
+interface WorkspacePaneHostAgentResolver {
   resolveOwnPluginAgent(input: {
     owner: WorkspacePaneHostContributionOwner;
     projectId: string;
@@ -453,7 +453,7 @@ export interface WorkspacePaneHostAgentResolver {
   }): Promise<WorkspacePaneHostAgentResolution>;
 }
 
-export interface WorkspacePaneHostContributionAuthority {
+interface WorkspacePaneHostContributionAuthority {
   current(
     owner: WorkspacePaneHostContributionOwner,
   ):
@@ -461,7 +461,7 @@ export interface WorkspacePaneHostContributionAuthority {
     | Promise<{ state: 'current' | 'retired' | 'unavailable' }>;
 }
 
-export interface WorkspacePaneHostPromptLauncher {
+interface WorkspacePaneHostPromptLauncher {
   launch(input: {
     owner: WorkspacePaneHostContributionOwner;
     projectId: string;

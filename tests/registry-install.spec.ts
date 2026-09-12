@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { DEMO_LAYOUT_PREVIEW } from './fixtures/plugin-preview';
 
 test.describe('Registry plugin install flow', () => {
   test('installs and removes a plugin from the registry page', async ({
@@ -46,6 +47,13 @@ test.describe('Registry plugin install flow', () => {
       }),
     );
 
+    await page.route('**/api/plugins/preview', (route) =>
+      route.fulfill({ json: DEMO_LAYOUT_PREVIEW }),
+    );
+    await page.route('**/api/plugins/reload', (route) =>
+      route.fulfill({ json: { success: true } }),
+    );
+
     await page.goto('/registry');
     await page.waitForSelector('.page__tab', { timeout: 15_000 });
     await page.locator('.page__tab', { hasText: 'Plugins' }).click();
@@ -55,6 +63,7 @@ test.describe('Registry plugin install flow', () => {
       .getByRole('button', { name: 'Install' });
     await expect(detailInstall).toBeVisible();
     await detailInstall.click();
+    await page.getByRole('button', { name: 'Confirm Install' }).click();
 
     await expect(page.getByText('Installed Demo Layout')).toBeVisible();
     const detailRemove = page

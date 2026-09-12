@@ -212,7 +212,8 @@ environment, not repository-level secrets. See
 [Mobile store distribution](./mobile-release.md) for how to also push that
 signed build to Play's internal testing track.
 
-The daily nightly (`.github/workflows/nightly.yml`) is a third, separate lane:
+The scheduled Nightly workflow (`.github/workflows/nightly.yml`) is a
+third, separate lane:
 release-signed with keystore material fetched from Google Cloud Secret Manager
 via OIDC, published to Play internal testing under
 `io.kontourai.station.nightly` — see

@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import type { DockMode } from '../../types';
 
 const LABELS: Record<DockMode, string> = {
@@ -8,7 +14,7 @@ const LABELS: Record<DockMode, string> = {
 };
 
 /** The one placement chooser shared by the pointer and keyboard paths. */
-export function DockPlacementChoices({
+function DockPlacementChoices({
   availablePlacements,
   effectivePlacement,
   onSelect,
@@ -61,6 +67,46 @@ export function DockPlacementControl({
   const suppressClick = useRef(false);
   const grabRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const [menuPosition, setMenuPosition] = useState<CSSProperties>();
+
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+    const update = () => {
+      const anchor = grabRef.current;
+      const menu = menuRef.current;
+      if (!anchor || !menu) return;
+      const rect = anchor.getBoundingClientRect();
+      const box = menu.getBoundingClientRect();
+      const naturalHeight = menu.scrollHeight + box.height - menu.clientHeight;
+      const above = Math.max(0, rect.top - 8);
+      const below = Math.max(0, window.innerHeight - rect.bottom - 8);
+      const opensBelow = below >= naturalHeight || below >= above;
+      const available = opensBelow ? below : above;
+      const height = Math.min(naturalHeight, available);
+      const parent = (menu.offsetParent ??
+        menu.parentElement) as HTMLElement | null;
+      const parentTop = parent?.getBoundingClientRect().top ?? 0;
+      const top =
+        (opensBelow ? rect.bottom + 4 : rect.top - 4 - height) - parentTop;
+      setMenuPosition((current) =>
+        current?.top === top && current.maxHeight === available
+          ? current
+          : { top, bottom: 'auto', maxHeight: available, overflowY: 'auto' },
+      );
+    };
+    update();
+    const observer =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    if (grabRef.current) observer?.observe(grabRef.current);
+    if (menuRef.current) observer?.observe(menuRef.current);
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [menuOpen]);
 
   // A menu you cannot leave is worse than no menu. Escape returns focus to the
   // control that opened it — a menu that closes while focus stays on a
@@ -153,6 +199,7 @@ export function DockPlacementControl({
         <div
           ref={menuRef}
           className="menu-surface dock-placement-menu"
+          style={menuPosition}
           role="menu"
           aria-label="Dock placement"
         >

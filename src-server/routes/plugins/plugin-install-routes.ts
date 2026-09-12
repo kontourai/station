@@ -1,5 +1,6 @@
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import type { PluginComponent } from '@kontourai/station-contracts/plugin';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import type { PluginProviderReadView } from '../../providers/registries/registry.js';
@@ -8,16 +9,18 @@ import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { isContextSafetyError } from '../../services/orchestration/context-safety.js';
 import {
   describePluginManifestRejection,
+  type InstalledPluginInventoryEntry,
   rejectedInstalledPluginRecord,
   scanInstalledPluginInventory,
 } from '../../services/plugins/installed-plugin-inventory.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
-import { readPluginCatalogInstallation } from '../../services/plugins/plugin-catalog-installation.js';
+import { readPluginCatalogInstallationAsync } from '../../services/plugins/plugin-catalog-installation.js';
 import { scanPluginPromptFileSafety } from '../../services/plugins/plugin-command-skill-source.js';
 import {
   findPluginContentLockCycleError,
   pluginContentLockCycleMessage,
 } from '../../services/plugins/plugin-content-integrity.js';
+import { resolveInstalledPluginRoot } from '../../services/plugins/plugin-incarnation.js';
 import {
   derivePluginConsentBasis,
   isPluginConsentRefusedError,
@@ -35,10 +38,11 @@ import type { PluginInstallationHost } from '../../services/plugins/plugin-insta
 import { PluginInstallationPending } from '../../services/plugins/plugin-installation-service.js';
 import { readPluginManifestFileWithFormat } from '../../services/plugins/plugin-manifest-loader.js';
 import {
+  describePluginGrantState,
   getPermissionTier,
   observePluginGrantRevisions,
   PluginGrantsUnavailableError,
-  readPluginGrantState,
+  readPluginGrantRecord,
   requiredPermissionsForManifest,
 } from '../../services/plugins/plugin-permissions.js';
 import {
@@ -123,56 +127,41 @@ export function registerPluginInstallRoutes(
       const selected = deps.packageMcpJournal?.selectedInstallations();
       if (selected?.state === 'unavailable')
         throw new Error('Plugin installation inventory unavailable');
-      const entries = new Map(
-        inventory.map((entry) => [entry.directoryName, entry]),
-      );
+      const entries = new Map<
+        string,
+        | InstalledPluginInventoryEntry
+        | { state: 'candidate'; directoryName: string }
+      >(inventory.map((entry) => [entry.directoryName, entry]));
       for (const installed of selected?.installations ?? []) {
-        try {
-          const catalog = readPluginCatalogInstallation(
-            pluginsDir,
-            installed.pluginId,
-            deps.packageMcpJournal,
-          );
-          if (!catalog) throw new Error('Selected installation is unavailable');
-          entries.set(installed.pluginId, {
-            state: 'valid',
-            directoryName: installed.pluginId,
-            manifest: catalog.manifest,
-          });
-        } catch (error) {
-          entries.set(installed.pluginId, {
-            state: 'rejected',
-            directoryName: installed.pluginId,
-            rejection: describePluginManifestRejection(error),
-          });
-        }
+        entries.set(installed.pluginId, {
+          state: 'candidate',
+          directoryName: installed.pluginId,
+        });
       }
       return entries;
     };
     try {
-      // Git is only display metadata. Await it before the final synchronous
-      // installation projection, so selection/readiness cannot stale across it.
+      // Git is display metadata, not byte or execution authority. Resolve its
+      // selected root without hashing, then observe all package bytes AFTER
+      // Git settles. The final projection owns readiness and grant binding.
       const gitObservations = new Map<
         string,
         {
           root: string;
-          digest: string;
           git: Awaited<ReturnType<typeof getPluginGitInfo>>;
         }
       >();
       for (const entry of readEntries().values()) {
-        if (entry.state !== 'valid') continue;
+        if (entry.state === 'rejected') continue;
         try {
-          const catalog = readPluginCatalogInstallation(
+          const root = resolveInstalledPluginRoot(
             pluginsDir,
             entry.directoryName,
-            deps.packageMcpJournal,
           );
-          if (!catalog) continue;
-          const git = await getPluginGitInfo(catalog.packageRoot, logger);
+          if (!root) continue;
+          const git = await getPluginGitInfo(root.packageRoot, logger);
           gitObservations.set(entry.directoryName, {
-            root: catalog.packageRoot,
-            digest: catalog.artifact.digest,
+            root: root.packageRoot,
             git,
           });
         } catch {
@@ -186,7 +175,7 @@ export function registerPluginInstallRoutes(
           continue;
         }
         try {
-          const catalog = readPluginCatalogInstallation(
+          const catalog = await readPluginCatalogInstallationAsync(
             pluginsDir,
             entry.directoryName,
             deps.packageMcpJournal,
@@ -195,15 +184,16 @@ export function registerPluginInstallRoutes(
           const manifest = catalog.manifest;
           const observation = gitObservations.get(entry.directoryName);
           const git =
-            observation?.root === catalog.packageRoot &&
-            observation.digest === catalog.artifact.digest
+            observation?.root === catalog.packageRoot
               ? observation.git
               : undefined;
           const declared = requiredPermissionsForManifest(manifest);
-          const grantState = readPluginGrantState(
-            projectHomeDir,
-            manifest.name,
-            catalog.artifact,
+          // Inventory is an inert description of the just-observed package.
+          // Project stored grants against that observation without rescanning;
+          // bundle delivery and every invocation recheck their own authority.
+          const grantState = describePluginGrantState(
+            readPluginGrantRecord(projectHomeDir, manifest.name),
+            catalog.artifact.digest,
           );
           const granted = grantState.granted;
           plugins.push({
@@ -422,13 +412,7 @@ export function registerPluginInstallRoutes(
           ...detectPluginConflicts(manifest, agentsDir, pluginsDir, logger),
           ...detectWorkspacePaneCatalogConflicts(manifest, projectHomeDir),
         ];
-        const components: Array<{
-          type: string;
-          id: string;
-          detail?: string;
-          conflict?: (typeof conflicts)[0];
-          skippable?: boolean;
-        }> = [];
+        const components: PluginComponent[] = [];
 
         for (const agent of manifest.agents || []) {
           const slug = agent.slug;

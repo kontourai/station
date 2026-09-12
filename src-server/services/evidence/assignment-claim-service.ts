@@ -102,7 +102,7 @@ export interface AssignmentClaimRecord {
   audit_trail?: unknown[];
 }
 
-export interface AssignmentClaimParams {
+interface AssignmentClaimParams {
   artifactRoot: string;
   subjectId: string;
   actor: AssignmentClaimActor;
@@ -131,7 +131,7 @@ export type AssignmentClaimResult =
     }
   | { outcome: 'unavailable'; reason: string };
 
-export interface AssignmentReleaseParams {
+interface AssignmentReleaseParams {
   artifactRoot: string;
   subjectId: string;
   actor: AssignmentClaimActor;
@@ -151,12 +151,12 @@ export type AssignmentReleaseResult =
   | { outcome: 'failed'; reason: string }
   | { outcome: 'unavailable'; reason: string };
 
-export interface AssignmentStatusParams {
+interface AssignmentStatusParams {
   artifactRoot: string;
   subjectId: string;
 }
 
-export type AssignmentStatusResult =
+type AssignmentStatusResult =
   | {
       outcome: 'claimed';
       actor: AssignmentClaimActor;
@@ -169,7 +169,7 @@ interface AssignmentClaimServiceLogger {
   warn(message: string, meta?: Record<string, unknown>): void;
 }
 
-export interface AssignmentClaimServiceOptions {
+interface AssignmentClaimServiceOptions {
   /** Root of the @kontourai/flow-agents package (the directory containing
    * `build/src/cli/`). When provided but invalid, resolution does NOT fall
    * back to auto-discovery — mirrors `FlowAgentsWorkItemProvider`'s rule. */

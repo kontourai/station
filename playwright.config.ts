@@ -1,6 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
+import { installNodeHttpCompatibility } from './packages/shared/src/node-http-compat.mjs';
 import { buildE2EBrowserStorageState } from './tests/helpers/e2e-browser-storage-state';
 import { PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS } from './tests/helpers/playwright-test-timeout';
+
+installNodeHttpCompatibility();
 
 const baseURL = process.env.PW_BASE_URL || 'http://localhost:3000';
 const runnerOwned = process.env.STATION_E2E_RUNNER === '1';
@@ -20,6 +23,9 @@ export default defineConfig({
   timeout: PLAYWRIGHT_DEFAULT_TEST_TIMEOUT_MS,
   use: {
     baseURL,
+    // Missing controls should fail independently of a live-provider test's
+    // much longer execution budget. Slower actions can opt in explicitly.
+    actionTimeout: 15_000,
     headless: true,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',

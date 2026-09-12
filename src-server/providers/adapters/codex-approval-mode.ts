@@ -9,21 +9,18 @@ import { readApprovalMode } from '@kontourai/station-contracts/provider';
  * maps to it), so it's intentionally omitted here rather than carried as
  * dead vocabulary.
  */
-export type CodexApprovalPolicy = 'untrusted' | 'on-request' | 'never';
-export type CodexSandboxMode =
-  | 'read-only'
-  | 'workspace-write'
-  | 'danger-full-access';
+type CodexApprovalPolicy = 'untrusted' | 'on-request' | 'never';
+type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
 
-export interface CodexApprovalKnobs {
+interface CodexApprovalKnobs {
   approvalPolicy: CodexApprovalPolicy;
   sandbox: CodexSandboxMode;
 }
 
-// Station's prior behavior before this session-level control existed —
-// unattended, full-access. Kept as the fallback for `'connection-default'`
-// (or an absent/unrecognized value) so omitting `approvalMode` never
-// changes an existing session's behavior.
+// Historical Station spawn when no `approvalMode` was sent: unattended
+// full-access. Kept only as a named pairing for tests that pin that
+// *previous* behavior. Live adapters no longer apply it — an omitted
+// `approvalMode` now inherits Codex's own config (station#1950).
 export const CODEX_DEFAULT_APPROVAL_KNOBS: CodexApprovalKnobs = {
   approvalPolicy: 'never',
   sandbox: 'danger-full-access',
@@ -46,17 +43,15 @@ const CODEX_APPROVAL_MODE_MAP: Record<
 /** Pure mapping: a resolved `ApprovalMode` to Codex's native knobs. */
 export function mapApprovalModeToCodex(
   mode: ApprovalMode | undefined,
-): CodexApprovalKnobs {
-  if (!mode || mode === 'connection-default') {
-    return CODEX_DEFAULT_APPROVAL_KNOBS;
-  }
+): CodexApprovalKnobs | undefined {
+  if (!mode || mode === 'connection-default') return undefined;
   return CODEX_APPROVAL_MODE_MAP[mode];
 }
 
 /** Reads `approvalMode` out of a `modelOptions` bag and maps it directly. */
 export function resolveCodexApprovalKnobs(
   modelOptions?: Record<string, unknown>,
-): CodexApprovalKnobs {
+): CodexApprovalKnobs | undefined {
   return mapApprovalModeToCodex(readApprovalMode(modelOptions));
 }
 
@@ -67,7 +62,7 @@ export function resolveCodexApprovalKnobs(
 export function resolveCodexExecutionKnobs(
   modelOptions?: Record<string, unknown>,
   reviewIsolation?: { workspaceAccess: 'read-only' },
-): CodexApprovalKnobs {
+): CodexApprovalKnobs | undefined {
   return reviewIsolation?.workspaceAccess === 'read-only'
     ? CODEX_READ_ONLY_REVIEW_KNOBS
     : resolveCodexApprovalKnobs(modelOptions);

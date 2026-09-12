@@ -1,6 +1,6 @@
 import type { ACPConnectionInfo } from '../../hooks/useACPConnections';
 
-export interface NewTerminalItem {
+interface NewTerminalItem {
   key: string;
   type: 'shell' | 'agent';
   label: string;

@@ -519,7 +519,7 @@ function assertPathIndex(value: unknown, source: string): PathIndex {
   return index as PathIndex;
 }
 
-export interface KitObsidianStoreOptions {
+interface KitObsidianStoreOptions {
   storeRoot: string;
   /** Subfolder name for raw/compiled (source-level) records under each category. Default "sources". */
   sourcesDir?: string;

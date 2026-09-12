@@ -5,7 +5,7 @@ export const DEFAULT_MODEL_CATALOG_MAX_ENTRIES = 1000;
 export const DEFAULT_MODEL_CATALOG_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 export const DEFAULT_MODEL_CATALOG_MAX_PAGES = 32;
 
-export interface CatalogByteBudget {
+interface CatalogByteBudget {
   remainingBytes: number;
 }
 

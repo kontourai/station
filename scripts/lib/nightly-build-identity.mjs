@@ -1,10 +1,10 @@
 /**
- * Build identity for the daily nightly channel.
+ * Build identity for the Nightly channel.
  *
  * "Nightly" is a claim about cadence, so it is derived from a date and not
- * from a push. One build per day, and a day with no new commit produces no
- * build at all — a new version number over identical content is a version
- * number that lies.
+ * from a push. Extra ships on the same UTC day take the next reserved build
+ * index. A source SHA that already shipped produces no build at all — a new
+ * version number over identical content is a version number that lies.
  *
  * The nightly ships under its own applicationId (station#2211). That keeps
  * two things apart that would otherwise be permanently entangled: Play

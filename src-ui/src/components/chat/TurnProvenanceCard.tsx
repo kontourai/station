@@ -370,7 +370,7 @@ function buildRows(envelope: TurnProvenanceEnvelope): ProvenanceRow[] {
  * list is the checkable record and always carries every field, including
  * the raw provider slug behind the row's engine chip.
  */
-export interface TurnProvenanceStatedInRow {
+interface TurnProvenanceStatedInRow {
   engine?: boolean;
   model?: boolean;
 }

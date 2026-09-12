@@ -32,7 +32,7 @@ const DEFAULT_MAX_EVENTS = 512;
 const DEFAULT_READ_YIELD_EVERY_LINES = 256;
 const EPOCH = '1970-01-01T00:00:00.000Z';
 
-export interface ClaudeTranscriptSessionSourceOptions {
+interface ClaudeTranscriptSessionSourceOptions {
   /** Claude config directory, not its projects child. */
   configDir?: string;
   maxCandidates?: number;
@@ -69,6 +69,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
   constructor(options: ClaudeTranscriptSessionSourceOptions = {}) {
     const configDir =
       options.configDir ??
+      process.env.STATION_EXTERNAL_CLAUDE_SOURCE_ROOT ??
       process.env.CLAUDE_CONFIG_DIR ??
       join(homedir(), '.claude');
     this.projectsDir = join(configDir, 'projects');
