@@ -263,6 +263,7 @@
     "test:fixtures:guard": "npm run test:fixtures:check && npm run test:focused -- scripts/__tests__/test-fixture-policy.test.ts scripts/__tests__/fixture-audit.test.ts scripts/__tests__/connection-fixtures.test.ts scripts/__tests__/test-mutations.test.ts scripts/__tests__/journey-profiles.test.ts"
   },
   "dependencies": {
+    "better-auth": "1.7.4",
     "@agentclientprotocol/sdk": "^1.4.0",
     "@ai-sdk/amazon-bedrock": "^4.0.141",
     "@ai-sdk/anthropic": "^3.0.102",
