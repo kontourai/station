@@ -81,10 +81,7 @@ export function readSkillOrigin(value: unknown): SkillOrigin | undefined {
  * one whose unescaped `description` forges a `command:` block.
  */
 export {
-  serializeSkillCommandLines,
   serializeSkillMarkdown,
-  serializeSkillVariableLines,
-  yamlScalar,
 } from '@kontourai/station-contracts/skill-markdown';
 
 /** What an imported `.md` file contributes to a new local skill. */
@@ -171,13 +168,10 @@ export type {
   SkillPackageDirectoryReport,
 } from '../../domain/skill-paths.js';
 export {
-  assertSafeProjectSlug,
   assertSafeSkillName,
   assertSkillPackageDirectory,
-  isDirectoryPhysicallyWithin,
   isDirectoryWithin,
   isSafeSkillName,
-  PROTOTYPE_AFFECTING_KEYS,
   resolveSkillDirectory,
   skillPackageDirectoryReport,
   skillsRootDir,

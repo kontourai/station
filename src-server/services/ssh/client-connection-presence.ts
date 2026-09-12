@@ -2,8 +2,8 @@
 export const CLIENT_SESSION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CLIENT_CONNECTION_LEASE_MS = 90_000;
-export const CLIENT_CONNECTION_CAPACITY = 256;
-export const CLIENT_CONNECTIONS_PER_DEVICE_CAPACITY = 32;
+const CLIENT_CONNECTION_CAPACITY = 256;
+const CLIENT_CONNECTIONS_PER_DEVICE_CAPACITY = 32;
 
 interface ConnectedClientSnapshot {
   readonly deviceId: string;

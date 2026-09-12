@@ -8,9 +8,9 @@ import type { StationAnswerAssessmentProfileTarget } from '@kontourai/station-co
 import type { StationAnswerBinding } from '@kontourai/station-contracts/task-basis';
 import type { TrustBundle } from '@kontourai/surface';
 
-export const STATION_ANSWER_CONTENT_PROFILE = 'station.answer-content/v1';
+const STATION_ANSWER_CONTENT_PROFILE = 'station.answer-content/v1';
 
-export function stationAnswerAssessmentTarget(
+function stationAnswerAssessmentTarget(
   binding: StationAnswerBinding,
 ): string {
   const tuple = JSON.stringify([

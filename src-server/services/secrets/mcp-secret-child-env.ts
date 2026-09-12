@@ -13,7 +13,7 @@ class McpSecretChildEstablishmentError extends Error {
   }
 }
 
-export function hasSecretEnvRefs(def: ToolDef): boolean {
+function hasSecretEnvRefs(def: ToolDef): boolean {
   return Boolean(def.secretEnvRefs && Object.keys(def.secretEnvRefs).length);
 }
 
