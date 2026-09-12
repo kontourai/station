@@ -29,7 +29,7 @@
     },
     "windows": {
       "artifactIdentity": "signed MSI/installer and updater archive/signature",
-      "signingRequirement": "Authenticode and Tauri updater signature"
+      "signingRequirement": "Tauri updater signature; Authenticode optional for Nightly and required for tagged preview/stable"
     },
     "linux": {
       "artifactIdentity": "AppImage, deb, rpm, updater archive/signature",
@@ -171,7 +171,7 @@
         "evidence": {
           "kind": "not-verified",
           "owner": "#1045",
-          "reason": "Windows signing authority and provider/install receipts must be verified separately; existing macOS ledger entries do not establish Windows delivery."
+          "reason": "Windows updater signing and provider/install receipts must be verified separately; optional Authenticode status is disclosed and existing macOS ledger entries do not establish Windows delivery."
         }
       },
       "linux": {

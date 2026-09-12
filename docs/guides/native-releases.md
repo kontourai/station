@@ -64,7 +64,7 @@ distribution-readiness claim. The release workflow retains the archive as a
 diagnostic/smoke input, not an end-user install channel. All other variants
 marked distributable must satisfy the platform-signing contract for that
 operating system. Desktop updater signing is tracked separately: macOS and
-Windows require both a valid platform signature and a Tauri updater signature;
+Windows tagged releases require both a valid platform signature and a Tauri updater signature;
 Linux AppImage has no platform-signing mechanism but still requires its updater
 signature. The validator rejects false or conflated signing claims, missing
 bytes, duplicate variants, source/tag disagreement, invalid checksums, and
@@ -107,7 +107,8 @@ when the gated SHA is the workflow event SHA.
 Phase one, `nightly-native-stage.yml`, needs only the source gate and runs in
 parallel with the full-regression receipt (#1453): it reserves the cohort
 identity, then stages a signed Android AAB (arm64-v8a only, #1456), notarized
-macOS downloads, a signed Windows NSIS installer and updater signature, one shared desktop
+macOS downloads, a Windows NSIS installer with a mandatory Tauri updater signature
+(Authenticode is optional for Nightly), one shared desktop
 manifest, and the signed, audited iOS package (#1454)
 as run artifacts with content-bound stage receipts. It publishes nothing: no
 Play upload, no release asset, no tag move, no TestFlight upload, no ledger

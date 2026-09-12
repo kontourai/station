@@ -48,7 +48,8 @@ const builds = [
     version: plan.versionIdentities.desktop.version,
     // Native signatures are checked by the platform build jobs; the admission
     // and protected verifier additionally require their exact workflow attestations.
-    platformSigningState: 'VERIFIED',
+    platformSigningState:
+      platform === 'windows-x86_64' ? receipt.platformSigningState : 'VERIFIED',
     updaterSigningState: 'VERIFIED',
     assetName: desktopPublishedAssetName(
       name,

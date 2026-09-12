@@ -464,7 +464,7 @@ jobs:
     secrets: inherit
 
   stage-windows:
-    name: Build Windows NSIS installer (sign + verify)
+    name: Build Windows NSIS installer (updater sign + verify)
     needs: plan-cohort
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
     runs-on: windows-latest
@@ -495,8 +495,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
         run: |
-          $signed = (-not [string]::IsNullOrEmpty($env:WINDOWS_CERTIFICATE_BASE64)) -or (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_COMMAND))
-          ./scripts/build-windows-nightly.ps1 -SourceSha $env:SOURCE_SHA -BundleVersion ([int]$env:BUNDLE_VERSION) -RequireSigning:$signed
+          $signed = (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) -or (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) -or (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_COMMAND))
+          ./scripts/build-windows-nightly.ps1 -SourceSha $env:SOURCE_SHA -BundleVersion ([int]$env:BUNDLE_VERSION) -SignUpdater -RequireSigning:$signed
       - name: Retain packaging evidence even when signing authority is absent
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -508,11 +508,11 @@ jobs:
             dist-windows-nightly/station-client-build.json
           if-no-files-found: error
           retention-days: 14
-      - name: Require signed bytes before desktop admission
+      - name: Require updater-signed bytes before desktop admission
         shell: pwsh
         run: |
           $receipt = Get-Content -Raw dist-windows-nightly/windows-build-receipt.json | ConvertFrom-Json
-          if ($receipt.platformSigningState -ne 'VERIFIED') { throw 'NOT_VERIFIED: Windows Authenticode authority is missing; desktop publication withheld' }
+          if ($receipt.updaterPayloadState -ne 'VERIFIED' -or $receipt.platformSigningState -notin @('VERIFIED', 'NOT_SIGNED')) { throw 'Windows updater signature or publisher signing status is invalid; desktop publication withheld' }
           New-Item -ItemType Directory cohort-windows | Out-Null
           foreach ($suffix in @('', '.sig')) {
             Copy-Item (Join-Path dist-windows-nightly ($receipt.installer + $suffix)) (Join-Path cohort-windows ('station-nightly-desktop-windows-x86_64-setup.exe' + $suffix))

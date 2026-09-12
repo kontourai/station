@@ -248,7 +248,7 @@ That example number is a local test identity. Hosted releases consume the
 reserved `plan-cohort.outputs.bundle_version`. Generated output from a prior
 build must be retained separately before another build uses the same worktree.
 
-Windows publisher signing can use Tauri's `signCommand` through the protected
+Windows publisher signing is optional for Nightly. It can use Tauri's `signCommand` through the protected
 `WINDOWS_SIGN_COMMAND` variable, with the signing tool and its credentials
 configured in the runner environment. This supports cloud/HSM signing such as
 Azure Artifact Signing. Existing exportable certificates can instead use
@@ -257,10 +257,15 @@ checks Authenticode independently of the Tauri updater signature.
 
 Updater signing uses `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PUBLIC_KEY`,
 and an optional `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. `-RequireSigning`
-requires both publisher and updater signing. `-SignUpdater` supports isolated
-updater-signature tests without claiming Authenticode verification. Without
-publisher signing, a diagnostic installer can be retained in Actions, but the
-required promotion stage stays `NOT_VERIFIED` and withholds publication.
+requires both publisher and updater signing. Hosted Nightly always uses
+`-SignUpdater`; it additionally requires publisher signing when publisher
+credentials are configured. Without those credentials, the installer records
+`platformSigningState: NOT_SIGNED` and can publish with a verified Tauri updater
+signature. Missing or invalid updater signatures always block publication;
+configured publisher-signing failures also block instead of falling back.
+This uses our own updater keys and GitHub Releases without a paid Windows
+certificate subscription. Downloads without Authenticode can show an Unknown
+publisher or SmartScreen warning. Existing macOS signing remains required.
 
 One publisher owns `nightly-desktop/latest.json`. It waits for both desktop
 builds, verifies their updater signatures, and creates a manifest containing
@@ -278,4 +283,7 @@ receipt does not prove installation. Use
 Nightly install to compare an upgraded installation with both the packaged
 payload and a clean installation, exercise Tauri's NSIS `/UPDATE` path, and
 verify uninstall and preservation of the separate Station home. Native window
-and in-app download/relaunch checks remain separate evidence.
+and in-app download/relaunch checks remain separate evidence. Use `-InstallRoot`
+to select an unused installation directory independently of the proof directory.
+Deep installation paths can exceed NSIS/Windows path limits and omit runtime
+files; an inventory mismatch must not be waived simply because installation exited zero.

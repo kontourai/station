@@ -69,7 +69,9 @@ export function assembleNightlyDesktopManifest({
     if (!expected.includes(build.platform))
       throw new Error('Unexpected desktop platform');
     if (
-      build.platformSigningState !== 'VERIFIED' ||
+      !(build.platform === WINDOWS_NIGHTLY_PLATFORM
+        ? ['VERIFIED', 'NOT_SIGNED'].includes(build.platformSigningState)
+        : build.platformSigningState === 'VERIFIED') ||
       build.updaterSigningState !== 'VERIFIED'
     ) {
       throw new Error('Desktop signatures are not verified');
@@ -130,13 +132,15 @@ export function assertWindowsNightlyReceipt(receipt, identity, installerBytes) {
     receipt.platform !== WINDOWS_NIGHTLY_PLATFORM ||
     receipt.installerKind !== 'nsis' ||
     receipt.updaterFormat !== 'tauri-v2' ||
-    receipt.platformSigningState !== 'VERIFIED' ||
+    !['VERIFIED', 'NOT_SIGNED'].includes(receipt.platformSigningState) ||
     receipt.updaterPayloadState !== 'VERIFIED' ||
     !/^[a-f0-9]{64}$/.test(receipt.packagedProvenanceSha256 ?? '') ||
     receipt.installerSha256 !==
       createHash('sha256').update(installerBytes).digest('hex')
   )
-    throw new Error('Windows Authenticode receipt does not bind installer');
+    throw new Error(
+      'Windows signing and provenance receipt does not bind installer',
+    );
 }
 
 export function assertWindowsNightlyManifest(

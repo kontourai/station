@@ -69,6 +69,7 @@ try {
   $installerPath = $installers[0].FullName
   if ($installers[0].VersionInfo.ProductName -ne 'Station Nightly' -or $installers[0].VersionInfo.ProductVersion -ne $config.version) { throw 'Installer product identity differs from Nightly configuration' }
   $signature = Get-AuthenticodeSignature $installerPath
+  if ($signature.Status -notin @('Valid', 'NotSigned')) { throw "Invalid Authenticode signature: $($signature.Status)" }
   if ($RequireSigning -and ($signature.Status -ne 'Valid' -or ($certificate -and $signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint))) { throw "Invalid Authenticode signature: $($signature.Status)" }
   $extracted = Join-Path $out 'installer-extracted'
   $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
@@ -92,7 +93,7 @@ try {
     kind = 'station.windows-nightly-build/v1'; sourceSha = $SourceSha; version = $config.version
     bundleVersion = $BundleVersion; platform = 'windows-x86_64'; installerKind = 'nsis'; updaterFormat = 'tauri-v2'
     installer = $basename; installerSha256 = (Get-FileHash (Join-Path $out $basename) -Algorithm SHA256).Hash.ToLowerInvariant()
-    platformSigningState = $(if ($RequireSigning) { 'VERIFIED' } else { 'NOT_VERIFIED' })
+    platformSigningState = $(if ($signature.Status -eq 'Valid') { 'VERIFIED' } else { 'NOT_SIGNED' })
     signerSubject = $(if ($signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { $null })
     signerThumbprint = $(if ($signature.SignerCertificate) { $signature.SignerCertificate.Thumbprint } else { $null })
     packagedProvenanceSha256 = $expectedHash.ToLowerInvariant()

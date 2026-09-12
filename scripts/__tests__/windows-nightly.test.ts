@@ -59,6 +59,18 @@ describe('Windows Nightly', () => {
       Object.keys(assembleNightlyDesktopManifest(input()).platforms),
     ).toEqual(['darwin-aarch64', 'windows-x86_64']);
   });
+  it('publishes Windows without Authenticode while still requiring updater and macOS signing', () => {
+    const candidate = input();
+    candidate.builds[1].platformSigningState = 'NOT_SIGNED';
+    expect(
+      Object.keys(assembleNightlyDesktopManifest(candidate).platforms),
+    ).toEqual(['darwin-aarch64', 'windows-x86_64']);
+    candidate.builds[1].updaterSigningState = 'NOT_VERIFIED';
+    expect(() => assembleNightlyDesktopManifest(candidate)).toThrow();
+    candidate.builds[1].updaterSigningState = 'VERIFIED';
+    candidate.builds[0].platformSigningState = 'NOT_SIGNED';
+    expect(() => assembleNightlyDesktopManifest(candidate)).toThrow();
+  });
   it.each([
     'sourceSha',
     'version',
@@ -105,6 +117,22 @@ it('requires attested Windows signature, payload and packaged provenance facts',
   expect(() =>
     assertWindowsNightlyReceipt(receipt, identity, bytes),
   ).not.toThrow();
+  const unsigned = { ...receipt, platformSigningState: 'NOT_SIGNED' };
+  expect(() =>
+    assertWindowsNightlyReceipt(unsigned, identity, bytes),
+  ).not.toThrow();
+  for (const patch of [
+    { platformSigningState: 'NOT_VERIFIED' },
+    { platformSigningState: 'INVALID' },
+    { updaterPayloadState: 'NOT_VERIFIED' },
+  ]) {
+    expect(() =>
+      assertWindowsNightlyReceipt({ ...unsigned, ...patch }, identity, bytes),
+    ).toThrow();
+  }
+  expect(() =>
+    assertWindowsNightlyReceipt(unsigned, identity, Buffer.from('tampered')),
+  ).toThrow();
   for (const field of Object.keys(receipt)) {
     expect(() =>
       assertWindowsNightlyReceipt(
