@@ -111,6 +111,12 @@ export function normalizeGitHubPullRequest(
     author: { login: value.author?.login ?? '', url: value.author?.url },
     sourceBranch: value.headRefName,
     targetBranch: value.baseRefName,
+    ...(typeof value.headRefOid === 'string'
+      ? { headSha: value.headRefOid }
+      : {}),
+    ...(typeof value.baseRefOid === 'string'
+      ? { baseSha: value.baseRefOid }
+      : {}),
     commits: Array.isArray(value.commits) ? value.commits.length : 0,
     reviewStatus: Array.isArray(value.reviews)
       ? (value.reviews.at(-1)?.state ?? 'NONE')
@@ -332,7 +338,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--repo',
       `${host}/${c.repository.owner}/${c.repository.name}`,
       '--json',
-      'number,url,title,body,state,author,headRefName,baseRefName,commits,reviews,comments,mergeable,mergeStateStatus',
+      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
       ...(q.state ? ['--state', q.state.toLowerCase()] : []),
       ...(q.limit ? ['--limit', String(q.limit)] : []),
     ]);
@@ -346,7 +352,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--repo',
       `${host}/${c.repository.owner}/${c.repository.name}`,
       '--json',
-      'number,url,title,body,state,author,headRefName,baseRefName,commits,reviews,comments,mergeable,mergeStateStatus',
+      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
     ]);
   }
   getPullRequestByIdentity(
@@ -360,7 +366,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--repo',
       `${c.host}/${c.repository.owner}/${c.repository.name}`,
       '--json',
-      'number,url,title,body,state,author,headRefName,baseRefName,commits,reviews,comments,mergeable,mergeStateStatus',
+      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,baseRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
     ]);
   }
   openPullRequest(c: PullRequestRepositoryContext, input: any) {

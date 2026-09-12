@@ -236,17 +236,16 @@ export function forceKillProcess(proc: ChildProcess): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /** Environment variable stamped onto every owned child, for diagnostics. */
-export const STATION_SPAWN_OWNER_PID_ENV = 'STATION_SPAWN_OWNER_PID';
-export const STATION_SPAWN_OWNER_INSTANCE_ENV = 'STATION_SPAWN_OWNER_INSTANCE';
-export const STATION_SPAWN_OWNER_BOOT_ENV = 'STATION_SPAWN_OWNER_BOOT';
+const STATION_SPAWN_OWNER_PID_ENV = 'STATION_SPAWN_OWNER_PID';
+const STATION_SPAWN_OWNER_INSTANCE_ENV = 'STATION_SPAWN_OWNER_INSTANCE';
+const STATION_SPAWN_OWNER_BOOT_ENV = 'STATION_SPAWN_OWNER_BOOT';
 
 /**
  * Overrides the host-wide registry directory (tests). Production resolves it
  * under the OS temp dir so it survives the deletion of a `--temp-home` (the
  * observed orphans accumulated across temp-home probe lanes that were killed).
  */
-export const STATION_OWNED_PROCESS_REGISTRY_ENV =
-  'STATION_OWNED_PROCESS_REGISTRY';
+const STATION_OWNED_PROCESS_REGISTRY_ENV = 'STATION_OWNED_PROCESS_REGISTRY';
 
 /** The identity of the Station process that owns a spawned child. */
 interface OwnedProcessOwner {
@@ -271,9 +270,7 @@ interface OwnedProcessRecord {
 }
 
 /** Directory holding one JSON record per spawned owned child. */
-export function ownedProcessRegistryDir(
-  env: NodeJS.ProcessEnv = process.env,
-): string {
+function ownedProcessRegistryDir(env: NodeJS.ProcessEnv = process.env): string {
   const override = env[STATION_OWNED_PROCESS_REGISTRY_ENV];
   if (override && override.length > 0) return override;
   return join(tmpdir(), 'station-owned-processes');

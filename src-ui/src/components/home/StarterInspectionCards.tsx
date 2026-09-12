@@ -47,7 +47,7 @@ function identity(reference: StarterInspectionReference): string {
     : `receipt\0${reference.owner}\0${reference.id}`;
 }
 
-export async function starterInspectionOperationId(
+async function starterInspectionOperationId(
   starterId: StarterInspectionId,
   reference: StarterInspectionReference,
 ): Promise<string> {

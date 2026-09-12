@@ -9,7 +9,7 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 
-export const PERSISTED_RANDOM_IDENTIFIER_PATTERN =
+const PERSISTED_RANDOM_IDENTIFIER_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 async function readValidIdentifier(path: string): Promise<string | undefined> {

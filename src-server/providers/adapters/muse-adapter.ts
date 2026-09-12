@@ -113,7 +113,7 @@ export interface MuseAdapterOptions {
  * Long model answers finish well inside it; the value exists so a wedged child
  * cannot hold a turn open for the life of the process.
  */
-export const MUSE_DEFAULT_TURN_TIMEOUT_MS = 30 * 60_000;
+const MUSE_DEFAULT_TURN_TIMEOUT_MS = 30 * 60_000;
 
 /**
  * Cap on the unterminated stdout tail carried across chunk boundaries. muse
@@ -346,10 +346,7 @@ type MuseTurnSettleOutcome =
       outputText?: string;
     };
 
-export function createMuseProcess(
-  args: string[],
-  cwd?: string,
-): MuseSpawnResult {
+function createMuseProcess(args: string[], cwd?: string): MuseSpawnResult {
   const binary = findCliBinary('muse') ?? 'muse';
   // Mirrors the Codex spawn recipe (windowsHide + detached + piped stdio +
   // a Station-owned TMPDIR), routed through `spawnOwnedChild` so a per-turn

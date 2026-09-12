@@ -1,7 +1,7 @@
 import type { Logger } from '../../utils/logger.js';
 
 /** One total allowance for best-effort network delivery during teardown. */
-export const OPTIONAL_NETWORK_SHUTDOWN_BUDGET_MS = 1_500;
+const OPTIONAL_NETWORK_SHUTDOWN_BUDGET_MS = 1_500;
 
 export type OptionalNetworkShutdownTask = {
   name: string;

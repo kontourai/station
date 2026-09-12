@@ -1,0 +1,30 @@
+.pull-request-stacks,
+.pull-request-stacks ol,
+.pull-request-stacks li {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.pull-request-stacks header {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+}
+.pull-request-stacks ol {
+  padding: 10px 10px 10px 36px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+}
+.pull-request-stacks li {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+.pull-request-stacks li > span:last-child {
+  grid-column: 2;
+  overflow-wrap: anywhere;
+}
+.pull-request-stacks button {
+  min-height: 44px;
+}

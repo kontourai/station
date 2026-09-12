@@ -6,7 +6,7 @@ import type {
 
 /** A stable failure at the child-establishment boundary. It intentionally
  * carries no Datum/provider detail, binding id, AuthRef, or secret material. */
-export class McpSecretChildEstablishmentError extends Error {
+class McpSecretChildEstablishmentError extends Error {
   constructor() {
     super('The integration secret binding cannot be established.');
     this.name = 'McpSecretChildEstablishmentError';
@@ -21,7 +21,7 @@ export function hasSecretEnvRefs(def: ToolDef): boolean {
  * Resolve authored secret bindings only for a new stdio MCP child. The caller
  * owns construction and combines this result into a fresh child-only env.
  */
-export async function resolveMcpSecretChildEnv(input: {
+async function resolveMcpSecretChildEnv(input: {
   integrationId: string;
   def: ToolDef;
   resolver?: IntegrationSecretResolver;

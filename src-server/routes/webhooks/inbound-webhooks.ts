@@ -11,11 +11,11 @@ import {
 import { inboundWebhookRequests } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 
-export const INBOUND_WEBHOOK_PATH = '/inbound';
-export const INBOUND_WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
-export const INBOUND_WEBHOOK_RATE_WINDOW_MS = 60_000;
-export const INBOUND_WEBHOOK_MAX_ATTEMPTS_PER_WINDOW = 60;
-export const INBOUND_WEBHOOK_MAX_TRACKED_PRINCIPALS = 1_024;
+const INBOUND_WEBHOOK_PATH = '/inbound';
+const INBOUND_WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
+const INBOUND_WEBHOOK_RATE_WINDOW_MS = 60_000;
+const INBOUND_WEBHOOK_MAX_ATTEMPTS_PER_WINDOW = 60;
+const INBOUND_WEBHOOK_MAX_TRACKED_PRINCIPALS = 1_024;
 /**
  * Review M2: a GLOBAL budget of unauthenticated attempts, independent of the
  * attacker-chosen token id. `InboundWebhookAttemptLimiter` below buckets on a
@@ -41,14 +41,14 @@ export const INBOUND_WEBHOOK_MAX_TRACKED_PRINCIPALS = 1_024;
  * stays a recorded decision.
  */
 export const INBOUND_WEBHOOK_UNAUTHENTICATED_BUDGET_MAX_ATTEMPTS = 300;
-export const INBOUND_WEBHOOK_UNAUTHENTICATED_BUDGET_WINDOW_MS = 60_000;
+const INBOUND_WEBHOOK_UNAUTHENTICATED_BUDGET_WINDOW_MS = 60_000;
 /**
  * Review M2: how often a tripped budget's suppressed-refusal count may flush
  * to one aggregated audit entry. Bounding flushes to this cadence is what
  * stops a post-trip flood from evicting earlier, more diagnostically useful
  * entries out of the audit store's bounded 256-entry ring buffer.
  */
-export const INBOUND_WEBHOOK_NOISE_FLUSH_INTERVAL_MS = 60_000;
+const INBOUND_WEBHOOK_NOISE_FLUSH_INTERVAL_MS = 60_000;
 /** Single, constant, attacker-independent key: this budget is global, never per-token. */
 const UNAUTHENTICATED_BUDGET_KEY = 'unauthenticated';
 
@@ -65,7 +65,7 @@ type TurnStarter = (input: {
 type AttemptWindow = { attempts: number; expiresAt: number };
 
 /** Bounded, token-id-hashed inbound-attempt limiter. It never retains the supplied id. */
-export class InboundWebhookAttemptLimiter {
+class InboundWebhookAttemptLimiter {
   private readonly entries = new Map<string, AttemptWindow>();
 
   constructor(private readonly now: () => number = Date.now) {}

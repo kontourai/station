@@ -1041,3 +1041,14 @@ export interface ConversationForkProvenance {
   targetAgent: string;
   forkedAt: string;
 }
+
+/** Bounded exact-answer text for user-selected quotation, never evidence standing. */
+export interface OrchestrationQuoteSource {
+  version: 1;
+  sessionId: string;
+  turnId: string;
+  messageId: string;
+  text: string;
+  revision: string;
+}
+export const QUOTE_SOURCE_MAX_BYTES = 128 * 1024;

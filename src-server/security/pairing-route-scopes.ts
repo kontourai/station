@@ -725,6 +725,20 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  {
+    id: '/api/conversation-pull-requests:read',
+    method: 'GET',
+    prefix: '/api/conversation-pull-requests',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  ...(['POST', 'DELETE'] as const).map((method) => ({
+    id: `/api/conversation-pull-requests:${method.toLowerCase()}`,
+    method,
+    prefix: '/api/conversation-pull-requests',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit' as const,
+  })),
   // archive#1131 review round 1 (HIGH, own-audit finding beyond what the
   // reviewer named): `registerPluginHostApprovalRoutes`
   // (`plugin-host-approval-routes.ts`) exists specifically so a 'trusted'
@@ -1751,6 +1765,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/turns/:turnId/narrative/target',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/turns/:turnId/quote-source',
     },
     {
       method: 'PUT',

@@ -73,7 +73,7 @@ import type {
  * bounded time, not stall the turn that is waiting for the decision —
  * `peer-unreachable` after 5s is a usable answer, a hung turn is not.
  */
-export const FLEET_PEER_REQUEST_TIMEOUT_MS = 5_000;
+const FLEET_PEER_REQUEST_TIMEOUT_MS = 5_000;
 
 /** Peers consulted in one resolution. Bounds a pathological credential store. */
 export const FLEET_MAX_PEERS = 16;
@@ -197,7 +197,7 @@ export function peerAttestedLevelFromManifestModel(
  * actually used — folding them is how "the peer says this is available" turns
  * into "we confirmed it" (`fleet-routing-receipt.ts` module docblock).
  */
-export function peerAttestedEvidence(
+function peerAttestedEvidence(
   model: FleetContributedModel,
   manifest: FleetContributionManifest,
   fetchedAt: string,
@@ -231,7 +231,7 @@ export function peerAttestedEvidence(
  * verified a machine that claims the same thing" are different situations,
  * and a receipt read months later must still be able to tell them apart.
  */
-export function withProbeObservation(
+function withProbeObservation(
   evidence: FleetCandidateEvidence,
   probe: ConsumerProbeObservation | null,
 ): FleetCandidateEvidence {

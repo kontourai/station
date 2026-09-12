@@ -1,7 +1,7 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { OrchestrationEvent } from '../types';
 
-export const SESSION_TAPE_KIND = 'station.session-tape' as const;
+const SESSION_TAPE_KIND = 'station.session-tape' as const;
 
 export interface SessionTapeSource {
   threadId: string;

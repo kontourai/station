@@ -126,6 +126,9 @@ const LAZY_TRANSCRIPT_TIMEOUT_MS = 5_000;
 
 function buildChatInput() {
   return {
+    quotes: [],
+    quotedDraftText: '',
+    removeQuote: vi.fn(),
     input: '',
     attachments: [],
     textareaRef: { current: null },

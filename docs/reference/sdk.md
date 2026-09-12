@@ -2198,6 +2198,25 @@ cached recovery notice across API-base changes; refresh the selected Station
 before projecting it as current. The record exposes no filesystem path or
 backup manifest contents.
 
+## Saved answer quotations
+
+`getAssistantQuoteSource(apiBase, sessionId, turnId, options)` from
+`@kontourai/station-sdk/quote-source` reads a bounded completed answer through
+`GET /api/orchestration/sessions/:sessionId/turns/:turnId/quote-source`.
+Pass the host-captured `requestScope` and an abort signal. The result is
+`OrchestrationQuoteSource`: exact Session/turn/message identifiers, source text,
+and a SHA-256 text revision. Reads recheck current access and do not load the
+whole Session. Missing and denied answers are indistinguishable; an oversized
+answer is refused. A text revision detects changes, not evidence standing.
+
+The Station composer retains up to three selected excerpts with its existing
+local draft. Sending serializes the user's copied text and source references
+into the ordinary user message; it creates no capability or trust grant.
+Inspecting a saved reference reads its original answer under current access
+on the selected Station. No network request is made to an origin supplied by
+an untrusted quote link. The saved quotation and a changed current source
+remain visibly distinct.
+
 ## In-app pull-request review
 
 `@kontourai/station-sdk/pull-request-review` exports `getPullRequestReview`,
@@ -2218,6 +2237,19 @@ not a safe automatic-retry signal. Unsupported review adapters return an
 explicit unavailable result. Diff bytes and discussion are bounded and may be
 partial; the response says which content could not be supplied.
 
+## Conversation pull-request links
+
+`@kontourai/station-sdk/conversation-pull-request-links` reads, links, and
+unlinks exact pull-request identities for one Conversation. Each call requires
+the selected Station API base and captured `requestScope`. A link is persisted
+only after the provider resolves the exact provider, host, repository owner,
+repository name, and native ref under current authorization.
+
+Reads refresh every identity and return `observedAt` plus current,
+unsupported, or unavailable state. Clients should mark an old cached
+observation stale and require refresh before review or other actions. Explicit
+unlink changes only the Conversation association; it never changes the pull
+request or deletes Task-kept provenance.
 ## Files in answers to input requests
 
 `getInputReplyContext(apiBase, reference, options)` from

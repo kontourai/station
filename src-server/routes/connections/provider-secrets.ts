@@ -3,8 +3,8 @@ import type {
   ProviderConnectionConfig,
 } from '@kontourai/station-contracts/tool';
 
-export const API_KEY_CONFIGURED_FIELD = 'apiKeyConfigured';
-export const API_KEY_CLEAR_FIELD = 'apiKeyClearRequested';
+const API_KEY_CONFIGURED_FIELD = 'apiKeyConfigured';
+const API_KEY_CLEAR_FIELD = 'apiKeyClearRequested';
 
 type ProviderConfigOwner = {
   config?: Record<string, unknown>;
@@ -15,7 +15,7 @@ type ProviderConfigOwner = {
  * value. This marker is safe for device clients and lets an edit preserve the
  * saved secret without copying it through the browser.
  */
-export function redactProviderSecrets<T extends ProviderConfigOwner>(
+function redactProviderSecrets<T extends ProviderConfigOwner>(
   connection: T,
 ): T {
   const config = connection.config ?? {};
@@ -50,7 +50,7 @@ export function redactConnectionSecrets(
  * without receiving or resubmitting the secret. A non-empty new apiKey
  * deliberately replaces it. The response-only marker is never persisted.
  */
-export function restoreProviderSecrets<T extends ProviderConfigOwner>(
+function restoreProviderSecrets<T extends ProviderConfigOwner>(
   incoming: T,
   existing?: ProviderConfigOwner | null,
 ): T {

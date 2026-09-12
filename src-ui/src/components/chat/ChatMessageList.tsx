@@ -14,6 +14,7 @@ import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
 import { useToolApproval } from '../../hooks/useToolApproval';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import type { ChatMessage, ChatSession } from '../../types';
+import type { SavedAnswerQuote } from '../../utils/answer-quotes';
 import { isTurnStreamLive } from '../../utils/execution';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -28,6 +29,7 @@ import {
 import type { ForkTurnSource } from './fork-turn-source';
 import { formatFormSubmission } from './formSubmission';
 import { MessageBubble, type MessageBubbleSession } from './MessageBubble';
+import { QuoteSelectionToolbar } from './QuoteSelectionToolbar';
 import { ReasoningSection } from './ReasoningSection';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { SessionSummaryCard } from './SessionSummaryCard';
@@ -78,6 +80,7 @@ interface ChatMessageListProps {
    */
   hasSettingsEntryPoint?: boolean;
   onForkFromTurn?: (source: ForkTurnSource) => void;
+  onQuote?: (quote: SavedAnswerQuote) => void;
 }
 
 // Stable fallback so `agent || FALLBACK_AGENT` doesn't allocate a new object
@@ -120,6 +123,7 @@ function ChatMessageListComponent({
   accountableHuman,
   hasSettingsEntryPoint,
   onForkFromTurn,
+  onQuote,
 }: ChatMessageListProps) {
   const agents = useAgents();
   const { apiBase } = useApiBase();
@@ -540,6 +544,13 @@ function ChatMessageListComponent({
 
   return (
     <UIBlockActionsContext.Provider value={uiBlockActions}>
+      {onQuote && (
+        <QuoteSelectionToolbar
+          container={messagesContainerRef}
+          messages={messages}
+          onQuote={onQuote}
+        />
+      )}
       <SessionSummaryCard
         activeSession={activeSession}
         hasSettingsEntryPoint={hasSettingsEntryPoint}

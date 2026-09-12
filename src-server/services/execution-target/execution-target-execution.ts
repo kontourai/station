@@ -135,7 +135,7 @@ type ConversationHandoffLaunchCapability = Readonly<{
  * The handoff authority calls this only after target readiness and durable
  * reservation succeed.  It is intentionally not a boolean escape hatch.
  */
-export function createConversationHandoffLaunchCapability(
+function createConversationHandoffLaunchCapability(
   input: Omit<
     ConversationHandoffLaunchCapability,
     typeof conversationHandoffLaunchCapabilityBrand

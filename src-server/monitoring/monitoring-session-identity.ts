@@ -4,7 +4,7 @@
  * producer shapes; keep their compatibility here instead of letting each
  * reader choose a different (and potentially unsafe) field precedence.
  */
-export const MONITORING_SESSION_ID_KEYS = [
+const MONITORING_SESSION_ID_KEYS = [
   // OTel GenAI semantic conventions and Station's agent-telemetry schema.
   'gen_ai.conversation.id',
   'station.agent_telemetry.session_id',

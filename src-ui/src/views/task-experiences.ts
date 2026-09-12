@@ -16,51 +16,50 @@ export interface ResolvedTaskExperience extends TaskExperienceDefinition {
   availability: TaskExperienceAvailability;
 }
 
-export const TASK_EXPERIENCE_DEFINITIONS: readonly TaskExperienceDefinition[] =
-  [
-    {
-      id: 'direct',
-      label: 'Direct',
-      authority: 'Station',
-      description:
-        'Inspect the exact Task workspace and recorded references. Inspection is not a verification claim.',
-      unavailableDescription: '',
-    },
-    {
-      id: 'deliver',
-      label: 'Deliver',
-      authority: 'Builder Kit',
-      description:
-        'Continue delivery through a Builder-owned Task reference. Station does not infer lifecycle completion.',
-      unavailableDescription:
-        'No trusted Builder Kit contract is attached. Direct work remains available, and Station does not report delivery completion.',
-      alternativeHref: '/plugins',
-      alternativeLabel: 'Manage plugins',
-    },
-    {
-      id: 'learn',
-      label: 'Learn',
-      authority: 'Knowledge Kit',
-      description:
-        'Open a Knowledge-owned record with its published provenance and freshness.',
-      unavailableDescription:
-        'No trusted Knowledge Kit contract is attached. Station does not invent knowledge, provenance, or freshness.',
-      alternativeHref:
-        '/settings?view=knowledge&highlight=personal-knowledge-store',
-      alternativeLabel: 'Configure knowledge',
-    },
-    {
-      id: 'operate',
-      label: 'Operate',
-      authority: 'Console',
-      description:
-        'Open a Console-owned operational projection. Station remains a reader and deep-link boundary.',
-      unavailableDescription:
-        'No trusted Console deep-link contract is attached. Station does not host or write Console operational state.',
-      alternativeHref: 'https://github.com/kontourai/console',
-      alternativeLabel: 'Open Console project',
-    },
-  ] as const;
+const TASK_EXPERIENCE_DEFINITIONS: readonly TaskExperienceDefinition[] = [
+  {
+    id: 'direct',
+    label: 'Direct',
+    authority: 'Station',
+    description:
+      'Inspect the exact Task workspace and recorded references. Inspection is not a verification claim.',
+    unavailableDescription: '',
+  },
+  {
+    id: 'deliver',
+    label: 'Deliver',
+    authority: 'Builder Kit',
+    description:
+      'Continue delivery through a Builder-owned Task reference. Station does not infer lifecycle completion.',
+    unavailableDescription:
+      'No trusted Builder Kit contract is attached. Direct work remains available, and Station does not report delivery completion.',
+    alternativeHref: '/plugins',
+    alternativeLabel: 'Manage plugins',
+  },
+  {
+    id: 'learn',
+    label: 'Learn',
+    authority: 'Knowledge Kit',
+    description:
+      'Open a Knowledge-owned record with its published provenance and freshness.',
+    unavailableDescription:
+      'No trusted Knowledge Kit contract is attached. Station does not invent knowledge, provenance, or freshness.',
+    alternativeHref:
+      '/settings?view=knowledge&highlight=personal-knowledge-store',
+    alternativeLabel: 'Configure knowledge',
+  },
+  {
+    id: 'operate',
+    label: 'Operate',
+    authority: 'Console',
+    description:
+      'Open a Console-owned operational projection. Station remains a reader and deep-link boundary.',
+    unavailableDescription:
+      'No trusted Console deep-link contract is attached. Station does not host or write Console operational state.',
+    alternativeHref: 'https://github.com/kontourai/console',
+    alternativeLabel: 'Open Console project',
+  },
+] as const;
 
 /**
  * The capability string an installed plugin declares in its manifest to say it
@@ -68,7 +67,7 @@ export const TASK_EXPERIENCE_DEFINITIONS: readonly TaskExperienceDefinition[] =
  * a deliberate declaration against Station's own contract, not a word a plugin
  * could collide with by accident.
  */
-export function taskExperienceCapabilityId(id: TaskExperienceId): string {
+function taskExperienceCapabilityId(id: TaskExperienceId): string {
   return `station.task-experience.${id}`;
 }
 
