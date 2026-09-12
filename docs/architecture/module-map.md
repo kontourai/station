@@ -1039,3 +1039,23 @@ The native login-shell PATH observation owns a process group, nonblocking output
 a five-second deadline, and a 64 KiB output budget. Its framed PATH value excludes
 startup banners. Native sidecar error details retain at most 64 KiB and 16 lines,
 including after lossy UTF-8 decoding; an I/O error stops the reader.
+
+## MobileDeviceHost
+
+**Owner:** `src-server/services/mobile-device/mobile-device-host.ts`.
+**Contract:** `packages/contracts/src/mobile-device.ts`. The personal runtime
+composes an explicitly configured loopback helper adapter; hosted tenant
+execution does not mount it. `src-server/routes/mobile-device.ts` publishes
+inventory and explicit single-frame captures only after current request
+authorization, with the screenshot leaf requiring terminal authority. The
+helper adapter owns target validation, fresh membership checks, redirect refusal,
+response/deadline bounds and image metadata; it launches no processes and
+forwards no generic routes. `packages/sdk/src/mobile-device.ts` validates
+responses and preserves the selected Station's HTTP authority. The Device pane
+and control/lifecycle service are separate follow-ups; the API does not infer
+app identity from a screen or live readiness from a snapshot.
+
+**Evidence:** `src-server/services/mobile-device/__tests__/mobile-device-host.test.ts`,
+`src-server/routes/__tests__/mobile-device.routes.test.ts`, and
+`packages/sdk/src/__tests__/mobile-device.test.ts`. See the
+[operator guide](../guides/mobile-device-workspace.md).
