@@ -28,6 +28,7 @@ export class SessionTapePlayer {
   private playbackGeneration = 0;
   private foldMs = 0;
   private turnStartedAtMs = 0;
+  private clockAtMs = 0;
   private connection: import('../streamConnectionState').StreamConnectionPhase =
     'unknown';
   private connectionAtMs = 0;
@@ -174,6 +175,7 @@ export class SessionTapePlayer {
   }
 
   private advanceClock(atMs: number): void {
+    this.clockAtMs = atMs;
     const replay = activeChatsStore.getSnapshot()[this.replayId]?.replay;
     if (replay)
       activeChatsStore.updateChat(this.replayId, {
@@ -203,6 +205,7 @@ export class SessionTapePlayer {
     this.measurement = undefined;
     this.connection = 'unknown';
     this.turnStartedAtMs = 0;
+    this.clockAtMs = 0;
     this.restoreInitialState();
     while (this.cursor < index) {
       this.cursor += 1;
@@ -333,7 +336,10 @@ export class SessionTapePlayer {
         generation === this.playbackGeneration &&
         this.cursor < this.eventCount - 1
       ) {
-        const previous = this.frames[this.cursor]?.atMs ?? 0;
+        const previous = Math.max(
+          this.frames[this.cursor]?.atMs ?? 0,
+          this.clockAtMs,
+        );
         const next = this.frames[this.cursor + 1].atMs;
         const delay = options.untilIssue
           ? 0

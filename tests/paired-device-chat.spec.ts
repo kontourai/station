@@ -241,13 +241,16 @@ test.describe('Paired-device chat round trip', () => {
         });
         if (broadcast) {
           // Network-fault seam: Chromium's offline emulation does not close
-          // an existing fetch body. Abort that real HTTP stream as well;
-          // all bytes, reconnect requests, and cursors still come from Station.
+          // an existing fetch body. Cut only this real SSE stream; other HTTP
+          // remains healthy. All delivered bytes and resume cursors come from Station.
           await peerContext.addInitScript(() => {
             const originalFetch = window.fetch.bind(window);
             const streams = new Set<AbortController>();
+            let disconnected = false;
             Object.assign(window, {
-              __disconnectChatStream: () => {
+              __disconnectChatStream: (value: boolean) => {
+                disconnected = value;
+                if (!value) return;
                 for (const controller of streams)
                   controller.abort(new TypeError('Fixture connection lost'));
                 streams.clear();
@@ -261,6 +264,8 @@ test.describe('Paired-device chat round trip', () => {
                 )
               )
                 return originalFetch(input, init);
+              if (disconnected)
+                return Promise.reject(new TypeError('Fixture connection lost'));
               const controller = new AbortController();
               streams.add(controller);
               const inherited =
@@ -468,13 +473,12 @@ test.describe('Paired-device chat round trip', () => {
               .toBe(2);
             await expect(hostTranscript.locator('.tool-call')).toHaveCount(1);
             await expect(peerTranscript.locator('.tool-call')).toHaveCount(1);
-            await peerContext.setOffline(true);
             await peer.evaluate(() => {
               (
                 window as unknown as Window & {
-                  __disconnectChatStream: () => void;
+                  __disconnectChatStream: (value: boolean) => void;
                 }
-              ).__disconnectChatStream();
+              ).__disconnectChatStream(true);
             });
             await expect(
               peer.getByText('Reconnecting…', { exact: true }),
@@ -486,7 +490,13 @@ test.describe('Paired-device chat round trip', () => {
             await expect(peerTranscript).not.toContainText(
               'Recovered after disconnect.',
             );
-            await peerContext.setOffline(false);
+            await peer.evaluate(() => {
+              (
+                window as unknown as {
+                  __disconnectChatStream(value: boolean): void;
+                }
+              ).__disconnectChatStream(false);
+            });
             await expect(peerTranscript).toContainText(
               'Recovered after disconnect.',
               { timeout: 30_000 },
@@ -539,6 +549,11 @@ test.describe('Paired-device chat round trip', () => {
             await expect(
               peer.getByText('Session record missing.', { exact: true }),
             ).toHaveCount(0);
+            await peer.getByRole('button', { name: 'Chat actions' }).click();
+            await peer
+              .getByRole('menu', { name: 'Chat actions' })
+              .getByRole('menuitem', { name: /^Expand chat/ })
+              .click();
             await peer.screenshot({
               path: testInfo.outputPath('paired-phone-two-turns.png'),
             });

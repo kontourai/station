@@ -103,6 +103,14 @@ describe('session tape player', () => {
     await playback;
     expect(player.cursor).toBe(0);
     expect(player.playing).toBe(false);
+    const resumed = player.play(() => null, { skipGaps: false });
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(
+      activeChatsStore.getSnapshot()[replayId].replay?.elapsedMs,
+    ).toBeGreaterThanOrEqual(3000);
+    player.pause();
+    await vi.advanceTimersByTimeAsync(100);
+    await resumed;
     player.dispose();
   });
 
