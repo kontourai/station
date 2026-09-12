@@ -37,7 +37,6 @@ export function finalizeAssistantTurn(
     '';
   if (
     typeof fallbackText === 'string' &&
-    receivedText &&
     fallbackText.startsWith(receivedText) &&
     fallbackText.length > receivedText.length
   ) {
@@ -84,7 +83,18 @@ export function finalizeAssistantTurn(
   );
   const hasNonTextParts = nonTextParts.length > 0;
 
+  const retainedFailure =
+    chat.status === 'error' &&
+    !fallbackText &&
+    chat.messages?.some(
+      (message) =>
+        message.answerEligible === false &&
+        message.role === 'assistant' &&
+        (turnProvenance?.turnId === undefined ||
+          message.turnId === turnProvenance.turnId),
+    );
   if (
+    retainedFailure ||
     (!content && !(streamingMessage?.contentParts || []).length) ||
     (isDuplicateErrorText && !hasNonTextParts)
   ) {

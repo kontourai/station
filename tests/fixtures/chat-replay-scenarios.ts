@@ -97,6 +97,24 @@ const emptyHistory: ReplayHistoryState = {
 
 export const chatReplayScenarios = [
   {
+    name: 'reported thinking before an answer',
+    tape: tape([
+      start(),
+      runtime(
+        event('content.reasoning-delta', {
+          itemId: 'reasoning',
+          delta: 'Inspecting the recorded state transitions.',
+        }),
+        500,
+      ),
+      { kind: 'clock', atMs: 28_000 },
+    ]),
+    text: 'Thinking for',
+    timer: '0:28',
+    streaming: true,
+  },
+
+  {
     name: 'waiting before content',
     tape: tape([start(), { kind: 'clock', atMs: 28_000 }]),
     text: 'Working',
@@ -113,7 +131,6 @@ export const chatReplayScenarios = [
       { kind: 'clock', atMs: 42_000 },
     ]),
     text: 'compare the live events',
-    timer: '0:42',
     streaming: true,
   },
   {
@@ -127,7 +144,6 @@ export const chatReplayScenarios = [
       { kind: 'clock', atMs: 65_000 },
     ]),
     text: 'reading the relevant files',
-    timer: '1:05',
     streaming: true,
     tools: 3,
   },
@@ -165,7 +181,7 @@ export const chatReplayScenarios = [
       ),
       { kind: 'clock', atMs: 20_000 },
     ]),
-    text: 'approval',
+    text: 'Waiting for approval',
     timer: '0:20',
     streaming: true,
   },

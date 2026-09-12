@@ -4,6 +4,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { ReplayTransport } from '../../../../components/chat/ReplayTransport';
 import { activeChatsStore } from '../../../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../../../contexts/background-tasks-store';
+import { handleOrchestrationEvent } from '../../eventHandlers';
 import { applyOrchestrationSnapshot } from '../../snapshotHandlers';
 import type { OrchestrationEvent } from '../../types';
 import { closeActiveReplay, openReplayFromTape } from '../controller';
@@ -169,6 +170,29 @@ test('capture is opt-in, host-scoped, and includes the initial history state', (
   expect(exported).not.toContain('private prompt');
   expect(JSON.parse(exported).redacted).toBe(true);
   expect(serializeSessionTape(capture, true)).toContain('private prompt');
+});
+
+test('capture follows the server-bound successor and excludes unrelated execution traffic', () => {
+  activeChatsStore.initChat(source.threadId, {
+    agentSlug: 'codex',
+    agentName: 'Codex',
+    title: 'Captured',
+    conversationId: source.threadId,
+  });
+  startReplayCapture('host-a', source);
+  handleOrchestrationEvent(
+    'host-a',
+    event('session.configured', { threadId: 'child', sessionId: 'child' }),
+    undefined,
+    { conversationId: source.threadId, currentSessionId: 'child' },
+  );
+  recordReplayRuntime('host-a', event('turn.started', { threadId: 'child' }));
+  recordReplayRuntime(
+    'host-a',
+    event('turn.started', { threadId: 'unrelated' }),
+  );
+  expect(stopReplayCapture()?.frames).toHaveLength(2);
+  activeChatsStore.removeChat(source.threadId);
 });
 
 test('pause cancels playback during a recorded gap before another event is applied', async () => {

@@ -1,3 +1,4 @@
+import { ToolCallDisplay } from '../components/chat/ToolCallDisplay';
 /**
  * @vitest-environment jsdom
  */
@@ -498,7 +499,11 @@ test('a live batch button names the latest running call; the sheet titles the in
 
   render(<ToolCallBatch run={run} renderCall={renderCall} />);
 
-  fireEvent.click(screen.getByRole('button', { name: group.summary }));
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: (name) => name.startsWith(group.summary),
+    }),
+  );
   expect(await screen.findByTestId('tool-call-detail-0')).toBeTruthy();
   expect(
     screen.getByRole('heading', { name: group.aggregateSummary }),
@@ -577,12 +582,13 @@ test('a running call beside an awaiting grant keeps a single progress line on th
       ]}
       contentRevision={1}
       renderToolCall={(part, index) => (
-        <div key={index}>{String(part.toolName ?? part.name)}</div>
+        <ToolCallDisplay key={index} toolCall={part} showDetails={false} />
       )}
     />,
   );
   expect(await screen.findByText('still going')).toBeTruthy();
   expect(screen.getAllByText('still going')).toHaveLength(1);
-  expect(document.querySelector('.streaming-activity')).toBeTruthy();
+  expect(document.querySelector('.streaming-activity')).toBeNull();
+  expect(document.querySelector('.tool-call__progress')).toBeTruthy();
   expect(document.querySelector('.tool-call-batch__progress')).toBeNull();
 });

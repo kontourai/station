@@ -408,6 +408,7 @@ function makeResumeTestService(
     canUserReadSession: vi.fn().mockReturnValue(true),
     dispatch: vi.fn(),
     readEventStreamHead: () => eventStore.headGlobalSequence(),
+    conversationStreamBinding: () => undefined,
     readEventGlobalSequence: (eventId: string) =>
       eventStore.readGlobalSequence(eventId),
     readEventStreamReplay: (
@@ -4162,6 +4163,7 @@ describe('Orchestration Routes', () => {
       canUserReadSession: vi.fn().mockReturnValue(true),
       dispatch: vi.fn(),
       readEventStreamHead: vi.fn().mockReturnValue(0),
+      conversationStreamBinding: () => undefined,
       readEventGlobalSequence: vi.fn().mockReturnValue(undefined),
       readEventStreamReplay: vi.fn().mockReturnValue([]),
     };
@@ -4229,6 +4231,7 @@ describe('Orchestration Routes', () => {
           threadId === 'thread-a',
       ),
       readEventStreamHead: vi.fn().mockReturnValue(1),
+      conversationStreamBinding: () => undefined,
       readEventGlobalSequence: vi.fn().mockReturnValue(1),
       readEventStreamReplay: vi.fn(
         (_cursor: number, _options: unknown, authority: any) =>
@@ -4376,6 +4379,7 @@ describe('Orchestration Routes', () => {
       canUserReadSession: vi.fn().mockReturnValue(true),
       dispatch: vi.fn(),
       readEventStreamHead: vi.fn().mockReturnValue(0),
+      conversationStreamBinding: () => undefined,
       readEventGlobalSequence: vi.fn().mockReturnValue(undefined),
       readEventStreamReplay: vi.fn().mockReturnValue([]),
     };
@@ -4436,6 +4440,7 @@ describe('Orchestration Routes', () => {
       canUserReadSession: vi.fn().mockReturnValue(true),
       dispatch: vi.fn(),
       readEventStreamHead: vi.fn().mockReturnValue(0),
+      conversationStreamBinding: () => undefined,
       readEventGlobalSequence: vi.fn().mockReturnValue(undefined),
       readEventStreamReplay: vi.fn().mockReturnValue([]),
     };

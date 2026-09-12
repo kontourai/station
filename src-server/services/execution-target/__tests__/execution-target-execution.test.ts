@@ -75,6 +75,44 @@ function dependencies(): ExecutionTargetExecutionDependencies {
 }
 
 describe('executeForegroundMessage', () => {
+  test('a request-bound sharing decision permits a paired continuation and rejects an unrelated caller', async () => {
+    const deps = dependencies();
+    deps.readSessionBinding = vi.fn(async () => ({
+      environmentId: 'environment-kontour',
+      agentId: 'station',
+      userId: 'phone-owner',
+    }));
+    deps.canContinueConversation = vi.fn(
+      (_access, id, userId) =>
+        id === 'conversation:shared' && userId === 'desktop-reader',
+    );
+    await executeForegroundMessage(
+      {
+        target: { environment: { kind: 'current' }, agent: agentId('station') },
+        conversationId: 'conversation:shared',
+        message: 'Continue from my other device',
+        userId: 'desktop-reader',
+      },
+      deps,
+    );
+    expect(deps.sendTurn).toHaveBeenCalledOnce();
+    expect(deps.canContinueConversation).toHaveBeenCalledOnce();
+    await expect(
+      executeForegroundMessage(
+        {
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+          },
+          conversationId: 'conversation:shared',
+          message: 'Unrelated device',
+          userId: 'stranger',
+        },
+        deps,
+      ),
+    ).rejects.toThrow('belongs to a different Environment');
+    expect(deps.sendTurn).toHaveBeenCalledOnce();
+  });
   test('handoff retry after an accepted boundary start sends once without starting another successor', async () => {
     const deps = dependencies();
     deps.readSessionBinding = vi.fn(async () => ({

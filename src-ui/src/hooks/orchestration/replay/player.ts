@@ -136,16 +136,7 @@ export class SessionTapePlayer {
       this.connection = frame.status;
       this.connectionAtMs = frame.atMs;
     }
-    const replay = activeChatsStore.getSnapshot()[this.replayId]?.replay;
-    if (replay)
-      activeChatsStore.updateChat(this.replayId, {
-        replay: {
-          ...replay,
-          connectionPhase: this.connection,
-          connectionElapsedMs: Math.max(0, frame.atMs - this.connectionAtMs),
-          elapsedMs: Math.max(0, frame.atMs - this.turnStartedAtMs),
-        },
-      });
+    this.advanceClock(frame.atMs);
     if (frame.kind === 'clock') return;
     if (frame.kind === 'history') {
       setReplayHistory(this.replayId, this.rewriteHistory(frame.state));
@@ -175,35 +166,24 @@ export class SessionTapePlayer {
     }
     const event = this.currentEvent();
     if (!event) return;
-    // Live sends insert their user row before turn.started arrives. A tape
-    // has no composer send; restore that input before using the same fold.
-    // Steering already appends its own user row in the canonical handler.
-    if (
-      event.method === 'turn.started' &&
-      event.inputKind !== 'steer' &&
-      event.prompt
-    ) {
-      const chat = activeChatsStore.getSnapshot()[this.replayId];
-      activeChatsStore.updateChat(this.replayId, {
-        messages: [
-          ...(chat?.messages ?? []),
-          {
-            id: `replay-input:${event.eventId}`,
-            clientId: `replay-input:${event.eventId}`,
-            role: 'user',
-            content: event.prompt,
-            turnId: event.turnId,
-            sessionId: this.replayId,
-            timestamp: Date.parse(event.createdAt),
-          },
-        ],
-      });
-    }
     handleOrchestrationEvent(
       this.apiBase,
       rewriteEventThreadId(event, this.replayId),
       frame.provenance,
     );
+  }
+
+  private advanceClock(atMs: number): void {
+    const replay = activeChatsStore.getSnapshot()[this.replayId]?.replay;
+    if (replay)
+      activeChatsStore.updateChat(this.replayId, {
+        replay: {
+          ...replay,
+          connectionPhase: this.connection,
+          connectionElapsedMs: Math.max(0, atMs - this.connectionAtMs),
+          elapsedMs: Math.max(0, atMs - this.turnStartedAtMs),
+        },
+      });
   }
 
   private refoldTo(index: number): void {
@@ -360,18 +340,27 @@ export class SessionTapePlayer {
           : Math.max(0, next - previous) / speed;
         const wait =
           options.skipGaps === false ? delay : Math.min(delay, 2_000);
-        const deadline = performance.now() + wait;
+        const started = performance.now();
+        const deadline = started + wait;
+        let lastTick = -1;
         while (
           generation === this.playbackGeneration &&
           performance.now() < deadline
         ) {
+          const fraction = Math.min(1, (performance.now() - started) / wait);
+          const atMs = previous + (next - previous) * fraction;
+          const tick = Math.floor(atMs / 1000);
+          if (tick !== lastTick) {
+            this.advanceClock(atMs);
+            lastTick = tick;
+          }
           await new Promise<void>((resolve) =>
             setTimeout(resolve, Math.min(50, deadline - performance.now())),
           );
         }
         if (generation !== this.playbackGeneration) break;
         const observation = await this.stepRendered(element);
-        if (observation.issues.length > 0) break;
+        if (options.untilIssue && observation.issues.length > 0) break;
       }
     } finally {
       if (generation === this.playbackGeneration) {

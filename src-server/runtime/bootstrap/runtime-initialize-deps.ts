@@ -58,7 +58,10 @@ interface RuntimeInitializationContext {
   approvalRegistry: ApprovalRegistry;
   environmentSecurityService: Pick<
     EnvironmentSecurityService,
-    'verifyCredential' | 'resolveGrantedScope'
+    | 'verifyCredential'
+    | 'resolveGrantedScope'
+    | 'canSharePersonalConversation'
+    | 'personalConversationOwnerIds'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {

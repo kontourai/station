@@ -5,10 +5,12 @@ export function ElapsedWait({
   startedAt,
   elapsedMs,
   label = 'Waiting',
+  separator = ' · ',
 }: {
   startedAt?: number;
   elapsedMs?: number;
   label?: string;
+  separator?: string;
 }) {
   const [mountedAt] = useState(Date.now);
   const [now, setNow] = useState(Date.now);
@@ -27,7 +29,7 @@ export function ElapsedWait({
       aria-live="off"
       title="Time waiting in this view; not an estimate of completion"
     >
-      {label ? `${label} · ` : ''}
+      {label ? `${label}${separator}` : ''}
       {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}
     </span>
   );

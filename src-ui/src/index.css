@@ -3933,14 +3933,14 @@ button:hover {
    the agent never reads as idle before the first delta arrives. */
 .streaming-activity {
   display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.streaming-activity__label {
+  align-items: baseline;
+  gap: 6px;
   color: var(--text-secondary);
   font-size: 0.88em;
   line-height: 1.35;
+}
+.streaming-activity .elapsed-wait {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Streaming-aliveness motion primitives (archive#2651) ──────────────────

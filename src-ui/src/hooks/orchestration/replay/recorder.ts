@@ -28,6 +28,7 @@ let recording: {
   tape: SessionTape;
   startedAt: number;
   bytes: number;
+  chatKey?: string;
 } | null = null;
 let latestTape: SessionTape | null = null;
 let status: {
@@ -92,7 +93,14 @@ export function startReplayCapture(
     throw new Error(
       'The initial conversation exceeds the 16 MiB capture limit.',
     );
-  recording = { apiBase, source, tape, bytes, startedAt: performance.now() };
+  recording = {
+    apiBase,
+    source,
+    tape,
+    bytes,
+    startedAt: performance.now(),
+    chatKey: activeChatsStore.getChatKeyForExecutionSession(source.threadId),
+  };
   attachReplayCapture({
     runtime: recordReplayRuntime,
     history: captureHistory,
@@ -148,10 +156,19 @@ export function recordReplayRuntime(
   if (
     !recording ||
     recording.apiBase !== apiBase ||
-    recording.source.threadId !== event.threadId
+    !capturedSession(event.threadId)
   )
     return;
   append({ kind: 'runtime', event, provenance });
+}
+
+function capturedSession(threadId: string): boolean {
+  if (!recording) return false;
+  if (recording.source.threadId === threadId) return true;
+  const chat = recording.chatKey
+    ? activeChatsStore.getSnapshot()[recording.chatKey]
+    : undefined;
+  return chat?.currentSessionId === threadId;
 }
 
 /** Only one current reader reference is retained; no event cloning when capture is off. */
@@ -187,8 +204,8 @@ export function recordReplaySnapshot(
     kind: 'snapshot',
     payload: {
       ...payload,
-      sessions: payload.sessions.filter(
-        (session) => session.threadId === recording!.source.threadId,
+      sessions: payload.sessions.filter((session) =>
+        capturedSession(session.threadId),
       ),
     },
     reconnect,

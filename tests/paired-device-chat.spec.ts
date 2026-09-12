@@ -120,7 +120,7 @@ test.describe('Paired-device chat round trip', () => {
       broadcast
         ? 'two clients receive matching SSE text and tools and reconnect without losing the answer'
         : 'a paired device sends a real message and receives a real streamed reply, with the principal resolved',
-      async ({ page, browser, authenticatedRequest, baseURL }) => {
+      async ({ page, browser, authenticatedRequest, baseURL }, testInfo) => {
         test.setTimeout(150_000);
         if (!baseURL) throw new Error('Playwright baseURL is required');
 
@@ -131,6 +131,7 @@ test.describe('Paired-device chat round trip', () => {
         const chatRequests: unknown[] = [];
         const streams: OllamaFixtureStream[] = [];
         type ModelRequest = {
+          messages?: Array<{ role?: string; content?: unknown }>;
           tools?: Array<{
             function?: {
               name?: string;
@@ -176,6 +177,7 @@ test.describe('Paired-device chat round trip', () => {
             slug: agentSlug,
             name: agentName,
             prompt: 'Answer in one short sentence.',
+            ...(broadcast ? { tools: { mcpServers: ['station-docs'] } } : {}),
           },
         });
         expect(agentCreated.ok()).toBe(true);
@@ -237,6 +239,42 @@ test.describe('Paired-device chat round trip', () => {
           storageState: peerStorage,
           ...(broadcast ? { viewport: { width: 390, height: 844 } } : {}),
         });
+        if (broadcast) {
+          // Network-fault seam: Chromium's offline emulation does not close
+          // an existing fetch body. Abort that real HTTP stream as well;
+          // all bytes, reconnect requests, and cursors still come from Station.
+          await peerContext.addInitScript(() => {
+            const originalFetch = window.fetch.bind(window);
+            const streams = new Set<AbortController>();
+            Object.assign(window, {
+              __disconnectChatStream: () => {
+                for (const controller of streams)
+                  controller.abort(new TypeError('Fixture connection lost'));
+                streams.clear();
+              },
+            });
+            window.fetch = (input, init) => {
+              const url = input instanceof Request ? input.url : String(input);
+              if (
+                !new URL(url, location.href).pathname.endsWith(
+                  '/api/orchestration/events',
+                )
+              )
+                return originalFetch(input, init);
+              const controller = new AbortController();
+              streams.add(controller);
+              const inherited =
+                init?.signal ??
+                (input instanceof Request ? input.signal : undefined);
+              return originalFetch(input, {
+                ...init,
+                signal: inherited
+                  ? AbortSignal.any([inherited, controller.signal])
+                  : controller.signal,
+              });
+            };
+          });
+        }
         await peerContext.addCookies([
           {
             name: 'station-device',
@@ -246,9 +284,15 @@ test.describe('Paired-device chat round trip', () => {
             sameSite: 'Strict',
           },
         ]);
-        // Two independent browser connections under one authorized principal.
-        // Pairing a different device creates a different principal; that is a
-        // separate access-policy test, not proof of transport fan-out.
+        // Independent, separately paired devices share this personal Station's
+        // conversations while preserving their own action principals.
+        const viewerPair = broadcast
+          ? await pairBrowserDevice(
+              { api: resolveE2EApiBase(), ui: baseURL },
+              operatorCredential,
+              'Desktop SSE viewer',
+            )
+          : undefined;
         const viewerContext = broadcast
           ? await browser.newContext({ storageState: peerStorage })
           : undefined;
@@ -256,7 +300,7 @@ test.describe('Paired-device chat round trip', () => {
           await viewerContext.addCookies([
             {
               name: 'station-device',
-              value: paired.credential,
+              value: viewerPair!.credential,
               url: baseURL,
               httpOnly: true,
               sameSite: 'Strict',
@@ -364,6 +408,10 @@ test.describe('Paired-device chat round trip', () => {
             );
             streams[0].text('First shared chunk.');
             const sharedSessionId = receipt.sessionId as string;
+            const operatorRead = await authenticatedRequest.get(
+              `/api/orchestration/sessions/${encodeURIComponent(sharedSessionId)}`,
+            );
+            expect(operatorRead.ok()).toBe(true);
             await expect
               .poll(
                 async () => {
@@ -392,28 +440,43 @@ test.describe('Paired-device chat round trip', () => {
               .toContain('First shared chunk.');
             await expect(hostTranscript).toContainText('First shared chunk.');
             await expect(peerTranscript).toContainText('First shared chunk.');
-            // Read one skill that this real model was offered. The fixture
-            // controls the model response; it never executes the skill's instructions.
+            // Execute a real read-only documentation tool offered to this model.
             const definition = streamRequests[0].tools?.find(
-              (entry) => entry.function?.name === 'activate_skill',
+              (entry) =>
+                entry.function?.name === 'stationDocs_listStationDocsTopics',
             )?.function;
-            const skill = definition?.parameters?.properties?.name?.enum?.[0];
             expect(
-              skill,
-              'The isolated Station must advertise a readable skill',
+              definition,
+              `The model must be offered its documentation tool: ${JSON.stringify(streamRequests[0].tools)}`,
             ).toBeTruthy();
             streams[0].tool(
-              'activate_skill',
-              { name: skill },
+              'stationDocs_listStationDocsTopics',
+              {},
               'shared-read-only-tool',
             );
             streams[0].finish('tool_calls');
+            await viewer
+              .getByRole('button', { name: '1 pending approval' })
+              .click();
+            await viewer
+              .getByRole('button', { name: 'Allow Once', exact: true })
+              .click();
             await expect
               .poll(() => streams.length, { timeout: 30_000 })
               .toBe(2);
             await expect(hostTranscript.locator('.tool-call')).toHaveCount(1);
             await expect(peerTranscript.locator('.tool-call')).toHaveCount(1);
             await peerContext.setOffline(true);
+            await peer.evaluate(() => {
+              (
+                window as unknown as Window & {
+                  __disconnectChatStream: () => void;
+                }
+              ).__disconnectChatStream();
+            });
+            await expect(
+              peer.getByText('Reconnecting…', { exact: true }),
+            ).toBeVisible();
             streams[1].text('Recovered after disconnect.');
             await expect(hostTranscript).toContainText(
               'Recovered after disconnect.',
@@ -437,6 +500,76 @@ test.describe('Paired-device chat round trip', () => {
                 transcript.getByText(FIXTURE_REPLY, { exact: false }),
               ).toHaveCount(1);
             }
+            const viewerComposer = viewer.getByPlaceholder('Type a message...');
+            await viewerComposer.fill(
+              'Continue this conversation from the desktop.',
+            );
+            await viewer
+              .getByRole('button', { name: 'Send', exact: true })
+              .click();
+            await expect
+              .poll(() => streams.length, { timeout: 30_000 })
+              .toBe(3);
+            expect(
+              JSON.stringify(
+                streamRequests[2].messages?.filter(
+                  (message) => message.role === 'assistant',
+                ),
+              ),
+            ).toContain(FIXTURE_REPLY);
+            await expect(peerTranscript).toContainText(
+              'Continue this conversation from the desktop.',
+            );
+            streams[2].text('The second turn reaches both paired devices.');
+            streams[2].finish();
+            await expect(peerTranscript).toContainText(
+              'The second turn reaches both paired devices.',
+            );
+            await expect(hostTranscript).toContainText(
+              'The second turn reaches both paired devices.',
+            );
+            await expect(
+              hostTranscript.locator('.streaming-message'),
+            ).toHaveCount(0);
+            await peer.screenshot({
+              path: testInfo.outputPath('paired-phone-two-turns.png'),
+            });
+            await viewer.screenshot({
+              path: testInfo.outputPath('paired-desktop-two-turns.png'),
+            });
+            const revoked = await authenticatedRequest.delete(
+              `/api/pairing/devices/${encodeURIComponent(viewerPair!.device.id)}`,
+            );
+            expect(revoked.ok()).toBe(true);
+            const denied = await viewerContext!.request.get(
+              new URL(
+                `/api/orchestration/sessions/${encodeURIComponent(sharedSessionId)}`,
+                baseURL,
+              ).toString(),
+            );
+            expect(denied.status()).toBe(401);
+            await peer
+              .getByPlaceholder('Type a message...')
+              .fill('Verify access after revocation.');
+            await peer
+              .getByRole('button', { name: 'Send', exact: true })
+              .click();
+            await expect
+              .poll(() => streams.length, { timeout: 30_000 })
+              .toBe(4);
+            streams[3].text(
+              'Only the still-authorized device receives this turn.',
+            );
+            streams[3].finish();
+            await expect(peerTranscript).toContainText(
+              'Only the still-authorized device receives this turn.',
+            );
+            await expect(
+              viewer.getByText('Connection needs attention', { exact: true }),
+            ).toBeVisible({ timeout: 15_000 });
+            await expect(hostTranscript).not.toContainText(
+              'Only the still-authorized device receives this turn.',
+            );
           }
           await expect(
             peer

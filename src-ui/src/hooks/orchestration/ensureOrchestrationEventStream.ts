@@ -141,8 +141,14 @@ export function ensureOrchestrationEventStream(
         const payload = JSON.parse(raw.data) as {
           event: OrchestrationEvent;
           provenance?: unknown;
+          conversation?: import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding;
         };
-        handleOrchestrationEvent(apiBase, payload.event, payload.provenance);
+        handleOrchestrationEvent(
+          apiBase,
+          payload.event,
+          payload.provenance,
+          payload.conversation,
+        );
         refreshSessionReadModelOnTerminal(queryClient, payload.event);
       } else if (
         raw.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED

@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import type {
   ChatActivityHint,
   ChatContentPart,
@@ -14,7 +14,6 @@ import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
 import { ToolCallBatchBoundary } from './ToolCallBatchBoundary';
-import { isToolCallBatchPending, toolCallPhase } from './tool-call-labels';
 import { splitToolCallRuns } from './tool-call-runs';
 import { UIBlockRenderer } from './UIBlockRenderer';
 
@@ -38,6 +37,7 @@ export type StreamingMessageProps = {
   activityHint?: ChatActivityHint;
   elapsedMs?: number;
   suppressActivity?: boolean;
+  statusLabel?: string;
   /**
    * Row attribution (archive#1424 fix): shown from the FIRST
    * frame of streaming, not just after the turn settles into a persisted
@@ -85,6 +85,7 @@ export function StreamingMessageView({
   activityHint,
   elapsedMs,
   suppressActivity,
+  statusLabel,
   attributionAgent,
   owner,
   onContentChange,
@@ -98,6 +99,7 @@ export function StreamingMessageView({
   contentRevision: number;
 }) {
   const isMobile = useIsMobile();
+  const [waitingSince] = useState(Date.now);
   useStreamingHaptics(sessionId, streamingText.length);
   const progressSummary = deriveToolProgressSummary(contentParts);
   const hasReasoningPart = contentParts.some(
@@ -118,17 +120,6 @@ export function StreamingMessageView({
   // of its calls is still `running`, so the collapsed summary never
   // claims a batch is done before it is.
   const blocks = useMemo(() => splitToolCallRuns(contentParts), [contentParts]);
-  const collapsedInProgressBatch = blocks.some((block) => {
-    if (block.type !== 'tool-call-run') return false;
-    if (block.calls.length <= INLINE_RUN_LIMIT) return false;
-    let running = false;
-    let pending = false;
-    for (const { part } of block.calls) {
-      if (toolCallPhase(part) === 'running') running = true;
-      if (isToolCallBatchPending(part)) pending = true;
-    }
-    return running && !pending;
-  });
   useEffect(() => {
     // The numeric revision is intentionally read here: it is the O(1)
     // dependency that replaces rebuilding the complete transcript string.
@@ -217,20 +208,26 @@ export function StreamingMessageView({
           </div>
         )}
 
-        {!suppressActivity && (
-          <div className="streaming-activity" role="status">
-            <LoadingDots />
-            <span
-              className="streaming-activity__label"
+        {!suppressActivity &&
+          (statusLabel ||
+            (!hasAnswerText && !(progressSummary && renderToolCall))) && (
+            <div
+              className="streaming-activity"
+              role="status"
               title={progressSummary?.toolName}
             >
-              {progressSummary && !collapsedInProgressBatch
-                ? progressSummary.label
-                : activityLabel}
-            </span>
-            <ElapsedWait label="" elapsedMs={elapsedMs} />
-          </div>
-        )}
+              {!statusLabel && <LoadingDots />}
+              <ElapsedWait
+                label={
+                  statusLabel ??
+                  `${(progressSummary && !renderToolCall ? progressSummary.label : activityLabel).replace(/[.\u2026]+$/u, '')} for`
+                }
+                separator={statusLabel ? ' · ' : ' '}
+                startedAt={waitingSince}
+                elapsedMs={elapsedMs}
+              />
+            </div>
+          )}
       </div>
     </div>
   );

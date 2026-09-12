@@ -329,7 +329,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         (candidate, index) =>
           !claimedProjectedUsers.has(index) &&
           candidate.role === 'user' &&
-          candidate.content === message.content,
+          (message.turnId
+            ? candidate.turnId === message.turnId
+            : candidate.content === message.content),
       );
       if (match < 0) return true;
       claimedProjectedUsers.add(match);
@@ -441,13 +443,15 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         (message) =>
           message.role === 'assistant' &&
           message.turnId &&
-          message.answerEligible === true,
+          message.answerEligible !== undefined,
       );
     const retainedLiveAnswer =
       latestLiveAnswer &&
       !window.events.some(
         ({ event, elided }) =>
-          event.method === 'turn.completed' &&
+          ['turn.completed', 'runtime.error', 'turn.aborted'].includes(
+            event.method,
+          ) &&
           event.turnId === latestLiveAnswer.turnId &&
           !elided,
       )

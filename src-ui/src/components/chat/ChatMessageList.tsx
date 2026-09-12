@@ -177,7 +177,8 @@ function ChatMessageListComponent({
 
   const submitForm = useCallback(
     (submission: UIBlockFormSubmission) => {
-      if (submittedBlockIds.has(submission.blockId)) return;
+      if (activeSession.replay || submittedBlockIds.has(submission.blockId))
+        return;
       setSubmittedBlockIds((prev) => new Set(prev).add(submission.blockId));
       void sendMessage(
         activeSession.id,
@@ -192,12 +193,17 @@ function ChatMessageListComponent({
       activeSession.agentSlug,
       activeSession.conversationId,
       submittedBlockIds,
+      activeSession.replay,
     ],
   );
 
   const uiBlockActions = useMemo(
-    () => ({ submitForm, submittedBlockIds }),
-    [submitForm, submittedBlockIds],
+    () => ({
+      submitForm,
+      submittedBlockIds,
+      readOnly: Boolean(activeSession.replay),
+    }),
+    [submitForm, submittedBlockIds, activeSession.replay],
   );
 
   const messages = activeSession.messages || EMPTY_MESSAGES;
@@ -543,11 +549,11 @@ function ChatMessageListComponent({
   );
 
   const renderToolCall = useCallback(
-    (part: ChatContentPart, i: number, expanded = false) => (
+    (part: ChatContentPart, i: number) => (
       <ToolCallDisplay
         key={i}
         toolCall={part}
-        showDetails={expanded || showToolDetails}
+        showDetails={showToolDetails}
         onApprove={
           !activeSession.replay && part.needsApproval && part.approvalId
             ? (action) =>
@@ -660,6 +666,11 @@ function ChatMessageListComponent({
                   activityHint={activeSession.activityHint}
                   elapsedMs={activeSession.replay?.elapsedMs}
                   suppressActivity={suppressActivity}
+                  statusLabel={
+                    activeSession.orchestrationStatus === 'awaiting-approval'
+                      ? 'Waiting for approval'
+                      : undefined
+                  }
                   attributionAgent={streamingAttributionAgent}
                   owner={owner}
                   onContentChange={handleStreamingContentChange}

@@ -59,10 +59,51 @@ describe('session tape player', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     for (const id of Object.keys(activeChatsStore.getSnapshot())) {
       activeChatsStore.removeChat(id);
     }
     _resetReplayRegistry();
+  });
+
+  test('play advances the waiting clock between events and pause cancels further delivery', async () => {
+    vi.useFakeTimers();
+    const replayId = registerReplayThread();
+    seedReplayChat(replayId);
+    const tape = tapeFromSessionEvents(
+      { threadId: SOURCE, agentSlug: 'dev-agent' },
+      [],
+    );
+    tape.frames = [
+      {
+        kind: 'runtime',
+        atMs: 0,
+        event: event('turn.started', { turnId: 'turn-1' }),
+      },
+      {
+        kind: 'runtime',
+        atMs: 5000,
+        event: event('turn.completed', {
+          turnId: 'turn-1',
+          outputText: 'Finished',
+        }),
+      },
+    ];
+    const player = new SessionTapePlayer(tape, replayId);
+    player.step();
+    const playback = player.play(() => null, { skipGaps: false });
+    await vi.advanceTimersByTimeAsync(2100);
+    expect(
+      activeChatsStore.getSnapshot()[replayId].replay?.elapsedMs,
+    ).toBeGreaterThanOrEqual(2000);
+    expect(player.cursor).toBe(0);
+    player.pause();
+    await vi.advanceTimersByTimeAsync(6000);
+    await playback;
+    expect(player.cursor).toBe(0);
+    expect(player.playing).toBe(false);
+    player.dispose();
   });
 
   test('folds under a synthetic id without touching a live chat or leaking lineage', () => {
