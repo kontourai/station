@@ -276,7 +276,10 @@ import {
 } from './request-inspection.js';
 import { servingInstanceIdentity } from './serving-instance.js';
 import { sessionAgentStartUnavailableReason } from './session-agent-resolution.js';
-import { SessionAuthorization } from './session-authorization.js';
+import {
+  type PersonalConversationAccess,
+  SessionAuthorization,
+} from './session-authorization.js';
 import {
   createSessionCommandModule,
   type SessionCommand,
@@ -572,6 +575,7 @@ interface OrchestrationServiceOptions {
   ownerlessSessionAccess?: 'deny' | 'single-user-compat';
   /** Exact legacy OS-alias owner for the local-home principal migration only. */
   legacyPersonalOwner?: string;
+  personalConversationAccess?: PersonalConversationAccess;
   /** When provided, sessions started in Flow workspaces are gate-bound. */
   flowRunService?: FlowRunService;
   listProjects?: () => AttachedProjectRoot[];
@@ -1316,6 +1320,7 @@ export class OrchestrationService {
     // means no later closure can capture an undefined authz seam.
     this.transcriptReadEventStore = options.eventStore;
     this.sessionAuthz = new SessionAuthorization({
+      personalConversationAccess: options.personalConversationAccess,
       ...(this.transcriptReadEventStore
         ? { eventStore: this.transcriptReadEventStore }
         : {}),
@@ -1360,6 +1365,8 @@ export class OrchestrationService {
       logger: options.logger,
     });
     this.transcriptReads = new SessionTranscriptReads({
+      transcriptOwnerConstraint: (authority) =>
+        this.sessionAuthz.transcriptOwnerConstraint(authority),
       canReadSession: (threadId, authority) =>
         this.sessionAuthz.canReadSession(threadId, authority),
       isEphemeralSession: (threadId) => this.isEphemeralSession(threadId),
@@ -3303,6 +3310,30 @@ export class OrchestrationService {
     );
   }
 
+  conversationStreamBinding(event: {
+    threadId: string;
+    method?: string;
+  }):
+    | import('@kontourai/station-contracts/orchestration').OrchestrationConversationStreamBinding
+    | undefined {
+    if (
+      event.method !== 'session.started' &&
+      event.method !== 'session.configured'
+    )
+      return undefined;
+    const lineage = this.options.eventStore?.conversationForSession(
+      event.threadId,
+    );
+    if (!lineage) return undefined;
+    const { conversationId } = lineage;
+    const currentSessionId = this.currentConversationSessionId(conversationId);
+    if (currentSessionId !== event.threadId) return undefined;
+    return {
+      conversationId,
+      currentSessionId,
+    };
+  }
+
   async readCurrentConversationSession(
     conversationId: string,
     authority: SessionReadScope,
@@ -3671,6 +3702,7 @@ export class OrchestrationService {
     threadId: string,
     options: {
       cursor?: string;
+      direction?: 'newest';
       turnLimit: number;
       authority: SessionReadScope;
       signal?: AbortSignal;
@@ -3684,6 +3716,7 @@ export class OrchestrationService {
     conversationId: string,
     options: {
       cursor?: string;
+      direction?: 'newest';
       turnLimit: number;
       authority: SessionReadScope;
       signal?: AbortSignal;

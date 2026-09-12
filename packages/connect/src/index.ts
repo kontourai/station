@@ -155,6 +155,7 @@ export type {
   InjectedConnectionStatus,
   ResolvedHostTunnelAccess,
   SavedConnection,
+  SavedStationEdit,
   StationHandshakeIdentity,
   StorageAdapter,
 } from './core/types';

@@ -345,3 +345,11 @@ export interface DiscoveredServer {
   name: string;
   latency: number;
 }
+
+/** An explicit saved-Station edit, bound to the values the user opened. */
+export interface SavedStationEdit {
+  connectionId: string;
+  expected: { name: string; url: string };
+  name: string;
+  url: string;
+}

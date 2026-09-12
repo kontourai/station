@@ -583,6 +583,7 @@ const sessionEventPageQuerySchema = z.object({
 });
 
 const sessionEventWindowQuerySchema = z.object({
+  direction: z.literal('newest').optional(),
   cursor: z.string().min(1).max(512).optional(),
   turnLimit: z.coerce.number().int().min(1).max(20).default(10),
 });
@@ -2141,6 +2142,7 @@ export function createOrchestrationRoutes(
   app.get('/sessions/:threadId/event-window', async (c) => {
     const parsed = sessionEventWindowQuerySchema.safeParse({
       cursor: c.req.query('cursor'),
+      direction: c.req.query('direction'),
       turnLimit: c.req.query('turnLimit'),
     });
     if (!parsed.success)
@@ -2157,6 +2159,7 @@ export function createOrchestrationRoutes(
   app.get('/conversations/:conversationId/event-window', async (c) => {
     const parsed = sessionEventWindowQuerySchema.safeParse({
       cursor: c.req.query('cursor'),
+      direction: c.req.query('direction'),
       turnLimit: c.req.query('turnLimit'),
     });
     if (!parsed.success)
@@ -3190,6 +3193,17 @@ export function createOrchestrationRoutes(
         // emitted concurrently. Nothing buffered here is written until after
         // the historical (replay-or-snapshot) frames and the caught-up marker
         // are flushed, so a live event can never overtake buffered history.
+        const writeAuthorized = async (frame: {
+          event: string;
+          data: string;
+          id?: string;
+        }) => {
+          if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
+            stream.abort();
+            throw new Error('Orchestration stream authorization expired');
+          }
+          await stream.writeSSE(frame);
+        };
         let caughtUp = false;
         const pending: Array<{ event: string; data: string; id?: string }> = [];
         const forward = (frame: {
@@ -3198,12 +3212,16 @@ export function createOrchestrationRoutes(
           id?: string;
         }) => {
           if (caughtUp) {
-            stream.writeSSE(frame).catch(() => {});
+            writeAuthorized(frame).catch(() => {});
           } else {
             pending.push(frame);
           }
         };
         unsub = deps.eventBus.subscribe((evt) => {
+          if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
+            stream.abort();
+            return;
+          }
           if (
             evt.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
           ) {
@@ -3233,7 +3251,13 @@ export function createOrchestrationRoutes(
           if (!orchestrationEventMatchesThread(evt.data, threadId)) return;
           const eventPayload = (
             evt.data as
-              | { event?: { threadId?: string; eventId?: string } }
+              | {
+                  event?: {
+                    threadId?: string;
+                    eventId?: string;
+                    method?: string;
+                  };
+                }
               | undefined
           )?.event;
           const eventThreadId = eventPayload?.threadId;
@@ -3247,7 +3271,13 @@ export function createOrchestrationRoutes(
             : undefined;
           forward({
             event: SERVER_EVENTS.ORCHESTRATION_EVENT,
-            data: JSON.stringify(evt.data ?? {}),
+            data: JSON.stringify({
+              ...(evt.data ?? {}),
+              conversation: orchestrationService.conversationStreamBinding({
+                threadId: eventThreadId,
+                method: eventPayload?.method,
+              }),
+            }),
             ...(globalSequence !== undefined
               ? { id: String(globalSequence) }
               : {}),
@@ -3313,7 +3343,7 @@ export function createOrchestrationRoutes(
             const sessions =
               await orchestrationService.listSessionReadModel(authority);
             resolvedHead = orchestrationService.readEventStreamHead();
-            await stream.writeSSE({
+            await writeAuthorized({
               event: 'orchestration:snapshot',
               data: JSON.stringify({ sessions }),
               id: String(resolvedHead),
@@ -3330,11 +3360,14 @@ export function createOrchestrationRoutes(
             for (const persisted of replayed) {
               const data = JSON.stringify({
                 event: persisted.payload,
+                conversation: orchestrationService.conversationStreamBinding(
+                  persisted.payload,
+                ),
                 ...orchestrationService.replayTurnProvenanceSidecar(
                   persisted.payload,
                 ),
               });
-              await stream.writeSSE({
+              await writeAuthorized({
                 event: SERVER_EVENTS.ORCHESTRATION_EVENT,
                 // archive#1410 (D2): a turn that completed while this client
                 // was disconnected is delivered ONLY here — the live publish
@@ -3358,7 +3391,7 @@ export function createOrchestrationRoutes(
           // buffered and delivered live, see below), but an exact one gives a
           // reconnecting client a tighter future resume point.
           resolvedHead = orchestrationService.readEventStreamHead();
-          await stream.writeSSE({
+          await writeAuthorized({
             event: 'orchestration:snapshot',
             data: JSON.stringify({ sessions }),
             id: String(resolvedHead),
@@ -3368,14 +3401,14 @@ export function createOrchestrationRoutes(
         // Ordering-safe completion marker (R4): delivered through the exact
         // same `stream.writeSSE` call path as every other frame, so it cannot
         // be reordered relative to what came before or after it.
-        await stream.writeSSE({
+        await writeAuthorized({
           event: ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
           data: '{}',
           id: String(resolvedHead),
         });
         caughtUp = true;
         for (const frame of pending) {
-          await stream.writeSSE(frame);
+          await writeAuthorized(frame);
         }
 
         stopKeepAlive = sseKeepalive(stream);

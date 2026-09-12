@@ -211,7 +211,7 @@ async function attachScenarioObservation(
 }
 
 /**
- * Pages "Load earlier events" until the transcript MODEL holds more rows than
+ * Pages "Earlier messages" until the transcript MODEL holds more rows than
  * the mounted-row budget allows, and reports the loaded count and the largest
  * mounted count seen on the way. Both scenarios that assert the budget need
  * this: a cap assertion over a transcript that never loaded that many rows is
@@ -221,7 +221,7 @@ async function pageEarlierBeyondCap(
   page: Page,
   seedMountedRows = 0,
 ): Promise<{ loadedRows: number; maxMountedRows: number }> {
-  const loadEarlier = page.getByRole('button', { name: 'Load earlier events' });
+  const loadEarlier = page.getByRole('button', { name: 'Earlier messages' });
   await expect(loadEarlier).toBeVisible({ timeout: 10_000 });
   let loadedRows = await loadedTranscriptRows(page);
   let maxMountedRows = Math.max(

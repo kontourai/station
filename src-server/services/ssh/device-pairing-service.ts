@@ -35,10 +35,16 @@ import {
   type TailscaleServeRequester,
   type WebPushSubscription,
 } from '@kontourai/station-contracts';
-
-import { isPrincipalRef } from '@kontourai/station-contracts/principal';
-
+import {
+  PAIRING_SCOPE_ORCHESTRATION_READ,
+  pairingScopeIncludes,
+} from '@kontourai/station-contracts/environment-security';
+import {
+  humanPrincipal,
+  isPrincipalRef,
+} from '@kontourai/station-contracts/principal';
 import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 
 const REGISTRY_SCHEMA_VERSION = 2 as const;
 const PRE_ACTIVITY_REGISTRY_SCHEMA_VERSION = 1;
@@ -1294,6 +1300,66 @@ export class DevicePairingService {
   /** Remove a server-owned offer that must never be resumed by a caller. */
   discardOffer(offerId: string): void {
     this.#offers.delete(offerId);
+  }
+
+  /** Personal-home conversation membership; grants and attribution stay per device. */
+  canSharePersonalConversation(requesterId: string, ownerId: string): boolean {
+    if (!this.isPersonalConversationMember(requesterId, false)) return false;
+    return this.isPersonalConversationMember(ownerId, true);
+  }
+
+  personalConversationOwnerIds(
+    requesterId: string,
+  ): readonly string[] | undefined {
+    if (!this.isPersonalConversationMember(requesterId, false))
+      return undefined;
+    const owners = new Set<string>([LOCAL_OPERATOR_PRINCIPAL_ID]);
+    for (const device of this.#registry.devices) {
+      if (device.kind !== 'device') continue;
+      owners.add(
+        humanPrincipal('device', device.id, device.name.trim() || device.id).id,
+      );
+      if (device.requester)
+        owners.add(
+          humanPrincipal(
+            device.requester.provider,
+            device.requester.login,
+            device.requester.login,
+          ).id,
+        );
+    }
+    return [...owners];
+  }
+
+  private isPersonalConversationMember(
+    principalId: string,
+    historicalOwner: boolean,
+  ): boolean {
+    if (principalId === LOCAL_OPERATOR_PRINCIPAL_ID) return true;
+    return this.#registry.devices.some((device) => {
+      if (
+        device.kind !== 'device' ||
+        (!historicalOwner &&
+          (device.revokedAt !== null ||
+            !pairingScopeIncludes(
+              device.scope,
+              PAIRING_SCOPE_ORCHESTRATION_READ,
+            )))
+      )
+        return false;
+      return (
+        humanPrincipal('device', device.id, device.name.trim() || device.id)
+          .id === principalId ||
+        Boolean(
+          device.requester &&
+            humanPrincipal(
+              device.requester.provider,
+              device.requester.login,
+              device.requester.login,
+            ).id === principalId,
+        )
+      );
+    });
   }
 
   listDevices(): PairedDevice[] {

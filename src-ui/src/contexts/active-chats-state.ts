@@ -454,6 +454,14 @@ export type ChatUIState = {
 export type ActiveChatsMap = Record<string, ChatUIState>;
 
 export type ChatReplayState = {
+  elapsedMs?: number;
+  connectionPhase?:
+    | 'unknown'
+    | 'receiving'
+    | 'caught-up'
+    | 'interrupted'
+    | 'closed';
+  connectionElapsedMs?: number;
   sourceThreadId: string;
   tapeEventCount: number;
 };

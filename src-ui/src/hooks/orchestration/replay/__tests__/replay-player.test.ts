@@ -59,10 +59,80 @@ describe('session tape player', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     for (const id of Object.keys(activeChatsStore.getSnapshot())) {
       activeChatsStore.removeChat(id);
     }
     _resetReplayRegistry();
+  });
+
+  test('play advances the waiting clock between events and pause cancels further delivery', async () => {
+    vi.useFakeTimers();
+    const replayId = registerReplayThread();
+    seedReplayChat(replayId);
+    const tape = tapeFromSessionEvents(
+      { threadId: SOURCE, agentSlug: 'dev-agent' },
+      [],
+    );
+    tape.frames = [
+      {
+        kind: 'runtime',
+        atMs: 0,
+        event: event('turn.started', { turnId: 'turn-1' }),
+      },
+      {
+        kind: 'runtime',
+        atMs: 5000,
+        event: event('turn.completed', {
+          turnId: 'turn-1',
+          outputText: 'Finished',
+        }),
+      },
+    ];
+    const player = new SessionTapePlayer(tape, replayId);
+    player.step();
+    const playback = player.play(() => null, { skipGaps: false });
+    await vi.advanceTimersByTimeAsync(2100);
+    expect(
+      activeChatsStore.getSnapshot()[replayId].replay?.elapsedMs,
+    ).toBeGreaterThanOrEqual(2000);
+    expect(player.cursor).toBe(0);
+    player.pause();
+    await vi.advanceTimersByTimeAsync(6000);
+    await playback;
+    expect(player.cursor).toBe(0);
+    expect(player.playing).toBe(false);
+    const resumed = player.play(() => null, { skipGaps: false });
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(
+      activeChatsStore.getSnapshot()[replayId].replay?.elapsedMs,
+    ).toBeGreaterThanOrEqual(3000);
+    player.pause();
+    await vi.advanceTimersByTimeAsync(100);
+    await resumed;
+    player.dispose();
+  });
+
+  test('seek reports the work of rebuilding the prefix rather than the preceding step', () => {
+    let elapsed = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => elapsed);
+    const update = activeChatsStore.updateChat.bind(activeChatsStore);
+    vi.spyOn(activeChatsStore, 'updateChat').mockImplementation((...args) => {
+      elapsed += 10;
+      return update(...args);
+    });
+    const replayId = registerReplayThread();
+    seedReplayChat(replayId);
+    const tape = tapeFromSessionEvents(
+      { threadId: SOURCE, agentSlug: 'dev-agent' },
+      Array.from({ length: 10 }, (_, index) =>
+        event('turn.started', { turnId: `turn-${index}`, prompt: 'Question' }),
+      ),
+    );
+    const player = new SessionTapePlayer(tape, replayId);
+    const stepTime = player.step().performance!.foldMs;
+    expect(player.seek(9).performance!.foldMs).toBeGreaterThan(stepTime);
   });
 
   test('folds under a synthetic id without touching a live chat or leaking lineage', () => {
@@ -98,6 +168,39 @@ describe('session tape player', () => {
     expect(replayChat.currentSessionId).toBeUndefined();
     expect(activeChatsStore.getSnapshot()[liveId]).toEqual(liveBefore);
     expect(isDurableActiveChat(replayChat)).toBe(false);
+  });
+
+  test('reports a completed turn with no text even when its user prompt remains', () => {
+    const replayId = registerReplayThread();
+    seedReplayChat(replayId);
+    const player = new SessionTapePlayer(
+      tapeFromSessionEvents({ threadId: SOURCE, agentSlug: 'dev-agent' }, [
+        event('turn.started', { turnId: 'missing-answer', prompt: 'Hello' }),
+        event('turn.completed', { turnId: 'missing-answer' }),
+      ]),
+      replayId,
+    );
+    player.step();
+    const done = player.step();
+    expect(done.transcript.some((row) => row.role === 'user')).toBe(true);
+    expect(done.issues.map((issue) => issue.code)).toContain(
+      'no-text-after-completed-turn',
+    );
+  });
+
+  test('normalizes fractional seek and rejects nonfinite positions without changing the cursor', () => {
+    const replayId = registerReplayThread();
+    seedReplayChat(replayId);
+    const player = new SessionTapePlayer(
+      tapeFromSessionEvents({ threadId: SOURCE, agentSlug: 'dev-agent' }, [
+        event('turn.started', { turnId: 't' }),
+        event('turn.completed', { turnId: 't', outputText: 'Done' }),
+      ]),
+      replayId,
+    );
+    expect(player.seek(0.9).cursor.index).toBe(0);
+    expect(() => player.seek(Number.NaN)).toThrow('finite');
+    expect(player.cursor).toBe(0);
   });
 
   test('scrubbing backward refolds the prefix instead of inverting a delta', () => {

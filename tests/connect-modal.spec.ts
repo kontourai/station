@@ -440,6 +440,66 @@ test.describe('Connection Manager Modal', () => {
     ).toBeVisible();
   });
 
+  test('mobile saved addresses wrap, copy in full, and remain editable', async ({
+    page,
+  }, testInfo) => {
+    const address =
+      'https://desktop-win.with-a-long-personal-tailnet-name.example.test:8444';
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: async (value: string) => {
+            document.documentElement.dataset.copiedAddress = value;
+          },
+        },
+      });
+    });
+    await page.getByRole('button', { name: /^Manage Stations/ }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Add a Station address' }).click();
+    await page.getByPlaceholder('Name (optional)').fill('Desktop proof');
+    await page.getByPlaceholder('https://station.example.ts.net').fill(address);
+    await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Back', exact: true }).click();
+    const url = dialog.getByText(address, { exact: true });
+    await expect(url).toBeVisible();
+    expect(
+      await url.evaluate((element) => ({
+        fits: element.scrollWidth <= element.clientWidth + 1,
+        whiteSpace: getComputedStyle(element).whiteSpace,
+      })),
+    ).toEqual({ fits: true, whiteSpace: 'normal' });
+    await (await openConnectionActionsMenu(dialog, 'Desktop proof'))
+      .getByRole('menuitem', { name: 'Copy address', exact: true })
+      .click();
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-copied-address',
+      address,
+    );
+    await (await openConnectionActionsMenu(dialog, 'Desktop proof'))
+      .getByRole('menuitem', { name: 'Edit Station', exact: true })
+      .click();
+    await expect(
+      dialog.getByRole('textbox', { name: 'Station address', exact: true }),
+    ).toHaveValue(address);
+    await dialog
+      .getByRole('textbox', { name: 'Station name', exact: true })
+      .fill('Renamed desktop');
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(
+      dialog.getByRole('button', {
+        name: 'Select Renamed desktop',
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(url).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath('full-station-address.png'),
+    });
+  });
+
   test('can remove a connection', async ({ page }) => {
     // Add a second connection via the UI so we have something to remove
     await page.getByRole('button', { name: /^Manage Stations/ }).click();

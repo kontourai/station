@@ -1719,6 +1719,26 @@ knowledgeQueries.namespaces(projectSlug)             // GET /api/projects/:slug/
 
 ---
 
+## Conversation history windows
+
+`fetchOrchestrationConversationEventWindow(conversationId, apiBase,
+{ direction: 'newest', turnLimit: 10 })` prioritizes the latest events of the
+selected turns, so a completed answer is available before a long tool-progress
+history. The returned events remain in chronological order. Pass the opaque
+`nextCursor` back to load preceding events, then preceding turns; merge by
+event id and sequence. A turn-start anchor may repeat across pages.
+
+The opt-in reader retains the existing 150-event and response-byte bounds.
+Terminal message payloads can use up to 48,000 bytes within the bounded window;
+larger payloads still carry an explicit `elided` marker and must not be presented
+as complete. Tool-result previews retain their smaller allowance. Cursor mode
+is preserved across requests; existing forward cursors keep their old behavior.
+Older servers that do not implement `direction` retain their legacy ordering.
+Live delivery remains owned by the orchestration SSE stream.
+
+The session-scoped `fetchOrchestrationSessionEventWindow` accepts the same
+option for conversations without a multi-session lineage.
+
 ## Feedback analysis
 
 Use `useFeedbackRatingsQuery`, `useFeedbackGuidelinesQuery`, and

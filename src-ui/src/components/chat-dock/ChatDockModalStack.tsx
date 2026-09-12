@@ -4,6 +4,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import type { ChatSession } from '../../types';
 import type { EffectiveModelSource } from '../../utils/execution';
+import type { ReplayCaptureSource } from '../chat/ReplayCaptureControls';
 import { LazyBoundary } from '../LazyBoundary';
 import type { NewChatModalMode } from '../modals/NewChatModal';
 
@@ -76,6 +77,7 @@ interface ChatDockModalStackProps {
   forkMode?: Omit<NewChatModalMode, 'disclosure'>;
   onForkAgentSelect?: ChatDockModalStackProps['onSelectNewChat'];
   onReplayConversation?: () => void;
+  replayCaptureSource?: ReplayCaptureSource;
 }
 
 export function ChatDockModalStack({
@@ -107,6 +109,7 @@ export function ChatDockModalStack({
   forkMode,
   onForkAgentSelect,
   onReplayConversation,
+  replayCaptureSource,
 }: ChatDockModalStackProps) {
   const handleNewChatSelect: ChatDockModalStackProps['onSelectNewChat'] = (
     agent,
@@ -157,6 +160,7 @@ export function ChatDockModalStack({
             setAutoHideEnabled: onAutoHideChange,
             sessionSummary,
             onReplayConversation,
+            replayCaptureSource,
           }}
           pending={null}
         />

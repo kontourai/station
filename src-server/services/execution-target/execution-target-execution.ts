@@ -264,6 +264,12 @@ export interface ExecutionTargetExecutionDependencies
   extends ExecutionTargetResolverDependencies {
   /** Private local owner: native prompt history supplies its own authorized lineage. */
   nativeMemoryOwnsTranscript?: boolean;
+  /** Request-bound authorization for shared personal conversations; never caller input. */
+  canContinueConversation?: (
+    access: EnvironmentAccess,
+    conversationId: string,
+    userId: string,
+  ) => boolean;
   readSessionBinding: (
     access: EnvironmentAccess,
     sessionId: string,
@@ -427,7 +433,16 @@ export async function executeForegroundMessage(
   if (
     binding &&
     (binding.environmentId !== resolved.access.environmentId ||
-      (binding.userId !== undefined && binding.userId !== input.userId))
+      (binding.userId !== undefined &&
+        binding.userId !== input.userId &&
+        !(
+          input.userId !== undefined &&
+          deps.canContinueConversation?.(
+            resolved.access,
+            conversationId,
+            input.userId,
+          )
+        )))
   ) {
     throw new Error(
       'The requested conversation belongs to a different Environment, Agent, or Station user',

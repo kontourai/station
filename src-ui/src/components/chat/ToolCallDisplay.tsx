@@ -154,8 +154,7 @@ function ToolCallDisplayComponent({
   // The disclosure's whole contract: it only exists when it has something to
   // show. A chevron over an empty panel is a promise nothing derives.
   const hasDetail = Boolean(hasArgs) || result !== undefined || Boolean(error);
-
-  if (!showDetails && !(awaitingApproval && onApprove)) return null;
+  const allowDetails = showDetails || (awaitingApproval && Boolean(onApprove));
 
   const Glyph = KIND_GLYPH[kind];
   const lineContent = (
@@ -227,7 +226,7 @@ function ToolCallDisplayComponent({
   return (
     <div className={revealClass ? `tool-call ${revealClass}` : 'tool-call'}>
       <div className="tool-call__row">
-        {hasDetail ? (
+        {hasDetail && allowDetails ? (
           <button
             type="button"
             className="tool-call__line"
@@ -256,7 +255,7 @@ function ToolCallDisplayComponent({
       {progressMessage && running && (
         <div className="tool-call__progress">{progressMessage}</div>
       )}
-      {isExpanded && hasDetail && (
+      {isExpanded && hasDetail && allowDetails && (
         <ToolCallDetails
           id={id}
           server={server}

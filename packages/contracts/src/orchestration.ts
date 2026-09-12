@@ -717,6 +717,12 @@ export interface OrchestrationSessionEventPage {
   nextSequence: number;
 }
 
+/** Derived SSE envelope routing, resolved from Station's lineage at delivery time. */
+export interface OrchestrationConversationStreamBinding {
+  conversationId: string;
+  currentSessionId: string;
+}
+
 /** Versioned bounded hydration contract for one orchestration session. */
 export interface OrchestrationSessionEventWindow {
   protocolVersion: 1;

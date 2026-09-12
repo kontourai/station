@@ -1199,3 +1199,47 @@ describe('isolated transcript read owner and existing session policy', () => {
     expect(lookup).toHaveBeenCalledTimes(2);
   });
 });
+
+test('the isolated search and message lookup include approved personal owners and exclude foreign owners before limiting', async () => {
+  const store = storeAt();
+  for (let index = 0; index < 30; index++)
+    populate(store, `foreign-${index}`, 'foreign', 'cobalt');
+  populate(store, 'phone-conversation', 'phone', 'cobalt');
+  populate(store, 'desktop-conversation', 'desktop', 'cobalt');
+  const source = store.createIsolatedTranscriptReads();
+  readers.push(source);
+  const authorization = new SessionAuthorization({
+    eventStore: store,
+    ownerlessSessionAccess: 'deny',
+    personalConversationAccess: {
+      canRead: (requester, owner) =>
+        requester === 'phone' && ['phone', 'desktop'].includes(owner),
+      ownerIds: (requester) =>
+        requester === 'phone' ? ['phone', 'desktop'] : undefined,
+    },
+  });
+  const search = createIsolatedSessionTranscriptSearch(
+    source,
+    authorization,
+    () => true,
+  );
+  const outcome = await search.search({
+    query: 'cobalt',
+    limit: 4,
+    authority: personal('phone'),
+    current: () => true,
+  });
+  expect(outcome.state).toBe('available');
+  if (outcome.state !== 'available')
+    throw new Error('Personal transcript search was unavailable');
+  expect(new Set(outcome.matches.map((match) => match.conversationId))).toEqual(
+    new Set(['phone-conversation', 'desktop-conversation']),
+  );
+  const page = await search.readMessagePage({
+    sessionId: 'desktop-conversation',
+    matchedEventId: 'desktop-conversation:end',
+    authority: personal('phone'),
+    current: () => true,
+  });
+  expect(page).toMatchObject({ state: 'available' });
+});

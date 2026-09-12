@@ -1,11 +1,30 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  getOrchestrationConversationEventWindow,
   getOrchestrationSessionEventPage,
   interruptTurn,
 } from '../client/orchestration';
 
 describe('orchestration lifecycle-control client', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  test('requests newest-first conversation hydration without decoding its opaque cursor', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ success: true, data: { events: [] } }), {
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await getOrchestrationConversationEventWindow(
+      'http://station.test',
+      'conversation/one',
+      { direction: 'newest', cursor: 'opaque+', turnLimit: 10 },
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://station.test/api/orchestration/conversations/conversation%2Fone/event-window?cursor=opaque%2B&direction=newest&turnLimit=10',
+      expect.anything(),
+    );
+  });
 
   test('interrupts a turn without closing its session', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(

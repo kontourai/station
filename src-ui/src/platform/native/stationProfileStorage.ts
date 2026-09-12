@@ -163,6 +163,9 @@ export interface NativeStationProfileRepository {
     pairing: VerifiedStationProfilePairing,
   ): Promise<string>;
   makeDefault(connectionId: string): Promise<StationProfile>;
+  updateProfile(
+    input: import('@kontourai/station-connect').SavedStationEdit,
+  ): Promise<void>;
   /**
    * Makes a saved Station the native credential projection for this UI
    * client only. `explicit` records deliberate per-client intent without
@@ -612,6 +615,106 @@ export class NativeStationProfileStorage
 
   remove(key: string): void {
     this.values.delete(key);
+  }
+
+  async updateProfile(
+    input: import('@kontourai/station-connect').SavedStationEdit,
+  ): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const current = await this.readProfileStore();
+      const profile = current.profiles.find(
+        (candidate) => profileConnectionId(candidate) === input.connectionId,
+      );
+      if (!profile || profile.localService)
+        throw new Error('This Station cannot be edited here.');
+      if (
+        profile.name !== input.expected.name ||
+        profile.endpoint !== input.expected.url
+      )
+        throw new Error(
+          'This Station changed while you were editing. Reopen it and try again.',
+        );
+      const name = input.name.trim();
+      const endpoint = normalizedPairingEndpoint(
+        input.url.trim(),
+        profile.developmentHttpOrigin,
+      );
+      if (
+        !name ||
+        current.profiles.some(
+          (candidate) =>
+            candidate !== profile &&
+            candidate.name.toLowerCase() === name.toLowerCase(),
+        )
+      )
+        throw new Error('Choose a unique Station name.');
+      const addressChanged = endpoint !== profile.endpoint;
+      const updated: StationProfile = {
+        ...profile,
+        name,
+        endpoint,
+        updatedAt: Date.now(),
+      };
+      if (addressChanged) {
+        // A credential is bound to its old exact origin. Editing metadata must
+        // never send it to the newly typed address, even if it claims the same id.
+        delete updated.credentialRef;
+        delete updated.environmentId;
+        if (updated.developmentHttpOrigin !== endpoint)
+          delete updated.developmentHttpOrigin;
+        updated.setupSource = 'manual';
+        updated.configurationState = 'unconfigured';
+      }
+      const renamed = (value: string) =>
+        value.toLowerCase() === profile.name.toLowerCase() ? name : value;
+      const next: StationProfileStore = {
+        ...current,
+        revision: current.revision + 1,
+        profiles: current.profiles.map((candidate) =>
+          candidate === profile ? updated : candidate,
+        ),
+        defaultProfile: current.defaultProfile
+          ? renamed(current.defaultProfile)
+          : null,
+        projectProfiles: Object.fromEntries(
+          Object.entries(current.projectProfiles).map(([project, value]) => [
+            project,
+            renamed(value),
+          ]),
+        ),
+      };
+      if (!isStationProfileStore(next))
+        throw new Error('The Station name or address is invalid.');
+      const restoreBinding =
+        !addressChanged &&
+        this.activeRequestBinding?.connectionId === input.connectionId;
+      let committed = false;
+      try {
+        await this.writeProfileStore(next, current.revision);
+        committed = true;
+        const nextId = profileConnectionId(updated);
+        if (this.values.get(ACTIVE_KEY) === input.connectionId)
+          this.values.set(ACTIVE_KEY, nextId);
+        if (this.explicitProcessSelection === input.connectionId) {
+          this.explicitProcessSelection = nextId;
+          this.persistExplicitSelection(nextId);
+        }
+        this.replaceProfileStore(next);
+        if (
+          restoreBinding &&
+          nextId !== input.connectionId &&
+          this.values.get(ACTIVE_KEY) === nextId
+        )
+          await this.authorizeActiveConnection(nextId);
+        return;
+      } catch (error) {
+        if (committed)
+          throw new Error(
+            `Station saved, but its connection could not be restored: ${String(error)}`,
+          );
+        if (!this.isRevisionConflict(error) || attempt === 2) throw error;
+      }
+    }
   }
 
   async makeDefault(connectionId: string): Promise<StationProfile> {
