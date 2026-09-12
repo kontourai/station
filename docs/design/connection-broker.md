@@ -177,7 +177,9 @@ Project pilot proceeds over existing access paths independently.
 remains usable without cloud accounts, paid identity or tunnel services,
 billable model calls, or Tailscale sign-in. Paid or hosted adapters may add
 convenience; they must not become prerequisites for developing or testing the
-core protocol. This is a delivery requirement, not an available command today.
+core protocol. The [local lab guide](../guides/local-collaboration-lab.md)
+provides the first transport/enrollment fixture command. Full Station UI,
+membership, compute and plugin integration remains a delivery requirement.
 
 The intended local topology is:
 

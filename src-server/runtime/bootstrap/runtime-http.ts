@@ -894,7 +894,10 @@ async function readBoundedBody(
 export function parseDeviceSessionCookie(
   value: string | undefined,
 ): string | undefined {
-  if (!value || value.length > 4_096) return undefined;
+  // Cookie jars are shared across ports. Other localhost applications can
+  // legitimately contribute several KiB; bound the header at the Node HTTP
+  // default while still validating only one exact Station credential below.
+  if (!value || value.length > 16 * 1024) return undefined;
   const matches: string[] = [];
   for (const segment of value.split(';')) {
     const separator = segment.indexOf('=');
