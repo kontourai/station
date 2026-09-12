@@ -52,7 +52,7 @@ export function evaluateCodeHealthAudit(report, base, head) {
   return { passed: blockers.length === 0, introduced, blockers, summary };
 }
 
-export async function runCodeHealthGate(root, baseRef) {
+async function runCodeHealthGate(root, baseRef) {
   const git = (args) =>
     execFileSync('git', args, {
       cwd: root,
