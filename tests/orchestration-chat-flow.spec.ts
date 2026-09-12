@@ -349,10 +349,13 @@ test.describe('Orchestration Chat Flow', () => {
     await expect(page.locator('.tool-call__progress')).toHaveText(
       'listing files',
     );
-    await expect(page.locator('.streaming-progress__label')).toHaveText(
-      'listing files',
-    );
-    await expect(page.getByText('shell exec')).toBeVisible();
+    // The active tool owns its progress; a second working/progress footer
+    // would duplicate it and consume space in the compact transcript.
+    await expect(page.locator('.streaming-activity')).toHaveCount(0);
+    await expect(page.locator('.tool-call__pulse')).toHaveCount(1);
+    await expect(
+      page.getByRole('button', { name: 'Running ls' }),
+    ).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
       event: {
@@ -456,12 +459,12 @@ test.describe('Orchestration Chat Flow', () => {
         },
       },
     });
-    // Completion clears the live activity label AND the collapsed progress
+    // Completion clears the tool's animation and collapsed progress
     // line — a settled row repeating its last progress message would read as
     // ongoing activity (archive#2652 redesign). The final message is
     // retained in the row's expanded detail, asserted after the turn
     // settles below.
-    await expect(page.locator('.streaming-progress__label')).toBeHidden();
+    await expect(page.locator('.tool-call__pulse')).toHaveCount(0);
     await expect(page.locator('.tool-call__progress')).toBeHidden();
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
       event: {

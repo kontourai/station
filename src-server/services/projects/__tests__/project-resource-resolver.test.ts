@@ -3,11 +3,13 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
+import { normalizeGitOrigin } from '@kontourai/station-contracts/git-remote-identity';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import {
   isWellFormedResolution,
@@ -21,9 +23,11 @@ import { ProjectBindingsStore } from '../project-binding-store.js';
 import {
   type ProjectManifestRecord,
   ProjectManifestSchemaVersionError,
+  ProjectManifestStore,
   ProjectManifestUnreadableError,
   projectManifestPath,
 } from '../project-manifest-store.js';
+import { bindProjectResource } from '../project-resource-binder.js';
 import { ProjectResourceResolver } from '../project-resource-resolver.js';
 
 /**
@@ -310,6 +314,84 @@ describe('resolveProjectResource — the upgrade path from an install predating 
 });
 
 describe('resolveProjectResource — bindings (§3.6)', () => {
+  test.each([
+    ['git.example/acme/repo', 'alice@git.example:acme/repo.git'],
+    ['git.example:acme/repo', 'ssh://alice@git.example/acme/repo.git'],
+    ['[2001:db8::1]/acme/repo', 'alice@[2001:db8::1]:acme/repo.git'],
+    ['[2001:db8::1]:acme/repo', 'ssh://alice@[2001:db8::1]/acme/repo.git'],
+    ['[2001/db8::1]:acme/repo', 'ssh://alice@[2001:db8::1]/acme/repo.git'],
+  ])(
+    'binds %s from %s without rewriting persisted identity',
+    async (identity, url) => {
+      const harness = createHome();
+      const checkout = tempDir('station-ppi-ssh-checkout-');
+      await saveProject(harness.adapter, { slug: 'acme' });
+      writeManifestRecord(harness.home, 'acme', {
+        id: 'prj_acme',
+        repos: [gitResource(identity, 'primary')],
+      });
+      const manifestPath = projectManifestPath(harness.home, 'acme');
+      const original = readFileSync(manifestPath, 'utf8');
+      const readRemotes = remoteReader([url]);
+      const result = await bindProjectResource('acme', checkout, {
+        manifests: new ProjectManifestStore(harness.home, harness.adapter),
+        bindings: harness.bindings,
+        readRemotes,
+      });
+      expect(result).toMatchObject({
+        ok: true,
+        binding: {
+          projectId: 'prj_acme',
+          resourceId: identity,
+          path: checkout,
+        },
+      });
+      expect(
+        await makeResolver(harness, readRemotes).resolveProjectResource('acme'),
+      ).toEqual({
+        state: 'bound',
+        resourceId: identity,
+        path: checkout,
+      });
+      expect(readFileSync(manifestPath, 'utf8')).toBe(original);
+      expect(harness.bindings.read().bindings[0]?.resourceId).toBe(identity);
+      expect(harness.bindings.read().bindings[0]?.remotes).toEqual([
+        normalizeGitOrigin(url),
+      ]);
+    },
+  );
+
+  test('an ambiguous remote refuses a bind and cannot make an existing checkout executable', async () => {
+    const harness = createHome();
+    const checkout = tempDir('station-ppi-ambiguous-checkout-');
+    await saveProject(harness.adapter, {
+      slug: 'acme',
+      workingDirectory: checkout,
+    });
+    writeManifestRecord(harness.home, 'acme', {
+      id: 'prj_acme',
+      repos: [gitResource('git.example/acme/repo', 'primary')],
+    });
+    const readRemotes = remoteReader(['alice@git.example:2222/acme/repo']);
+    const result = await bindProjectResource('acme', checkout, {
+      manifests: new ProjectManifestStore(harness.home, harness.adapter),
+      bindings: harness.bindings,
+      readRemotes,
+    });
+    expect(result).toMatchObject({ ok: false, code: 'unverifiable' });
+    expect(harness.bindings.read().bindings).toEqual([]);
+    const resolution = await makeResolver(
+      harness,
+      readRemotes,
+    ).resolveProjectResource('acme');
+    expect(resolution).toMatchObject({
+      state: 'stale',
+      resourceId: 'git.example/acme/repo',
+    });
+    expect(resolution).not.toHaveProperty('path');
+    expectWellFormed(resolution);
+  });
+
   test('a bound checkout whose remotes intersect the manifest resolves bound', async () => {
     const harness = createHome();
     const checkout = tempDir('station-ppi-checkout-');

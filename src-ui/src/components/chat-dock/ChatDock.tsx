@@ -2632,7 +2632,24 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           showReasoning,
           showToolDetails,
           autoHideEnabled,
-          onReplayConversation: handleReplayConversation,
+          onReplayConversation: activeSession?.replay
+            ? undefined
+            : handleReplayConversation,
+          replayCaptureSource:
+            activeSession && !activeSession.replay
+              ? {
+                  apiBase,
+                  agentName: activeSession.agentName,
+                  source: {
+                    threadId:
+                      activeSession.currentSessionId ?? activeSession.id,
+                    conversationId: activeSession.conversationId,
+                    agentSlug: activeSession.agentSlug,
+                    provider: activeSession.provider,
+                    model: activeSession.model,
+                  },
+                }
+              : undefined,
           onSelectNewChat: (
             agent,
             projectSlug,

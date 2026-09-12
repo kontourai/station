@@ -3,7 +3,7 @@ import {
   sessionReadAuthorityFromRequest,
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
 import { SessionAuthorization } from '../session-authorization.js';
 
@@ -80,4 +80,81 @@ describe('SessionAuthorization legacy personal-owner bridge (#749)', () => {
       false,
     );
   });
+});
+
+test('personal sharing applies consistently to direct reads and transcript owner constraints', () => {
+  const canRead = vi.fn(
+    (requester: string, owner: string) =>
+      requester === 'phone' &&
+      ['desktop', LOCAL_OPERATOR_PRINCIPAL_ID].includes(owner),
+  );
+  const authz = new SessionAuthorization({
+    eventStore: { findSessionOwnerUserId: () => 'desktop' } as never,
+    ownerlessSessionAccess: 'deny',
+    legacyPersonalOwner: 'old-owner',
+    personalConversationAccess: {
+      canRead,
+      ownerIds: (id) =>
+        id === 'phone'
+          ? ['phone', 'desktop', LOCAL_OPERATOR_PRINCIPAL_ID]
+          : undefined,
+    },
+  });
+  const phone = sessionReadAuthorityFromRequest('phone', undefined, undefined);
+  expect(authz.canReadSession('conversation', phone)).toBe(true);
+  expect(
+    authz.canReadSessionForCommand('conversation', 'phone', undefined),
+  ).toBe(true);
+  expect(
+    authz.canReadSessionForCommand('conversation', 'stranger', undefined),
+  ).toBe(false);
+  expect(authz.transcriptOwnerConstraint(phone).ownerUserIds).toEqual([
+    'phone',
+    'desktop',
+    LOCAL_OPERATOR_PRINCIPAL_ID,
+    'old-owner',
+  ]);
+  expect(
+    authz.canReadSession('conversation', {
+      userId: 'phone',
+      mode: 'personal',
+    } as never),
+  ).toBe(false);
+  expect(
+    authz.transcriptOwnerConstraint({
+      userId: 'phone',
+      mode: 'personal',
+    } as never).ownerUserIds,
+  ).toBeUndefined();
+});
+
+test('hosted reads never consult the personal sharing policy', () => {
+  const canRead = vi.fn(() => true);
+  const ownerIds = vi.fn(() => ['anyone']);
+  const authz = new SessionAuthorization({
+    requireTenantExecutionContext: () => true,
+    eventStore: {
+      findSessionOwnerUserId: () => 'different-owner',
+      readSessions: () => [],
+    } as never,
+    personalConversationAccess: { canRead, ownerIds },
+  });
+  const registry = parseHostedTenantRegistry({
+    schemaVersion: 1,
+    tenants: [{ id: tenantId('tenant'), authority: 'tenant.example.test' }],
+  });
+  const authority = sessionReadAuthorityFromRequest(
+    'reader',
+    { tenantId: tenantId('tenant') },
+    registry,
+  );
+  expect(authz.canReadSession('conversation', authority)).toBe(false);
+  expect(
+    authz.canReadSessionForCommand('conversation', 'reader', undefined),
+  ).toBe(false);
+  expect(
+    authz.transcriptOwnerConstraint(authority).ownerUserIds,
+  ).toBeUndefined();
+  expect(canRead).not.toHaveBeenCalled();
+  expect(ownerIds).not.toHaveBeenCalled();
 });

@@ -334,6 +334,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/mcp-ui-layout.spec.ts',
     'tests/default-agent-workflow.spec.ts',
     'tests/mobile-chat-composer.spec.ts',
+    'tests/chat-replay.spec.ts',
     'tests/mobile-dock-clearance.spec.ts',
     'tests/accessibility-core.spec.ts',
     'tests/status-token-contrast.spec.ts',
@@ -849,6 +850,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted default agent workflow lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-replay.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Replay runtime, history, connection, timing, tool, error and multi-turn scenarios through the real mobile transcript, with frame-bound screenshots and loading animation evidence.',
     exceptions: [],
   },
   {

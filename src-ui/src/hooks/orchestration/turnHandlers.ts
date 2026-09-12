@@ -135,7 +135,45 @@ export function handleTurnStartedEvent(
     return;
   }
 
+  let userMessages = currentChat?.messages;
+  if (
+    event.prompt &&
+    !userMessages?.some(
+      (message) => message.role === 'user' && message.turnId === event.turnId,
+    )
+  ) {
+    userMessages = [...(userMessages ?? [])];
+    const pending = currentChat?.pendingClientTurnId
+      ? [...userMessages]
+          .reverse()
+          .find((message) => message.role === 'user' && message.clientId)
+      : undefined;
+    if (pending) {
+      const index = userMessages.indexOf(pending);
+      userMessages[index] = {
+        ...pending,
+        turnId: event.turnId,
+        sourceEventId: event.eventId,
+      };
+    } else {
+      // Other clients (and replay) have no optimistic composer row. Restore
+      // the recorded input at the same canonical seam as the turn state.
+      userMessages.push({
+        id: `event-input:${event.eventId ?? event.turnId}`,
+        clientId: `event-input:${event.eventId ?? event.turnId}`,
+        sourceEventId: event.eventId,
+        role: 'user',
+        content: event.prompt,
+        timestamp: Date.parse(event.createdAt),
+        turnId: event.turnId,
+        sessionId: event.threadId,
+      });
+    }
+  }
   store.updateChat(event.threadId, {
+    ...(userMessages !== currentChat?.messages
+      ? { messages: userMessages }
+      : {}),
     // The dispatch this turn came from has started; the pre-start cancel
     // window it named is over
     pendingClientTurnId: undefined,
@@ -406,10 +444,31 @@ export function handleRuntimeErrorEvent(
   const failedTurnId = event.turnId ?? chat?.openTurnId ?? latestMarkerTurnId;
   // Markers for EARLIER turns are no longer about this conversation's latest
   // failure: a second failure must replace the first card, not sit beside it.
-  const priorMessages = pruneStaleFailureMarkers(
-    chat?.messages || [],
-    failedTurnId,
-  );
+  const priorMessages = [
+    ...pruneStaleFailureMarkers(chat?.messages || [], failedTurnId),
+  ];
+  // Keep content that was already visible when the turn failed. The error
+  // card owns the explanation; it must not replace the partial answer/tools.
+  if (
+    !repeatsCurrentTurn &&
+    (streamingMessage.content?.trim() ||
+      streamingMessage.contentParts?.some(
+        (part) =>
+          (part.type === 'text' && part.content?.trim()) ||
+          part.type === 'tool-invocation',
+      ))
+  ) {
+    priorMessages.push({
+      id: `interrupted:${event.threadId}:${failedTurnId ?? event.eventId}`,
+      role: 'assistant',
+      content: streamingMessage.content ?? '',
+      contentParts: streamingMessage.contentParts,
+      timestamp: Date.now(),
+      sessionId: event.threadId,
+      turnId: failedTurnId,
+      answerEligible: false,
+    });
+  }
   const previousMarker = priorMessages.at(-1);
   const previousMarkerCount =
     repeatsCurrentTurn && previousMarker?.role === 'user'

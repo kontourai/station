@@ -8,6 +8,7 @@ import {
   replaceModelControlOptions,
 } from '../../utils/modelCapabilities';
 import { rehydrateChatSession } from './rehydrateChatSession';
+import { isReplayThread } from './replay/replay-registry';
 import type { OrchestrationSnapshotPayload } from './types';
 
 type SnapshotChatState = Pick<
@@ -178,6 +179,7 @@ export function buildOrchestrationSnapshotSyncPlan(
 }
 
 export interface ApplyOrchestrationSnapshotOptions {
+  replayThreadId?: string;
   apiBase: string;
   /**
    * archive#1225: `true` when this snapshot is the server's bounded-gap
@@ -216,9 +218,16 @@ export function applyOrchestrationSnapshot(
   // payload type now declares. Independent of the chat-status sync plan
   // below: a delegate session is never itself a tracked chat, so it has no
   // entry in `chats` and never appears in `plan.sessionUpdates`.
-  backgroundTasksStore.reconcileSnapshot(payload);
+  const replayId = options?.replayThreadId;
+  if (replayId && !isReplayThread(replayId))
+    throw new Error('Snapshot replay requires a registered replay thread');
+  if (!replayId) backgroundTasksStore.reconcileSnapshot(payload);
 
-  const snapshot = activeChatsStore.getSnapshot();
+  const snapshot = Object.fromEntries(
+    Object.entries(activeChatsStore.getSnapshot()).filter(([id]) =>
+      replayId ? id === replayId : !isReplayThread(id),
+    ),
+  );
   const plan = buildOrchestrationSnapshotSyncPlan(payload, snapshot);
   const isReconnectFallback = options?.isReconnectFallback === true;
   const openTurnThreadIds = new Set(
@@ -252,7 +261,7 @@ export function applyOrchestrationSnapshot(
     });
   }
 
-  if (!isReconnectFallback || !options) return;
+  if (!isReconnectFallback || !options || replayId) return;
   // Bounded catch-up guardrail (archive#1225): force a real refetch for every
   // tracked chat this snapshot named, reusing the SAME mechanism
   // `useRehydrateSessions` uses on mount (`rehydrateChatSession`) rather than

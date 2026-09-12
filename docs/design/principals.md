@@ -13,6 +13,23 @@
 
 ## 0. Why this exists
 
+### Personal conversation access (2026-09-12, #1958)
+
+The personal Station's operator and their paired devices share conversations
+automatically. The credential principal remains distinct for attribution;
+sharing does not rewrite stored owners, merge credentials, or expand scopes.
+`DevicePairingService` derives the personal family from its trusted device
+registry. `SessionAuthorization` applies it to session reads, commands, SSE,
+and transcript/search owner constraints. Hosted tenant authorization never
+consults this personal policy.
+
+An active paired device needs its existing orchestration read scope to join
+this family. Revoking a device denies further requests and stream deliveries;
+its previously authored conversations remain available to the owner and other
+authorized devices. This is one person's device access, not an implicit
+multi-user sharing policy. The historical rationale below predates this
+implementation.
+
 The question that prompted it: *"do we need to start working on the auth
 integrations, because I do think people will also be a thing here?"*
 

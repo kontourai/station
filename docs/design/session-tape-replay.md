@@ -1,6 +1,7 @@
 # Session tape replay
 
-Status: accepted direction, v1 implemented. Issue #1935.
+Status: debugger implementation. Original replay: #1935; event-to-render
+debugging and shared-device streaming: #1958. Future conversation controls: #563.
 
 A replay is a normal dock chat under a **synthetic store key**. Recorded
 canonical events are rewritten onto that id and folded through
@@ -33,10 +34,42 @@ projector. The observation includes streaming vs settled rows, tool names,
 `lineage-leak`, `empty-after-completed-turn`), and a `delta` vs the previous
 step.
 
-The composer slot of a replay chat is `ReplayTransport`: Back / Step, an
-`aria-live` status line, issue list, and a `data-testid="replay-observation"`
-JSON region. While a replay is active, `window.__stationReplay` exposes
-`step` / `back` / `seek` / `observe` for computer-use agents.
+The composer slot is `ReplayTransport`, collapsed by default to preserve the
+transcript viewport. Expand it for Back, Step, Play/Pause, speed, seek, and
+Run until issue. `window.__stationReplay` exposes asynchronous `step`, `back`,
+`seek`, and `observe` operations, plus `play`, `pause`, `runUntilIssue`, and
+the synchronous `observeState`. Asynchronous observations wait beyond the
+live text batching interval and sample the committed transcript DOM. They
+report mounted rows, visible row bounds, scroll position, mutations, and
+observation wait time. Wait time is not React render CPU time, and a timeout
+or unmounted transcript is explicitly reported.
+
+Record a live conversation from chat developer settings to include committed
+history reads, runtime events, transport transitions, snapshots, and the
+initial visible state. Capture is opt-in and stops explicitly at 16 MiB or
+20,000 frames. A server-event tape cannot reconstruct the original client's
+history responses or network timing; `coverage` distinguishes it from a
+client capture. Imported captures use the production history projector with
+recorded reader responses and cannot issue live history requests.
+
+Export redacts content by default. Content-preserving export is explicit;
+redacted tapes preserve structure but cannot prove original text layout.
+Replay forms, sends, feedback, and Task actions cannot mutate the source
+conversation. Replaying a snapshot does not modify live chats or background
+tasks.
+
+The browser matrix in `tests/chat-replay.spec.ts` pairs each frame's screenshot
+with its observation. It covers waiting and thinking timers, text streaming,
+concurrent and sequential tools, approval, errors after partial text,
+reconnecting, catch-up, revoked credentials, multiple turns, incomplete history,
+virtualized long history, and reduced motion in both themes. This is browser
+evidence; native lifecycle and device delivery require separate verification.
+
+Chat activity uses one aligned phrase, `Working for m:ss`, before content;
+reported reasoning uses `Thinking for m:ss`. Active tool rows supply their own
+animation, and streamed answer text has a caret. Approval and transport
+recovery have explicit states. A timer measures observed waiting, never an
+estimate of completion.
 
 Headless station-control tools that drive those operations over `/api/ui`
 are a follow-up on this schema.
@@ -94,9 +127,9 @@ steer is the default whenever the engine can.
 
 ## Follow-ups
 
-- Tape-backed `useSessionEventWindow` transport so **Load earlier events**
-  runs the production prepend/anchor path.
-- File import/export with redaction default-on.
 - station-control `replay_session` open/step/observe.
-- User-facing “view as of turn N” reuses the player and bar; debug inspector
-  stays gated.
+- Bounded archive loading and seeking checkpoints for exceptionally large
+  tapes; profiling must justify checkpoint retention and cadence.
+- User-facing read-only “view as of turn N”, return to latest, and explicit
+  fork/continue can reuse this foundation. Workspace rollback is a separate
+  action. These controls remain future work under #563.

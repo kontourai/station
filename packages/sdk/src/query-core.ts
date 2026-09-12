@@ -174,10 +174,13 @@ export function useApiMutation<TData = any, TVariables = any>(
     mutationFn,
     ...(options?.evictSettledVariables ? { gcTime: 0 } : {}),
     onSuccess: (data, variables) => {
-      options?.onSuccess?.(data, variables);
-      options?.invalidateKeys?.forEach((key) => {
-        queryClient.invalidateQueries({ queryKey: key });
-      });
+      try {
+        options?.onSuccess?.(data, variables);
+      } finally {
+        options?.invalidateKeys?.forEach((key) => {
+          queryClient.invalidateQueries({ queryKey: key });
+        });
+      }
     },
     onError: (error, variables) => {
       options?.onError?.(error as Error, variables);

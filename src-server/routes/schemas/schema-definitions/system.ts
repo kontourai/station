@@ -261,6 +261,11 @@ export const pluginFetchSchema = z.object({
 });
 
 // Feedback
+export const feedbackAnalyzeSchema = z.object({
+  maxReinforce: z.number().int().min(1).max(50).optional(),
+  maxAvoid: z.number().int().min(1).max(50).optional(),
+});
+
 export const feedbackDeleteSchema = z.object({
   conversationId: z.string().optional(),
   messageIndex: z.number().int().min(0),

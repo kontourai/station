@@ -2,6 +2,14 @@ import { extensionNotificationBinding } from '@shared/extension-notification-bin
 import type { ChatUIState } from '../../../contexts/active-chats-state';
 import { isTurnStreamLive } from '../../../utils/execution';
 import type { OrchestrationEvent } from '../types';
+import type {
+  ReplayIssue,
+  ReplayObservation,
+  ReplayScrollObservation,
+  ReplayTranscriptRowObservation,
+} from './observation-types';
+
+export type * from './observation-types';
 
 /** Methods `handleOrchestrationEvent` actually folds. Keep in lockstep with its switch. */
 const UI_FOLDED_ORCHESTRATION_METHODS = [
@@ -33,75 +41,6 @@ const UI_FOLDED_ORCHESTRATION_METHODS = [
   'workflow.state-changed',
   'conversation.forked',
 ] as const;
-
-export type ReplayIssueCode =
-  | 'duplicate-streaming-and-settled'
-  | 'streaming-after-turn-completed'
-  | 'lineage-leak'
-  | 'empty-after-completed-turn'
-  | 'unhandled-canonical-method'
-  | 'unbound-extension-notification'
-  | 'in-flight-content-dropped-on-session-exit';
-
-export interface ReplayIssue {
-  code: ReplayIssueCode;
-  detail: string;
-}
-
-export interface ReplayTranscriptRowObservation {
-  id: string;
-  role: string;
-  turnId?: string;
-  kind: 'message' | 'streaming';
-  textPreview: string;
-  toolNames: string[];
-}
-
-export interface ReplayScrollObservation {
-  scrollTop: number;
-  scrollHeight: number;
-  clientHeight: number;
-  isUserScrolledUp: boolean;
-  atBottom: boolean;
-  visibleMessageKeys: string[];
-  /** Visible transcript text, so an agent can read what the dock actually shows. */
-  accessibleText: string;
-}
-
-export interface ReplayObservationDelta {
-  addedRowIds: string[];
-  removedRowIds: string[];
-  streamingTextDeltaLength: number;
-  issueCodesAdded: ReplayIssueCode[];
-}
-
-export interface ReplayObservation {
-  schemaVersion: 1;
-  replayId: string;
-  cursor: {
-    index: number;
-    eventCount: number;
-    eventId?: string;
-    method?: string;
-    turnId?: string;
-  };
-  atEnd: boolean;
-  streaming: {
-    present: boolean;
-    activityHint?: string;
-    textLength: number;
-    toolCallCount: number;
-    turnId?: string;
-  };
-  transcript: ReplayTranscriptRowObservation[];
-  history: {
-    messageCount: number;
-    hasMore: boolean;
-  };
-  scroll?: ReplayScrollObservation;
-  issues: ReplayIssue[];
-  delta?: ReplayObservationDelta;
-}
 
 const PREVIEW_CHARS = 160;
 
@@ -203,6 +142,25 @@ export function detectReplayIssues(
     });
   }
   if (
+    event?.method === 'turn.completed' &&
+    !isTurnStreamLive(chat) &&
+    !(chat.messages ?? []).some(
+      (message) =>
+        message.role === 'assistant' &&
+        message.turnId === event.turnId &&
+        (Boolean(message.content?.trim()) ||
+          message.contentParts?.some(
+            (part) => part.type === 'text' && Boolean(part.content?.trim()),
+          )),
+    )
+  ) {
+    issues.push({
+      code: 'no-text-after-completed-turn',
+      detail:
+        'The turn completed without any recorded assistant text for this turn.',
+    });
+  }
+  if (
     event &&
     !UI_FOLDED_ORCHESTRATION_METHODS.includes(
       event.method as (typeof UI_FOLDED_ORCHESTRATION_METHODS)[number],
@@ -242,11 +200,17 @@ function collectReplayScroll(
   const gap =
     container.scrollHeight - container.scrollTop - container.clientHeight;
   const atBottom = gap <= 32;
-  const containerTop = container.getBoundingClientRect().top;
+  const containerBounds = container.getBoundingClientRect();
   const visibleMessageKeys = [
     ...container.querySelectorAll<HTMLElement>('[data-chat-message-key]'),
   ]
-    .filter((node) => node.getBoundingClientRect().bottom > containerTop)
+    .filter((node) => {
+      const bounds = node.getBoundingClientRect();
+      return (
+        bounds.bottom > containerBounds.top &&
+        bounds.top < containerBounds.bottom
+      );
+    })
     .map((node) => node.dataset.chatMessageKey ?? '')
     .filter(Boolean);
   return {
@@ -296,6 +260,13 @@ export function collectReplayObservation(input: {
           : input.chat.openTurnId,
     },
     atEnd: input.cursorIndex >= input.eventCount - 1,
+    execution: {
+      status: input.chat.status,
+      orchestrationStatus: input.chat.orchestrationStatus,
+      turnOpen: input.chat.orchestrationTurnOpen === true,
+      openTurnId: input.chat.openTurnId,
+      shellSuperseded: input.chat.openTurnShellSuperseded === true,
+    },
     streaming: {
       present: Boolean(streaming),
       activityHint: input.chat.activityHint?.kind,
@@ -311,6 +282,53 @@ export function collectReplayObservation(input: {
     scroll: collectReplayScroll(input.transcriptElement ?? null),
     issues,
   };
+  if (input.transcriptElement) {
+    observation.renderedConnection =
+      [
+        ...input.transcriptElement.ownerDocument.querySelectorAll<HTMLElement>(
+          '[data-chat-stream-status]',
+        ),
+      ].find((element) => element.dataset.chatStreamStatus === input.replayId)
+        ?.textContent ?? undefined;
+    observation.renderedRows = [
+      ...input.transcriptElement.querySelectorAll<HTMLElement>(
+        '[data-chat-message-key]',
+      ),
+    ].map((node) => ({
+      key: node.dataset.chatMessageKey ?? '',
+      turnId: node.dataset.chatTurnId,
+      role: node.dataset.chatRole,
+      textLength: Number(node.dataset.chatTextLength ?? 0),
+      textPreview: preview(node.innerText ?? node.textContent ?? ''),
+    }));
+    const latest = [...(input.chat.messages ?? [])]
+      .reverse()
+      .find(
+        (row) => row.role === 'assistant' && row.answerEligible && row.turnId,
+      );
+    if (latest && observation.scroll?.atBottom && !streaming) {
+      const rendered = observation.renderedRows.filter(
+        (row) => row.role === 'assistant' && row.turnId === latest.turnId,
+      );
+      if (
+        rendered.length > 0 &&
+        Math.max(...rendered.map((row) => row.textLength)) <
+          (latest.content?.length ?? 0)
+      ) {
+        issues.push({
+          code: 'completed-answer-not-rendered',
+          detail:
+            'The mounted transcript projects less text than the completed live answer.',
+        });
+      }
+      if (rendered.length > 1)
+        issues.push({
+          code: 'rendered-duplicate-turn',
+          detail:
+            'The mounted transcript contains duplicate assistant rows for the completed turn.',
+        });
+    }
+  }
   if (input.previous) {
     const previousIds = new Set(input.previous.transcript.map((row) => row.id));
     const nextIds = new Set(transcript.map((row) => row.id));
@@ -329,6 +347,21 @@ export function collectReplayObservation(input: {
           (code) =>
             !input.previous?.issues.some((issue) => issue.code === code),
         ),
+      stateChanges: Object.entries(observation.execution)
+        .filter(
+          ([field, value]) =>
+            input.previous?.execution?.[
+              field as keyof ReplayObservation['execution']
+            ] !== value,
+        )
+        .map(([field, value]) => ({
+          field,
+          before:
+            input.previous?.execution?.[
+              field as keyof ReplayObservation['execution']
+            ],
+          after: value,
+        })),
     };
   }
   return observation;

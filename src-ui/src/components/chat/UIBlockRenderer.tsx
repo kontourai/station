@@ -63,7 +63,7 @@ function formKey(block: UIFormBlock, fallback: string): string {
  * resolution. Safe by construction: no agent-supplied markup is executed.
  */
 function UIFormBlockView({ block }: { block: UIFormBlock }) {
-  const { submitForm, submittedBlockIds } = useUIBlockActions();
+  const { submitForm, submittedBlockIds, readOnly } = useUIBlockActions();
   const reactId = useId();
   const key = formKey(block, reactId);
   const [values, setValues] = useState<Record<string, string | boolean>>(() => {
@@ -77,7 +77,8 @@ function UIFormBlockView({ block }: { block: UIFormBlock }) {
     return initial;
   });
   const [error, setError] = useState<string | null>(null);
-  const locked = submittedBlockIds.has(key);
+  const submitted = submittedBlockIds.has(key);
+  const locked = submitted || readOnly === true;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,7 +192,7 @@ function UIFormBlockView({ block }: { block: UIFormBlock }) {
           className="ui-block__form-submit"
           disabled={locked}
         >
-          {locked ? 'Submitted' : block.submitLabel || 'Submit'}
+          {submitted ? 'Submitted' : block.submitLabel || 'Submit'}
         </button>
       </div>
     </form>

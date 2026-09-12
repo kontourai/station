@@ -20,6 +20,7 @@ export function getActiveReplay(): ActiveReplay | null {
 
 export function setActiveReplay(next: ActiveReplay | null): void {
   active = next;
+  if (active && !active.player.lastObservation) active.player.observe();
   publishReplayApi();
 }
 
@@ -32,6 +33,10 @@ function publishReplayApi(): void {
       back: () => unknown;
       seek: (index: number) => unknown;
       observe: () => unknown;
+      observeState: () => unknown;
+      play: (speed?: number) => unknown;
+      pause: () => unknown;
+      runUntilIssue: () => unknown;
     };
   };
   if (!active) {
@@ -41,16 +46,36 @@ function publishReplayApi(): void {
   const { replayId, player } = active;
   host.__stationReplay = {
     replayId,
-    step: () => player.step(transcriptElement()),
-    back: () => player.back(transcriptElement()),
-    seek: (index: number) => player.seek(index, transcriptElement()),
-    observe: () => player.observe(transcriptElement()),
+    step: () => {
+      player.pause();
+      return player.stepRendered(transcriptElement);
+    },
+    back: () => {
+      player.pause();
+      player.back();
+      return player.observeRendered(transcriptElement);
+    },
+    seek: (index: number) => {
+      player.pause();
+      player.seek(index);
+      return player.observeRendered(transcriptElement);
+    },
+    observe: () => player.observeRendered(transcriptElement),
+    observeState: () => player.observe(),
+    play: (speed = 1) => player.play(transcriptElement, { speed }),
+    pause: () => player.pause(),
+    runUntilIssue: () => player.play(transcriptElement, { untilIssue: true }),
   };
 }
 
 function transcriptElement(): HTMLElement | null {
-  return document.querySelector<HTMLElement>(
-    '[role="log"][aria-label="Conversation transcript"]',
+  return (
+    [
+      ...document.querySelectorAll<HTMLElement>(
+        '[role="log"][aria-label="Conversation transcript"]',
+      ),
+    ].find((element) => element.dataset.chatSessionId === active?.replayId) ??
+    null
   );
 }
 
@@ -102,10 +127,11 @@ export function openReplayFromTape(
     orchestrationSessionStarted: true,
     replay: {
       sourceThreadId: tape.source.threadId,
-      tapeEventCount: tape.events.length,
+      tapeEventCount: tape.frames?.length ?? tape.events.length,
     },
   });
   const player = new SessionTapePlayer(tape, replayId, identity.apiBase ?? '');
+  player.observe();
   active = { replayId, player };
   navigationStore.setActiveChat(replayId);
   navigationStore.setDockState(true);
@@ -115,7 +141,8 @@ export function openReplayFromTape(
 
 export function closeActiveReplay(): void {
   if (!active) return;
-  const { replayId } = active;
+  const { replayId, player } = active;
+  player.dispose();
   unregisterReplayThread(replayId);
   activeChatsStore.removeChat(replayId);
   if (navigationStore.getSnapshot().activeChat === replayId) {

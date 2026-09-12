@@ -3438,6 +3438,15 @@ export async function executeExecutionTargetMessage(
             ),
         }
       : {}),
+    canContinueConversation: (
+      access: EnvironmentAccess,
+      conversationId: string,
+      userId: string,
+    ) =>
+      access.kind === 'current' &&
+      readAuthority.mode === 'personal' &&
+      readAuthority.userId === userId &&
+      orchestrationService.canUserReadSession(conversationId, readAuthority),
     readSessionBinding: async (
       _access: EnvironmentAccess,
       sessionId: string,
